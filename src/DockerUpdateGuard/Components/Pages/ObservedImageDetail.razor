@@ -1,0 +1,162 @@
+@page "/observed-images/{ObservedImageId:guid}"
+
+<PageTitle>Observed Image Detail</PageTitle>
+
+<MudStack Spacing="3" Class="page-shell">
+    <div class="page-header">
+        <div>
+            <MudText Typo="Typo.overline" Class="page-eyebrow">Image drilldown</MudText>
+            <MudText Typo="Typo.h3">Observed Image Detail</MudText>
+            <MudText Class="page-description">Inspect base lineage, findings, and historical scans for a tracked image.</MudText>
+        </div>
+    </div>
+
+    @if (_detail is null)
+    {
+        <MudPaper Class="empty-state-panel" Elevation="0">
+            <MudText>Loading observed image detail...</MudText>
+        </MudPaper>
+    }
+    else
+    {
+        <MudPaper Class="section-paper" Elevation="0">
+            <div class="section-header">
+                <MudText Typo="Typo.h4">@_detail.Name</MudText>
+                <MudText Class="section-description">Latest state and metadata for the selected image.</MudText>
+            </div>
+            <MudText Class="muted-text">@_detail.Description</MudText>
+
+            <MudGrid Spacing="2" Class="details-grid">
+                <MudItem xs="12" md="6">
+                    <MudPaper Class="summary-card" Elevation="0">
+                        <span class="summary-label">Image</span>
+                        <span class="summary-value">@_detail.ImageReference</span>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudPaper Class="summary-card" Elevation="0">
+                        <span class="summary-label">Latest scan</span>
+                        <MudChip T="string" Size="Size.Small" Color="@GetScanStatusColor(_detail.LatestScanStatus)">@_detail.LatestScanStatus</MudChip>
+                        @if (string.IsNullOrWhiteSpace(_detail.LatestScanMessage) == false)
+                        {
+                            <span class="table-secondary">@_detail.LatestScanMessage</span>
+                        }
+                    </MudPaper>
+                </MudItem>
+            </MudGrid>
+        </MudPaper>
+
+        <MudPaper Class="section-paper" Elevation="0">
+            <div class="section-header">
+                <MudText Typo="Typo.h5">Base image chain</MudText>
+                <MudText Class="section-description">Resolved dependency chain from the observed image to its parents.</MudText>
+            </div>
+            @if (_detail.BaseImages.Count == 0)
+            {
+                <MudPaper Class="empty-state-panel" Elevation="0">
+                    <MudText>No base image chain is currently stored for this observed image.</MudText>
+                </MudPaper>
+            }
+            else
+            {
+                <MudTable Items="_detail.BaseImages" Hover="true" Dense="false" Breakpoint="Breakpoint.Md" Class="section-table">
+                    <HeaderContent>
+                        <MudTh>Depth</MudTh>
+                        <MudTh>Base Image</MudTh>
+                        <MudTh>Source</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd DataLabel="Depth">@context.Depth</MudTd>
+                        <MudTd DataLabel="Base Image">@context.ImageReference</MudTd>
+                        <MudTd DataLabel="Source">@context.SourceReference</MudTd>
+                    </RowTemplate>
+                </MudTable>
+            }
+        </MudPaper>
+
+        <MudPaper Class="section-paper" Elevation="0">
+            <div class="section-header">
+                <MudText Typo="Typo.h5">Update findings</MudText>
+                <MudText Class="section-description">Recommended upgrades and active update opportunities.</MudText>
+            </div>
+            @if (_detail.UpdateFindings.Count == 0)
+            {
+                <MudPaper Class="empty-state-panel" Elevation="0">
+                    <MudText>No update findings are currently stored.</MudText>
+                </MudPaper>
+            }
+            else
+            {
+                <MudTable Items="_detail.UpdateFindings" Hover="true" Dense="false" Breakpoint="Breakpoint.Md" Class="section-table">
+                    <HeaderContent>
+                        <MudTh>Type</MudTh>
+                        <MudTh>Summary</MudTh>
+                        <MudTh>Recommended</MudTh>
+                        <MudTh>Active</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd DataLabel="Type">@context.Type</MudTd>
+                        <MudTd DataLabel="Summary">@context.Summary</MudTd>
+                        <MudTd DataLabel="Recommended">@context.RecommendedImage</MudTd>
+                        <MudTd DataLabel="Active">
+                            <MudChip T="string" Size="Size.Small" Color="@(context.IsActive ? Color.Warning : Color.Success)">
+                                @(context.IsActive ? "Active" : "Resolved")
+                            </MudChip>
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+            }
+        </MudPaper>
+
+        <MudPaper Class="section-paper" Elevation="0">
+            <div class="section-header">
+                <MudText Typo="Typo.h5">Vulnerability findings</MudText>
+                <MudText Class="section-description">Security findings associated with the tracked image.</MudText>
+            </div>
+            @if (_detail.VulnerabilityFindings.Count == 0)
+            {
+                <MudPaper Class="empty-state-panel" Elevation="0">
+                    <MudText>No vulnerability findings are currently stored.</MudText>
+                </MudPaper>
+            }
+            else
+            {
+                <MudTable Items="_detail.VulnerabilityFindings" Hover="true" Dense="false" Breakpoint="Breakpoint.Md" Class="section-table">
+                    <HeaderContent>
+                        <MudTh>Advisory</MudTh>
+                        <MudTh>Severity</MudTh>
+                        <MudTh>Title</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd DataLabel="Advisory">@context.AdvisoryId</MudTd>
+                        <MudTd DataLabel="Severity">
+                            <MudChip T="string" Size="Size.Small" Color="@GetVulnerabilitySeverityColor(context.Severity)">@context.Severity</MudChip>
+                        </MudTd>
+                        <MudTd DataLabel="Title">@context.Title</MudTd>
+                    </RowTemplate>
+                </MudTable>
+            }
+        </MudPaper>
+
+        <MudPaper Class="section-paper" Elevation="0">
+            <div class="section-header">
+                <MudText Typo="Typo.h5">Scan history</MudText>
+                <MudText Class="section-description">Historical execution trail for this image.</MudText>
+            </div>
+            <MudTable Items="_detail.ScanHistory" Hover="true" Dense="false" Breakpoint="Breakpoint.Md" Class="section-table">
+                <HeaderContent>
+                    <MudTh>Status</MudTh>
+                    <MudTh>Started</MudTh>
+                    <MudTh>Error</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Status">
+                        <MudChip T="string" Size="Size.Small" Color="@GetScanStatusColor(context.Status)">@context.Status</MudChip>
+                    </MudTd>
+                    <MudTd DataLabel="Started">@context.StartedAtUtc.ToLocalTime().ToString("g")</MudTd>
+                    <MudTd DataLabel="Error">@context.ErrorMessage</MudTd>
+                </RowTemplate>
+            </MudTable>
+        </MudPaper>
+    }
+</MudStack>

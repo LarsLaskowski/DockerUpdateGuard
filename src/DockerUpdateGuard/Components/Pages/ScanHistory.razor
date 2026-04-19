@@ -1,0 +1,55 @@
+@page "/scan-history"
+
+<PageTitle>Scan History</PageTitle>
+
+<MudStack Spacing="3" Class="page-shell">
+    <div class="page-header">
+        <div>
+            <MudText Typo="Typo.overline" Class="page-eyebrow">Execution timeline</MudText>
+            <MudText Typo="Typo.h3">Scan History</MudText>
+            <MudText Class="page-description">Operational history for discovery, image refresh, vulnerability, and cleanup runs.</MudText>
+        </div>
+    </div>
+
+    @if (_scans is null)
+    {
+        <MudPaper Class="empty-state-panel" Elevation="0">
+            <MudText>Loading scan history...</MudText>
+        </MudPaper>
+    }
+    else if (_scans.Count == 0)
+    {
+        <MudPaper Class="empty-state-panel" Elevation="0">
+            <MudText>No scan history exists yet.</MudText>
+        </MudPaper>
+    }
+    else
+    {
+        <MudPaper Class="section-paper" Elevation="0">
+            <div class="section-header">
+                <MudText Typo="Typo.h5">Recent and historical scans</MudText>
+                <MudText Class="section-description">Review trigger source, target, and outcome of every run.</MudText>
+            </div>
+            <MudTable Items="_scans" Hover="true" Dense="false" Breakpoint="Breakpoint.Md" Class="section-table">
+                <HeaderContent>
+                    <MudTh>Type</MudTh>
+                    <MudTh>Status</MudTh>
+                    <MudTh>Trigger</MudTh>
+                    <MudTh>Target</MudTh>
+                    <MudTh>Started</MudTh>
+                    <MudTh>Error</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Type">@context.Type</MudTd>
+                    <MudTd DataLabel="Status">
+                        <MudChip T="string" Size="Size.Small" Color="@GetScanStatusColor(context.Status)">@context.Status</MudChip>
+                    </MudTd>
+                    <MudTd DataLabel="Trigger">@context.TriggerSource</MudTd>
+                    <MudTd DataLabel="Target">@context.SubjectName</MudTd>
+                    <MudTd DataLabel="Started">@context.StartedAtUtc.ToLocalTime().ToString("g")</MudTd>
+                    <MudTd DataLabel="Error">@context.ErrorMessage</MudTd>
+                </RowTemplate>
+            </MudTable>
+        </MudPaper>
+    }
+</MudStack>

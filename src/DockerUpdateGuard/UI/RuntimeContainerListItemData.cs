@@ -1,0 +1,29 @@
+namespace DockerUpdateGuard.UI;
+
+/// <summary>
+/// Runtime container list item
+/// </summary>
+public class RuntimeContainerListItemData
+{
+    #region Properties
+
+    public string ContainerName { get; set; } = string.Empty;
+
+    public string DockerInstanceName { get; set; } = string.Empty;
+
+    public string ImageReference { get; set; } = string.Empty;
+
+    public string RuntimeStatus { get; set; } = string.Empty;
+
+    public string UpdateState { get; set; } = string.Empty;
+
+    public string? UpdateSummary { get; set; }
+
+    public bool PortainerAvailable { get; set; }
+
+    public int ActiveVulnerabilityFindingCount { get; set; }
+
+    public DateTimeOffset RecordedAtUtc { get; set; }
+
+    #endregion // Properties
+}

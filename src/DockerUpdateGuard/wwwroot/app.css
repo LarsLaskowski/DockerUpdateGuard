@@ -1,0 +1,345 @@
+html,
+body {
+    min-height: 100%;
+}
+
+body {
+    margin: 0;
+    background:
+        radial-gradient(circle at top left, rgba(59, 130, 246, 0.12), transparent 24rem),
+        radial-gradient(circle at top right, rgba(14, 165, 233, 0.12), transparent 22rem),
+        linear-gradient(180deg, #eef4ff 0%, #f8fafc 35%, #f3f6fb 100%);
+    color: #0f172a;
+    font-family: Inter, "Segoe UI", Arial, Helvetica, sans-serif;
+}
+
+a {
+    color: inherit;
+}
+
+.app-layout {
+    min-height: 100vh;
+}
+
+.app-drawer {
+    width: min(360px, 92vw);
+}
+
+.app-drawer .mud-drawer-content {
+    padding: 1.75rem 1.25rem 1.5rem;
+    color: #e2e8f0;
+    background: linear-gradient(180deg, #0f172a 0%, #172554 100%);
+    border-right: 1px solid rgba(148, 163, 184, 0.2);
+    box-shadow: 0 24px 60px rgba(15, 23, 42, 0.22);
+}
+
+.app-drawer-content {
+    height: 100%;
+}
+
+.app-brand {
+    padding: 0.5rem 0.35rem 0.75rem;
+}
+
+.app-brand__avatar {
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    box-shadow: 0 10px 25px rgba(14, 165, 233, 0.25);
+}
+
+.app-nav-shell {
+    color: #e2e8f0;
+}
+
+.nav-section-label,
+.page-eyebrow,
+.section-eyebrow {
+    color: #2563eb;
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+.nav-section-label {
+    color: rgba(191, 219, 254, 0.72);
+    padding-inline: 0.75rem;
+}
+
+.app-nav-menu {
+    gap: 0.55rem;
+}
+
+.app-nav-menu .mud-nav-link {
+    margin-bottom: 0.35rem;
+    padding: 1rem 1.05rem;
+    color: #e2e8f0;
+    border: 1px solid transparent;
+    border-radius: 1rem;
+    transition: background 0.2s ease, transform 0.2s ease, border-color 0.2s ease;
+}
+
+.app-nav-menu .mud-nav-link:hover {
+    color: #ffffff;
+    background: rgba(148, 163, 184, 0.12);
+    border-color: rgba(191, 219, 254, 0.12);
+    transform: translateX(2px);
+}
+
+.app-nav-menu .mud-nav-link.active {
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.22), rgba(6, 182, 212, 0.18));
+    border-color: rgba(125, 211, 252, 0.22);
+    box-shadow: inset 0 0 0 1px rgba(125, 211, 252, 0.08);
+}
+
+.app-nav-menu .mud-nav-link-icon {
+    color: inherit;
+}
+
+.app-main-content {
+    min-height: 100vh;
+}
+
+.app-topbar {
+    margin: 1.5rem 1.5rem 0.75rem;
+    padding: 0.9rem 1.35rem;
+    background: rgba(255, 255, 255, 0.72) !important;
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(148, 163, 184, 0.2);
+    border-radius: 1.5rem;
+    box-shadow: 0 20px 45px rgba(15, 23, 42, 0.08);
+}
+
+.page-container {
+    padding: 0.75rem 1.5rem 2rem;
+}
+
+.page-shell {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.page-header {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 1.25rem;
+}
+
+.page-header h1,
+.hero-panel h1,
+.empty-state-panel h1 {
+    margin: 0;
+    font-size: clamp(1.8rem, 2.4vw, 2.6rem);
+    font-weight: 750;
+    letter-spacing: -0.03em;
+}
+
+.page-description,
+.hero-description,
+.section-description,
+.muted-text {
+    color: #475569;
+}
+
+.page-description,
+.hero-description,
+.section-description {
+    max-width: 70ch;
+}
+
+.hero-panel,
+.metric-card,
+.section-paper,
+.empty-state-panel,
+.summary-card {
+    background: rgba(255, 255, 255, 0.82);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(148, 163, 184, 0.2);
+    border-radius: 1.5rem;
+    box-shadow: 0 20px 45px rgba(15, 23, 42, 0.08);
+}
+
+.hero-panel {
+    padding: 2rem;
+    background:
+        linear-gradient(135deg, rgba(37, 99, 235, 0.10), rgba(14, 165, 233, 0.08)),
+        rgba(255, 255, 255, 0.9);
+}
+
+.hero-meta-card,
+.summary-card,
+.metric-card {
+    padding: 1.2rem 1.25rem;
+}
+
+.metric-card {
+    min-height: 100%;
+}
+
+.metric-card--warning {
+    background:
+        linear-gradient(135deg, rgba(245, 158, 11, 0.12), rgba(255, 255, 255, 0.88)),
+        rgba(255, 255, 255, 0.92);
+}
+
+.metric-card--danger {
+    background:
+        linear-gradient(135deg, rgba(239, 68, 68, 0.10), rgba(255, 255, 255, 0.88)),
+        rgba(255, 255, 255, 0.92);
+}
+
+.metric-label {
+    display: block;
+    color: #64748b;
+    font-size: 0.84rem;
+}
+
+.metric-value {
+    display: block;
+    margin-top: 0.5rem;
+    font-size: 1.95rem;
+    font-weight: 750;
+    letter-spacing: -0.03em;
+}
+
+.section-paper {
+    padding: 1.5rem 1.6rem;
+}
+
+.section-paper--accent {
+    background:
+        linear-gradient(135deg, rgba(37, 99, 235, 0.08), rgba(14, 165, 233, 0.05)),
+        rgba(255, 255, 255, 0.92);
+}
+
+.section-header {
+    margin-bottom: 1.25rem;
+}
+
+.section-header h2 {
+    margin: 0;
+    font-size: 1.2rem;
+    font-weight: 700;
+}
+
+.summary-grid {
+    gap: 1rem;
+}
+
+.summary-label {
+    display: block;
+    color: #64748b;
+    font-size: 0.84rem;
+}
+
+.summary-value {
+    display: block;
+    margin-top: 0.45rem;
+    font-weight: 700;
+}
+
+.empty-state-panel {
+    padding: 1.75rem;
+}
+
+.centered-panel {
+    max-width: 42rem;
+    margin: 4rem auto;
+}
+
+.table-link {
+    color: #1d4ed8;
+    font-weight: 600;
+}
+
+.table-link:hover {
+    color: #1e40af;
+}
+
+.table-secondary {
+    display: block;
+    margin-top: 0.15rem;
+    color: #64748b;
+    font-size: 0.82rem;
+}
+
+.section-table .mud-table-container {
+    border-radius: 1rem;
+    border: 1px solid rgba(226, 232, 240, 0.92);
+    background: rgba(255, 255, 255, 0.88);
+}
+
+.section-table .mud-table-head .mud-table-cell {
+    color: #475569;
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}
+
+.section-table .mud-table-body .mud-table-cell {
+    color: #0f172a;
+    padding-top: 0.95rem;
+    padding-bottom: 0.95rem;
+    vertical-align: top;
+}
+
+.section-table .mud-table-head .mud-table-cell,
+.section-table .mud-table-footer .mud-table-cell {
+    padding-top: 0.95rem;
+    padding-bottom: 0.95rem;
+}
+
+.section-table .mud-chip {
+    font-weight: 600;
+}
+
+.details-grid {
+    margin-top: 0.5rem;
+}
+
+.mud-input-control {
+    margin-top: 0;
+}
+
+.mud-alert {
+    margin-bottom: 1rem;
+}
+
+@media (max-width: 960px) {
+    .app-topbar {
+        margin-inline: 1rem;
+    }
+
+    .page-container {
+        padding-inline: 1rem;
+    }
+
+    .hero-panel {
+        padding: 1.5rem;
+    }
+}
+
+@media (max-width: 600px) {
+    .page-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .app-topbar {
+        margin: 1rem 0.75rem 0.5rem;
+        padding-inline: 1rem;
+    }
+
+    .page-container {
+        padding-inline: 0.75rem;
+    }
+
+    .section-paper,
+    .empty-state-panel,
+    .hero-panel {
+        padding: 1.2rem;
+    }
+}

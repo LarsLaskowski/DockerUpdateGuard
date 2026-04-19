@@ -1,0 +1,60 @@
+@page "/docker-instances"
+
+<PageTitle>Docker Instances</PageTitle>
+
+<MudStack Spacing="3" Class="page-shell">
+    <div class="page-header">
+        <div>
+            <MudText Typo="Typo.overline" Class="page-eyebrow">Endpoint inventory</MudText>
+            <MudText Typo="Typo.h3">Docker Instances</MudText>
+            <MudText Class="page-description">Configured Docker endpoints, connectivity mode, and most recent runtime scan data.</MudText>
+        </div>
+    </div>
+
+    @if (_instances is null)
+    {
+        <MudPaper Class="empty-state-panel" Elevation="0">
+            <MudText>Loading docker instances...</MudText>
+        </MudPaper>
+    }
+    else if (_instances.Count == 0)
+    {
+        <MudPaper Class="empty-state-panel" Elevation="0">
+            <MudText>No docker instances are configured.</MudText>
+        </MudPaper>
+    }
+    else
+    {
+        <MudPaper Class="section-paper" Elevation="0">
+            <div class="section-header">
+                <MudText Typo="Typo.h5">Configured instances</MudText>
+                <MudText Class="section-description">Registered endpoints with connection details and runtime coverage.</MudText>
+            </div>
+            <MudTable Items="_instances" Hover="true" Dense="false" Breakpoint="Breakpoint.Md" Class="section-table">
+                <HeaderContent>
+                    <MudTh>Name</MudTh>
+                    <MudTh>Endpoint</MudTh>
+                    <MudTh>Connection</MudTh>
+                    <MudTh>Portainer</MudTh>
+                    <MudTh>Latest Runtime Scan</MudTh>
+                    <MudTh>Containers</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Name">@context.Name</MudTd>
+                    <MudTd DataLabel="Endpoint">@context.EndpointUri</MudTd>
+                    <MudTd DataLabel="Connection">@context.ConnectionKind</MudTd>
+                    <MudTd DataLabel="Portainer">
+                        <MudChip T="string" Size="Size.Small" Color="@(context.PortainerEnabled ? Color.Success : Color.Default)">
+                            @(context.PortainerEnabled ? "Enabled" : "Disabled")
+                        </MudChip>
+                    </MudTd>
+                    <MudTd DataLabel="Latest Runtime Scan">
+                        @context.LatestScanStatus
+                        <span class="table-secondary">@context.LatestScanCompletedAtUtc?.ToLocalTime().ToString("g")</span>
+                    </MudTd>
+                    <MudTd DataLabel="Containers">@context.RuntimeContainerCount</MudTd>
+                </RowTemplate>
+            </MudTable>
+        </MudPaper>
+    }
+</MudStack>

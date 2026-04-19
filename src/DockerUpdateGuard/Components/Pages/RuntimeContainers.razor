@@ -1,0 +1,65 @@
+@page "/runtime-containers"
+
+<PageTitle>Runtime Containers</PageTitle>
+
+<MudStack Spacing="3" Class="page-shell">
+    <div class="page-header">
+        <div>
+            <MudText Typo="Typo.overline" Class="page-eyebrow">Live workloads</MudText>
+            <MudText Typo="Typo.h3">Runtime Containers</MudText>
+            <MudText Class="page-description">Review active containers, their source images, and the current update posture.</MudText>
+        </div>
+    </div>
+
+    @if (_containers is null)
+    {
+        <MudPaper Class="empty-state-panel" Elevation="0">
+            <MudText>Loading runtime containers...</MudText>
+        </MudPaper>
+    }
+    else if (_containers.Count == 0)
+    {
+        <MudPaper Class="empty-state-panel" Elevation="0">
+            <MudText>No runtime containers have been observed yet.</MudText>
+        </MudPaper>
+    }
+    else
+    {
+        <MudPaper Class="section-paper" Elevation="0">
+            <div class="section-header">
+                <MudText Typo="Typo.h5">Container inventory</MudText>
+                <MudText Class="section-description">Current runtime state correlated with update and vulnerability results.</MudText>
+            </div>
+            <MudTable Items="_containers" Hover="true" Dense="false" Breakpoint="Breakpoint.Md" Class="section-table">
+                <HeaderContent>
+                    <MudTh>Container</MudTh>
+                    <MudTh>Instance</MudTh>
+                    <MudTh>Image</MudTh>
+                    <MudTh>Status</MudTh>
+                    <MudTh>Update State</MudTh>
+                    <MudTh>Vulnerabilities</MudTh>
+                    <MudTh>Portainer</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Container">
+                        @context.ContainerName
+                        <span class="table-secondary">@context.RecordedAtUtc.ToLocalTime().ToString("g")</span>
+                    </MudTd>
+                    <MudTd DataLabel="Instance">@context.DockerInstanceName</MudTd>
+                    <MudTd DataLabel="Image">@context.ImageReference</MudTd>
+                    <MudTd DataLabel="Status">@context.RuntimeStatus</MudTd>
+                    <MudTd DataLabel="Update State">
+                        <MudChip T="string" Size="Size.Small" Color="@GetUpdateStateColor(context.UpdateState)">@context.UpdateState</MudChip>
+                        <span class="table-secondary">@context.UpdateSummary</span>
+                    </MudTd>
+                    <MudTd DataLabel="Vulnerabilities">@context.ActiveVulnerabilityFindingCount</MudTd>
+                    <MudTd DataLabel="Portainer">
+                        <MudChip T="string" Size="Size.Small" Color="@(context.PortainerAvailable ? Color.Success : Color.Default)">
+                            @(context.PortainerAvailable ? "Configured" : "Unavailable")
+                        </MudChip>
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+        </MudPaper>
+    }
+</MudStack>

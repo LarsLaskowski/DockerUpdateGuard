@@ -1,0 +1,171 @@
+@page "/"
+
+<PageTitle>Dashboard</PageTitle>
+
+@if (_dashboard is null)
+{
+    <MudPaper Class="hero-panel">
+        <MudStack Spacing="1">
+            <MudText Typo="Typo.overline" Class="section-eyebrow">Operations cockpit</MudText>
+            <MudText Typo="Typo.h3">Dashboard</MudText>
+            <MudText Class="hero-description">Loading dashboard data...</MudText>
+        </MudStack>
+    </MudPaper>
+}
+else
+{
+    <MudStack Spacing="3" Class="page-shell">
+        <MudPaper Class="hero-panel">
+            <MudGrid Spacing="3">
+                <MudItem xs="12" lg="7">
+                    <MudStack Spacing="1">
+                        <MudText Typo="Typo.overline" Class="section-eyebrow">Operations cockpit</MudText>
+                        <MudText Typo="Typo.h3">Dashboard</MudText>
+                        <MudText Class="hero-description">Track image freshness, runtime drift, and vulnerability posture from one place.</MudText>
+                    </MudStack>
+                </MudItem>
+                <MudItem xs="12" sm="6" lg="3">
+                    <MudPaper Class="hero-meta-card" Elevation="0">
+                        <MudText Typo="Typo.caption" Class="muted-text">Latest activity</MudText>
+                        <MudText Typo="Typo.h6">@GetLatestScanLabel()</MudText>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="12" sm="6" lg="3">
+                    <MudPaper Class="hero-meta-card" Elevation="0">
+                        <MudText Typo="Typo.caption" Class="muted-text">Protected assets</MudText>
+                        <MudText Typo="Typo.h6">@(_dashboard.ObservedImageCount + _dashboard.RuntimeContainerCount)</MudText>
+                    </MudPaper>
+                </MudItem>
+            </MudGrid>
+        </MudPaper>
+
+        <MudGrid Spacing="2">
+            <MudItem xs="12" sm="6" lg="4">
+                <MudPaper Class="metric-card" Elevation="0">
+                    <span class="metric-label">Observed Images</span>
+                    <span class="metric-value">@_dashboard.ObservedImageCount</span>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" sm="6" lg="4">
+                <MudPaper Class="metric-card" Elevation="0">
+                    <span class="metric-label">Docker Instances</span>
+                    <span class="metric-value">@_dashboard.DockerInstanceCount</span>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" sm="6" lg="4">
+                <MudPaper Class="metric-card" Elevation="0">
+                    <span class="metric-label">Runtime Containers</span>
+                    <span class="metric-value">@_dashboard.RuntimeContainerCount</span>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" sm="6" lg="4">
+                <MudPaper Class="metric-card" Elevation="0">
+                    <span class="metric-label">Shared Bases</span>
+                    <span class="metric-value">@_dashboard.SharedBaseImageCount</span>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" sm="6" lg="4">
+                <MudPaper Class="metric-card metric-card--warning" Elevation="0">
+                    <span class="metric-label">Update Findings</span>
+                    <span class="metric-value">@_dashboard.ActiveUpdateFindingCount</span>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" sm="6" lg="4">
+                <MudPaper Class="metric-card metric-card--danger" Elevation="0">
+                    <span class="metric-label">Vulnerabilities</span>
+                    <span class="metric-value">@_dashboard.ActiveVulnerabilityFindingCount</span>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+
+        <MudGrid Spacing="2">
+            <MudItem xs="12" lg="4">
+                <MudPaper Class="section-paper section-paper--accent" Elevation="0">
+                    <div class="section-header">
+                        <MudText Typo="Typo.h5">Update pressure</MudText>
+                        <MudText Class="section-description">Images and containers that currently need attention.</MudText>
+                    </div>
+                    <MudStack Spacing="2">
+                        <MudPaper Class="summary-card" Elevation="0">
+                            <span class="summary-label">Active update findings</span>
+                            <span class="summary-value">@_dashboard.ActiveUpdateFindingCount</span>
+                        </MudPaper>
+                        <MudPaper Class="summary-card" Elevation="0">
+                            <span class="summary-label">Active vulnerability findings</span>
+                            <span class="summary-value">@_dashboard.ActiveVulnerabilityFindingCount</span>
+                        </MudPaper>
+                    </MudStack>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" lg="8">
+                <MudPaper Class="section-paper" Elevation="0">
+                    <div class="section-header">
+                        <MudText Typo="Typo.h5">Coverage snapshot</MudText>
+                        <MudText Class="section-description">How much of the estate is currently observed.</MudText>
+                    </div>
+                    <MudGrid Spacing="2">
+                        <MudItem xs="12" sm="6">
+                            <MudPaper Class="summary-card" Elevation="0">
+                                <span class="summary-label">Observed images</span>
+                                <span class="summary-value">@_dashboard.ObservedImageCount</span>
+                            </MudPaper>
+                        </MudItem>
+                        <MudItem xs="12" sm="6">
+                            <MudPaper Class="summary-card" Elevation="0">
+                                <span class="summary-label">Runtime containers</span>
+                                <span class="summary-value">@_dashboard.RuntimeContainerCount</span>
+                            </MudPaper>
+                        </MudItem>
+                        <MudItem xs="12" sm="6">
+                            <MudPaper Class="summary-card" Elevation="0">
+                                <span class="summary-label">Docker instances</span>
+                                <span class="summary-value">@_dashboard.DockerInstanceCount</span>
+                            </MudPaper>
+                        </MudItem>
+                        <MudItem xs="12" sm="6">
+                            <MudPaper Class="summary-card" Elevation="0">
+                                <span class="summary-label">Shared base images</span>
+                                <span class="summary-value">@_dashboard.SharedBaseImageCount</span>
+                            </MudPaper>
+                        </MudItem>
+                    </MudGrid>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+
+        <MudPaper Class="section-paper" Elevation="0">
+            <div class="section-header">
+                <MudText Typo="Typo.h5">Recent scans</MudText>
+                <MudText Class="section-description">Latest activity across discovery, refresh, and cleanup jobs.</MudText>
+            </div>
+
+            @if (_dashboard.RecentScans.Count == 0)
+            {
+                <MudPaper Class="empty-state-panel" Elevation="0">
+                    <MudText>No scans have been recorded yet.</MudText>
+                </MudPaper>
+            }
+            else
+            {
+                <MudTable Items="_dashboard.RecentScans" Hover="true" Dense="false" Breakpoint="Breakpoint.Md" Class="section-table">
+                    <HeaderContent>
+                        <MudTh>Type</MudTh>
+                        <MudTh>Status</MudTh>
+                        <MudTh>Target</MudTh>
+                        <MudTh>Started</MudTh>
+                        <MudTh>Error</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd DataLabel="Type">@context.Type</MudTd>
+                        <MudTd DataLabel="Status">
+                            <MudChip T="string" Size="Size.Small" Color="@GetScanStatusColor(context.Status)">@context.Status</MudChip>
+                        </MudTd>
+                        <MudTd DataLabel="Target">@context.SubjectName</MudTd>
+                        <MudTd DataLabel="Started">@context.StartedAtUtc.ToLocalTime().ToString("g")</MudTd>
+                        <MudTd DataLabel="Error">@context.ErrorMessage</MudTd>
+                    </RowTemplate>
+                </MudTable>
+            }
+        </MudPaper>
+    </MudStack>
+}

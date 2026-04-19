@@ -5,10 +5,38 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>True</GenerateDocumentationFile>
+    <SuppressNETCoreSdkPreviewMessage>true</SuppressNETCoreSdkPreviewMessage>
+    <GenerateAssemblyInfo>False</GenerateAssemblyInfo>
+    <NoWarn>$(NoWarn);SA1204;SA1600;SA1611</NoWarn>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+    <Deterministic>False</Deterministic>
+    <CodeAnalysisRuleSet>..\..\..\rules\DockerUpdateGuard.Debug.ruleset</CodeAnalysisRuleSet>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
+    <Deterministic>False</Deterministic>
+    <CodeAnalysisRuleSet>..\..\..\rules\DockerUpdateGuard.Release.ruleset</CodeAnalysisRuleSet>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="coverlet.collector" Version="8.0.1">
+    <Compile Remove="TestResults\**" />
+    <EmbeddedResource Remove="TestResults\**" />
+    <None Remove="TestResults\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\..\..\SharedAssemblyInfo.cs" Link="Properties\SharedAssemblyInfo.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AdditionalFiles Include="..\..\..\rules\StyleCop.json" Link="StyleCop.json" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="10.0.0">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
@@ -17,6 +45,10 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.4.0" />
     <PackageReference Include="MSTest" Version="4.2.1" />
     <PackageReference Include="Reihitsu.Analyzer" Version="0.15.0">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="StyleCop.Analyzers" Version="1.2.0-beta.556">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>

@@ -1,0 +1,15 @@
+@page "/not-found"
+
+<PageTitle>Not found</PageTitle>
+
+<MudPaper Class="empty-state-panel centered-panel" Elevation="0">
+    <MudStack Spacing="2">
+        <MudIcon Icon="@Icons.Material.Filled.ExploreOff" Size="Size.Large" Color="Color.Warning" />
+        <div>
+            <MudText Typo="Typo.overline" Class="section-eyebrow">Navigation</MudText>
+            <MudText Typo="Typo.h3">Page not found</MudText>
+            <MudText Class="page-description">The requested page could not be found.</MudText>
+        </div>
+        <MudButton Href="/" Variant="Variant.Filled" Color="Color.Primary">Back to dashboard</MudButton>
+    </MudStack>
+</MudPaper>

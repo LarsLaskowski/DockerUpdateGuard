@@ -1,0 +1,14 @@
+@page "/error"
+
+<PageTitle>Error</PageTitle>
+
+<MudPaper Class="empty-state-panel centered-panel" Elevation="0">
+    <MudStack Spacing="2">
+        <MudIcon Icon="@Icons.Material.Filled.ErrorOutline" Size="Size.Large" Color="Color.Error" />
+        <div>
+            <MudText Typo="Typo.overline" Class="section-eyebrow">Request failed</MudText>
+            <MudText Typo="Typo.h3">Unexpected error</MudText>
+            <MudText Class="page-description">The current request could not be completed.</MudText>
+        </div>
+    </MudStack>
+</MudPaper>

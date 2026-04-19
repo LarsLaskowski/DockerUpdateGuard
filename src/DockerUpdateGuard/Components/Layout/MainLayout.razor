@@ -1,0 +1,46 @@
+@inherits LayoutComponentBase
+
+<MudThemeProvider Theme="_theme" />
+<MudPopoverProvider />
+<MudDialogProvider />
+<MudSnackbarProvider />
+
+<MudLayout Class="app-layout">
+    <MudDrawer @bind-Open="_drawerOpen"
+               Breakpoint="Breakpoint.Lg"
+               ClipMode="DrawerClipMode.Never"
+               Elevation="1"
+               Variant="DrawerVariant.Responsive"
+               Class="app-drawer">
+        <MudStack Spacing="3" Class="app-drawer-content">
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="app-brand">
+                <MudAvatar Size="Size.Large" Variant="Variant.Filled" Color="Color.Primary" Class="app-brand__avatar">DG</MudAvatar>
+                <MudStack Spacing="0">
+                    <MudText Typo="Typo.h6">DockerUpdateGuard</MudText>
+                    <MudText Typo="Typo.caption">Update visibility</MudText>
+                </MudStack>
+            </MudStack>
+
+            <NavMenu />
+        </MudStack>
+    </MudDrawer>
+
+    <MudMainContent Class="app-main-content">
+        <MudAppBar Elevation="0" Dense="false" Color="Color.Transparent" Class="app-topbar">
+            <MudIconButton Icon="@Icons.Material.Filled.Menu"
+                           Color="Color.Inherit"
+                           Edge="Edge.Start"
+                           OnClick="ToggleDrawer" />
+            <MudStack Spacing="0">
+                <MudText Typo="Typo.overline" Class="page-eyebrow">Container posture overview</MudText>
+                <MudText Typo="Typo.subtitle1">Observed images, runtime containers, and scan history</MudText>
+            </MudStack>
+            <MudSpacer />
+            <MudChip T="string" Color="Color.Info" Variant="Variant.Outlined" Size="Size.Small">Blazor console</MudChip>
+        </MudAppBar>
+
+        <MudContainer MaxWidth="MaxWidth.ExtraExtraLarge" Class="page-container">
+            @Body
+        </MudContainer>
+    </MudMainContent>
+</MudLayout>

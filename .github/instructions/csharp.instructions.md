@@ -36,6 +36,13 @@ Copilot and other AI assistants must follow these guidelines when generating or 
 
 ## File Structure
 
+### File and Type Layout
+
+- The **main type name must match the file name exactly** (for example, `SessionsController` in `SessionsController.cs`)
+- Use **exactly one top-level type per file**
+- Classes, interfaces, enums, structs, and delegates are each placed in their own file
+- Do not keep helper classes or helper interfaces in the same file as the primary type
+
 ### Namespaces
 
 - Use **file-scoped namespaces**:
@@ -126,17 +133,26 @@ public void DoSomething()
 
 - **Indentation**: 4 spaces (no tabs)
 - **Line endings**: CRLF
-- **No trailing newline** at end of file
+- **No trailing newline** at end of file (`SA1518`, `layoutRules.newlineAtEndOfFile = "omit"`)
 - **Braces**: Allman style (new line before opening brace)
 - **Braces always required** for `if`, `for`, `while`, etc. — even for single-line bodies
 
 ### Parameter Formatting (Constructors, Methods, `new()`)
 
-- First parameter goes on the **same line** as the method/constructor call
+- Method declarations, constructor declarations, method calls, constructor calls, and `new()` calls with **one or two parameters stay on a single line**
+- Parameter lists should only be wrapped once there are **more than two parameters**
+- When wrapping is required, the first parameter goes on the **same line** as the method/constructor/call
 - Subsequent parameters are **aligned under the first parameter**:
 
 ```csharp
-// Constructor
+// Two parameters stay on one line
+public MyService(ILogger<MyService> logger, IMemoryCache cache)
+{
+    _logger = logger;
+    _cache = cache;
+}
+
+// Constructor with more than two parameters
 public MyService(ILogger<MyService> logger,
                  IMemoryCache cache,
                  IOptions<MyOptions> options)
@@ -146,18 +162,18 @@ public MyService(ILogger<MyService> logger,
     _options = options.Value;
 }
 
-// Method call (when line wrapping is needed)
+// Method call with more than two parameters
 _logger.LogInformation("Message {Param1}, {Param2}",
                        value1,
                        value2);
 
-// new() call
+// new() call with more than two parameters
 var instance = new MyClass(param1,
                            param2,
                            param3);
 ```
 
-- Short calls that fit on a single line may keep all parameters on one line
+- Do not split a two-parameter declaration or call across multiple lines just for alignment
 
 ### Method Chaining
 
@@ -175,6 +191,23 @@ result.Series.Select((s, i) => (Series: s, Index: i))
              .Where(x => x.Series.Name.Contains(searchTerm));
 ```
 
+### Object Initializers
+
+- Keep short object initializers on a single line
+- For multi-line object initializers:
+  - keep the opening brace on the same line as the type
+  - put each assigned member on its own line
+  - align assignments consistently
+  - keep the closing brace on its own line
+
+```csharp
+var sessionData = new SessionViewData
+{
+    Name = "Practice",
+    IsActive = true,
+};
+```
+
 ### Blank Lines Between Statement Types
 
 - **Insert a blank line** when switching between:
@@ -182,6 +215,7 @@ result.Series.Select((s, i) => (Series: s, Index: i))
   - Variable assignment → method call
   - Method call or variable assignment → control block (`if`, `for`, `foreach`, `while`, `try`, `switch`, `using`, `return`)
 - **No blank line** between consecutive method calls or consecutive variable assignments
+- **No blank line** immediately before `continue`, `break`, or `return` when they finish the current control block branch
 
 ```csharp
 var stopwatch = Stopwatch.StartNew();
@@ -199,6 +233,24 @@ foreach (var series in seriesList)
 }
 ```
 
+### Multi-line Expressions
+
+- When an expression must wrap, split it into **logical units**, not arbitrary positions
+- For wrapped binary or logical expressions, put the operator at the **start of the continuation line**
+- Keep each continuation line at the same indentation level
+- If a get-only expression-bodied property would need wrapping, convert it to a block-bodied property instead of splitting the expression awkwardly
+
+```csharp
+if (isEnabled
+    && string.IsNullOrWhiteSpace(name) == false
+    && (isReady || allowPending))
+{
+    return true;
+}
+
+public string Name => _settings.Name;
+```
+
 ### var Usage
 
 - **`var` is preferred** wherever possible:
@@ -214,6 +266,7 @@ var logger = serviceProvider.GetRequiredService<ILogger<MyClass>>();
 - **Constructors**: Never expression-bodied (`false:error`)
 - **Methods**: Never expression-bodied (`false:silent`)
 - **Properties, Accessors, Indexers, Lambdas, Operators**: Expression-bodied when single-line (`when_on_single_line`)
+- **Get-only properties** should stay single-line when expression-bodied
 
 ```csharp
 // Property - expression-bodied OK
@@ -287,6 +340,13 @@ if (!string.IsNullOrEmpty(endpoint))
 - Use null coalescing: `ServiceProvider ??= serviceProvider;`
 - Prefer `is null` / `is not null` for reference type comparison
 - Use `string.IsNullOrEmpty()` / `string.IsNullOrWhiteSpace()` for string checks
+- Guard nullable values in explicit locals before assigning to non-nullable members or dereferencing them
+- When LINQ or EF Core navigation flow is unclear, materialize first and use explicit locals, lookups, or guards instead of assuming optional navigations are populated
+
+### Async / Await Safety
+
+- In service, infrastructure, and data-access code, append `.ConfigureAwait(false)` to awaited tasks unless resuming a specific context is required
+- Apply the same pattern consistently to EF Core, HTTP, stream, and other framework async APIs to avoid CA2007 regressions
 
 ---
 
@@ -300,6 +360,7 @@ if (!string.IsNullOrEmpty(endpoint))
 - **Pattern matching**: Use `is`, `is not`, `switch expressions` where appropriate
 - **String interpolation** preferred: `$"{DefaultMetricName}.packets_received"`
 - **ReadOnlySpan<byte>** for performant byte processing
+- Prefer supported framework loaders/helpers over obsolete constructors or `Import`-style APIs (for example, use `X509CertificateLoader` instead of `new X509Certificate2(path)`)
 
 ---
 
@@ -483,7 +544,6 @@ The following rules are intentionally disabled:
 | SA1200 | Using directives outside the namespace |
 | SA1309 | Fields may begin with underscore |
 | SA1310 | Fields may contain underscores |
-| SA1402 | Multiple types per file allowed (silent) |
 | SA1413 | No trailing comma required |
 | SA1513 | No blank line required after closing brace |
 | SA1629 | Documentation text does not need to end with a period |

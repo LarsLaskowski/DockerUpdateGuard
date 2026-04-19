@@ -1,0 +1,83 @@
+using DockerUpdateGuard.Configuration;
+using DockerUpdateGuard.Data;
+using DockerUpdateGuard.Docker;
+using DockerUpdateGuard.DockerHub;
+using DockerUpdateGuard.Images;
+using DockerUpdateGuard.Portainer;
+using DockerUpdateGuard.Telemetry;
+using DockerUpdateGuard.UI;
+using DockerUpdateGuard.Vulnerabilities;
+
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
+
+namespace DockerUpdateGuard;
+
+/// <summary>
+/// Host project service registration helpers
+/// </summary>
+public static class ServiceCollectionExtensions
+{
+    #region Methods
+
+    /// <summary>
+    /// Register the first host iteration services
+    /// </summary>
+    /// <param name="services">Service collection</param>
+    /// <param name="configuration">Application configuration</param>
+    /// <returns>Returns the service collection</returns>
+    public static IServiceCollection AddDockerUpdateGuardHost(this IServiceCollection services, IConfiguration configuration)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(configuration);
+
+        var optionsSection = configuration.GetSection(DockerUpdateGuardOptions.SectionName);
+        var applicationOptions = new DockerUpdateGuardOptions();
+
+        optionsSection.Bind(applicationOptions);
+
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<DockerUpdateGuardOptions>, DockerUpdateGuardOptionsValidator>());
+        services.AddOptions<DockerUpdateGuardOptions>()
+                .Bind(optionsSection)
+                .ValidateOnStart();
+
+        var connectionString = DockerUpdateGuardConnectionStringResolver.ResolveConnectionString(applicationOptions, configuration);
+
+        services.AddDockerUpdateGuardData(options =>
+        {
+            options.UseNpgsql(connectionString, npgsqlOptions => npgsqlOptions.MigrationsAssembly(typeof(DockerUpdateGuard.Data.DockerUpdateGuardDbContext).Assembly.GetName().Name));
+        });
+        services.AddDockerUpdateGuardTelemetry(configuration);
+        services.AddHttpClient<IDockerHubClient, DockerHubClient>(client =>
+        {
+            client.BaseAddress = DockerHubClient.GetBaseUri(applicationOptions.DockerHub);
+            client.Timeout = TimeSpan.FromSeconds(applicationOptions.DockerHub.RequestTimeoutSeconds);
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("DockerUpdateGuard/1.0");
+        });
+        services.AddSingleton<ApplicationTelemetry>();
+        services.AddSingleton<IDockerInstanceClient, DockerInstanceClient>();
+        services.AddSingleton<IPortainerClient, PortainerClient>();
+        services.AddSingleton<IVulnerabilityProvider, DefaultVulnerabilityProvider>();
+        services.AddScoped<IImageReferenceParser, ImageReferenceParser>();
+        services.AddScoped<IUpdateDetectionService, UpdateDetectionService>();
+        services.AddScoped<IBaseImageResolver, DockerHubBaseImageResolver>();
+        services.AddScoped<IImageRegistrationService, ImageRegistrationService>();
+        services.AddScoped<IInstanceDiscoveryService, InstanceDiscoveryService>();
+        services.AddScoped<IDockerHubAccountImageDiscoveryService, DockerHubAccountImageDiscoveryService>();
+        services.AddScoped<IImageScanOrchestrator, ImageScanOrchestrator>();
+        services.AddScoped<IRuntimeContainerScanOrchestrator, RuntimeContainerScanOrchestrator>();
+        services.AddScoped<IVulnerabilityEnrichmentService, VulnerabilityEnrichmentService>();
+        services.AddScoped<IApplicationViewService, ApplicationViewService>();
+        services.AddHostedService<DockerInstanceDiscoveryBackgroundService>();
+        services.AddHostedService<DockerHubAccountImageDiscoveryBackgroundService>();
+        services.AddHostedService<OwnImageBaseRefreshBackgroundService>();
+        services.AddHostedService<RuntimeContainerRefreshBackgroundService>();
+        services.AddHostedService<VulnerabilityRefreshBackgroundService>();
+        services.AddHostedService<ScanCleanupBackgroundService>();
+
+        return services;
+    }
+
+    #endregion // Methods
+}

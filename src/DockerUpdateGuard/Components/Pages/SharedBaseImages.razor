@@ -1,0 +1,47 @@
+@page "/shared-base-images"
+
+<PageTitle>Shared Base Images</PageTitle>
+
+<MudStack Spacing="3" Class="page-shell">
+    <div class="page-header">
+        <div>
+            <MudText Typo="Typo.overline" Class="page-eyebrow">Dependency hotspots</MudText>
+            <MudText Typo="Typo.h3">Shared Base Images</MudText>
+            <MudText Class="page-description">Common upstream image layers shared across multiple observed workloads.</MudText>
+        </div>
+    </div>
+
+    @if (_items is null)
+    {
+        <MudPaper Class="empty-state-panel" Elevation="0">
+            <MudText>Loading shared base image data...</MudText>
+        </MudPaper>
+    }
+    else if (_items.Count == 0)
+    {
+        <MudPaper Class="empty-state-panel" Elevation="0">
+            <MudText>No shared base images have been resolved yet.</MudText>
+        </MudPaper>
+    }
+    else
+    {
+        <MudPaper Class="section-paper" Elevation="0">
+            <div class="section-header">
+                <MudText Typo="Typo.h5">Shared dependency map</MudText>
+                <MudText Class="section-description">Find base images that can impact multiple tracked workloads.</MudText>
+            </div>
+            <MudTable Items="_items" Hover="true" Dense="false" Breakpoint="Breakpoint.Md" Class="section-table">
+                <HeaderContent>
+                    <MudTh>Base Image</MudTh>
+                    <MudTh>Observed Images</MudTh>
+                    <MudTh>Active Findings</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Base Image">@context.ImageReference</MudTd>
+                    <MudTd DataLabel="Observed Images">@context.ObservedImageCount</MudTd>
+                    <MudTd DataLabel="Active Findings">@context.ActiveFindingCount</MudTd>
+                </RowTemplate>
+            </MudTable>
+        </MudPaper>
+    }
+</MudStack>

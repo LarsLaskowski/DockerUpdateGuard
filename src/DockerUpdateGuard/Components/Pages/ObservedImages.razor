@@ -1,0 +1,106 @@
+@page "/observed-images"
+@rendermode InteractiveServer
+
+<PageTitle>Observed Images</PageTitle>
+
+<MudStack Spacing="3" Class="page-shell">
+    <div class="page-header">
+        <div>
+            <MudText Typo="Typo.overline" Class="page-eyebrow">Registry monitoring</MudText>
+            <MudText Typo="Typo.h3">Observed Images</MudText>
+            <MudText Class="page-description">Register tracked images and review their latest scan status, updates, and vulnerabilities.</MudText>
+        </div>
+    </div>
+
+    <MudGrid Spacing="3">
+        <MudItem xs="12" lg="4">
+            <MudPaper Class="section-paper section-paper--accent" Elevation="0">
+                <div class="section-header">
+                    <MudText Typo="Typo.h5">Register image</MudText>
+                    <MudText Class="section-description">Add a registry reference and trigger a fresh scan immediately.</MudText>
+                </div>
+
+                @if (string.IsNullOrWhiteSpace(_errorMessage) == false)
+                {
+                    <MudAlert Severity="Severity.Error" Dense="true">@_errorMessage</MudAlert>
+                }
+
+                <EditForm Model="_request" OnValidSubmit="RegisterAsync">
+                    <DataAnnotationsValidator />
+                    <MudStack Spacing="2">
+                        <MudTextField T="string"
+                                      @bind-Value="_request.Name"
+                                      For="@(() => _request.Name)"
+                                      Label="Name"
+                                      Variant="Variant.Outlined" />
+                        <MudTextField T="string"
+                                      @bind-Value="_request.ImageReference"
+                                      For="@(() => _request.ImageReference)"
+                                      Label="Image reference"
+                                      Variant="Variant.Outlined" />
+                        <MudTextField T="string"
+                                      @bind-Value="_request.Description"
+                                      For="@(() => _request.Description)"
+                                      Label="Description"
+                                      Variant="Variant.Outlined"
+                                      Lines="4" />
+                        <ValidationSummary />
+                        <MudButton ButtonType="ButtonType.Submit"
+                                   Color="Color.Primary"
+                                   Variant="Variant.Filled"
+                                   Disabled="@_isBusy"
+                                   FullWidth="true">
+                            Register and scan
+                        </MudButton>
+                    </MudStack>
+                </EditForm>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" lg="8">
+            <MudPaper Class="section-paper" Elevation="0">
+                <div class="section-header">
+                    <MudText Typo="Typo.h5">Tracked images</MudText>
+                    <MudText Class="section-description">Current observed images with their latest scan outcome.</MudText>
+                </div>
+
+                @if (_images is null)
+                {
+                    <MudPaper Class="empty-state-panel" Elevation="0">
+                        <MudText>Loading observed images...</MudText>
+                    </MudPaper>
+                }
+                else if (_images.Count == 0)
+                {
+                    <MudPaper Class="empty-state-panel" Elevation="0">
+                        <MudText>No observed images are registered yet.</MudText>
+                    </MudPaper>
+                }
+                else
+                {
+                    <MudTable Items="_images" Hover="true" Dense="false" Breakpoint="Breakpoint.Md" Class="section-table">
+                        <HeaderContent>
+                            <MudTh>Name</MudTh>
+                            <MudTh>Image</MudTh>
+                            <MudTh>Latest Scan</MudTh>
+                            <MudTh>Updates</MudTh>
+                            <MudTh>Vulnerabilities</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd DataLabel="Name">
+                                <MudLink Href="@($"observed-images/{context.Id}")" Class="table-link">@context.Name</MudLink>
+                                <span class="table-secondary">@context.Description</span>
+                            </MudTd>
+                            <MudTd DataLabel="Image">@context.ImageReference</MudTd>
+                            <MudTd DataLabel="Latest Scan">
+                                <MudChip T="string" Size="Size.Small" Color="@GetScanStatusColor(context.LatestScanStatus)">@context.LatestScanStatus</MudChip>
+                                <span class="table-secondary">@context.LatestScanMessage</span>
+                            </MudTd>
+                            <MudTd DataLabel="Updates">@context.ActiveUpdateFindingCount</MudTd>
+                            <MudTd DataLabel="Vulnerabilities">@context.ActiveVulnerabilityFindingCount</MudTd>
+                        </RowTemplate>
+                    </MudTable>
+                }
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+</MudStack>

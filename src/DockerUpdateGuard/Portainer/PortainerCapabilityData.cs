@@ -1,0 +1,26 @@
+namespace DockerUpdateGuard.Portainer;
+
+/// <summary>
+/// Portainer capability summary
+/// </summary>
+public class PortainerCapabilityData
+{
+    #region Properties
+
+    /// <summary>
+    /// Indicates whether Portainer is configured for the instance
+    /// </summary>
+    public bool IsConfigured { get; set; }
+
+    /// <summary>
+    /// Indicates whether the first host iteration supports actions
+    /// </summary>
+    public bool SupportsActions { get; set; }
+
+    /// <summary>
+    /// Capability message
+    /// </summary>
+    public string Message { get; set; } = string.Empty;
+
+    #endregion // Properties
+}
