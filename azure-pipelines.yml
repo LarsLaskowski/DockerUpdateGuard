@@ -74,6 +74,6 @@ stages:
               containerRegistry: 'DockerHub'
 
           - script: |
-              docker build -f $(dockerfilePath) -t $(dockerRepository):$(Build.BuildId) -t $(dockerRepository):latest $(Build.SourcesDirectory)
+              docker build -f $(dockerfilePath) -t $(dockerRepository):latest $(Build.SourcesDirectory)
               docker push $(dockerRepository):latest
             displayName: 'Build & Push image'

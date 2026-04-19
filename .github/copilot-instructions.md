@@ -3,7 +3,7 @@
 This file describes project-specific conventions and configuration for DockerUpdateGuard.
 Copilot and other AI assistants must follow these guidelines when working in this repository.
 
-## Commit Messages
+## Commit messages
 
 - The first line should be a one-line summary of no more than 80 characters
 - Do not end the subject line with a period
@@ -18,45 +18,50 @@ Copilot and other AI assistants must follow these guidelines when working in thi
 
 ## Build, test, and lint
 
-Use the standard .NET solution flow once the solution is added:
+Use the solution file at the repository root:
 
 - Restore: `dotnet restore DockerUpdateGuard.slnx`
 - Build: `dotnet build DockerUpdateGuard.slnx -c Release --no-restore`
-- Test all test projects: `dotnet test tests\\**\\*.csproj -c Release --no-build --logger trx --collect:"XPlat Code Coverage"`
-- Run a single test: `dotnet test tests\\DockerUpdateGuard.Tests\\DockerUpdateGuard.Tests.csproj --filter "FullyQualifiedName~Namespace.ClassName.MethodName"`
+- Run all tests: `dotnet test src\Tests\**\*.csproj -c Release --no-build --logger trx --collect:"XPlat Code Coverage"`
+- Run one test project: `dotnet test src\Tests\DockerUpdateGuard.Tests\DockerUpdateGuard.Tests.csproj -c Release --no-build`
+- Run one test method: `dotnet test src\Tests\DockerUpdateGuard.Tests\DockerUpdateGuard.Tests.csproj --filter "FullyQualifiedName~Namespace.ClassName.MethodName"`
 
-There is usually no separate lint command in this project style. Static analysis runs during `dotnet build` through project-level analyzers and rulesets.
+There is no dedicated lint command at the moment. Static analysis runs during build through the configured rulesets and analyzers.
 
 ## High-level architecture
 
-Treat this as a multi-project .NET solution rather than a single-project app:
+The repository is currently a solution skeleton with project wiring in place, but almost no implementation files yet. The architecture is defined by the solution layout, project references, and package choices:
 
-- `src\\` contains the runtime projects
-- `tests\\` contains separate MSTest projects
-- `rules\\` contains shared rulesets and `StyleCop.json`
-- the repo root typically also contains the `.slnx` file, `azure-pipelines.yml`, and Docker-related files
-
-Keep responsibilities split across projects instead of collapsing everything into the host application:
-
-| Project | Responsibility |
+| Path | Role |
 | --- | --- |
-| `*.WebApi` or main host project | Web host, controllers/endpoints, DI wiring, startup |
-| `*.Data` | EF Core DbContext, entities, repositories, migrations |
-| `*.Telemetry` or `*.Observability` | Logging, metrics, tracing, diagnostics setup |
-| `*.Tests` | Unit and integration tests |
+| `src\DockerUpdateGuard` | Main ASP.NET Core host (`Microsoft.NET.Sdk.Web`); references the data and telemetry projects |
+| `src\DockerUpdateGuard.Data` | Data-access layer; prepared for EF Core with PostgreSQL via `Npgsql.EntityFrameworkCore.PostgreSQL` |
+| `src\DockerUpdateGuard.Telemetry` | Shared observability layer; prepared for OpenTelemetry hosting, OTLP export, ASP.NET Core, HTTP, and runtime instrumentation |
+| `src\Tests\DockerUpdateGuard.Tests` | Tests for the main host/application layer; references the web project and uses EF Core InMemory plus NSubstitute |
+| `src\Tests\DockerUpdateGuard.Data.Tests` | Tests for the data layer; references the data project and uses EF Core SQLite |
 
-The main host project should reference supporting projects for data access and infrastructure concerns instead of implementing those concerns inline.
+The main host project is the composition root. It is expected to keep web startup and dependency wiring, while persistence stays in `.Data` and observability stays in `.Telemetry`.
 
 ## Key conventions
 
+- The repository uses the XML-based `.slnx` solution format.
+- Runtime projects target `net10.0`, enable nullable reference types, implicit usings, and XML documentation files.
+- Runtime projects disable generated assembly info and instead link `SharedAssemblyInfo.cs` from the repository root.
+- Runtime projects also link `rules\StyleCop.json` and use per-configuration rulesets from `rules\DockerUpdateGuard.Debug.ruleset` and `rules\DockerUpdateGuard.Release.ruleset`.
+- `StyleCop.Analyzers` and `Reihitsu.Analyzer` are part of the standard project setup.
+- Tests are under `src\Tests`, not a top-level `tests` folder. Keep new test projects there.
+- The current test stack is MSTest with `coverlet.collector`.
+- Detailed C# formatting and style rules live in `.github\instructions\csharp.instructions.md`. Follow that file for naming, region layout, XML docs, and null-handling preferences.
+
+## Current state note
+
 - Target the latest stable .NET version used by the solution template. The reference project currently uses `net10.0`.
 - Enable nullable reference types, implicit usings, and XML documentation files in every main project.
-- Use the XML-based `.slnx` solution format.
 - Link shared files like `SharedAssemblyInfo.cs` and `rules\\StyleCop.json` into each project when the solution is created.
 - Use `StyleCop.Analyzers` and `Reihitsu.Analyzer` as build-time analyzers.
 - Use MSTest with `coverlet.collector` for tests.
 - Prefer MSTest's `Assert` and `CollectionAssert` APIs directly instead of FluentAssertions.
-- Name test classes `{Feature}Tests` and test methods `{Class}_{Scenario}_{ExpectedResult}`.
+- Name test classes `{Feature}Tests` and test methods `{Class}{Scenario}{ExpectedResult}`.
 - Always include assertion messages in tests.
 
 If the project adds EF Core migrations, follow the same migration pattern as SeriesOverwatch:
