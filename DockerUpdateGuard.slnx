@@ -1,0 +1,31 @@
+<Solution>
+  <Folder Name="/00 Solution items/">
+    <File Path=".editorconfig" />
+    <File Path="azure-pipelines.yml" />
+    <File Path="rules/DockerUpdateGuard.Release.ruleset" />
+    <File Path="rules/DockerUpdateGuard.ruleset" />
+    <File Path="rules/StyleCop.Debug.ruleset" />
+    <File Path="rules/StyleCop.json" />
+    <File Path="rules/StyleCop.Release.ruleset" />
+  </Folder>
+  <Folder Name="/00 Solution items/Copilot/">
+    <File Path=".github/copilot-instructions.md" />
+    <File Path=".github/instructions/csharp.instructions.md" />
+  </Folder>
+  <Folder Name="/00 Solution items/Rules/">
+    <File Path="rules/DockerUpdateGuard.Release.ruleset" />
+    <File Path="rules/DockerUpdateGuard.ruleset" />
+    <File Path="rules/StyleCop.Debug.ruleset" />
+    <File Path="rules/StyleCop.json" />
+    <File Path="rules/StyleCop.Release.ruleset" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/DockerUpdateGuard.Data/DockerUpdateGuard.Data.csproj" />
+    <Project Path="src/DockerUpdateGuard.Telemetry/DockerUpdateGuard.Telemetry.csproj" />
+    <Project Path="src/DockerUpdateGuard/DockerUpdateGuard.csproj" />
+  </Folder>
+  <Folder Name="/UnitTests/">
+    <Project Path="src/Tests/DockerUpdateGuard.Data.Tests/DockerUpdateGuard.Data.Tests.csproj" />
+    <Project Path="src/Tests/DockerUpdateGuard.Tests/DockerUpdateGuard.Tests.csproj" />
+  </Folder>
+</Solution>

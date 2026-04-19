@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RuleSet Name="Standard" ToolsVersion="17.0">
+  <Include Path="StyleCop.Release.ruleset" Action="Default" />
+</RuleSet>
