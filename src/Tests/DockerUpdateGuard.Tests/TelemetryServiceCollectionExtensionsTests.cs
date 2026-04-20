@@ -112,18 +112,16 @@ public class TelemetryServiceCollectionExtensionsTests
     }
 
     /// <summary>
-    /// Verify the shipped appsettings files use the current telemetry schema
+    /// Verify the shipped and sample configurations use the current telemetry schema
     /// </summary>
     [TestMethod]
-    public void TelemetryServiceCollectionExtensionsAppSettingsFilesUseCurrentTelemetrySchema()
+    public void TelemetryServiceCollectionExtensionsConfigurationSamplesUseCurrentTelemetrySchema()
     {
         var hostProjectPath = GetHostProjectPath();
         var baseConfiguration = new ConfigurationBuilder().SetBasePath(hostProjectPath)
                                                           .AddJsonFile("appsettings.json", optional: false)
                                                           .Build();
-        var developmentConfiguration = new ConfigurationBuilder().SetBasePath(hostProjectPath)
-                                                                 .AddJsonFile("appsettings.Development.json", optional: false)
-                                                                 .Build();
+        var developmentConfiguration = TestDevelopmentConfiguration.Create();
         var baseTelemetryOptions = BindTelemetryOptions(baseConfiguration);
         var developmentTelemetryOptions = BindTelemetryOptions(developmentConfiguration);
         var baseTelemetryKeys = baseConfiguration.GetSection(TelemetryOptions.SectionName)
@@ -137,25 +135,25 @@ public class TelemetryServiceCollectionExtensionsTests
 
         Assert.AreEqual("Production",
                         baseTelemetryOptions.Instance,
-                        "The production appsettings file must define the telemetry instance");
+                        "The shipped appsettings file must define the telemetry instance");
         Assert.AreEqual("Development",
-                         developmentTelemetryOptions.Instance,
-                         "The development appsettings file must define the telemetry instance");
-        Assert.IsFalse(string.IsNullOrWhiteSpace(developmentTelemetryOptions.OtlpEndpoint), "The development appsettings file must define the telemetry OTLP endpoint when using the complete development schema");
-        Assert.IsTrue(baseTelemetryOptions.EnableLogging, "The production appsettings file must keep telemetry logging enabled");
+                        developmentTelemetryOptions.Instance,
+                        "The development configuration sample must define the telemetry instance");
+        Assert.IsFalse(string.IsNullOrWhiteSpace(developmentTelemetryOptions.OtlpEndpoint), "The development configuration sample must define the telemetry OTLP endpoint when using the complete development schema");
+        Assert.IsTrue(baseTelemetryOptions.EnableLogging, "The shipped appsettings file must keep telemetry logging enabled");
         Assert.IsTrue(developmentTelemetryKeys.Contains(nameof(TelemetryOptions.EnableLogging),
                                                         StringComparer.Ordinal),
-                      "The development telemetry configuration must expose the logging enable flag");
+                      "The development telemetry sample must expose the logging enable flag");
         Assert.IsTrue(developmentTelemetryKeys.Contains(nameof(TelemetryOptions.OtlpEndpoint),
                                                         StringComparer.Ordinal),
-                      "The development telemetry configuration must expose the OTLP endpoint option");
+                      "The development telemetry sample must expose the OTLP endpoint option");
 
         foreach (var removedOptionKey in _removedTelemetryLoggingOptionKeys)
         {
             Assert.IsFalse(baseTelemetryKeys.Contains(removedOptionKey, StringComparer.Ordinal),
-                           $"The production telemetry configuration must not expose the removed '{removedOptionKey}' option");
+                           $"The shipped telemetry configuration must not expose the removed '{removedOptionKey}' option");
             Assert.IsFalse(developmentTelemetryKeys.Contains(removedOptionKey, StringComparer.Ordinal),
-                           $"The development telemetry configuration must not expose the removed '{removedOptionKey}' option");
+                           $"The development telemetry sample must not expose the removed '{removedOptionKey}' option");
         }
     }
 

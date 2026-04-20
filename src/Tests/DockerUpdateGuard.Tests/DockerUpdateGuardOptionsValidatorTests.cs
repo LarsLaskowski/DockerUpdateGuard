@@ -116,77 +116,74 @@ public class DockerUpdateGuardOptionsValidatorTests
     }
 
     /// <summary>
-    /// Verify the development appsettings file exposes the complete host configuration schema
+    /// Verify the development configuration sample exposes the complete host configuration schema
     /// </summary>
     [TestMethod]
-    public void DockerUpdateGuardOptionsValidatorDevelopmentAppSettingsExposeAllHostOptions()
+    public void DockerUpdateGuardOptionsValidatorDevelopmentConfigurationSampleExposesAllHostOptions()
     {
-        var hostProjectPath = GetHostProjectPath();
-        var configuration = new ConfigurationBuilder().SetBasePath(hostProjectPath)
-                                                      .AddJsonFile("appsettings.Development.json", optional: false)
-                                                      .Build();
+        var configuration = TestDevelopmentConfiguration.Create();
         var applicationSection = configuration.GetSection(DockerUpdateGuardOptions.SectionName);
         var dockerInstancesSection = applicationSection.GetSection(nameof(DockerUpdateGuardOptions.DockerInstances));
 
         var namedConnectionString = configuration.GetConnectionString("DockerUpdateGuard");
         var inlineConnectionString = applicationSection[nameof(DockerUpdateGuardOptions.ConnectionString)];
 
-        Assert.IsFalse(string.IsNullOrWhiteSpace(inlineConnectionString), "The development appsettings file must include the inline application connection string");
+        Assert.IsFalse(string.IsNullOrWhiteSpace(inlineConnectionString), "The development configuration sample must include the inline application connection string");
         Assert.AreEqual("DockerUpdateGuard",
                         applicationSection[nameof(DockerUpdateGuardOptions.ConnectionStringName)],
-                        "The development appsettings file must include the configured connection string name");
-        Assert.IsTrue(string.IsNullOrWhiteSpace(namedConnectionString) == false || string.IsNullOrWhiteSpace(inlineConnectionString) == false, "The development appsettings file must expose at least one configured database connection path");
+                        "The development configuration sample must include the configured connection string name");
+        Assert.IsTrue(string.IsNullOrWhiteSpace(namedConnectionString) == false || string.IsNullOrWhiteSpace(inlineConnectionString) == false, "The development configuration sample must expose at least one configured database connection path");
         var dockerHubRegistry = applicationSection["DockerHub:Registry"];
         var supportedDockerHubRegistries = new[] { "docker.io", "https://hub.docker.com" };
 
-        Assert.IsFalse(string.IsNullOrWhiteSpace(dockerHubRegistry), "The development appsettings file must include the Docker Hub registry");
+        Assert.IsFalse(string.IsNullOrWhiteSpace(dockerHubRegistry), "The development configuration sample must include the Docker Hub registry");
         CollectionAssert.Contains(supportedDockerHubRegistries,
                                   dockerHubRegistry,
-                                  "The development appsettings file must include a supported Docker Hub registry value");
-        Assert.IsFalse(string.IsNullOrWhiteSpace(applicationSection["DockerHub:UserName"]), "The development appsettings file must include the Docker Hub user name value or placeholder");
-        Assert.IsFalse(string.IsNullOrWhiteSpace(applicationSection["DockerHub:Pat"]), "The development appsettings file must include the Docker Hub PAT value or placeholder");
+                                  "The development configuration sample must include a supported Docker Hub registry value");
+        Assert.IsFalse(string.IsNullOrWhiteSpace(applicationSection["DockerHub:UserName"]), "The development configuration sample must include the Docker Hub user name value or placeholder");
+        Assert.IsFalse(string.IsNullOrWhiteSpace(applicationSection["DockerHub:Pat"]), "The development configuration sample must include the Docker Hub PAT value or placeholder");
         Assert.AreEqual("30",
                         applicationSection["DockerHub:RequestTimeoutSeconds"],
-                        "The development appsettings file must include the Docker Hub timeout");
+                        "The development configuration sample must include the Docker Hub timeout");
         Assert.AreEqual("4",
                         applicationSection["DockerHub:MaxParallelRequests"],
-                        "The development appsettings file must include the Docker Hub parallelism");
+                        "The development configuration sample must include the Docker Hub parallelism");
         Assert.AreEqual("True",
                         applicationSection["Vulnerabilities:Enabled"],
-                        "The development appsettings file must include the vulnerability enable flag");
+                        "The development configuration sample must include the vulnerability enable flag");
         Assert.AreEqual("Trivy",
                         applicationSection["Vulnerabilities:Provider"],
-                        "The development appsettings file must include the vulnerability provider");
+                        "The development configuration sample must include the vulnerability provider");
         Assert.AreEqual("30",
                         applicationSection["Vulnerabilities:RequestTimeoutSeconds"],
-                        "The development appsettings file must include the vulnerability timeout");
+                        "The development configuration sample must include the vulnerability timeout");
         Assert.AreEqual("5",
                         applicationSection["Scanning:DiscoveryIntervalMinutes"],
-                        "The development appsettings file must include the discovery interval");
+                        "The development configuration sample must include the discovery interval");
         Assert.AreEqual("15",
                         applicationSection["Scanning:DockerHubAccountDiscoveryIntervalMinutes"],
-                        "The development appsettings file must include the Docker Hub account discovery interval");
+                        "The development configuration sample must include the Docker Hub account discovery interval");
         Assert.AreEqual("30",
                         applicationSection["Scanning:OwnImageBaseScanIntervalMinutes"],
-                        "The development appsettings file must include the own-image scan interval");
+                        "The development configuration sample must include the own-image scan interval");
         Assert.AreEqual("10",
                         applicationSection["Scanning:RuntimeImageUpdateScanIntervalMinutes"],
-                        "The development appsettings file must include the runtime scan interval");
+                        "The development configuration sample must include the runtime scan interval");
         Assert.AreEqual("60",
                         applicationSection["Scanning:VulnerabilityRefreshIntervalMinutes"],
-                        "The development appsettings file must include the vulnerability refresh interval");
+                        "The development configuration sample must include the vulnerability refresh interval");
         Assert.AreEqual("720",
                         applicationSection["Scanning:CleanupIntervalMinutes"],
-                        "The development appsettings file must include the cleanup interval");
+                        "The development configuration sample must include the cleanup interval");
         Assert.AreEqual("1",
                         applicationSection["Scanning:RetryCount"],
-                        "The development appsettings file must include the retry count");
+                        "The development configuration sample must include the retry count");
         Assert.AreEqual("14",
                         applicationSection["Scanning:RetainScanRunsDays"],
-                        "The development appsettings file must include the scan retention period");
+                        "The development configuration sample must include the scan retention period");
         Assert.IsTrue(dockerInstancesSection.GetChildren()
                                             .Any(),
-                      "The development appsettings file must include at least one Docker instance entry");
+                      "The development configuration sample must include at least one Docker instance entry");
         Assert.AreEqual("Docker Desktop",
                         applicationSection["DockerInstances:0:Name"],
                         "The first Docker instance sample must expose the name");
@@ -263,25 +260,6 @@ public class DockerUpdateGuardOptionsValidatorTests
                       };
 
         return options;
-    }
-
-    /// <summary>
-    /// Resolve the host project directory from the current test output
-    /// </summary>
-    /// <returns>Host project directory path</returns>
-    private static string GetHostProjectPath()
-    {
-        var hostProjectPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
-                                                            "..",
-                                                            "..",
-                                                            "..",
-                                                            "..",
-                                                            "..",
-                                                            "DockerUpdateGuard"));
-
-        Assert.IsTrue(Directory.Exists(hostProjectPath), $"The host project directory '{hostProjectPath}' must exist for configuration verification");
-
-        return hostProjectPath;
     }
 
     /// <summary>
