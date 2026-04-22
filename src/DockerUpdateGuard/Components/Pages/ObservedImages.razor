@@ -37,6 +37,8 @@
                                       @bind-Value="_request.ImageReference"
                                       For="@(() => _request.ImageReference)"
                                       Label="Image reference"
+                                      Placeholder="nginx:1.25 or registry.com/repo/image:tag"
+                                      HelperText="Formats: image:tag · repo/image:tag · registry.com/image:tag · image:tag@sha256:… — digest is optional, registry defaults to docker.io"
                                       Variant="Variant.Outlined" />
                         <MudTextField T="string"
                                       @bind-Value="_request.Description"
@@ -90,7 +92,15 @@
                                 <MudLink Href="@($"observed-images/{context.Id}")" Class="table-link">@context.Name</MudLink>
                                 <span class="table-secondary">@context.Description</span>
                             </MudTd>
-                            <MudTd DataLabel="Image">@context.ImageReference</MudTd>
+                            <MudTd DataLabel="Image">
+                                <span>@ImageReferenceFormatter.GetReference(context.ImageReference)</span>
+                                @if (ImageReferenceFormatter.GetFullDigest(context.ImageReference) is string fullDigest)
+                                {
+                                    <MudTooltip Text="@fullDigest">
+                                        <span class="table-secondary">@("@" + ImageReferenceFormatter.GetShortDigest(context.ImageReference))</span>
+                                    </MudTooltip>
+                                }
+                            </MudTd>
                             <MudTd DataLabel="Latest Scan">
                                 <MudChip T="string" Size="Size.Small" Color="@GetScanStatusColor(context.LatestScanStatus)">@context.LatestScanStatus</MudChip>
                                 <span class="table-secondary">@context.LatestScanMessage</span>

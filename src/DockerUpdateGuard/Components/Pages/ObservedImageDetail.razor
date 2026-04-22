@@ -30,7 +30,13 @@
                 <MudItem xs="12" md="6">
                     <MudPaper Class="summary-card" Elevation="0">
                         <span class="summary-label">Image</span>
-                        <span class="summary-value">@_detail.ImageReference</span>
+                        <span class="summary-value">@ImageReferenceFormatter.GetReference(_detail.ImageReference)</span>
+                        @if (ImageReferenceFormatter.GetFullDigest(_detail.ImageReference) is string fullDigest)
+                        {
+                            <MudTooltip Text="@fullDigest">
+                                <span class="table-secondary">@("@" + ImageReferenceFormatter.GetShortDigest(_detail.ImageReference))</span>
+                            </MudTooltip>
+                        }
                     </MudPaper>
                 </MudItem>
                 <MudItem xs="12" md="6">
@@ -67,8 +73,24 @@
                     </HeaderContent>
                     <RowTemplate>
                         <MudTd DataLabel="Depth">@context.Depth</MudTd>
-                        <MudTd DataLabel="Base Image">@context.ImageReference</MudTd>
-                        <MudTd DataLabel="Source">@context.SourceReference</MudTd>
+                        <MudTd DataLabel="Base Image">
+                            <span>@ImageReferenceFormatter.GetReference(context.ImageReference)</span>
+                            @if (ImageReferenceFormatter.GetFullDigest(context.ImageReference) is string imgDigest)
+                            {
+                                <MudTooltip Text="@imgDigest">
+                                    <span class="table-secondary">@("@" + ImageReferenceFormatter.GetShortDigest(context.ImageReference))</span>
+                                </MudTooltip>
+                            }
+                        </MudTd>
+                        <MudTd DataLabel="Source">
+                            <span>@ImageReferenceFormatter.GetReference(context.SourceReference ?? string.Empty)</span>
+                            @if (ImageReferenceFormatter.GetFullDigest(context.SourceReference ?? string.Empty) is string srcDigest)
+                            {
+                                <MudTooltip Text="@srcDigest">
+                                    <span class="table-secondary">@("@" + ImageReferenceFormatter.GetShortDigest(context.SourceReference ?? string.Empty))</span>
+                                </MudTooltip>
+                            }
+                        </MudTd>
                     </RowTemplate>
                 </MudTable>
             }

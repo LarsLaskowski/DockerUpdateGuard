@@ -92,5 +92,57 @@ internal static partial class DockerHubClientLogging
                    Message = "Docker Hub authentication requires DockerHub:UserName when a PAT is configured")]
     public static partial void DockerHubAuthenticationUserNameMissing(this ILogger logger);
 
+    /// <summary>
+    /// Log that Docker Hub base image chain resolution completed successfully
+    /// </summary>
+    /// <param name="logger">Logger</param>
+    /// <param name="imageReference">Image reference</param>
+    /// <param name="baseImageCount">Number of resolved base images</param>
+    [LoggerMessage(EventId = 3207,
+                   Level = LogLevel.Information,
+                   Message = "Resolved {BaseImageCount} base image(s) in chain for {ImageReference}")]
+    public static partial void DockerHubBaseImageChainResolved(this ILogger logger,
+                                                               string imageReference,
+                                                               int baseImageCount);
+
+    /// <summary>
+    /// Log that a Docker Registry token request failed
+    /// </summary>
+    /// <param name="logger">Logger</param>
+    /// <param name="imageReference">Image reference</param>
+    /// <param name="statusCode">HTTP status code</param>
+    [LoggerMessage(EventId = 3208,
+                   Level = LogLevel.Warning,
+                   Message = "Docker Registry token request failed for {ImageReference} with status code {StatusCode}")]
+    public static partial void DockerHubRegistryTokenFailed(this ILogger logger,
+                                                            string imageReference,
+                                                            int statusCode);
+
+    /// <summary>
+    /// Log that a Docker Registry manifest fetch failed
+    /// </summary>
+    /// <param name="logger">Logger</param>
+    /// <param name="imageReference">Image reference</param>
+    /// <param name="statusCode">HTTP status code</param>
+    [LoggerMessage(EventId = 3209,
+                   Level = LogLevel.Warning,
+                   Message = "Docker Registry manifest fetch failed for {ImageReference} with status code {StatusCode}")]
+    public static partial void DockerHubManifestFetchFailed(this ILogger logger,
+                                                            string imageReference,
+                                                            int statusCode);
+
+    /// <summary>
+    /// Log that Docker Hub base image resolution failed with an exception
+    /// </summary>
+    /// <param name="logger">Logger</param>
+    /// <param name="exception">Exception</param>
+    /// <param name="imageReference">Image reference</param>
+    [LoggerMessage(EventId = 3210,
+                   Level = LogLevel.Warning,
+                   Message = "Docker Hub base image resolution failed for {ImageReference}")]
+    public static partial void DockerHubBaseImageResolutionFailed(this ILogger logger,
+                                                                   Exception exception,
+                                                                   string imageReference);
+
     #endregion // Methods
 }

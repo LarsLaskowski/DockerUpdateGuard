@@ -18,6 +18,14 @@ namespace DockerUpdateGuard.DockerHub;
 /// </summary>
 public sealed class DockerHubClient : IDockerHubClient, IDisposable
 {
+    #region Constants
+
+    private const int MaxBaseImageDepth = 5;
+    private const string OciBaseImageNameLabel = "org.opencontainers.image.base.name";
+    private const string OciBaseImageDigestLabel = "org.opencontainers.image.base.digest";
+
+    #endregion // Constants
+
     #region Fields
 
     private readonly HttpClient _httpClient;
@@ -351,11 +359,337 @@ public sealed class DockerHubClient : IDockerHubClient, IDisposable
     }
 
     /// <inheritdoc/>
-    public Task<ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>> ResolveBaseImagesAsync(ImageReference imageReference, CancellationToken cancellationToken = default)
+    public async Task<ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>> ResolveBaseImagesAsync(ImageReference imageReference, CancellationToken cancellationToken = default)
     {
-        _logger.DockerHubBaseImageResolutionUnavailable(imageReference.FullReference);
+        if (IsSupportedRegistry(imageReference.Registry) == false)
+        {
+            _logger.DockerHubRegistryUnsupported(imageReference.Registry, nameof(ResolveBaseImagesAsync));
 
-        return Task.FromResult(ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>.Unknown("Base image chain resolution is not available in the first host iteration"));
+            return ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>.Unsupported($"Registry '{imageReference.Registry}' is not supported by the Docker Hub adapter");
+        }
+
+        using var activity = DockerUpdateGuardTelemetry.ActivitySource.StartActivity(TelemetryActivityNames.DockerHubRequest, ActivityKind.Client);
+
+        activity?.SetTag(TelemetryTagNames.ImageReference, imageReference.FullReference);
+
+        var results = new List<BaseImageDescriptor>();
+
+        try
+        {
+            await ResolveBaseImageChainAsync(imageReference, results, depth: 1, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            _logger.DockerHubBaseImageResolutionFailed(exception, imageReference.FullReference);
+
+            return ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>.Failed($"Base image chain resolution failed for '{imageReference.FullReference}': {exception.Message}");
+        }
+
+        _logger.DockerHubBaseImageChainResolved(imageReference.FullReference, results.Count);
+
+        return ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>.Succeeded(results);
+    }
+
+    /// <summary>
+    /// Recursively resolve the base image chain for a given image reference
+    /// </summary>
+    /// <param name="imageReference">Image reference to resolve</param>
+    /// <param name="results">Accumulated base image descriptors</param>
+    /// <param name="depth">Current chain depth</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Task</returns>
+    private async Task ResolveBaseImageChainAsync(ImageReference imageReference,
+                                                   List<BaseImageDescriptor> results,
+                                                   int depth,
+                                                   CancellationToken cancellationToken)
+    {
+        if (depth > MaxBaseImageDepth)
+        {
+            return;
+        }
+
+        var registryToken = await GetRegistryTokenAsync(imageReference, cancellationToken).ConfigureAwait(false);
+
+        if (registryToken is null)
+        {
+            return;
+        }
+
+        var configDigest = await GetImageConfigDigestAsync(imageReference, registryToken, cancellationToken).ConfigureAwait(false);
+
+        if (configDigest is null)
+        {
+            return;
+        }
+
+        var baseImageRef = await ExtractBaseImageFromConfigAsync(imageReference, configDigest, registryToken, cancellationToken).ConfigureAwait(false);
+
+        if (baseImageRef is null)
+        {
+            return;
+        }
+
+        results.Add(new BaseImageDescriptor
+                    {
+                        Registry = baseImageRef.Registry,
+                        Repository = baseImageRef.Repository,
+                        Tag = baseImageRef.Tag,
+                        Digest = baseImageRef.Digest,
+                        Depth = depth,
+                        SourceReference = imageReference.FullReference,
+                    });
+
+        await ResolveBaseImageChainAsync(baseImageRef, results, depth + 1, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Request a pull token from the Docker Registry authentication service
+    /// </summary>
+    /// <param name="imageReference">Image reference to request scope for</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Registry bearer token or null when the request fails</returns>
+    private async Task<string?> GetRegistryTokenAsync(ImageReference imageReference, CancellationToken cancellationToken)
+    {
+        var (namespaceName, repositoryName) = SplitRepository(imageReference.Repository);
+        var scope = $"repository:{Uri.EscapeDataString(namespaceName)}/{EscapeRepository(repositoryName)}:pull";
+        var tokenUri = new Uri($"https://auth.docker.io/token?service=registry.docker.io&scope={scope}");
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, tokenUri);
+
+        var options = _optionsMonitor.CurrentValue.DockerHub;
+
+        if (string.IsNullOrWhiteSpace(options.UserName) == false
+            && string.IsNullOrWhiteSpace(options.Pat) == false)
+        {
+            var credentials = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{options.UserName.Trim()}:{options.Pat.Trim()}"));
+
+            request.Headers.Authorization = new AuthenticationHeaderValue("Basic", credentials);
+        }
+
+        using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+
+        if (response.IsSuccessStatusCode == false)
+        {
+            _logger.DockerHubRegistryTokenFailed(imageReference.FullReference, (int)response.StatusCode);
+
+            return null;
+        }
+
+        var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+
+        await using (responseStream.ConfigureAwait(false))
+        {
+            using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: cancellationToken).ConfigureAwait(false);
+
+            return TryGetString(jsonDocument.RootElement, "token")
+                   ?? TryGetString(jsonDocument.RootElement, "access_token");
+        }
+    }
+
+    /// <summary>
+    /// Fetch the image manifest and return the config blob digest
+    /// </summary>
+    /// <param name="imageReference">Image reference</param>
+    /// <param name="registryToken">Registry bearer token</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Config digest or null when the manifest cannot be resolved</returns>
+    private async Task<string?> GetImageConfigDigestAsync(ImageReference imageReference,
+                                                          string registryToken,
+                                                          CancellationToken cancellationToken)
+    {
+        var (namespaceName, repositoryName) = SplitRepository(imageReference.Repository);
+        var reference = string.IsNullOrWhiteSpace(imageReference.Digest) ? imageReference.Tag : imageReference.Digest;
+        var manifestUri = new Uri($"https://registry-1.docker.io/v2/{Uri.EscapeDataString(namespaceName)}/{EscapeRepository(repositoryName)}/manifests/{Uri.EscapeDataString(reference)}");
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, manifestUri);
+
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", registryToken);
+        request.Headers.Accept.ParseAdd("application/vnd.docker.distribution.manifest.list.v2+json");
+        request.Headers.Accept.ParseAdd("application/vnd.oci.image.index.v1+json");
+        request.Headers.Accept.ParseAdd("application/vnd.docker.distribution.manifest.v2+json");
+        request.Headers.Accept.ParseAdd("application/vnd.oci.image.manifest.v1+json");
+
+        using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+
+        if (response.IsSuccessStatusCode == false)
+        {
+            _logger.DockerHubManifestFetchFailed(imageReference.FullReference, (int)response.StatusCode);
+
+            return null;
+        }
+
+        var contentType = response.Content.Headers.ContentType?.MediaType ?? string.Empty;
+        var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+
+        await using (responseStream.ConfigureAwait(false))
+        {
+            using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: cancellationToken).ConfigureAwait(false);
+
+            if (string.Equals(contentType, "application/vnd.docker.distribution.manifest.list.v2+json", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(contentType, "application/vnd.oci.image.index.v1+json", StringComparison.OrdinalIgnoreCase))
+            {
+                return await GetConfigDigestFromManifestListAsync(imageReference, jsonDocument.RootElement, registryToken, cancellationToken).ConfigureAwait(false);
+            }
+
+            if (jsonDocument.RootElement.TryGetProperty("config", out var configElement))
+            {
+                return TryGetString(configElement, "digest");
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Resolve a platform-specific manifest from a multi-arch manifest list and return its config digest
+    /// </summary>
+    /// <param name="imageReference">Image reference</param>
+    /// <param name="manifestListElement">Manifest list root element</param>
+    /// <param name="registryToken">Registry bearer token</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Config digest or null when no suitable platform manifest is found</returns>
+    private async Task<string?> GetConfigDigestFromManifestListAsync(ImageReference imageReference,
+                                                                      JsonElement manifestListElement,
+                                                                      string registryToken,
+                                                                      CancellationToken cancellationToken)
+    {
+        if (manifestListElement.TryGetProperty("manifests", out var manifestsElement) == false
+            || manifestsElement.ValueKind != JsonValueKind.Array)
+        {
+            return null;
+        }
+
+        var targetDigest = default(string);
+
+        foreach (var manifest in manifestsElement.EnumerateArray())
+        {
+            if (manifest.TryGetProperty("platform", out var platform) == false)
+            {
+                continue;
+            }
+
+            var os = TryGetString(platform, "os");
+            var arch = TryGetString(platform, "architecture");
+
+            if (string.Equals(os, "linux", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(arch, "amd64", StringComparison.OrdinalIgnoreCase))
+            {
+                targetDigest = TryGetString(manifest, "digest");
+
+                break;
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(targetDigest))
+        {
+            foreach (var manifest in manifestsElement.EnumerateArray())
+            {
+                targetDigest = TryGetString(manifest, "digest");
+
+                if (string.IsNullOrWhiteSpace(targetDigest) == false)
+                {
+                    break;
+                }
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(targetDigest))
+        {
+            return null;
+        }
+
+        var (namespaceName, repositoryName) = SplitRepository(imageReference.Repository);
+        var singleManifestUri = new Uri($"https://registry-1.docker.io/v2/{Uri.EscapeDataString(namespaceName)}/{EscapeRepository(repositoryName)}/manifests/{Uri.EscapeDataString(targetDigest)}");
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, singleManifestUri);
+
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", registryToken);
+        request.Headers.Accept.ParseAdd("application/vnd.docker.distribution.manifest.v2+json");
+        request.Headers.Accept.ParseAdd("application/vnd.oci.image.manifest.v1+json");
+
+        using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+
+        if (response.IsSuccessStatusCode == false)
+        {
+            _logger.DockerHubManifestFetchFailed(imageReference.FullReference, (int)response.StatusCode);
+
+            return null;
+        }
+
+        var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+
+        await using (responseStream.ConfigureAwait(false))
+        {
+            using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: cancellationToken).ConfigureAwait(false);
+
+            if (jsonDocument.RootElement.TryGetProperty("config", out var configElement))
+            {
+                return TryGetString(configElement, "digest");
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Fetch the image config blob and extract the OCI base image reference
+    /// </summary>
+    /// <param name="imageReference">Image reference to fetch the blob for</param>
+    /// <param name="configDigest">Config blob digest</param>
+    /// <param name="registryToken">Registry bearer token</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Parsed base image reference or null when no OCI base image label is present</returns>
+    private async Task<ImageReference?> ExtractBaseImageFromConfigAsync(ImageReference imageReference,
+                                                                         string configDigest,
+                                                                         string registryToken,
+                                                                         CancellationToken cancellationToken)
+    {
+        var (namespaceName, repositoryName) = SplitRepository(imageReference.Repository);
+        var blobUri = new Uri($"https://registry-1.docker.io/v2/{Uri.EscapeDataString(namespaceName)}/{EscapeRepository(repositoryName)}/blobs/{Uri.EscapeDataString(configDigest)}");
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, blobUri);
+
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", registryToken);
+
+        using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+
+        if (response.IsSuccessStatusCode == false)
+        {
+            return null;
+        }
+
+        var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+
+        await using (responseStream.ConfigureAwait(false))
+        {
+            using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: cancellationToken).ConfigureAwait(false);
+
+            if (jsonDocument.RootElement.TryGetProperty("config", out var configElement) == false
+                || configElement.TryGetProperty("Labels", out var labelsElement) == false
+                || labelsElement.ValueKind != JsonValueKind.Object)
+            {
+                return null;
+            }
+
+            var baseImageName = TryGetString(labelsElement, OciBaseImageNameLabel);
+
+            if (string.IsNullOrWhiteSpace(baseImageName))
+            {
+                return null;
+            }
+
+            var baseImageDigest = TryGetString(labelsElement, OciBaseImageDigestLabel);
+            var parser = new ImageReferenceParser();
+            var parsedRef = parser.Parse(baseImageName);
+
+            if (string.IsNullOrWhiteSpace(parsedRef.Digest)
+                && string.IsNullOrWhiteSpace(baseImageDigest) == false)
+            {
+                parsedRef.Digest = baseImageDigest;
+            }
+
+            return parsedRef;
+        }
     }
 
     /// <summary>

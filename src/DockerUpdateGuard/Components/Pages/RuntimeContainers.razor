@@ -46,7 +46,15 @@
                         <span class="table-secondary">@context.RecordedAtUtc.ToLocalTime().ToString("g")</span>
                     </MudTd>
                     <MudTd DataLabel="Instance">@context.DockerInstanceName</MudTd>
-                    <MudTd DataLabel="Image">@context.ImageReference</MudTd>
+                    <MudTd DataLabel="Image">
+                        <span>@ImageReferenceFormatter.GetReference(context.ImageReference)</span>
+                        @if (ImageReferenceFormatter.GetFullDigest(context.ImageReference) is string fullDigest)
+                        {
+                            <MudTooltip Text="@fullDigest">
+                                <span class="table-secondary">@("@" + ImageReferenceFormatter.GetShortDigest(context.ImageReference))</span>
+                            </MudTooltip>
+                        }
+                    </MudTd>
                     <MudTd DataLabel="Status">@context.RuntimeStatus</MudTd>
                     <MudTd DataLabel="Update State">
                         <MudChip T="string" Size="Size.Small" Color="@GetUpdateStateColor(context.UpdateState)">@context.UpdateState</MudChip>
