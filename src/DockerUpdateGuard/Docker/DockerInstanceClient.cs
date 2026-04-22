@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Net.Sockets;
 using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
 
@@ -109,6 +110,12 @@ public class DockerInstanceClient : IDockerInstanceClient
     /// <returns>HTTP client</returns>
     private static HttpClient CreateHttpClient(DockerInstanceOptions instanceOptions, Uri engineUri)
     {
+        if (Uri.TryCreate(instanceOptions.BaseUrl, UriKind.Absolute, out var parsedUri)
+            && parsedUri.Scheme == "unix")
+        {
+            return CreateUnixSocketHttpClient(parsedUri.AbsolutePath, instanceOptions);
+        }
+
         var handler = new HttpClientHandler();
 
         if (instanceOptions.SkipCertificateValidation)
@@ -127,6 +134,41 @@ public class DockerInstanceClient : IDockerInstanceClient
         return new HttpClient(handler)
                {
                    BaseAddress = engineUri,
+                   Timeout = TimeSpan.FromSeconds(instanceOptions.RequestTimeoutSeconds),
+               };
+    }
+
+    /// <summary>
+    /// Build an HTTP client backed by a Unix domain socket
+    /// </summary>
+    /// <param name="socketPath">Unix socket path</param>
+    /// <param name="instanceOptions">Docker instance options</param>
+    /// <returns>HTTP client</returns>
+    private static HttpClient CreateUnixSocketHttpClient(string socketPath, DockerInstanceOptions instanceOptions)
+    {
+        var endpoint = new UnixDomainSocketEndPoint(socketPath);
+        var handler = new SocketsHttpHandler();
+        handler.ConnectCallback = async (context, cancellationToken) =>
+        {
+            var socket = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
+
+            try
+            {
+                await socket.ConnectAsync(endpoint, cancellationToken).ConfigureAwait(false);
+
+                return new NetworkStream(socket, ownsSocket: true);
+            }
+            catch
+            {
+                socket.Dispose();
+
+                throw;
+            }
+        };
+
+        return new HttpClient(handler)
+               {
+                   BaseAddress = new Uri("http://localhost/"),
                    Timeout = TimeSpan.FromSeconds(instanceOptions.RequestTimeoutSeconds),
                };
     }
@@ -162,6 +204,13 @@ public class DockerInstanceClient : IDockerInstanceClient
                           };
 
             engineUri = EnsureTrailingSlash(builder.Uri);
+
+            return true;
+        }
+
+        if (parsedUri.Scheme == "unix")
+        {
+            engineUri = new Uri("http://localhost/");
 
             return true;
         }

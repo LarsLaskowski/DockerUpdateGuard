@@ -26,19 +26,6 @@
     </MudDrawer>
 
     <MudMainContent Class="app-main-content">
-        <MudAppBar Elevation="0" Dense="false" Color="Color.Transparent" Class="app-topbar">
-            <MudIconButton Icon="@Icons.Material.Filled.Menu"
-                           Color="Color.Inherit"
-                           Edge="Edge.Start"
-                           OnClick="ToggleDrawer" />
-            <MudStack Spacing="0">
-                <MudText Typo="Typo.overline" Class="page-eyebrow">Container posture overview</MudText>
-                <MudText Typo="Typo.subtitle1">Observed images, runtime containers, and scan history</MudText>
-            </MudStack>
-            <MudSpacer />
-            <MudChip T="string" Color="Color.Info" Variant="Variant.Outlined" Size="Size.Small">Blazor console</MudChip>
-        </MudAppBar>
-
         <MudContainer MaxWidth="MaxWidth.ExtraExtraLarge" Class="page-container">
             @Body
         </MudContainer>
