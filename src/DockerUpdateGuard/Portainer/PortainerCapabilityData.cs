@@ -13,7 +13,7 @@ public class PortainerCapabilityData
     public bool IsConfigured { get; set; }
 
     /// <summary>
-    /// Indicates whether the first host iteration supports actions
+    /// Indicates whether Portainer actions are supported
     /// </summary>
     public bool SupportsActions { get; set; }
 

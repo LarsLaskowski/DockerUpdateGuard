@@ -25,12 +25,17 @@ public class PortainerOptions
     public string? Username { get; set; }
 
     /// <summary>
-    /// Optional password or token secret
+    /// Optional password for username/password authentication
     /// </summary>
     public string? Password { get; set; }
 
     /// <summary>
-    /// Optional external endpoint identifier
+    /// Optional personal access token — takes precedence over username/password when set
+    /// </summary>
+    public string? ApiToken { get; set; }
+
+    /// <summary>
+    /// Optional endpoint identifier — auto-resolved from the first available endpoint when not set
     /// </summary>
     public string? EndpointId { get; set; }
 
