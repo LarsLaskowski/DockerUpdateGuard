@@ -84,6 +84,11 @@ public class DockerUpdateGuardOptionsValidator : IValidateOptions<DockerUpdateGu
             failures.Add($"'{DockerUpdateGuardOptions.SectionName}:Vulnerabilities:Provider' must be configured when vulnerability refresh is enabled");
         }
 
+        if (options.Enabled && options.Provider == VulnerabilityProviderKind.Trivy && string.IsNullOrWhiteSpace(options.TrivyBaseUrl))
+        {
+            failures.Add($"'{DockerUpdateGuardOptions.SectionName}:Vulnerabilities:TrivyBaseUrl' must be configured when the Trivy provider is selected");
+        }
+
         if (options.RequestTimeoutSeconds <= 0)
         {
             failures.Add($"'{DockerUpdateGuardOptions.SectionName}:Vulnerabilities:RequestTimeoutSeconds' must be greater than zero");
@@ -181,6 +186,20 @@ public class DockerUpdateGuardOptionsValidator : IValidateOptions<DockerUpdateGu
                              && portainerUri.Scheme != Uri.UriSchemeHttps))
                 {
                     failures.Add($"'{DockerUpdateGuardOptions.SectionName}:DockerInstances:{instance.Name}:Portainer:BaseUrl' must be an absolute http or https URI");
+                }
+
+                var hasApiToken = string.IsNullOrWhiteSpace(instance.Portainer.ApiToken) == false;
+                var hasUsernamePassword = string.IsNullOrWhiteSpace(instance.Portainer.Username) == false
+                                          && string.IsNullOrWhiteSpace(instance.Portainer.Password) == false;
+
+                if (hasApiToken == false && hasUsernamePassword == false)
+                {
+                    failures.Add($"'{DockerUpdateGuardOptions.SectionName}:DockerInstances:{instance.Name}:Portainer' must have either ApiToken or Username+Password configured");
+                }
+
+                if (instance.Portainer.RequestTimeoutSeconds <= 0)
+                {
+                    failures.Add($"'{DockerUpdateGuardOptions.SectionName}:DockerInstances:{instance.Name}:Portainer:RequestTimeoutSeconds' must be greater than zero");
                 }
             }
         }

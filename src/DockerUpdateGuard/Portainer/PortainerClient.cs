@@ -13,15 +13,15 @@ public class PortainerClient : IPortainerClient
 {
     #region Constants
 
-    private static readonly HashSet<string> AllowedContainerActions = new(StringComparer.OrdinalIgnoreCase)
-                                                                      {
-                                                                          "start",
-                                                                          "stop",
-                                                                          "restart",
-                                                                          "kill",
-                                                                          "pause",
-                                                                          "unpause",
-                                                                      };
+    private static readonly HashSet<string> _allowedContainerActions = new(StringComparer.OrdinalIgnoreCase)
+                                                                       {
+                                                                           "start",
+                                                                           "stop",
+                                                                           "restart",
+                                                                           "kill",
+                                                                           "pause",
+                                                                           "unpause",
+                                                                       };
 
     #endregion // Constants
 
@@ -149,12 +149,12 @@ public class PortainerClient : IPortainerClient
                    };
         }
 
-        if (AllowedContainerActions.Contains(actionRequest.ActionName) == false)
+        if (_allowedContainerActions.Contains(actionRequest.ActionName) == false)
         {
             return new PortainerActionResult
                    {
                        Succeeded = false,
-                       Message = $"Action '{actionRequest.ActionName}' is not supported — allowed: {string.Join(", ", AllowedContainerActions)}",
+                       Message = $"Action '{actionRequest.ActionName}' is not supported — allowed: {string.Join(", ", _allowedContainerActions)}",
                    };
         }
 
@@ -265,11 +265,15 @@ public class PortainerClient : IPortainerClient
                     else
                     {
                         _logger.PortainerAuthFailed(options.BaseUrl ?? string.Empty);
+
+                        throw new InvalidOperationException($"Portainer authentication succeeded but returned no JWT token for '{options.BaseUrl}'");
                     }
                 }
                 else
                 {
                     _logger.PortainerAuthFailed(options.BaseUrl ?? string.Empty);
+
+                    throw new InvalidOperationException($"Portainer authentication failed with HTTP {(int)loginResponse.StatusCode} for '{options.BaseUrl}'");
                 }
             }
 

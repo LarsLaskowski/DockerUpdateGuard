@@ -75,12 +75,12 @@ public class DockerUpdateGuardOptionsValidatorTests
                                                       {
                                                           Enabled = true,
                                                           BaseUrl = "not-a-valid-uri",
-                                                      },
+                                                      }
                                       },
                                       new DockerInstanceOptions
                                       {
                                           Name = "Production",
-                                          BaseUrl = string.Empty,
+                                          BaseUrl = string.Empty
                                       },
                                   ];
 
@@ -106,12 +106,15 @@ public class DockerUpdateGuardOptionsValidatorTests
         Assert.Contains(message => message.Contains("duplicate instance name", StringComparison.OrdinalIgnoreCase),
                         failures,
                         "Duplicate Docker instance names must be reported");
-        Assert.Contains(message => message.Contains("BaseUrl' must use http, https, tcp or npipe", StringComparison.Ordinal),
+        Assert.Contains(message => message.Contains("BaseUrl' must use http, https, tcp, unix or npipe", StringComparison.Ordinal),
                         failures,
                         "Unsupported Docker endpoint schemes must be reported");
         Assert.Contains(message => message.Contains("Portainer:BaseUrl' must be an absolute http or https URI", StringComparison.Ordinal),
                         failures,
                         "Invalid Portainer endpoints must be reported");
+        Assert.Contains(message => message.Contains("Portainer' must have either ApiToken or Username+Password configured", StringComparison.Ordinal),
+                        failures,
+                        "Missing Portainer authentication credentials must be reported");
     }
 
     /// <summary>
