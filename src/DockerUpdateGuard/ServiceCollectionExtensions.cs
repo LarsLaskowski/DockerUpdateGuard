@@ -45,20 +45,47 @@ public static class ServiceCollectionExtensions
         var connectionString = DockerUpdateGuardConnectionStringResolver.ResolveConnectionString(applicationOptions, configuration);
 
         services.AddDockerUpdateGuardData(options =>
-        {
-            options.UseNpgsql(connectionString, npgsqlOptions => npgsqlOptions.MigrationsAssembly(typeof(DockerUpdateGuard.Data.DockerUpdateGuardDbContext).Assembly.GetName().Name));
-        });
+                                          {
+                                              options.UseNpgsql(connectionString, npgsqlOptions => npgsqlOptions.MigrationsAssembly(typeof(DockerUpdateGuard.Data.DockerUpdateGuardDbContext).Assembly.GetName().Name));
+                                          });
         services.AddDockerUpdateGuardTelemetry(configuration);
         services.AddHttpClient<IDockerHubClient, DockerHubClient>(client =>
-        {
-            client.BaseAddress = DockerHubClient.GetBaseUri(applicationOptions.DockerHub);
-            client.Timeout = TimeSpan.FromSeconds(applicationOptions.DockerHub.RequestTimeoutSeconds);
-            client.DefaultRequestHeaders.UserAgent.ParseAdd("DockerUpdateGuard/1.0");
-        });
+                                                                  {
+                                                                      client.BaseAddress = DockerHubClient.GetBaseUri(applicationOptions.DockerHub);
+                                                                      client.Timeout = TimeSpan.FromSeconds(applicationOptions.DockerHub.RequestTimeoutSeconds);
+                                                                      client.DefaultRequestHeaders.UserAgent.ParseAdd("DockerUpdateGuard/1.0");
+                                                                  });
         services.AddSingleton<ApplicationTelemetry>();
         services.AddSingleton<IDockerInstanceClient, DockerInstanceClient>();
         services.AddSingleton<IPortainerClient, PortainerClient>();
-        services.AddSingleton<IVulnerabilityProvider, DefaultVulnerabilityProvider>();
+
+        if (applicationOptions.Vulnerabilities.Enabled)
+        {
+            switch (applicationOptions.Vulnerabilities.Provider)
+            {
+                case VulnerabilityProviderKind.DockerScout:
+                    {
+                        services.AddSingleton<IVulnerabilityProvider, DockerScoutVulnerabilityProvider>();
+                    }
+                    break;
+
+                case VulnerabilityProviderKind.Trivy:
+                    {
+                        services.AddSingleton<IVulnerabilityProvider, TrivyVulnerabilityProvider>();
+                    }
+                    break;
+
+                default:
+                    {
+                        services.AddSingleton<IVulnerabilityProvider, DefaultVulnerabilityProvider>();
+                    }
+                    break;
+            }
+        }
+        else
+        {
+            services.AddSingleton<IVulnerabilityProvider, DefaultVulnerabilityProvider>();
+        }
         services.AddScoped<IImageReferenceParser, ImageReferenceParser>();
         services.AddScoped<IUpdateDetectionService, UpdateDetectionService>();
         services.AddScoped<IBaseImageResolver, DockerHubBaseImageResolver>();

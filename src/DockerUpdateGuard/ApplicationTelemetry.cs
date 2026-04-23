@@ -74,11 +74,10 @@ public class ApplicationTelemetry
                               ScanRunStatus status,
                               TimeSpan duration)
     {
-        KeyValuePair<string, object?>[] tags =
-        [
-            new(TelemetryTagNames.ScanType, type.ToString()),
-            new(TelemetryTagNames.ResultStatus, status.ToString()),
-        ];
+        KeyValuePair<string, object?>[] tags = [
+                                                   new(TelemetryTagNames.ScanType, type.ToString()),
+                                                   new(TelemetryTagNames.ResultStatus, status.ToString()),
+                                               ];
 
         _scanRunsCounter.Add(1, tags);
         _scanDurationHistogram.Record(duration.TotalSeconds, tags);
@@ -103,7 +102,11 @@ public class ApplicationTelemetry
                                          .LongCountAsync(cancellationToken)
                                          .ConfigureAwait(false);
         _runtimeContainers = await dbContext.ContainerSnapshots
-                                            .GroupBy(entity => new { entity.DockerInstanceId, entity.ContainerId })
+                                            .GroupBy(entity => new
+                                                               {
+                                                                   entity.DockerInstanceId,
+                                                                   entity.ContainerId
+                                                               })
                                             .LongCountAsync(cancellationToken)
                                             .ConfigureAwait(false);
         _deduplicatedBaseImages = await dbContext.ImageRelationships

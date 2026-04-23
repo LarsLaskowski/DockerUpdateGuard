@@ -47,8 +47,7 @@ public abstract class ScheduledBackgroundService : BackgroundService
         var backgroundServiceName = GetType().Name;
 
         _logger.BackgroundServiceStarted(backgroundServiceName, GetInterval().TotalMinutes);
-        await ExecuteSafelyAsync(stoppingToken)
-              .ConfigureAwait(false);
+        await ExecuteSafelyAsync(stoppingToken).ConfigureAwait(false);
 
         while (stoppingToken.IsCancellationRequested == false)
         {
@@ -57,8 +56,7 @@ public abstract class ScheduledBackgroundService : BackgroundService
             _logger.BackgroundServiceWaiting(backgroundServiceName, interval.TotalMinutes);
             await Task.Delay(interval, stoppingToken)
                       .ConfigureAwait(false);
-            await ExecuteSafelyAsync(stoppingToken)
-                  .ConfigureAwait(false);
+            await ExecuteSafelyAsync(stoppingToken).ConfigureAwait(false);
         }
     }
 
@@ -76,8 +74,7 @@ public abstract class ScheduledBackgroundService : BackgroundService
 
         try
         {
-            await ExecuteCoreAsync(stoppingToken)
-                  .ConfigureAwait(false);
+            await ExecuteCoreAsync(stoppingToken).ConfigureAwait(false);
             _logger.BackgroundServiceExecutionCompleted(backgroundServiceName, stopwatch.ElapsedMilliseconds);
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)

@@ -51,16 +51,6 @@ internal static partial class DockerHubClientLogging
                                                       int statusCode);
 
     /// <summary>
-    /// Log that Docker Hub base image resolution is unavailable
-    /// </summary>
-    /// <param name="logger">Logger</param>
-    /// <param name="imageReference">Image reference</param>
-    [LoggerMessage(EventId = 3203,
-                   Level = LogLevel.Information,
-                   Message = "Docker Hub base image resolution is not implemented yet for {ImageReference}")]
-    public static partial void DockerHubBaseImageResolutionUnavailable(this ILogger logger, string imageReference);
-
-    /// <summary>
     /// Log that the authenticated Docker Hub account was resolved
     /// </summary>
     /// <param name="logger">Logger</param>
@@ -141,8 +131,8 @@ internal static partial class DockerHubClientLogging
                    Level = LogLevel.Warning,
                    Message = "Docker Hub base image resolution failed for {ImageReference}")]
     public static partial void DockerHubBaseImageResolutionFailed(this ILogger logger,
-                                                                   Exception exception,
-                                                                   string imageReference);
+                                                                  Exception exception,
+                                                                  string imageReference);
 
     #endregion // Methods
 }

@@ -54,18 +54,17 @@ public class ImageScanOrchestratorTests
                 var logger = new TestLogger<ImageScanOrchestrator>();
 
                 baseImageResolver.ResolveAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
-                                 .Returns(ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>.Succeeded(
-                                 [
-                                     new BaseImageDescriptor
-                                     {
-                                         Registry = "docker.io",
-                                         Repository = "library/debian",
-                                         Tag = "12.0.0",
-                                         Digest = "sha256:base-old",
-                                         Depth = 1,
-                                         SourceReference = "FROM debian:12.0.0",
-                                     },
-                                 ]));
+                                 .Returns(ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>.Succeeded([
+                                                                                                                    new BaseImageDescriptor
+                                                                                                                    {
+                                                                                                                        Registry = "docker.io",
+                                                                                                                        Repository = "library/debian",
+                                                                                                                        Tag = "12.0.0",
+                                                                                                                        Digest = "sha256:base-old",
+                                                                                                                        Depth = 1,
+                                                                                                                        SourceReference = "FROM debian:12.0.0",
+                                                                                                                    },
+                                                                                                                ]));
                 dockerHubClient.GetTagAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
                                .Returns(ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
                                                                                             {
@@ -76,21 +75,20 @@ public class ImageScanOrchestratorTests
                 dockerHubClient.GetTagsAsync("docker.io",
                                              "library/debian",
                                              Arg.Any<CancellationToken>())
-                               .Returns(ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Succeeded(
-                               [
-                                   new DockerHubTagData
-                                   {
-                                       Tag = "12.1.0",
-                                       Digest = "sha256:base-new",
-                                       PublishedAtUtc = new DateTimeOffset(2025, 06, 02, 12, 00, 00, TimeSpan.Zero),
-                                   },
-                                   new DockerHubTagData
-                                   {
-                                       Tag = "12.0.0",
-                                       Digest = "sha256:base-old",
-                                       PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
-                                   },
-                               ]));
+                               .Returns(ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Succeeded([
+                                                                                                               new DockerHubTagData
+                                                                                                               {
+                                                                                                                   Tag = "12.1.0",
+                                                                                                                   Digest = "sha256:base-new",
+                                                                                                                   PublishedAtUtc = new DateTimeOffset(2025, 06, 02, 12, 00, 00, TimeSpan.Zero),
+                                                                                                               },
+                                                                                                               new DockerHubTagData
+                                                                                                               {
+                                                                                                                   Tag = "12.0.0",
+                                                                                                                   Digest = "sha256:base-old",
+                                                                                                                   PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
+                                                                                                               },
+                                                                                                           ]));
 
                 var orchestrator = new ImageScanOrchestrator(new ApplicationTelemetry(),
                                                              baseImageResolver,

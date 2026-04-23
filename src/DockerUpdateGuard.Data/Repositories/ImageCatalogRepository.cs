@@ -114,8 +114,7 @@ public class ImageCatalogRepository : IImageCatalogRepository
                                                           repository,
                                                           tag,
                                                           digest,
-                                                          cancellationToken)
-            .ConfigureAwait(false);
+                                                          cancellationToken).ConfigureAwait(false);
 
         if (existingVersion is not null)
         {
@@ -124,8 +123,7 @@ public class ImageCatalogRepository : IImageCatalogRepository
 
         var registryRepository = await GetOrCreateRegistryRepositoryAsync(registry,
                                                                           repository,
-                                                                          cancellationToken)
-            .ConfigureAwait(false);
+                                                                          cancellationToken).ConfigureAwait(false);
         var now = DateTimeOffset.UtcNow;
         var newVersion = new ImageVersion
                          {

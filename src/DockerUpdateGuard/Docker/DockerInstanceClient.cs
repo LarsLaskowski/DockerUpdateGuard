@@ -149,22 +149,22 @@ public class DockerInstanceClient : IDockerInstanceClient
         var endpoint = new UnixDomainSocketEndPoint(socketPath);
         var handler = new SocketsHttpHandler();
         handler.ConnectCallback = async (context, cancellationToken) =>
-        {
-            var socket = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
+                                  {
+                                      var socket = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
 
-            try
-            {
-                await socket.ConnectAsync(endpoint, cancellationToken).ConfigureAwait(false);
+                                      try
+                                      {
+                                          await socket.ConnectAsync(endpoint, cancellationToken).ConfigureAwait(false);
 
-                return new NetworkStream(socket, ownsSocket: true);
-            }
-            catch
-            {
-                socket.Dispose();
+                                          return new NetworkStream(socket, ownsSocket: true);
+                                      }
+                                      catch
+                                      {
+                                          socket.Dispose();
 
-                throw;
-            }
-        };
+                                          throw;
+                                      }
+                                  };
 
         return new HttpClient(handler)
                {
@@ -250,8 +250,8 @@ public class DockerInstanceClient : IDockerInstanceClient
                || string.Equals(extension,
                                 ".p12",
                                 StringComparison.OrdinalIgnoreCase)
-            ? X509CertificateLoader.LoadPkcs12FromFile(certificatePath, password: null)
-            : X509CertificateLoader.LoadCertificateFromFile(certificatePath);
+                   ? X509CertificateLoader.LoadPkcs12FromFile(certificatePath, password: null)
+                   : X509CertificateLoader.LoadCertificateFromFile(certificatePath);
     }
 
     /// <summary>
@@ -262,8 +262,8 @@ public class DockerInstanceClient : IDockerInstanceClient
     private static RuntimeContainerDescriptor ParseContainer(JsonElement element)
     {
         var labels = element.TryGetProperty("Labels", out var labelsElement) && labelsElement.ValueKind == JsonValueKind.Object
-            ? labelsElement
-            : default;
+                         ? labelsElement
+                         : default;
 
         return new RuntimeContainerDescriptor
                {
@@ -352,14 +352,14 @@ public class DockerInstanceClient : IDockerInstanceClient
     private static ContainerRuntimeStatus ParseRuntimeStatus(string? state)
     {
         return state?.ToLowerInvariant() switch
-        {
-            "running" => ContainerRuntimeStatus.Running,
-            "paused" => ContainerRuntimeStatus.Paused,
-            "restarting" => ContainerRuntimeStatus.Restarting,
-            "exited" => ContainerRuntimeStatus.Exited,
-            "dead" => ContainerRuntimeStatus.Dead,
-            _ => ContainerRuntimeStatus.NotSet,
-        };
+               {
+                   "running" => ContainerRuntimeStatus.Running,
+                   "paused" => ContainerRuntimeStatus.Paused,
+                   "restarting" => ContainerRuntimeStatus.Restarting,
+                   "exited" => ContainerRuntimeStatus.Exited,
+                   "dead" => ContainerRuntimeStatus.Dead,
+                   _ => ContainerRuntimeStatus.NotSet,
+               };
     }
 
     #endregion // Methods

@@ -45,9 +45,8 @@ public class InstanceDiscoveryService : IInstanceDiscoveryService
     public async Task SynchronizeConfiguredInstancesAsync(CancellationToken cancellationToken = default)
     {
         var configuredInstances = _optionsMonitor.CurrentValue.DockerInstances;
-        var configuredNames = configuredInstances
-                              .Select(instance => instance.Name.Trim())
-                              .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var configuredNames = configuredInstances.Select(instance => instance.Name.Trim())
+                                                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         _logger.DockerInstanceSynchronizationStarted(configuredInstances.Count);
         var existingInstances = await _dbContext.DockerInstances
@@ -151,14 +150,14 @@ public class InstanceDiscoveryService : IInstanceDiscoveryService
         }
 
         return uri.Scheme switch
-        {
-            "tcp" when configuredInstance.UseTls => DockerConnectionKind.Https,
-            "tcp" => DockerConnectionKind.Http,
-            "http" => DockerConnectionKind.Http,
-            "https" => DockerConnectionKind.Https,
-            "npipe" => DockerConnectionKind.NamedPipe,
-            _ => DockerConnectionKind.NotSet,
-        };
+               {
+                   "tcp" when configuredInstance.UseTls => DockerConnectionKind.Https,
+                   "tcp" => DockerConnectionKind.Http,
+                   "http" => DockerConnectionKind.Http,
+                   "https" => DockerConnectionKind.Https,
+                   "npipe" => DockerConnectionKind.NamedPipe,
+                   _ => DockerConnectionKind.NotSet,
+               };
     }
 
     #endregion // Methods

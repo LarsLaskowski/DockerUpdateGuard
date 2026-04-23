@@ -50,13 +50,13 @@ public partial class ObservedImageDetail
     private static Color GetScanStatusColor(string status)
     {
         return status.ToUpperInvariant() switch
-        {
-            "COMPLETED" => Color.Success,
-            "FAILED" => Color.Error,
-            "RUNNING" => Color.Info,
-            "PENDING" => Color.Warning,
-            _ => Color.Default,
-        };
+               {
+                   "COMPLETED" => Color.Success,
+                   "FAILED" => Color.Error,
+                   "RUNNING" => Color.Info,
+                   "PENDING" => Color.Warning,
+                   _ => Color.Default,
+               };
     }
 
     /// <summary>
@@ -67,13 +67,13 @@ public partial class ObservedImageDetail
     private static Color GetVulnerabilitySeverityColor(string severity)
     {
         return severity.ToUpperInvariant() switch
-        {
-            "CRITICAL" => Color.Error,
-            "HIGH" => Color.Warning,
-            "MEDIUM" => Color.Info,
-            "LOW" => Color.Success,
-            _ => Color.Default,
-        };
+               {
+                   "CRITICAL" => Color.Error,
+                   "HIGH" => Color.Warning,
+                   "MEDIUM" => Color.Info,
+                   "LOW" => Color.Success,
+                   _ => Color.Default,
+               };
     }
 
     #endregion // Methods

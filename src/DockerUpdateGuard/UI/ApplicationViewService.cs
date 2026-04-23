@@ -123,41 +123,39 @@ public class ApplicationViewService : IApplicationViewService
                                                        .Distinct()
                                                        .ToList();
         var recommendedImageVersions = recommendedImageVersionIds.Count == 0
-            ? new Dictionary<Guid, ImageVersion>()
-            : await _dbContext.ImageVersions.Include(entity => entity.RegistryRepository)
-                                            .Where(entity => recommendedImageVersionIds.Contains(entity.Id))
-                                            .AsNoTracking()
-                                            .ToDictionaryAsync(entity => entity.Id, cancellationToken)
-                                            .ConfigureAwait(false);
-        var updateFindingViewData = updateFindings
-                                    .Select(entity =>
-                                            {
-                                                ImageVersion? recommendedImageVersion = null;
+                                           ? new Dictionary<Guid, ImageVersion>()
+                                           : await _dbContext.ImageVersions.Include(entity => entity.RegistryRepository)
+                                                                           .Where(entity => recommendedImageVersionIds.Contains(entity.Id))
+                                                                           .AsNoTracking()
+                                                                           .ToDictionaryAsync(entity => entity.Id, cancellationToken)
+                                                                           .ConfigureAwait(false);
+        var updateFindingViewData = updateFindings.Select(entity =>
+                                                          {
+                                                              ImageVersion? recommendedImageVersion = null;
 
-                                                if (entity.RecommendedImageVersionId is not null)
-                                                {
-                                                    recommendedImageVersions.TryGetValue(entity.RecommendedImageVersionId.GetValueOrDefault(), out recommendedImageVersion);
-                                                }
+                                                              if (entity.RecommendedImageVersionId is not null)
+                                                              {
+                                                                  recommendedImageVersions.TryGetValue(entity.RecommendedImageVersionId.GetValueOrDefault(), out recommendedImageVersion);
+                                                              }
 
-                                                return new UpdateFindingViewData
-                                                       {
-                                                           Type = entity.Type.ToString(),
-                                                           Summary = entity.Summary,
-                                                           Details = entity.Details,
-                                                           RecommendedImage = recommendedImageVersion is null ? null : _imageReferenceParser.Format(recommendedImageVersion),
-                                                           IsActive = entity.IsActive,
-                                                           DetectedAtUtc = entity.DetectedAtUtc,
-                                                       };
-                                            })
-                                    .ToList();
+                                                              return new UpdateFindingViewData
+                                                                     {
+                                                                         Type = entity.Type.ToString(),
+                                                                         Summary = entity.Summary,
+                                                                         Details = entity.Details,
+                                                                         RecommendedImage = recommendedImageVersion is null ? null : _imageReferenceParser.Format(recommendedImageVersion),
+                                                                         IsActive = entity.IsActive,
+                                                                         DetectedAtUtc = entity.DetectedAtUtc,
+                                                                     };
+                                                          })
+                                                  .ToList();
         var vulnerabilityFindings = await _dbContext.VulnerabilityFindings
                                                     .Where(entity => entity.ImageVersionId == observedImage.CurrentImageVersionId)
                                                     .OrderByDescending(entity => entity.DetectedAtUtc)
                                                     .AsNoTracking()
                                                     .ToListAsync(cancellationToken)
                                                     .ConfigureAwait(false);
-        var scanHistory = await GetObservedImageScanHistoryAsync(observedImage.Id, cancellationToken)
-                                .ConfigureAwait(false);
+        var scanHistory = await GetObservedImageScanHistoryAsync(observedImage.Id, cancellationToken).ConfigureAwait(false);
         var baseImageViewData = baseImages.Select(entity => new BaseImageRelationshipData
                                                             {
                                                                 ImageReference = _imageReferenceParser.Format(entity.BaseImageVersion),
@@ -186,20 +184,20 @@ public class ApplicationViewService : IApplicationViewService
     public async Task<IReadOnlyList<RuntimeContainerListItemData>> GetRuntimeContainersAsync(CancellationToken cancellationToken = default)
     {
         var latestSnapshots = await _dbContext
-                                    .ContainerSnapshots
-                                    .Include(entity => entity.DockerInstance)
-                                    .ThenInclude(entity => entity.PortainerEndpoint)
-                                    .Include(entity => entity.ImageVersion)
-                                    .ThenInclude(entity => entity.RegistryRepository)
-                                    .AsNoTracking()
-                                    .OrderByDescending(entity => entity.RecordedAtUtc)
-                                    .ToListAsync(cancellationToken)
-                                    .ConfigureAwait(false);
+        .ContainerSnapshots
+        .Include(entity => entity.DockerInstance)
+        .ThenInclude(entity => entity.PortainerEndpoint)
+        .Include(entity => entity.ImageVersion)
+        .ThenInclude(entity => entity.RegistryRepository)
+        .AsNoTracking()
+        .OrderByDescending(entity => entity.RecordedAtUtc)
+        .ToListAsync(cancellationToken)
+        .ConfigureAwait(false);
         var runtimeContainers = latestSnapshots.GroupBy(entity => new
-                                                                {
-                                                                    entity.DockerInstanceId,
-                                                                    entity.ContainerId,
-                                                                })
+                                                                  {
+                                                                      entity.DockerInstanceId,
+                                                                      entity.ContainerId,
+                                                                  })
                                                .Select(group =>
                                                        {
                                                            var latestSnapshot = group.First();
@@ -234,12 +232,12 @@ public class ApplicationViewService : IApplicationViewService
     public async Task<IReadOnlyList<DockerInstanceListItemData>> GetDockerInstancesAsync(CancellationToken cancellationToken = default)
     {
         var instances = await _dbContext
-                              .DockerInstances
-                              .Include(entity => entity.PortainerEndpoint)
-                              .AsNoTracking()
-                              .OrderBy(entity => entity.Name)
-                              .ToListAsync(cancellationToken)
-                              .ConfigureAwait(false);
+        .DockerInstances
+        .Include(entity => entity.PortainerEndpoint)
+        .AsNoTracking()
+        .OrderBy(entity => entity.Name)
+        .ToListAsync(cancellationToken)
+        .ConfigureAwait(false);
 
         return instances.Select(entity => new DockerInstanceListItemData
                                           {
@@ -255,10 +253,10 @@ public class ApplicationViewService : IApplicationViewService
                                                                                    .Select(scan => scan.CompletedAtUtc)
                                                                                    .FirstOrDefault(),
                                               RuntimeContainerCount = _dbContext.ContainerSnapshots
-                                                                               .Where(snapshot => snapshot.DockerInstanceId == entity.Id)
-                                                                               .Select(snapshot => snapshot.ContainerId)
-                                                                               .Distinct()
-                                                                               .Count(),
+                                                                                .Where(snapshot => snapshot.DockerInstanceId == entity.Id)
+                                                                                .Select(snapshot => snapshot.ContainerId)
+                                                                                .Distinct()
+                                                                                .Count(),
                                           })
                         .ToList();
     }
@@ -268,9 +266,8 @@ public class ApplicationViewService : IApplicationViewService
         var sharedBaseImages = await _sharedBaseImageQueryService.GetSharedBaseImagesAsync(cancellationToken)
                                                                  .ConfigureAwait(false);
 
-        return sharedBaseImages
-               .Select(MapSharedBaseImage)
-               .ToList();
+        return sharedBaseImages.Select(MapSharedBaseImage)
+                               .ToList();
     }
 
     public async Task<IReadOnlyList<ScanHistoryItemData>> GetScanHistoryAsync(int take = 50, CancellationToken cancellationToken = default)
@@ -334,8 +331,8 @@ public class ApplicationViewService : IApplicationViewService
                {
                    BaseImageVersionId = entity.BaseImageVersionId,
                    ImageReference = string.IsNullOrWhiteSpace(entity.Digest)
-                       ? $"{entity.Registry}/{entity.Repository}:{entity.Tag}"
-                       : $"{entity.Registry}/{entity.Repository}:{entity.Tag}@{entity.Digest}",
+                                        ? $"{entity.Registry}/{entity.Repository}:{entity.Tag}"
+                                        : $"{entity.Registry}/{entity.Repository}:{entity.Tag}@{entity.Digest}",
                    ObservedImageCount = entity.ObservedImageCount,
                    ActiveFindingCount = _dbContext.UpdateFindings.Count(finding => finding.SubjectImageVersionId == entity.BaseImageVersionId && finding.IsActive),
                };

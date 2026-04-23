@@ -31,8 +31,8 @@ public class UpdateDetectionService : IUpdateDetectionService
                                        .OrderByDescending(tag => tag.PublishedAtUtc)
                                        .ToList();
         var currentTagData = orderedTags.FirstOrDefault(tag => string.Equals(tag.Tag,
-                                                                              currentImage.Tag,
-                                                                              StringComparison.OrdinalIgnoreCase));
+                                                                             currentImage.Tag,
+                                                                             StringComparison.OrdinalIgnoreCase));
 
         if (TryParseVersion(currentImage.Tag, out var currentVersion))
         {
@@ -67,8 +67,8 @@ public class UpdateDetectionService : IUpdateDetectionService
             }
 
             if (TryCreateDigestUpdateResult(currentImage,
-                                           currentTagData,
-                                           out var digestUpdateResult))
+                                            currentTagData,
+                                            out var digestUpdateResult))
             {
                 return digestUpdateResult;
             }
@@ -81,8 +81,8 @@ public class UpdateDetectionService : IUpdateDetectionService
         }
 
         if (TryCreateDigestUpdateResult(currentImage,
-                                       currentTagData,
-                                       out var currentTagDigestUpdate))
+                                        currentTagData,
+                                        out var currentTagDigestUpdate))
         {
             return currentTagDigestUpdate;
         }
@@ -106,8 +106,8 @@ public class UpdateDetectionService : IUpdateDetectionService
                        Status = UpdateEvaluationStatus.NeedsReview,
                        Summary = "Alternative tags are available and require manual review",
                        Details = currentTagData?.PublishedAtUtc is null
-                           ? "The current tag is not semantic, so an automatic successor cannot be selected reliably"
-                           : $"The current tag was last published at {currentTagData.PublishedAtUtc:O}",
+                                     ? "The current tag is not semantic, so an automatic successor cannot be selected reliably"
+                                     : $"The current tag was last published at {currentTagData.PublishedAtUtc:O}",
                        Candidates = reviewCandidates,
                    };
         }
@@ -185,15 +185,14 @@ public class UpdateDetectionService : IUpdateDetectionService
                      Details = $"The registry currently reports digest '{currentTagData.Digest}' for tag '{currentImage.Tag}'",
                      RecommendedTag = currentImage.Tag,
                      RecommendedDigest = currentTagData.Digest,
-                     Candidates =
-                     [
-                         new UpdateCandidateData
-                         {
-                             Tag = currentTagData.Tag,
-                             Digest = currentTagData.Digest,
-                             PublishedAtUtc = currentTagData.PublishedAtUtc,
-                         },
-                     ],
+                     Candidates = [
+                                      new UpdateCandidateData
+                                      {
+                                          Tag = currentTagData.Tag,
+                                          Digest = currentTagData.Digest,
+                                          PublishedAtUtc = currentTagData.PublishedAtUtc,
+                                      },
+                                  ],
                  };
 
         return true;

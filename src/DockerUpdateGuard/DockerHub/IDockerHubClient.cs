@@ -49,8 +49,8 @@ public interface IDockerHubClient
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Tag list result</returns>
     Task<ExternalOperationResult<IReadOnlyList<DockerHubTagData>>> GetTagsAsync(string registry,
-                                                                                 string repository,
-                                                                                 CancellationToken cancellationToken = default);
+                                                                                string repository,
+                                                                                CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Attempt to resolve base images for an observed image

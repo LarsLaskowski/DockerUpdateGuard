@@ -258,10 +258,10 @@ public class DockerHubClientTests
         private static HttpResponseMessage CloneResponse(HttpResponseMessage response)
         {
             var content = response.Content is null
-                ? null
-                : new StringContent(response.Content.ReadAsStringAsync().GetAwaiter().GetResult(),
-                                    Encoding.UTF8,
-                                    response.Content.Headers.ContentType?.MediaType);
+                              ? null
+                              : new StringContent(response.Content.ReadAsStringAsync().GetAwaiter().GetResult(),
+                                                  Encoding.UTF8,
+                                                  response.Content.Headers.ContentType?.MediaType);
 
             return new HttpResponseMessage(response.StatusCode)
                    {

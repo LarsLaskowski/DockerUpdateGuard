@@ -45,8 +45,8 @@ public class DockerHubAccountImageDiscoveryServiceTests
                                                                                                       },
                                                                                       });
                 var existingRepositoryTask = imageCatalogRepository.GetOrCreateRegistryRepositoryAsync("docker.io",
-                                                                                                        "acme/api",
-                                                                                                        CancellationToken.None);
+                                                                                                       "acme/api",
+                                                                                                       CancellationToken.None);
                 var existingRepository = await existingRepositoryTask.ConfigureAwait(false);
                 var existingVersion = new ImageVersion
                                       {
@@ -57,8 +57,8 @@ public class DockerHubAccountImageDiscoveryServiceTests
                                           Source = ImageVersionSource.ObservedImage,
                                       };
                 var removedRepositoryTask = imageCatalogRepository.GetOrCreateRegistryRepositoryAsync("docker.io",
-                                                                                                       "acme/removed",
-                                                                                                       CancellationToken.None);
+                                                                                                      "acme/removed",
+                                                                                                      CancellationToken.None);
                 var removedRepository = await removedRepositoryTask.ConfigureAwait(false);
                 var removedVersion = new ImageVersion
                                      {
@@ -69,8 +69,8 @@ public class DockerHubAccountImageDiscoveryServiceTests
                                          Source = ImageVersionSource.ObservedImage,
                                      };
                 var manualRepositoryTask = imageCatalogRepository.GetOrCreateRegistryRepositoryAsync("docker.io",
-                                                                                                      "acme/manual",
-                                                                                                      CancellationToken.None);
+                                                                                                     "acme/manual",
+                                                                                                     CancellationToken.None);
                 var manualRepository = await manualRepositoryTask.ConfigureAwait(false);
                 var manualVersion = new ImageVersion
                                     {
@@ -106,51 +106,48 @@ public class DockerHubAccountImageDiscoveryServiceTests
                                .ConfigureAwait(false);
 
                 dockerHubClient.GetRepositoriesAsync("acme", CancellationToken.None)
-                               .Returns(ExternalOperationResult<IReadOnlyList<DockerHubRepositoryData>>.Succeeded(
-                               [
-                                   new DockerHubRepositoryData
-                                   {
-                                       Registry = "docker.io",
-                                       Repository = "acme/api",
-                                       Description = "API service",
-                                   },
-                                   new DockerHubRepositoryData
-                                   {
-                                       Registry = "docker.io",
-                                       Repository = "acme/web",
-                                       Description = "Web frontend",
-                                   },
-                               ]));
+                               .Returns(ExternalOperationResult<IReadOnlyList<DockerHubRepositoryData>>.Succeeded([
+                                                                                                                      new DockerHubRepositoryData
+                                                                                                                      {
+                                                                                                                          Registry = "docker.io",
+                                                                                                                          Repository = "acme/api",
+                                                                                                                          Description = "API service",
+                                                                                                                      },
+                                                                                                                      new DockerHubRepositoryData
+                                                                                                                      {
+                                                                                                                          Registry = "docker.io",
+                                                                                                                          Repository = "acme/web",
+                                                                                                                          Description = "Web frontend",
+                                                                                                                      },
+                                                                                                                  ]));
                 dockerHubClient.GetTagsAsync("docker.io",
                                              "acme/api",
                                              CancellationToken.None)
-                               .Returns(ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Succeeded(
-                               [
-                                   new DockerHubTagData
-                                   {
-                                       Tag = "1.1.0",
-                                       Digest = "sha256:new-api",
-                                       PublishedAtUtc = DateTimeOffset.UtcNow,
-                                   },
-                               ]));
+                               .Returns(ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Succeeded([
+                                                                                                               new DockerHubTagData
+                                                                                                               {
+                                                                                                                   Tag = "1.1.0",
+                                                                                                                   Digest = "sha256:new-api",
+                                                                                                                   PublishedAtUtc = DateTimeOffset.UtcNow,
+                                                                                                               },
+                                                                                                           ]));
                 dockerHubClient.GetTagsAsync("docker.io",
                                              "acme/web",
                                              CancellationToken.None)
-                               .Returns(ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Succeeded(
-                               [
-                                   new DockerHubTagData
-                                   {
-                                       Tag = "latest",
-                                       Digest = "sha256:web",
-                                       PublishedAtUtc = DateTimeOffset.UtcNow.AddMinutes(-5),
-                                   },
-                                   new DockerHubTagData
-                                   {
-                                       Tag = "1.0.0",
-                                       Digest = "sha256:web-old",
-                                       PublishedAtUtc = DateTimeOffset.UtcNow.AddMinutes(-10),
-                                   },
-                               ]));
+                               .Returns(ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Succeeded([
+                                                                                                               new DockerHubTagData
+                                                                                                               {
+                                                                                                                   Tag = "latest",
+                                                                                                                   Digest = "sha256:web",
+                                                                                                                   PublishedAtUtc = DateTimeOffset.UtcNow.AddMinutes(-5),
+                                                                                                               },
+                                                                                                               new DockerHubTagData
+                                                                                                               {
+                                                                                                                   Tag = "1.0.0",
+                                                                                                                   Digest = "sha256:web-old",
+                                                                                                                   PublishedAtUtc = DateTimeOffset.UtcNow.AddMinutes(-10),
+                                                                                                               },
+                                                                                                           ]));
 
                 var service = new DockerHubAccountImageDiscoveryService(dbContext,
                                                                         dockerHubClient,

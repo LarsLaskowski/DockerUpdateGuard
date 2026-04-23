@@ -37,10 +37,9 @@ internal sealed class SqliteTestDatabase : IDisposable
     /// <returns>Configured database context</returns>
     public DockerUpdateGuardDbContext CreateDbContext()
     {
-        var options = new DbContextOptionsBuilder<DockerUpdateGuardDbContext>()
-                      .UseSqlite(_connection)
-                      .EnableSensitiveDataLogging()
-                      .Options;
+        var options = new DbContextOptionsBuilder<DockerUpdateGuardDbContext>().UseSqlite(_connection)
+                                                                               .EnableSensitiveDataLogging()
+                                                                               .Options;
         var dbContext = new DockerUpdateGuardDbContext(options);
         dbContext.Database.EnsureCreated();
 

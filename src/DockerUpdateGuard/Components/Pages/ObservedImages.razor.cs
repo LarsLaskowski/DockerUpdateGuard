@@ -112,13 +112,13 @@ public partial class ObservedImages
         }
 
         return status.ToUpperInvariant() switch
-        {
-            "COMPLETED" => Color.Success,
-            "FAILED" => Color.Error,
-            "RUNNING" => Color.Info,
-            "PENDING" => Color.Warning,
-            _ => Color.Default,
-        };
+               {
+                   "COMPLETED" => Color.Success,
+                   "FAILED" => Color.Error,
+                   "RUNNING" => Color.Info,
+                   "PENDING" => Color.Warning,
+                   _ => Color.Default,
+               };
     }
 
     #endregion // Methods

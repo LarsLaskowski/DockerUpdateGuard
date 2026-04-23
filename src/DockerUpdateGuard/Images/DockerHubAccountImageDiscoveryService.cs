@@ -127,8 +127,8 @@ public class DockerHubAccountImageDiscoveryService : IDockerHubAccountImageDisco
             {
                 skippedRepositoryCount++;
                 _logger.DockerHubAccountSynchronizationRepositorySkipped(repository.Repository,
-                                                                        tagsResult.Status,
-                                                                        tagsResult.Message);
+                                                                         tagsResult.Status,
+                                                                         tagsResult.Message);
 
                 continue;
             }
@@ -139,8 +139,8 @@ public class DockerHubAccountImageDiscoveryService : IDockerHubAccountImageDisco
             {
                 skippedRepositoryCount++;
                 _logger.DockerHubAccountSynchronizationRepositorySkipped(repository.Repository,
-                                                                        ExternalOperationStatus.Unknown,
-                                                                        "No non-empty repository tags were returned");
+                                                                         ExternalOperationStatus.Unknown,
+                                                                         "No non-empty repository tags were returned");
 
                 continue;
             }
@@ -260,8 +260,8 @@ public class DockerHubAccountImageDiscoveryService : IDockerHubAccountImageDisco
 
         return candidates.OrderByDescending(entity => entity.PublishedAtUtc)
                          .ThenByDescending(entity => string.Equals(entity.Tag,
-                                                                    "latest",
-                                                                    StringComparison.OrdinalIgnoreCase))
+                                                                   "latest",
+                                                                   StringComparison.OrdinalIgnoreCase))
                          .ThenBy(entity => entity.Tag, StringComparer.OrdinalIgnoreCase)
                          .First();
     }

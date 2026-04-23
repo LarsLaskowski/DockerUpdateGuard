@@ -71,8 +71,8 @@ public class TelemetryOptionsValidator : IValidateOptions<TelemetryOptions>
         }
 
         return failures.Count == 0
-            ? ValidateOptionsResult.Success
-            : ValidateOptionsResult.Fail(failures);
+                   ? ValidateOptionsResult.Success
+                   : ValidateOptionsResult.Fail(failures);
     }
 
     #endregion // Methods

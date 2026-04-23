@@ -49,12 +49,12 @@ public partial class RuntimeContainers
         }
 
         return state.ToUpperInvariant() switch
-        {
-            "UPDATEAVAILABLE" => Color.Warning,
-            "UPTODATE" => Color.Success,
-            "UNKNOWN" => Color.Default,
-            _ => Color.Info,
-        };
+               {
+                   "UPDATEAVAILABLE" => Color.Warning,
+                   "UPTODATE" => Color.Success,
+                   "UNKNOWN" => Color.Default,
+                   _ => Color.Info,
+               };
     }
 
     #endregion // Methods

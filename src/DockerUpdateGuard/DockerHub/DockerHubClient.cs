@@ -148,8 +148,7 @@ public sealed class DockerHubClient : IDockerHubClient, IDisposable
 
         while (string.IsNullOrWhiteSpace(requestUri) == false)
         {
-            using var response = await SendGetAsync(requestUri, cancellationToken)
-                                     .ConfigureAwait(false);
+            using var response = await SendGetAsync(requestUri, cancellationToken).ConfigureAwait(false);
 
             if (response.StatusCode == HttpStatusCode.NotFound)
             {
@@ -166,8 +165,7 @@ public sealed class DockerHubClient : IDockerHubClient, IDisposable
 
                 return await CreateFailureResultAsync<IReadOnlyList<DockerHubRepositoryData>>(response,
                                                                                               $"Docker Hub repository listing failed for '{accountName}'",
-                                                                                              cancellationToken)
-                    .ConfigureAwait(false);
+                                                                                              cancellationToken).ConfigureAwait(false);
             }
 
             var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken)
@@ -211,8 +209,7 @@ public sealed class DockerHubClient : IDockerHubClient, IDisposable
 
         activity?.SetTag(TelemetryTagNames.ImageReference, imageReference.FullReference);
 
-        using var response = await SendGetAsync($"v2/namespaces/{Uri.EscapeDataString(namespaceName)}/repositories/{EscapeRepository(repositoryName)}", cancellationToken)
-                                 .ConfigureAwait(false);
+        using var response = await SendGetAsync($"v2/namespaces/{Uri.EscapeDataString(namespaceName)}/repositories/{EscapeRepository(repositoryName)}", cancellationToken).ConfigureAwait(false);
 
         if (response.StatusCode == HttpStatusCode.NotFound)
         {
@@ -233,8 +230,8 @@ public sealed class DockerHubClient : IDockerHubClient, IDisposable
         }
 
         var responseStream = await response.Content
-                                         .ReadAsStreamAsync(cancellationToken)
-                                         .ConfigureAwait(false);
+                                           .ReadAsStreamAsync(cancellationToken)
+                                           .ConfigureAwait(false);
 
         await using (responseStream.ConfigureAwait(false))
         {
@@ -286,8 +283,7 @@ public sealed class DockerHubClient : IDockerHubClient, IDisposable
 
             return await CreateFailureResultAsync<DockerHubTagData>(response,
                                                                     $"Tag metadata lookup failed for '{imageReference.FullReference}'",
-                                                                    cancellationToken)
-                         .ConfigureAwait(false);
+                                                                    cancellationToken).ConfigureAwait(false);
         }
 
         var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken)
@@ -315,8 +311,7 @@ public sealed class DockerHubClient : IDockerHubClient, IDisposable
         }
 
         var (namespaceName, repositoryName) = SplitRepository(repository);
-        using var response = await SendGetAsync($"v2/namespaces/{Uri.EscapeDataString(namespaceName)}/repositories/{EscapeRepository(repositoryName)}/tags?page_size=100", cancellationToken)
-                                 .ConfigureAwait(false);
+        using var response = await SendGetAsync($"v2/namespaces/{Uri.EscapeDataString(namespaceName)}/repositories/{EscapeRepository(repositoryName)}/tags?page_size=100", cancellationToken).ConfigureAwait(false);
 
         if (response.StatusCode == HttpStatusCode.NotFound)
         {
@@ -399,9 +394,9 @@ public sealed class DockerHubClient : IDockerHubClient, IDisposable
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Task</returns>
     private async Task ResolveBaseImageChainAsync(ImageReference imageReference,
-                                                   List<BaseImageDescriptor> results,
-                                                   int depth,
-                                                   CancellationToken cancellationToken)
+                                                  List<BaseImageDescriptor> results,
+                                                  int depth,
+                                                  CancellationToken cancellationToken)
     {
         if (depth > MaxBaseImageDepth)
         {
@@ -482,7 +477,7 @@ public sealed class DockerHubClient : IDockerHubClient, IDisposable
             using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: cancellationToken).ConfigureAwait(false);
 
             return TryGetString(jsonDocument.RootElement, "token")
-                   ?? TryGetString(jsonDocument.RootElement, "access_token");
+                       ?? TryGetString(jsonDocument.RootElement, "access_token");
         }
     }
 
@@ -549,9 +544,9 @@ public sealed class DockerHubClient : IDockerHubClient, IDisposable
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Config digest or null when no suitable platform manifest is found</returns>
     private async Task<string?> GetConfigDigestFromManifestListAsync(ImageReference imageReference,
-                                                                      JsonElement manifestListElement,
-                                                                      string registryToken,
-                                                                      CancellationToken cancellationToken)
+                                                                     JsonElement manifestListElement,
+                                                                     string registryToken,
+                                                                     CancellationToken cancellationToken)
     {
         if (manifestListElement.TryGetProperty("manifests", out var manifestsElement) == false
             || manifestsElement.ValueKind != JsonValueKind.Array)
@@ -640,9 +635,9 @@ public sealed class DockerHubClient : IDockerHubClient, IDisposable
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Parsed base image reference or null when no OCI base image label is present</returns>
     private async Task<ImageReference?> ExtractBaseImageFromConfigAsync(ImageReference imageReference,
-                                                                         string configDigest,
-                                                                         string registryToken,
-                                                                         CancellationToken cancellationToken)
+                                                                        string configDigest,
+                                                                        string registryToken,
+                                                                        CancellationToken cancellationToken)
     {
         var (namespaceName, repositoryName) = SplitRepository(imageReference.Repository);
         var blobUri = new Uri($"https://registry-1.docker.io/v2/{Uri.EscapeDataString(namespaceName)}/{EscapeRepository(repositoryName)}/blobs/{Uri.EscapeDataString(configDigest)}");
@@ -701,8 +696,7 @@ public sealed class DockerHubClient : IDockerHubClient, IDisposable
     private async Task<HttpResponseMessage> SendGetAsync(string relativeUri, CancellationToken cancellationToken)
     {
         var request = new HttpRequestMessage(HttpMethod.Get, relativeUri);
-        var authenticationResult = await ApplyAuthenticationAsync(request, cancellationToken)
-                                   .ConfigureAwait(false);
+        var authenticationResult = await ApplyAuthenticationAsync(request, cancellationToken).ConfigureAwait(false);
 
         if (authenticationResult.Status == ExternalOperationStatus.Failed)
         {
@@ -743,8 +737,7 @@ public sealed class DockerHubClient : IDockerHubClient, IDisposable
 
         var accessTokenResult = await GetAccessTokenAsync(options.UserName.Trim(),
                                                           options.Pat.Trim(),
-                                                          cancellationToken)
-                                      .ConfigureAwait(false);
+                                                          cancellationToken).ConfigureAwait(false);
 
         if (accessTokenResult.Status != ExternalOperationStatus.Succeeded
             || string.IsNullOrWhiteSpace(accessTokenResult.Data))
@@ -785,8 +778,7 @@ public sealed class DockerHubClient : IDockerHubClient, IDisposable
 
             var tokenResult = await RequestAccessTokenAsync(userName,
                                                             personalAccessToken,
-                                                            cancellationToken)
-                                  .ConfigureAwait(false);
+                                                            cancellationToken).ConfigureAwait(false);
 
             if (tokenResult.Status != ExternalOperationStatus.Succeeded
                 || string.IsNullOrWhiteSpace(tokenResult.Data))
@@ -840,8 +832,7 @@ public sealed class DockerHubClient : IDockerHubClient, IDisposable
 
             return await CreateFailureResultAsync<string>(response,
                                                           $"Docker Hub authentication token request failed for '{userName}'",
-                                                          cancellationToken)
-                .ConfigureAwait(false);
+                                                          cancellationToken).ConfigureAwait(false);
         }
 
         var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken)
@@ -854,8 +845,8 @@ public sealed class DockerHubClient : IDockerHubClient, IDisposable
             var token = TryGetString(jsonDocument.RootElement, "token");
 
             return string.IsNullOrWhiteSpace(token)
-                ? ExternalOperationResult<string>.Failed("Docker Hub authentication token response did not contain a token")
-                : ExternalOperationResult<string>.Succeeded(token);
+                       ? ExternalOperationResult<string>.Failed("Docker Hub authentication token response did not contain a token")
+                       : ExternalOperationResult<string>.Succeeded(token);
         }
     }
 
@@ -974,8 +965,8 @@ public sealed class DockerHubClient : IDockerHubClient, IDisposable
         var namespaceName = TryGetString(element, "namespace");
         var repositoryName = TryGetString(element, "name");
         var normalizedRepository = string.IsNullOrWhiteSpace(namespaceName) || string.IsNullOrWhiteSpace(repositoryName)
-            ? string.Empty
-            : $"{namespaceName.Trim().ToLowerInvariant()}/{repositoryName.Trim().ToLowerInvariant()}";
+                                       ? string.Empty
+                                       : $"{namespaceName.Trim().ToLowerInvariant()}/{repositoryName.Trim().ToLowerInvariant()}";
 
         return new DockerHubRepositoryData
                {

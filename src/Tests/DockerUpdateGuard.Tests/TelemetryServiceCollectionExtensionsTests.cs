@@ -17,12 +17,11 @@ public class TelemetryServiceCollectionExtensionsTests
 {
     #region Fields
 
-    private static readonly string[] _removedTelemetryLoggingOptionKeys =
-    [
-        "IncludeFormattedMessage",
-        "IncludeScopes",
-        "ParseStateValues",
-    ];
+    private static readonly string[] _removedTelemetryLoggingOptionKeys = [
+                                                                              "IncludeFormattedMessage",
+                                                                              "IncludeScopes",
+                                                                              "ParseStateValues",
+                                                                          ];
 
     #endregion // Fields
 
@@ -37,26 +36,26 @@ public class TelemetryServiceCollectionExtensionsTests
         var services = new ServiceCollection();
 
         services.Configure<OpenTelemetryLoggerOptions>(options =>
-        {
-            options.IncludeFormattedMessage = false;
-            options.IncludeScopes = false;
-            options.ParseStateValues = false;
-        });
+                                                       {
+                                                           options.IncludeFormattedMessage = false;
+                                                           options.IncludeScopes = false;
+                                                           options.ParseStateValues = false;
+                                                       });
         services.AddDockerUpdateGuardTelemetry(options =>
-        {
-            options.ServiceName = "DockerUpdateGuard.Tests";
-            options.Instance = "Production";
-            options.EnableLogging = true;
-            options.EnableMetrics = false;
-            options.EnableTracing = false;
-        });
+                                               {
+                                                   options.ServiceName = "DockerUpdateGuard.Tests";
+                                                   options.Instance = "Production";
+                                                   options.EnableLogging = true;
+                                                   options.EnableMetrics = false;
+                                                   options.EnableTracing = false;
+                                               });
 
         using var serviceProvider = services.BuildServiceProvider();
 
         var loggerFactory = serviceProvider.GetRequiredService<ILoggerFactory>();
         var loggerProviders = serviceProvider.GetServices<ILoggerProvider>().ToArray();
         var telemetryOptions = serviceProvider.GetRequiredService<IOptions<TelemetryOptions>>()
-                                             .Value;
+                                              .Value;
         var loggerOptions = serviceProvider.GetRequiredService<IOptions<OpenTelemetryLoggerOptions>>()
                                            .Value;
         var logger = loggerFactory.CreateLogger(DockerUpdateGuardTelemetry.LoggerCategoryName);
@@ -98,7 +97,7 @@ public class TelemetryServiceCollectionExtensionsTests
         using var serviceProvider = services.BuildServiceProvider();
 
         var telemetryOptions = serviceProvider.GetRequiredService<IOptions<TelemetryOptions>>()
-                                             .Value;
+                                              .Value;
 
         Assert.AreEqual("DockerUpdateGuard.Configuration.Tests",
                         telemetryOptions.ServiceName,

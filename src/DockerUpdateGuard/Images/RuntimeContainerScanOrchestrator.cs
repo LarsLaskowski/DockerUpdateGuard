@@ -39,15 +39,15 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
     /// Constructor
     /// </summary>
     public RuntimeContainerScanOrchestrator(ApplicationTelemetry applicationTelemetry,
-                                           DockerUpdateGuardDbContext dbContext,
-                                           IDockerInstanceClient dockerInstanceClient,
-                                           IDockerHubClient dockerHubClient,
-                                           IImageCatalogRepository imageCatalogRepository,
-                                           IImageReferenceParser imageReferenceParser,
-                                           IInstanceDiscoveryService instanceDiscoveryService,
-                                           ILogger<RuntimeContainerScanOrchestrator> logger,
-                                           IOptionsMonitor<DockerUpdateGuardOptions> optionsMonitor,
-                                           IUpdateDetectionService updateDetectionService)
+                                            DockerUpdateGuardDbContext dbContext,
+                                            IDockerInstanceClient dockerInstanceClient,
+                                            IDockerHubClient dockerHubClient,
+                                            IImageCatalogRepository imageCatalogRepository,
+                                            IImageReferenceParser imageReferenceParser,
+                                            IInstanceDiscoveryService instanceDiscoveryService,
+                                            ILogger<RuntimeContainerScanOrchestrator> logger,
+                                            IOptionsMonitor<DockerUpdateGuardOptions> optionsMonitor,
+                                            IUpdateDetectionService updateDetectionService)
     {
         _applicationTelemetry = applicationTelemetry;
         _dbContext = dbContext;
@@ -107,8 +107,7 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
             await ScanInstanceAsync(dockerInstance,
                                     configuredInstance,
                                     triggerSource,
-                                    cancellationToken)
-                  .ConfigureAwait(false);
+                                    cancellationToken).ConfigureAwait(false);
         }
 
         _logger.RuntimeContainerScanBatchCompleted(triggerSource,
@@ -146,8 +145,7 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
         _dbContext.ScanRuns.Add(scanRun);
         await _dbContext.SaveChangesAsync(cancellationToken)
                         .ConfigureAwait(false);
-        await DeactivateRuntimeFindingsAsync(dockerInstance.Id, cancellationToken)
-              .ConfigureAwait(false);
+        await DeactivateRuntimeFindingsAsync(dockerInstance.Id, cancellationToken).ConfigureAwait(false);
 
         try
         {
@@ -174,13 +172,12 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
                 foreach (var container in discoveryResult.Data)
                 {
                     var parsedReference = _imageReferenceParser.Parse(container.ImageReference);
-                    var imageVersion = await _imageCatalogRepository
-                                             .GetOrCreateImageVersionAsync(parsedReference.Registry,
-                                                                           parsedReference.Repository,
-                                                                           parsedReference.Tag,
-                                                                           parsedReference.Digest,
-                                                                           cancellationToken: cancellationToken)
-                                             .ConfigureAwait(false);
+                    var imageVersion = await _imageCatalogRepository.GetOrCreateImageVersionAsync(parsedReference.Registry,
+                                                                                                  parsedReference.Repository,
+                                                                                                  parsedReference.Tag,
+                                                                                                  parsedReference.Digest,
+                                                                                                  cancellationToken: cancellationToken)
+                                                                    .ConfigureAwait(false);
                     imageVersion.Source = ImageVersionSource.RuntimeContainer;
                     var snapshot = new ContainerSnapshot
                                    {
@@ -214,8 +211,7 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
                                                             snapshot,
                                                             imageVersion,
                                                             evaluation,
-                                                            cancellationToken)
-                                  .ConfigureAwait(false);
+                                                            cancellationToken).ConfigureAwait(false);
                         }
                     }
                     else if (tagsResult.Status != ExternalOperationStatus.NotFound
@@ -301,8 +297,7 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
                                                  UpdateEvaluationResult evaluation,
                                                  CancellationToken cancellationToken)
     {
-        await EnsureRegistryRepositoryLoadedAsync(subjectImageVersion, cancellationToken)
-              .ConfigureAwait(false);
+        await EnsureRegistryRepositoryLoadedAsync(subjectImageVersion, cancellationToken).ConfigureAwait(false);
 
         Guid? recommendedImageVersionId = null;
 
@@ -324,13 +319,17 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
                           SubjectImageVersionId = subjectImageVersion.Id,
                           RecommendedImageVersionId = recommendedImageVersionId,
                           Type = evaluation.Status == UpdateEvaluationStatus.UpdateAvailable
-                              ? UpdateFindingType.RuntimeImageUpdate
-                              : UpdateFindingType.TagRecommendation,
+                                     ? UpdateFindingType.RuntimeImageUpdate
+                                     : UpdateFindingType.TagRecommendation,
                           Summary = evaluation.Summary,
                           Details = evaluation.Details,
                       };
 
-        foreach (var candidate in evaluation.Candidates.Select((value, index) => new { Value = value, Index = index }))
+        foreach (var candidate in evaluation.Candidates.Select((value, index) => new
+                                                                                 {
+                                                                                     Value = value,
+                                                                                     Index = index
+                                                                                 }))
         {
             finding.TagCandidates.Add(new TagCandidate
                                       {

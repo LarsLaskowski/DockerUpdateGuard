@@ -14,14 +14,14 @@ public class PortainerClient : IPortainerClient
     #region Constants
 
     private static readonly HashSet<string> AllowedContainerActions = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "start",
-        "stop",
-        "restart",
-        "kill",
-        "pause",
-        "unpause",
-    };
+                                                                      {
+                                                                          "start",
+                                                                          "stop",
+                                                                          "restart",
+                                                                          "kill",
+                                                                          "pause",
+                                                                          "unpause",
+                                                                      };
 
     #endregion // Constants
 
@@ -59,21 +59,21 @@ public class PortainerClient : IPortainerClient
             _logger.PortainerCapabilityNotConfigured(instanceOptions.Name);
 
             return new PortainerCapabilityData
-            {
-                IsConfigured = false,
-                SupportsActions = false,
-                Message = "Portainer is not configured for this Docker instance",
-            };
+                   {
+                       IsConfigured = false,
+                       SupportsActions = false,
+                       Message = "Portainer is not configured for this Docker instance",
+                   };
         }
 
         if (string.IsNullOrWhiteSpace(instanceOptions.Portainer.BaseUrl))
         {
             return new PortainerCapabilityData
-            {
-                IsConfigured = false,
-                SupportsActions = false,
-                Message = "Portainer base URL is not configured",
-            };
+                   {
+                       IsConfigured = false,
+                       SupportsActions = false,
+                       Message = "Portainer base URL is not configured",
+                   };
         }
 
         try
@@ -86,11 +86,11 @@ public class PortainerClient : IPortainerClient
                 _logger.PortainerCapabilityConnectFailed(instanceOptions.Name, (int)statusResponse.StatusCode);
 
                 return new PortainerCapabilityData
-                {
-                    IsConfigured = true,
-                    SupportsActions = false,
-                    Message = $"Portainer connection failed: HTTP {(int)statusResponse.StatusCode}",
-                };
+                       {
+                           IsConfigured = true,
+                           SupportsActions = false,
+                           Message = $"Portainer connection failed: HTTP {(int)statusResponse.StatusCode}",
+                       };
             }
 
             var endpointId = instanceOptions.Portainer.EndpointId;
@@ -103,32 +103,32 @@ public class PortainerClient : IPortainerClient
             if (string.IsNullOrWhiteSpace(endpointId))
             {
                 return new PortainerCapabilityData
-                {
-                    IsConfigured = true,
-                    SupportsActions = false,
-                    Message = "No Portainer endpoint found",
-                };
+                       {
+                           IsConfigured = true,
+                           SupportsActions = false,
+                           Message = "No Portainer endpoint found",
+                       };
             }
 
             _logger.PortainerCapabilityResolved(instanceOptions.Name, endpointId);
 
             return new PortainerCapabilityData
-            {
-                IsConfigured = true,
-                SupportsActions = true,
-                Message = $"Portainer connected, endpoint {endpointId}",
-            };
+                   {
+                       IsConfigured = true,
+                       SupportsActions = true,
+                       Message = $"Portainer connected, endpoint {endpointId}",
+                   };
         }
         catch (Exception ex)
         {
             _logger.PortainerCapabilityException(instanceOptions.Name, ex);
 
             return new PortainerCapabilityData
-            {
-                IsConfigured = true,
-                SupportsActions = false,
-                Message = $"Portainer connection error: {ex.Message}",
-            };
+                   {
+                       IsConfigured = true,
+                       SupportsActions = false,
+                       Message = $"Portainer connection error: {ex.Message}",
+                   };
         }
     }
 
@@ -143,19 +143,19 @@ public class PortainerClient : IPortainerClient
         if (instanceOptions.Portainer.Enabled == false || string.IsNullOrWhiteSpace(instanceOptions.Portainer.BaseUrl))
         {
             return new PortainerActionResult
-            {
-                Succeeded = false,
-                Message = "Portainer is not configured",
-            };
+                   {
+                       Succeeded = false,
+                       Message = "Portainer is not configured",
+                   };
         }
 
         if (AllowedContainerActions.Contains(actionRequest.ActionName) == false)
         {
             return new PortainerActionResult
-            {
-                Succeeded = false,
-                Message = $"Action '{actionRequest.ActionName}' is not supported — allowed: {string.Join(", ", AllowedContainerActions)}",
-            };
+                   {
+                       Succeeded = false,
+                       Message = $"Action '{actionRequest.ActionName}' is not supported — allowed: {string.Join(", ", AllowedContainerActions)}",
+                   };
         }
 
         try
@@ -172,10 +172,10 @@ public class PortainerClient : IPortainerClient
             if (string.IsNullOrWhiteSpace(endpointId))
             {
                 return new PortainerActionResult
-                {
-                    Succeeded = false,
-                    Message = "No Portainer endpoint found",
-                };
+                       {
+                           Succeeded = false,
+                           Message = "No Portainer endpoint found",
+                       };
             }
 
             var containerId = await FindContainerIdAsync(client, endpointId, actionRequest.ResourceName, cancellationToken).ConfigureAwait(false);
@@ -185,10 +185,10 @@ public class PortainerClient : IPortainerClient
                 _logger.PortainerContainerNotFound(actionRequest.ResourceName, instanceOptions.Name);
 
                 return new PortainerActionResult
-                {
-                    Succeeded = false,
-                    Message = $"Container '{actionRequest.ResourceName}' not found in endpoint {endpointId}",
-                };
+                       {
+                           Succeeded = false,
+                           Message = $"Container '{actionRequest.ResourceName}' not found in endpoint {endpointId}",
+                       };
             }
 
             var actionUrl = $"/api/endpoints/{endpointId}/docker/containers/{containerId}/{actionRequest.ActionName}";
@@ -199,29 +199,29 @@ public class PortainerClient : IPortainerClient
                 _logger.PortainerActionExecuted(actionRequest.ActionName, actionRequest.ResourceName, instanceOptions.Name);
 
                 return new PortainerActionResult
-                {
-                    Succeeded = true,
-                    Message = $"Action '{actionRequest.ActionName}' on '{actionRequest.ResourceName}' executed successfully",
-                };
+                       {
+                           Succeeded = true,
+                           Message = $"Action '{actionRequest.ActionName}' on '{actionRequest.ResourceName}' executed successfully",
+                       };
             }
 
             _logger.PortainerActionFailed(actionRequest.ActionName, actionRequest.ResourceName, instanceOptions.Name, (int)actionResponse.StatusCode);
 
             return new PortainerActionResult
-            {
-                Succeeded = false,
-                Message = $"Action '{actionRequest.ActionName}' failed: HTTP {(int)actionResponse.StatusCode}",
-            };
+                   {
+                       Succeeded = false,
+                       Message = $"Action '{actionRequest.ActionName}' failed: HTTP {(int)actionResponse.StatusCode}",
+                   };
         }
         catch (Exception ex)
         {
             _logger.PortainerActionException(actionRequest.ActionName, actionRequest.ResourceName, instanceOptions.Name, ex);
 
             return new PortainerActionResult
-            {
-                Succeeded = false,
-                Message = $"Action '{actionRequest.ActionName}' failed: {ex.Message}",
-            };
+                   {
+                       Succeeded = false,
+                       Message = $"Action '{actionRequest.ActionName}' failed: {ex.Message}",
+                   };
         }
     }
 
@@ -244,6 +244,7 @@ public class PortainerClient : IPortainerClient
             if (string.IsNullOrWhiteSpace(options.ApiToken) == false)
             {
                 client.DefaultRequestHeaders.Add("X-API-Key", options.ApiToken);
+
                 return client;
             }
 
@@ -311,9 +312,9 @@ public class PortainerClient : IPortainerClient
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Container identifier or null</returns>
     private static async Task<string?> FindContainerIdAsync(HttpClient client,
-                                                             string endpointId,
-                                                             string containerName,
-                                                             CancellationToken cancellationToken)
+                                                            string endpointId,
+                                                            string containerName,
+                                                            CancellationToken cancellationToken)
     {
         var filters = Uri.EscapeDataString($"{{\"name\":[\"{containerName}\"]}}");
         var url = $"/api/endpoints/{endpointId}/docker/containers/json?all=true&filters={filters}";
@@ -328,28 +329,24 @@ public class PortainerClient : IPortainerClient
         var containers = await response.Content.ReadFromJsonAsync<DockerContainerItem[]>(cancellationToken: cancellationToken).ConfigureAwait(false);
 
         return containers?.FirstOrDefault(c =>
-            c.Names?.Any(n => string.Equals(n, $"/{containerName}", StringComparison.OrdinalIgnoreCase)
-                              || string.Equals(n, containerName, StringComparison.OrdinalIgnoreCase)) == true)?.Id;
+        c.Names?.Any(n => string.Equals(n, $"/{containerName}", StringComparison.OrdinalIgnoreCase)
+                          || string.Equals(n, containerName, StringComparison.OrdinalIgnoreCase)) == true)?.Id;
     }
 
     #endregion // Methods
 
     #region Response types
 
-    private sealed record PortainerLoginRequest(
-        [property: JsonPropertyName("username")] string Username,
-        [property: JsonPropertyName("password")] string Password);
+    private sealed record PortainerLoginRequest([property: JsonPropertyName("username")] string Username,
+                                                [property: JsonPropertyName("password")] string Password);
 
-    private sealed record PortainerAuthResponse(
-        [property: JsonPropertyName("jwt")] string? Jwt);
+    private sealed record PortainerAuthResponse([property: JsonPropertyName("jwt")] string? Jwt);
 
-    private sealed record PortainerEndpointItem(
-        [property: JsonPropertyName("Id")] int Id,
-        [property: JsonPropertyName("Name")] string? Name);
+    private sealed record PortainerEndpointItem([property: JsonPropertyName("Id")] int Id,
+                                                [property: JsonPropertyName("Name")] string? Name);
 
-    private sealed record DockerContainerItem(
-        [property: JsonPropertyName("Id")] string? Id,
-        [property: JsonPropertyName("Names")] string[]? Names);
+    private sealed record DockerContainerItem([property: JsonPropertyName("Id")] string? Id,
+                                              [property: JsonPropertyName("Names")] string[]? Names);
 
     #endregion // Response types
 }

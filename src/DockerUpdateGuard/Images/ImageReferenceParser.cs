@@ -70,8 +70,8 @@ public class ImageReferenceParser : IImageReferenceParser
         ArgumentNullException.ThrowIfNull(imageVersion.RegistryRepository);
 
         return string.IsNullOrWhiteSpace(imageVersion.Digest)
-            ? $"{imageVersion.RegistryRepository.Registry}/{imageVersion.RegistryRepository.Repository}:{imageVersion.Tag}"
-            : $"{imageVersion.RegistryRepository.Registry}/{imageVersion.RegistryRepository.Repository}:{imageVersion.Tag}@{imageVersion.Digest}";
+                   ? $"{imageVersion.RegistryRepository.Registry}/{imageVersion.RegistryRepository.Repository}:{imageVersion.Tag}"
+                   : $"{imageVersion.RegistryRepository.Registry}/{imageVersion.RegistryRepository.Repository}:{imageVersion.Tag}@{imageVersion.Digest}";
     }
 
     /// <summary>

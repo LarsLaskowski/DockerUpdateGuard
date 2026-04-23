@@ -65,25 +65,24 @@ public class DockerUpdateGuardOptionsValidatorTests
         options.Vulnerabilities.Enabled = true;
         options.Scanning.CleanupIntervalMinutes = 0;
         options.Scanning.DockerHubAccountDiscoveryIntervalMinutes = 0;
-        options.DockerInstances =
-        [
-            new DockerInstanceOptions
-            {
-                Name = "Production",
-                BaseUrl = "ftp://docker.example.test",
-                RequestTimeoutSeconds = 0,
-                Portainer = new PortainerOptions
-                            {
-                                Enabled = true,
-                                BaseUrl = "not-a-valid-uri",
-                            },
-            },
-            new DockerInstanceOptions
-            {
-                Name = "Production",
-                BaseUrl = string.Empty,
-            },
-        ];
+        options.DockerInstances = [
+                                      new DockerInstanceOptions
+                                      {
+                                          Name = "Production",
+                                          BaseUrl = "ftp://docker.example.test",
+                                          RequestTimeoutSeconds = 0,
+                                          Portainer = new PortainerOptions
+                                                      {
+                                                          Enabled = true,
+                                                          BaseUrl = "not-a-valid-uri",
+                                                      },
+                                      },
+                                      new DockerInstanceOptions
+                                      {
+                                          Name = "Production",
+                                          BaseUrl = string.Empty,
+                                      },
+                                  ];
 
         var validationResult = validator.Validate(Options.DefaultName, options);
         var failures = validationResult.Failures?.ToArray() ?? [];

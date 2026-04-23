@@ -48,9 +48,9 @@ public partial class Dashboard
         }
 
         return _dashboard.RecentScans[0]
-                         .StartedAtUtc
-                         .ToLocalTime()
-                         .ToString("g");
+        .StartedAtUtc
+        .ToLocalTime()
+        .ToString("g");
     }
 
     /// <summary>
@@ -61,13 +61,13 @@ public partial class Dashboard
     private static Color GetScanStatusColor(string status)
     {
         return status.ToUpperInvariant() switch
-        {
-            "COMPLETED" => Color.Success,
-            "FAILED" => Color.Error,
-            "RUNNING" => Color.Info,
-            "PENDING" => Color.Warning,
-            _ => Color.Default,
-        };
+               {
+                   "COMPLETED" => Color.Success,
+                   "FAILED" => Color.Error,
+                   "RUNNING" => Color.Info,
+                   "PENDING" => Color.Warning,
+                   _ => Color.Default,
+               };
     }
 
     #endregion // Methods

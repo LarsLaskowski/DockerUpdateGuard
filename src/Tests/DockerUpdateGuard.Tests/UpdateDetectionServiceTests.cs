@@ -26,14 +26,14 @@ public class UpdateDetectionServiceTests
                                               Tag = "latest",
                                               Digest = "sha256:old",
                                           },
-        [
-            new DockerHubTagData
-            {
-                Tag = "latest",
-                Digest = "sha256:new",
-                PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
-            },
-        ]);
+                                          [
+                                              new DockerHubTagData
+                                              {
+                                                  Tag = "latest",
+                                                  Digest = "sha256:new",
+                                                  PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
+                                              },
+                                          ]);
 
         Assert.AreEqual(UpdateEvaluationStatus.UpdateAvailable,
                         evaluation.Status,
@@ -63,26 +63,26 @@ public class UpdateDetectionServiceTests
                                               Repository = "library/nginx",
                                               Tag = "1.25.0",
                                           },
-        [
-            new DockerHubTagData
-            {
-                Tag = "1.26.0",
-                Digest = "sha256:1260",
-                PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
-            },
-            new DockerHubTagData
-            {
-                Tag = "1.27.1",
-                Digest = "sha256:1271",
-                PublishedAtUtc = new DateTimeOffset(2025, 06, 02, 12, 00, 00, TimeSpan.Zero),
-            },
-            new DockerHubTagData
-            {
-                Tag = "1.27.0",
-                Digest = "sha256:1270",
-                PublishedAtUtc = new DateTimeOffset(2025, 05, 31, 12, 00, 00, TimeSpan.Zero),
-            },
-        ]);
+                                          [
+                                              new DockerHubTagData
+                                              {
+                                                  Tag = "1.26.0",
+                                                  Digest = "sha256:1260",
+                                                  PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
+                                              },
+                                              new DockerHubTagData
+                                              {
+                                                  Tag = "1.27.1",
+                                                  Digest = "sha256:1271",
+                                                  PublishedAtUtc = new DateTimeOffset(2025, 06, 02, 12, 00, 00, TimeSpan.Zero),
+                                              },
+                                              new DockerHubTagData
+                                              {
+                                                  Tag = "1.27.0",
+                                                  Digest = "sha256:1270",
+                                                  PublishedAtUtc = new DateTimeOffset(2025, 05, 31, 12, 00, 00, TimeSpan.Zero),
+                                              },
+                                          ]);
 
         Assert.AreEqual(UpdateEvaluationStatus.UpdateAvailable,
                         evaluation.Status,
@@ -112,26 +112,26 @@ public class UpdateDetectionServiceTests
                                               Repository = "company/app",
                                               Tag = "stable",
                                           },
-        [
-            new DockerHubTagData
-            {
-                Tag = "stable",
-                Digest = "sha256:stable",
-                PublishedAtUtc = new DateTimeOffset(2025, 05, 30, 12, 00, 00, TimeSpan.Zero),
-            },
-            new DockerHubTagData
-            {
-                Tag = "canary",
-                Digest = "sha256:canary",
-                PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
-            },
-            new DockerHubTagData
-            {
-                Tag = "preview",
-                Digest = "sha256:preview",
-                PublishedAtUtc = new DateTimeOffset(2025, 06, 02, 12, 00, 00, TimeSpan.Zero),
-            },
-        ]);
+                                          [
+                                              new DockerHubTagData
+                                              {
+                                                  Tag = "stable",
+                                                  Digest = "sha256:stable",
+                                                  PublishedAtUtc = new DateTimeOffset(2025, 05, 30, 12, 00, 00, TimeSpan.Zero),
+                                              },
+                                              new DockerHubTagData
+                                              {
+                                                  Tag = "canary",
+                                                  Digest = "sha256:canary",
+                                                  PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
+                                              },
+                                              new DockerHubTagData
+                                              {
+                                                  Tag = "preview",
+                                                  Digest = "sha256:preview",
+                                                  PublishedAtUtc = new DateTimeOffset(2025, 06, 02, 12, 00, 00, TimeSpan.Zero),
+                                              },
+                                          ]);
 
         Assert.AreEqual(UpdateEvaluationStatus.NeedsReview,
                         evaluation.Status,

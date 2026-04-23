@@ -93,42 +93,42 @@ public static class TelemetryServiceCollectionExtensions
         if (telemetryOptions.EnableLogging)
         {
             services.AddLogging(loggingBuilder =>
-            {
-                loggingBuilder.AddOpenTelemetry(loggingOptions =>
-                {
-                    loggingOptions.IncludeFormattedMessage = true;
-                    loggingOptions.IncludeScopes = true;
-                    loggingOptions.ParseStateValues = true;
-                    loggingOptions.SetResourceBuilder(CreateResourceBuilder(telemetryOptions));
+                                {
+                                    loggingBuilder.AddOpenTelemetry(loggingOptions =>
+                                                                    {
+                                                                        loggingOptions.IncludeFormattedMessage = true;
+                                                                        loggingOptions.IncludeScopes = true;
+                                                                        loggingOptions.ParseStateValues = true;
+                                                                        loggingOptions.SetResourceBuilder(CreateResourceBuilder(telemetryOptions));
 
-                    ConfigureLoggingExporter(loggingOptions, telemetryOptions);
-                });
-            });
+                                                                        ConfigureLoggingExporter(loggingOptions, telemetryOptions);
+                                                                    });
+                                });
         }
 
         if (telemetryOptions.EnableTracing)
         {
             openTelemetryBuilder.WithTracing(tracingBuilder =>
-            {
-                tracingBuilder.AddSource(DockerUpdateGuardTelemetry.ActivitySourceName)
-                              .AddAspNetCoreInstrumentation()
-                              .AddHttpClientInstrumentation();
+                                             {
+                                                 tracingBuilder.AddSource(DockerUpdateGuardTelemetry.ActivitySourceName)
+                                                               .AddAspNetCoreInstrumentation()
+                                                               .AddHttpClientInstrumentation();
 
-                ConfigureTracingExporter(tracingBuilder, telemetryOptions);
-            });
+                                                 ConfigureTracingExporter(tracingBuilder, telemetryOptions);
+                                             });
         }
 
         if (telemetryOptions.EnableMetrics)
         {
             openTelemetryBuilder.WithMetrics(metricsBuilder =>
-            {
-                metricsBuilder.AddMeter(DockerUpdateGuardTelemetry.MeterName)
-                              .AddAspNetCoreInstrumentation()
-                              .AddHttpClientInstrumentation()
-                              .AddRuntimeInstrumentation();
+                                             {
+                                                 metricsBuilder.AddMeter(DockerUpdateGuardTelemetry.MeterName)
+                                                               .AddAspNetCoreInstrumentation()
+                                                               .AddHttpClientInstrumentation()
+                                                               .AddRuntimeInstrumentation();
 
-                ConfigureMetricsExporter(metricsBuilder, telemetryOptions);
-            });
+                                                 ConfigureMetricsExporter(metricsBuilder, telemetryOptions);
+                                             });
         }
 
         return services;
@@ -154,9 +154,9 @@ public static class TelemetryServiceCollectionExtensions
         }
 
         loggingOptions.AddOtlpExporter(exporterOptions =>
-        {
-            exporterOptions.Endpoint = endpoint;
-        });
+                                       {
+                                           exporterOptions.Endpoint = endpoint;
+                                       });
     }
 
     /// <summary>
@@ -179,9 +179,9 @@ public static class TelemetryServiceCollectionExtensions
         }
 
         metricsBuilder.AddOtlpExporter(exporterOptions =>
-        {
-            exporterOptions.Endpoint = endpoint;
-        });
+                                       {
+                                           exporterOptions.Endpoint = endpoint;
+                                       });
     }
 
     /// <summary>
@@ -204,9 +204,9 @@ public static class TelemetryServiceCollectionExtensions
         }
 
         tracingBuilder.AddOtlpExporter(exporterOptions =>
-        {
-            exporterOptions.Endpoint = endpoint;
-        });
+                                       {
+                                           exporterOptions.Endpoint = endpoint;
+                                       });
     }
 
     /// <summary>
@@ -220,10 +220,9 @@ public static class TelemetryServiceCollectionExtensions
 
         if (string.IsNullOrWhiteSpace(telemetryOptions.Instance) == false)
         {
-            resourceBuilder.AddAttributes(
-            [
-                new KeyValuePair<string, object>(TelemetryResourceAttributeNames.DeploymentEnvironmentName, telemetryOptions.Instance),
-            ]);
+            resourceBuilder.AddAttributes([
+                                              new KeyValuePair<string, object>(TelemetryResourceAttributeNames.DeploymentEnvironmentName, telemetryOptions.Instance),
+                                          ]);
         }
     }
 

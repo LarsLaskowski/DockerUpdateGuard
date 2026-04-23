@@ -36,16 +36,15 @@ public class RuntimeContainerScanOrchestratorTests
             {
                 var options = new DockerUpdateGuardOptions
                               {
-                                  DockerInstances =
-                                  [
-                                      new DockerInstanceOptions
-                                      {
-                                          Name = "Production",
-                                          BaseUrl = "https://docker.example.test",
-                                          Enabled = true,
-                                          RequestTimeoutSeconds = 15,
-                                      },
-                                  ],
+                                  DockerInstances = [
+                                                        new DockerInstanceOptions
+                                                        {
+                                                            Name = "Production",
+                                                            BaseUrl = "https://docker.example.test",
+                                                            Enabled = true,
+                                                            RequestTimeoutSeconds = 15,
+                                                        },
+                                                    ],
                               };
                 var optionsMonitor = new TestOptionsMonitor<DockerUpdateGuardOptions>(options);
                 var imageCatalogRepository = new ImageCatalogRepository(dbContext);
@@ -54,41 +53,39 @@ public class RuntimeContainerScanOrchestratorTests
                 var instanceDiscoveryLogger = new TestLogger<InstanceDiscoveryService>();
                 var logger = new TestLogger<RuntimeContainerScanOrchestrator>();
                 var instanceDiscoveryService = new InstanceDiscoveryService(dbContext,
-                                                                           instanceDiscoveryLogger,
-                                                                           optionsMonitor);
+                                                                            instanceDiscoveryLogger,
+                                                                            optionsMonitor);
 
                 dockerInstanceClient.DiscoverContainersAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<CancellationToken>())
-                                    .Returns(ExternalOperationResult<IReadOnlyList<RuntimeContainerDescriptor>>.Succeeded(
-                                    [
-                                        new RuntimeContainerDescriptor
-                                        {
-                                            ContainerId = "container-1",
-                                            Name = "web",
-                                            ImageReference = "docker.io/library/nginx:1.0.0@sha256:runtime-old",
-                                            RuntimeStatus = ContainerRuntimeStatus.Running,
-                                            IsRunning = true,
-                                            StackName = "web-stack",
-                                            ServiceName = "frontend",
-                                        },
-                                    ]));
+                                    .Returns(ExternalOperationResult<IReadOnlyList<RuntimeContainerDescriptor>>.Succeeded([
+                                                                                                                              new RuntimeContainerDescriptor
+                                                                                                                              {
+                                                                                                                                  ContainerId = "container-1",
+                                                                                                                                  Name = "web",
+                                                                                                                                  ImageReference = "docker.io/library/nginx:1.0.0@sha256:runtime-old",
+                                                                                                                                  RuntimeStatus = ContainerRuntimeStatus.Running,
+                                                                                                                                  IsRunning = true,
+                                                                                                                                  StackName = "web-stack",
+                                                                                                                                  ServiceName = "frontend",
+                                                                                                                              },
+                                                                                                                          ]));
                 dockerHubClient.GetTagsAsync("docker.io",
                                              "library/nginx",
                                              Arg.Any<CancellationToken>())
-                               .Returns(ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Succeeded(
-                               [
-                                   new DockerHubTagData
-                                   {
-                                       Tag = "1.1.0",
-                                       Digest = "sha256:runtime-new",
-                                       PublishedAtUtc = new DateTimeOffset(2025, 06, 02, 12, 00, 00, TimeSpan.Zero),
-                                   },
-                                   new DockerHubTagData
-                                   {
-                                       Tag = "1.0.0",
-                                       Digest = "sha256:runtime-old",
-                                       PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
-                                   },
-                               ]));
+                               .Returns(ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Succeeded([
+                                                                                                               new DockerHubTagData
+                                                                                                               {
+                                                                                                                   Tag = "1.1.0",
+                                                                                                                   Digest = "sha256:runtime-new",
+                                                                                                                   PublishedAtUtc = new DateTimeOffset(2025, 06, 02, 12, 00, 00, TimeSpan.Zero),
+                                                                                                               },
+                                                                                                               new DockerHubTagData
+                                                                                                               {
+                                                                                                                   Tag = "1.0.0",
+                                                                                                                   Digest = "sha256:runtime-old",
+                                                                                                                   PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
+                                                                                                               },
+                                                                                                           ]));
 
                 var orchestrator = new RuntimeContainerScanOrchestrator(new ApplicationTelemetry(),
                                                                         dbContext,
@@ -173,38 +170,36 @@ public class RuntimeContainerScanOrchestratorTests
             {
                 var optionsMonitor = new TestOptionsMonitor<DockerUpdateGuardOptions>(new DockerUpdateGuardOptions
                                                                                       {
-                                                                                          DockerInstances =
-                                                                                          [
-                                                                                              new DockerInstanceOptions
-                                                                                              {
-                                                                                                  Name = "Production",
-                                                                                                  BaseUrl = "https://docker.example.test",
-                                                                                                  Enabled = true,
-                                                                                              },
-                                                                                          ],
+                                                                                          DockerInstances = [
+                                                                                                                new DockerInstanceOptions
+                                                                                                                {
+                                                                                                                    Name = "Production",
+                                                                                                                    BaseUrl = "https://docker.example.test",
+                                                                                                                    Enabled = true,
+                                                                                                                },
+                                                                                                            ],
                                                                                       });
                 var dockerInstanceClient = Substitute.For<IDockerInstanceClient>();
                 var dockerHubClient = Substitute.For<IDockerHubClient>();
                 var imageCatalogRepository = new ImageCatalogRepository(dbContext);
                 var logger = new TestLogger<RuntimeContainerScanOrchestrator>();
                 var instanceDiscoveryService = new InstanceDiscoveryService(dbContext,
-                                                                           new TestLogger<InstanceDiscoveryService>(),
-                                                                           optionsMonitor);
+                                                                            new TestLogger<InstanceDiscoveryService>(),
+                                                                            optionsMonitor);
 
                 dockerInstanceClient.DiscoverContainersAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<CancellationToken>())
-                                    .Returns(ExternalOperationResult<IReadOnlyList<RuntimeContainerDescriptor>>.Succeeded(
-                                    [
-                                        new RuntimeContainerDescriptor
-                                        {
-                                            ContainerId = "container-1",
-                                            Name = "web",
-                                            ImageReference = "docker.io/library/nginx:1.0.0@sha256:runtime-old",
-                                            RuntimeStatus = ContainerRuntimeStatus.Running,
-                                            IsRunning = true,
-                                            StackName = "web-stack",
-                                            ServiceName = "frontend",
-                                        },
-                                    ]));
+                                    .Returns(ExternalOperationResult<IReadOnlyList<RuntimeContainerDescriptor>>.Succeeded([
+                                                                                                                              new RuntimeContainerDescriptor
+                                                                                                                              {
+                                                                                                                                  ContainerId = "container-1",
+                                                                                                                                  Name = "web",
+                                                                                                                                  ImageReference = "docker.io/library/nginx:1.0.0@sha256:runtime-old",
+                                                                                                                                  RuntimeStatus = ContainerRuntimeStatus.Running,
+                                                                                                                                  IsRunning = true,
+                                                                                                                                  StackName = "web-stack",
+                                                                                                                                  ServiceName = "frontend",
+                                                                                                                              },
+                                                                                                                          ]));
                 dockerHubClient.GetTagsAsync("docker.io",
                                              "library/nginx",
                                              Arg.Any<CancellationToken>())

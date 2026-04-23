@@ -34,24 +34,23 @@ public class SharedBaseImageQueryService : ISharedBaseImageQueryService
     public async Task<IReadOnlyList<SharedBaseImageUsageData>> GetSharedBaseImagesAsync(CancellationToken cancellationToken = default)
     {
         var flatResults = await (from observedImage in _dbContext.ObservedImages.AsNoTracking()
-                                 join imageRelationship in _dbContext.ImageRelationships.AsNoTracking()
-                                     on observedImage.CurrentImageVersionId equals imageRelationship.ChildImageVersionId
-                                 join baseImageVersion in _dbContext.ImageVersions.AsNoTracking()
-                                     on imageRelationship.BaseImageVersionId equals baseImageVersion.Id
-                                 join registryRepository in _dbContext.RegistryRepositories.AsNoTracking()
-                                     on baseImageVersion.RegistryRepositoryId equals registryRepository.Id
-                                 where imageRelationship.RelationshipType == ImageRelationshipType.BaseImage
-                                 select new
-                                        {
-                                            imageRelationship.BaseImageVersionId,
-                                            registryRepository.Registry,
-                                            registryRepository.Repository,
-                                            baseImageVersion.Tag,
-                                            baseImageVersion.Digest,
-                                            ObservedImageId = observedImage.Id,
-                                        })
-                                           .ToListAsync(cancellationToken)
-                                           .ConfigureAwait(false);
+        join imageRelationship in _dbContext.ImageRelationships.AsNoTracking()
+        on observedImage.CurrentImageVersionId equals imageRelationship.ChildImageVersionId
+        join baseImageVersion in _dbContext.ImageVersions.AsNoTracking()
+        on imageRelationship.BaseImageVersionId equals baseImageVersion.Id
+        join registryRepository in _dbContext.RegistryRepositories.AsNoTracking()
+        on baseImageVersion.RegistryRepositoryId equals registryRepository.Id
+        where imageRelationship.RelationshipType == ImageRelationshipType.BaseImage
+        select new
+               {
+                   imageRelationship.BaseImageVersionId,
+                   registryRepository.Registry,
+                   registryRepository.Repository,
+                   baseImageVersion.Tag,
+                   baseImageVersion.Digest,
+                   ObservedImageId = observedImage.Id,
+               }).ToListAsync(cancellationToken)
+          .ConfigureAwait(false);
 
         var sharedBaseImages = flatResults.GroupBy(entity => new
                                                              {
@@ -86,26 +85,25 @@ public class SharedBaseImageQueryService : ISharedBaseImageQueryService
     public async Task<IReadOnlyList<ObservedImageReferenceData>> GetObservedImagesByBaseImageAsync(Guid baseImageVersionId, CancellationToken cancellationToken = default)
     {
         var flatResults = await (from observedImage in _dbContext.ObservedImages.AsNoTracking()
-                                 join currentImageVersion in _dbContext.ImageVersions.AsNoTracking()
-                                     on observedImage.CurrentImageVersionId equals currentImageVersion.Id
-                                 join registryRepository in _dbContext.RegistryRepositories.AsNoTracking()
-                                     on currentImageVersion.RegistryRepositoryId equals registryRepository.Id
-                                 join imageRelationship in _dbContext.ImageRelationships.AsNoTracking()
-                                     on observedImage.CurrentImageVersionId equals imageRelationship.ChildImageVersionId
-                                 where imageRelationship.BaseImageVersionId == baseImageVersionId
-                                       && imageRelationship.RelationshipType == ImageRelationshipType.BaseImage
-                                 select new ObservedImageReferenceData
-                                        {
-                                            ObservedImageId = observedImage.Id,
-                                            ObservedImageName = observedImage.Name,
-                                            CurrentImageVersionId = observedImage.CurrentImageVersionId,
-                                            Registry = registryRepository.Registry,
-                                            Repository = registryRepository.Repository,
-                                            Tag = currentImageVersion.Tag,
-                                            Digest = currentImageVersion.Digest,
-                                        })
-                                          .ToListAsync(cancellationToken)
-                                          .ConfigureAwait(false);
+        join currentImageVersion in _dbContext.ImageVersions.AsNoTracking()
+        on observedImage.CurrentImageVersionId equals currentImageVersion.Id
+        join registryRepository in _dbContext.RegistryRepositories.AsNoTracking()
+        on currentImageVersion.RegistryRepositoryId equals registryRepository.Id
+        join imageRelationship in _dbContext.ImageRelationships.AsNoTracking()
+        on observedImage.CurrentImageVersionId equals imageRelationship.ChildImageVersionId
+        where imageRelationship.BaseImageVersionId == baseImageVersionId
+              && imageRelationship.RelationshipType == ImageRelationshipType.BaseImage
+        select new ObservedImageReferenceData
+               {
+                   ObservedImageId = observedImage.Id,
+                   ObservedImageName = observedImage.Name,
+                   CurrentImageVersionId = observedImage.CurrentImageVersionId,
+                   Registry = registryRepository.Registry,
+                   Repository = registryRepository.Repository,
+                   Tag = currentImageVersion.Tag,
+                   Digest = currentImageVersion.Digest,
+               }).ToListAsync(cancellationToken)
+          .ConfigureAwait(false);
 
         return flatResults.GroupBy(entity => entity.ObservedImageId)
                           .Select(group => group.First())

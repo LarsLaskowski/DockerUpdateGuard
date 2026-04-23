@@ -86,8 +86,7 @@ public class ImageScanOrchestrator : IImageScanOrchestrator
         {
             await ScanAsync(observedImageId,
                             triggerSource,
-                            cancellationToken)
-                  .ConfigureAwait(false);
+                            cancellationToken).ConfigureAwait(false);
         }
 
         _logger.ObservedImageScanBatchCompleted(triggerSource, observedImages.Count);
@@ -119,8 +118,7 @@ public class ImageScanOrchestrator : IImageScanOrchestrator
         _dbContext.ScanRuns.Add(scanRun);
         await _dbContext.SaveChangesAsync(cancellationToken)
                         .ConfigureAwait(false);
-        await DeactivateObservedFindingsAsync(observedImage.Id, cancellationToken)
-              .ConfigureAwait(false);
+        await DeactivateObservedFindingsAsync(observedImage.Id, cancellationToken).ConfigureAwait(false);
 
         try
         {
@@ -151,24 +149,23 @@ public class ImageScanOrchestrator : IImageScanOrchestrator
                 resolvedBaseImageCount = baseImagesResult.Data.Count;
 
                 var existingRelationships = await _dbContext
-                                                            .ImageRelationships
-                                                            .Where(entity => entity.ChildImageVersionId == observedImage.CurrentImageVersionId
-                                                                             && entity.RelationshipType == ImageRelationshipType.BaseImage)
-                                                            .ToListAsync(cancellationToken)
-                                                            .ConfigureAwait(false);
+                .ImageRelationships
+                .Where(entity => entity.ChildImageVersionId == observedImage.CurrentImageVersionId
+                                 && entity.RelationshipType == ImageRelationshipType.BaseImage)
+                .ToListAsync(cancellationToken)
+                .ConfigureAwait(false);
 
                 _dbContext.ImageRelationships.RemoveRange(existingRelationships);
 
                 foreach (var baseImage in baseImagesResult.Data)
                 {
                     var baseImageReference = $"{baseImage.Registry}/{baseImage.Repository}:{baseImage.Tag}";
-                    var baseImageVersion = await _imageCatalogRepository
-                                                 .GetOrCreateImageVersionAsync(baseImage.Registry,
-                                                                                baseImage.Repository,
-                                                                                baseImage.Tag,
-                                                                                baseImage.Digest,
-                                                                                cancellationToken: cancellationToken)
-                                                 .ConfigureAwait(false);
+                    var baseImageVersion = await _imageCatalogRepository.GetOrCreateImageVersionAsync(baseImage.Registry,
+                                                                                                      baseImage.Repository,
+                                                                                                      baseImage.Tag,
+                                                                                                      baseImage.Digest,
+                                                                                                      cancellationToken: cancellationToken)
+                                                                        .ConfigureAwait(false);
                     baseImageVersion.Source = ImageVersionSource.BaseImageResolution;
                     _dbContext.ImageRelationships.Add(new ImageRelationship
                                                       {
@@ -200,15 +197,14 @@ public class ImageScanOrchestrator : IImageScanOrchestrator
                             || evaluation.Status == UpdateEvaluationStatus.NeedsReview)
                         {
                             var findingType = evaluation.Status == UpdateEvaluationStatus.UpdateAvailable
-                                ? UpdateFindingType.BaseImageUpdate
-                                : UpdateFindingType.TagRecommendation;
+                                                  ? UpdateFindingType.BaseImageUpdate
+                                                  : UpdateFindingType.TagRecommendation;
                             await CreateObservedFindingAsync(scanRun,
                                                              observedImage,
                                                              baseImageVersion,
                                                              findingType,
                                                              evaluation,
-                                                             cancellationToken)
-                                  .ConfigureAwait(false);
+                                                             cancellationToken).ConfigureAwait(false);
                         }
                     }
                     else
@@ -302,8 +298,7 @@ public class ImageScanOrchestrator : IImageScanOrchestrator
                                                   UpdateEvaluationResult evaluation,
                                                   CancellationToken cancellationToken)
     {
-        await EnsureRegistryRepositoryLoadedAsync(subjectImageVersion, cancellationToken)
-              .ConfigureAwait(false);
+        await EnsureRegistryRepositoryLoadedAsync(subjectImageVersion, cancellationToken).ConfigureAwait(false);
 
         Guid? recommendedImageVersionId = null;
 
@@ -329,7 +324,11 @@ public class ImageScanOrchestrator : IImageScanOrchestrator
                           Details = evaluation.Details,
                       };
 
-        foreach (var candidate in evaluation.Candidates.Select((value, index) => new { Value = value, Index = index }))
+        foreach (var candidate in evaluation.Candidates.Select((value, index) => new
+                                                                                 {
+                                                                                     Value = value,
+                                                                                     Index = index
+                                                                                 }))
         {
             finding.TagCandidates.Add(new TagCandidate
                                       {
