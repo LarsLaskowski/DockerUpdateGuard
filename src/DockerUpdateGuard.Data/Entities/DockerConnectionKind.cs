@@ -23,5 +23,10 @@ public enum DockerConnectionKind
     /// <summary>
     /// Windows named pipe endpoint
     /// </summary>
-    NamedPipe = 3
+    NamedPipe = 3,
+
+    /// <summary>
+    /// Unix domain socket endpoint
+    /// </summary>
+    UnixSocket = 4
 }

@@ -156,6 +156,7 @@ public class InstanceDiscoveryService : IInstanceDiscoveryService
                    "http" => DockerConnectionKind.Http,
                    "https" => DockerConnectionKind.Https,
                    "npipe" => DockerConnectionKind.NamedPipe,
+                   "unix" => DockerConnectionKind.UnixSocket,
                    _ => DockerConnectionKind.NotSet,
                };
     }
