@@ -361,6 +361,7 @@ if (!string.IsNullOrEmpty(endpoint))
 - **String interpolation** preferred: `$"{DefaultMetricName}.packets_received"`
 - **ReadOnlySpan<byte>** for performant byte processing
 - Prefer supported framework loaders/helpers over obsolete constructors or `Import`-style APIs (for example, use `X509CertificateLoader` instead of `new X509Certificate2(path)`)
+- **LINQ method syntax only**: Always use `.Where()`, `.Select()`, `.FirstOrDefault()`, `.Join()` etc. — never use query syntax (`from … in … where … select`)
 
 ---
 

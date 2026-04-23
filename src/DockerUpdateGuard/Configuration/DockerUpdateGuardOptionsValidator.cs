@@ -162,7 +162,7 @@ public class DockerUpdateGuardOptionsValidator : IValidateOptions<DockerUpdateGu
             }
             else if (TryValidateDockerUri(instance.BaseUrl) == false)
             {
-                failures.Add($"'{DockerUpdateGuardOptions.SectionName}:DockerInstances:{instance.Name}:BaseUrl' must use http, https, tcp or npipe");
+                failures.Add($"'{DockerUpdateGuardOptions.SectionName}:DockerInstances:{instance.Name}:BaseUrl' must use http, https, tcp, unix or npipe");
             }
 
             if (instance.RequestTimeoutSeconds <= 0)
@@ -201,6 +201,7 @@ public class DockerUpdateGuardOptionsValidator : IValidateOptions<DockerUpdateGu
         return uri.Scheme == Uri.UriSchemeHttp
                || uri.Scheme == Uri.UriSchemeHttps
                || uri.Scheme == "tcp"
+               || uri.Scheme == "unix"
                || uri.Scheme == "npipe";
     }
 

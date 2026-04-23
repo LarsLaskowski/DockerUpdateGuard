@@ -38,7 +38,7 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
-    <PackageReference Include="MudBlazor" Version="9.3.0" />
+    <PackageReference Include="MudBlazor" Version="9.4.0" />
     <PackageReference Include="Reihitsu.Analyzer" Version="0.16.0">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
