@@ -116,7 +116,10 @@ public class DockerInstanceClient : IDockerInstanceClient
             return CreateUnixSocketHttpClient(parsedUri.AbsolutePath, instanceOptions);
         }
 
-        var handler = new HttpClientHandler();
+        var handler = new HttpClientHandler
+                      {
+                          UseProxy = false
+                      };
 
         if (instanceOptions.SkipCertificateValidation)
         {
@@ -147,24 +150,27 @@ public class DockerInstanceClient : IDockerInstanceClient
     private static HttpClient CreateUnixSocketHttpClient(string socketPath, DockerInstanceOptions instanceOptions)
     {
         var endpoint = new UnixDomainSocketEndPoint(socketPath);
-        var handler = new SocketsHttpHandler();
-        handler.ConnectCallback = async (context, cancellationToken) =>
-                                  {
-                                      var socket = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
+        var handler = new SocketsHttpHandler
+                      {
+                          UseProxy = false,
+                          ConnectCallback = async (context, cancellationToken) =>
+                                            {
+                                                var socket = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
 
-                                      try
-                                      {
-                                          await socket.ConnectAsync(endpoint, cancellationToken).ConfigureAwait(false);
+                                                try
+                                                {
+                                                    await socket.ConnectAsync(endpoint, cancellationToken).ConfigureAwait(false);
 
-                                          return new NetworkStream(socket, ownsSocket: true);
-                                      }
-                                      catch
-                                      {
-                                          socket.Dispose();
+                                                    return new NetworkStream(socket, ownsSocket: true);
+                                                }
+                                                catch
+                                                {
+                                                    socket.Dispose();
 
-                                          throw;
-                                      }
-                                  };
+                                                    throw;
+                                                }
+                                            }
+                      };
 
         return new HttpClient(handler)
                {
