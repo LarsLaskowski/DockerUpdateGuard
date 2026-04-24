@@ -1,8 +1,11 @@
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
+COPY Directory.Packages.props ./
+COPY Directory.Build.props ./
 COPY src/DockerUpdateGuard/DockerUpdateGuard.csproj src/DockerUpdateGuard/
 COPY src/DockerUpdateGuard.Data/DockerUpdateGuard.Data.csproj src/DockerUpdateGuard.Data/
+COPY src/DockerUpdateGuard.Telemetry/DockerUpdateGuard.Telemetry.csproj src/DockerUpdateGuard.Telemetry/
 RUN dotnet restore src/DockerUpdateGuard/DockerUpdateGuard.csproj
 
 COPY . .
