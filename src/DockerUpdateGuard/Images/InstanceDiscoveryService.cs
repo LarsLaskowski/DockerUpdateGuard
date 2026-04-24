@@ -66,6 +66,8 @@ public class InstanceDiscoveryService : IInstanceDiscoveryService
 
         foreach (var configuredInstance in configuredInstances)
         {
+            var configuredInstanceName = configuredInstance.Name.Trim();
+
             if (configuredInstance.Enabled)
             {
                 enabledInstanceCount++;
@@ -76,18 +78,20 @@ public class InstanceDiscoveryService : IInstanceDiscoveryService
             }
 
             var existingInstance = existingInstances.SingleOrDefault(entity => string.Equals(entity.Name,
-                                                                                             configuredInstance.Name,
+                                                                                             configuredInstanceName,
                                                                                              StringComparison.OrdinalIgnoreCase));
 
             if (existingInstance is null)
             {
                 existingInstance = new DockerInstance
                                    {
-                                       Name = configuredInstance.Name.Trim(),
+                                       Name = configuredInstanceName,
                                        Source = RegistrationSource.ConfigurationFile,
                                    };
 
                 _dbContext.DockerInstances.Add(existingInstance);
+
+                existingInstances.Add(existingInstance);
             }
 
             existingInstance.EndpointUri = configuredInstance.BaseUrl.Trim();
@@ -110,8 +114,10 @@ public class InstanceDiscoveryService : IInstanceDiscoveryService
                 {
                     var portainerEndpoint = new PortainerEndpoint
                                             {
-                                                DockerInstanceId = existingInstance.Id,
+                                                DockerInstance = existingInstance,
                                             };
+
+                    _dbContext.PortainerEndpoints.Add(portainerEndpoint);
 
                     existingInstance.PortainerEndpoint = portainerEndpoint;
                 }
