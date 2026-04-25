@@ -5,17 +5,23 @@ using Microsoft.AspNetCore.Components;
 namespace DockerUpdateGuard.Components.Pages;
 
 /// <summary>
-/// Docker instances page
+/// Docker instance detail page
 /// </summary>
-public partial class DockerInstances
+public partial class DockerInstanceDetail
 {
     #region Fields
 
-    private IReadOnlyList<DockerInstanceListItemData>? _instances;
+    private DockerInstanceDetailViewData? _detail;
 
     #endregion // Fields
 
     #region Properties
+
+    /// <summary>
+    /// Docker instance identifier
+    /// </summary>
+    [Parameter]
+    public Guid DockerInstanceId { get; set; }
 
     /// <summary>
     /// Application view service
@@ -28,14 +34,14 @@ public partial class DockerInstances
     #region Methods
 
     /// <inheritdoc/>
-    protected override async Task OnInitializedAsync()
+    protected override async Task OnParametersSetAsync()
     {
-        var instances = await ViewService.GetDockerInstancesAsync()
-                                         .ConfigureAwait(false);
+        var detail = await ViewService.GetDockerInstanceDetailAsync(DockerInstanceId)
+                                      .ConfigureAwait(false);
 
         await InvokeAsync(() =>
                           {
-                              _instances = instances;
+                              _detail = detail;
                           }).ConfigureAwait(false);
     }
 

@@ -87,5 +87,37 @@ public partial class RuntimeContainers
                };
     }
 
+    /// <summary>
+    /// Format CPU usage
+    /// </summary>
+    /// <param name="usage">Resource usage</param>
+    /// <returns>Formatted value</returns>
+    private static string FormatCpu(ResourceUsagePointViewData? usage)
+    {
+        return usage is null ? "n/a" : ResourceUsageFormatter.FormatCpuPercent(usage.CpuPercent);
+    }
+
+    /// <summary>
+    /// Format memory usage
+    /// </summary>
+    /// <param name="usage">Resource usage</param>
+    /// <returns>Formatted value</returns>
+    private static string FormatMemory(ResourceUsagePointViewData? usage)
+    {
+        return usage is null ? "n/a" : ResourceUsageFormatter.FormatMemory(usage.MemoryUsageBytes, usage.MemoryLimitBytes);
+    }
+
+    /// <summary>
+    /// Format network usage
+    /// </summary>
+    /// <param name="usage">Resource usage</param>
+    /// <returns>Formatted value</returns>
+    private static string FormatNetwork(ResourceUsagePointViewData? usage)
+    {
+        return usage is null
+                   ? "n/a"
+                   : $"{ResourceUsageFormatter.FormatBytesPerSecond(usage.NetworkRxBytesPerSecond)} ↓ / {ResourceUsageFormatter.FormatBytesPerSecond(usage.NetworkTxBytesPerSecond)} ↑";
+    }
+
     #endregion // Methods
 }

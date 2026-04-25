@@ -102,6 +102,81 @@ public class DockerInstanceClient : IDockerInstanceClient
         }
     }
 
+    /// <inheritdoc/>
+    public async Task<ExternalOperationResult<IReadOnlyList<RuntimeContainerResourceDescriptor>>> CollectContainerResourceUsageAsync(DockerInstanceOptions instanceOptions, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(instanceOptions);
+
+        if (instanceOptions.Enabled == false)
+        {
+            return ExternalOperationResult<IReadOnlyList<RuntimeContainerResourceDescriptor>>.NotConfigured($"Docker instance '{instanceOptions.Name}' is disabled");
+        }
+
+        if (TryCreateEngineUri(instanceOptions, out var engineUri) == false || engineUri is null)
+        {
+            return ExternalOperationResult<IReadOnlyList<RuntimeContainerResourceDescriptor>>.Unsupported($"Docker instance '{instanceOptions.Name}' uses an unsupported endpoint '{instanceOptions.BaseUrl}'");
+        }
+
+        try
+        {
+            using var httpClient = CreateHttpClient(instanceOptions, engineUri);
+            using var response = await httpClient.GetAsync("v1.41/containers/json", cancellationToken)
+                                                 .ConfigureAwait(false);
+
+            if (response.IsSuccessStatusCode == false)
+            {
+                var body = await response.Content.ReadAsStringAsync(cancellationToken)
+                                                 .ConfigureAwait(false);
+
+                return ExternalOperationResult<IReadOnlyList<RuntimeContainerResourceDescriptor>>.Failed($"Docker instance '{instanceOptions.Name}' returned {(int)response.StatusCode}: {body}");
+            }
+
+            var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken)
+                                                       .ConfigureAwait(false);
+
+            await using (responseStream.ConfigureAwait(false))
+            {
+                using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: cancellationToken)
+                                                           .ConfigureAwait(false);
+                var samples = new List<RuntimeContainerResourceDescriptor>();
+
+                foreach (var containerElement in jsonDocument.RootElement.EnumerateArray())
+                {
+                    var containerId = TryGetString(containerElement, "Id");
+
+                    if (string.IsNullOrWhiteSpace(containerId))
+                    {
+                        continue;
+                    }
+
+                    using var statsResponse = await httpClient.GetAsync($"v1.41/containers/{Uri.EscapeDataString(containerId)}/stats?stream=false", cancellationToken)
+                                                              .ConfigureAwait(false);
+
+                    if (statsResponse.IsSuccessStatusCode == false)
+                    {
+                        continue;
+                    }
+
+                    var statsStream = await statsResponse.Content.ReadAsStreamAsync(cancellationToken)
+                                                                 .ConfigureAwait(false);
+
+                    await using (statsStream.ConfigureAwait(false))
+                    {
+                        using var statsDocument = await JsonDocument.ParseAsync(statsStream, cancellationToken: cancellationToken)
+                                                                    .ConfigureAwait(false);
+                        samples.Add(ParseResourceSample(containerElement, statsDocument.RootElement));
+                    }
+                }
+
+                return ExternalOperationResult<IReadOnlyList<RuntimeContainerResourceDescriptor>>.Succeeded(samples);
+            }
+        }
+        catch (Exception exception)
+        {
+            return ExternalOperationResult<IReadOnlyList<RuntimeContainerResourceDescriptor>>.Failed($"Docker container resource sampling failed for '{instanceOptions.Name}': {exception.Message}");
+        }
+    }
+
     /// <summary>
     /// Build an HTTP client for the target Docker endpoint
     /// </summary>
@@ -288,6 +363,29 @@ public class DockerInstanceClient : IDockerInstanceClient
     }
 
     /// <summary>
+    /// Parse a runtime container resource sample
+    /// </summary>
+    /// <param name="containerElement">Container element</param>
+    /// <param name="statsElement">Stats element</param>
+    /// <returns>Resource descriptor</returns>
+    private static RuntimeContainerResourceDescriptor ParseResourceSample(JsonElement containerElement, JsonElement statsElement)
+    {
+        var recordedAtUtc = TryParseTimestamp(TryGetString(statsElement, "read"));
+
+        return new RuntimeContainerResourceDescriptor
+               {
+                   ContainerId = TryGetString(containerElement, "Id") ?? string.Empty,
+                   ContainerName = GetPrimaryName(containerElement),
+                   CpuPercent = ParseCpuPercent(statsElement),
+                   MemoryUsageBytes = ParseMemoryUsage(statsElement),
+                   MemoryLimitBytes = ParseMemoryLimit(statsElement),
+                   NetworkRxBytesTotal = ParseNetworkTotal(statsElement, "rx_bytes"),
+                   NetworkTxBytesTotal = ParseNetworkTotal(statsElement, "tx_bytes"),
+                   RecordedAtUtc = recordedAtUtc ?? DateTimeOffset.UtcNow,
+               };
+    }
+
+    /// <summary>
     /// Extract the primary container name
     /// </summary>
     /// <param name="element">JSON element</param>
@@ -366,6 +464,147 @@ public class DockerInstanceClient : IDockerInstanceClient
                    "dead" => ContainerRuntimeStatus.Dead,
                    _ => ContainerRuntimeStatus.NotSet,
                };
+    }
+
+    /// <summary>
+    /// Parse CPU percentage from a stats document
+    /// </summary>
+    /// <param name="statsElement">Stats element</param>
+    /// <returns>CPU percentage</returns>
+    private static decimal ParseCpuPercent(JsonElement statsElement)
+    {
+        if (statsElement.TryGetProperty("cpu_stats", out var cpuStats) == false
+            || statsElement.TryGetProperty("precpu_stats", out var preCpuStats) == false)
+        {
+            return 0;
+        }
+
+        var cpuTotal = TryGetInt64(cpuStats, "cpu_usage", "total_usage");
+        var preCpuTotal = TryGetInt64(preCpuStats, "cpu_usage", "total_usage");
+        var systemTotal = TryGetInt64(cpuStats, "system_cpu_usage");
+        var preSystemTotal = TryGetInt64(preCpuStats, "system_cpu_usage");
+        var cpuDelta = cpuTotal - preCpuTotal;
+        var systemDelta = systemTotal - preSystemTotal;
+
+        if (cpuDelta <= 0 || systemDelta <= 0)
+        {
+            return 0;
+        }
+
+        var onlineCpuCount = cpuStats.TryGetProperty("online_cpus", out var onlineCpusElement)
+                             && onlineCpusElement.TryGetInt32(out var onlineCpus)
+                             && onlineCpus > 0
+                                 ? onlineCpus
+                                 : GetPerCpuCount(cpuStats);
+
+        if (onlineCpuCount <= 0)
+        {
+            onlineCpuCount = 1;
+        }
+
+        var cpuPercent = (decimal)cpuDelta / systemDelta * onlineCpuCount * 100m;
+
+        return cpuPercent < 0 ? 0 : Math.Round(cpuPercent, 4);
+    }
+
+    /// <summary>
+    /// Parse memory usage in bytes
+    /// </summary>
+    /// <param name="statsElement">Stats element</param>
+    /// <returns>Memory usage</returns>
+    private static long ParseMemoryUsage(JsonElement statsElement)
+    {
+        return statsElement.TryGetProperty("memory_stats", out var memoryStats)
+                   ? TryGetInt64(memoryStats, "usage")
+                   : 0;
+    }
+
+    /// <summary>
+    /// Parse memory limit in bytes
+    /// </summary>
+    /// <param name="statsElement">Stats element</param>
+    /// <returns>Memory limit</returns>
+    private static long ParseMemoryLimit(JsonElement statsElement)
+    {
+        return statsElement.TryGetProperty("memory_stats", out var memoryStats)
+                   ? TryGetInt64(memoryStats, "limit")
+                   : 0;
+    }
+
+    /// <summary>
+    /// Parse cumulative network totals across all networks
+    /// </summary>
+    /// <param name="statsElement">Stats element</param>
+    /// <param name="propertyName">Property name</param>
+    /// <returns>Total bytes</returns>
+    private static long ParseNetworkTotal(JsonElement statsElement, string propertyName)
+    {
+        if (statsElement.TryGetProperty("networks", out var networksElement) == false
+            || networksElement.ValueKind != JsonValueKind.Object)
+        {
+            return 0;
+        }
+
+        var total = 0L;
+
+        foreach (var networkProperty in networksElement.EnumerateObject())
+        {
+            if (networkProperty.Value.TryGetProperty(propertyName, out var property)
+                && property.TryGetInt64(out var value))
+            {
+                total += value;
+            }
+        }
+
+        return total;
+    }
+
+    /// <summary>
+    /// Determine the number of per-CPU entries reported by Docker
+    /// </summary>
+    /// <param name="cpuStats">CPU stats element</param>
+    /// <returns>CPU count</returns>
+    private static int GetPerCpuCount(JsonElement cpuStats)
+    {
+        if (cpuStats.TryGetProperty("cpu_usage", out var cpuUsage) == false
+            || cpuUsage.TryGetProperty("percpu_usage", out var perCpuUsage) == false
+            || perCpuUsage.ValueKind != JsonValueKind.Array)
+        {
+            return 0;
+        }
+
+        return perCpuUsage.GetArrayLength();
+    }
+
+    /// <summary>
+    /// Read a nested Int64 property
+    /// </summary>
+    /// <param name="element">Element</param>
+    /// <param name="propertyNames">Property path</param>
+    /// <returns>Int64 value or zero</returns>
+    private static long TryGetInt64(JsonElement element, params string[] propertyNames)
+    {
+        foreach (var propertyName in propertyNames)
+        {
+            if (element.TryGetProperty(propertyName, out var property) == false)
+            {
+                return 0;
+            }
+
+            element = property;
+        }
+
+        return element.TryGetInt64(out var value) ? value : 0;
+    }
+
+    /// <summary>
+    /// Parse an ISO timestamp
+    /// </summary>
+    /// <param name="value">Timestamp string</param>
+    /// <returns>Parsed timestamp</returns>
+    private static DateTimeOffset? TryParseTimestamp(string? value)
+    {
+        return DateTimeOffset.TryParse(value, out var timestamp) ? timestamp : null;
     }
 
     #endregion // Methods

@@ -89,6 +89,16 @@ public class DockerUpdateGuardDbContext : DbContext
     /// </summary>
     public DbSet<RuntimeContainerTagSelection> RuntimeContainerTagSelections => Set<RuntimeContainerTagSelection>();
 
+    /// <summary>
+    /// Docker instance resource samples
+    /// </summary>
+    public DbSet<DockerInstanceResourceSample> DockerInstanceResourceSamples => Set<DockerInstanceResourceSample>();
+
+    /// <summary>
+    /// Runtime container resource samples
+    /// </summary>
+    public DbSet<RuntimeContainerResourceSample> RuntimeContainerResourceSamples => Set<RuntimeContainerResourceSample>();
+
     #endregion // Properties
 
     #region Methods

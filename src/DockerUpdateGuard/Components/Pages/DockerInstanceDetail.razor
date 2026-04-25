@@ -1,0 +1,105 @@
+@page "/docker-instances/{DockerInstanceId:guid}"
+
+<PageTitle>Docker Instance Detail</PageTitle>
+
+<MudStack Spacing="3" Class="page-shell">
+    <div class="page-header">
+        <div>
+            <MudText Typo="Typo.overline" Class="page-eyebrow">Endpoint drilldown</MudText>
+            <MudText Typo="Typo.h3">Docker Instance Detail</MudText>
+            <MudText Class="page-description">Inspect aggregated RAM/CPU/network usage for a Docker instance over time.</MudText>
+        </div>
+    </div>
+
+    @if (_detail is null)
+    {
+        <MudPaper Class="empty-state-panel" Elevation="0">
+            <MudText>Loading docker instance detail...</MudText>
+        </MudPaper>
+    }
+    else
+    {
+        <MudPaper Class="section-paper" Elevation="0">
+            <div class="section-header">
+                <MudText Typo="Typo.h4">@_detail.Name</MudText>
+                <MudText Class="section-description">@_detail.EndpointUri</MudText>
+            </div>
+
+            <MudGrid Spacing="2" Class="details-grid">
+                <MudItem xs="12" md="4">
+                    <MudPaper Class="summary-card" Elevation="0">
+                        <span class="summary-label">CPU</span>
+                        <span class="summary-value">@FormatCpu(_detail.CurrentResourceUsage)</span>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudPaper Class="summary-card" Elevation="0">
+                        <span class="summary-label">Memory</span>
+                        <span class="summary-value">@FormatMemory(_detail.CurrentResourceUsage)</span>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudPaper Class="summary-card" Elevation="0">
+                        <span class="summary-label">Network</span>
+                        <span class="summary-value">@FormatNetwork(_detail.CurrentResourceUsage)</span>
+                    </MudPaper>
+                </MudItem>
+            </MudGrid>
+        </MudPaper>
+
+        <MudPaper Class="section-paper" Elevation="0">
+            <div class="section-header">
+                <MudText Typo="Typo.h5">Usage history</MudText>
+                <MudText Class="section-description">Recent aggregated samples across the containers currently running on this Docker instance.</MudText>
+            </div>
+            <MudTable Items="_detail.ResourceUsageHistory" Hover="true" Dense="false" Breakpoint="Breakpoint.Md" Class="section-table">
+                <HeaderContent>
+                    <MudTh>Observed</MudTh>
+                    <MudTh>CPU</MudTh>
+                    <MudTh>Memory</MudTh>
+                    <MudTh>Network</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Observed">@context.RecordedAtUtc.ToLocalTime().ToString("g")</MudTd>
+                    <MudTd DataLabel="CPU">@FormatCpu(context)</MudTd>
+                    <MudTd DataLabel="Memory">@FormatMemory(context)</MudTd>
+                    <MudTd DataLabel="Network">@FormatNetwork(context)</MudTd>
+                </RowTemplate>
+            </MudTable>
+        </MudPaper>
+
+        <MudPaper Class="section-paper" Elevation="0">
+            <div class="section-header">
+                <MudText Typo="Typo.h5">Runtime containers</MudText>
+                <MudText Class="section-description">Current containers on this Docker instance, including linked own images and live resource usage.</MudText>
+            </div>
+            <MudTable Items="_detail.RuntimeContainers" Hover="true" Dense="false" Breakpoint="Breakpoint.Md" Class="section-table">
+                <HeaderContent>
+                    <MudTh>Container</MudTh>
+                    <MudTh>Own image</MudTh>
+                    <MudTh>CPU</MudTh>
+                    <MudTh>Memory</MudTh>
+                    <MudTh>Network</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Container">
+                        <MudLink Href="@($"/runtime-containers/{context.DockerInstanceId}/{context.ContainerId}")" Class="table-link">@context.ContainerName</MudLink>
+                    </MudTd>
+                    <MudTd DataLabel="Own image">
+                        @if (context.LinkedObservedImageId is Guid observedImageId)
+                        {
+                            <MudLink Href="@($"/observed-images/{observedImageId}")" Class="table-link">@context.LinkedObservedImageName</MudLink>
+                        }
+                        else
+                        {
+                            <span class="table-secondary">No own image link</span>
+                        }
+                    </MudTd>
+                    <MudTd DataLabel="CPU">@FormatCpu(context.CurrentResourceUsage)</MudTd>
+                    <MudTd DataLabel="Memory">@FormatMemory(context.CurrentResourceUsage)</MudTd>
+                    <MudTd DataLabel="Network">@FormatNetwork(context.CurrentResourceUsage)</MudTd>
+                </RowTemplate>
+            </MudTable>
+        </MudPaper>
+    }
+</MudStack>

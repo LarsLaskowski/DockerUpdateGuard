@@ -35,6 +35,7 @@ internal static class TestDevelopmentConfiguration
                                                                     ["DockerUpdateGuard:Scanning:DockerHubRequestLimitPerWindow"] = "200",
                                                                     ["DockerUpdateGuard:Scanning:DockerHubReservedManualRequestsPerWindow"] = "40",
                                                                     ["DockerUpdateGuard:Scanning:RuntimeImageUpdateScanIntervalMinutes"] = "10",
+                                                                    ["DockerUpdateGuard:Scanning:ResourceStatisticsIntervalMinutes"] = "5",
                                                                     ["DockerUpdateGuard:Scanning:VulnerabilityRefreshIntervalMinutes"] = "60",
                                                                     ["DockerUpdateGuard:Scanning:CleanupIntervalMinutes"] = "720",
                                                                     ["DockerUpdateGuard:Scanning:RetryCount"] = "1",

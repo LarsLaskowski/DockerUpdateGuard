@@ -7,7 +7,7 @@
         <div>
             <MudText Typo="Typo.overline" Class="page-eyebrow">Registry monitoring</MudText>
             <MudText Typo="Typo.h3">Observed Images</MudText>
-            <MudText Class="page-description">Register tracked images and review their latest scan status, updates, and vulnerabilities.</MudText>
+            <MudText Class="page-description">Own images discovered from the configured Docker account are shown separately from manually tracked images.</MudText>
         </div>
     </div>
 
@@ -58,61 +58,110 @@
             </MudPaper>
         </MudItem>
         <MudItem xs="12" lg="8">
-            <MudPaper Class="section-paper" Elevation="0">
-                <div class="section-header">
-                    <MudText Typo="Typo.h5">Tracked images</MudText>
-                    <MudText Class="section-description">Current observed images with their latest scan outcome.</MudText>
-                </div>
+            @if (_images is null)
+            {
+                <MudPaper Class="empty-state-panel" Elevation="0">
+                    <MudText>Loading observed images...</MudText>
+                </MudPaper>
+            }
+            else
+            {
+                <MudStack Spacing="3">
+                    <MudPaper Class="section-paper" Elevation="0">
+                        <div class="section-header">
+                            <MudText Typo="Typo.h5">Own images from Docker account</MudText>
+                            <MudText Class="section-description">Automatically discovered images from the configured Docker account, prioritized when they are currently running.</MudText>
+                        </div>
 
-                @if (_images is null)
-                {
-                    <MudPaper Class="empty-state-panel" Elevation="0">
-                        <MudText>Loading observed images...</MudText>
+                        @if (GetOwnImages().Count == 0)
+                        {
+                            <MudPaper Class="empty-state-panel" Elevation="0">
+                                <MudText>No own images from the Docker account are currently available.</MudText>
+                            </MudPaper>
+                        }
+                        else
+                        {
+                            <MudTable Items="GetOwnImages()" Hover="true" Dense="false" Breakpoint="Breakpoint.Md" Class="section-table">
+                                <HeaderContent>
+                                    <MudTh>Name</MudTh>
+                                    <MudTh>Image</MudTh>
+                                    <MudTh>Latest Scan</MudTh>
+                                    <MudTh>Running</MudTh>
+                                    <MudTh>Vulnerabilities</MudTh>
+                                </HeaderContent>
+                                <RowTemplate>
+                                    <MudTd DataLabel="Name">
+                                        <MudLink Href="@($"/observed-images/{context.Id}")" Class="table-link">@context.Name</MudLink>
+                                        <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Outlined">Own image</MudChip>
+                                        <span class="table-secondary">@context.Description</span>
+                                    </MudTd>
+                                    <MudTd DataLabel="Image">
+                                        <span>@ImageReferenceFormatter.GetReference(context.ImageReference)</span>
+                                    </MudTd>
+                                    <MudTd DataLabel="Latest Scan">
+                                        <MudChip T="string" Size="Size.Small" Color="@GetScanStatusColor(context.LatestScanStatus)">@context.LatestScanStatus</MudChip>
+                                        <span class="table-secondary">@context.LatestScanMessage</span>
+                                    </MudTd>
+                                    <MudTd DataLabel="Running">
+                                        <MudChip T="string" Size="Size.Small" Color="@(context.LinkedRuntimeContainerCount > 0 ? Color.Success : Color.Default)">
+                                            @(context.LinkedRuntimeContainerCount > 0 ? $"{context.LinkedRuntimeContainerCount} containers" : "Not running")
+                                        </MudChip>
+                                    </MudTd>
+                                    <MudTd DataLabel="Vulnerabilities">
+                                        <MudChip T="string" Size="Size.Small" Color="@GetVulnerabilityStatusColor(context.VulnerabilityStatus)">@context.VulnerabilityStatus</MudChip>
+                                        <span class="table-secondary">@($"{context.ActiveVulnerabilityFindingCount} active · {context.VulnerabilityMessage}")</span>
+                                    </MudTd>
+                                </RowTemplate>
+                            </MudTable>
+                        }
                     </MudPaper>
-                }
-                else if (_images.Count == 0)
-                {
-                    <MudPaper Class="empty-state-panel" Elevation="0">
-                        <MudText>No observed images are registered yet.</MudText>
+
+                    <MudPaper Class="section-paper" Elevation="0">
+                        <div class="section-header">
+                            <MudText Typo="Typo.h5">Manual images</MudText>
+                            <MudText Class="section-description">Images that were manually registered by the operator.</MudText>
+                        </div>
+
+                        @if (GetManualImages().Count == 0)
+                        {
+                            <MudPaper Class="empty-state-panel" Elevation="0">
+                                <MudText>No manual observed images are registered yet.</MudText>
+                            </MudPaper>
+                        }
+                        else
+                        {
+                            <MudTable Items="GetManualImages()" Hover="true" Dense="false" Breakpoint="Breakpoint.Md" Class="section-table">
+                                <HeaderContent>
+                                    <MudTh>Name</MudTh>
+                                    <MudTh>Image</MudTh>
+                                    <MudTh>Latest Scan</MudTh>
+                                    <MudTh>Updates</MudTh>
+                                    <MudTh>Vulnerabilities</MudTh>
+                                </HeaderContent>
+                                <RowTemplate>
+                                    <MudTd DataLabel="Name">
+                                        <MudLink Href="@($"/observed-images/{context.Id}")" Class="table-link">@context.Name</MudLink>
+                                        <MudChip T="string" Size="Size.Small" Color="Color.Default" Variant="Variant.Outlined">Manual</MudChip>
+                                        <span class="table-secondary">@context.Description</span>
+                                    </MudTd>
+                                    <MudTd DataLabel="Image">
+                                        <span>@ImageReferenceFormatter.GetReference(context.ImageReference)</span>
+                                    </MudTd>
+                                    <MudTd DataLabel="Latest Scan">
+                                        <MudChip T="string" Size="Size.Small" Color="@GetScanStatusColor(context.LatestScanStatus)">@context.LatestScanStatus</MudChip>
+                                        <span class="table-secondary">@context.LatestScanMessage</span>
+                                    </MudTd>
+                                    <MudTd DataLabel="Updates">@context.ActiveUpdateFindingCount</MudTd>
+                                    <MudTd DataLabel="Vulnerabilities">
+                                        <MudChip T="string" Size="Size.Small" Color="@GetVulnerabilityStatusColor(context.VulnerabilityStatus)">@context.VulnerabilityStatus</MudChip>
+                                        <span class="table-secondary">@($"{context.ActiveVulnerabilityFindingCount} active · {context.VulnerabilityMessage}")</span>
+                                    </MudTd>
+                                </RowTemplate>
+                            </MudTable>
+                        }
                     </MudPaper>
-                }
-                else
-                {
-                    <MudTable Items="_images" Hover="true" Dense="false" Breakpoint="Breakpoint.Md" Class="section-table">
-                        <HeaderContent>
-                            <MudTh>Name</MudTh>
-                            <MudTh>Image</MudTh>
-                            <MudTh>Latest Scan</MudTh>
-                            <MudTh>Updates</MudTh>
-                            <MudTh>Vulnerabilities</MudTh>
-                        </HeaderContent>
-                        <RowTemplate>
-                            <MudTd DataLabel="Name">
-                                <MudLink Href="@($"observed-images/{context.Id}")" Class="table-link">@context.Name</MudLink>
-                                <span class="table-secondary">@context.Description</span>
-                            </MudTd>
-                            <MudTd DataLabel="Image">
-                                <span>@ImageReferenceFormatter.GetReference(context.ImageReference)</span>
-                                @if (ImageReferenceFormatter.GetFullDigest(context.ImageReference) is string fullDigest)
-                                {
-                                    <MudTooltip Text="@fullDigest">
-                                        <span class="table-secondary">@("@" + ImageReferenceFormatter.GetShortDigest(context.ImageReference))</span>
-                                    </MudTooltip>
-                                }
-                            </MudTd>
-                            <MudTd DataLabel="Latest Scan">
-                                <MudChip T="string" Size="Size.Small" Color="@GetScanStatusColor(context.LatestScanStatus)">@context.LatestScanStatus</MudChip>
-                                <span class="table-secondary">@context.LatestScanMessage</span>
-                            </MudTd>
-                            <MudTd DataLabel="Updates">@context.ActiveUpdateFindingCount</MudTd>
-                            <MudTd DataLabel="Vulnerabilities">
-                                <MudChip T="string" Size="Size.Small" Color="@GetVulnerabilityStatusColor(context.VulnerabilityStatus)">@context.VulnerabilityStatus</MudChip>
-                                <span class="table-secondary">@($"{context.ActiveVulnerabilityFindingCount} active · {context.VulnerabilityMessage}")</span>
-                            </MudTd>
-                        </RowTemplate>
-                    </MudTable>
-                }
-            </MudPaper>
+                </MudStack>
+            }
         </MudItem>
     </MudGrid>
 </MudStack>

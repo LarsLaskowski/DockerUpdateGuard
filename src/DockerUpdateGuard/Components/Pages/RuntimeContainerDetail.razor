@@ -58,6 +58,19 @@
                 </MudItem>
                 <MudItem xs="12" md="6">
                     <MudPaper Class="summary-card" Elevation="0">
+                        <span class="summary-label">Observed own image</span>
+                        @if (_detail.LinkedObservedImageId is Guid observedImageId)
+                        {
+                            <MudLink Href="@($"/observed-images/{observedImageId}")" Class="table-link">@_detail.LinkedObservedImageName</MudLink>
+                        }
+                        else
+                        {
+                            <span class="table-secondary">No linked own image</span>
+                        }
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudPaper Class="summary-card" Elevation="0">
                         <span class="summary-label">Update assessment</span>
                         <MudChip T="string" Size="Size.Small" Color="@GetUpdateStateColor(_detail.UpdateStatus)">@_detail.UpdateStatus</MudChip>
                         @if (string.IsNullOrWhiteSpace(_detail.UpdateMessage) == false)
@@ -82,6 +95,48 @@
                     </MudPaper>
                 </MudItem>
             </MudGrid>
+        </MudPaper>
+
+        <MudPaper Class="section-paper" Elevation="0">
+            <div class="section-header">
+                <MudText Typo="Typo.h5">Resource usage</MudText>
+                <MudText Class="section-description">Current RAM/CPU/network usage and recent history for this container.</MudText>
+            </div>
+            <MudGrid Spacing="2" Class="details-grid">
+                <MudItem xs="12" md="4">
+                    <MudPaper Class="summary-card" Elevation="0">
+                        <span class="summary-label">CPU</span>
+                        <span class="summary-value">@FormatCpu(_detail.CurrentResourceUsage)</span>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudPaper Class="summary-card" Elevation="0">
+                        <span class="summary-label">Memory</span>
+                        <span class="summary-value">@FormatMemory(_detail.CurrentResourceUsage)</span>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudPaper Class="summary-card" Elevation="0">
+                        <span class="summary-label">Network</span>
+                        <span class="summary-value">@FormatNetwork(_detail.CurrentResourceUsage)</span>
+                    </MudPaper>
+                </MudItem>
+            </MudGrid>
+
+            <MudTable Items="_detail.ResourceUsageHistory" Hover="true" Dense="false" Breakpoint="Breakpoint.Md" Class="section-table">
+                <HeaderContent>
+                    <MudTh>Observed</MudTh>
+                    <MudTh>CPU</MudTh>
+                    <MudTh>Memory</MudTh>
+                    <MudTh>Network</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Observed">@context.RecordedAtUtc.ToLocalTime().ToString("g")</MudTd>
+                    <MudTd DataLabel="CPU">@FormatCpu(context)</MudTd>
+                    <MudTd DataLabel="Memory">@FormatMemory(context)</MudTd>
+                    <MudTd DataLabel="Network">@FormatNetwork(context)</MudTd>
+                </RowTemplate>
+            </MudTable>
         </MudPaper>
 
         <MudPaper Class="section-paper" Elevation="0">

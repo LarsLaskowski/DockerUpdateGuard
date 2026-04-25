@@ -27,5 +27,9 @@ public class ObservedImageListItemData
 
     public string? VulnerabilityMessage { get; set; }
 
+    public bool IsOwnImage { get; set; }
+
+    public int LinkedRuntimeContainerCount { get; set; }
+
     #endregion // Properties
 }

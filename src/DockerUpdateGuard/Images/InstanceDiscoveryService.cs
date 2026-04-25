@@ -49,11 +49,13 @@ public class InstanceDiscoveryService : IInstanceDiscoveryService
                                                  .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         _logger.DockerInstanceSynchronizationStarted(configuredInstances.Count);
+
         var existingInstances = await _dbContext.DockerInstances
                                                 .Include(entity => entity.PortainerEndpoint)
                                                 .Where(entity => entity.Source == RegistrationSource.ConfigurationFile)
                                                 .ToListAsync(cancellationToken)
                                                 .ConfigureAwait(false);
+
         var disabledInstanceCount = existingInstances.Count(entity => configuredNames.Contains(entity.Name) == false);
         var enabledInstanceCount = 0;
         var portainerEndpointCount = 0;
@@ -137,6 +139,7 @@ public class InstanceDiscoveryService : IInstanceDiscoveryService
 
         await _dbContext.SaveChangesAsync(cancellationToken)
                         .ConfigureAwait(false);
+
         _logger.DockerInstanceSynchronizationCompleted(configuredInstances.Count,
                                                        enabledInstanceCount,
                                                        disabledInstanceCount,

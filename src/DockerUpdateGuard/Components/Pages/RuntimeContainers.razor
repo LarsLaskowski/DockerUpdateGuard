@@ -7,7 +7,7 @@
         <div>
             <MudText Typo="Typo.overline" Class="page-eyebrow">Live workloads</MudText>
             <MudText Typo="Typo.h3">Runtime Containers</MudText>
-            <MudText Class="page-description">Review active containers, their source images, and the current update posture.</MudText>
+            <MudText Class="page-description">Review active containers, their source images, linked own images, and live resource usage.</MudText>
         </div>
     </div>
 
@@ -28,46 +28,40 @@
         <MudPaper Class="section-paper" Elevation="0">
             <div class="section-header">
                 <MudText Typo="Typo.h5">Container inventory</MudText>
-                <MudText Class="section-description">Current runtime state correlated with update and vulnerability results.</MudText>
+                <MudText Class="section-description">Current runtime state correlated with own-image links, update results, vulnerabilities, and resource usage.</MudText>
             </div>
             <MudTable Items="_containers" Hover="true" Dense="false" Breakpoint="Breakpoint.Md" Class="section-table">
                 <HeaderContent>
                     <MudTh>Container</MudTh>
                     <MudTh>Instance</MudTh>
-                    <MudTh>Image</MudTh>
-                    <MudTh>Status</MudTh>
+                    <MudTh>Own image</MudTh>
+                    <MudTh>CPU</MudTh>
+                    <MudTh>Memory</MudTh>
+                    <MudTh>Network</MudTh>
                     <MudTh>Update State</MudTh>
-                    <MudTh>Vulnerabilities</MudTh>
-                    <MudTh>Portainer</MudTh>
                 </HeaderContent>
                 <RowTemplate>
                     <MudTd DataLabel="Container">
-                        <MudLink Href="@($"runtime-containers/{context.DockerInstanceId}/{context.ContainerId}")" Class="table-link">@context.ContainerName</MudLink>
+                        <MudLink Href="@($"/runtime-containers/{context.DockerInstanceId}/{context.ContainerId}")" Class="table-link">@context.ContainerName</MudLink>
                         <span class="table-secondary">@context.RecordedAtUtc.ToLocalTime().ToString("g")</span>
                     </MudTd>
                     <MudTd DataLabel="Instance">@context.DockerInstanceName</MudTd>
-                    <MudTd DataLabel="Image">
-                        <span>@ImageReferenceFormatter.GetReference(context.ImageReference)</span>
-                        @if (ImageReferenceFormatter.GetFullDigest(context.ImageReference) is string fullDigest)
+                    <MudTd DataLabel="Own image">
+                        @if (context.LinkedObservedImageId is Guid observedImageId)
                         {
-                            <MudTooltip Text="@fullDigest">
-                                <span class="table-secondary">@("@" + ImageReferenceFormatter.GetShortDigest(context.ImageReference))</span>
-                            </MudTooltip>
+                            <MudLink Href="@($"/observed-images/{observedImageId}")" Class="table-link">@context.LinkedObservedImageName</MudLink>
+                        }
+                        else
+                        {
+                            <span class="table-secondary">No own image link</span>
                         }
                     </MudTd>
-                    <MudTd DataLabel="Status">@context.RuntimeStatus</MudTd>
+                    <MudTd DataLabel="CPU">@FormatCpu(context.CurrentResourceUsage)</MudTd>
+                    <MudTd DataLabel="Memory">@FormatMemory(context.CurrentResourceUsage)</MudTd>
+                    <MudTd DataLabel="Network">@FormatNetwork(context.CurrentResourceUsage)</MudTd>
                     <MudTd DataLabel="Update State">
                         <MudChip T="string" Size="Size.Small" Color="@GetUpdateStateColor(context.UpdateState)">@context.UpdateState</MudChip>
                         <span class="table-secondary">@context.UpdateSummary</span>
-                    </MudTd>
-                    <MudTd DataLabel="Vulnerabilities">
-                        <MudChip T="string" Size="Size.Small" Color="@GetVulnerabilityStatusColor(context.VulnerabilityStatus)">@context.VulnerabilityStatus</MudChip>
-                        <span class="table-secondary">@($"{context.ActiveVulnerabilityFindingCount} active · {context.VulnerabilitySummary}")</span>
-                    </MudTd>
-                    <MudTd DataLabel="Portainer">
-                        <MudChip T="string" Size="Size.Small" Color="@(context.PortainerAvailable ? Color.Success : Color.Default)">
-                            @(context.PortainerAvailable ? "Configured" : "Unavailable")
-                        </MudChip>
                     </MudTd>
                 </RowTemplate>
             </MudTable>

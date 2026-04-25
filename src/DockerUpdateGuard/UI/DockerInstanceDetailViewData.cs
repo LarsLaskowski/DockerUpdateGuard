@@ -1,9 +1,9 @@
 namespace DockerUpdateGuard.UI;
 
 /// <summary>
-/// Docker instance list item
+/// Docker instance detail view data
 /// </summary>
-public class DockerInstanceListItemData
+public class DockerInstanceDetailViewData
 {
     #region Properties
 
@@ -24,6 +24,10 @@ public class DockerInstanceListItemData
     public int RuntimeContainerCount { get; set; }
 
     public ResourceUsagePointViewData? CurrentResourceUsage { get; set; }
+
+    public IReadOnlyList<ResourceUsagePointViewData> ResourceUsageHistory { get; set; } = [];
+
+    public IReadOnlyList<RuntimeContainerListItemData> RuntimeContainers { get; set; } = [];
 
     #endregion // Properties
 }

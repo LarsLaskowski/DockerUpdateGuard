@@ -40,6 +40,7 @@ a {
 .app-brand {
     width: 100%;
     padding: 0.5rem 0.35rem 0.75rem;
+    flex-wrap: nowrap;
 }
 
 .app-brand__logo {
@@ -51,12 +52,13 @@ a {
 }
 
 .app-brand__title {
-    min-width: 0;
+    min-width: fit-content;
     color: #f8fafc;
-    font-size: 1.35rem;
+    font-size: clamp(1.15rem, 1.2rem + 0.3vw, 1.35rem);
     font-weight: 800;
     letter-spacing: -0.02em;
-    overflow-wrap: anywhere;
+    white-space: nowrap;
+    overflow-wrap: normal;
 }
 
 .app-nav-shell {

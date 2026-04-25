@@ -159,5 +159,25 @@ public partial class ObservedImages
                };
     }
 
+    /// <summary>
+    /// Read account-discovered own images
+    /// </summary>
+    /// <returns>Own image list</returns>
+    private IReadOnlyList<ObservedImageListItemData> GetOwnImages()
+    {
+        return _images?.Where(entity => entity.IsOwnImage)
+                      .ToList() ?? [];
+    }
+
+    /// <summary>
+    /// Read manually registered images
+    /// </summary>
+    /// <returns>Manual image list</returns>
+    private IReadOnlyList<ObservedImageListItemData> GetManualImages()
+    {
+        return _images?.Where(entity => entity.IsOwnImage == false)
+                      .ToList() ?? [];
+    }
+
     #endregion // Methods
 }

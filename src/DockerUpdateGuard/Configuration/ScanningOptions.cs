@@ -52,6 +52,12 @@ public class ScanningOptions
     public int RuntimeImageUpdateScanIntervalMinutes { get; set; } = 30;
 
     /// <summary>
+    /// Resource statistics sampling interval in minutes
+    /// </summary>
+    [Range(1, 1440)]
+    public int ResourceStatisticsIntervalMinutes { get; set; } = 5;
+
+    /// <summary>
     /// Vulnerability refresh interval in minutes
     /// </summary>
     [Range(1, 10080)]

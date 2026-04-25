@@ -33,5 +33,11 @@ public class RuntimeContainerListItemData
 
     public DateTimeOffset RecordedAtUtc { get; set; }
 
+    public Guid? LinkedObservedImageId { get; set; }
+
+    public string? LinkedObservedImageName { get; set; }
+
+    public ResourceUsagePointViewData? CurrentResourceUsage { get; set; }
+
     #endregion // Properties
 }

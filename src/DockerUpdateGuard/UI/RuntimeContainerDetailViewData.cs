@@ -27,6 +27,10 @@ public class RuntimeContainerDetailViewData
 
     public DateTimeOffset RecordedAtUtc { get; set; }
 
+    public Guid? LinkedObservedImageId { get; set; }
+
+    public string? LinkedObservedImageName { get; set; }
+
     public string UpdateStatus { get; set; } = "Not evaluated";
 
     public string? UpdateMessage { get; set; }
@@ -42,6 +46,10 @@ public class RuntimeContainerDetailViewData
     public VulnerabilityAssessmentViewData VulnerabilityAssessment { get; set; } = new();
 
     public IReadOnlyList<VulnerabilityFindingViewData> VulnerabilityFindings { get; set; } = [];
+
+    public ResourceUsagePointViewData? CurrentResourceUsage { get; set; }
+
+    public IReadOnlyList<ResourceUsagePointViewData> ResourceUsageHistory { get; set; } = [];
 
     public IReadOnlyList<ScanHistoryItemData> ScanHistory { get; set; } = [];
 

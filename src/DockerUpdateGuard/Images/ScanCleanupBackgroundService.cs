@@ -86,12 +86,22 @@ public class ScanCleanupBackgroundService : ScheduledBackgroundService
                                                               && entity.ImageRelationships.Any() == false)
                                              .ToListAsync(stoppingToken)
                                              .ConfigureAwait(false);
+            var oldRuntimeContainerSamples = await dbContext.RuntimeContainerResourceSamples
+                                                            .Where(entity => entity.RecordedAtUtc < cutoff)
+                                                            .ToListAsync(stoppingToken)
+                                                            .ConfigureAwait(false);
+            var oldDockerInstanceSamples = await dbContext.DockerInstanceResourceSamples
+                                                          .Where(entity => entity.RecordedAtUtc < cutoff)
+                                                          .ToListAsync(stoppingToken)
+                                                          .ConfigureAwait(false);
 
             dbContext.TagCandidates.RemoveRange(oldTagCandidates);
             dbContext.UpdateFindings.RemoveRange(oldUpdateFindings);
             dbContext.VulnerabilityFindings.RemoveRange(oldVulnerabilityFindings);
             dbContext.ContainerSnapshots.RemoveRange(oldSnapshots);
             dbContext.ScanRuns.RemoveRange(oldScanRuns);
+            dbContext.RuntimeContainerResourceSamples.RemoveRange(oldRuntimeContainerSamples);
+            dbContext.DockerInstanceResourceSamples.RemoveRange(oldDockerInstanceSamples);
             await dbContext.SaveChangesAsync(stoppingToken)
                            .ConfigureAwait(false);
             await applicationTelemetry.RefreshInventoryMetricsAsync(dbContext, stoppingToken)

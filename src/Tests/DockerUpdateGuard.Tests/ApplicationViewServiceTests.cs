@@ -425,5 +425,229 @@ public class ApplicationViewServiceTests
         }
     }
 
+    /// <summary>
+    /// Verify own images are linked to runtime containers by normalized repository even when the runtime tag is older
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task ApplicationViewServiceOwnImagesLinkRuntimeContainersAcrossTagsAsync()
+    {
+        var options = new DbContextOptionsBuilder<DockerUpdateGuardDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString())
+                                                                               .Options;
+
+        var dbContext = new DockerUpdateGuardDbContext(options);
+
+        await using (dbContext.ConfigureAwait(false))
+        {
+            var imageCatalogRepository = new ImageCatalogRepository(dbContext);
+            var discoveredImageVersion = await imageCatalogRepository.GetOrCreateImageVersionAsync("docker.io",
+                                                                                                   "company/api",
+                                                                                                   "2.0.0",
+                                                                                                   "sha256:2",
+                                                                                                   cancellationToken: CancellationToken.None)
+                                                                     .ConfigureAwait(false);
+            var runtimeImageVersion = await imageCatalogRepository.GetOrCreateImageVersionAsync("docker.io",
+                                                                                                "company/api",
+                                                                                                "1.5.0",
+                                                                                                "sha256:1",
+                                                                                                cancellationToken: CancellationToken.None)
+                                                                  .ConfigureAwait(false);
+            var manualImageVersion = await imageCatalogRepository.GetOrCreateImageVersionAsync("docker.io",
+                                                                                               "company/worker",
+                                                                                               "1.0.0",
+                                                                                               "sha256:worker",
+                                                                                               cancellationToken: CancellationToken.None)
+                                                                 .ConfigureAwait(false);
+
+            var ownObservedImage = new ObservedImage
+                                   {
+                                       Name = "Company API",
+                                       CurrentImageVersionId = discoveredImageVersion.Id,
+                                       Source = RegistrationSource.Discovery,
+                                   };
+            var manualObservedImage = new ObservedImage
+                                      {
+                                          Name = "Company Worker",
+                                          CurrentImageVersionId = manualImageVersion.Id,
+                                          Source = RegistrationSource.Manual,
+                                      };
+            var dockerInstance = new DockerInstance
+                                 {
+                                     Name = "Production",
+                                     EndpointUri = "https://docker.example.test",
+                                     ConnectionKind = DockerConnectionKind.Https,
+                                 };
+
+            dbContext.ObservedImages.AddRange(ownObservedImage, manualObservedImage);
+            dbContext.ContainerSnapshots.Add(new ContainerSnapshot
+                                             {
+                                                 DockerInstance = dockerInstance,
+                                                 ImageVersionId = runtimeImageVersion.Id,
+                                                 ContainerId = "container-api",
+                                                 Name = "company-api",
+                                                 Status = ContainerRuntimeStatus.Running,
+                                                 IsRunning = true,
+                                             });
+
+            await dbContext.SaveChangesAsync(CancellationToken.None)
+                           .ConfigureAwait(false);
+
+            var service = new ApplicationViewService(dbContext,
+                                                     new ImageReferenceParser(),
+                                                     new SharedBaseImageQueryService(dbContext));
+            var observedImages = await service.GetObservedImagesAsync(CancellationToken.None)
+                                              .ConfigureAwait(false);
+            var observedDetail = await service.GetObservedImageDetailAsync(ownObservedImage.Id, CancellationToken.None)
+                                              .ConfigureAwait(false);
+            var runtimeContainers = await service.GetRuntimeContainersAsync(CancellationToken.None)
+                                                 .ConfigureAwait(false);
+            var runtimeDetail = await service.GetRuntimeContainerDetailAsync(dockerInstance.Id, "container-api", CancellationToken.None)
+                                             .ConfigureAwait(false);
+
+            Assert.AreEqual(ownObservedImage.Id,
+                            observedImages.First().Id,
+                            "Own images must be prioritized ahead of manual images in the observed image list");
+            Assert.AreEqual(1,
+                            observedImages.First().LinkedRuntimeContainerCount,
+                            "Own images must show the number of linked runtime containers by repository");
+            Assert.IsNotNull(observedDetail, "The own observed image detail must be returned");
+            Assert.AreEqual(1,
+                            observedDetail.LinkedRuntimeContainers.Count,
+                            "The own observed image detail must list linked runtime containers");
+            Assert.AreEqual(ownObservedImage.Id,
+                            runtimeContainers.Single().LinkedObservedImageId,
+                            "Runtime containers must link back to the matching discovered own image");
+            Assert.IsNotNull(runtimeDetail, "The runtime container detail must be returned");
+            Assert.AreEqual(ownObservedImage.Id,
+                            runtimeDetail.LinkedObservedImageId,
+                            "The runtime container detail must keep the link to the matching discovered own image");
+        }
+    }
+
+    /// <summary>
+    /// Verify runtime-container and Docker-instance projections expose current resource usage and recent history
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task ApplicationViewServiceResourceUsageProjectionsExposeCurrentValuesAndHistoryAsync()
+    {
+        var options = new DbContextOptionsBuilder<DockerUpdateGuardDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString())
+                                                                               .Options;
+
+        var dbContext = new DockerUpdateGuardDbContext(options);
+
+        await using (dbContext.ConfigureAwait(false))
+        {
+            var imageCatalogRepository = new ImageCatalogRepository(dbContext);
+            var imageVersion = await imageCatalogRepository.GetOrCreateImageVersionAsync("ghcr.io",
+                                                                                         "acme/api",
+                                                                                         "1.0.0",
+                                                                                         "sha256:api",
+                                                                                         cancellationToken: CancellationToken.None)
+                                                           .ConfigureAwait(false);
+            var dockerInstance = new DockerInstance
+                                 {
+                                     Name = "Metrics Engine",
+                                     EndpointUri = "https://docker.example.test",
+                                     ConnectionKind = DockerConnectionKind.Https,
+                                 };
+            var olderTimestamp = DateTimeOffset.UtcNow.AddMinutes(-10);
+            var newerTimestamp = DateTimeOffset.UtcNow.AddMinutes(-2);
+
+            dbContext.ContainerSnapshots.Add(new ContainerSnapshot
+                                             {
+                                                 DockerInstance = dockerInstance,
+                                                 ImageVersionId = imageVersion.Id,
+                                                 ContainerId = "container-api",
+                                                 Name = "api",
+                                                 Status = ContainerRuntimeStatus.Running,
+                                                 IsRunning = true,
+                                                 RecordedAtUtc = newerTimestamp,
+                                             });
+            dbContext.RuntimeContainerResourceSamples.AddRange(new RuntimeContainerResourceSample
+                                                               {
+                                                                   DockerInstance = dockerInstance,
+                                                                   ContainerId = "container-api",
+                                                                   ContainerName = "api",
+                                                                   CpuPercent = 12.5m,
+                                                                   MemoryUsageBytes = 256 * 1024 * 1024,
+                                                                   MemoryLimitBytes = 512 * 1024 * 1024,
+                                                                   NetworkRxBytesPerSecond = 2048,
+                                                                   NetworkTxBytesPerSecond = 1024,
+                                                                   RecordedAtUtc = olderTimestamp,
+                                                               },
+                                                               new RuntimeContainerResourceSample
+                                                               {
+                                                                   DockerInstance = dockerInstance,
+                                                                   ContainerId = "container-api",
+                                                                   ContainerName = "api",
+                                                                   CpuPercent = 18.0m,
+                                                                   MemoryUsageBytes = 300 * 1024 * 1024,
+                                                                   MemoryLimitBytes = 512 * 1024 * 1024,
+                                                                   NetworkRxBytesPerSecond = 4096,
+                                                                   NetworkTxBytesPerSecond = 1536,
+                                                                   RecordedAtUtc = newerTimestamp,
+                                                               });
+            dbContext.DockerInstanceResourceSamples.AddRange(new DockerInstanceResourceSample
+                                                             {
+                                                                 DockerInstance = dockerInstance,
+                                                                 ContainerCount = 1,
+                                                                 CpuPercent = 12.5m,
+                                                                 MemoryUsageBytes = 256 * 1024 * 1024,
+                                                                 MemoryLimitBytes = 512 * 1024 * 1024,
+                                                                 NetworkRxBytesPerSecond = 2048,
+                                                                 NetworkTxBytesPerSecond = 1024,
+                                                                 RecordedAtUtc = olderTimestamp,
+                                                             },
+                                                             new DockerInstanceResourceSample
+                                                             {
+                                                                 DockerInstance = dockerInstance,
+                                                                 ContainerCount = 1,
+                                                                 CpuPercent = 18.0m,
+                                                                 MemoryUsageBytes = 300 * 1024 * 1024,
+                                                                 MemoryLimitBytes = 512 * 1024 * 1024,
+                                                                 NetworkRxBytesPerSecond = 4096,
+                                                                 NetworkTxBytesPerSecond = 1536,
+                                                                 RecordedAtUtc = newerTimestamp,
+                                                             });
+
+            await dbContext.SaveChangesAsync(CancellationToken.None)
+                           .ConfigureAwait(false);
+
+            var service = new ApplicationViewService(dbContext,
+                                                     new ImageReferenceParser(),
+                                                     new SharedBaseImageQueryService(dbContext));
+            var runtimeContainers = await service.GetRuntimeContainersAsync(CancellationToken.None)
+                                                 .ConfigureAwait(false);
+            var runtimeDetail = await service.GetRuntimeContainerDetailAsync(dockerInstance.Id, "container-api", CancellationToken.None)
+                                             .ConfigureAwait(false);
+            var dockerInstances = await service.GetDockerInstancesAsync(CancellationToken.None)
+                                               .ConfigureAwait(false);
+            var dockerInstanceDetail = await service.GetDockerInstanceDetailAsync(dockerInstance.Id, CancellationToken.None)
+                                                    .ConfigureAwait(false);
+
+            Assert.AreEqual(18.0m,
+                            runtimeContainers.Single().CurrentResourceUsage?.CpuPercent,
+                            "Runtime container list rows must expose the latest CPU value");
+            Assert.IsNotNull(runtimeDetail, "The runtime container detail must be returned");
+            Assert.AreEqual(2,
+                            runtimeDetail.ResourceUsageHistory.Count,
+                            "Runtime container detail must expose recent resource history");
+            Assert.AreEqual(18.0m,
+                            runtimeDetail.CurrentResourceUsage?.CpuPercent,
+                            "Runtime container detail must expose the latest resource sample");
+            Assert.AreEqual(18.0m,
+                            dockerInstances.Single().CurrentResourceUsage?.CpuPercent,
+                            "Docker instance list rows must expose the latest aggregated CPU value");
+            Assert.IsNotNull(dockerInstanceDetail, "The Docker instance detail must be returned");
+            Assert.AreEqual(2,
+                            dockerInstanceDetail.ResourceUsageHistory.Count,
+                            "Docker instance detail must expose recent resource history");
+            Assert.AreEqual(18.0m,
+                            dockerInstanceDetail.CurrentResourceUsage?.CpuPercent,
+                            "Docker instance detail must expose the latest aggregated resource sample");
+        }
+    }
+
     #endregion // Methods
 }

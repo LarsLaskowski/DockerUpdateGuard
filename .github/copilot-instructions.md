@@ -21,12 +21,15 @@ Copilot and other AI assistants must follow these guidelines when working in thi
 Use the solution file at the repository root:
 
 - Restore: `dotnet restore DockerUpdateGuard.slnx`
+- Format source: `reihitsu-format ./`
 - Build: `dotnet build DockerUpdateGuard.slnx -c Release --no-restore`
 - Run all tests: `dotnet test src\Tests\**\*.csproj -c Release --no-build --logger trx --collect:"XPlat Code Coverage"`
 - Run one test project: `dotnet test src\Tests\DockerUpdateGuard.Tests\DockerUpdateGuard.Tests.csproj -c Release --no-build`
 - Run one test method: `dotnet test src\Tests\DockerUpdateGuard.Tests\DockerUpdateGuard.Tests.csproj --filter "FullyQualifiedName~Namespace.ClassName.MethodName"`
 
-There is no dedicated lint command at the moment. Static analysis runs during build through the configured rulesets and analyzers.
+Run `reihitsu-format ./` after source changes and before running a build. The command is available as a .NET tool and can be installed with `dotnet tool install -g Reihitsu.Cli` if it is missing.
+
+There is no dedicated lint command at the moment beyond formatting. Static analysis runs during build through the configured rulesets and analyzers.
 
 ## High-level architecture
 

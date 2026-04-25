@@ -103,6 +103,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IDockerHubAccountImageDiscoveryService, DockerHubAccountImageDiscoveryService>();
         services.AddScoped<IImageScanOrchestrator, ImageScanOrchestrator>();
         services.AddScoped<IRuntimeContainerScanOrchestrator, RuntimeContainerScanOrchestrator>();
+        services.AddScoped<IResourceStatisticsCollector, ResourceStatisticsCollector>();
         services.AddScoped<IVulnerabilityEnrichmentService, VulnerabilityEnrichmentService>();
         services.AddScoped<IApplicationViewService, ApplicationViewService>();
         services.AddScoped<IRuntimeContainerTagSelectionService, RuntimeContainerTagSelectionService>();
@@ -110,6 +111,7 @@ public static class ServiceCollectionExtensions
         services.AddHostedService<DockerHubAccountImageDiscoveryBackgroundService>();
         services.AddHostedService<OwnImageBaseRefreshBackgroundService>();
         services.AddHostedService<RuntimeContainerRefreshBackgroundService>();
+        services.AddHostedService<ResourceStatisticsRefreshBackgroundService>();
         services.AddHostedService<VulnerabilityRefreshBackgroundService>();
         services.AddHostedService<ScanCleanupBackgroundService>();
 

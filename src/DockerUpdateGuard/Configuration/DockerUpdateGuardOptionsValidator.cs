@@ -142,6 +142,11 @@ public class DockerUpdateGuardOptionsValidator : IValidateOptions<DockerUpdateGu
             failures.Add($"'{DockerUpdateGuardOptions.SectionName}:Scanning:RuntimeImageUpdateScanIntervalMinutes' must be greater than zero");
         }
 
+        if (options.ResourceStatisticsIntervalMinutes <= 0)
+        {
+            failures.Add($"'{DockerUpdateGuardOptions.SectionName}:Scanning:ResourceStatisticsIntervalMinutes' must be greater than zero");
+        }
+
         if (options.VulnerabilityRefreshIntervalMinutes <= 0)
         {
             failures.Add($"'{DockerUpdateGuardOptions.SectionName}:Scanning:VulnerabilityRefreshIntervalMinutes' must be greater than zero");

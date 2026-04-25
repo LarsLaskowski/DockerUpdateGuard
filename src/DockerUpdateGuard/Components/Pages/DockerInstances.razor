@@ -7,7 +7,7 @@
         <div>
             <MudText Typo="Typo.overline" Class="page-eyebrow">Endpoint inventory</MudText>
             <MudText Typo="Typo.h3">Docker Instances</MudText>
-            <MudText Class="page-description">Configured Docker endpoints, connectivity mode, and most recent runtime scan data.</MudText>
+            <MudText Class="page-description">Configured Docker endpoints, connectivity mode, runtime coverage, and current resource usage.</MudText>
         </div>
     </div>
 
@@ -28,30 +28,28 @@
         <MudPaper Class="section-paper" Elevation="0">
             <div class="section-header">
                 <MudText Typo="Typo.h5">Configured instances</MudText>
-                <MudText Class="section-description">Registered endpoints with connection details and runtime coverage.</MudText>
+                <MudText Class="section-description">Registered endpoints with connection details, runtime coverage, and recent aggregated resource usage.</MudText>
             </div>
             <MudTable Items="_instances" Hover="true" Dense="false" Breakpoint="Breakpoint.Md" Class="section-table">
                 <HeaderContent>
                     <MudTh>Name</MudTh>
                     <MudTh>Endpoint</MudTh>
                     <MudTh>Connection</MudTh>
-                    <MudTh>Portainer</MudTh>
-                    <MudTh>Latest Runtime Scan</MudTh>
+                    <MudTh>CPU</MudTh>
+                    <MudTh>Memory</MudTh>
+                    <MudTh>Network</MudTh>
                     <MudTh>Containers</MudTh>
                 </HeaderContent>
                 <RowTemplate>
-                    <MudTd DataLabel="Name">@context.Name</MudTd>
+                    <MudTd DataLabel="Name">
+                        <MudLink Href="@($"/docker-instances/{context.Id}")" Class="table-link">@context.Name</MudLink>
+                        <span class="table-secondary">@context.LatestScanStatus · @context.LatestScanCompletedAtUtc?.ToLocalTime().ToString("g")</span>
+                    </MudTd>
                     <MudTd DataLabel="Endpoint">@context.EndpointUri</MudTd>
                     <MudTd DataLabel="Connection">@context.ConnectionKind</MudTd>
-                    <MudTd DataLabel="Portainer">
-                        <MudChip T="string" Size="Size.Small" Color="@(context.PortainerEnabled ? Color.Success : Color.Default)">
-                            @(context.PortainerEnabled ? "Enabled" : "Disabled")
-                        </MudChip>
-                    </MudTd>
-                    <MudTd DataLabel="Latest Runtime Scan">
-                        @context.LatestScanStatus
-                        <span class="table-secondary">@context.LatestScanCompletedAtUtc?.ToLocalTime().ToString("g")</span>
-                    </MudTd>
+                    <MudTd DataLabel="CPU">@FormatCpu(context.CurrentResourceUsage)</MudTd>
+                    <MudTd DataLabel="Memory">@FormatMemory(context.CurrentResourceUsage)</MudTd>
+                    <MudTd DataLabel="Network">@FormatNetwork(context.CurrentResourceUsage)</MudTd>
                     <MudTd DataLabel="Containers">@context.RuntimeContainerCount</MudTd>
                 </RowTemplate>
             </MudTable>

@@ -19,6 +19,8 @@ public class ObservedImageDetailViewData
 
     public string? LatestScanMessage { get; set; }
 
+    public bool IsOwnImage { get; set; }
+
     public IReadOnlyList<BaseImageRelationshipData> BaseImages { get; set; } = [];
 
     public IReadOnlyList<UpdateFindingViewData> UpdateFindings { get; set; } = [];
@@ -26,6 +28,8 @@ public class ObservedImageDetailViewData
     public VulnerabilityAssessmentViewData VulnerabilityAssessment { get; set; } = new();
 
     public IReadOnlyList<VulnerabilityFindingViewData> VulnerabilityFindings { get; set; } = [];
+
+    public IReadOnlyList<LinkedRuntimeContainerViewData> LinkedRuntimeContainers { get; set; } = [];
 
     public IReadOnlyList<ScanHistoryItemData> ScanHistory { get; set; } = [];
 
