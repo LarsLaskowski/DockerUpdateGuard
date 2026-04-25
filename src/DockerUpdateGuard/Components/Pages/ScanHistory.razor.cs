@@ -33,7 +33,7 @@ public partial class ScanHistory
     protected override async Task OnInitializedAsync()
     {
         _scans = await ViewService.GetScanHistoryAsync()
-                                  .ConfigureAwait(false);
+                                  .ConfigureAwait(true);
     }
 
     /// <summary>

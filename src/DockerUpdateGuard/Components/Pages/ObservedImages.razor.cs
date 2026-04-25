@@ -56,7 +56,7 @@ public partial class ObservedImages
     /// <inheritdoc/>
     protected override async Task OnInitializedAsync()
     {
-        await LoadAsync().ConfigureAwait(false);
+        await LoadAsync().ConfigureAwait(true);
     }
 
     /// <summary>
@@ -66,7 +66,7 @@ public partial class ObservedImages
     private async Task LoadAsync()
     {
         _images = await ViewService.GetObservedImagesAsync()
-                                   .ConfigureAwait(false);
+                                   .ConfigureAwait(true);
     }
 
     /// <summary>
@@ -81,17 +81,18 @@ public partial class ObservedImages
         try
         {
             var observedImage = await ImageRegistrationService.RegisterAsync(_request)
-                                                              .ConfigureAwait(false);
+                                                              .ConfigureAwait(true);
 
             await ImageScanOrchestrator.ScanAsync(observedImage.Id, ScanTriggerSource.Manual)
-                                       .ConfigureAwait(false);
+                                       .ConfigureAwait(true);
 
             NavigationManager.NavigateTo($"observed-images/{observedImage.Id}");
         }
         catch (Exception exception)
         {
             _errorMessage = exception.Message;
-            await LoadAsync().ConfigureAwait(false);
+
+            await LoadAsync().ConfigureAwait(true);
         }
         finally
         {

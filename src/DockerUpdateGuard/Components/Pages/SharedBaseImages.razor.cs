@@ -31,7 +31,7 @@ public partial class SharedBaseImages
     protected override async Task OnInitializedAsync()
     {
         _items = await ViewService.GetSharedBaseImagesAsync()
-                                  .ConfigureAwait(false);
+                                  .ConfigureAwait(true);
     }
 
     #endregion // Methods

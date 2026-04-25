@@ -31,7 +31,7 @@ public partial class DockerInstances
     protected override async Task OnInitializedAsync()
     {
         _instances = await ViewService.GetDockerInstancesAsync()
-                                      .ConfigureAwait(false);
+                                      .ConfigureAwait(true);
     }
 
     #endregion // Methods

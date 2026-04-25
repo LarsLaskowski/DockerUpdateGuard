@@ -98,5 +98,38 @@ public class ImageCatalogRepositoryTests
         }
     }
 
+    /// <summary>
+    /// Verify newly created image versions keep their registry repository navigation populated
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task ImageCatalogRepositoryGetOrCreateImageVersionReturnsVersionWithRegistryRepositoryAsync()
+    {
+        using (var database = new SqliteTestDatabase())
+        {
+            var dbContext = database.CreateDbContext();
+
+            await using (dbContext.ConfigureAwait(false))
+            {
+                var repository = new ImageCatalogRepository(dbContext);
+
+                var imageVersion = await repository.GetOrCreateImageVersionAsync("docker.io",
+                                                                                 "library/redis",
+                                                                                 "7.4",
+                                                                                 "sha256:456",
+                                                                                 cancellationToken: CancellationToken.None)
+                                                   .ConfigureAwait(false);
+
+                Assert.IsNotNull(imageVersion.RegistryRepository, "New image versions must keep the registry repository navigation populated");
+                Assert.AreEqual("docker.io",
+                                imageVersion.RegistryRepository.Registry,
+                                "The populated registry repository must expose the normalized registry");
+                Assert.AreEqual("library/redis",
+                                imageVersion.RegistryRepository.Repository,
+                                "The populated registry repository must expose the normalized repository path");
+            }
+        }
+    }
+
     #endregion // Methods
 }

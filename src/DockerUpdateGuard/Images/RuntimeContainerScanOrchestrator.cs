@@ -75,6 +75,7 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
         var dockerInstances = await _dbContext.DockerInstances.Where(entity => entity.IsEnabled)
                                                               .ToListAsync(cancellationToken)
                                                               .ConfigureAwait(false);
+
         var skippedInstanceCount = 0;
 
         if (dockerInstances.Count == 0)
@@ -91,6 +92,7 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
             if (optionsByName.TryGetValue(dockerInstance.Name, out var configuredInstance) == false)
             {
                 skippedInstanceCount++;
+
                 _logger.RuntimeContainerScanSkippedConfigurationMissing(dockerInstance.Name);
 
                 continue;
@@ -99,6 +101,7 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
             if (configuredInstance.Enabled == false)
             {
                 skippedInstanceCount++;
+
                 _logger.RuntimeContainerScanSkippedConfigurationDisabled(dockerInstance.Name);
 
                 continue;
@@ -142,9 +145,12 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
         var finalStatus = ScanRunStatus.Succeeded;
 
         _logger.RuntimeContainerScanStarted(dockerInstance.Name, triggerSource);
+
         _dbContext.ScanRuns.Add(scanRun);
+
         await _dbContext.SaveChangesAsync(cancellationToken)
                         .ConfigureAwait(false);
+
         await DeactivateRuntimeFindingsAsync(dockerInstance.Id, cancellationToken).ConfigureAwait(false);
 
         try
@@ -155,7 +161,9 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
             if (discoveryResult.Status != ExternalOperationStatus.Succeeded || discoveryResult.Data is null)
             {
                 finalStatus = discoveryResult.Status == ExternalOperationStatus.Failed ? ScanRunStatus.Failed : ScanRunStatus.Partial;
+
                 statusMessages.Add(discoveryResult.Message ?? $"Container discovery failed for '{dockerInstance.Name}'");
+
                 _logger.RuntimeContainerDiscoveryIncomplete(dockerInstance.Name,
                                                             discoveryResult.Status,
                                                             discoveryResult.Message);
@@ -178,7 +186,9 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
                                                                                                   parsedReference.Digest,
                                                                                                   cancellationToken: cancellationToken)
                                                                     .ConfigureAwait(false);
+
                     imageVersion.Source = ImageVersionSource.RuntimeContainer;
+
                     var snapshot = new ContainerSnapshot
                                    {
                                        DockerInstanceId = dockerInstance.Id,
@@ -195,6 +205,7 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
                                    };
 
                     _dbContext.ContainerSnapshots.Add(snapshot);
+
                     var tagsResult = await _dockerHubClient.GetTagsAsync(parsedReference.Registry,
                                                                          parsedReference.Repository,
                                                                          cancellationToken)
@@ -218,7 +229,9 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
                              && tagsResult.Status != ExternalOperationStatus.Unsupported)
                     {
                         finalStatus = ScanRunStatus.Partial;
+
                         statusMessages.Add(tagsResult.Message ?? $"Unable to evaluate runtime image '{container.ImageReference}'");
+
                         _logger.RuntimeContainerRegistryEvaluationIncomplete(dockerInstance.Name,
                                                                              container.ImageReference,
                                                                              tagsResult.Status,
@@ -227,7 +240,9 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
                     else
                     {
                         finalStatus = ScanRunStatus.Partial;
+
                         statusMessages.Add(tagsResult.Message ?? $"Runtime image '{container.ImageReference}' cannot be evaluated by the current Docker Hub adapter");
+
                         _logger.RuntimeContainerRegistryEvaluationUnsupported(dockerInstance.Name,
                                                                               container.ImageReference,
                                                                               tagsResult.Status,
@@ -239,20 +254,26 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
         catch (Exception exception)
         {
             finalStatus = ScanRunStatus.Failed;
+
             statusMessages.Add(exception.Message);
+
             _logger.RuntimeContainerScanFailed(exception, dockerInstance.Name);
         }
 
         scanRun.Status = finalStatus;
         scanRun.CompletedAtUtc = DateTimeOffset.UtcNow;
         scanRun.ErrorMessage = statusMessages.Count == 0 ? null : string.Join(Environment.NewLine, statusMessages.Distinct());
+
         await _dbContext.SaveChangesAsync(cancellationToken)
                         .ConfigureAwait(false);
+
         await _applicationTelemetry.RefreshInventoryMetricsAsync(_dbContext, cancellationToken)
                                    .ConfigureAwait(false);
+
         _applicationTelemetry.RecordScanRun(ScanRunType.RuntimeContainer,
                                             finalStatus,
                                             stopwatch.Elapsed);
+
         _logger.RuntimeContainerScanCompleted(dockerInstance.Name,
                                               finalStatus,
                                               processedContainerCount,
@@ -361,8 +382,13 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
         }
 
         var registryRepository = await _dbContext.RegistryRepositories
-                                                 .SingleAsync(entity => entity.Id == imageVersion.RegistryRepositoryId, cancellationToken)
+                                                 .SingleOrDefaultAsync(entity => entity.Id == imageVersion.RegistryRepositoryId, cancellationToken)
                                                  .ConfigureAwait(false);
+
+        if (registryRepository is null)
+        {
+            throw new InvalidOperationException($"Registry repository '{imageVersion.RegistryRepositoryId}' was not found for image version '{imageVersion.Id}'");
+        }
 
         imageVersion.RegistryRepository = registryRepository;
     }

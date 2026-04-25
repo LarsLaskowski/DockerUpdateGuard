@@ -128,6 +128,7 @@ public class ImageCatalogRepository : IImageCatalogRepository
         var newVersion = new ImageVersion
                          {
                              RegistryRepositoryId = registryRepository.Id,
+                             RegistryRepository = registryRepository,
                              Tag = tag,
                              Digest = digest,
                              PublishedAtUtc = publishedAtUtc,

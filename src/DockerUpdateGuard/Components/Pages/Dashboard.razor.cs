@@ -33,7 +33,7 @@ public partial class Dashboard
     protected override async Task OnInitializedAsync()
     {
         _dashboard = await ViewService.GetDashboardAsync()
-                                      .ConfigureAwait(false);
+                                      .ConfigureAwait(true);
     }
 
     /// <summary>

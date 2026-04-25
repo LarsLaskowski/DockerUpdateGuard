@@ -39,7 +39,7 @@ public partial class ObservedImageDetail
     protected override async Task OnParametersSetAsync()
     {
         _detail = await ViewService.GetObservedImageDetailAsync(ObservedImageId)
-                                   .ConfigureAwait(false);
+                                   .ConfigureAwait(true);
     }
 
     /// <summary>
