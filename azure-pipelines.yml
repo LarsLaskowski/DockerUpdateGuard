@@ -1,5 +1,3 @@
-name: 1.0.$(Rev:r)
-
 trigger:
   branches:
     include:
@@ -9,10 +7,14 @@ pool:
   vmImage: 'ubuntu-latest'
 
 variables:
-  appVersion: '$(Build.BuildNumber)'
+  versionPrefix: '1.0'
+  versionCounter: $[counter(variables['versionPrefix'], 1)]
+  appVersion: '$(versionPrefix).$(versionCounter)'
   dockerRepository: 'networlddev/dockerupdateguard'
   dockerfilePath: 'src/DockerUpdateGuard/Dockerfile'
   buildConfiguration: 'Release'
+
+name: $(appVersion)
 
 stages:
   - stage: Build
