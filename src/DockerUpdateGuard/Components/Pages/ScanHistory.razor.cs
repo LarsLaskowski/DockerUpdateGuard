@@ -32,8 +32,13 @@ public partial class ScanHistory
     /// <inheritdoc/>
     protected override async Task OnInitializedAsync()
     {
-        _scans = await ViewService.GetScanHistoryAsync()
-                                  .ConfigureAwait(true);
+        var scans = await ViewService.GetScanHistoryAsync()
+                                     .ConfigureAwait(false);
+
+        await InvokeAsync(() =>
+                          {
+                              _scans = scans;
+                          }).ConfigureAwait(false);
     }
 
     /// <summary>

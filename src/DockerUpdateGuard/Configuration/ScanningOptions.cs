@@ -28,6 +28,24 @@ public class ScanningOptions
     public int OwnImageBaseScanIntervalMinutes { get; set; } = 60;
 
     /// <summary>
+    /// Docker Hub request quota window for scheduled observed-image refreshes in hours
+    /// </summary>
+    [Range(1, 168)]
+    public int DockerHubRequestLimitWindowHours { get; set; } = 6;
+
+    /// <summary>
+    /// Docker Hub request quota for scheduled observed-image refreshes per window
+    /// </summary>
+    [Range(1, 100000)]
+    public int DockerHubRequestLimitPerWindow { get; set; } = 200;
+
+    /// <summary>
+    /// Reserved Docker Hub requests per window for manual scans and ad-hoc activity
+    /// </summary>
+    [Range(0, 100000)]
+    public int DockerHubReservedManualRequestsPerWindow { get; set; } = 40;
+
+    /// <summary>
     /// Runtime container refresh interval in minutes
     /// </summary>
     [Range(1, 1440)]

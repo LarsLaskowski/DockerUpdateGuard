@@ -56,7 +56,7 @@ public partial class ObservedImages
     /// <inheritdoc/>
     protected override async Task OnInitializedAsync()
     {
-        await LoadAsync().ConfigureAwait(true);
+        await LoadAsync().ConfigureAwait(false);
     }
 
     /// <summary>
@@ -65,8 +65,13 @@ public partial class ObservedImages
     /// <returns>Task</returns>
     private async Task LoadAsync()
     {
-        _images = await ViewService.GetObservedImagesAsync()
-                                   .ConfigureAwait(true);
+        var images = await ViewService.GetObservedImagesAsync()
+                                      .ConfigureAwait(false);
+
+        await InvokeAsync(() =>
+                          {
+                              _images = images;
+                          }).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -81,22 +86,31 @@ public partial class ObservedImages
         try
         {
             var observedImage = await ImageRegistrationService.RegisterAsync(_request)
-                                                              .ConfigureAwait(true);
+                                                              .ConfigureAwait(false);
 
             await ImageScanOrchestrator.ScanAsync(observedImage.Id, ScanTriggerSource.Manual)
-                                       .ConfigureAwait(true);
+                                       .ConfigureAwait(false);
 
-            NavigationManager.NavigateTo($"observed-images/{observedImage.Id}");
+            await InvokeAsync(() =>
+                              {
+                                  NavigationManager.NavigateTo($"observed-images/{observedImage.Id}");
+                              }).ConfigureAwait(false);
         }
         catch (Exception exception)
         {
-            _errorMessage = exception.Message;
+            await InvokeAsync(() =>
+                              {
+                                  _errorMessage = exception.Message;
+                              }).ConfigureAwait(false);
 
-            await LoadAsync().ConfigureAwait(true);
+            await LoadAsync().ConfigureAwait(false);
         }
         finally
         {
-            _isBusy = false;
+            await InvokeAsync(() =>
+                              {
+                                  _isBusy = false;
+                              }).ConfigureAwait(false);
         }
     }
 

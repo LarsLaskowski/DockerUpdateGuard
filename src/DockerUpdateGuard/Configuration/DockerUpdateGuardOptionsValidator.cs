@@ -112,6 +112,26 @@ public class DockerUpdateGuardOptionsValidator : IValidateOptions<DockerUpdateGu
             failures.Add($"'{DockerUpdateGuardOptions.SectionName}:Scanning:OwnImageBaseScanIntervalMinutes' must be greater than zero");
         }
 
+        if (options.DockerHubRequestLimitWindowHours <= 0)
+        {
+            failures.Add($"'{DockerUpdateGuardOptions.SectionName}:Scanning:DockerHubRequestLimitWindowHours' must be greater than zero");
+        }
+
+        if (options.DockerHubRequestLimitPerWindow <= 0)
+        {
+            failures.Add($"'{DockerUpdateGuardOptions.SectionName}:Scanning:DockerHubRequestLimitPerWindow' must be greater than zero");
+        }
+
+        if (options.DockerHubReservedManualRequestsPerWindow < 0)
+        {
+            failures.Add($"'{DockerUpdateGuardOptions.SectionName}:Scanning:DockerHubReservedManualRequestsPerWindow' must be zero or greater");
+        }
+
+        if (options.DockerHubReservedManualRequestsPerWindow >= options.DockerHubRequestLimitPerWindow)
+        {
+            failures.Add($"'{DockerUpdateGuardOptions.SectionName}:Scanning:DockerHubReservedManualRequestsPerWindow' must be smaller than DockerHubRequestLimitPerWindow");
+        }
+
         if (options.DockerHubAccountDiscoveryIntervalMinutes <= 0)
         {
             failures.Add($"'{DockerUpdateGuardOptions.SectionName}:Scanning:DockerHubAccountDiscoveryIntervalMinutes' must be greater than zero");

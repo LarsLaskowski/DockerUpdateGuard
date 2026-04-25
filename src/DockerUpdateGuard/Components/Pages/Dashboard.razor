@@ -17,7 +17,7 @@ else
     <MudStack Spacing="3" Class="page-shell">
         <MudPaper Class="hero-panel">
             <MudGrid Spacing="3">
-                <MudItem xs="12" lg="7">
+                <MudItem xs="12" lg="6">
                     <MudStack Spacing="1">
                         <MudText Typo="Typo.overline" Class="section-eyebrow">Operations cockpit</MudText>
                         <MudText Typo="Typo.h3">Dashboard</MudText>
@@ -26,14 +26,14 @@ else
                 </MudItem>
                 <MudItem xs="12" sm="6" lg="3">
                     <MudPaper Class="hero-meta-card" Elevation="0">
-                        <MudText Typo="Typo.caption" Class="muted-text">Latest activity</MudText>
-                        <MudText Typo="Typo.h6">@GetLatestScanLabel()</MudText>
+                        <MudText Typo="Typo.caption" Class="muted-text">Protected assets</MudText>
+                        <MudText Typo="Typo.h6">@(_dashboard.ObservedImageCount + _dashboard.RuntimeContainerCount)</MudText>
                     </MudPaper>
                 </MudItem>
                 <MudItem xs="12" sm="6" lg="3">
                     <MudPaper Class="hero-meta-card" Elevation="0">
-                        <MudText Typo="Typo.caption" Class="muted-text">Protected assets</MudText>
-                        <MudText Typo="Typo.h6">@(_dashboard.ObservedImageCount + _dashboard.RuntimeContainerCount)</MudText>
+                        <MudText Typo="Typo.caption" Class="muted-text">Latest activity</MudText>
+                        <MudText Typo="Typo.h6">@GetLatestScanLabel()</MudText>
                     </MudPaper>
                 </MudItem>
             </MudGrid>

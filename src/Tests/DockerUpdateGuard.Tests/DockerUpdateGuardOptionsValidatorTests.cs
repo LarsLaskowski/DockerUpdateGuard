@@ -65,6 +65,7 @@ public class DockerUpdateGuardOptionsValidatorTests
         options.Vulnerabilities.Enabled = true;
         options.Scanning.CleanupIntervalMinutes = 0;
         options.Scanning.DockerHubAccountDiscoveryIntervalMinutes = 0;
+        options.Scanning.DockerHubReservedManualRequestsPerWindow = options.Scanning.DockerHubRequestLimitPerWindow;
         options.DockerInstances = [
                                       new DockerInstanceOptions
                                       {
@@ -103,6 +104,9 @@ public class DockerUpdateGuardOptionsValidatorTests
         Assert.Contains(message => message.Contains("Scanning:DockerHubAccountDiscoveryIntervalMinutes", StringComparison.Ordinal),
                         failures,
                         "An invalid Docker Hub account discovery interval must be reported");
+        Assert.Contains(message => message.Contains("Scanning:DockerHubReservedManualRequestsPerWindow", StringComparison.Ordinal),
+                        failures,
+                        "An invalid manual Docker Hub request reserve must be reported");
         Assert.Contains(message => message.Contains("duplicate instance name", StringComparison.OrdinalIgnoreCase),
                         failures,
                         "Duplicate Docker instance names must be reported");
@@ -168,6 +172,15 @@ public class DockerUpdateGuardOptionsValidatorTests
         Assert.AreEqual("30",
                         applicationSection["Scanning:OwnImageBaseScanIntervalMinutes"],
                         "The development configuration sample must include the own-image scan interval");
+        Assert.AreEqual("6",
+                        applicationSection["Scanning:DockerHubRequestLimitWindowHours"],
+                        "The development configuration sample must include the Docker Hub quota window");
+        Assert.AreEqual("200",
+                        applicationSection["Scanning:DockerHubRequestLimitPerWindow"],
+                        "The development configuration sample must include the Docker Hub quota");
+        Assert.AreEqual("40",
+                        applicationSection["Scanning:DockerHubReservedManualRequestsPerWindow"],
+                        "The development configuration sample must include the Docker Hub manual request reserve");
         Assert.AreEqual("10",
                         applicationSection["Scanning:RuntimeImageUpdateScanIntervalMinutes"],
                         "The development configuration sample must include the runtime scan interval");
@@ -235,6 +248,9 @@ public class DockerUpdateGuardOptionsValidatorTests
         scanningOptions.DiscoveryIntervalMinutes = 15;
         scanningOptions.DockerHubAccountDiscoveryIntervalMinutes = 60;
         scanningOptions.OwnImageBaseScanIntervalMinutes = 60;
+        scanningOptions.DockerHubRequestLimitWindowHours = 6;
+        scanningOptions.DockerHubRequestLimitPerWindow = 200;
+        scanningOptions.DockerHubReservedManualRequestsPerWindow = 40;
         scanningOptions.RuntimeImageUpdateScanIntervalMinutes = 30;
         scanningOptions.VulnerabilityRefreshIntervalMinutes = 180;
         scanningOptions.CleanupIntervalMinutes = 720;

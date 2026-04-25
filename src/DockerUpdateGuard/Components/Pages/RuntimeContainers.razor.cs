@@ -32,8 +32,13 @@ public partial class RuntimeContainers
     /// <inheritdoc/>
     protected override async Task OnInitializedAsync()
     {
-        _containers = await ViewService.GetRuntimeContainersAsync()
-                                       .ConfigureAwait(true);
+        var containers = await ViewService.GetRuntimeContainersAsync()
+                                          .ConfigureAwait(false);
+
+        await InvokeAsync(() =>
+                          {
+                              _containers = containers;
+                          }).ConfigureAwait(false);
     }
 
     /// <summary>
