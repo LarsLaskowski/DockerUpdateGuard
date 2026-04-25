@@ -39,15 +39,16 @@ public class ImageCatalogRepository : IImageCatalogRepository
     {
         ValidateRegistryRepository(registry, repository);
         ValidateTag(tag);
+        var normalizedDigest = NormalizeDigest(digest);
 
         return await _dbContext.ImageVersions
                                .Include(entity => entity.RegistryRepository)
                                .SingleOrDefaultAsync(entity => entity.RegistryRepository.Registry == registry
                                                                && entity.RegistryRepository.Repository == repository
                                                                && entity.Tag == tag
-                                                               && entity.Digest == digest,
-                                                     cancellationToken)
-                               .ConfigureAwait(false);
+                                                               && entity.Digest == normalizedDigest,
+                                                      cancellationToken)
+                                .ConfigureAwait(false);
     }
 
     /// <inheritdoc/>
@@ -109,11 +110,12 @@ public class ImageCatalogRepository : IImageCatalogRepository
     {
         ValidateRegistryRepository(registry, repository);
         ValidateTag(tag);
+        var normalizedDigest = NormalizeDigest(digest);
 
         var existingVersion = await FindImageVersionAsync(registry,
                                                           repository,
                                                           tag,
-                                                          digest,
+                                                          normalizedDigest,
                                                           cancellationToken).ConfigureAwait(false);
 
         if (existingVersion is not null)
@@ -130,7 +132,7 @@ public class ImageCatalogRepository : IImageCatalogRepository
                              RegistryRepositoryId = registryRepository.Id,
                              RegistryRepository = registryRepository,
                              Tag = tag,
-                             Digest = digest,
+                             Digest = normalizedDigest,
                              PublishedAtUtc = publishedAtUtc,
                              MetadataJson = metadataJson,
                              CreatedAtUtc = now,
@@ -151,12 +153,12 @@ public class ImageCatalogRepository : IImageCatalogRepository
             _dbContext.Entry(newVersion).State = EntityState.Detached;
 
             return await _dbContext.ImageVersions
-                                   .Include(entity => entity.RegistryRepository)
-                                   .SingleAsync(entity => entity.RegistryRepositoryId == registryRepository.Id
-                                                          && entity.Tag == tag
-                                                          && entity.Digest == digest,
-                                                cancellationToken)
-                                   .ConfigureAwait(false);
+                                    .Include(entity => entity.RegistryRepository)
+                                    .SingleAsync(entity => entity.RegistryRepositoryId == registryRepository.Id
+                                                           && entity.Tag == tag
+                                                           && entity.Digest == normalizedDigest,
+                                                 cancellationToken)
+                                    .ConfigureAwait(false);
         }
     }
 
@@ -207,6 +209,16 @@ public class ImageCatalogRepository : IImageCatalogRepository
         {
             throw new ArgumentException("Tag must be provided", nameof(tag));
         }
+    }
+
+    /// <summary>
+    /// Normalize an optional digest for persistence and unique lookups
+    /// </summary>
+    /// <param name="digest">Raw digest</param>
+    /// <returns>Normalized digest</returns>
+    private static string NormalizeDigest(string? digest)
+    {
+        return string.IsNullOrWhiteSpace(digest) ? string.Empty : digest.Trim();
     }
 
     #endregion // Methods
