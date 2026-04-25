@@ -47,8 +47,8 @@ public class ImageCatalogRepository : IImageCatalogRepository
                                                                && entity.RegistryRepository.Repository == repository
                                                                && entity.Tag == tag
                                                                && entity.Digest == normalizedDigest,
-                                                      cancellationToken)
-                                .ConfigureAwait(false);
+                                                     cancellationToken)
+                               .ConfigureAwait(false);
     }
 
     /// <inheritdoc/>
@@ -153,12 +153,12 @@ public class ImageCatalogRepository : IImageCatalogRepository
             _dbContext.Entry(newVersion).State = EntityState.Detached;
 
             return await _dbContext.ImageVersions
-                                    .Include(entity => entity.RegistryRepository)
-                                    .SingleAsync(entity => entity.RegistryRepositoryId == registryRepository.Id
-                                                           && entity.Tag == tag
-                                                           && entity.Digest == normalizedDigest,
-                                                 cancellationToken)
-                                    .ConfigureAwait(false);
+                                   .Include(entity => entity.RegistryRepository)
+                                   .SingleAsync(entity => entity.RegistryRepositoryId == registryRepository.Id
+                                                          && entity.Tag == tag
+                                                          && entity.Digest == normalizedDigest,
+                                                cancellationToken)
+                                   .ConfigureAwait(false);
         }
     }
 

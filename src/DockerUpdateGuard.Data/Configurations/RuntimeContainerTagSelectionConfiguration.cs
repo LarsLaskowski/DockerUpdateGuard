@@ -7,22 +7,26 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace DockerUpdateGuard.Data.Configurations;
 
 /// <summary>
-/// Mapping for <see cref="ImageVersion"/>
+/// Mapping for <see cref="RuntimeContainerTagSelection"/>
 /// </summary>
-public class ImageVersionConfiguration : IEntityTypeConfiguration<ImageVersion>
+public class RuntimeContainerTagSelectionConfiguration : IEntityTypeConfiguration<RuntimeContainerTagSelection>
 {
     #region Methods
 
     /// <inheritdoc/>
-    public void Configure(EntityTypeBuilder<ImageVersion> builder)
+    public void Configure(EntityTypeBuilder<RuntimeContainerTagSelection> builder)
     {
         ArgumentNullException.ThrowIfNull(builder);
 
         var digestConverter = new ValueConverter<string?, string>(value => value ?? string.Empty, value => string.IsNullOrEmpty(value) ? null : value);
 
-        builder.ToTable("ImageVersions");
+        builder.ToTable("RuntimeContainerTagSelections");
 
         builder.HasKey(entity => entity.Id);
+
+        builder.Property(entity => entity.ContainerId)
+               .HasMaxLength(200)
+               .IsRequired();
 
         builder.Property(entity => entity.Tag)
                .HasMaxLength(200)
@@ -33,37 +37,23 @@ public class ImageVersionConfiguration : IEntityTypeConfiguration<ImageVersion>
                .HasConversion(digestConverter)
                .IsRequired();
 
-        builder.Property(entity => entity.Source)
-               .IsRequired();
-
-        builder.Property(entity => entity.MetadataJson)
-               .HasMaxLength(4000);
-
-        builder.Property(entity => entity.VulnerabilityAssessmentStatus)
-               .IsRequired();
-
-        builder.Property(entity => entity.VulnerabilityAssessmentSource)
-               .IsRequired();
-
-        builder.Property(entity => entity.VulnerabilityAssessmentMessage)
-               .HasMaxLength(2000);
-
-        builder.Property(entity => entity.CreatedAtUtc)
-               .IsRequired();
-
-        builder.Property(entity => entity.UpdatedAtUtc)
+        builder.Property(entity => entity.SelectedAtUtc)
                .IsRequired();
 
         builder.HasIndex(entity => new
                                    {
-                                       entity.RegistryRepositoryId,
-                                       entity.Tag,
-                                       entity.Digest,
+                                       entity.DockerInstanceId,
+                                       entity.ContainerId,
                                    })
                .IsUnique();
 
+        builder.HasOne(entity => entity.DockerInstance)
+               .WithMany()
+               .HasForeignKey(entity => entity.DockerInstanceId)
+               .OnDelete(DeleteBehavior.Cascade);
+
         builder.HasOne(entity => entity.RegistryRepository)
-               .WithMany(entity => entity.ImageVersions)
+               .WithMany()
                .HasForeignKey(entity => entity.RegistryRepositoryId)
                .OnDelete(DeleteBehavior.Cascade);
     }

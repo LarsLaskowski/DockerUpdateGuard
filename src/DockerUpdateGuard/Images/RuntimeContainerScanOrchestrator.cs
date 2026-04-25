@@ -23,12 +23,12 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
     private readonly ApplicationTelemetry _applicationTelemetry;
     private readonly DockerUpdateGuardDbContext _dbContext;
     private readonly IDockerInstanceClient _dockerInstanceClient;
-    private readonly IDockerHubClient _dockerHubClient;
     private readonly IImageCatalogRepository _imageCatalogRepository;
     private readonly IImageReferenceParser _imageReferenceParser;
     private readonly IInstanceDiscoveryService _instanceDiscoveryService;
     private readonly ILogger<RuntimeContainerScanOrchestrator> _logger;
     private readonly IOptionsMonitor<DockerUpdateGuardOptions> _optionsMonitor;
+    private readonly IRegistryMetadataService _registryMetadataService;
     private readonly IUpdateDetectionService _updateDetectionService;
 
     #endregion // Fields
@@ -41,23 +41,23 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
     public RuntimeContainerScanOrchestrator(ApplicationTelemetry applicationTelemetry,
                                             DockerUpdateGuardDbContext dbContext,
                                             IDockerInstanceClient dockerInstanceClient,
-                                            IDockerHubClient dockerHubClient,
                                             IImageCatalogRepository imageCatalogRepository,
                                             IImageReferenceParser imageReferenceParser,
                                             IInstanceDiscoveryService instanceDiscoveryService,
                                             ILogger<RuntimeContainerScanOrchestrator> logger,
                                             IOptionsMonitor<DockerUpdateGuardOptions> optionsMonitor,
+                                            IRegistryMetadataService registryMetadataService,
                                             IUpdateDetectionService updateDetectionService)
     {
         _applicationTelemetry = applicationTelemetry;
         _dbContext = dbContext;
         _dockerInstanceClient = dockerInstanceClient;
-        _dockerHubClient = dockerHubClient;
         _imageCatalogRepository = imageCatalogRepository;
         _imageReferenceParser = imageReferenceParser;
         _instanceDiscoveryService = instanceDiscoveryService;
         _logger = logger;
         _optionsMonitor = optionsMonitor;
+        _registryMetadataService = registryMetadataService;
         _updateDetectionService = updateDetectionService;
     }
 
@@ -201,19 +201,22 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
                                        ServiceName = container.ServiceName,
                                        Status = container.RuntimeStatus,
                                        IsRunning = container.IsRunning,
+                                       UpdateAssessmentStatus = UpdateAssessmentStatus.NotEvaluated,
                                        RecordedAtUtc = DateTimeOffset.UtcNow,
                                    };
 
                     _dbContext.ContainerSnapshots.Add(snapshot);
 
-                    var tagsResult = await _dockerHubClient.GetTagsAsync(parsedReference.Registry,
-                                                                         parsedReference.Repository,
-                                                                         cancellationToken)
-                                                           .ConfigureAwait(false);
+                    var tagsResult = await _registryMetadataService.GetTagsAsync(parsedReference.Registry,
+                                                                                 parsedReference.Repository,
+                                                                                 cancellationToken)
+                                                                   .ConfigureAwait(false);
 
                     if (tagsResult.Status == ExternalOperationStatus.Succeeded && tagsResult.Data is not null)
                     {
                         var evaluation = _updateDetectionService.Evaluate(parsedReference, tagsResult.Data);
+
+                        ApplyUpdateAssessment(snapshot, evaluation);
 
                         if (evaluation.Status == UpdateEvaluationStatus.UpdateAvailable
                             || evaluation.Status == UpdateEvaluationStatus.NeedsReview)
@@ -228,6 +231,8 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
                     else if (tagsResult.Status != ExternalOperationStatus.NotFound
                              && tagsResult.Status != ExternalOperationStatus.Unsupported)
                     {
+                        snapshot.UpdateAssessmentStatus = UpdateAssessmentStatus.Failed;
+                        snapshot.UpdateAssessmentMessage = tagsResult.Message ?? $"Unable to evaluate runtime image '{container.ImageReference}'";
                         finalStatus = ScanRunStatus.Partial;
 
                         statusMessages.Add(tagsResult.Message ?? $"Unable to evaluate runtime image '{container.ImageReference}'");
@@ -239,9 +244,13 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
                     }
                     else
                     {
+                        snapshot.UpdateAssessmentStatus = tagsResult.Status == ExternalOperationStatus.NotFound
+                                                              ? UpdateAssessmentStatus.NoTagData
+                                                              : UpdateAssessmentStatus.Unsupported;
+                        snapshot.UpdateAssessmentMessage = tagsResult.Message ?? $"Runtime image '{container.ImageReference}' cannot be evaluated by the current registry adapters";
                         finalStatus = ScanRunStatus.Partial;
 
-                        statusMessages.Add(tagsResult.Message ?? $"Runtime image '{container.ImageReference}' cannot be evaluated by the current Docker Hub adapter");
+                        statusMessages.Add(tagsResult.Message ?? $"Runtime image '{container.ImageReference}' cannot be evaluated by the current registry adapters");
 
                         _logger.RuntimeContainerRegistryEvaluationUnsupported(dockerInstance.Name,
                                                                               container.ImageReference,
@@ -366,6 +375,29 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
         }
 
         _dbContext.UpdateFindings.Add(finding);
+    }
+
+    /// <summary>
+    /// Map an update evaluation result to the persisted runtime assessment
+    /// </summary>
+    /// <param name="snapshot">Runtime snapshot</param>
+    /// <param name="evaluation">Update evaluation</param>
+    private static void ApplyUpdateAssessment(ContainerSnapshot snapshot, UpdateEvaluationResult evaluation)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        ArgumentNullException.ThrowIfNull(evaluation);
+
+        snapshot.UpdateAssessmentStatus = evaluation.Status switch
+                                          {
+                                              UpdateEvaluationStatus.UpToDate => UpdateAssessmentStatus.UpToDate,
+                                              UpdateEvaluationStatus.UpdateAvailable => UpdateAssessmentStatus.UpdateAvailable,
+                                              UpdateEvaluationStatus.NeedsReview => UpdateAssessmentStatus.ManualReviewRequired,
+                                              UpdateEvaluationStatus.Unknown => UpdateAssessmentStatus.NoTagData,
+                                              _ => UpdateAssessmentStatus.NotEvaluated,
+                                          };
+        snapshot.UpdateAssessmentMessage = string.IsNullOrWhiteSpace(evaluation.Details)
+                                               ? evaluation.Summary
+                                               : $"{evaluation.Summary} {evaluation.Details}";
     }
 
     /// <summary>

@@ -136,5 +136,28 @@ public partial class ObservedImages
                };
     }
 
+    /// <summary>
+    /// Resolve the chip color for a vulnerability assessment status
+    /// </summary>
+    /// <param name="status">Vulnerability assessment status</param>
+    /// <returns>Chip color</returns>
+    private static Color GetVulnerabilityStatusColor(string? status)
+    {
+        if (string.IsNullOrWhiteSpace(status))
+        {
+            return Color.Default;
+        }
+
+        return status.ToUpperInvariant() switch
+               {
+                   "FINDINGS DETECTED" => Color.Warning,
+                   "NO FINDINGS" => Color.Success,
+                   "FAILED" => Color.Error,
+                   "NOT CONFIGURED" => Color.Default,
+                   "UNSUPPORTED" => Color.Default,
+                   _ => Color.Info,
+               };
+    }
+
     #endregion // Methods
 }

@@ -218,5 +218,212 @@ public class ApplicationViewServiceTests
         }
     }
 
+    /// <summary>
+    /// Verify runtime container detail exposes manual selection and explicit assessment states
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task ApplicationViewServiceRuntimeContainerDetailReturnsManualSelectionAndAssessmentStatesAsync()
+    {
+        var options = new DbContextOptionsBuilder<DockerUpdateGuardDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString())
+                                                                               .Options;
+
+        var dbContext = new DockerUpdateGuardDbContext(options);
+
+        await using (dbContext.ConfigureAwait(false))
+        {
+            var imageCatalogRepository = new ImageCatalogRepository(dbContext);
+            var imageVersion = await imageCatalogRepository.GetOrCreateImageVersionAsync("ghcr.io",
+                                                                                         "acme/api",
+                                                                                         "1.0.0",
+                                                                                         "sha256:current",
+                                                                                         cancellationToken: CancellationToken.None)
+                                                           .ConfigureAwait(false);
+            imageVersion.VulnerabilityAssessmentStatus = VulnerabilityAssessmentStatus.FindingsDetected;
+            imageVersion.VulnerabilityAssessmentSource = VulnerabilitySource.Trivy;
+            imageVersion.VulnerabilityAssessmentMessage = "Trivy reported active findings";
+            imageVersion.VulnerabilityAssessmentCheckedAtUtc = DateTimeOffset.UtcNow;
+
+            var recommendedImageVersion = await imageCatalogRepository.GetOrCreateImageVersionAsync("ghcr.io",
+                                                                                                    "acme/api",
+                                                                                                    "1.1.0",
+                                                                                                    "sha256:recommended",
+                                                                                                    cancellationToken: CancellationToken.None)
+                                                                      .ConfigureAwait(false);
+            var dockerInstance = new DockerInstance
+                                 {
+                                     Name = "Production",
+                                     EndpointUri = "https://docker.example.test",
+                                     ConnectionKind = DockerConnectionKind.Https,
+                                 };
+            var scanRun = new ScanRun
+                          {
+                              Type = ScanRunType.RuntimeContainer,
+                              Status = ScanRunStatus.Succeeded,
+                              TriggerSource = ScanTriggerSource.Manual,
+                              DockerInstance = dockerInstance,
+                          };
+            var snapshot = new ContainerSnapshot
+                           {
+                               DockerInstance = dockerInstance,
+                               ImageVersionId = imageVersion.Id,
+                               ScanRun = scanRun,
+                               ContainerId = "container-a",
+                               Name = "api",
+                               Status = ContainerRuntimeStatus.Running,
+                               IsRunning = true,
+                               UpdateAssessmentStatus = UpdateAssessmentStatus.ManualReviewRequired,
+                               UpdateAssessmentMessage = "Alternative tags are available and require manual review",
+                           };
+            var updateFinding = new UpdateFinding
+                                {
+                                    ScanRun = scanRun,
+                                    ContainerSnapshot = snapshot,
+                                    SubjectImageVersionId = imageVersion.Id,
+                                    RecommendedImageVersionId = recommendedImageVersion.Id,
+                                    Type = UpdateFindingType.TagRecommendation,
+                                    Summary = "Alternative tags are available",
+                                    Details = "Choose a compatible tag manually",
+                                    IsActive = true,
+                                };
+
+            updateFinding.TagCandidates.Add(new TagCandidate
+                                            {
+                                                Tag = "1.1.0",
+                                                Digest = "sha256:recommended",
+                                                Rank = 0,
+                                                IsRecommended = true,
+                                                Reason = "Latest compatible stable tag",
+                                            });
+            updateFinding.TagCandidates.Add(new TagCandidate
+                                            {
+                                                Tag = "1.0.5",
+                                                Digest = "sha256:manual",
+                                                Rank = 1,
+                                                IsRecommended = false,
+                                                Reason = "Latest patch in the current minor line",
+                                            });
+
+            dbContext.ContainerSnapshots.Add(snapshot);
+            dbContext.UpdateFindings.Add(updateFinding);
+            dbContext.RuntimeContainerTagSelections.Add(new RuntimeContainerTagSelection
+                                                        {
+                                                            DockerInstance = dockerInstance,
+                                                            RegistryRepositoryId = imageVersion.RegistryRepositoryId,
+                                                            ContainerId = "container-a",
+                                                            Tag = "1.0.5",
+                                                            Digest = "sha256:manual",
+                                                        });
+            dbContext.VulnerabilityFindings.Add(new VulnerabilityFinding
+                                                {
+                                                    ImageVersionId = imageVersion.Id,
+                                                    ScanRun = scanRun,
+                                                    AdvisoryId = "CVE-2026-1000",
+                                                    Title = "Remote code execution",
+                                                    Severity = VulnerabilitySeverity.Critical,
+                                                    Source = VulnerabilitySource.Trivy,
+                                                    AffectedPackage = "openssl",
+                                                    FixedVersion = "3.0.1",
+                                                    IsActive = true,
+                                                });
+
+            await dbContext.SaveChangesAsync(CancellationToken.None)
+                           .ConfigureAwait(false);
+
+            var service = new ApplicationViewService(dbContext,
+                                                     new ImageReferenceParser(),
+                                                     new SharedBaseImageQueryService(dbContext));
+            var detail = await service.GetRuntimeContainerDetailAsync(dockerInstance.Id, "container-a", CancellationToken.None)
+                                      .ConfigureAwait(false);
+
+            Assert.IsNotNull(detail, "Runtime container detail must be returned for the latest snapshot");
+            Assert.AreEqual("Manual review required",
+                            detail.UpdateStatus,
+                            "The runtime detail must expose the explicit update assessment label");
+            Assert.AreEqual("Findings detected",
+                            detail.VulnerabilityAssessment.Status,
+                            "The runtime detail must expose the explicit vulnerability assessment label");
+            Assert.AreEqual("Trivy",
+                            detail.VulnerabilityAssessment.Source,
+                            "The runtime detail must expose the provider that produced the vulnerability assessment");
+            Assert.AreEqual("ghcr.io/acme/api:1.0.5@sha256:manual",
+                            detail.ManualSelectionImage,
+                            "The runtime detail must show the persisted manual tag preference");
+            Assert.IsTrue(detail.AvailableTagCandidates.Single(entity => entity.Tag == "1.0.5").IsSelected,
+                          "The saved manual tag candidate must be marked as selected");
+        }
+    }
+
+    /// <summary>
+    /// Verify observed image list and detail expose vulnerability assessment metadata
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task ApplicationViewServiceObservedImagesExposeVulnerabilityAssessmentMetadataAsync()
+    {
+        var options = new DbContextOptionsBuilder<DockerUpdateGuardDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString())
+                                                                               .Options;
+
+        var dbContext = new DockerUpdateGuardDbContext(options);
+
+        await using (dbContext.ConfigureAwait(false))
+        {
+            var imageCatalogRepository = new ImageCatalogRepository(dbContext);
+            var imageVersion = await imageCatalogRepository.GetOrCreateImageVersionAsync("mcr.microsoft.com",
+                                                                                         "dotnet/aspnet",
+                                                                                         "8.0",
+                                                                                         "sha256:image",
+                                                                                         cancellationToken: CancellationToken.None)
+                                                           .ConfigureAwait(false);
+            imageVersion.VulnerabilityAssessmentStatus = VulnerabilityAssessmentStatus.Failed;
+            imageVersion.VulnerabilityAssessmentSource = VulnerabilitySource.Trivy;
+            imageVersion.VulnerabilityAssessmentMessage = "Trivy returned 500";
+            imageVersion.VulnerabilityAssessmentCheckedAtUtc = DateTimeOffset.UtcNow;
+
+            var observedImage = new ObservedImage
+                                {
+                                    Name = "ASP.NET Runtime",
+                                    CurrentImageVersionId = imageVersion.Id,
+                                };
+            var scanRun = new ScanRun
+                          {
+                              Type = ScanRunType.ObservedImage,
+                              Status = ScanRunStatus.Failed,
+                              TriggerSource = ScanTriggerSource.Manual,
+                              ObservedImage = observedImage,
+                              ErrorMessage = "Scan failed",
+                          };
+
+            dbContext.ObservedImages.Add(observedImage);
+            dbContext.ScanRuns.Add(scanRun);
+
+            await dbContext.SaveChangesAsync(CancellationToken.None)
+                           .ConfigureAwait(false);
+
+            var service = new ApplicationViewService(dbContext,
+                                                     new ImageReferenceParser(),
+                                                     new SharedBaseImageQueryService(dbContext));
+            var listItems = await service.GetObservedImagesAsync(CancellationToken.None)
+                                         .ConfigureAwait(false);
+            var detail = await service.GetObservedImageDetailAsync(observedImage.Id, CancellationToken.None)
+                                      .ConfigureAwait(false);
+            var listItem = listItems.Single();
+
+            Assert.AreEqual("Failed",
+                            listItem.VulnerabilityStatus,
+                            "The observed image list must expose the explicit vulnerability assessment label");
+            Assert.AreEqual("Trivy returned 500",
+                            listItem.VulnerabilityMessage,
+                            "The observed image list must expose the assessment message");
+            Assert.IsNotNull(detail, "The observed image detail must be returned for a stored observed image");
+            Assert.AreEqual("Failed",
+                            detail.VulnerabilityAssessment.Status,
+                            "The observed image detail must expose the vulnerability assessment status");
+            Assert.AreEqual("Trivy",
+                            detail.VulnerabilityAssessment.Source,
+                            "The observed image detail must expose the vulnerability assessment source");
+        }
+    }
+
     #endregion // Methods
 }

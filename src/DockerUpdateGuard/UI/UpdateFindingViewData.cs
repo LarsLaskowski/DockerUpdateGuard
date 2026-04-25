@@ -19,5 +19,7 @@ public class UpdateFindingViewData
 
     public DateTimeOffset DetectedAtUtc { get; set; }
 
+    public IReadOnlyList<TagCandidateViewData> TagCandidates { get; set; } = [];
+
     #endregion // Properties
 }

@@ -56,7 +56,9 @@ public partial class ObservedImageDetail
     {
         return status.ToUpperInvariant() switch
                {
+                   "SUCCEEDED" => Color.Success,
                    "COMPLETED" => Color.Success,
+                   "PARTIAL" => Color.Warning,
                    "FAILED" => Color.Error,
                    "RUNNING" => Color.Info,
                    "PENDING" => Color.Warning,
@@ -78,6 +80,24 @@ public partial class ObservedImageDetail
                    "MEDIUM" => Color.Info,
                    "LOW" => Color.Success,
                    _ => Color.Default,
+               };
+    }
+
+    /// <summary>
+    /// Resolve the chip color for a vulnerability assessment status
+    /// </summary>
+    /// <param name="status">Status label</param>
+    /// <returns>Chip color</returns>
+    private static Color GetVulnerabilityAssessmentColor(string status)
+    {
+        return status.ToUpperInvariant() switch
+               {
+                   "FINDINGS DETECTED" => Color.Warning,
+                   "NO FINDINGS" => Color.Success,
+                   "FAILED" => Color.Error,
+                   "NOT CONFIGURED" => Color.Default,
+                   "UNSUPPORTED" => Color.Default,
+                   _ => Color.Info,
                };
     }
 

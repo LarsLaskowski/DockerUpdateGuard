@@ -49,12 +49,17 @@ public static class ServiceCollectionExtensions
                                               options.UseNpgsql(connectionString, npgsqlOptions => npgsqlOptions.MigrationsAssembly(typeof(DockerUpdateGuard.Data.DockerUpdateGuardDbContext).Assembly.GetName().Name));
                                           });
         services.AddDockerUpdateGuardTelemetry(configuration);
-        services.AddHttpClient<IDockerHubClient, DockerHubClient>(client =>
-                                                                  {
-                                                                      client.BaseAddress = DockerHubClient.GetBaseUri(applicationOptions.DockerHub);
-                                                                      client.Timeout = TimeSpan.FromSeconds(applicationOptions.DockerHub.RequestTimeoutSeconds);
-                                                                      client.DefaultRequestHeaders.UserAgent.ParseAdd("DockerUpdateGuard/1.0");
-                                                                  });
+        services.AddHttpClient<DockerHubClient>(client =>
+                                                {
+                                                    client.BaseAddress = DockerHubClient.GetBaseUri(applicationOptions.DockerHub);
+                                                    client.Timeout = TimeSpan.FromSeconds(applicationOptions.DockerHub.RequestTimeoutSeconds);
+                                                    client.DefaultRequestHeaders.UserAgent.ParseAdd("DockerUpdateGuard/1.0");
+                                                });
+        services.AddHttpClient<OciRegistryClient>(client =>
+                                                  {
+                                                      client.Timeout = TimeSpan.FromSeconds(applicationOptions.DockerHub.RequestTimeoutSeconds);
+                                                      client.DefaultRequestHeaders.UserAgent.ParseAdd("DockerUpdateGuard/1.0");
+                                                  });
         services.AddSingleton<ApplicationTelemetry>();
         services.AddSingleton<IDockerInstanceClient, DockerInstanceClient>();
         services.AddSingleton<IPortainerClient, PortainerClient>();
@@ -86,9 +91,13 @@ public static class ServiceCollectionExtensions
         {
             services.AddSingleton<IVulnerabilityProvider, DefaultVulnerabilityProvider>();
         }
+        services.AddScoped<IDockerHubClient>(serviceProvider => serviceProvider.GetRequiredService<DockerHubClient>());
+        services.AddScoped<IRegistryMetadataClient>(serviceProvider => serviceProvider.GetRequiredService<DockerHubClient>());
+        services.AddScoped<IRegistryMetadataClient>(serviceProvider => serviceProvider.GetRequiredService<OciRegistryClient>());
+        services.AddScoped<IRegistryMetadataService, RegistryMetadataService>();
         services.AddScoped<IImageReferenceParser, ImageReferenceParser>();
         services.AddScoped<IUpdateDetectionService, UpdateDetectionService>();
-        services.AddScoped<IBaseImageResolver, DockerHubBaseImageResolver>();
+        services.AddScoped<IBaseImageResolver, RegistryBaseImageResolver>();
         services.AddScoped<IImageRegistrationService, ImageRegistrationService>();
         services.AddScoped<IInstanceDiscoveryService, InstanceDiscoveryService>();
         services.AddScoped<IDockerHubAccountImageDiscoveryService, DockerHubAccountImageDiscoveryService>();
@@ -96,6 +105,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IRuntimeContainerScanOrchestrator, RuntimeContainerScanOrchestrator>();
         services.AddScoped<IVulnerabilityEnrichmentService, VulnerabilityEnrichmentService>();
         services.AddScoped<IApplicationViewService, ApplicationViewService>();
+        services.AddScoped<IRuntimeContainerTagSelectionService, RuntimeContainerTagSelectionService>();
         services.AddHostedService<DockerInstanceDiscoveryBackgroundService>();
         services.AddHostedService<DockerHubAccountImageDiscoveryBackgroundService>();
         services.AddHostedService<OwnImageBaseRefreshBackgroundService>();

@@ -36,13 +36,13 @@ public class ImageCatalogRepositoryNullDigestTests
                 dbContext.ChangeTracker.Clear();
 
                 var persistedVersion = await dbContext.ImageVersions.SingleAsync(entity => entity.Id == createdVersion.Id)
-                                                          .ConfigureAwait(false);
+                                                                    .ConfigureAwait(false);
                 var foundVersion = await repository.FindImageVersionAsync("docker.io",
                                                                           "library/busybox",
                                                                           "latest",
                                                                           digest: null,
                                                                           cancellationToken: CancellationToken.None)
-                                                 .ConfigureAwait(false);
+                                                   .ConfigureAwait(false);
 
                 Assert.IsNotNull(foundVersion, "Image versions without a digest must be found again through the repository");
                 Assert.AreEqual(createdVersion.Id,

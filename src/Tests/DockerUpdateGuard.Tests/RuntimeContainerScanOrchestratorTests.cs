@@ -49,7 +49,7 @@ public class RuntimeContainerScanOrchestratorTests
                 var optionsMonitor = new TestOptionsMonitor<DockerUpdateGuardOptions>(options);
                 var imageCatalogRepository = new ImageCatalogRepository(dbContext);
                 var dockerInstanceClient = Substitute.For<IDockerInstanceClient>();
-                var dockerHubClient = Substitute.For<IDockerHubClient>();
+                var registryMetadataService = Substitute.For<IRegistryMetadataService>();
                 var instanceDiscoveryLogger = new TestLogger<InstanceDiscoveryService>();
                 var logger = new TestLogger<RuntimeContainerScanOrchestrator>();
                 var instanceDiscoveryService = new InstanceDiscoveryService(dbContext,
@@ -69,33 +69,33 @@ public class RuntimeContainerScanOrchestratorTests
                                                                                                                                   ServiceName = "frontend",
                                                                                                                               },
                                                                                                                           ]));
-                dockerHubClient.GetTagsAsync("docker.io",
-                                             "library/nginx",
-                                             Arg.Any<CancellationToken>())
-                               .Returns(ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Succeeded([
-                                                                                                               new DockerHubTagData
-                                                                                                               {
-                                                                                                                   Tag = "1.1.0",
-                                                                                                                   Digest = "sha256:runtime-new",
-                                                                                                                   PublishedAtUtc = new DateTimeOffset(2025, 06, 02, 12, 00, 00, TimeSpan.Zero),
-                                                                                                               },
-                                                                                                               new DockerHubTagData
-                                                                                                               {
-                                                                                                                   Tag = "1.0.0",
-                                                                                                                   Digest = "sha256:runtime-old",
-                                                                                                                   PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
-                                                                                                               },
-                                                                                                           ]));
+                registryMetadataService.GetTagsAsync("docker.io",
+                                                     "library/nginx",
+                                                     Arg.Any<CancellationToken>())
+                                       .Returns(ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Succeeded([
+                                                                                                                       new DockerHubTagData
+                                                                                                                       {
+                                                                                                                           Tag = "1.1.0",
+                                                                                                                           Digest = "sha256:runtime-new",
+                                                                                                                           PublishedAtUtc = new DateTimeOffset(2025, 06, 02, 12, 00, 00, TimeSpan.Zero),
+                                                                                                                       },
+                                                                                                                       new DockerHubTagData
+                                                                                                                       {
+                                                                                                                           Tag = "1.0.0",
+                                                                                                                           Digest = "sha256:runtime-old",
+                                                                                                                           PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
+                                                                                                                       },
+                                                                                                                   ]));
 
                 var orchestrator = new RuntimeContainerScanOrchestrator(new ApplicationTelemetry(),
                                                                         dbContext,
                                                                         dockerInstanceClient,
-                                                                        dockerHubClient,
                                                                         imageCatalogRepository,
                                                                         new ImageReferenceParser(),
                                                                         instanceDiscoveryService,
                                                                         logger,
                                                                         optionsMonitor,
+                                                                        registryMetadataService,
                                                                         new UpdateDetectionService());
 
                 await orchestrator.ScanAllAsync(ScanTriggerSource.Scheduled, CancellationToken.None)
@@ -180,7 +180,7 @@ public class RuntimeContainerScanOrchestratorTests
                                                                                                             ],
                                                                                       });
                 var dockerInstanceClient = Substitute.For<IDockerInstanceClient>();
-                var dockerHubClient = Substitute.For<IDockerHubClient>();
+                var registryMetadataService = Substitute.For<IRegistryMetadataService>();
                 var imageCatalogRepository = new ImageCatalogRepository(dbContext);
                 var logger = new TestLogger<RuntimeContainerScanOrchestrator>();
                 var instanceDiscoveryService = new InstanceDiscoveryService(dbContext,
@@ -200,20 +200,20 @@ public class RuntimeContainerScanOrchestratorTests
                                                                                                                                   ServiceName = "frontend",
                                                                                                                               },
                                                                                                                           ]));
-                dockerHubClient.GetTagsAsync("docker.io",
-                                             "library/nginx",
-                                             Arg.Any<CancellationToken>())
-                               .Returns(ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Unsupported("Docker Hub cannot evaluate this registry"));
+                registryMetadataService.GetTagsAsync("docker.io",
+                                                     "library/nginx",
+                                                     Arg.Any<CancellationToken>())
+                                       .Returns(ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Unsupported("Registry adapters cannot evaluate this registry"));
 
                 var orchestrator = new RuntimeContainerScanOrchestrator(new ApplicationTelemetry(),
                                                                         dbContext,
                                                                         dockerInstanceClient,
-                                                                        dockerHubClient,
                                                                         imageCatalogRepository,
                                                                         new ImageReferenceParser(),
                                                                         instanceDiscoveryService,
                                                                         logger,
                                                                         optionsMonitor,
+                                                                        registryMetadataService,
                                                                         new UpdateDetectionService());
 
                 await orchestrator.ScanAllAsync(ScanTriggerSource.Scheduled, CancellationToken.None)

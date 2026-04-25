@@ -63,6 +63,16 @@ public class ContainerSnapshot
     public bool IsRunning { get; set; }
 
     /// <summary>
+    /// Update assessment status for this snapshot
+    /// </summary>
+    public UpdateAssessmentStatus UpdateAssessmentStatus { get; set; }
+
+    /// <summary>
+    /// Optional update assessment message
+    /// </summary>
+    public string? UpdateAssessmentMessage { get; set; }
+
+    /// <summary>
     /// Snapshot timestamp
     /// </summary>
     public DateTimeOffset RecordedAtUtc { get; set; } = DateTimeOffset.UtcNow;

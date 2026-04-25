@@ -23,5 +23,9 @@ public class ObservedImageListItemData
 
     public int ActiveVulnerabilityFindingCount { get; set; }
 
+    public string VulnerabilityStatus { get; set; } = "Not scanned";
+
+    public string? VulnerabilityMessage { get; set; }
+
     #endregion // Properties
 }

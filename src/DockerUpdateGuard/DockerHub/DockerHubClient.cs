@@ -16,7 +16,7 @@ namespace DockerUpdateGuard.DockerHub;
 /// <summary>
 /// Conservative first iteration Docker Hub adapter
 /// </summary>
-public sealed class DockerHubClient : IDockerHubClient, IDisposable
+public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient, IDisposable
 {
     #region Constants
 
@@ -81,9 +81,25 @@ public sealed class DockerHubClient : IDockerHubClient, IDisposable
         return new Uri("https://hub.docker.com/");
     }
 
+    /// <summary>
+    /// Determine whether the registry is served by Docker Hub
+    /// </summary>
+    /// <param name="registry">Registry value</param>
+    /// <returns>True when the registry belongs to Docker Hub</returns>
+    public static bool SupportsRegistry(string registry)
+    {
+        return IsSupportedRegistry(registry);
+    }
+
     #endregion // Static methods
 
     #region Methods
+
+    /// <inheritdoc/>
+    public bool CanHandle(string registry)
+    {
+        return SupportsRegistry(registry);
+    }
 
     /// <inheritdoc/>
     public async Task<ExternalOperationResult<DockerHubAuthenticatedUserData>> GetCurrentUserAsync(CancellationToken cancellationToken = default)

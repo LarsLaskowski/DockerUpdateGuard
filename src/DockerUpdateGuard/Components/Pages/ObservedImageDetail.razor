@@ -49,6 +49,21 @@
                         }
                     </MudPaper>
                 </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudPaper Class="summary-card" Elevation="0">
+                        <span class="summary-label">Vulnerability assessment</span>
+                        <MudChip T="string" Size="Size.Small" Color="@GetVulnerabilityAssessmentColor(_detail.VulnerabilityAssessment.Status)">@_detail.VulnerabilityAssessment.Status</MudChip>
+                        <span class="table-secondary">@($"{_detail.VulnerabilityAssessment.Source} · {_detail.VulnerabilityAssessment.ActiveFindingCount} active")</span>
+                        @if (_detail.VulnerabilityAssessment.CheckedAtUtc is DateTimeOffset checkedAtUtc)
+                        {
+                            <span class="table-secondary">Checked @checkedAtUtc.ToLocalTime().ToString("g")</span>
+                        }
+                        @if (string.IsNullOrWhiteSpace(_detail.VulnerabilityAssessment.Message) == false)
+                        {
+                            <span class="table-secondary">@_detail.VulnerabilityAssessment.Message</span>
+                        }
+                    </MudPaper>
+                </MudItem>
             </MudGrid>
         </MudPaper>
 
@@ -99,7 +114,7 @@
         <MudPaper Class="section-paper" Elevation="0">
             <div class="section-header">
                 <MudText Typo="Typo.h5">Update findings</MudText>
-                <MudText Class="section-description">Recommended upgrades and active update opportunities.</MudText>
+                <MudText Class="section-description">Recommended upgrades and alternative tags for manual review.</MudText>
             </div>
             @if (_detail.UpdateFindings.Count == 0)
             {
@@ -114,12 +129,38 @@
                         <MudTh>Type</MudTh>
                         <MudTh>Summary</MudTh>
                         <MudTh>Recommended</MudTh>
+                        <MudTh>Tag candidates</MudTh>
                         <MudTh>Active</MudTh>
                     </HeaderContent>
                     <RowTemplate>
                         <MudTd DataLabel="Type">@context.Type</MudTd>
-                        <MudTd DataLabel="Summary">@context.Summary</MudTd>
+                        <MudTd DataLabel="Summary">
+                            <span>@context.Summary</span>
+                            <span class="table-secondary">@context.Details</span>
+                        </MudTd>
                         <MudTd DataLabel="Recommended">@context.RecommendedImage</MudTd>
+                        <MudTd DataLabel="Tag candidates">
+                            @if (context.TagCandidates.Count == 0)
+                            {
+                                <span class="table-secondary">No candidate tags</span>
+                            }
+                            else
+                            {
+                                <MudStack Row="true" Spacing="1">
+                                    @foreach (var candidate in context.TagCandidates)
+                                    {
+                                        <MudTooltip Text="@candidate.Reason">
+                                            <MudChip T="string"
+                                                     Size="Size.Small"
+                                                     Color="@(candidate.IsRecommended ? Color.Primary : Color.Default)"
+                                                     Variant="@(candidate.IsSelected ? Variant.Filled : Variant.Outlined)">
+                                                @candidate.Tag
+                                            </MudChip>
+                                        </MudTooltip>
+                                    }
+                                </MudStack>
+                            }
+                        </MudTd>
                         <MudTd DataLabel="Active">
                             <MudChip T="string" Size="Size.Small" Color="@(context.IsActive ? Color.Warning : Color.Success)">
                                 @(context.IsActive ? "Active" : "Resolved")
@@ -147,6 +188,9 @@
                     <HeaderContent>
                         <MudTh>Advisory</MudTh>
                         <MudTh>Severity</MudTh>
+                        <MudTh>Source</MudTh>
+                        <MudTh>Package</MudTh>
+                        <MudTh>Fixed version</MudTh>
                         <MudTh>Title</MudTh>
                     </HeaderContent>
                     <RowTemplate>
@@ -154,6 +198,9 @@
                         <MudTd DataLabel="Severity">
                             <MudChip T="string" Size="Size.Small" Color="@GetVulnerabilitySeverityColor(context.Severity)">@context.Severity</MudChip>
                         </MudTd>
+                        <MudTd DataLabel="Source">@context.Source</MudTd>
+                        <MudTd DataLabel="Package">@context.AffectedPackage</MudTd>
+                        <MudTd DataLabel="Fixed version">@context.FixedVersion</MudTd>
                         <MudTd DataLabel="Title">@context.Title</MudTd>
                     </RowTemplate>
                 </MudTable>

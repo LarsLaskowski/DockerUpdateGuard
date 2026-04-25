@@ -1,5 +1,4 @@
 @page "/observed-images"
-@rendermode InteractiveServer
 
 <PageTitle>Observed Images</PageTitle>
 
@@ -106,7 +105,10 @@
                                 <span class="table-secondary">@context.LatestScanMessage</span>
                             </MudTd>
                             <MudTd DataLabel="Updates">@context.ActiveUpdateFindingCount</MudTd>
-                            <MudTd DataLabel="Vulnerabilities">@context.ActiveVulnerabilityFindingCount</MudTd>
+                            <MudTd DataLabel="Vulnerabilities">
+                                <MudChip T="string" Size="Size.Small" Color="@GetVulnerabilityStatusColor(context.VulnerabilityStatus)">@context.VulnerabilityStatus</MudChip>
+                                <span class="table-secondary">@($"{context.ActiveVulnerabilityFindingCount} active · {context.VulnerabilityMessage}")</span>
+                            </MudTd>
                         </RowTemplate>
                     </MudTable>
                 }

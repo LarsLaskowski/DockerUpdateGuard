@@ -55,9 +55,34 @@ public partial class RuntimeContainers
 
         return state.ToUpperInvariant() switch
                {
-                   "UPDATEAVAILABLE" => Color.Warning,
-                   "UPTODATE" => Color.Success,
-                   "UNKNOWN" => Color.Default,
+                   "UPDATE AVAILABLE" => Color.Warning,
+                   "UP TO DATE" => Color.Success,
+                   "MANUAL REVIEW REQUIRED" => Color.Info,
+                   "FAILED" => Color.Error,
+                   "UNSUPPORTED" => Color.Default,
+                   _ => Color.Info,
+               };
+    }
+
+    /// <summary>
+    /// Resolve the chip color for a vulnerability status
+    /// </summary>
+    /// <param name="status">Vulnerability status</param>
+    /// <returns>Chip color</returns>
+    private static Color GetVulnerabilityStatusColor(string? status)
+    {
+        if (string.IsNullOrWhiteSpace(status))
+        {
+            return Color.Default;
+        }
+
+        return status.ToUpperInvariant() switch
+               {
+                   "FINDINGS DETECTED" => Color.Warning,
+                   "NO FINDINGS" => Color.Success,
+                   "FAILED" => Color.Error,
+                   "NOT CONFIGURED" => Color.Default,
+                   "UNSUPPORTED" => Color.Default,
                    _ => Color.Info,
                };
     }

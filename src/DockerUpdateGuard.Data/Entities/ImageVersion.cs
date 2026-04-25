@@ -53,6 +53,26 @@ public class ImageVersion
     public string? MetadataJson { get; set; }
 
     /// <summary>
+    /// Vulnerability assessment status
+    /// </summary>
+    public VulnerabilityAssessmentStatus VulnerabilityAssessmentStatus { get; set; }
+
+    /// <summary>
+    /// Vulnerability provider/source used for the latest assessment
+    /// </summary>
+    public VulnerabilitySource VulnerabilityAssessmentSource { get; set; }
+
+    /// <summary>
+    /// Optional vulnerability assessment message
+    /// </summary>
+    public string? VulnerabilityAssessmentMessage { get; set; }
+
+    /// <summary>
+    /// Latest vulnerability assessment timestamp
+    /// </summary>
+    public DateTimeOffset? VulnerabilityAssessmentCheckedAtUtc { get; set; }
+
+    /// <summary>
     /// Related registry repository
     /// </summary>
     public RegistryRepository RegistryRepository { get; set; } = null!;

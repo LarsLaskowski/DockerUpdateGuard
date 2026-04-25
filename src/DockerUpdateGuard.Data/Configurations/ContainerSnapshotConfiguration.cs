@@ -41,6 +41,12 @@ public class ContainerSnapshotConfiguration : IEntityTypeConfiguration<Container
         builder.Property(entity => entity.Status)
                .IsRequired();
 
+        builder.Property(entity => entity.UpdateAssessmentStatus)
+               .IsRequired();
+
+        builder.Property(entity => entity.UpdateAssessmentMessage)
+               .HasMaxLength(2000);
+
         builder.Property(entity => entity.RecordedAtUtc)
                .IsRequired();
 

@@ -23,6 +23,8 @@ public class ObservedImageDetailViewData
 
     public IReadOnlyList<UpdateFindingViewData> UpdateFindings { get; set; } = [];
 
+    public VulnerabilityAssessmentViewData VulnerabilityAssessment { get; set; } = new();
+
     public IReadOnlyList<VulnerabilityFindingViewData> VulnerabilityFindings { get; set; } = [];
 
     public IReadOnlyList<ScanHistoryItemData> ScanHistory { get; set; } = [];

@@ -46,7 +46,7 @@ public class ImageScanOrchestratorTests
                                         CurrentImageVersionId = currentImageVersion.Id,
                                     };
                 var baseImageResolver = Substitute.For<IBaseImageResolver>();
-                var dockerHubClient = Substitute.For<IDockerHubClient>();
+                var registryMetadataService = Substitute.For<IRegistryMetadataService>();
 
                 dbContext.ObservedImages.Add(observedImage);
                 await dbContext.SaveChangesAsync()
@@ -65,38 +65,38 @@ public class ImageScanOrchestratorTests
                                                                                                                         SourceReference = "FROM debian:12.0.0",
                                                                                                                     },
                                                                                                                 ]));
-                dockerHubClient.GetTagAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
-                               .Returns(ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
-                                                                                            {
-                                                                                                Tag = "1.0.0",
-                                                                                                Digest = "sha256:app",
-                                                                                                PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
-                                                                                            }));
-                dockerHubClient.GetTagsAsync("docker.io",
-                                             "library/debian",
-                                             Arg.Any<CancellationToken>())
-                               .Returns(ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Succeeded([
-                                                                                                               new DockerHubTagData
-                                                                                                               {
-                                                                                                                   Tag = "12.1.0",
-                                                                                                                   Digest = "sha256:base-new",
-                                                                                                                   PublishedAtUtc = new DateTimeOffset(2025, 06, 02, 12, 00, 00, TimeSpan.Zero),
-                                                                                                               },
-                                                                                                               new DockerHubTagData
-                                                                                                               {
-                                                                                                                   Tag = "12.0.0",
-                                                                                                                   Digest = "sha256:base-old",
-                                                                                                                   PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
-                                                                                                               },
-                                                                                                           ]));
+                registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
+                                       .Returns(ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
+                                                                                                    {
+                                                                                                        Tag = "1.0.0",
+                                                                                                        Digest = "sha256:app",
+                                                                                                        PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
+                                                                                                    }));
+                registryMetadataService.GetTagsAsync("docker.io",
+                                                     "library/debian",
+                                                     Arg.Any<CancellationToken>())
+                                       .Returns(ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Succeeded([
+                                                                                                                       new DockerHubTagData
+                                                                                                                       {
+                                                                                                                           Tag = "12.1.0",
+                                                                                                                           Digest = "sha256:base-new",
+                                                                                                                           PublishedAtUtc = new DateTimeOffset(2025, 06, 02, 12, 00, 00, TimeSpan.Zero),
+                                                                                                                       },
+                                                                                                                       new DockerHubTagData
+                                                                                                                       {
+                                                                                                                           Tag = "12.0.0",
+                                                                                                                           Digest = "sha256:base-old",
+                                                                                                                           PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
+                                                                                                                       },
+                                                                                                                   ]));
 
                 var orchestrator = new ImageScanOrchestrator(new ApplicationTelemetry(),
                                                              baseImageResolver,
                                                              dbContext,
-                                                             dockerHubClient,
                                                              imageCatalogRepository,
                                                              imageReferenceParser,
                                                              logger,
+                                                             registryMetadataService,
                                                              new UpdateDetectionService());
 
                 await orchestrator.ScanAsync(observedImage.Id,
@@ -171,10 +171,10 @@ public class ImageScanOrchestratorTests
                 var orchestrator = new ImageScanOrchestrator(new ApplicationTelemetry(),
                                                              Substitute.For<IBaseImageResolver>(),
                                                              dbContext,
-                                                             Substitute.For<IDockerHubClient>(),
                                                              new ImageCatalogRepository(dbContext),
                                                              new ImageReferenceParser(),
                                                              logger,
+                                                             Substitute.For<IRegistryMetadataService>(),
                                                              new UpdateDetectionService());
 
                 await orchestrator.ScanAllAsync(ScanTriggerSource.Scheduled, CancellationToken.None)

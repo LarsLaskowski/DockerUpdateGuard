@@ -1,0 +1,41 @@
+using DockerUpdateGuard.DockerHub;
+using DockerUpdateGuard.Infrastructure;
+
+namespace DockerUpdateGuard.Images;
+
+/// <summary>
+/// Registry metadata orchestration contract
+/// </summary>
+public interface IRegistryMetadataService
+{
+    #region Methods
+
+    /// <summary>
+    /// Read a concrete tag metadata document
+    /// </summary>
+    /// <param name="imageReference">Image reference</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Tag metadata result</returns>
+    Task<ExternalOperationResult<DockerHubTagData>> GetTagAsync(ImageReference imageReference, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Read tags for a repository
+    /// </summary>
+    /// <param name="registry">Registry name</param>
+    /// <param name="repository">Repository path</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Tag list result</returns>
+    Task<ExternalOperationResult<IReadOnlyList<DockerHubTagData>>> GetTagsAsync(string registry,
+                                                                                string repository,
+                                                                                CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Attempt to resolve base images for an observed image
+    /// </summary>
+    /// <param name="imageReference">Image reference</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Base image result</returns>
+    Task<ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>> ResolveBaseImagesAsync(ImageReference imageReference, CancellationToken cancellationToken = default);
+
+    #endregion // Methods
+}

@@ -21,10 +21,10 @@ public class ImageScanOrchestrator : IImageScanOrchestrator
     private readonly ApplicationTelemetry _applicationTelemetry;
     private readonly IBaseImageResolver _baseImageResolver;
     private readonly DockerUpdateGuardDbContext _dbContext;
-    private readonly IDockerHubClient _dockerHubClient;
     private readonly IImageCatalogRepository _imageCatalogRepository;
     private readonly IImageReferenceParser _imageReferenceParser;
     private readonly ILogger<ImageScanOrchestrator> _logger;
+    private readonly IRegistryMetadataService _registryMetadataService;
     private readonly IUpdateDetectionService _updateDetectionService;
 
     #endregion // Fields
@@ -37,27 +37,27 @@ public class ImageScanOrchestrator : IImageScanOrchestrator
     /// <param name="applicationTelemetry">Application telemetry</param>
     /// <param name="baseImageResolver">Base image resolver</param>
     /// <param name="dbContext">Database context</param>
-    /// <param name="dockerHubClient">Docker Hub client</param>
     /// <param name="imageCatalogRepository">Image catalog repository</param>
     /// <param name="imageReferenceParser">Image reference parser</param>
     /// <param name="logger">Logger</param>
+    /// <param name="registryMetadataService">Registry metadata service</param>
     /// <param name="updateDetectionService">Update detection service</param>
     public ImageScanOrchestrator(ApplicationTelemetry applicationTelemetry,
                                  IBaseImageResolver baseImageResolver,
                                  DockerUpdateGuardDbContext dbContext,
-                                 IDockerHubClient dockerHubClient,
                                  IImageCatalogRepository imageCatalogRepository,
                                  IImageReferenceParser imageReferenceParser,
                                  ILogger<ImageScanOrchestrator> logger,
+                                 IRegistryMetadataService registryMetadataService,
                                  IUpdateDetectionService updateDetectionService)
     {
         _applicationTelemetry = applicationTelemetry;
         _baseImageResolver = baseImageResolver;
         _dbContext = dbContext;
-        _dockerHubClient = dockerHubClient;
         _imageCatalogRepository = imageCatalogRepository;
         _imageReferenceParser = imageReferenceParser;
         _logger = logger;
+        _registryMetadataService = registryMetadataService;
         _updateDetectionService = updateDetectionService;
     }
 
@@ -127,8 +127,8 @@ public class ImageScanOrchestrator : IImageScanOrchestrator
         try
         {
             var imageReference = _imageReferenceParser.Parse(_imageReferenceParser.Format(observedImage.CurrentImageVersion));
-            var tagResult = await _dockerHubClient.GetTagAsync(imageReference, cancellationToken)
-                                                  .ConfigureAwait(false);
+            var tagResult = await _registryMetadataService.GetTagAsync(imageReference, cancellationToken)
+                                                          .ConfigureAwait(false);
 
             if (tagResult.Status == ExternalOperationStatus.Succeeded && tagResult.Data is not null)
             {
@@ -140,7 +140,7 @@ public class ImageScanOrchestrator : IImageScanOrchestrator
             {
                 finalStatus = tagResult.Status == ExternalOperationStatus.Failed ? ScanRunStatus.Failed : ScanRunStatus.Partial;
 
-                statusMessages.Add(tagResult.Message ?? "Unable to refresh Docker Hub tag metadata");
+                statusMessages.Add(tagResult.Message ?? "Unable to refresh registry tag metadata");
 
                 _logger.ObservedImageMetadataRefreshIncomplete(observedImage.Name,
                                                                tagResult.Status,
@@ -184,10 +184,10 @@ public class ImageScanOrchestrator : IImageScanOrchestrator
                                                           SourceReference = baseImage.SourceReference,
                                                       });
 
-                    var baseTagResult = await _dockerHubClient.GetTagsAsync(baseImage.Registry,
-                                                                            baseImage.Repository,
-                                                                            cancellationToken)
-                                                              .ConfigureAwait(false);
+                    var baseTagResult = await _registryMetadataService.GetTagsAsync(baseImage.Registry,
+                                                                                    baseImage.Repository,
+                                                                                    cancellationToken)
+                                                                      .ConfigureAwait(false);
 
                     if (baseTagResult.Status == ExternalOperationStatus.Succeeded && baseTagResult.Data is not null)
                     {

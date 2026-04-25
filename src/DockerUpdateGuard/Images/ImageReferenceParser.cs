@@ -54,6 +54,8 @@ public class ImageReferenceParser : IImageReferenceParser
             repository = string.Join('/', segments).ToLowerInvariant();
         }
 
+        NormalizeWrappedRegistry(ref registry, ref repository);
+
         return new ImageReference
                {
                    Registry = registry,
@@ -86,6 +88,51 @@ public class ImageReferenceParser : IImageReferenceParser
                || string.Equals(segment,
                                 "localhost",
                                 StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Normalize docker.io wrapped references for well-known external registries
+    /// </summary>
+    /// <param name="registry">Registry host</param>
+    /// <param name="repository">Repository path</param>
+    private static void NormalizeWrappedRegistry(ref string registry, ref string repository)
+    {
+        if (string.Equals(registry, "docker.io", StringComparison.OrdinalIgnoreCase) == false)
+        {
+            return;
+        }
+
+        var repositorySegments = repository.Split('/', StringSplitOptions.RemoveEmptyEntries);
+
+        if (repositorySegments.Length < 2)
+        {
+            return;
+        }
+
+        var wrappedRegistry = repositorySegments[0];
+
+        if (IsKnownWrappedRegistry(wrappedRegistry) == false)
+        {
+            return;
+        }
+
+        registry = wrappedRegistry.ToLowerInvariant();
+        repository = string.Join('/',
+                                 repositorySegments.Skip(1))
+                           .ToLowerInvariant();
+    }
+
+    /// <summary>
+    /// Determine whether the repository prefix is a known wrapped registry host
+    /// </summary>
+    /// <param name="registry">Candidate registry host</param>
+    /// <returns>True when the prefix should be unwrapped</returns>
+    private static bool IsKnownWrappedRegistry(string registry)
+    {
+        return string.Equals(registry, "mcr.microsoft.com", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(registry, "ghcr.io", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(registry, "quay.io", StringComparison.OrdinalIgnoreCase)
+               || (registry.Contains("harbor", StringComparison.OrdinalIgnoreCase) && LooksLikeRegistry(registry));
     }
 
     #endregion // Methods
