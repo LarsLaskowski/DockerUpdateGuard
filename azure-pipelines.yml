@@ -9,12 +9,12 @@ pool:
 variables:
   versionPrefix: '1.0'
   versionCounter: $[counter(variables['versionPrefix'], 1)]
-  appVersion: '$(versionPrefix).$(versionCounter)'
+  appVersion: $[format('{0}.{1}', variables['versionPrefix'], variables['versionCounter'])]
   dockerRepository: 'networlddev/dockerupdateguard'
   dockerfilePath: 'src/DockerUpdateGuard/Dockerfile'
   buildConfiguration: 'Release'
 
-name: $(appVersion)
+name: $[format('{0}.{1}', variables['versionPrefix'], variables['versionCounter'])]
 
 stages:
   - stage: Build
