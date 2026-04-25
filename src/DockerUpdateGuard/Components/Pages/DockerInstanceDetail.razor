@@ -7,7 +7,7 @@
         <div>
             <MudText Typo="Typo.overline" Class="page-eyebrow">Endpoint drilldown</MudText>
             <MudText Typo="Typo.h3">Docker Instance Detail</MudText>
-            <MudText Class="page-description">Inspect container RAM usage relative to host memory, plus aggregated CPU and network usage over time.</MudText>
+            <MudText Class="page-description">Inspect the current runtime containers observed on this Docker instance.</MudText>
         </div>
     </div>
 
@@ -24,75 +24,6 @@
                 <MudText Typo="Typo.h4">@_detail.Name</MudText>
                 <MudText Class="section-description">@_detail.EndpointUri</MudText>
             </div>
-
-            <MudGrid Spacing="2" Class="details-grid">
-                <MudItem xs="12" md="4">
-                    <MudPaper Class="summary-card" Elevation="0">
-                        <span class="summary-label">CPU</span>
-                        <span class="summary-value">@FormatCpu(_detail.CurrentResourceUsage)</span>
-                    </MudPaper>
-                </MudItem>
-                <MudItem xs="12" md="4">
-                    <MudPaper Class="summary-card" Elevation="0">
-                        <span class="summary-label">Memory</span>
-                        <span class="summary-value">@FormatMemory(_detail.CurrentResourceUsage)</span>
-                    </MudPaper>
-                </MudItem>
-                <MudItem xs="12" md="4">
-                    <MudPaper Class="summary-card" Elevation="0">
-                        <span class="summary-label">Network</span>
-                        <span class="summary-value">@FormatNetwork(_detail.CurrentResourceUsage)</span>
-                    </MudPaper>
-                </MudItem>
-            </MudGrid>
-        </MudPaper>
-
-        <MudPaper Class="section-paper" Elevation="0">
-            <div class="section-header">
-                <MudText Typo="Typo.h5">Usage history</MudText>
-                <MudText Class="section-description">Recent aggregated samples across the containers currently running on this Docker instance, with host memory total from Docker engine info.</MudText>
-            </div>
-            @if (_detail.ResourceUsageHistory.Count == 0)
-            {
-                <MudPaper Class="empty-state-panel" Elevation="0">
-                    <MudText>No resource history is currently stored for this Docker instance.</MudText>
-                </MudPaper>
-            }
-            else
-            {
-                <MudGrid Spacing="2" Class="details-grid">
-                    <MudItem xs="12" lg="6">
-                        <MudPaper Class="summary-card" Elevation="0">
-                            <span class="summary-label">CPU history</span>
-                            <MudChart ChartType="ChartType.Line"
-                                      ChartSeries="@ResourceUsageChartBuilder.GetCpuSeries(_detail.ResourceUsageHistory)"
-                                      ChartLabels="@ResourceUsageChartBuilder.GetChartLabels(_detail.ResourceUsageHistory)"
-                                      Height="280px"
-                                      Width="100%" />
-                        </MudPaper>
-                    </MudItem>
-                    <MudItem xs="12" lg="6">
-                        <MudPaper Class="summary-card" Elevation="0">
-                            <span class="summary-label">Memory history</span>
-                            <MudChart ChartType="ChartType.Line"
-                                      ChartSeries="@ResourceUsageChartBuilder.GetMemorySeries(_detail.ResourceUsageHistory)"
-                                      ChartLabels="@ResourceUsageChartBuilder.GetChartLabels(_detail.ResourceUsageHistory)"
-                                      Height="280px"
-                                      Width="100%" />
-                        </MudPaper>
-                    </MudItem>
-                    <MudItem xs="12">
-                        <MudPaper Class="summary-card" Elevation="0">
-                            <span class="summary-label">Network history</span>
-                            <MudChart ChartType="ChartType.Line"
-                                      ChartSeries="@ResourceUsageChartBuilder.GetNetworkSeries(_detail.ResourceUsageHistory)"
-                                      ChartLabels="@ResourceUsageChartBuilder.GetChartLabels(_detail.ResourceUsageHistory)"
-                                      Height="280px"
-                                      Width="100%" />
-                        </MudPaper>
-                    </MudItem>
-                </MudGrid>
-            }
         </MudPaper>
 
         <MudPaper Class="section-paper" Elevation="0">

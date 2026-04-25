@@ -141,7 +141,7 @@
                             <span class="summary-label">CPU history</span>
                             <MudChart ChartType="ChartType.Line"
                                       ChartSeries="@ResourceUsageChartBuilder.GetCpuSeries(_detail.ResourceUsageHistory)"
-                                      ChartLabels="@ResourceUsageChartBuilder.GetChartLabels(_detail.ResourceUsageHistory)"
+                                      ChartLabels="@ResourceUsageChartBuilder.GetChartLabels(_detail.ResourceUsageHistory, 5)"
                                       Height="280px"
                                       Width="100%" />
                         </MudPaper>
@@ -151,7 +151,7 @@
                             <span class="summary-label">Memory history</span>
                             <MudChart ChartType="ChartType.Line"
                                       ChartSeries="@ResourceUsageChartBuilder.GetMemorySeries(_detail.ResourceUsageHistory)"
-                                      ChartLabels="@ResourceUsageChartBuilder.GetChartLabels(_detail.ResourceUsageHistory)"
+                                      ChartLabels="@ResourceUsageChartBuilder.GetChartLabels(_detail.ResourceUsageHistory, 5)"
                                       Height="280px"
                                       Width="100%" />
                         </MudPaper>
@@ -161,7 +161,7 @@
                             <span class="summary-label">Network history</span>
                             <MudChart ChartType="ChartType.Line"
                                       ChartSeries="@ResourceUsageChartBuilder.GetNetworkSeries(_detail.ResourceUsageHistory)"
-                                      ChartLabels="@ResourceUsageChartBuilder.GetChartLabels(_detail.ResourceUsageHistory)"
+                                      ChartLabels="@ResourceUsageChartBuilder.GetChartLabels(_detail.ResourceUsageHistory, 8)"
                                       Height="280px"
                                       Width="100%" />
                         </MudPaper>

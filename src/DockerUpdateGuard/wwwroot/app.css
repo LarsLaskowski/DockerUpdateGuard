@@ -380,6 +380,20 @@ a {
     font-weight: 600;
 }
 
+.runtime-containers-table .runtime-containers-table__resource {
+    width: 1%;
+    white-space: nowrap;
+}
+
+.runtime-containers-table .runtime-containers-table__update-state {
+    min-width: 18rem;
+    white-space: normal;
+}
+
+.runtime-containers-table .runtime-containers-table__update-state .table-secondary {
+    overflow-wrap: anywhere;
+}
+
 .details-grid {
     margin-top: 0.5rem;
 }

@@ -25,6 +25,85 @@
     }
     else
     {
+        @if (_singleInstanceDetail is not null)
+        {
+            <MudPaper Class="section-paper" Elevation="0">
+                <div class="section-header">
+                    <MudText Typo="Typo.h4">@_singleInstanceDetail.Name</MudText>
+                    <MudText Class="section-description">@_singleInstanceDetail.EndpointUri</MudText>
+                </div>
+
+                <MudGrid Spacing="2" Class="details-grid">
+                    <MudItem xs="12" md="4">
+                        <MudPaper Class="summary-card" Elevation="0">
+                            <span class="summary-label">CPU</span>
+                            <span class="summary-value">@FormatCpu(_singleInstanceDetail.CurrentResourceUsage)</span>
+                        </MudPaper>
+                    </MudItem>
+                    <MudItem xs="12" md="4">
+                        <MudPaper Class="summary-card" Elevation="0">
+                            <span class="summary-label">Memory</span>
+                            <span class="summary-value">@FormatMemory(_singleInstanceDetail.CurrentResourceUsage)</span>
+                        </MudPaper>
+                    </MudItem>
+                    <MudItem xs="12" md="4">
+                        <MudPaper Class="summary-card" Elevation="0">
+                            <span class="summary-label">Network</span>
+                            <span class="summary-value">@FormatNetwork(_singleInstanceDetail.CurrentResourceUsage)</span>
+                        </MudPaper>
+                    </MudItem>
+                </MudGrid>
+            </MudPaper>
+
+            <MudPaper Class="section-paper" Elevation="0">
+                <div class="section-header">
+                    <MudText Typo="Typo.h5">Usage history</MudText>
+                    <MudText Class="section-description">Recent aggregated samples across the containers currently running on this Docker instance, with host memory total from Docker engine info.</MudText>
+                </div>
+                @if (_singleInstanceDetail.ResourceUsageHistory.Count == 0)
+                {
+                    <MudPaper Class="empty-state-panel" Elevation="0">
+                        <MudText>No resource history is currently stored for this Docker instance.</MudText>
+                    </MudPaper>
+                }
+                else
+                {
+                    <MudGrid Spacing="2" Class="details-grid">
+                        <MudItem xs="12" lg="6">
+                            <MudPaper Class="summary-card" Elevation="0">
+                                <span class="summary-label">CPU history</span>
+                                <MudChart ChartType="ChartType.Line"
+                                          ChartSeries="@ResourceUsageChartBuilder.GetCpuSeries(_singleInstanceDetail.ResourceUsageHistory)"
+                                          ChartLabels="@ResourceUsageChartBuilder.GetChartLabels(_singleInstanceDetail.ResourceUsageHistory, 5)"
+                                          Height="280px"
+                                          Width="100%" />
+                            </MudPaper>
+                        </MudItem>
+                        <MudItem xs="12" lg="6">
+                            <MudPaper Class="summary-card" Elevation="0">
+                                <span class="summary-label">Memory history</span>
+                                <MudChart ChartType="ChartType.Line"
+                                          ChartSeries="@ResourceUsageChartBuilder.GetMemorySeries(_singleInstanceDetail.ResourceUsageHistory)"
+                                          ChartLabels="@ResourceUsageChartBuilder.GetChartLabels(_singleInstanceDetail.ResourceUsageHistory, 5)"
+                                          Height="280px"
+                                          Width="100%" />
+                            </MudPaper>
+                        </MudItem>
+                        <MudItem xs="12">
+                            <MudPaper Class="summary-card" Elevation="0">
+                                <span class="summary-label">Network history</span>
+                                <MudChart ChartType="ChartType.Line"
+                                          ChartSeries="@ResourceUsageChartBuilder.GetNetworkSeries(_singleInstanceDetail.ResourceUsageHistory)"
+                                          ChartLabels="@ResourceUsageChartBuilder.GetChartLabels(_singleInstanceDetail.ResourceUsageHistory, 8)"
+                                          Height="280px"
+                                          Width="100%" />
+                            </MudPaper>
+                        </MudItem>
+                    </MudGrid>
+                }
+            </MudPaper>
+        }
+
         <MudPaper Class="section-paper" Elevation="0">
             <div class="section-header">
                 <MudText Typo="Typo.h5">Configured instances</MudText>
@@ -35,9 +114,12 @@
                     <MudTh>Name</MudTh>
                     <MudTh>Endpoint</MudTh>
                     <MudTh>Connection</MudTh>
-                    <MudTh>CPU</MudTh>
-                    <MudTh>Memory</MudTh>
-                    <MudTh>Network</MudTh>
+                    @if (_singleInstanceDetail is null)
+                    {
+                        <MudTh>CPU</MudTh>
+                        <MudTh>Memory</MudTh>
+                        <MudTh>Network</MudTh>
+                    }
                     <MudTh>Containers</MudTh>
                 </HeaderContent>
                 <RowTemplate>
@@ -47,9 +129,12 @@
                     </MudTd>
                     <MudTd DataLabel="Endpoint">@context.EndpointUri</MudTd>
                     <MudTd DataLabel="Connection">@context.ConnectionKind</MudTd>
-                    <MudTd DataLabel="CPU">@FormatCpu(context.CurrentResourceUsage)</MudTd>
-                    <MudTd DataLabel="Memory">@FormatMemory(context.CurrentResourceUsage)</MudTd>
-                    <MudTd DataLabel="Network">@FormatNetwork(context.CurrentResourceUsage)</MudTd>
+                    @if (_singleInstanceDetail is null)
+                    {
+                        <MudTd DataLabel="CPU">@FormatCpu(context.CurrentResourceUsage)</MudTd>
+                        <MudTd DataLabel="Memory">@FormatMemory(context.CurrentResourceUsage)</MudTd>
+                        <MudTd DataLabel="Network">@FormatNetwork(context.CurrentResourceUsage)</MudTd>
+                    }
                     <MudTd DataLabel="Containers">@context.RuntimeContainerCount</MudTd>
                 </RowTemplate>
             </MudTable>

@@ -12,6 +12,7 @@ public partial class DockerInstances
     #region Fields
 
     private IReadOnlyList<DockerInstanceListItemData>? _instances;
+    private DockerInstanceDetailViewData? _singleInstanceDetail;
 
     #endregion // Fields
 
@@ -32,10 +33,15 @@ public partial class DockerInstances
     {
         var instances = await ViewService.GetDockerInstancesAsync()
                                          .ConfigureAwait(false);
+        var singleInstanceDetail = instances.Count == 1
+                                       ? await ViewService.GetDockerInstanceDetailAsync(instances[0].Id)
+                                                          .ConfigureAwait(false)
+                                       : null;
 
         await InvokeAsync(() =>
                           {
                               _instances = instances;
+                              _singleInstanceDetail = singleInstanceDetail;
                           }).ConfigureAwait(false);
     }
 

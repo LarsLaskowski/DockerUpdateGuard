@@ -16,8 +16,41 @@ internal static class ResourceUsageChartBuilder
     /// <returns>Chart labels</returns>
     internal static string[] GetChartLabels(IReadOnlyList<ResourceUsagePointViewData> history)
     {
-        return GetChronologicalHistory(history).Select(point => point.RecordedAtUtc.ToLocalTime().ToString("MM-dd HH:mm"))
-                                               .ToArray();
+        return GetChartLabels(history, 8);
+    }
+
+    /// <summary>
+    /// Build chart labels from the resource history with a maximum number of visible labels
+    /// </summary>
+    /// <param name="history">Resource history</param>
+    /// <param name="maxVisibleLabels">Maximum number of visible labels</param>
+    /// <returns>Chart labels</returns>
+    internal static string[] GetChartLabels(IReadOnlyList<ResourceUsagePointViewData> history, int maxVisibleLabels)
+    {
+        var chronologicalHistory = GetChronologicalHistory(history);
+
+        if (chronologicalHistory.Count == 0)
+        {
+            return [];
+        }
+
+        var effectiveMaxVisibleLabels = Math.Max(2, maxVisibleLabels);
+        var visibleLabelStep = chronologicalHistory.Count <= effectiveMaxVisibleLabels
+                                   ? 1
+                                   : (int)Math.Ceiling((chronologicalHistory.Count - 1d) / (effectiveMaxVisibleLabels - 1d));
+
+        return chronologicalHistory.Select((point, index) =>
+                                           {
+                                               if (index != 0
+                                                   && index != chronologicalHistory.Count - 1
+                                                   && index % visibleLabelStep != 0)
+                                               {
+                                                   return string.Empty;
+                                               }
+
+                                               return FormatChartLabel(point.RecordedAtUtc, index, chronologicalHistory.Count);
+                                           })
+                                   .ToArray();
     }
 
     /// <summary>
@@ -88,6 +121,22 @@ internal static class ResourceUsageChartBuilder
     {
         return history.OrderBy(point => point.RecordedAtUtc)
                       .ToList();
+    }
+
+    /// <summary>
+    /// Format a chart label based on its position in the series
+    /// </summary>
+    /// <param name="recordedAtUtc">Recorded timestamp</param>
+    /// <param name="index">Zero-based label index</param>
+    /// <param name="labelCount">Total label count</param>
+    /// <returns>Formatted label</returns>
+    private static string FormatChartLabel(DateTimeOffset recordedAtUtc, int index, int labelCount)
+    {
+        var localTime = recordedAtUtc.ToLocalTime();
+
+        return index == 0 || index == labelCount - 1
+                   ? localTime.ToString("MM-dd HH:mm")
+                   : localTime.ToString("HH:mm");
     }
 
     /// <summary>

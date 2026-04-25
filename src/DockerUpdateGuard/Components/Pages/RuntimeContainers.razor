@@ -30,15 +30,15 @@
                 <MudText Typo="Typo.h5">Container inventory</MudText>
                 <MudText Class="section-description">Current runtime state correlated with own-image links, update results, vulnerabilities, and resource usage.</MudText>
             </div>
-            <MudTable Items="_containers" Hover="true" Dense="false" Breakpoint="Breakpoint.Md" Class="section-table">
+            <MudTable Items="_containers" Hover="true" Dense="false" Breakpoint="Breakpoint.Md" Class="section-table runtime-containers-table">
                 <HeaderContent>
                     <MudTh>Container</MudTh>
                     <MudTh>Instance</MudTh>
                     <MudTh>Own image</MudTh>
-                    <MudTh>CPU</MudTh>
-                    <MudTh>Memory</MudTh>
-                    <MudTh>Network</MudTh>
-                    <MudTh>Update State</MudTh>
+                    <MudTh Class="runtime-containers-table__resource">CPU</MudTh>
+                    <MudTh Class="runtime-containers-table__resource">Memory</MudTh>
+                    <MudTh Class="runtime-containers-table__resource">Network</MudTh>
+                    <MudTh Class="runtime-containers-table__update-state">Update State</MudTh>
                 </HeaderContent>
                     <RowTemplate>
                         <MudTd DataLabel="Container">
@@ -64,10 +64,10 @@
                             <span class="table-secondary">No own image link</span>
                         }
                     </MudTd>
-                    <MudTd DataLabel="CPU">@FormatCpu(context.CurrentResourceUsage)</MudTd>
-                    <MudTd DataLabel="Memory">@FormatMemory(context.CurrentResourceUsage)</MudTd>
-                    <MudTd DataLabel="Network">@FormatNetwork(context.CurrentResourceUsage)</MudTd>
-                    <MudTd DataLabel="Update State">
+                    <MudTd DataLabel="CPU" Class="runtime-containers-table__resource">@FormatCpu(context.CurrentResourceUsage)</MudTd>
+                    <MudTd DataLabel="Memory" Class="runtime-containers-table__resource">@FormatMemory(context.CurrentResourceUsage)</MudTd>
+                    <MudTd DataLabel="Network" Class="runtime-containers-table__resource">@FormatNetwork(context.CurrentResourceUsage)</MudTd>
+                    <MudTd DataLabel="Update State" Class="runtime-containers-table__update-state">
                         <MudChip T="string" Size="Size.Small" Color="@GetUpdateStateColor(context.UpdateState)">@context.UpdateState</MudChip>
                         <span class="table-secondary">@context.UpdateSummary</span>
                     </MudTd>
