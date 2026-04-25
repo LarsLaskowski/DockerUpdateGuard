@@ -33,7 +33,7 @@ public class DockerInstanceResourceSample
     public long MemoryUsageBytes { get; set; }
 
     /// <summary>
-    /// Aggregated memory limit in bytes
+    /// Total host memory in bytes reported by the Docker engine
     /// </summary>
     public long MemoryLimitBytes { get; set; }
 

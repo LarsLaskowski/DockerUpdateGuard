@@ -177,6 +177,52 @@ public class DockerInstanceClient : IDockerInstanceClient
         }
     }
 
+    /// <inheritdoc/>
+    public async Task<ExternalOperationResult<long>> GetHostMemoryTotalAsync(DockerInstanceOptions instanceOptions, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(instanceOptions);
+
+        if (instanceOptions.Enabled == false)
+        {
+            return ExternalOperationResult<long>.NotConfigured($"Docker instance '{instanceOptions.Name}' is disabled");
+        }
+
+        if (TryCreateEngineUri(instanceOptions, out var engineUri) == false || engineUri is null)
+        {
+            return ExternalOperationResult<long>.Unsupported($"Docker instance '{instanceOptions.Name}' uses an unsupported endpoint '{instanceOptions.BaseUrl}'");
+        }
+
+        try
+        {
+            using var httpClient = CreateHttpClient(instanceOptions, engineUri);
+            using var response = await httpClient.GetAsync("v1.41/info", cancellationToken)
+                                                 .ConfigureAwait(false);
+
+            if (response.IsSuccessStatusCode == false)
+            {
+                var body = await response.Content.ReadAsStringAsync(cancellationToken)
+                                                 .ConfigureAwait(false);
+
+                return ExternalOperationResult<long>.Failed($"Docker instance '{instanceOptions.Name}' returned {(int)response.StatusCode}: {body}");
+            }
+
+            var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken)
+                                                       .ConfigureAwait(false);
+
+            await using (responseStream.ConfigureAwait(false))
+            {
+                using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: cancellationToken)
+                                                           .ConfigureAwait(false);
+
+                return ExternalOperationResult<long>.Succeeded(TryGetInt64(jsonDocument.RootElement, "MemTotal"));
+            }
+        }
+        catch (Exception exception)
+        {
+            return ExternalOperationResult<long>.Failed($"Docker host info request failed for '{instanceOptions.Name}': {exception.Message}");
+        }
+    }
+
     /// <summary>
     /// Build an HTTP client for the target Docker endpoint
     /// </summary>

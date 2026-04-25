@@ -639,6 +639,9 @@ public class ApplicationViewServiceTests
             Assert.AreEqual(18.0m,
                             dockerInstances.Single().CurrentResourceUsage?.CpuPercent,
                             "Docker instance list rows must expose the latest aggregated CPU value");
+            Assert.AreEqual(512 * 1024 * 1024,
+                            dockerInstances.Single().CurrentResourceUsage?.MemoryLimitBytes,
+                            "Docker instance list rows must expose host-total memory for the latest sample");
             Assert.IsNotNull(dockerInstanceDetail, "The Docker instance detail must be returned");
             Assert.AreEqual(2,
                             dockerInstanceDetail.ResourceUsageHistory.Count,
@@ -646,6 +649,63 @@ public class ApplicationViewServiceTests
             Assert.AreEqual(18.0m,
                             dockerInstanceDetail.CurrentResourceUsage?.CpuPercent,
                             "Docker instance detail must expose the latest aggregated resource sample");
+            Assert.AreEqual(512 * 1024 * 1024,
+                            dockerInstanceDetail.CurrentResourceUsage?.MemoryLimitBytes,
+                            "Docker instance detail must expose host-total memory for the latest sample");
+        }
+    }
+
+    /// <summary>
+    /// Verify concurrent UI reads on the same service instance do not overlap the scoped DbContext
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task ApplicationViewServiceConcurrentReadsCompleteWithoutDbContextOverlapAsync()
+    {
+        var options = new DbContextOptionsBuilder<DockerUpdateGuardDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString())
+                                                                               .Options;
+
+        var dbContext = new DockerUpdateGuardDbContext(options);
+
+        await using (dbContext.ConfigureAwait(false))
+        {
+            var repository = new RegistryRepository
+                             {
+                                 Registry = "docker.io",
+                                 Repository = "company/app",
+                             };
+            var imageVersion = new ImageVersion
+                               {
+                                   RegistryRepository = repository,
+                                   Tag = "1.0.0",
+                                   Digest = "sha256:app",
+                               };
+            var observedImage = new ObservedImage
+                                {
+                                    Name = "Company App",
+                                    CurrentImageVersion = imageVersion,
+                                };
+
+            dbContext.ObservedImages.Add(observedImage);
+
+            await dbContext.SaveChangesAsync(CancellationToken.None)
+                           .ConfigureAwait(false);
+
+            var service = new ApplicationViewService(dbContext,
+                                                     new ImageReferenceParser(),
+                                                     new SharedBaseImageQueryService(dbContext));
+            var dashboardTask = service.GetDashboardAsync(CancellationToken.None);
+            var observedImagesTask = service.GetObservedImagesAsync(CancellationToken.None);
+
+            await Task.WhenAll(dashboardTask, observedImagesTask)
+                      .ConfigureAwait(false);
+
+            Assert.AreEqual(1,
+                            dashboardTask.Result.ObservedImageCount,
+                            "Concurrent dashboard reads must still report the seeded observed image");
+            Assert.AreEqual(1,
+                            observedImagesTask.Result.Count,
+                            "Concurrent observed image reads must complete successfully");
         }
     }
 

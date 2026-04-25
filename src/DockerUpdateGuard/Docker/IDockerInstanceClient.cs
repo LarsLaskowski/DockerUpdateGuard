@@ -26,5 +26,13 @@ public interface IDockerInstanceClient
     /// <returns>Container resource sample result</returns>
     Task<ExternalOperationResult<IReadOnlyList<RuntimeContainerResourceDescriptor>>> CollectContainerResourceUsageAsync(DockerInstanceOptions instanceOptions, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Read the total host memory reported by a configured Docker instance
+    /// </summary>
+    /// <param name="instanceOptions">Docker instance configuration</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Total host memory in bytes</returns>
+    Task<ExternalOperationResult<long>> GetHostMemoryTotalAsync(DockerInstanceOptions instanceOptions, CancellationToken cancellationToken = default);
+
     #endregion // Methods
 }

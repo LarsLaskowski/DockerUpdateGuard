@@ -42,23 +42,6 @@ public partial class Dashboard
     }
 
     /// <summary>
-    /// Get the label for the most recent scan
-    /// </summary>
-    /// <returns>Formatted scan label</returns>
-    private string GetLatestScanLabel()
-    {
-        if (_dashboard is null || _dashboard.RecentScans.Count == 0)
-        {
-            return "No scans yet";
-        }
-
-        return _dashboard.RecentScans[0]
-        .StartedAtUtc
-        .ToLocalTime()
-        .ToString("g");
-    }
-
-    /// <summary>
     /// Resolve the chip color for a scan status
     /// </summary>
     /// <param name="status">Scan status</param>

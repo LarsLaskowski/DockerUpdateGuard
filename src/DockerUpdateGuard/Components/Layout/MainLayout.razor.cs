@@ -1,3 +1,5 @@
+using DockerUpdateGuard.UI;
+
 using Microsoft.AspNetCore.Components;
 
 using MudBlazor;
@@ -32,11 +34,34 @@ public partial class MainLayout : LayoutComponentBase
                                                               DrawerText = "#e2e8f0",
                                                           },
                                        };
+    private DashboardViewData? _dashboardSummary;
     private bool _drawerOpen = true;
 
     #endregion // Fields
 
+    #region Properties
+
+    /// <summary>
+    /// Application view service
+    /// </summary>
+    [Inject]
+    public IApplicationViewService ViewService { get; set; } = null!;
+
+    #endregion // Properties
+
     #region Methods
+
+    /// <inheritdoc/>
+    protected override async Task OnInitializedAsync()
+    {
+        var dashboardSummary = await ViewService.GetDashboardAsync()
+                                                .ConfigureAwait(false);
+
+        await InvokeAsync(() =>
+                          {
+                              _dashboardSummary = dashboardSummary;
+                          }).ConfigureAwait(false);
+    }
 
     /// <summary>
     /// Toggle the navigation drawer state
@@ -44,6 +69,37 @@ public partial class MainLayout : LayoutComponentBase
     private void ToggleDrawer()
     {
         _drawerOpen = _drawerOpen == false;
+    }
+
+    /// <summary>
+    /// Get the protected asset count
+    /// </summary>
+    /// <returns>Protected asset count</returns>
+    private int GetProtectedAssetCount()
+    {
+        if (_dashboardSummary is null)
+        {
+            return 0;
+        }
+
+        return _dashboardSummary.ObservedImageCount + _dashboardSummary.RuntimeContainerCount;
+    }
+
+    /// <summary>
+    /// Get the label for the most recent scan
+    /// </summary>
+    /// <returns>Formatted scan label</returns>
+    private string GetLatestScanLabel()
+    {
+        if (_dashboardSummary is null || _dashboardSummary.RecentScans.Count == 0)
+        {
+            return "No scans yet";
+        }
+
+        return _dashboardSummary.RecentScans[0]
+        .StartedAtUtc
+        .ToLocalTime()
+        .ToString("g");
     }
 
     #endregion // Methods

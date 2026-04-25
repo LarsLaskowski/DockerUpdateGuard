@@ -37,12 +37,6 @@ a {
     height: 100%;
 }
 
-.app-brand {
-    width: 100%;
-    padding: 0.5rem 0.35rem 0.75rem;
-    flex-wrap: nowrap;
-}
-
 .app-brand__logo {
     width: 3rem;
     height: 3rem;
@@ -115,6 +109,9 @@ a {
 }
 
 .app-topbar {
+    position: sticky;
+    top: 0;
+    z-index: 1100;
     margin: 1.5rem 1.5rem 0.75rem;
     padding: 0.9rem 1.35rem;
     background: rgba(255, 255, 255, 0.72) !important;
@@ -122,6 +119,52 @@ a {
     border: 1px solid rgba(148, 163, 184, 0.2);
     border-radius: 1.5rem;
     box-shadow: 0 20px 45px rgba(15, 23, 42, 0.08);
+}
+
+.app-topbar__content {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1.5rem;
+}
+
+.app-topbar__brand {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    min-width: 0;
+}
+
+.app-topbar__logo {
+    width: 2.75rem;
+    height: 2.75rem;
+}
+
+.app-topbar__title {
+    color: #0f172a;
+}
+
+.app-topbar__menu-button {
+    display: none;
+    color: #0f172a;
+    margin-left: -0.35rem;
+}
+
+.app-topbar__meta {
+    display: flex;
+    align-items: stretch;
+    justify-content: flex-end;
+    gap: 0.85rem;
+    flex-wrap: wrap;
+}
+
+.app-topbar__meta-card {
+    min-width: 11rem;
+    background: rgba(255, 255, 255, 0.78);
+}
+
+.app-topbar__status {
+    white-space: nowrap;
 }
 
 .page-container {
@@ -322,9 +365,25 @@ a {
     margin-bottom: 1rem;
 }
 
+@media (max-width: 1280px) {
+    .app-topbar__menu-button {
+        display: inline-flex;
+    }
+}
+
 @media (max-width: 960px) {
     .app-topbar {
         margin-inline: 1rem;
+    }
+
+    .app-topbar__content {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .app-topbar__meta {
+        width: 100%;
+        justify-content: flex-start;
     }
 
     .page-container {
@@ -345,6 +404,23 @@ a {
     .app-topbar {
         margin: 1rem 0.75rem 0.5rem;
         padding-inline: 1rem;
+    }
+
+    .app-topbar__brand {
+        gap: 0.75rem;
+    }
+
+    .app-topbar__title {
+        font-size: 1.2rem;
+    }
+
+    .app-topbar__meta {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+    }
+
+    .app-topbar__meta-card {
+        min-width: 0;
     }
 
     .page-container {

@@ -89,6 +89,8 @@ public class ResourceStatisticsCollector : IResourceStatisticsCollector
     {
         var result = await _dockerInstanceClient.CollectContainerResourceUsageAsync(configuredInstance, cancellationToken)
                                                 .ConfigureAwait(false);
+        var hostMemoryTotalResult = await _dockerInstanceClient.GetHostMemoryTotalAsync(configuredInstance, cancellationToken)
+                                                               .ConfigureAwait(false);
 
         if (result.Status != Infrastructure.ExternalOperationStatus.Succeeded || result.Data is null)
         {
@@ -100,6 +102,9 @@ public class ResourceStatisticsCollector : IResourceStatisticsCollector
         }
 
         var resourceSamples = result.Data;
+        var hostMemoryTotalBytes = hostMemoryTotalResult.Status == Infrastructure.ExternalOperationStatus.Succeeded && hostMemoryTotalResult.Data > 0
+                                       ? hostMemoryTotalResult.Data
+                                       : 0;
         var previousContainerSamples = await _dbContext.RuntimeContainerResourceSamples
                                                        .Where(entity => entity.DockerInstanceId == dockerInstance.Id)
                                                        .OrderByDescending(entity => entity.RecordedAtUtc)
@@ -160,7 +165,7 @@ public class ResourceStatisticsCollector : IResourceStatisticsCollector
                                                          ContainerCount = currentSamples.Count,
                                                          CpuPercent = currentSamples.Sum(entity => entity.CpuPercent),
                                                          MemoryUsageBytes = currentSamples.Sum(entity => entity.MemoryUsageBytes),
-                                                         MemoryLimitBytes = currentSamples.Sum(entity => entity.MemoryLimitBytes),
+                                                         MemoryLimitBytes = hostMemoryTotalBytes,
                                                          NetworkRxBytesTotal = instanceRxTotal,
                                                          NetworkTxBytesTotal = instanceTxTotal,
                                                          NetworkRxBytesPerSecond = CalculateBytesPerSecond(latestInstanceSample?.NetworkRxBytesTotal,

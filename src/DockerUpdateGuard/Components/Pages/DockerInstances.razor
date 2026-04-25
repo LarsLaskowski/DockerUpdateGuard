@@ -7,7 +7,7 @@
         <div>
             <MudText Typo="Typo.overline" Class="page-eyebrow">Endpoint inventory</MudText>
             <MudText Typo="Typo.h3">Docker Instances</MudText>
-            <MudText Class="page-description">Configured Docker endpoints, connectivity mode, runtime coverage, and current resource usage.</MudText>
+            <MudText Class="page-description">Configured Docker endpoints, connectivity mode, runtime coverage, and current container RAM usage relative to host memory.</MudText>
         </div>
     </div>
 
@@ -28,7 +28,7 @@
         <MudPaper Class="section-paper" Elevation="0">
             <div class="section-header">
                 <MudText Typo="Typo.h5">Configured instances</MudText>
-                <MudText Class="section-description">Registered endpoints with connection details, runtime coverage, and recent aggregated resource usage.</MudText>
+                <MudText Class="section-description">Registered endpoints with connection details, runtime coverage, and recent container RAM usage relative to host memory.</MudText>
             </div>
             <MudTable Items="_instances" Hover="true" Dense="false" Breakpoint="Breakpoint.Md" Class="section-table">
                 <HeaderContent>

@@ -7,7 +7,7 @@
         <div>
             <MudText Typo="Typo.overline" Class="page-eyebrow">Endpoint drilldown</MudText>
             <MudText Typo="Typo.h3">Docker Instance Detail</MudText>
-            <MudText Class="page-description">Inspect aggregated RAM/CPU/network usage for a Docker instance over time.</MudText>
+            <MudText Class="page-description">Inspect container RAM usage relative to host memory, plus aggregated CPU and network usage over time.</MudText>
         </div>
     </div>
 
@@ -50,7 +50,7 @@
         <MudPaper Class="section-paper" Elevation="0">
             <div class="section-header">
                 <MudText Typo="Typo.h5">Usage history</MudText>
-                <MudText Class="section-description">Recent aggregated samples across the containers currently running on this Docker instance.</MudText>
+                <MudText Class="section-description">Recent aggregated samples across the containers currently running on this Docker instance, with host memory total from Docker engine info.</MudText>
             </div>
             <MudTable Items="_detail.ResourceUsageHistory" Hover="true" Dense="false" Breakpoint="Breakpoint.Md" Class="section-table">
                 <HeaderContent>
