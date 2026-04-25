@@ -57,6 +57,10 @@ a {
 
 .app-nav-shell {
     color: #e2e8f0;
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 100%;
 }
 
 .nav-section-label,
@@ -102,6 +106,29 @@ a {
 
 .app-nav-menu .mud-nav-link-icon {
     color: inherit;
+}
+
+.app-version {
+    margin-top: auto;
+    padding: 1rem 0.75rem 0.2rem;
+}
+
+.app-version__label,
+.app-version__value {
+    display: block;
+}
+
+.app-version__label {
+    color: rgba(191, 219, 254, 0.58);
+    font-size: 0.72rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.app-version__value {
+    margin-top: 0.2rem;
+    color: rgba(226, 232, 240, 0.88);
+    font-size: 0.78rem;
 }
 
 .app-main-content {

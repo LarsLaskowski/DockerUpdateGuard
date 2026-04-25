@@ -1,3 +1,5 @@
+name: $(appVersion)
+
 trigger:
   branches:
     include:
@@ -7,6 +9,9 @@ pool:
   vmImage: 'ubuntu-latest'
 
 variables:
+  versionMajorMinor: '1.0'
+  versionPatch: $[counter(variables['versionMajorMinor'], 1)]
+  appVersion: '$(versionMajorMinor).$(versionPatch)'
   dockerRepository: 'networlddev/dockerupdateguard'
   dockerfilePath: 'src/DockerUpdateGuard/Dockerfile'
   buildConfiguration: 'Release'
@@ -74,6 +79,7 @@ stages:
               containerRegistry: 'DockerHub'
 
           - script: |
-              docker build -f $(dockerfilePath) -t $(dockerRepository):latest $(Build.SourcesDirectory)
+              docker build -f $(dockerfilePath) --build-arg APP_VERSION=$(appVersion) -t $(dockerRepository):$(appVersion) -t $(dockerRepository):latest $(Build.SourcesDirectory)
+              docker push $(dockerRepository):$(appVersion)
               docker push $(dockerRepository):latest
             displayName: 'Build & Push image'
