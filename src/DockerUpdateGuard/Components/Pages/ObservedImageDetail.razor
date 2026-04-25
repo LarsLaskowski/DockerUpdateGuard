@@ -161,13 +161,17 @@
                                 @foreach (var candidate in context.TagCandidates)
                                 {
                                     <MudTooltip Text="@candidate.Reason">
-                                        <MudChip T="string"
-                                                 Size="Size.Small"
-                                                 Color="@(candidate.IsRecommended ? Color.Primary : Color.Default)"
-                                                 Variant="@(candidate.IsSelected ? Variant.Filled : Variant.Outlined)">
+                                         <MudChip T="string"
+                                                  Size="Size.Small"
+                                                  Color="@(candidate.IsRecommended ? Color.Primary : Color.Default)"
+                                                  Variant="@(candidate.IsSelected ? Variant.Filled : Variant.Outlined)">
                                             @candidate.Tag
                                         </MudChip>
                                     </MudTooltip>
+                                    @if (string.IsNullOrWhiteSpace(candidate.ResolvedVersionTag) == false)
+                                    {
+                                        <span class="table-secondary">@candidate.ResolvedVersionTag</span>
+                                    }
                                 }
                             </MudStack>
                         </MudTd>

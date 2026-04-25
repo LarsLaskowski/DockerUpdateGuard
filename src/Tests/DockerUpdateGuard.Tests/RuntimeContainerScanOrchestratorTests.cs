@@ -86,6 +86,13 @@ public class RuntimeContainerScanOrchestratorTests
                                                                                                                            PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
                                                                                                                        },
                                                                                                                    ]));
+                registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
+                                       .Returns(ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
+                                                                                                    {
+                                                                                                        Tag = "1.0.0",
+                                                                                                        Digest = "sha256:runtime-old",
+                                                                                                        PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
+                                                                                                    }));
 
                 var orchestrator = new RuntimeContainerScanOrchestrator(new ApplicationTelemetry(),
                                                                         dbContext,
@@ -230,6 +237,102 @@ public class RuntimeContainerScanOrchestratorTests
                 Assert.IsTrue(logger.Entries.Any(entry => entry.EventId.Id == 2041
                                                           && entry.Message.Contains("Partial", StringComparison.Ordinal)),
                               "Runtime scans with unsupported registry evaluations must log a partial completion summary");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Verify runtime scans merge exact current-tag metadata into paged registry results
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task RuntimeContainerScanOrchestratorScanAllAsyncMergesCurrentTagMetadataAsync()
+    {
+        using (var database = new SqliteTestDatabase())
+        {
+            var dbContext = database.CreateDbContext();
+
+            await using (dbContext.ConfigureAwait(false))
+            {
+                var optionsMonitor = new TestOptionsMonitor<DockerUpdateGuardOptions>(new DockerUpdateGuardOptions
+                                                                                      {
+                                                                                          DockerInstances = [
+                                                                                                                new DockerInstanceOptions
+                                                                                                                {
+                                                                                                                    Name = "Production",
+                                                                                                                    BaseUrl = "https://docker.example.test",
+                                                                                                                    Enabled = true,
+                                                                                                                },
+                                                                                                            ],
+                                                                                      });
+                var dockerInstanceClient = Substitute.For<IDockerInstanceClient>();
+                var registryMetadataService = Substitute.For<IRegistryMetadataService>();
+                var imageCatalogRepository = new ImageCatalogRepository(dbContext);
+                var logger = new TestLogger<RuntimeContainerScanOrchestrator>();
+                var instanceDiscoveryService = new InstanceDiscoveryService(dbContext,
+                                                                            new TestLogger<InstanceDiscoveryService>(),
+                                                                            optionsMonitor);
+
+                dockerInstanceClient.DiscoverContainersAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<CancellationToken>())
+                                    .Returns(ExternalOperationResult<IReadOnlyList<RuntimeContainerDescriptor>>.Succeeded([
+                                                                                                                              new RuntimeContainerDescriptor
+                                                                                                                              {
+                                                                                                                                  ContainerId = "container-1",
+                                                                                                                                  Name = "telemetry",
+                                                                                                                                  ImageReference = "docker.io/networlddev/f1-telemetry:latest@sha256:old",
+                                                                                                                                  RuntimeStatus = ContainerRuntimeStatus.Running,
+                                                                                                                                  IsRunning = true,
+                                                                                                                              },
+                                                                                                                          ]));
+                registryMetadataService.GetTagsAsync("docker.io",
+                                                     "networlddev/f1-telemetry",
+                                                     Arg.Any<CancellationToken>())
+                                       .Returns(ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Succeeded([
+                                                                                                                       new DockerHubTagData
+                                                                                                                       {
+                                                                                                                           Tag = "2.4.1",
+                                                                                                                           Digest = "sha256:new",
+                                                                                                                           PublishedAtUtc = new DateTimeOffset(2025, 06, 02, 12, 00, 00, TimeSpan.Zero),
+                                                                                                                       },
+                                                                                                                   ]));
+                registryMetadataService.GetTagAsync(Arg.Is<ImageReference>(entity => entity.Repository == "networlddev/f1-telemetry"
+                                                                                     && entity.Tag == "latest"),
+                                                    Arg.Any<CancellationToken>())
+                                       .Returns(ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
+                                                                                                    {
+                                                                                                        Tag = "latest",
+                                                                                                        Digest = "sha256:new",
+                                                                                                        PublishedAtUtc = new DateTimeOffset(2025, 06, 02, 12, 00, 00, TimeSpan.Zero),
+                                                                                                    }));
+
+                var orchestrator = new RuntimeContainerScanOrchestrator(new ApplicationTelemetry(),
+                                                                        dbContext,
+                                                                        dockerInstanceClient,
+                                                                        imageCatalogRepository,
+                                                                        new ImageReferenceParser(),
+                                                                        instanceDiscoveryService,
+                                                                        logger,
+                                                                        optionsMonitor,
+                                                                        registryMetadataService,
+                                                                        new UpdateDetectionService());
+
+                await orchestrator.ScanAllAsync(ScanTriggerSource.Scheduled, CancellationToken.None)
+                                  .ConfigureAwait(false);
+
+                var finding = await dbContext.UpdateFindings.Include(entity => entity.TagCandidates)
+                                                            .SingleAsync()
+                                                            .ConfigureAwait(false);
+                var recommendedImage = await dbContext.ImageVersions.SingleAsync(entity => entity.Id == finding.RecommendedImageVersionId)
+                                                                    .ConfigureAwait(false);
+
+                Assert.AreEqual("latest",
+                                recommendedImage.Tag,
+                                "Digest-only updates must keep the current alias tag as the persisted recommendation");
+                CollectionAssert.AreEqual(new[] { "latest", "2.4.1" },
+                                          finding.TagCandidates.OrderBy(entity => entity.Rank)
+                                                               .Select(entity => entity.Tag)
+                                                               .ToArray(),
+                                          "The current alias tag must be merged into the persisted tag candidates");
             }
         }
     }

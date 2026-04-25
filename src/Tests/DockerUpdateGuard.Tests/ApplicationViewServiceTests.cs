@@ -656,6 +656,205 @@ public class ApplicationViewServiceTests
     }
 
     /// <summary>
+    /// Verify runtime container projections expose resolved semantic version tags for alias tags
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task ApplicationViewServiceRuntimeContainersExposeResolvedVersionTagsAsync()
+    {
+        var options = new DbContextOptionsBuilder<DockerUpdateGuardDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString())
+                                                                               .Options;
+
+        var dbContext = new DockerUpdateGuardDbContext(options);
+
+        await using (dbContext.ConfigureAwait(false))
+        {
+            var imageCatalogRepository = new ImageCatalogRepository(dbContext);
+            var imageVersion = await imageCatalogRepository.GetOrCreateImageVersionAsync("docker.io",
+                                                                                         "networlddev/f1-telemetry",
+                                                                                         "latest",
+                                                                                         "sha256:new",
+                                                                                         cancellationToken: CancellationToken.None)
+                                                           .ConfigureAwait(false);
+            var dockerInstance = new DockerInstance
+                                 {
+                                     Name = "Production",
+                                     EndpointUri = "https://docker.example.test",
+                                     ConnectionKind = DockerConnectionKind.Https,
+                                 };
+            var scanRun = new ScanRun
+                          {
+                              Type = ScanRunType.RuntimeContainer,
+                              Status = ScanRunStatus.Succeeded,
+                              TriggerSource = ScanTriggerSource.Manual,
+                              DockerInstance = dockerInstance,
+                              StartedAtUtc = DateTimeOffset.UtcNow.AddMinutes(-5),
+                              CompletedAtUtc = DateTimeOffset.UtcNow.AddMinutes(-4),
+                          };
+            var snapshot = new ContainerSnapshot
+                           {
+                               DockerInstance = dockerInstance,
+                               ImageVersionId = imageVersion.Id,
+                               ScanRun = scanRun,
+                               ContainerId = "container-latest",
+                               Name = "telemetry",
+                               Status = ContainerRuntimeStatus.Running,
+                               IsRunning = true,
+                               UpdateAssessmentStatus = UpdateAssessmentStatus.UpdateAvailable,
+                               UpdateAssessmentMessage = "Digest for tag 'latest' changed",
+                           };
+            var updateFinding = new UpdateFinding
+                                {
+                                    ScanRun = scanRun,
+                                    ContainerSnapshot = snapshot,
+                                    SubjectImageVersionId = imageVersion.Id,
+                                    Type = UpdateFindingType.RuntimeImageUpdate,
+                                    Summary = "Digest for tag 'latest' changed",
+                                    Details = "The registry currently reports digest 'sha256:new' for tag 'latest'",
+                                    IsActive = true,
+                                };
+
+            updateFinding.TagCandidates.Add(new TagCandidate
+                                            {
+                                                Tag = "latest",
+                                                Digest = "sha256:new",
+                                                Rank = 1,
+                                                IsRecommended = true,
+                                                Reason = "Digest for tag 'latest' changed",
+                                            });
+            updateFinding.TagCandidates.Add(new TagCandidate
+                                            {
+                                                Tag = "2.4.1",
+                                                Digest = "sha256:new",
+                                                Rank = 2,
+                                                IsRecommended = false,
+                                                Reason = "Digest for tag 'latest' changed",
+                                            });
+
+            dbContext.ContainerSnapshots.Add(snapshot);
+            dbContext.UpdateFindings.Add(updateFinding);
+
+            await dbContext.SaveChangesAsync(CancellationToken.None)
+                           .ConfigureAwait(false);
+
+            var service = new ApplicationViewService(dbContext,
+                                                     new ImageReferenceParser(),
+                                                     new SharedBaseImageQueryService(dbContext));
+            var runtimeContainers = await service.GetRuntimeContainersAsync(CancellationToken.None)
+                                                 .ConfigureAwait(false);
+            var runtimeDetail = await service.GetRuntimeContainerDetailAsync(dockerInstance.Id, "container-latest", CancellationToken.None)
+                                             .ConfigureAwait(false);
+
+            Assert.AreEqual("2.4.1",
+                            runtimeContainers.Single().ResolvedVersionTag,
+                            "Runtime container rows must expose the semantic version behind a latest alias");
+            Assert.IsNotNull(runtimeDetail, "The runtime container detail must be returned");
+            Assert.AreEqual("2.4.1",
+                            runtimeDetail.ResolvedVersionTag,
+                            "Runtime container detail must expose the semantic version behind a latest alias");
+            Assert.AreEqual("2.4.1",
+                            runtimeDetail.AvailableTagCandidates.Single(entity => entity.Tag == "latest").ResolvedVersionTag,
+                            "The matching latest tag candidate must expose the resolved semantic version");
+        }
+    }
+
+    /// <summary>
+    /// Verify current runtime container projections ignore stale snapshots from older scans
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task ApplicationViewServiceRuntimeContainersExcludeSnapshotsFromOlderScansAsync()
+    {
+        var options = new DbContextOptionsBuilder<DockerUpdateGuardDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString())
+                                                                               .Options;
+
+        var dbContext = new DockerUpdateGuardDbContext(options);
+
+        await using (dbContext.ConfigureAwait(false))
+        {
+            var imageCatalogRepository = new ImageCatalogRepository(dbContext);
+            var imageVersion = await imageCatalogRepository.GetOrCreateImageVersionAsync("docker.io",
+                                                                                         "company/api",
+                                                                                         "1.0.0",
+                                                                                         "sha256:api",
+                                                                                         cancellationToken: CancellationToken.None)
+                                                           .ConfigureAwait(false);
+            var dockerInstance = new DockerInstance
+                                 {
+                                     Name = "Production",
+                                     EndpointUri = "https://docker.example.test",
+                                     ConnectionKind = DockerConnectionKind.Https,
+                                 };
+            var olderScanRun = new ScanRun
+                               {
+                                   Type = ScanRunType.RuntimeContainer,
+                                   Status = ScanRunStatus.Succeeded,
+                                   TriggerSource = ScanTriggerSource.Manual,
+                                   DockerInstance = dockerInstance,
+                                   StartedAtUtc = DateTimeOffset.UtcNow.AddHours(-2),
+                                   CompletedAtUtc = DateTimeOffset.UtcNow.AddHours(-2).AddMinutes(1),
+                               };
+            var latestScanRun = new ScanRun
+                                {
+                                    Type = ScanRunType.RuntimeContainer,
+                                    Status = ScanRunStatus.Succeeded,
+                                    TriggerSource = ScanTriggerSource.Manual,
+                                    DockerInstance = dockerInstance,
+                                    StartedAtUtc = DateTimeOffset.UtcNow.AddMinutes(-10),
+                                    CompletedAtUtc = DateTimeOffset.UtcNow.AddMinutes(-9),
+                                };
+
+            dbContext.ContainerSnapshots.AddRange(new ContainerSnapshot
+                                                  {
+                                                      DockerInstance = dockerInstance,
+                                                      ImageVersionId = imageVersion.Id,
+                                                      ScanRun = olderScanRun,
+                                                      ContainerId = "container-old",
+                                                      Name = "api-old",
+                                                      Status = ContainerRuntimeStatus.Running,
+                                                      IsRunning = true,
+                                                      RecordedAtUtc = olderScanRun.CompletedAtUtc.GetValueOrDefault(),
+                                                  },
+                                                  new ContainerSnapshot
+                                                  {
+                                                      DockerInstance = dockerInstance,
+                                                      ImageVersionId = imageVersion.Id,
+                                                      ScanRun = latestScanRun,
+                                                      ContainerId = "container-new",
+                                                      Name = "api-new",
+                                                      Status = ContainerRuntimeStatus.Running,
+                                                      IsRunning = true,
+                                                      RecordedAtUtc = latestScanRun.CompletedAtUtc.GetValueOrDefault(),
+                                                  });
+
+            await dbContext.SaveChangesAsync(CancellationToken.None)
+                           .ConfigureAwait(false);
+
+            var service = new ApplicationViewService(dbContext,
+                                                     new ImageReferenceParser(),
+                                                     new SharedBaseImageQueryService(dbContext));
+            var runtimeContainers = await service.GetRuntimeContainersAsync(CancellationToken.None)
+                                                 .ConfigureAwait(false);
+            var dockerInstanceDetail = await service.GetDockerInstanceDetailAsync(dockerInstance.Id, CancellationToken.None)
+                                                    .ConfigureAwait(false);
+
+            Assert.AreEqual(1,
+                            runtimeContainers.Count,
+                            "Current runtime container projections must only expose containers from the latest runtime scan");
+            Assert.AreEqual("container-new",
+                            runtimeContainers.Single().ContainerId,
+                            "Current runtime container projections must ignore stale snapshots from older scans");
+            Assert.IsNotNull(dockerInstanceDetail, "The Docker instance detail must be returned");
+            Assert.AreEqual(1,
+                            dockerInstanceDetail.RuntimeContainers.Count,
+                            "Docker instance detail must also exclude stale snapshots from older scans");
+            Assert.AreEqual("container-new",
+                            dockerInstanceDetail.RuntimeContainers.Single().ContainerId,
+                            "Docker instance detail must keep only the latest scan inventory");
+        }
+    }
+
+    /// <summary>
     /// Verify concurrent UI reads on the same service instance do not overlap the scoped DbContext
     /// </summary>
     /// <returns>Task</returns>

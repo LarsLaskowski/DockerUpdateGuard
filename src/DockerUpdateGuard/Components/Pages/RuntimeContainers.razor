@@ -40,11 +40,19 @@
                     <MudTh>Network</MudTh>
                     <MudTh>Update State</MudTh>
                 </HeaderContent>
-                <RowTemplate>
-                    <MudTd DataLabel="Container">
-                        <MudLink Href="@($"/runtime-containers/{context.DockerInstanceId}/{context.ContainerId}")" Class="table-link">@context.ContainerName</MudLink>
-                        <span class="table-secondary">@context.RecordedAtUtc.ToLocalTime().ToString("g")</span>
-                    </MudTd>
+                    <RowTemplate>
+                        <MudTd DataLabel="Container">
+                            <MudLink Href="@($"/runtime-containers/{context.DockerInstanceId}/{context.ContainerId}")" Class="table-link">@context.ContainerName</MudLink>
+                            @if (string.IsNullOrWhiteSpace(context.ResolvedVersionTag))
+                            {
+                                <span class="table-secondary">@context.CurrentTag</span>
+                            }
+                            else
+                            {
+                                <span class="table-secondary">@($"{context.CurrentTag} · {context.ResolvedVersionTag}")</span>
+                            }
+                            <span class="table-secondary">@context.RecordedAtUtc.ToLocalTime().ToString("g")</span>
+                        </MudTd>
                     <MudTd DataLabel="Instance">@context.DockerInstanceName</MudTd>
                     <MudTd DataLabel="Own image">
                         @if (context.LinkedObservedImageId is Guid observedImageId)

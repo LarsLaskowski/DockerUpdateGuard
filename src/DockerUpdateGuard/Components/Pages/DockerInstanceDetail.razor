@@ -52,20 +52,47 @@
                 <MudText Typo="Typo.h5">Usage history</MudText>
                 <MudText Class="section-description">Recent aggregated samples across the containers currently running on this Docker instance, with host memory total from Docker engine info.</MudText>
             </div>
-            <MudTable Items="_detail.ResourceUsageHistory" Hover="true" Dense="false" Breakpoint="Breakpoint.Md" Class="section-table">
-                <HeaderContent>
-                    <MudTh>Observed</MudTh>
-                    <MudTh>CPU</MudTh>
-                    <MudTh>Memory</MudTh>
-                    <MudTh>Network</MudTh>
-                </HeaderContent>
-                <RowTemplate>
-                    <MudTd DataLabel="Observed">@context.RecordedAtUtc.ToLocalTime().ToString("g")</MudTd>
-                    <MudTd DataLabel="CPU">@FormatCpu(context)</MudTd>
-                    <MudTd DataLabel="Memory">@FormatMemory(context)</MudTd>
-                    <MudTd DataLabel="Network">@FormatNetwork(context)</MudTd>
-                </RowTemplate>
-            </MudTable>
+            @if (_detail.ResourceUsageHistory.Count == 0)
+            {
+                <MudPaper Class="empty-state-panel" Elevation="0">
+                    <MudText>No resource history is currently stored for this Docker instance.</MudText>
+                </MudPaper>
+            }
+            else
+            {
+                <MudGrid Spacing="2" Class="details-grid">
+                    <MudItem xs="12" lg="6">
+                        <MudPaper Class="summary-card" Elevation="0">
+                            <span class="summary-label">CPU history</span>
+                            <MudChart ChartType="ChartType.Line"
+                                      ChartSeries="@ResourceUsageChartBuilder.GetCpuSeries(_detail.ResourceUsageHistory)"
+                                      ChartLabels="@ResourceUsageChartBuilder.GetChartLabels(_detail.ResourceUsageHistory)"
+                                      Height="280px"
+                                      Width="100%" />
+                        </MudPaper>
+                    </MudItem>
+                    <MudItem xs="12" lg="6">
+                        <MudPaper Class="summary-card" Elevation="0">
+                            <span class="summary-label">Memory history</span>
+                            <MudChart ChartType="ChartType.Line"
+                                      ChartSeries="@ResourceUsageChartBuilder.GetMemorySeries(_detail.ResourceUsageHistory)"
+                                      ChartLabels="@ResourceUsageChartBuilder.GetChartLabels(_detail.ResourceUsageHistory)"
+                                      Height="280px"
+                                      Width="100%" />
+                        </MudPaper>
+                    </MudItem>
+                    <MudItem xs="12">
+                        <MudPaper Class="summary-card" Elevation="0">
+                            <span class="summary-label">Network history</span>
+                            <MudChart ChartType="ChartType.Line"
+                                      ChartSeries="@ResourceUsageChartBuilder.GetNetworkSeries(_detail.ResourceUsageHistory)"
+                                      ChartLabels="@ResourceUsageChartBuilder.GetChartLabels(_detail.ResourceUsageHistory)"
+                                      Height="280px"
+                                      Width="100%" />
+                        </MudPaper>
+                    </MudItem>
+                </MudGrid>
+            }
         </MudPaper>
 
         <MudPaper Class="section-paper" Elevation="0">
@@ -81,10 +108,18 @@
                     <MudTh>Memory</MudTh>
                     <MudTh>Network</MudTh>
                 </HeaderContent>
-                <RowTemplate>
-                    <MudTd DataLabel="Container">
-                        <MudLink Href="@($"/runtime-containers/{context.DockerInstanceId}/{context.ContainerId}")" Class="table-link">@context.ContainerName</MudLink>
-                    </MudTd>
+                    <RowTemplate>
+                        <MudTd DataLabel="Container">
+                            <MudLink Href="@($"/runtime-containers/{context.DockerInstanceId}/{context.ContainerId}")" Class="table-link">@context.ContainerName</MudLink>
+                            @if (string.IsNullOrWhiteSpace(context.ResolvedVersionTag))
+                            {
+                                <span class="table-secondary">@context.CurrentTag</span>
+                            }
+                            else
+                            {
+                                <span class="table-secondary">@($"{context.CurrentTag} · {context.ResolvedVersionTag}")</span>
+                            }
+                        </MudTd>
                     <MudTd DataLabel="Own image">
                         @if (context.LinkedObservedImageId is Guid observedImageId)
                         {

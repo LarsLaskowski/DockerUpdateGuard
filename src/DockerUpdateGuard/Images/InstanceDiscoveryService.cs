@@ -52,18 +52,33 @@ public class InstanceDiscoveryService : IInstanceDiscoveryService
 
         var existingInstances = await _dbContext.DockerInstances
                                                 .Include(entity => entity.PortainerEndpoint)
-                                                .Where(entity => entity.Source == RegistrationSource.ConfigurationFile)
                                                 .ToListAsync(cancellationToken)
                                                 .ConfigureAwait(false);
+        var obsoleteInstances = existingInstances.Where(entity => configuredNames.Contains(entity.Name) == false)
+                                                 .ToList();
+        var obsoleteInstanceIds = obsoleteInstances.Select(entity => entity.Id)
+                                                   .ToList();
+        IReadOnlyList<ScanRun> obsoleteScanRuns = obsoleteInstanceIds.Count == 0
+                                                      ? []
+                                                      : await _dbContext.ScanRuns.Where(entity => entity.DockerInstanceId != null
+                                                                                                  && obsoleteInstanceIds.Contains(entity.DockerInstanceId.Value))
+                                                                                 .ToListAsync(cancellationToken)
+                                                                                 .ConfigureAwait(false);
 
-        var disabledInstanceCount = existingInstances.Count(entity => configuredNames.Contains(entity.Name) == false);
+        var disabledInstanceCount = 0;
         var enabledInstanceCount = 0;
         var portainerEndpointCount = 0;
 
-        foreach (var existingInstance in existingInstances.Where(entity => configuredNames.Contains(entity.Name) == false))
+        if (obsoleteScanRuns.Count > 0)
         {
-            existingInstance.IsEnabled = false;
-            existingInstance.UpdatedAtUtc = DateTimeOffset.UtcNow;
+            _dbContext.ScanRuns.RemoveRange(obsoleteScanRuns);
+        }
+
+        if (obsoleteInstances.Count > 0)
+        {
+            _dbContext.DockerInstances.RemoveRange(obsoleteInstances);
+
+            existingInstances.RemoveAll(entity => obsoleteInstanceIds.Contains(entity.Id));
         }
 
         foreach (var configuredInstance in configuredInstances)

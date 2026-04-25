@@ -17,6 +17,10 @@ public class RuntimeContainerDetailViewData
 
     public string ImageReference { get; set; } = string.Empty;
 
+    public string CurrentTag { get; set; } = string.Empty;
+
+    public string? ResolvedVersionTag { get; set; }
+
     public string RuntimeStatus { get; set; } = string.Empty;
 
     public string? ComposeProject { get; set; }

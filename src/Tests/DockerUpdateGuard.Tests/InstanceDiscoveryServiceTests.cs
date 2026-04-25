@@ -99,6 +99,78 @@ public class InstanceDiscoveryServiceTests
     }
 
     /// <summary>
+    /// Verify instances no longer present in configuration are deleted together with related data
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task InstanceDiscoveryServiceSynchronizeConfiguredInstancesAsyncRemovesObsoleteInstancesAsync()
+    {
+        using (var database = new SqliteTestDatabase())
+        {
+            var dbContext = database.CreateDbContext();
+
+            await using (dbContext.ConfigureAwait(false))
+            {
+                var obsoleteInstance = new DockerInstance
+                                       {
+                                           ConnectionKind = DockerConnectionKind.UnixSocket,
+                                           EndpointUri = "unix:///var/run/docker-old.sock",
+                                           Name = "Obsolete",
+                                           Source = RegistrationSource.ConfigurationFile,
+                                           PortainerEndpoint = new PortainerEndpoint
+                                                               {
+                                                                   Name = "Obsolete Portainer",
+                                                                   BaseUrl = "https://portainer.example.local",
+                                                                   IsEnabled = true,
+                                                               },
+                                       };
+                var obsoleteScanRun = new ScanRun
+                                      {
+                                          DockerInstance = obsoleteInstance,
+                                          Type = ScanRunType.RuntimeContainer,
+                                          Status = ScanRunStatus.Succeeded,
+                                          TriggerSource = ScanTriggerSource.Manual,
+                                          StartedAtUtc = DateTimeOffset.UtcNow.AddMinutes(-5),
+                                          CompletedAtUtc = DateTimeOffset.UtcNow.AddMinutes(-4),
+                                      };
+
+                dbContext.DockerInstances.Add(obsoleteInstance);
+                dbContext.ScanRuns.Add(obsoleteScanRun);
+
+                await dbContext.SaveChangesAsync(CancellationToken.None)
+                               .ConfigureAwait(false);
+
+                var optionsMonitor = new TestOptionsMonitor<DockerUpdateGuardOptions>(CreateOptions(portainerEnabled: false));
+                var service = new InstanceDiscoveryService(dbContext,
+                                                           new TestLogger<InstanceDiscoveryService>(),
+                                                           optionsMonitor);
+
+                await service.SynchronizeConfiguredInstancesAsync(CancellationToken.None)
+                             .ConfigureAwait(false);
+
+                var dockerInstances = await dbContext.DockerInstances.OrderBy(entity => entity.Name)
+                                                                     .ToListAsync()
+                                                                     .ConfigureAwait(false);
+                var scanRunCount = await dbContext.ScanRuns.CountAsync().ConfigureAwait(false);
+                var portainerEndpointCount = await dbContext.PortainerEndpoints.CountAsync().ConfigureAwait(false);
+
+                Assert.AreEqual(1,
+                                dockerInstances.Count,
+                                "Synchronizing configured instances must leave only the instances from configuration in persistence");
+                Assert.AreEqual("Production",
+                                dockerInstances[0].Name,
+                                "Synchronizing configured instances must keep the configured Docker instance");
+                Assert.AreEqual(0,
+                                scanRunCount,
+                                "Removing obsolete Docker instances must also remove their persisted scan runs");
+                Assert.AreEqual(0,
+                                portainerEndpointCount,
+                                "Removing obsolete Docker instances must also remove their linked Portainer endpoints");
+            }
+        }
+    }
+
+    /// <summary>
     /// Create representative Docker instance options for synchronization tests
     /// </summary>
     /// <param name="portainerEnabled">Whether Portainer should be enabled</param>

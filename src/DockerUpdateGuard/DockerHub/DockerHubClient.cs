@@ -327,46 +327,53 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
         }
 
         var (namespaceName, repositoryName) = SplitRepository(repository);
-        using var response = await SendGetAsync($"v2/namespaces/{Uri.EscapeDataString(namespaceName)}/repositories/{EscapeRepository(repositoryName)}/tags?page_size=100", cancellationToken).ConfigureAwait(false);
+        var requestUri = $"v2/namespaces/{Uri.EscapeDataString(namespaceName)}/repositories/{EscapeRepository(repositoryName)}/tags?page_size=100";
+        var results = new List<DockerHubTagData>();
 
-        if (response.StatusCode == HttpStatusCode.NotFound)
+        while (string.IsNullOrWhiteSpace(requestUri) == false)
         {
-            _logger.DockerHubTargetNotFound(nameof(GetTagsAsync), repository);
+            using var response = await SendGetAsync(requestUri, cancellationToken).ConfigureAwait(false);
 
-            return ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.NotFound($"Repository '{repository}' was not found in Docker Hub");
-        }
-
-        if (response.IsSuccessStatusCode == false)
-        {
-            _logger.DockerHubRequestFailed(nameof(GetTagsAsync),
-                                           repository,
-                                           (int)response.StatusCode);
-
-            return await CreateFailureResultAsync<IReadOnlyList<DockerHubTagData>>(response,
-                                                                                   $"Tag lookup failed for '{repository}'",
-                                                                                   cancellationToken).ConfigureAwait(false);
-        }
-
-        var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken)
-                                                   .ConfigureAwait(false);
-
-        await using (responseStream.ConfigureAwait(false))
-        {
-            using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: cancellationToken)
-                                                       .ConfigureAwait(false);
-            var results = new List<DockerHubTagData>();
-
-            if (jsonDocument.RootElement.TryGetProperty("results", out var resultsElement)
-                && resultsElement.ValueKind == JsonValueKind.Array)
+            if (response.StatusCode == HttpStatusCode.NotFound)
             {
-                foreach (var resultElement in resultsElement.EnumerateArray())
-                {
-                    results.Add(ParseTag(resultElement));
-                }
+                _logger.DockerHubTargetNotFound(nameof(GetTagsAsync), repository);
+
+                return ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.NotFound($"Repository '{repository}' was not found in Docker Hub");
             }
 
-            return ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Succeeded(results);
+            if (response.IsSuccessStatusCode == false)
+            {
+                _logger.DockerHubRequestFailed(nameof(GetTagsAsync),
+                                               repository,
+                                               (int)response.StatusCode);
+
+                return await CreateFailureResultAsync<IReadOnlyList<DockerHubTagData>>(response,
+                                                                                       $"Tag lookup failed for '{repository}'",
+                                                                                       cancellationToken).ConfigureAwait(false);
+            }
+
+            var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken)
+                                                       .ConfigureAwait(false);
+
+            await using (responseStream.ConfigureAwait(false))
+            {
+                using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: cancellationToken)
+                                                           .ConfigureAwait(false);
+
+                if (jsonDocument.RootElement.TryGetProperty("results", out var resultsElement)
+                    && resultsElement.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var resultElement in resultsElement.EnumerateArray())
+                    {
+                        results.Add(ParseTag(resultElement));
+                    }
+                }
+
+                requestUri = TryGetString(jsonDocument.RootElement, "next");
+            }
         }
+
+        return ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Succeeded(results);
     }
 
     /// <inheritdoc/>

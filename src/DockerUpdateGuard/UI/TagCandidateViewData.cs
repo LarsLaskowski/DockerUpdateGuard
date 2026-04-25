@@ -19,5 +19,7 @@ public class TagCandidateViewData
 
     public bool IsSelected { get; set; }
 
+    public string? ResolvedVersionTag { get; set; }
+
     #endregion // Properties
 }

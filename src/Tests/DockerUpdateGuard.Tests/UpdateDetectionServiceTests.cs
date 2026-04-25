@@ -50,6 +50,48 @@ public class UpdateDetectionServiceTests
     }
 
     /// <summary>
+    /// Verify digest changes keep the current alias tag while exposing the matching version tag
+    /// </summary>
+    [TestMethod]
+    public void UpdateDetectionServiceDigestChangeReturnsAliasAndResolvedVersionCandidates()
+    {
+        var service = new UpdateDetectionService();
+
+        var evaluation = service.Evaluate(new ImageReference
+                                          {
+                                              Registry = "docker.io",
+                                              Repository = "networlddev/f1-telemetry",
+                                              Tag = "latest",
+                                              Digest = "sha256:old",
+                                          },
+                                          [
+                                              new DockerHubTagData
+                                              {
+                                                  Tag = "latest",
+                                                  Digest = "sha256:new",
+                                                  PublishedAtUtc = new DateTimeOffset(2025, 06, 02, 12, 00, 00, TimeSpan.Zero),
+                                              },
+                                              new DockerHubTagData
+                                              {
+                                                  Tag = "2.4.1",
+                                                  Digest = "sha256:new",
+                                                  PublishedAtUtc = new DateTimeOffset(2025, 06, 02, 12, 00, 00, TimeSpan.Zero),
+                                              },
+                                          ]);
+
+        Assert.AreEqual(UpdateEvaluationStatus.UpdateAvailable,
+                        evaluation.Status,
+                        "A digest change on latest must still be reported as an available update");
+        Assert.AreEqual("latest",
+                        evaluation.RecommendedTag,
+                        "The current alias tag must remain the recommendation for digest-only updates");
+        CollectionAssert.AreEqual(new[] { "latest", "2.4.1" },
+                                  evaluation.Candidates.Select(candidate => candidate.Tag)
+                                                       .ToArray(),
+                                  "Digest-only updates must keep the current alias tag and expose the matching semantic version tag");
+    }
+
+    /// <summary>
     /// Verify semantic version candidates choose the highest successor
     /// </summary>
     [TestMethod]

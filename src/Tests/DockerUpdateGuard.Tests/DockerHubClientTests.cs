@@ -158,6 +158,73 @@ public class DockerHubClientTests
     }
 
     /// <summary>
+    /// Verify Docker Hub tag listing follows pagination links
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerHubClientGetTagsAsyncReadsAllTagPagesAsync()
+    {
+        var handler = new StubHttpMessageHandler();
+        var httpClient = new HttpClient(handler);
+
+        try
+        {
+            httpClient.BaseAddress = new Uri("https://hub.docker.com/");
+            handler.AddResponse("https://hub.docker.com/v2/users/login",
+                                """
+                                {
+                                  "token": "header.eyJleHAiOjQxMDI0NDQ4MDB9.signature"
+                                }
+                                """);
+            handler.AddResponse("https://hub.docker.com/v2/namespaces/acme/repositories/api/tags?page_size=100",
+                                """
+                                {
+                                  "next": "https://hub.docker.com/v2/namespaces/acme/repositories/api/tags?page=2&page_size=100",
+                                  "results": [
+                                    {
+                                      "name": "latest",
+                                      "digest": "sha256:latest",
+                                      "last_pushed": "2025-04-02T10:00:00Z"
+                                    }
+                                  ]
+                                }
+                                """);
+            handler.AddResponse("https://hub.docker.com/v2/namespaces/acme/repositories/api/tags?page=2&page_size=100",
+                                """
+                                {
+                                  "next": null,
+                                  "results": [
+                                    {
+                                      "name": "2.4.1",
+                                      "digest": "sha256:241",
+                                      "last_pushed": "2025-04-01T10:00:00Z"
+                                    }
+                                  ]
+                                }
+                                """);
+
+            var client = CreateClient(httpClient);
+
+            var result = await client.GetTagsAsync("docker.io", "acme/api", CancellationToken.None)
+                                     .ConfigureAwait(false);
+
+            Assert.AreEqual(ExternalOperationStatus.Succeeded,
+                            result.Status,
+                            "Tag listing must succeed when Docker Hub returns paged tag payloads");
+            Assert.IsNotNull(result.Data, "Tag listing must return tag metadata");
+            CollectionAssert.AreEqual(new[] { "latest", "2.4.1" },
+                                      result.Data.Select(entity => entity.Tag)
+                                                 .ToArray(),
+                                      "Tag listing must include tags from every result page");
+        }
+        finally
+        {
+            httpClient.Dispose();
+            handler.Dispose();
+        }
+    }
+
+    /// <summary>
     /// Create a Docker Hub client for tests
     /// </summary>
     /// <param name="httpClient">Configured HTTP client</param>

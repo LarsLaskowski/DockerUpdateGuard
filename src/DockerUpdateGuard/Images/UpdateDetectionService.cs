@@ -68,6 +68,7 @@ public class UpdateDetectionService : IUpdateDetectionService
 
             if (TryCreateDigestUpdateResult(currentImage,
                                             currentTagData,
+                                            orderedTags,
                                             out var digestUpdateResult))
             {
                 return digestUpdateResult;
@@ -82,6 +83,7 @@ public class UpdateDetectionService : IUpdateDetectionService
 
         if (TryCreateDigestUpdateResult(currentImage,
                                         currentTagData,
+                                        orderedTags,
                                         out var currentTagDigestUpdate))
         {
             return currentTagDigestUpdate;
@@ -160,10 +162,12 @@ public class UpdateDetectionService : IUpdateDetectionService
     /// </summary>
     /// <param name="currentImage">Current image reference</param>
     /// <param name="currentTagData">Current tag metadata</param>
+    /// <param name="orderedTags">Ordered repository tags</param>
     /// <param name="result">Update result</param>
     /// <returns>True when the digest changed</returns>
     private static bool TryCreateDigestUpdateResult(ImageReference currentImage,
                                                     DockerHubTagData? currentTagData,
+                                                    IReadOnlyList<DockerHubTagData> orderedTags,
                                                     out UpdateEvaluationResult result)
     {
         result = new UpdateEvaluationResult();
@@ -178,6 +182,10 @@ public class UpdateDetectionService : IUpdateDetectionService
             return false;
         }
 
+        var candidateTags = CreateDigestCandidates(currentImage.Tag,
+                                                   currentTagData.Digest,
+                                                   orderedTags);
+
         result = new UpdateEvaluationResult
                  {
                      Status = UpdateEvaluationStatus.UpdateAvailable,
@@ -185,17 +193,36 @@ public class UpdateDetectionService : IUpdateDetectionService
                      Details = $"The registry currently reports digest '{currentTagData.Digest}' for tag '{currentImage.Tag}'",
                      RecommendedTag = currentImage.Tag,
                      RecommendedDigest = currentTagData.Digest,
-                     Candidates = [
-                                      new UpdateCandidateData
-                                      {
-                                          Tag = currentTagData.Tag,
-                                          Digest = currentTagData.Digest,
-                                          PublishedAtUtc = currentTagData.PublishedAtUtc,
-                                      },
-                                  ],
+                     Candidates = candidateTags,
                  };
 
         return true;
+    }
+
+    /// <summary>
+    /// Create digest-related candidates for the updated tag
+    /// </summary>
+    /// <param name="currentTag">Current tag</param>
+    /// <param name="digest">Updated digest</param>
+    /// <param name="orderedTags">Ordered repository tags</param>
+    /// <returns>Candidate list</returns>
+    private static IReadOnlyList<UpdateCandidateData> CreateDigestCandidates(string currentTag,
+                                                                             string digest,
+                                                                             IReadOnlyList<DockerHubTagData> orderedTags)
+    {
+        return orderedTags.Where(tag => string.Equals(tag.Digest, digest, StringComparison.OrdinalIgnoreCase))
+                          .OrderBy(tag => string.Equals(tag.Tag, currentTag, StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+                          .ThenBy(tag => TryParseVersion(tag.Tag, out _) ? 0 : 1)
+                          .ThenByDescending(tag => TryParseVersion(tag.Tag, out var tagVersion) ? tagVersion : new Version())
+                          .ThenByDescending(tag => tag.PublishedAtUtc)
+                          .Take(5)
+                          .Select(tag => new UpdateCandidateData
+                                         {
+                                             Tag = tag.Tag,
+                                             Digest = tag.Digest,
+                                             PublishedAtUtc = tag.PublishedAtUtc,
+                                         })
+                          .ToList();
     }
 
     #endregion // Methods

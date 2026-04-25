@@ -35,6 +35,10 @@
                     <MudPaper Class="summary-card" Elevation="0">
                         <span class="summary-label">Runtime image</span>
                         <span class="summary-value">@ImageReferenceFormatter.GetReference(_detail.ImageReference)</span>
+                        @if (string.IsNullOrWhiteSpace(_detail.ResolvedVersionTag) == false)
+                        {
+                            <span class="table-secondary">@($"{_detail.CurrentTag} · {_detail.ResolvedVersionTag}")</span>
+                        }
                         @if (ImageReferenceFormatter.GetFullDigest(_detail.ImageReference) is string currentDigest)
                         {
                             <MudTooltip Text="@currentDigest">
@@ -123,20 +127,47 @@
                 </MudItem>
             </MudGrid>
 
-            <MudTable Items="_detail.ResourceUsageHistory" Hover="true" Dense="false" Breakpoint="Breakpoint.Md" Class="section-table">
-                <HeaderContent>
-                    <MudTh>Observed</MudTh>
-                    <MudTh>CPU</MudTh>
-                    <MudTh>Memory</MudTh>
-                    <MudTh>Network</MudTh>
-                </HeaderContent>
-                <RowTemplate>
-                    <MudTd DataLabel="Observed">@context.RecordedAtUtc.ToLocalTime().ToString("g")</MudTd>
-                    <MudTd DataLabel="CPU">@FormatCpu(context)</MudTd>
-                    <MudTd DataLabel="Memory">@FormatMemory(context)</MudTd>
-                    <MudTd DataLabel="Network">@FormatNetwork(context)</MudTd>
-                </RowTemplate>
-            </MudTable>
+            @if (_detail.ResourceUsageHistory.Count == 0)
+            {
+                <MudPaper Class="empty-state-panel" Elevation="0">
+                    <MudText>No resource history is currently stored for this container.</MudText>
+                </MudPaper>
+            }
+            else
+            {
+                <MudGrid Spacing="2" Class="details-grid">
+                    <MudItem xs="12" lg="6">
+                        <MudPaper Class="summary-card" Elevation="0">
+                            <span class="summary-label">CPU history</span>
+                            <MudChart ChartType="ChartType.Line"
+                                      ChartSeries="@ResourceUsageChartBuilder.GetCpuSeries(_detail.ResourceUsageHistory)"
+                                      ChartLabels="@ResourceUsageChartBuilder.GetChartLabels(_detail.ResourceUsageHistory)"
+                                      Height="280px"
+                                      Width="100%" />
+                        </MudPaper>
+                    </MudItem>
+                    <MudItem xs="12" lg="6">
+                        <MudPaper Class="summary-card" Elevation="0">
+                            <span class="summary-label">Memory history</span>
+                            <MudChart ChartType="ChartType.Line"
+                                      ChartSeries="@ResourceUsageChartBuilder.GetMemorySeries(_detail.ResourceUsageHistory)"
+                                      ChartLabels="@ResourceUsageChartBuilder.GetChartLabels(_detail.ResourceUsageHistory)"
+                                      Height="280px"
+                                      Width="100%" />
+                        </MudPaper>
+                    </MudItem>
+                    <MudItem xs="12">
+                        <MudPaper Class="summary-card" Elevation="0">
+                            <span class="summary-label">Network history</span>
+                            <MudChart ChartType="ChartType.Line"
+                                      ChartSeries="@ResourceUsageChartBuilder.GetNetworkSeries(_detail.ResourceUsageHistory)"
+                                      ChartLabels="@ResourceUsageChartBuilder.GetChartLabels(_detail.ResourceUsageHistory)"
+                                      Height="280px"
+                                      Width="100%" />
+                        </MudPaper>
+                    </MudItem>
+                </MudGrid>
+            }
         </MudPaper>
 
         <MudPaper Class="section-paper" Elevation="0">
@@ -194,12 +225,18 @@
                     </HeaderContent>
                     <RowTemplate>
                         <MudTd DataLabel="Tag">
-                            <MudChip T="string"
-                                     Size="Size.Small"
-                                     Color="@(context.IsRecommended ? Color.Primary : Color.Default)"
-                                     Variant="@(context.IsSelected ? Variant.Filled : Variant.Outlined)">
-                                @context.Tag
-                            </MudChip>
+                            <MudStack Spacing="1">
+                                <MudChip T="string"
+                                         Size="Size.Small"
+                                         Color="@(context.IsRecommended ? Color.Primary : Color.Default)"
+                                         Variant="@(context.IsSelected ? Variant.Filled : Variant.Outlined)">
+                                    @context.Tag
+                                </MudChip>
+                                @if (string.IsNullOrWhiteSpace(context.ResolvedVersionTag) == false)
+                                {
+                                    <span class="table-secondary">@context.ResolvedVersionTag</span>
+                                }
+                            </MudStack>
                         </MudTd>
                         <MudTd DataLabel="Digest">
                             @if (string.IsNullOrWhiteSpace(context.Digest))
@@ -264,10 +301,14 @@
                                         <MudChip T="string"
                                                  Size="Size.Small"
                                                  Color="@(candidate.IsRecommended ? Color.Primary : Color.Default)"
-                                                 Variant="@(candidate.IsSelected ? Variant.Filled : Variant.Outlined)">
+                                     Variant="@(candidate.IsSelected ? Variant.Filled : Variant.Outlined)">
                                             @candidate.Tag
                                         </MudChip>
                                     </MudTooltip>
+                                    @if (string.IsNullOrWhiteSpace(candidate.ResolvedVersionTag) == false)
+                                    {
+                                        <span class="table-secondary">@candidate.ResolvedVersionTag</span>
+                                    }
                                 }
                             </MudStack>
                         </MudTd>

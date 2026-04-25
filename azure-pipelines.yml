@@ -1,4 +1,4 @@
-name: $(appVersion)
+name: 1.0.$(Rev:r)
 
 trigger:
   branches:
@@ -9,9 +9,7 @@ pool:
   vmImage: 'ubuntu-latest'
 
 variables:
-  versionMajorMinor: '1.0'
-  versionPatch: $[counter(variables['versionMajorMinor'], 1)]
-  appVersion: '$(versionMajorMinor).$(versionPatch)'
+  appVersion: '$(Build.BuildNumber)'
   dockerRepository: 'networlddev/dockerupdateguard'
   dockerfilePath: 'src/DockerUpdateGuard/Dockerfile'
   buildConfiguration: 'Release'

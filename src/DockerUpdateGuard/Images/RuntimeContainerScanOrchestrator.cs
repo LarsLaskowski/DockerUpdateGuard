@@ -214,7 +214,10 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
 
                     if (tagsResult.Status == ExternalOperationStatus.Succeeded && tagsResult.Data is not null)
                     {
-                        var evaluation = _updateDetectionService.Evaluate(parsedReference, tagsResult.Data);
+                        var availableTags = await MergeCurrentTagMetadataAsync(parsedReference,
+                                                                               tagsResult.Data,
+                                                                               cancellationToken).ConfigureAwait(false);
+                        var evaluation = _updateDetectionService.Evaluate(parsedReference, availableTags);
 
                         ApplyUpdateAssessment(snapshot, evaluation);
 
@@ -398,6 +401,30 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
         snapshot.UpdateAssessmentMessage = string.IsNullOrWhiteSpace(evaluation.Details)
                                                ? evaluation.Summary
                                                : $"{evaluation.Summary} {evaluation.Details}";
+    }
+
+    /// <summary>
+    /// Merge the exact metadata for the current tag into the available tag set
+    /// </summary>
+    /// <param name="currentImage">Current image reference</param>
+    /// <param name="availableTags">Available tags</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Merged tag set</returns>
+    private async Task<IReadOnlyList<DockerHubTagData>> MergeCurrentTagMetadataAsync(ImageReference currentImage,
+                                                                                     IReadOnlyList<DockerHubTagData> availableTags,
+                                                                                     CancellationToken cancellationToken)
+    {
+        var currentTagResult = await _registryMetadataService.GetTagAsync(currentImage, cancellationToken)
+                                                             .ConfigureAwait(false);
+
+        if (currentTagResult.Status != ExternalOperationStatus.Succeeded || currentTagResult.Data is null)
+        {
+            return availableTags;
+        }
+
+        return availableTags.Where(tag => string.Equals(tag.Tag, currentImage.Tag, StringComparison.OrdinalIgnoreCase) == false)
+                            .Append(currentTagResult.Data)
+                            .ToList();
     }
 
     /// <summary>
