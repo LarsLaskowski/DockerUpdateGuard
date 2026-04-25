@@ -180,6 +180,13 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
                 foreach (var container in discoveryResult.Data)
                 {
                     var parsedReference = _imageReferenceParser.Parse(container.ImageReference);
+
+                    if (string.IsNullOrWhiteSpace(parsedReference.Digest)
+                        && string.IsNullOrWhiteSpace(container.ImageDigest) == false)
+                    {
+                        parsedReference.Digest = container.ImageDigest.Trim().ToLowerInvariant();
+                    }
+
                     var imageVersion = await _imageCatalogRepository.GetOrCreateImageVersionAsync(parsedReference.Registry,
                                                                                                   parsedReference.Repository,
                                                                                                   parsedReference.Tag,

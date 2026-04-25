@@ -36,34 +36,11 @@ public class UpdateDetectionService : IUpdateDetectionService
 
         if (TryParseVersion(currentImage.Tag, out var currentVersion))
         {
-            var versionCandidates = orderedTags.Where(tag => TryParseVersion(tag.Tag, out var tagVersion) && tagVersion > currentVersion)
-                                               .Select(tag => new
-                                                              {
-                                                                  Tag = tag,
-                                                                  Version = ParseVersion(tag.Tag),
-                                                              })
-                                               .OrderByDescending(entity => entity.Version)
-                                               .ToList();
+            var versionCandidates = GetHigherVersionCandidates(orderedTags, currentVersion);
 
             if (versionCandidates.Count > 0)
             {
-                var recommended = versionCandidates[0].Tag;
-
-                return new UpdateEvaluationResult
-                       {
-                           Status = UpdateEvaluationStatus.UpdateAvailable,
-                           Summary = $"Newer tag '{recommended.Tag}' is available",
-                           RecommendedTag = recommended.Tag,
-                           RecommendedDigest = recommended.Digest,
-                           Candidates = versionCandidates.Take(5)
-                                                         .Select(entity => new UpdateCandidateData
-                                                                           {
-                                                                               Tag = entity.Tag.Tag,
-                                                                               Digest = entity.Tag.Digest,
-                                                                               PublishedAtUtc = entity.Tag.PublishedAtUtc,
-                                                                           })
-                                                         .ToList(),
-                       };
+                return CreateSemanticVersionUpdateResult(versionCandidates);
             }
 
             if (TryCreateDigestUpdateResult(currentImage,
@@ -87,6 +64,39 @@ public class UpdateDetectionService : IUpdateDetectionService
                                         out var currentTagDigestUpdate))
         {
             return currentTagDigestUpdate;
+        }
+
+        if (TryResolveCurrentVersionFromDigest(currentImage,
+                                               orderedTags,
+                                               out var resolvedVersionTag,
+                                               out var resolvedVersion))
+        {
+            var versionCandidates = GetHigherVersionCandidates(orderedTags, resolvedVersion);
+
+            if (versionCandidates.Count > 0)
+            {
+                return CreateSemanticVersionUpdateResult(versionCandidates,
+                                                         CreateResolvedCurrentVersionCandidate(resolvedVersionTag,
+                                                                                               currentImage.Digest,
+                                                                                               orderedTags));
+            }
+
+            return new UpdateEvaluationResult
+                   {
+                       Status = UpdateEvaluationStatus.UpToDate,
+                       Summary = $"The running digest matches version tag '{resolvedVersionTag}'",
+                       Details = "No newer semantic version was found",
+                   };
+        }
+
+        if (string.Equals(currentImage.Tag, "latest", StringComparison.OrdinalIgnoreCase)
+            && CurrentDigestMatches(currentImage.Digest, currentTagData?.Digest))
+        {
+            return new UpdateEvaluationResult
+                   {
+                       Status = UpdateEvaluationStatus.UpToDate,
+                       Summary = "The running image already matches the current 'latest' tag",
+                   };
         }
 
         var reviewCandidates = orderedTags.Where(tag => string.Equals(tag.Tag,
@@ -118,6 +128,58 @@ public class UpdateDetectionService : IUpdateDetectionService
                {
                    Status = UpdateEvaluationStatus.UpToDate,
                    Summary = "No newer tags were identified",
+               };
+    }
+
+    /// <summary>
+    /// Get higher semantic version candidates than the current version
+    /// </summary>
+    /// <param name="orderedTags">Ordered available tags</param>
+    /// <param name="currentVersion">Current semantic version</param>
+    /// <returns>Higher semantic version candidates</returns>
+    private static List<(DockerHubTagData Tag, Version Version)> GetHigherVersionCandidates(IReadOnlyList<DockerHubTagData> orderedTags,
+                                                                                            Version currentVersion)
+    {
+        return orderedTags.Where(tag => TryParseVersion(tag.Tag, out var tagVersion) && tagVersion > currentVersion)
+                          .Select(tag => (Tag: tag, Version: ParseVersion(tag.Tag)))
+                          .OrderByDescending(entity => entity.Version)
+                          .ToList();
+    }
+
+    /// <summary>
+    /// Create an update result for semantic version successors
+    /// </summary>
+    /// <param name="versionCandidates">Higher semantic version candidates</param>
+    /// <param name="resolvedCurrentVersionCandidate">Optional current resolved version candidate</param>
+    /// <returns>Update evaluation result</returns>
+    private static UpdateEvaluationResult CreateSemanticVersionUpdateResult(IReadOnlyList<(DockerHubTagData Tag, Version Version)> versionCandidates,
+                                                                            UpdateCandidateData? resolvedCurrentVersionCandidate = null)
+    {
+        var recommended = versionCandidates[0].Tag;
+        var candidates = versionCandidates.Take(5)
+                                          .Select(entity => new UpdateCandidateData
+                                                            {
+                                                                Tag = entity.Tag.Tag,
+                                                                Digest = entity.Tag.Digest,
+                                                                PublishedAtUtc = entity.Tag.PublishedAtUtc,
+                                                            })
+                                          .ToList();
+
+        if (resolvedCurrentVersionCandidate is not null
+            && candidates.Any(entity => string.Equals(entity.Tag,
+                                                      resolvedCurrentVersionCandidate.Tag,
+                                                      StringComparison.OrdinalIgnoreCase)) == false)
+        {
+            candidates.Add(resolvedCurrentVersionCandidate);
+        }
+
+        return new UpdateEvaluationResult
+               {
+                   Status = UpdateEvaluationStatus.UpdateAvailable,
+                   Summary = $"Newer tag '{recommended.Tag}' is available",
+                   RecommendedTag = recommended.Tag,
+                   RecommendedDigest = recommended.Digest,
+                   Candidates = candidates,
                };
     }
 
@@ -197,6 +259,102 @@ public class UpdateDetectionService : IUpdateDetectionService
                  };
 
         return true;
+    }
+
+    /// <summary>
+    /// Resolve the current semantic version from the running digest
+    /// </summary>
+    /// <param name="currentImage">Current image reference</param>
+    /// <param name="orderedTags">Ordered available tags</param>
+    /// <param name="resolvedVersionTag">Resolved semantic version tag</param>
+    /// <param name="resolvedVersion">Resolved semantic version value</param>
+    /// <returns>True when the running digest maps to a semantic version tag</returns>
+    private static bool TryResolveCurrentVersionFromDigest(ImageReference currentImage,
+                                                           IReadOnlyList<DockerHubTagData> orderedTags,
+                                                           out string resolvedVersionTag,
+                                                           out Version resolvedVersion)
+    {
+        resolvedVersionTag = string.Empty;
+        resolvedVersion = new Version();
+
+        if (string.IsNullOrWhiteSpace(currentImage.Digest))
+        {
+            return false;
+        }
+
+        var matchingSemanticCandidates = orderedTags.Where(tag => string.Equals(tag.Digest,
+                                                                                currentImage.Digest,
+                                                                                StringComparison.OrdinalIgnoreCase)
+                                                                  && TryParseVersion(tag.Tag, out _))
+                                                    .Select(tag => new
+                                                                   {
+                                                                       Tag = tag,
+                                                                       Version = ParseVersion(tag.Tag),
+                                                                   })
+                                                    .OrderByDescending(entity => entity.Version)
+                                                    .ToList();
+
+        if (matchingSemanticCandidates.Count == 0)
+        {
+            return false;
+        }
+
+        resolvedVersionTag = matchingSemanticCandidates[0].Tag.Tag;
+        resolvedVersion = matchingSemanticCandidates[0].Version;
+
+        return true;
+    }
+
+    /// <summary>
+    /// Create a candidate representing the currently resolved semantic version
+    /// </summary>
+    /// <param name="resolvedVersionTag">Resolved semantic version tag</param>
+    /// <param name="currentDigest">Current digest</param>
+    /// <param name="orderedTags">Ordered available tags</param>
+    /// <returns>Candidate or null when the tag cannot be found</returns>
+    private static UpdateCandidateData? CreateResolvedCurrentVersionCandidate(string resolvedVersionTag,
+                                                                              string? currentDigest,
+                                                                              IReadOnlyList<DockerHubTagData> orderedTags)
+    {
+        if (string.IsNullOrWhiteSpace(resolvedVersionTag))
+        {
+            return null;
+        }
+
+        var matchingTag = orderedTags.FirstOrDefault(tag => string.Equals(tag.Tag,
+                                                                          resolvedVersionTag,
+                                                                          StringComparison.OrdinalIgnoreCase)
+                                                            && string.Equals(tag.Digest ?? string.Empty,
+                                                                             currentDigest ?? string.Empty,
+                                                                             StringComparison.OrdinalIgnoreCase))
+                              ?? orderedTags.FirstOrDefault(tag => string.Equals(tag.Tag,
+                                                                                 resolvedVersionTag,
+                                                                                 StringComparison.OrdinalIgnoreCase));
+
+        if (matchingTag is null)
+        {
+            return null;
+        }
+
+        return new UpdateCandidateData
+               {
+                   Tag = matchingTag.Tag,
+                   Digest = matchingTag.Digest,
+                   PublishedAtUtc = matchingTag.PublishedAtUtc,
+               };
+    }
+
+    /// <summary>
+    /// Determine whether the current digest matches the registry digest for the tag
+    /// </summary>
+    /// <param name="currentDigest">Current running digest</param>
+    /// <param name="tagDigest">Registry digest for the tag</param>
+    /// <returns>True when the digests match</returns>
+    private static bool CurrentDigestMatches(string? currentDigest, string? tagDigest)
+    {
+        return string.IsNullOrWhiteSpace(currentDigest) == false
+               && string.IsNullOrWhiteSpace(tagDigest) == false
+               && string.Equals(currentDigest, tagDigest, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>

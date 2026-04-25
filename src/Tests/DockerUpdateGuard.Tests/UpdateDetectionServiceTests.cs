@@ -185,5 +185,129 @@ public class UpdateDetectionServiceTests
                                   "Manual review candidates must exclude the current tag and keep the newest alternatives");
     }
 
+    /// <summary>
+    /// Verify latest aliases can resolve the running semantic version from the current digest
+    /// </summary>
+    [TestMethod]
+    public void UpdateDetectionServiceLatestAliasWithMatchingSemanticDigestReturnsSemanticSuccessor()
+    {
+        var service = new UpdateDetectionService();
+
+        var evaluation = service.Evaluate(new ImageReference
+                                          {
+                                              Registry = "docker.io",
+                                              Repository = "company/app",
+                                              Tag = "latest",
+                                              Digest = "sha256:241",
+                                          },
+                                          [
+                                              new DockerHubTagData
+                                              {
+                                                  Tag = "latest",
+                                                  Digest = "sha256:241",
+                                                  PublishedAtUtc = new DateTimeOffset(2025, 06, 02, 12, 00, 00, TimeSpan.Zero),
+                                              },
+                                              new DockerHubTagData
+                                              {
+                                                  Tag = "2.4.1",
+                                                  Digest = "sha256:241",
+                                                  PublishedAtUtc = new DateTimeOffset(2025, 06, 02, 12, 00, 00, TimeSpan.Zero),
+                                              },
+                                              new DockerHubTagData
+                                              {
+                                                  Tag = "2.5.0",
+                                                  Digest = "sha256:250",
+                                                  PublishedAtUtc = new DateTimeOffset(2025, 06, 03, 12, 00, 00, TimeSpan.Zero),
+                                              },
+                                          ]);
+
+        Assert.AreEqual(UpdateEvaluationStatus.UpdateAvailable,
+                        evaluation.Status,
+                        "A latest alias with a digest-matched semantic version must report a newer semantic successor");
+        Assert.AreEqual("2.5.0",
+                        evaluation.RecommendedTag,
+                        "The highest semantic successor must be recommended once the running digest resolves to a version tag");
+        CollectionAssert.AreEqual(new[] { "2.5.0", "2.4.1" },
+                                  evaluation.Candidates.Select(candidate => candidate.Tag)
+                                                       .ToArray(),
+                                  "Candidates must include the newer semantic successor and the resolved current semantic version");
+    }
+
+    /// <summary>
+    /// Verify latest aliases with a matching semantic digest stay up to date when no newer version exists
+    /// </summary>
+    [TestMethod]
+    public void UpdateDetectionServiceLatestAliasWithMatchingSemanticDigestAndNoSuccessorReturnsUpToDate()
+    {
+        var service = new UpdateDetectionService();
+
+        var evaluation = service.Evaluate(new ImageReference
+                                          {
+                                              Registry = "docker.io",
+                                              Repository = "company/app",
+                                              Tag = "latest",
+                                              Digest = "sha256:241",
+                                          },
+                                          [
+                                              new DockerHubTagData
+                                              {
+                                                  Tag = "latest",
+                                                  Digest = "sha256:241",
+                                                  PublishedAtUtc = new DateTimeOffset(2025, 06, 02, 12, 00, 00, TimeSpan.Zero),
+                                              },
+                                              new DockerHubTagData
+                                              {
+                                                  Tag = "2.4.1",
+                                                  Digest = "sha256:241",
+                                                  PublishedAtUtc = new DateTimeOffset(2025, 06, 02, 12, 00, 00, TimeSpan.Zero),
+                                              },
+                                          ]);
+
+        Assert.AreEqual(UpdateEvaluationStatus.UpToDate,
+                        evaluation.Status,
+                        "A latest alias must stay up to date when its digest resolves to the newest semantic version");
+        Assert.AreEqual("The running digest matches version tag '2.4.1'",
+                        evaluation.Summary,
+                        "The summary must explain which semantic version was resolved from the running digest");
+    }
+
+    /// <summary>
+    /// Verify latest aliases without semantic matches stay up to date when the registry digest is unchanged
+    /// </summary>
+    [TestMethod]
+    public void UpdateDetectionServiceLatestAliasWithoutSemanticMatchAndUnchangedDigestReturnsUpToDate()
+    {
+        var service = new UpdateDetectionService();
+
+        var evaluation = service.Evaluate(new ImageReference
+                                          {
+                                              Registry = "docker.io",
+                                              Repository = "company/app",
+                                              Tag = "latest",
+                                              Digest = "sha256:stable",
+                                          },
+                                          [
+                                              new DockerHubTagData
+                                              {
+                                                  Tag = "latest",
+                                                  Digest = "sha256:stable",
+                                                  PublishedAtUtc = new DateTimeOffset(2025, 06, 02, 12, 00, 00, TimeSpan.Zero),
+                                              },
+                                              new DockerHubTagData
+                                              {
+                                                  Tag = "preview",
+                                                  Digest = "sha256:preview",
+                                                  PublishedAtUtc = new DateTimeOffset(2025, 06, 03, 12, 00, 00, TimeSpan.Zero),
+                                              },
+                                          ]);
+
+        Assert.AreEqual(UpdateEvaluationStatus.UpToDate,
+                        evaluation.Status,
+                        "A latest alias must not fall back to manual review when the registry latest digest matches the running digest");
+        Assert.AreEqual("The running image already matches the current 'latest' tag",
+                        evaluation.Summary,
+                        "The summary must explain that the running latest digest is already current");
+    }
+
     #endregion // Methods
 }
