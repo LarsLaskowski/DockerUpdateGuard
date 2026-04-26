@@ -20,6 +20,15 @@ namespace DockerUpdateGuard.Tests;
 [TestClass]
 public class RuntimeContainerScanOrchestratorTests
 {
+    #region Properties
+
+    /// <summary>
+    /// Context for the tests
+    /// </summary>
+    public TestContext TestContext { get; set; }
+
+    #endregion // Properties
+
     #region Methods
 
     /// <summary>
@@ -119,16 +128,16 @@ public class RuntimeContainerScanOrchestratorTests
                 await orchestrator.ScanAllAsync(ScanTriggerSource.Scheduled, CancellationToken.None)
                                   .ConfigureAwait(false);
 
-                var dockerInstance = await dbContext.DockerInstances.SingleAsync()
+                var dockerInstance = await dbContext.DockerInstances.SingleAsync(TestContext.CancellationToken)
                                                                     .ConfigureAwait(false);
-                var scanRun = await dbContext.ScanRuns.SingleAsync().ConfigureAwait(false);
-                var snapshot = await dbContext.ContainerSnapshots.SingleAsync().ConfigureAwait(false);
-                var finding = await dbContext.UpdateFindings.SingleAsync().ConfigureAwait(false);
-                var runtimeImageVersionTask = dbContext.ImageVersions.SingleAsync(entity => entity.Id == snapshot.ImageVersionId);
+                var scanRun = await dbContext.ScanRuns.SingleAsync(TestContext.CancellationToken).ConfigureAwait(false);
+                var snapshot = await dbContext.ContainerSnapshots.SingleAsync(TestContext.CancellationToken).ConfigureAwait(false);
+                var finding = await dbContext.UpdateFindings.SingleAsync(TestContext.CancellationToken).ConfigureAwait(false);
+                var runtimeImageVersionTask = dbContext.ImageVersions.SingleAsync(entity => entity.Id == snapshot.ImageVersionId, TestContext.CancellationToken);
                 var runtimeImageVersion = await runtimeImageVersionTask.ConfigureAwait(false);
                 Assert.IsNotNull(finding.RecommendedImageVersionId, "Runtime update findings must persist the recommended image version");
 
-                var recommendedImageTask = dbContext.ImageVersions.SingleAsync(entity => entity.Id == finding.RecommendedImageVersionId.Value);
+                var recommendedImageTask = dbContext.ImageVersions.SingleAsync(entity => entity.Id == finding.RecommendedImageVersionId.Value, TestContext.CancellationToken);
                 var recommendedImage = await recommendedImageTask.ConfigureAwait(false);
 
                 Assert.AreEqual("Production",
@@ -156,19 +165,137 @@ public class RuntimeContainerScanOrchestratorTests
                 Assert.AreEqual("1.1.0",
                                 recommendedImage.Tag,
                                 "Runtime scans must recommend the newer runtime image tag");
-                var imageRelationshipCount = await dbContext.ImageRelationships.CountAsync().ConfigureAwait(false);
+                var imageRelationshipCount = await dbContext.ImageRelationships.CountAsync(TestContext.CancellationToken).ConfigureAwait(false);
 
                 Assert.AreEqual(0,
                                 imageRelationshipCount,
                                 "Runtime scans must not create observed-image base relationships");
-                Assert.IsTrue(instanceDiscoveryLogger.Entries.Any(entry => entry.EventId.Id == 2090), "Runtime scans must log the start of Docker instance synchronization");
-                Assert.IsTrue(logger.Entries.Any(entry => entry.EventId.Id == 2070), "Runtime scan batches must log when batch processing starts");
-                Assert.IsTrue(logger.Entries.Any(entry => entry.EventId.Id == 2072
-                                                          && entry.Message.Contains("processing 1 Docker instances", StringComparison.Ordinal)),
-                              "Runtime scan batches must log a completion summary");
-                Assert.IsTrue(logger.Entries.Any(entry => entry.EventId.Id == 2073
-                                                          && entry.Message.Contains("Production", StringComparison.Ordinal)),
-                              "Runtime scans must log when each Docker instance scan starts");
+                Assert.Contains(entry => entry.EventId.Id == 2090, instanceDiscoveryLogger.Entries, "Runtime scans must log the start of Docker instance synchronization");
+                Assert.Contains(entry => entry.EventId.Id == 2070, logger.Entries, "Runtime scan batches must log when batch processing starts");
+                Assert.Contains(entry => entry.EventId.Id == 2072
+                                         && entry.Message.Contains("processing 1 Docker instances", StringComparison.Ordinal),
+                                logger.Entries,
+                                "Runtime scan batches must log a completion summary");
+                Assert.Contains(entry => entry.EventId.Id == 2073
+                                         && entry.Message.Contains("Production", StringComparison.Ordinal),
+                                logger.Entries,
+                                "Runtime scans must log when each Docker instance scan starts");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Verify runtime scans persist update candidates even when the registry omits candidate digests
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task RuntimeContainerScanOrchestratorScanAllAsyncPersistsCandidatesWithoutDigestAsync()
+    {
+        using (var database = new SqliteTestDatabase())
+        {
+            var dbContext = database.CreateDbContext();
+
+            await using (dbContext.ConfigureAwait(false))
+            {
+                var options = new DockerUpdateGuardOptions
+                              {
+                                  DockerInstances = [
+                                                        new DockerInstanceOptions
+                                                        {
+                                                            Name = "Production",
+                                                            BaseUrl = "https://docker.example.test",
+                                                            Enabled = true,
+                                                            RequestTimeoutSeconds = 15,
+                                                        },
+                                                    ],
+                              };
+                var optionsMonitor = new TestOptionsMonitor<DockerUpdateGuardOptions>(options);
+                var imageCatalogRepository = new ImageCatalogRepository(dbContext);
+                var dockerInstanceClient = Substitute.For<IDockerInstanceClient>();
+                var derivedBaseRuntimeDetector = Substitute.For<IDerivedBaseRuntimeDetector>();
+                var dotNetReleaseMetadataService = Substitute.For<IDotNetReleaseMetadataService>();
+                var nginxReleaseMetadataService = Substitute.For<INginxReleaseMetadataService>();
+                var registryMetadataService = Substitute.For<IRegistryMetadataService>();
+                var instanceDiscoveryService = new InstanceDiscoveryService(dbContext,
+                                                                            new TestLogger<InstanceDiscoveryService>(),
+                                                                            optionsMonitor);
+
+                dockerInstanceClient.DiscoverContainersAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<CancellationToken>())
+                                    .Returns(ExternalOperationResult<IReadOnlyList<RuntimeContainerDescriptor>>.Succeeded([
+                                                                                                                              new RuntimeContainerDescriptor
+                                                                                                                              {
+                                                                                                                                  ContainerId = "container-1",
+                                                                                                                                  Name = "web",
+                                                                                                                                  ImageReference = "docker.io/library/nginx:1.0.0@sha256:runtime-old",
+                                                                                                                                  RuntimeStatus = ContainerRuntimeStatus.Running,
+                                                                                                                                  IsRunning = true,
+                                                                                                                              },
+                                                                                                                          ]));
+
+                dockerInstanceClient.InspectImageAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+                                    .Returns(ExternalOperationResult<DockerImageInspectData>.NotFound("The local image inspect payload is not available"));
+
+                dockerInstanceClient.GetImageHistoryAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+                                    .Returns(ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>.NotFound("The local image history payload is not available"));
+
+                registryMetadataService.GetTagsAsync("docker.io",
+                                                     "library/nginx",
+                                                     Arg.Any<CancellationToken>())
+                                       .Returns(ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Succeeded([
+                                                                                                                       new DockerHubTagData
+                                                                                                                       {
+                                                                                                                           Tag = "1.1.0",
+                                                                                                                           PublishedAtUtc = new DateTimeOffset(2025, 06, 02, 12, 00, 00, TimeSpan.Zero),
+                                                                                                                       },
+                                                                                                                       new DockerHubTagData
+                                                                                                                       {
+                                                                                                                           Tag = "1.0.0",
+                                                                                                                           Digest = "sha256:runtime-old",
+                                                                                                                           PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
+                                                                                                                       },
+                                                                                                                   ]));
+
+                registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
+                                       .Returns(ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
+                                                                                                    {
+                                                                                                        Tag = "1.0.0",
+                                                                                                        Digest = "sha256:runtime-old",
+                                                                                                        PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
+                                                                                                    }));
+
+                var orchestrator = new RuntimeContainerScanOrchestrator(new ApplicationTelemetry(),
+                                                                        dbContext,
+                                                                        dockerInstanceClient,
+                                                                        derivedBaseRuntimeDetector,
+                                                                        dotNetReleaseMetadataService,
+                                                                        nginxReleaseMetadataService,
+                                                                        imageCatalogRepository,
+                                                                        new ImageReferenceParser(),
+                                                                        instanceDiscoveryService,
+                                                                        new TestLogger<RuntimeContainerScanOrchestrator>(),
+                                                                        optionsMonitor,
+                                                                        registryMetadataService,
+                                                                        new UpdateDetectionService());
+
+                await orchestrator.ScanAllAsync(ScanTriggerSource.Scheduled, CancellationToken.None)
+                                  .ConfigureAwait(false);
+
+                dbContext.ChangeTracker.Clear();
+
+                var scanRun = await dbContext.ScanRuns.SingleAsync(TestContext.CancellationToken).ConfigureAwait(false);
+                var finding = await dbContext.UpdateFindings.Include(entity => entity.TagCandidates)
+                                                            .SingleAsync(TestContext.CancellationToken)
+                                                            .ConfigureAwait(false);
+                var candidate = finding.TagCandidates.Single();
+
+                Assert.AreEqual(ScanRunStatus.Succeeded,
+                                scanRun.Status,
+                                "Runtime scans must still complete when a registry candidate has no digest");
+                Assert.AreEqual("1.1.0",
+                                candidate.Tag,
+                                "The candidate tag must still be persisted when its digest is missing");
+                Assert.IsNull(candidate.Digest,
+                              "Persisted candidates without a digest must materialize back as null");
             }
         }
     }
@@ -247,17 +374,19 @@ public class RuntimeContainerScanOrchestratorTests
                 await orchestrator.ScanAllAsync(ScanTriggerSource.Scheduled, CancellationToken.None)
                                   .ConfigureAwait(false);
 
-                var scanRun = await dbContext.ScanRuns.SingleAsync().ConfigureAwait(false);
+                var scanRun = await dbContext.ScanRuns.SingleAsync(TestContext.CancellationToken).ConfigureAwait(false);
 
                 Assert.AreEqual(ScanRunStatus.Partial,
                                 scanRun.Status,
                                 "Unsupported registry evaluations must keep the runtime scan in a partial state");
-                Assert.IsTrue(logger.Entries.Any(entry => entry.EventId.Id == 2078
-                                                          && entry.LogLevel == LogLevel.Warning),
-                              "Unsupported runtime registry evaluations must be logged as warnings");
-                Assert.IsTrue(logger.Entries.Any(entry => entry.EventId.Id == 2041
-                                                          && entry.Message.Contains("Partial", StringComparison.Ordinal)),
-                              "Runtime scans with unsupported registry evaluations must log a partial completion summary");
+                Assert.Contains(entry => entry.EventId.Id == 2078
+                                         && entry.LogLevel == LogLevel.Warning,
+                                logger.Entries,
+                                "Unsupported runtime registry evaluations must be logged as warnings");
+                Assert.Contains(entry => entry.EventId.Id == 2041
+                                         && entry.Message.Contains("Partial", StringComparison.Ordinal),
+                                logger.Entries,
+                                "Runtime scans with unsupported registry evaluations must log a partial completion summary");
             }
         }
     }
@@ -370,16 +499,16 @@ public class RuntimeContainerScanOrchestratorTests
                 await orchestrator.ScanAllAsync(ScanTriggerSource.Scheduled, CancellationToken.None)
                                   .ConfigureAwait(false);
 
-                var scanRun = await dbContext.ScanRuns.SingleAsync().ConfigureAwait(false);
+                var scanRun = await dbContext.ScanRuns.SingleAsync(TestContext.CancellationToken).ConfigureAwait(false);
                 var snapshots = await dbContext.ContainerSnapshots.OrderBy(entity => entity.Name)
-                                                                  .ToListAsync()
+                                                                  .ToListAsync(TestContext.CancellationToken)
                                                                   .ConfigureAwait(false);
 
                 Assert.AreEqual(ScanRunStatus.Partial,
                                 scanRun.Status,
                                 "The runtime scan must degrade to partial when a single container cannot be processed");
-                Assert.AreEqual(3,
-                                snapshots.Count,
+                Assert.HasCount(3,
+                                snapshots,
                                 "The runtime scan must preserve the failed container snapshot and continue with the remaining containers");
                 CollectionAssert.AreEqual(new[] { "broken", "web-1", "web-3" },
                                           snapshots.Select(entity => entity.Name).ToArray(),
@@ -387,9 +516,10 @@ public class RuntimeContainerScanOrchestratorTests
                 Assert.AreEqual(UpdateAssessmentStatus.Failed,
                                 snapshots.Single(entity => entity.Name == "broken").UpdateAssessmentStatus,
                                 "The invalid container must be marked as failed instead of aborting the complete scan");
-                Assert.IsTrue(logger.Entries.Any(entry => entry.EventId.Id == 2098
-                                                          && entry.Message.Contains("broken", StringComparison.Ordinal)),
-                              "The runtime scan must log which container was skipped when per-container processing fails");
+                Assert.Contains(entry => entry.EventId.Id == 2098
+                                         && entry.Message.Contains("broken", StringComparison.Ordinal),
+                                logger.Entries,
+                                "The runtime scan must log which container was skipped when per-container processing fails");
             }
         }
     }
@@ -483,9 +613,9 @@ public class RuntimeContainerScanOrchestratorTests
                                   .ConfigureAwait(false);
 
                 var finding = await dbContext.UpdateFindings.Include(entity => entity.TagCandidates)
-                                                            .SingleAsync()
+                                                            .SingleAsync(TestContext.CancellationToken)
                                                             .ConfigureAwait(false);
-                var recommendedImage = await dbContext.ImageVersions.SingleAsync(entity => entity.Id == finding.RecommendedImageVersionId)
+                var recommendedImage = await dbContext.ImageVersions.SingleAsync(entity => entity.Id == finding.RecommendedImageVersionId, TestContext.CancellationToken)
                                                                     .ConfigureAwait(false);
 
                 Assert.AreEqual("latest",
@@ -602,10 +732,10 @@ public class RuntimeContainerScanOrchestratorTests
                                   .ConfigureAwait(false);
 
                 var finding = await dbContext.UpdateFindings.Include(entity => entity.TagCandidates)
-                                                            .SingleAsync()
+                                                            .SingleAsync(TestContext.CancellationToken)
                                                             .ConfigureAwait(false);
-                var snapshot = await dbContext.ContainerSnapshots.SingleAsync().ConfigureAwait(false);
-                var recommendedImage = await dbContext.ImageVersions.SingleAsync(entity => entity.Id == finding.RecommendedImageVersionId)
+                var snapshot = await dbContext.ContainerSnapshots.SingleAsync(TestContext.CancellationToken).ConfigureAwait(false);
+                var recommendedImage = await dbContext.ImageVersions.SingleAsync(entity => entity.Id == finding.RecommendedImageVersionId, TestContext.CancellationToken)
                                                                     .ConfigureAwait(false);
 
                 Assert.AreEqual(UpdateAssessmentStatus.UpdateAvailable,
@@ -736,18 +866,18 @@ public class RuntimeContainerScanOrchestratorTests
                 await orchestrator.ScanAllAsync(ScanTriggerSource.Scheduled, CancellationToken.None)
                                   .ConfigureAwait(false);
 
-                var finding = await dbContext.UpdateFindings.SingleAsync(entity => entity.Type == UpdateFindingType.DerivedBaseRuntimeUpdate)
+                var finding = await dbContext.UpdateFindings.SingleAsync(entity => entity.Type == UpdateFindingType.DerivedBaseRuntimeUpdate, TestContext.CancellationToken)
                                                             .ConfigureAwait(false);
 
                 Assert.AreEqual("Own image uses an outdated .NET base runtime",
                                 finding.Summary,
                                 "Runtime scans must persist a strong warning for own images with an outdated .NET base runtime");
-                StringAssert.Contains(finding.Details ?? string.Empty,
-                                      ".NET 9.0.13",
-                                      "The derived runtime finding must mention the detected .NET version");
-                StringAssert.Contains(finding.Details ?? string.Empty,
-                                      "9.0.15",
-                                      "The derived runtime finding must mention the latest channel runtime");
+                Assert.Contains(".NET 9.0.13",
+                                finding.Details ?? string.Empty,
+                                "The derived runtime finding must mention the detected .NET version");
+                Assert.Contains("9.0.15",
+                                finding.Details ?? string.Empty,
+                                "The derived runtime finding must mention the latest channel runtime");
             }
         }
     }
@@ -864,18 +994,18 @@ public class RuntimeContainerScanOrchestratorTests
                 await orchestrator.ScanAllAsync(ScanTriggerSource.Scheduled, CancellationToken.None)
                                   .ConfigureAwait(false);
 
-                var finding = await dbContext.UpdateFindings.SingleAsync(entity => entity.Type == UpdateFindingType.DerivedBaseRuntimeUpdate)
+                var finding = await dbContext.UpdateFindings.SingleAsync(entity => entity.Type == UpdateFindingType.DerivedBaseRuntimeUpdate, TestContext.CancellationToken)
                                                             .ConfigureAwait(false);
 
                 Assert.AreEqual("Own image uses an outdated NGINX base runtime",
                                 finding.Summary,
                                 "Runtime scans must persist a strong warning for own images with an outdated NGINX base runtime");
-                StringAssert.Contains(finding.Details ?? string.Empty,
-                                      "NGINX 1.29.1",
-                                      "The derived runtime finding must mention the detected NGINX version");
-                StringAssert.Contains(finding.Details ?? string.Empty,
-                                      "1.29.8",
-                                      "The derived runtime finding must mention the latest channel release");
+                Assert.Contains("NGINX 1.29.1",
+                                finding.Details ?? string.Empty,
+                                "The derived runtime finding must mention the detected NGINX version");
+                Assert.Contains("1.29.8",
+                                finding.Details ?? string.Empty,
+                                "The derived runtime finding must mention the latest channel release");
             }
         }
     }

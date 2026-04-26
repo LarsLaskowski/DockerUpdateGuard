@@ -55,10 +55,11 @@ public class DockerHubClientTests
             Assert.AreEqual("acme",
                             result.Data.UserName,
                             "Current-user lookup must expose the authenticated Docker Hub username");
-            Assert.IsTrue(handler.Requests.Any(request => request.RequestUri == "https://hub.docker.com/v2/user/"
-                                                          && request.AuthorizationScheme == "Bearer"
-                                                          && request.AuthorizationParameter == "header.eyJleHAiOjQxMDI0NDQ4MDB9.signature"),
-                          "Current-user lookup must authenticate with the exchanged Docker Hub bearer token");
+            Assert.Contains(request => request.RequestUri == "https://hub.docker.com/v2/user/"
+                                       && request.AuthorizationScheme == "Bearer"
+                                       && request.AuthorizationParameter == "header.eyJleHAiOjQxMDI0NDQ4MDB9.signature",
+                            handler.Requests,
+                            "Current-user lookup must authenticate with the exchanged Docker Hub bearer token");
         }
         finally
         {
@@ -142,14 +143,14 @@ public class DockerHubClientTests
                             result.Status,
                             "Repository listing must succeed when Docker Hub returns paged repository payloads");
             Assert.IsNotNull(result.Data, "Repository listing must return repository data");
-            Assert.AreEqual(2,
-                            result.Data.Count,
+            Assert.HasCount(2,
+                            result.Data,
                             "Repository listing must include repositories from all result pages");
-            Assert.IsTrue(result.Data.Any(entity => entity.Repository == "acme/api"), "Repository listing must normalize the namespace and repository name");
-            Assert.IsTrue(result.Data.Any(entity => entity.Repository == "acme/web"), "Repository listing must follow the Docker Hub pagination link");
-            Assert.AreEqual(1,
-                            handler.Requests.Count(request => request.RequestUri == "https://hub.docker.com/v2/users/login"),
-                            "Repository listing must request a Docker Hub bearer token once and reuse it for paged requests");
+            Assert.Contains(entity => entity.Repository == "acme/api", result.Data, "Repository listing must normalize the namespace and repository name");
+            Assert.Contains(entity => entity.Repository == "acme/web", result.Data, "Repository listing must follow the Docker Hub pagination link");
+            Assert.ContainsSingle(request => request.RequestUri == "https://hub.docker.com/v2/users/login",
+                                  handler.Requests,
+                                  "Repository listing must request a Docker Hub bearer token once and reuse it for paged requests");
         }
         finally
         {

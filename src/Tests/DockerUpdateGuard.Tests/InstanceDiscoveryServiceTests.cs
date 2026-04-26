@@ -13,6 +13,15 @@ namespace DockerUpdateGuard.Tests;
 [TestClass]
 public class InstanceDiscoveryServiceTests
 {
+    #region Properties
+
+    /// <summary>
+    /// Context for the tests
+    /// </summary>
+    public TestContext TestContext { get; set; }
+
+    #endregion // Properties
+
     #region Methods
 
     /// <summary>
@@ -37,7 +46,7 @@ public class InstanceDiscoveryServiceTests
                              .ConfigureAwait(false);
 
                 var dockerInstance = await dbContext.DockerInstances.Include(entity => entity.PortainerEndpoint)
-                                                                    .SingleAsync()
+                                                                    .SingleAsync(TestContext.CancellationToken)
                                                                     .ConfigureAwait(false);
 
                 Assert.IsNotNull(dockerInstance.PortainerEndpoint, "A Portainer-enabled Docker instance must persist its related endpoint");
@@ -84,9 +93,9 @@ public class InstanceDiscoveryServiceTests
                              .ConfigureAwait(false);
 
                 var dockerInstance = await dbContext.DockerInstances.Include(entity => entity.PortainerEndpoint)
-                                                                    .SingleAsync()
+                                                                    .SingleAsync(TestContext.CancellationToken)
                                                                     .ConfigureAwait(false);
-                var portainerEndpointCount = await dbContext.PortainerEndpoints.CountAsync().ConfigureAwait(false);
+                var portainerEndpointCount = await dbContext.PortainerEndpoints.CountAsync(TestContext.CancellationToken).ConfigureAwait(false);
 
                 Assert.AreEqual(1,
                                 portainerEndpointCount,
@@ -150,13 +159,13 @@ public class InstanceDiscoveryServiceTests
                              .ConfigureAwait(false);
 
                 var dockerInstances = await dbContext.DockerInstances.OrderBy(entity => entity.Name)
-                                                                     .ToListAsync()
+                                                                     .ToListAsync(TestContext.CancellationToken)
                                                                      .ConfigureAwait(false);
-                var scanRunCount = await dbContext.ScanRuns.CountAsync().ConfigureAwait(false);
-                var portainerEndpointCount = await dbContext.PortainerEndpoints.CountAsync().ConfigureAwait(false);
+                var scanRunCount = await dbContext.ScanRuns.CountAsync(TestContext.CancellationToken).ConfigureAwait(false);
+                var portainerEndpointCount = await dbContext.PortainerEndpoints.CountAsync(TestContext.CancellationToken).ConfigureAwait(false);
 
-                Assert.AreEqual(1,
-                                dockerInstances.Count,
+                Assert.HasCount(1,
+                                dockerInstances,
                                 "Synchronizing configured instances must leave only the instances from configuration in persistence");
                 Assert.AreEqual("Production",
                                 dockerInstances[0].Name,

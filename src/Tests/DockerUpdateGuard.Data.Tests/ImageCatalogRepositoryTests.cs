@@ -12,6 +12,15 @@ namespace DockerUpdateGuard.Data.Tests;
 [TestClass]
 public class ImageCatalogRepositoryTests
 {
+    #region Properties
+
+    /// <summary>
+    /// Context for the tests
+    /// </summary>
+    public TestContext TestContext { get; set; }
+
+    #endregion // Properties
+
     #region Methods
 
     /// <summary>
@@ -46,7 +55,7 @@ public class ImageCatalogRepositoryTests
 
                 try
                 {
-                    await dbContext.SaveChangesAsync().ConfigureAwait(false);
+                    await dbContext.SaveChangesAsync(TestContext.CancellationToken).ConfigureAwait(false);
                 }
                 catch (DbUpdateException)
                 {
@@ -90,10 +99,10 @@ public class ImageCatalogRepositoryTests
                                 secondVersion.Id,
                                 "Repeated normalization requests must return the same image version");
                 Assert.AreEqual(1,
-                                await dbContext.RegistryRepositories.CountAsync().ConfigureAwait(false),
+                                await dbContext.RegistryRepositories.CountAsync(TestContext.CancellationToken).ConfigureAwait(false),
                                 "Only one registry repository row must exist after deduplication");
                 Assert.AreEqual(1,
-                                await dbContext.ImageVersions.CountAsync().ConfigureAwait(false),
+                                await dbContext.ImageVersions.CountAsync(TestContext.CancellationToken).ConfigureAwait(false),
                                 "Only one image version row must exist after deduplication");
             }
         }

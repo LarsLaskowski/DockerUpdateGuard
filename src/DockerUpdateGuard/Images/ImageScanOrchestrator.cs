@@ -438,7 +438,7 @@ public class ImageScanOrchestrator : IImageScanOrchestrator
             finding.TagCandidates.Add(new TagCandidate
                                       {
                                           Tag = candidate.Value.Tag,
-                                          Digest = candidate.Value.Digest,
+                                          Digest = UpdateFindingPersistenceHelper.NormalizeCandidateDigest(candidate.Value.Digest),
                                           Rank = candidate.Index + 1,
                                           IsRecommended = string.Equals(candidate.Value.Tag,
                                                                         evaluation.RecommendedTag,

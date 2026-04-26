@@ -10,6 +10,15 @@ namespace DockerUpdateGuard.Data.Tests;
 [TestClass]
 public class SharedBaseImageQueryServiceTests
 {
+    #region Properties
+
+    /// <summary>
+    /// Context for the tests
+    /// </summary>
+    public TestContext TestContext { get; set; }
+
+    #endregion // Properties
+
     #region Methods
 
     /// <summary>
@@ -100,12 +109,12 @@ public class SharedBaseImageQueryServiceTests
 
                 dbContext.ImageRelationships.AddRange(relationshipA, relationshipB);
 
-                await dbContext.SaveChangesAsync().ConfigureAwait(false);
+                await dbContext.SaveChangesAsync(TestContext.CancellationToken).ConfigureAwait(false);
 
                 var queryService = new SharedBaseImageQueryService(dbContext);
 
-                var sharedBaseImages = await queryService.GetSharedBaseImagesAsync().ConfigureAwait(false);
-                var observedImages = await queryService.GetObservedImagesByBaseImageAsync(sharedBaseImage.Id).ConfigureAwait(false);
+                var sharedBaseImages = await queryService.GetSharedBaseImagesAsync(TestContext.CancellationToken).ConfigureAwait(false);
+                var observedImages = await queryService.GetObservedImagesByBaseImageAsync(sharedBaseImage.Id, TestContext.CancellationToken).ConfigureAwait(false);
 
                 Assert.HasCount(1,
                                 sharedBaseImages,

@@ -64,7 +64,7 @@ public class TelemetryServiceCollectionExtensionsTests
         logger.LogInformation("Telemetry logging pipeline test {TestValue}", 42);
 
         Assert.IsNotNull(loggerFactory, "The telemetry registration must register an ILoggerFactory instance");
-        Assert.IsTrue(loggerProviders.Any(provider => provider.GetType().FullName?.Contains("OpenTelemetry", StringComparison.Ordinal) == true), "The telemetry registration must register an OpenTelemetry logger provider");
+        Assert.Contains(provider => provider.GetType().FullName?.Contains("OpenTelemetry", StringComparison.Ordinal) == true, loggerProviders, "The telemetry registration must register an OpenTelemetry logger provider");
         Assert.IsTrue(telemetryOptions.EnableLogging, "The telemetry options must keep logging enabled for logging-only configuration");
         Assert.IsFalse(telemetryOptions.EnableMetrics, "The telemetry options must keep metrics disabled for logging-only configuration");
         Assert.IsFalse(telemetryOptions.EnableTracing, "The telemetry options must keep tracing disabled for logging-only configuration");

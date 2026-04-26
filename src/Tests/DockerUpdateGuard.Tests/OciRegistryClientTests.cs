@@ -70,8 +70,8 @@ public class OciRegistryClientTests
                             result.Status,
                             "OCI registry tag lookup must succeed when the registry challenge and manifest requests complete");
             Assert.IsNotNull(result.Data, "OCI registry tag lookup must return tag data");
-            Assert.AreEqual(1,
-                            result.Data.Count,
+            Assert.HasCount(1,
+                            result.Data,
                             "OCI registry tag lookup must return all discovered tags");
             Assert.AreEqual("2019-CU32-GDR7-ubuntu-20.04",
                             result.Data[0].Tag,
@@ -79,10 +79,11 @@ public class OciRegistryClientTests
             Assert.AreEqual("sha256:mcr-tag",
                             result.Data[0].Digest,
                             "OCI registry tag lookup must expose the manifest digest");
-            Assert.IsTrue(handler.Requests.Any(request => request.RequestUri == "https://mcr.microsoft.com/v2/mssql/server/tags/list?n=100"
-                                                          && request.AuthorizationScheme == "Bearer"
-                                                          && request.AuthorizationParameter == "mcr-token"),
-                          "OCI registry tag lookup must retry the tags endpoint with the resolved bearer token");
+            Assert.Contains(request => request.RequestUri == "https://mcr.microsoft.com/v2/mssql/server/tags/list?n=100"
+                                       && request.AuthorizationScheme == "Bearer"
+                                       && request.AuthorizationParameter == "mcr-token",
+                            handler.Requests,
+                            "OCI registry tag lookup must retry the tags endpoint with the resolved bearer token");
         }
         finally
         {

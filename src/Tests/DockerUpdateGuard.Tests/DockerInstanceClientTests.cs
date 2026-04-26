@@ -40,10 +40,11 @@ public class DockerInstanceClientTests
         Assert.AreEqual(ExternalOperationStatus.NotConfigured,
                         result.Status,
                         "Disabled Docker instances must return a not-configured result");
-        Assert.IsTrue(logger.Entries.Any(entry => entry.EventId.Id == 3100
-                                                  && entry.LogLevel == LogLevel.Information
-                                                  && entry.Message.Contains("Production", StringComparison.Ordinal)),
-                      "Disabled Docker instances must log the skip decision with the configured instance name");
+        Assert.Contains(entry => entry.EventId.Id == 3100
+                                 && entry.LogLevel == LogLevel.Information
+                                 && entry.Message.Contains("Production", StringComparison.Ordinal),
+                        logger.Entries,
+                        "Disabled Docker instances must log the skip decision with the configured instance name");
     }
 
     /// <summary>
@@ -68,10 +69,11 @@ public class DockerInstanceClientTests
         Assert.AreEqual(ExternalOperationStatus.Unsupported,
                         result.Status,
                         "Unsupported Docker endpoints must return an unsupported result");
-        Assert.IsTrue(logger.Entries.Any(entry => entry.EventId.Id == 3101
-                                                  && entry.LogLevel == LogLevel.Warning
-                                                  && entry.Message.Contains("ssh://docker.example.test", StringComparison.Ordinal)),
-                      "Unsupported Docker endpoints must log the rejected endpoint value as a warning");
+        Assert.Contains(entry => entry.EventId.Id == 3101
+                                 && entry.LogLevel == LogLevel.Warning
+                                 && entry.Message.Contains("ssh://docker.example.test", StringComparison.Ordinal),
+                        logger.Entries,
+                        "Unsupported Docker endpoints must log the rejected endpoint value as a warning");
     }
 
     /// <summary>

@@ -66,7 +66,7 @@ public class ServiceCollectionExtensionsTests
                         httpClient.Timeout,
                         "The Docker Hub client must use the configured request timeout");
         Assert.IsNotNull(loggerFactory, "The host registration must register an ILoggerFactory instance through telemetry");
-        Assert.IsTrue(loggerProviders.Any(provider => provider.GetType().FullName?.Contains("OpenTelemetry", StringComparison.Ordinal) == true), "The host registration must register an OpenTelemetry logger provider when telemetry logging is enabled");
+        Assert.Contains(provider => provider.GetType().FullName?.Contains("OpenTelemetry", StringComparison.Ordinal) == true, loggerProviders, "The host registration must register an OpenTelemetry logger provider when telemetry logging is enabled");
         Assert.IsNotNull(serviceProvider.GetService<IDockerHubAccountImageDiscoveryService>(), "The Docker Hub account discovery service must be registered");
     }
 

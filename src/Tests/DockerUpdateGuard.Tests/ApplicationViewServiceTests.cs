@@ -212,8 +212,8 @@ public class ApplicationViewServiceTests
             Assert.AreEqual(1,
                             dashboard.ActiveVulnerabilityFindingCount,
                             "The dashboard must report the active vulnerability finding count");
-            Assert.AreEqual(1,
-                            dashboard.RecentScans.Count,
+            Assert.HasCount(1,
+                            dashboard.RecentScans,
                             "The dashboard must include the recent scan entry");
         }
     }
@@ -511,8 +511,8 @@ public class ApplicationViewServiceTests
                             observedImages.First().LinkedRuntimeContainerCount,
                             "Own images must show the number of linked runtime containers by repository");
             Assert.IsNotNull(observedDetail, "The own observed image detail must be returned");
-            Assert.AreEqual(1,
-                            observedDetail.LinkedRuntimeContainers.Count,
+            Assert.HasCount(1,
+                            observedDetail.LinkedRuntimeContainers,
                             "The own observed image detail must list linked runtime containers");
             Assert.AreEqual(ownObservedImage.Id,
                             runtimeContainers.Single().LinkedObservedImageId,
@@ -614,8 +614,9 @@ public class ApplicationViewServiceTests
             Assert.AreEqual("Own image uses an outdated .NET base runtime",
                             observedDetail.BaseRuntimeAlertSummary,
                             "The observed image detail must surface the linked base-runtime alert summary");
-            Assert.IsTrue(observedDetail.UpdateFindings.Any(entity => entity.Type == "Base runtime update"),
-                          "The observed image detail must include derived base-runtime findings in the update findings list");
+            Assert.Contains(entity => entity.Type == "Base runtime update",
+                            observedDetail.UpdateFindings,
+                            "The observed image detail must include derived base-runtime findings in the update findings list");
             Assert.IsNotNull(runtimeDetail, "The runtime container detail must be returned");
             Assert.AreEqual("Own image uses an outdated .NET base runtime",
                             runtimeDetail.BaseRuntimeAlertSummary,
@@ -729,8 +730,8 @@ public class ApplicationViewServiceTests
                             runtimeContainers.Single().CurrentResourceUsage?.CpuPercent,
                             "Runtime container list rows must expose the latest CPU value");
             Assert.IsNotNull(runtimeDetail, "The runtime container detail must be returned");
-            Assert.AreEqual(2,
-                            runtimeDetail.ResourceUsageHistory.Count,
+            Assert.HasCount(2,
+                            runtimeDetail.ResourceUsageHistory,
                             "Runtime container detail must expose recent resource history");
             Assert.AreEqual(18.0m,
                             runtimeDetail.CurrentResourceUsage?.CpuPercent,
@@ -742,8 +743,8 @@ public class ApplicationViewServiceTests
                             dockerInstances.Single().CurrentResourceUsage?.MemoryLimitBytes,
                             "Docker instance list rows must expose host-total memory for the latest sample");
             Assert.IsNotNull(dockerInstanceDetail, "The Docker instance detail must be returned");
-            Assert.AreEqual(2,
-                            dockerInstanceDetail.ResourceUsageHistory.Count,
+            Assert.HasCount(2,
+                            dockerInstanceDetail.ResourceUsageHistory,
                             "Docker instance detail must expose recent resource history");
             Assert.AreEqual(18.0m,
                             dockerInstanceDetail.CurrentResourceUsage?.CpuPercent,
@@ -953,15 +954,15 @@ public class ApplicationViewServiceTests
             var dockerInstanceDetail = await service.GetDockerInstanceDetailAsync(dockerInstance.Id, CancellationToken.None)
                                                     .ConfigureAwait(false);
 
-            Assert.AreEqual(1,
-                            runtimeContainers.Count,
+            Assert.HasCount(1,
+                            runtimeContainers,
                             "Current runtime container projections must only expose containers from the latest runtime scan");
             Assert.AreEqual("container-new",
                             runtimeContainers.Single().ContainerId,
                             "Current runtime container projections must ignore stale snapshots from older scans");
             Assert.IsNotNull(dockerInstanceDetail, "The Docker instance detail must be returned");
-            Assert.AreEqual(1,
-                            dockerInstanceDetail.RuntimeContainers.Count,
+            Assert.HasCount(1,
+                            dockerInstanceDetail.RuntimeContainers,
                             "Docker instance detail must also exclude stale snapshots from older scans");
             Assert.AreEqual("container-new",
                             dockerInstanceDetail.RuntimeContainers.Single().ContainerId,
@@ -1017,8 +1018,8 @@ public class ApplicationViewServiceTests
             Assert.AreEqual(1,
                             dashboardTask.Result.ObservedImageCount,
                             "Concurrent dashboard reads must still report the seeded observed image");
-            Assert.AreEqual(1,
-                            observedImagesTask.Result.Count,
+            Assert.HasCount(1,
+                            observedImagesTask.Result,
                             "Concurrent observed image reads must complete successfully");
         }
     }

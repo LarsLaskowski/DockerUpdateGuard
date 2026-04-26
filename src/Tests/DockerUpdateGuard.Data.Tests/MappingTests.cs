@@ -217,7 +217,7 @@ public class MappingTests
                                    vulnerabilityFinding,
                                    containerActionRun);
 
-                await dbContext.SaveChangesAsync().ConfigureAwait(false);
+                await dbContext.SaveChangesAsync(TestContext.CancellationToken).ConfigureAwait(false);
                 dbContext.ChangeTracker.Clear();
 
                 var persistedObservedImage = await dbContext.ObservedImages.Include(entity => entity.CurrentImageVersion)
@@ -232,10 +232,10 @@ public class MappingTests
                                                                            .ConfigureAwait(false);
 
                 Assert.AreEqual(2,
-                                await dbContext.ImageVersions.CountAsync().ConfigureAwait(false),
+                                await dbContext.ImageVersions.CountAsync(TestContext.CancellationToken).ConfigureAwait(false),
                                 "Two image versions must be stored for the representative graph");
                 Assert.AreEqual(1,
-                                await dbContext.ContainerActionRuns.CountAsync().ConfigureAwait(false),
+                                await dbContext.ContainerActionRuns.CountAsync(TestContext.CancellationToken).ConfigureAwait(false),
                                 "One container action run must be stored for the representative graph");
                 Assert.AreEqual("Example App",
                                 persistedObservedImage.Name,

@@ -197,9 +197,8 @@ public class DockerUpdateGuardOptionsValidatorTests
         Assert.AreEqual("14",
                         applicationSection["Scanning:RetainScanRunsDays"],
                         "The development configuration sample must include the scan retention period");
-        Assert.IsTrue(dockerInstancesSection.GetChildren()
-                                            .Any(),
-                      "The development configuration sample must include at least one Docker instance entry");
+        Assert.IsNotEmpty(dockerInstancesSection.GetChildren(),
+                          "The development configuration sample must include at least one Docker instance entry");
         Assert.AreEqual("Docker Desktop",
                         applicationSection["DockerInstances:0:Name"],
                         "The first Docker instance sample must expose the name");

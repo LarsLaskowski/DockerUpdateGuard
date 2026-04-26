@@ -19,6 +19,15 @@ namespace DockerUpdateGuard.Tests;
 [TestClass]
 public class ImageScanOrchestratorTests
 {
+    #region Properties
+
+    /// <summary>
+    /// Context for the tests
+    /// </summary>
+    public TestContext TestContext { get; set; }
+
+    #endregion // Properties
+
     #region Methods
 
     /// <summary>
@@ -54,7 +63,7 @@ public class ImageScanOrchestratorTests
                 var registryMetadataService = Substitute.For<IRegistryMetadataService>();
 
                 dbContext.ObservedImages.Add(observedImage);
-                await dbContext.SaveChangesAsync()
+                await dbContext.SaveChangesAsync(TestContext.CancellationToken)
                                .ConfigureAwait(false);
                 var logger = new TestLogger<ImageScanOrchestrator>();
 
@@ -114,16 +123,16 @@ public class ImageScanOrchestratorTests
                                              CancellationToken.None)
                                   .ConfigureAwait(false);
 
-                var scanRun = await dbContext.ScanRuns.SingleAsync().ConfigureAwait(false);
-                var relationship = await dbContext.ImageRelationships.SingleAsync().ConfigureAwait(false);
+                var scanRun = await dbContext.ScanRuns.SingleAsync(TestContext.CancellationToken).ConfigureAwait(false);
+                var relationship = await dbContext.ImageRelationships.SingleAsync(TestContext.CancellationToken).ConfigureAwait(false);
                 var finding = await dbContext.UpdateFindings.Include(entity => entity.TagCandidates)
-                                                            .SingleAsync()
+                                                            .SingleAsync(TestContext.CancellationToken)
                                                             .ConfigureAwait(false);
                 Assert.IsNotNull(finding.RecommendedImageVersionId, "Observed image findings with an update must persist the recommended image version");
 
-                var recommendedImageTask = dbContext.ImageVersions.SingleAsync(entity => entity.Id == finding.RecommendedImageVersionId.Value);
+                var recommendedImageTask = dbContext.ImageVersions.SingleAsync(entity => entity.Id == finding.RecommendedImageVersionId.Value, TestContext.CancellationToken);
                 var recommendedImage = await recommendedImageTask.ConfigureAwait(false);
-                var refreshedCurrentVersionTask = dbContext.ImageVersions.SingleAsync(entity => entity.Id == currentImageVersion.Id);
+                var refreshedCurrentVersionTask = dbContext.ImageVersions.SingleAsync(entity => entity.Id == currentImageVersion.Id, TestContext.CancellationToken);
                 var refreshedCurrentVersion = await refreshedCurrentVersionTask.ConfigureAwait(false);
 
                 Assert.AreEqual(ScanRunType.ObservedImage,
@@ -148,18 +157,134 @@ public class ImageScanOrchestratorTests
                 Assert.HasCount(1,
                                 finding.TagCandidates,
                                 "The observed image finding must persist the evaluated tag candidates");
-                var containerSnapshotCount = await dbContext.ContainerSnapshots.CountAsync().ConfigureAwait(false);
+                var containerSnapshotCount = await dbContext.ContainerSnapshots.CountAsync(TestContext.CancellationToken).ConfigureAwait(false);
 
                 Assert.AreEqual(0,
                                 containerSnapshotCount,
                                 "Observed image scans must not create runtime container snapshots");
                 Assert.IsFalse(string.IsNullOrWhiteSpace(refreshedCurrentVersion.MetadataJson), "Observed image scans must refresh the current image metadata payload");
-                Assert.IsTrue(logger.Entries.Any(entry => entry.EventId.Id == 2063
-                                                          && entry.Message.Contains("Company App", StringComparison.Ordinal)),
-                              "Observed image scans must log when an image scan starts");
-                Assert.IsTrue(logger.Entries.Any(entry => entry.EventId.Id == 2031
-                                                          && entry.Message.Contains("Succeeded", StringComparison.Ordinal)),
-                              "Observed image scans must log the final summary outcome");
+                Assert.Contains(entry => entry.EventId.Id == 2063
+                                         && entry.Message.Contains("Company App", StringComparison.Ordinal),
+                                logger.Entries,
+                                "Observed image scans must log when an image scan starts");
+                Assert.Contains(entry => entry.EventId.Id == 2031
+                                         && entry.Message.Contains("Succeeded", StringComparison.Ordinal),
+                                logger.Entries,
+                                "Observed image scans must log the final summary outcome");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Verify observed image scans persist update candidates even when the registry omits candidate digests
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task ImageScanOrchestratorScanAsyncPersistsCandidatesWithoutDigestAsync()
+    {
+        using (var database = new SqliteTestDatabase())
+        {
+            var dbContext = database.CreateDbContext();
+
+            await using (dbContext.ConfigureAwait(false))
+            {
+                var imageCatalogRepository = new ImageCatalogRepository(dbContext);
+                var currentImageVersion = await imageCatalogRepository.GetOrCreateImageVersionAsync("docker.io",
+                                                                                                    "company/app",
+                                                                                                    "1.0.0",
+                                                                                                    "sha256:app",
+                                                                                                    cancellationToken: CancellationToken.None)
+                                                                      .ConfigureAwait(false);
+                var observedImage = new ObservedImage
+                                    {
+                                        Name = "Company App",
+                                        CurrentImageVersionId = currentImageVersion.Id,
+                                    };
+                var baseImageResolver = Substitute.For<IBaseImageResolver>();
+                var derivedBaseRuntimeDetector = Substitute.For<IDerivedBaseRuntimeDetector>();
+                var dotNetReleaseMetadataService = Substitute.For<IDotNetReleaseMetadataService>();
+                var nginxReleaseMetadataService = Substitute.For<INginxReleaseMetadataService>();
+                var registryMetadataService = Substitute.For<IRegistryMetadataService>();
+
+                dbContext.ObservedImages.Add(observedImage);
+
+                await dbContext.SaveChangesAsync(TestContext.CancellationToken)
+                               .ConfigureAwait(false);
+
+                baseImageResolver.ResolveAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
+                                 .Returns(ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>.Succeeded([
+                                                                                                                    new BaseImageDescriptor
+                                                                                                                    {
+                                                                                                                        Registry = "docker.io",
+                                                                                                                        Repository = "library/debian",
+                                                                                                                        Tag = "12.0.0",
+                                                                                                                        Digest = "sha256:base-old",
+                                                                                                                        Depth = 1,
+                                                                                                                        SourceReference = "FROM debian:12.0.0",
+                                                                                                                    },
+                                                                                                                ]));
+
+                registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
+                                       .Returns(ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
+                                                                                                    {
+                                                                                                        Tag = "1.0.0",
+                                                                                                        Digest = "sha256:app",
+                                                                                                        PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
+                                                                                                    }));
+
+                registryMetadataService.GetTagsAsync("docker.io",
+                                                     "library/debian",
+                                                     Arg.Any<CancellationToken>())
+                                       .Returns(ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Succeeded([
+                                                                                                                       new DockerHubTagData
+                                                                                                                       {
+                                                                                                                           Tag = "12.1.0",
+                                                                                                                           PublishedAtUtc = new DateTimeOffset(2025, 06, 02, 12, 00, 00, TimeSpan.Zero),
+                                                                                                                       },
+                                                                                                                       new DockerHubTagData
+                                                                                                                       {
+                                                                                                                           Tag = "12.0.0",
+                                                                                                                           Digest = "sha256:base-old",
+                                                                                                                           PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
+                                                                                                                       },
+                                                                                                                   ]));
+
+                registryMetadataService.GetImageConfigurationAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
+                                       .Returns(ExternalOperationResult<RegistryImageConfigurationData>.NotFound("No registry config"));
+
+                var orchestrator = new ImageScanOrchestrator(new ApplicationTelemetry(),
+                                                             baseImageResolver,
+                                                             dbContext,
+                                                             derivedBaseRuntimeDetector,
+                                                             dotNetReleaseMetadataService,
+                                                             nginxReleaseMetadataService,
+                                                             imageCatalogRepository,
+                                                             new ImageReferenceParser(),
+                                                             new TestLogger<ImageScanOrchestrator>(),
+                                                             registryMetadataService,
+                                                             new UpdateDetectionService());
+
+                await orchestrator.ScanAsync(observedImage.Id,
+                                             ScanTriggerSource.Manual,
+                                             CancellationToken.None)
+                                  .ConfigureAwait(false);
+
+                dbContext.ChangeTracker.Clear();
+
+                var scanRun = await dbContext.ScanRuns.SingleAsync(TestContext.CancellationToken).ConfigureAwait(false);
+                var finding = await dbContext.UpdateFindings.Include(entity => entity.TagCandidates)
+                                                            .SingleAsync(TestContext.CancellationToken)
+                                                            .ConfigureAwait(false);
+                var candidate = finding.TagCandidates.Single();
+
+                Assert.AreEqual(ScanRunStatus.Succeeded,
+                                scanRun.Status,
+                                "Observed image scans must still complete when a registry candidate has no digest");
+                Assert.AreEqual("12.1.0",
+                                candidate.Tag,
+                                "The candidate tag must still be persisted when its digest is missing");
+                Assert.IsNull(candidate.Digest,
+                              "Persisted candidates without a digest must materialize back as null");
             }
         }
     }
@@ -193,7 +318,7 @@ public class ImageScanOrchestratorTests
                 await orchestrator.ScanAllAsync(ScanTriggerSource.Scheduled, CancellationToken.None)
                                   .ConfigureAwait(false);
 
-                Assert.IsTrue(logger.Entries.Any(entry => entry.EventId.Id == 2061), "Observed image batch scans must log when they are skipped because no images are enabled");
+                Assert.Contains(entry => entry.EventId.Id == 2061, logger.Entries, "Observed image batch scans must log when they are skipped because no images are enabled");
             }
         }
     }
@@ -232,7 +357,7 @@ public class ImageScanOrchestratorTests
                 var registryMetadataService = Substitute.For<IRegistryMetadataService>();
 
                 dbContext.ObservedImages.Add(observedImage);
-                await dbContext.SaveChangesAsync()
+                await dbContext.SaveChangesAsync(TestContext.CancellationToken)
                                .ConfigureAwait(false);
 
                 baseImageResolver.ResolveAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
@@ -283,7 +408,7 @@ public class ImageScanOrchestratorTests
                                              CancellationToken.None)
                                   .ConfigureAwait(false);
 
-                var derivedFinding = await dbContext.UpdateFindings.SingleAsync(entity => entity.Type == UpdateFindingType.DerivedBaseRuntimeUpdate)
+                var derivedFinding = await dbContext.UpdateFindings.SingleAsync(entity => entity.Type == UpdateFindingType.DerivedBaseRuntimeUpdate, TestContext.CancellationToken)
                                                                    .ConfigureAwait(false);
 
                 Assert.AreEqual(observedImage.Id,
@@ -337,7 +462,7 @@ public class ImageScanOrchestratorTests
                 var registryMetadataService = Substitute.For<IRegistryMetadataService>();
 
                 dbContext.ObservedImages.Add(observedImage);
-                await dbContext.SaveChangesAsync()
+                await dbContext.SaveChangesAsync(TestContext.CancellationToken)
                                .ConfigureAwait(false);
 
                 baseImageResolver.ResolveAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
@@ -387,7 +512,7 @@ public class ImageScanOrchestratorTests
                                              CancellationToken.None)
                                   .ConfigureAwait(false);
 
-                var derivedFinding = await dbContext.UpdateFindings.SingleAsync(entity => entity.Type == UpdateFindingType.DerivedBaseRuntimeUpdate)
+                var derivedFinding = await dbContext.UpdateFindings.SingleAsync(entity => entity.Type == UpdateFindingType.DerivedBaseRuntimeUpdate, TestContext.CancellationToken)
                                                                    .ConfigureAwait(false);
 
                 Assert.AreEqual("Own image uses an outdated NGINX base runtime",

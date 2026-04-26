@@ -171,8 +171,8 @@ public class DockerHubAccountImageDiscoveryServiceTests
                 var manualImageTask = dbContext.ObservedImages.SingleAsync(entity => entity.Name == "Manual image", CancellationToken.None);
                 var manualImage = await manualImageTask.ConfigureAwait(false);
 
-                Assert.AreEqual(3,
-                                discoveredImages.Count,
+                Assert.HasCount(3,
+                                discoveredImages,
                                 "Synchronization must keep existing discovered images and add new ones as needed");
                 Assert.AreEqual("1.1.0",
                                 apiImage.CurrentImageVersion.Tag,
@@ -186,7 +186,7 @@ public class DockerHubAccountImageDiscoveryServiceTests
                 Assert.IsTrue(webImage.IsEnabled, "Synchronization must enable newly discovered images");
                 Assert.IsFalse(removedImage.IsEnabled, "Synchronization must disable discovered images that are no longer present in the account");
                 Assert.IsTrue(manualImage.IsEnabled, "Synchronization must not modify manual observed images");
-                Assert.IsTrue(logger.Entries.Any(entry => entry.EventId.Id == 2096), "Synchronization must emit a completion log entry");
+                Assert.Contains(entry => entry.EventId.Id == 2096, logger.Entries, "Synchronization must emit a completion log entry");
             }
         }
     }
@@ -219,7 +219,7 @@ public class DockerHubAccountImageDiscoveryServiceTests
                                                       .GetRepositoriesAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
 
                 await repositoriesTask.ConfigureAwait(false);
-                Assert.IsTrue(logger.Entries.Any(entry => entry.EventId.Id == 2092), "Synchronization must log when Docker Hub account discovery is skipped because no PAT is configured");
+                Assert.Contains(entry => entry.EventId.Id == 2092, logger.Entries, "Synchronization must log when Docker Hub account discovery is skipped because no PAT is configured");
             }
         }
     }
@@ -259,7 +259,7 @@ public class DockerHubAccountImageDiscoveryServiceTests
                                                       .GetRepositoriesAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
 
                 await repositoriesTask.ConfigureAwait(false);
-                Assert.IsTrue(logger.Entries.Any(entry => entry.EventId.Id == 2097), "Synchronization must log when Docker Hub account discovery is skipped because no user name is configured");
+                Assert.Contains(entry => entry.EventId.Id == 2097, logger.Entries, "Synchronization must log when Docker Hub account discovery is skipped because no user name is configured");
             }
         }
     }

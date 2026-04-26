@@ -11,6 +11,15 @@ namespace DockerUpdateGuard.Data.Tests;
 [TestClass]
 public class ImageCatalogRepositoryNullDigestTests
 {
+    #region Properties
+
+    /// <summary>
+    /// Context for the tests
+    /// </summary>
+    public TestContext TestContext { get; set; }
+
+    #endregion // Properties
+
     #region Methods
 
     /// <summary>
@@ -36,7 +45,7 @@ public class ImageCatalogRepositoryNullDigestTests
                                                      .ConfigureAwait(false);
                 dbContext.ChangeTracker.Clear();
 
-                var persistedVersion = await dbContext.ImageVersions.SingleAsync(entity => entity.Id == createdVersion.Id)
+                var persistedVersion = await dbContext.ImageVersions.SingleAsync(entity => entity.Id == createdVersion.Id, TestContext.CancellationToken)
                                                                     .ConfigureAwait(false);
                 var foundVersion = await repository.FindImageVersionAsync("docker.io",
                                                                           "library/busybox",

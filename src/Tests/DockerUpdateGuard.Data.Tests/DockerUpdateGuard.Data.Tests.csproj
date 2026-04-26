@@ -8,7 +8,6 @@
     <GenerateDocumentationFile>True</GenerateDocumentationFile>
     <SuppressNETCoreSdkPreviewMessage>true</SuppressNETCoreSdkPreviewMessage>
     <GenerateAssemblyInfo>False</GenerateAssemblyInfo>
-    <NoWarn>$(NoWarn);SA1204;SA1600;SA1611</NoWarn>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
