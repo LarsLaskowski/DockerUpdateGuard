@@ -44,6 +44,12 @@ public class UpdateDetectionServiceTests
         Assert.AreEqual("sha256:new",
                         evaluation.RecommendedDigest,
                         "Digest-only updates must recommend the latest registry digest");
+        Assert.AreEqual("Update available",
+                        evaluation.Summary,
+                        "Digest-only updates must use a concise user-facing summary");
+        Assert.AreEqual("A newer image is available for tag 'latest'",
+                        evaluation.Details,
+                        "Digest-only updates must not expose raw digests in the details");
         Assert.HasCount(1,
                         evaluation.Candidates,
                         "Digest-only updates must include the latest current-tag candidate");
@@ -231,6 +237,60 @@ public class UpdateDetectionServiceTests
                                   evaluation.Candidates.Select(candidate => candidate.Tag)
                                                        .ToArray(),
                                   "Candidates must include the newer semantic successor and the resolved current semantic version");
+    }
+
+    /// <summary>
+    /// Verify stale calendar tags are not recommended ahead of newer published tags
+    /// </summary>
+    [TestMethod]
+    public void UpdateDetectionServiceLatestAliasIgnoresOlderPublishedCalendarTagAsync()
+    {
+        var service = new UpdateDetectionService();
+
+        var evaluation = service.Evaluate(new ImageReference
+                                          {
+                                              Registry = "docker.io",
+                                              Repository = "linuxserver/heimdall",
+                                              Tag = "latest",
+                                              Digest = "sha256:241",
+                                          },
+                                          [
+                                              new DockerHubTagData
+                                              {
+                                                  Tag = "latest",
+                                                  Digest = "sha256:241",
+                                                  PublishedAtUtc = new DateTimeOffset(2025, 06, 02, 12, 00, 00, TimeSpan.Zero),
+                                              },
+                                              new DockerHubTagData
+                                              {
+                                                  Tag = "2.4.1",
+                                                  Digest = "sha256:241",
+                                                  PublishedAtUtc = new DateTimeOffset(2025, 06, 02, 12, 00, 00, TimeSpan.Zero),
+                                              },
+                                              new DockerHubTagData
+                                              {
+                                                  Tag = "2021.11.28",
+                                                  Digest = "sha256:old-calendar",
+                                                  PublishedAtUtc = new DateTimeOffset(2021, 11, 28, 12, 00, 00, TimeSpan.Zero),
+                                              },
+                                              new DockerHubTagData
+                                              {
+                                                  Tag = "2.5.0",
+                                                  Digest = "sha256:250",
+                                                  PublishedAtUtc = new DateTimeOffset(2025, 06, 03, 12, 00, 00, TimeSpan.Zero),
+                                              },
+                                          ]);
+
+        Assert.AreEqual(UpdateEvaluationStatus.UpdateAvailable,
+                        evaluation.Status,
+                        "A newer published semantic tag must still be reported as an available update");
+        Assert.AreEqual("2.5.0",
+                        evaluation.RecommendedTag,
+                        "Older calendar tags must not outrank newer published semantic successors");
+        CollectionAssert.AreEquivalent(new[] { "2.5.0", "2.4.1" },
+                                       evaluation.Candidates.Select(candidate => candidate.Tag)
+                                                            .ToArray(),
+                                       "Stale calendar tags must be excluded from the latest alias recommendation set");
     }
 
     /// <summary>

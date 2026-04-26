@@ -676,12 +676,14 @@ public class ApplicationViewServiceTests
                                                                                          "sha256:new",
                                                                                          cancellationToken: CancellationToken.None)
                                                            .ConfigureAwait(false);
+
             var dockerInstance = new DockerInstance
                                  {
                                      Name = "Production",
                                      EndpointUri = "https://docker.example.test",
                                      ConnectionKind = DockerConnectionKind.Https,
                                  };
+
             var scanRun = new ScanRun
                           {
                               Type = ScanRunType.RuntimeContainer,
@@ -691,6 +693,7 @@ public class ApplicationViewServiceTests
                               StartedAtUtc = DateTimeOffset.UtcNow.AddMinutes(-5),
                               CompletedAtUtc = DateTimeOffset.UtcNow.AddMinutes(-4),
                           };
+
             var snapshot = new ContainerSnapshot
                            {
                                DockerInstance = dockerInstance,
@@ -701,16 +704,17 @@ public class ApplicationViewServiceTests
                                Status = ContainerRuntimeStatus.Running,
                                IsRunning = true,
                                UpdateAssessmentStatus = UpdateAssessmentStatus.UpdateAvailable,
-                               UpdateAssessmentMessage = "Digest for tag 'latest' changed",
+                               UpdateAssessmentMessage = "Update available A newer image is available for tag 'latest'",
                            };
+
             var updateFinding = new UpdateFinding
                                 {
                                     ScanRun = scanRun,
                                     ContainerSnapshot = snapshot,
                                     SubjectImageVersionId = imageVersion.Id,
                                     Type = UpdateFindingType.RuntimeImageUpdate,
-                                    Summary = "Digest for tag 'latest' changed",
-                                    Details = "The registry currently reports digest 'sha256:new' for tag 'latest'",
+                                    Summary = "Update available",
+                                    Details = "A newer image is available for tag 'latest'",
                                     IsActive = true,
                                 };
 
@@ -720,15 +724,27 @@ public class ApplicationViewServiceTests
                                                 Digest = "sha256:new",
                                                 Rank = 1,
                                                 IsRecommended = true,
-                                                Reason = "Digest for tag 'latest' changed",
+                                                Reason = "Update available",
                                             });
+
             updateFinding.TagCandidates.Add(new TagCandidate
                                             {
                                                 Tag = "2.4.1",
                                                 Digest = "sha256:new",
                                                 Rank = 2,
                                                 IsRecommended = false,
-                                                Reason = "Digest for tag 'latest' changed",
+                                                PublishedAtUtc = new DateTimeOffset(2025, 06, 02, 12, 00, 00, TimeSpan.Zero),
+                                                Reason = "Update available",
+                                            });
+
+            updateFinding.TagCandidates.Add(new TagCandidate
+                                            {
+                                                Tag = "2021.11.28",
+                                                Digest = "sha256:new",
+                                                Rank = 3,
+                                                IsRecommended = false,
+                                                PublishedAtUtc = new DateTimeOffset(2021, 11, 28, 12, 00, 00, TimeSpan.Zero),
+                                                Reason = "Update available",
                                             });
 
             dbContext.ContainerSnapshots.Add(snapshot);

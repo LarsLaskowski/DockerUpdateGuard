@@ -36,7 +36,9 @@ public class UpdateDetectionService : IUpdateDetectionService
 
         if (TryParseVersion(currentImage.Tag, out var currentVersion))
         {
-            var versionCandidates = GetHigherVersionCandidates(orderedTags, currentVersion);
+            var versionCandidates = GetHigherVersionCandidates(orderedTags,
+                                                               currentVersion,
+                                                               currentTagData?.PublishedAtUtc);
 
             if (versionCandidates.Count > 0)
             {
@@ -68,23 +70,23 @@ public class UpdateDetectionService : IUpdateDetectionService
 
         if (TryResolveCurrentVersionFromDigest(currentImage,
                                                orderedTags,
-                                               out var resolvedVersionTag,
+                                               out var resolvedVersionTagData,
                                                out var resolvedVersion))
         {
-            var versionCandidates = GetHigherVersionCandidates(orderedTags, resolvedVersion);
+            var versionCandidates = GetHigherVersionCandidates(orderedTags,
+                                                               resolvedVersion,
+                                                               resolvedVersionTagData?.PublishedAtUtc ?? currentTagData?.PublishedAtUtc);
 
             if (versionCandidates.Count > 0)
             {
                 return CreateSemanticVersionUpdateResult(versionCandidates,
-                                                         CreateResolvedCurrentVersionCandidate(resolvedVersionTag,
-                                                                                               currentImage.Digest,
-                                                                                               orderedTags));
+                                                         CreateResolvedCurrentVersionCandidate(resolvedVersionTagData));
             }
 
             return new UpdateEvaluationResult
                    {
                        Status = UpdateEvaluationStatus.UpToDate,
-                       Summary = $"The running digest matches version tag '{resolvedVersionTag}'",
+                       Summary = $"The running digest matches version tag '{resolvedVersionTagData!.Tag}'",
                        Details = "No newer semantic version was found",
                    };
         }
@@ -101,7 +103,8 @@ public class UpdateDetectionService : IUpdateDetectionService
 
         var reviewCandidates = orderedTags.Where(tag => string.Equals(tag.Tag,
                                                                       currentImage.Tag,
-                                                                      StringComparison.OrdinalIgnoreCase) == false)
+                                                                      StringComparison.OrdinalIgnoreCase) == false
+                                                        && IsCandidatePublishedAfterBaseline(tag.PublishedAtUtc, currentTagData?.PublishedAtUtc))
                                           .Take(5)
                                           .Select(tag => new UpdateCandidateData
                                                          {
@@ -136,11 +139,15 @@ public class UpdateDetectionService : IUpdateDetectionService
     /// </summary>
     /// <param name="orderedTags">Ordered available tags</param>
     /// <param name="currentVersion">Current semantic version</param>
+    /// <param name="currentPublishedAtUtc">Current tag publication timestamp</param>
     /// <returns>Higher semantic version candidates</returns>
     private static List<(DockerHubTagData Tag, Version Version)> GetHigherVersionCandidates(IReadOnlyList<DockerHubTagData> orderedTags,
-                                                                                            Version currentVersion)
+                                                                                            Version currentVersion,
+                                                                                            DateTimeOffset? currentPublishedAtUtc)
     {
-        return orderedTags.Where(tag => TryParseVersion(tag.Tag, out var tagVersion) && tagVersion > currentVersion)
+        return orderedTags.Where(tag => TryParseVersion(tag.Tag, out var tagVersion)
+                                        && tagVersion > currentVersion
+                                        && IsCandidatePublishedAfterBaseline(tag.PublishedAtUtc, currentPublishedAtUtc))
                           .Select(tag => (Tag: tag, Version: ParseVersion(tag.Tag)))
                           .OrderByDescending(entity => entity.Version)
                           .ToList();
@@ -251,8 +258,8 @@ public class UpdateDetectionService : IUpdateDetectionService
         result = new UpdateEvaluationResult
                  {
                      Status = UpdateEvaluationStatus.UpdateAvailable,
-                     Summary = $"Digest for tag '{currentImage.Tag}' changed",
-                     Details = $"The registry currently reports digest '{currentTagData.Digest}' for tag '{currentImage.Tag}'",
+                     Summary = "Update available",
+                     Details = $"A newer image is available for tag '{currentImage.Tag}'",
                      RecommendedTag = currentImage.Tag,
                      RecommendedDigest = currentTagData.Digest,
                      Candidates = candidateTags,
@@ -266,15 +273,15 @@ public class UpdateDetectionService : IUpdateDetectionService
     /// </summary>
     /// <param name="currentImage">Current image reference</param>
     /// <param name="orderedTags">Ordered available tags</param>
-    /// <param name="resolvedVersionTag">Resolved semantic version tag</param>
+    /// <param name="resolvedVersionTagData">Resolved semantic version tag metadata</param>
     /// <param name="resolvedVersion">Resolved semantic version value</param>
     /// <returns>True when the running digest maps to a semantic version tag</returns>
     private static bool TryResolveCurrentVersionFromDigest(ImageReference currentImage,
                                                            IReadOnlyList<DockerHubTagData> orderedTags,
-                                                           out string resolvedVersionTag,
+                                                           out DockerHubTagData? resolvedVersionTagData,
                                                            out Version resolvedVersion)
     {
-        resolvedVersionTag = string.Empty;
+        resolvedVersionTagData = null;
         resolvedVersion = new Version();
 
         if (string.IsNullOrWhiteSpace(currentImage.Digest))
@@ -291,7 +298,8 @@ public class UpdateDetectionService : IUpdateDetectionService
                                                                        Tag = tag,
                                                                        Version = ParseVersion(tag.Tag),
                                                                    })
-                                                    .OrderByDescending(entity => entity.Version)
+                                                    .OrderByDescending(entity => entity.Tag.PublishedAtUtc)
+                                                    .ThenByDescending(entity => entity.Version)
                                                     .ToList();
 
         if (matchingSemanticCandidates.Count == 0)
@@ -299,7 +307,7 @@ public class UpdateDetectionService : IUpdateDetectionService
             return false;
         }
 
-        resolvedVersionTag = matchingSemanticCandidates[0].Tag.Tag;
+        resolvedVersionTagData = matchingSemanticCandidates[0].Tag;
         resolvedVersion = matchingSemanticCandidates[0].Version;
 
         return true;
@@ -308,39 +316,20 @@ public class UpdateDetectionService : IUpdateDetectionService
     /// <summary>
     /// Create a candidate representing the currently resolved semantic version
     /// </summary>
-    /// <param name="resolvedVersionTag">Resolved semantic version tag</param>
-    /// <param name="currentDigest">Current digest</param>
-    /// <param name="orderedTags">Ordered available tags</param>
+    /// <param name="resolvedVersionTagData">Resolved semantic version tag metadata</param>
     /// <returns>Candidate or null when the tag cannot be found</returns>
-    private static UpdateCandidateData? CreateResolvedCurrentVersionCandidate(string resolvedVersionTag,
-                                                                              string? currentDigest,
-                                                                              IReadOnlyList<DockerHubTagData> orderedTags)
+    private static UpdateCandidateData? CreateResolvedCurrentVersionCandidate(DockerHubTagData? resolvedVersionTagData)
     {
-        if (string.IsNullOrWhiteSpace(resolvedVersionTag))
-        {
-            return null;
-        }
-
-        var matchingTag = orderedTags.FirstOrDefault(tag => string.Equals(tag.Tag,
-                                                                          resolvedVersionTag,
-                                                                          StringComparison.OrdinalIgnoreCase)
-                                                            && string.Equals(tag.Digest ?? string.Empty,
-                                                                             currentDigest ?? string.Empty,
-                                                                             StringComparison.OrdinalIgnoreCase))
-                              ?? orderedTags.FirstOrDefault(tag => string.Equals(tag.Tag,
-                                                                                 resolvedVersionTag,
-                                                                                 StringComparison.OrdinalIgnoreCase));
-
-        if (matchingTag is null)
+        if (resolvedVersionTagData is null)
         {
             return null;
         }
 
         return new UpdateCandidateData
                {
-                   Tag = matchingTag.Tag,
-                   Digest = matchingTag.Digest,
-                   PublishedAtUtc = matchingTag.PublishedAtUtc,
+                   Tag = resolvedVersionTagData.Tag,
+                   Digest = resolvedVersionTagData.Digest,
+                   PublishedAtUtc = resolvedVersionTagData.PublishedAtUtc,
                };
     }
 
@@ -371,8 +360,8 @@ public class UpdateDetectionService : IUpdateDetectionService
         return orderedTags.Where(tag => string.Equals(tag.Digest, digest, StringComparison.OrdinalIgnoreCase))
                           .OrderBy(tag => string.Equals(tag.Tag, currentTag, StringComparison.OrdinalIgnoreCase) ? 0 : 1)
                           .ThenBy(tag => TryParseVersion(tag.Tag, out _) ? 0 : 1)
-                          .ThenByDescending(tag => TryParseVersion(tag.Tag, out var tagVersion) ? tagVersion : new Version())
                           .ThenByDescending(tag => tag.PublishedAtUtc)
+                          .ThenByDescending(tag => TryParseVersion(tag.Tag, out var tagVersion) ? tagVersion : new Version())
                           .Take(5)
                           .Select(tag => new UpdateCandidateData
                                          {
@@ -381,6 +370,19 @@ public class UpdateDetectionService : IUpdateDetectionService
                                              PublishedAtUtc = tag.PublishedAtUtc,
                                          })
                           .ToList();
+    }
+
+    /// <summary>
+    /// Determine whether a candidate was published after the current baseline
+    /// </summary>
+    /// <param name="candidatePublishedAtUtc">Candidate publication timestamp</param>
+    /// <param name="baselinePublishedAtUtc">Current tag publication timestamp</param>
+    /// <returns>True when the candidate is newer or when the timestamps cannot be compared</returns>
+    private static bool IsCandidatePublishedAfterBaseline(DateTimeOffset? candidatePublishedAtUtc, DateTimeOffset? baselinePublishedAtUtc)
+    {
+        return baselinePublishedAtUtc is null
+               || candidatePublishedAtUtc is null
+               || candidatePublishedAtUtc > baselinePublishedAtUtc;
     }
 
     #endregion // Methods

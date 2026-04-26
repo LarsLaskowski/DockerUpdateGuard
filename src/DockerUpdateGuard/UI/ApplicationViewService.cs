@@ -256,7 +256,8 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                                                                          Candidate = entity,
                                                                          Version = ParseVersionTag(entity.Tag),
                                                                      })
-                                                   .OrderByDescending(entity => entity.Version)
+                                                   .OrderByDescending(entity => entity.Candidate.PublishedAtUtc)
+                                                   .ThenByDescending(entity => entity.Version)
                                                    .ToList();
 
         if (semanticCandidates.Count > 0)
