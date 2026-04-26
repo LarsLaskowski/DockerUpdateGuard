@@ -1,9 +1,3 @@
-# DockerUpdateGuard container image
-
-This document is intended for container registries or image catalogs that need a deployment-focused description of the DockerUpdateGuard image.
-
-For the full project overview and complete configuration reference, see [README.md](README.md).
-
 ## What the image does
 
 The image runs the DockerUpdateGuard web UI and background workers. It connects to:
@@ -28,9 +22,7 @@ docker run -d \
   --name dockerupdateguard \
   -p 8080:8080 \
   --mount type=bind,source=/var/run/docker.sock,target=/var/run/docker.sock \
-  -e ConnectionStrings__DockerUpdateGuard="Host=postgres;Port=5432;Database=dockerupdateguard;Username=dockerupdateguard;Password=change-me" \
-  -e DockerUpdateGuard__DockerInstances__0__Name="Local Docker" \
-  -e DockerUpdateGuard__DockerInstances__0__BaseUrl="unix:///var/run/docker.sock" \
+  -v /path/to/appsettings.json:/app/appsettings.json:ro \
   networlddev/dockerupdateguard:latest
 ```
 
@@ -42,29 +34,42 @@ If the image should inspect the Docker Engine of the Linux host it runs on, bind
 --mount type=bind,source=/var/run/docker.sock,target=/var/run/docker.sock
 ```
 
-and configure the matching Docker instance URL:
+and configure the matching Docker instance URL in appsettings.json, for example:
 
-```text
-DockerUpdateGuard__DockerInstances__0__BaseUrl=unix:///var/run/docker.sock
+```json
+{
+  "DockerUpdateGuard": {
+    "DockerInstances": [
+      {
+        "Name": "Local Docker",
+        "BaseUrl": "unix:///var/run/docker.sock",
+        "Enabled": true
+      }
+    ]
+  }
+}
 ```
 
 Both are required. Mounting the socket without setting the matching `BaseUrl`, or configuring the `BaseUrl` without mounting the socket, is not enough.
 
-## Important environment variables
+## Configuration via appsettings.json
 
-| Variable | Purpose |
+All configuration should be provided via appsettings.json (or appsettings.{Environment}.json). When running in a container, mount your configuration file into the container's content root, for example: `-v /path/to/appsettings.json:/app/appsettings.json:ro`.
+
+Common JSON paths:
+
+| JSON path | Purpose |
 | --- | --- |
-| `ConnectionStrings__DockerUpdateGuard` | PostgreSQL connection string |
-| `DockerUpdateGuard__DockerInstances__0__Name` | Display name of the first Docker instance |
-| `DockerUpdateGuard__DockerInstances__0__BaseUrl` | Docker endpoint such as `unix:///var/run/docker.sock` |
-| `DockerUpdateGuard__DockerHub__UserName` | Optional Docker Hub username |
-| `DockerUpdateGuard__DockerHub__Pat` | Optional Docker Hub personal access token |
-| `DockerUpdateGuard__Vulnerabilities__Enabled` | Enables vulnerability refresh |
-| `DockerUpdateGuard__Vulnerabilities__Provider` | `None`, `DockerScout`, or `Trivy` |
-| `DockerUpdateGuard__Vulnerabilities__TrivyBaseUrl` | Required when `Provider=Trivy` |
-| `Telemetry__OtlpEndpoint` | Optional OTLP collector endpoint |
-| `ASPNETCORE_URLS` | ASP.NET Core bind address; defaults to `http://+:8080` in the image |
-| `DockerUpdateGuard__DisplayVersion` | Version label shown in the UI; set automatically in the published image |
+| `ConnectionStrings:DockerUpdateGuard` | PostgreSQL connection string |
+| `DockerUpdateGuard:DockerInstances[0]:Name` | Display name of the first Docker instance |
+| `DockerUpdateGuard:DockerInstances[0]:BaseUrl` | Docker endpoint such as `unix:///var/run/docker.sock` |
+| `DockerUpdateGuard:DockerHub:UserName` | Optional Docker Hub username |
+| `DockerUpdateGuard:DockerHub:Pat` | Optional Docker Hub personal access token |
+| `DockerUpdateGuard:Vulnerabilities:Enabled` | Enables vulnerability refresh |
+| `DockerUpdateGuard:Vulnerabilities:Provider` | `None`, `DockerScout`, or `Trivy` |
+| `DockerUpdateGuard:Vulnerabilities:TrivyBaseUrl` | Required when `Provider=Trivy` |
+| `Telemetry:OtlpEndpoint` | Optional OTLP collector endpoint |
+| `DockerUpdateGuard:DisplayVersion` | Version label shown in the UI; set by the image build argument |
 
 ## Volumes and mounts
 
@@ -73,8 +78,80 @@ Common mounts for containerized deployments:
 | Mount | When needed |
 | --- | --- |
 | `/var/run/docker.sock` | Required for Linux host Docker Engine access through the Unix socket |
-| client certificate file | Required when a Docker instance uses TLS client certificates |
+| `/app/appsettings.json` (mount file) | Application configuration (appsettings.json) |
+| `/app/certs` (directory) | Optional: client certificates for TLS-secured Docker engine access |
 
+Client certificates
+
+When a Docker Engine endpoint requires TLS client authentication, mount the certificate files into the container and set the instance's `CertificatePath` in appsettings.json to the in-container file path. Recommended pattern:
+
+- Place certificates on the host (for example `/opt/dockerupdateguard/certs/`) and mount read-only into the container:
+
+```bash
+-v /opt/dockerupdateguard/certs:/app/certs:ro
+```
+
+- Use a stable in-container path (for example `/app/certs`) and reference that path from `CertificatePath`.
+
+Automatic CA import on startup
+
+The published image now includes a small entrypoint script that will import any PEM/CRT files found under `/app/certs` into the container's system trust store at startup (it copies them into `/usr/local/share/ca-certificates` and runs `update-ca-certificates`). The image also ensures the `ca-certificates` package is available. Behavior:
+
+- If `/app/certs` contains one or more `*.crt`/`*.pem` files and the container has permission to write the system trust store (typically when run as root), the root certificates are imported automatically and become trusted by HttpClient, Npgsql, and other system TLS consumers.
+- If no certificates are provided, the import step is skipped and the container starts normally.
+- If the container is not allowed to write the trust store (non-root), the script will skip the import and continue — the application will still run, but you must ensure the process trusts the server certificates by other means if necessary.
+
+Certificate formats and usage
+
+- Root CA: provide the CA as a PEM or CRT file (e.g. `ca-root.crt` or `ca-root.pem`). This is sufficient for the runtime to validate HTTPS servers for PostgreSQL, Portainer, Trivy, etc.
+- Wildcard/server cert (.crt): not required for client‑side trust; the Root CA that signed the server certificate is what must be trusted.
+- Client certificate (for mutual TLS to a Docker engine): store the client certificate (PFX/P12 or PEM) in `/app/certs` and set the Docker instance `CertificatePath` to the in-container file path (e.g. `/app/certs/client.pfx`). The application will load PFX/.p12 or PEM client certificates when the `CertificatePath` points to a readable file.
+
+Example appsettings.json snippet (root CA used by Postgres + client cert for a Docker instance):
+
+```json
+{
+  "ConnectionStrings": {
+    "DockerUpdateGuard": "Host=db.example.local;Port=5432;Database=dug;Username=user;Password=pass;Ssl Mode=VerifyFull;Trust Server Certificate=false;Root Certificate=/app/certs/ca-root.crt"
+  },
+  "DockerUpdateGuard": {
+    "DockerInstances": [
+      {
+        "Name": "Remote Engine",
+        "BaseUrl": "https://docker.example.local:2376",
+        "UseTls": true,
+        "CertificatePath": "/app/certs/client.pfx"
+      }
+    ],
+    "Vulnerabilities": {
+      "Provider": "Trivy",
+      "TrivyBaseUrl": "https://trivy.example.local:4954"
+    }
+  }
+}
+```
+
+Run example (optional certificates mount):
+
+```bash
+docker run -d \
+  --name dockerupdateguard \
+  -p 8080:8080 \
+  -v /path/to/appsettings.json:/app/appsettings.json:ro \
+  -v /opt/dockerupdateguard/certs:/app/certs:ro \ # optional: root CA, client certs
+  networlddev/dockerupdateguard:latest
+```
+
+Permissions and security
+
+- Mount certificate files read-only into the container.
+- Keep host-side files owned and permissioned so only authorized users can read private keys.
+- Do not commit private keys into source control or include them in image layers.
+
+Notes
+
+- The automatic import is optional; the image works without any mounted certificates.
+- If the environment requires importing certificates but the container is run as a non-root user, consider importing the CA into the host image or running the container with appropriate privileges so the script can update the trust store.
 ## Networking
 
 The image needs outbound access to:
@@ -85,14 +162,3 @@ The image needs outbound access to:
 - optional Portainer
 - optional Trivy
 - optional OTLP collector
-
-## Startup behavior
-
-On startup, the application:
-
-1. applies database migrations
-2. synchronizes configured Docker instances
-3. synchronizes Docker Hub account images
-4. refreshes telemetry inventory metrics
-
-After that, the web UI and background scan workers keep the inventory current.

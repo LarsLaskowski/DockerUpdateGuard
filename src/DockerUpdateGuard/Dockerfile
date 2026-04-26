@@ -21,5 +21,12 @@ EXPOSE 8080
 ENV ASPNETCORE_URLS=http://+:8080
 ENV DockerUpdateGuard__DisplayVersion=$APP_VERSION
 
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
+
 COPY --from=build /app/publish .
-ENTRYPOINT ["dotnet", "DockerUpdateGuard.dll"]
+
+# Copy startup script that imports any mounted CA certificates and starts the app
+COPY src/DockerUpdateGuard/entrypoint.sh .
+RUN chmod +x /app/entrypoint.sh
+
+ENTRYPOINT ["/app/entrypoint.sh"]

@@ -60,34 +60,29 @@ docker run -d \
   --name dockerupdateguard \
   -p 8080:8080 \
   --mount type=bind,source=/var/run/docker.sock,target=/var/run/docker.sock \
-  -e ConnectionStrings__DockerUpdateGuard="Host=postgres;Port=5432;Database=dockerupdateguard;Username=dockerupdateguard;Password=change-me" \
-  -e DockerUpdateGuard__DockerInstances__0__Name="Local Docker" \
-  -e DockerUpdateGuard__DockerInstances__0__BaseUrl="unix:///var/run/docker.sock" \
-  -e DockerUpdateGuard__DockerInstances__0__Enabled="true" \
+  -v /path/to/appsettings.json:/app/appsettings.json:ro \
   networlddev/dockerupdateguard:latest
 ```
 
-When DockerUpdateGuard runs inside a Linux container and should inspect the host Docker Engine through the Unix socket, two things must match:
+When DockerUpdateGuard runs inside a Linux container and should inspect the host Docker Engine through the Unix socket, two things must be in place:
 
 1. `/var/run/docker.sock` must be mounted into the container
-2. `DockerUpdateGuard__DockerInstances__0__BaseUrl` must be set to `unix:///var/run/docker.sock`
+2. The corresponding Docker instance BaseUrl must be set to `unix:///var/run/docker.sock` in appsettings.json
 
 Without both settings, the application cannot reach the host engine.
 
 ## Configuration model
 
-DockerUpdateGuard uses normal ASP.NET Core configuration binding. That means you can use:
+DockerUpdateGuard uses normal ASP.NET Core configuration binding and prefers configuration files for container deployments:
 
 - `appsettings.json`
 - `appsettings.{Environment}.json`
-- environment variables with `__` as the separator
 - command-line arguments
 - secret stores supported by ASP.NET Core
 
 For example:
 
 - JSON key: `DockerUpdateGuard:Scanning:RuntimeImageUpdateScanIntervalMinutes`
-- Environment variable: `DockerUpdateGuard__Scanning__RuntimeImageUpdateScanIntervalMinutes`
 
 ## Configuration reference
 
@@ -99,7 +94,7 @@ For example:
 | `DockerUpdateGuard:ConnectionString` | none | Yes* | Inline PostgreSQL connection string |
 | `DockerUpdateGuard:ConnectionStringName` | `DockerUpdateGuard` | No | Name of the `ConnectionStrings` entry to resolve |
 | `DockerUpdateGuard:DisplayVersion` | assembly version | No | Version string shown in the UI footer; the Docker image sets this automatically |
-| `ASPNETCORE_URLS` | `http://+:8080` in the image | No | ASP.NET Core bind address |
+
 
 \* At least one of `DockerUpdateGuard:ConnectionString` or `ConnectionStrings:{ConnectionStringName}` must be configured.
 
@@ -157,9 +152,9 @@ Recommended Linux socket configuration:
 
 | Key | Example value |
 | --- | --- |
-| `DockerUpdateGuard__DockerInstances__0__Name` | `Local Docker` |
-| `DockerUpdateGuard__DockerInstances__0__BaseUrl` | `unix:///var/run/docker.sock` |
-| `DockerUpdateGuard__DockerInstances__0__Enabled` | `true` |
+| `DockerUpdateGuard:DockerInstances[0]:Name` | `Local Docker` |
+| `DockerUpdateGuard:DockerInstances[0]:BaseUrl` | `unix:///var/run/docker.sock` |
+| `DockerUpdateGuard:DockerInstances[0]:Enabled` | `true` |
 
 ### `DockerUpdateGuard:DockerInstances[].Portainer`
 
@@ -261,29 +256,22 @@ If all three telemetry switches are `false`, telemetry is effectively disabled.
 }
 ```
 
-### Environment variables for container deployment
+### Container deployment configuration
 
-```text
-ConnectionStrings__DockerUpdateGuard=Host=postgres;Port=5432;Database=dockerupdateguard;Username=dockerupdateguard;Password=change-me
-DockerUpdateGuard__DockerHub__Registry=docker.io
-DockerUpdateGuard__DockerHub__UserName=dockerupdateguard
-DockerUpdateGuard__DockerHub__Pat=change-me
-DockerUpdateGuard__Vulnerabilities__Enabled=true
-DockerUpdateGuard__Vulnerabilities__Provider=Trivy
-DockerUpdateGuard__Vulnerabilities__TrivyBaseUrl=http://trivy:4954
-DockerUpdateGuard__DockerInstances__0__Name=Local Docker
-DockerUpdateGuard__DockerInstances__0__BaseUrl=unix:///var/run/docker.sock
-Telemetry__OtlpEndpoint=http://otel-collector:4317
-```
+Prefer mounting an appsettings.json into the container rather than using environment variables. Example:
+
+- Mount your configuration file into the container's content root, for example: `-v /path/to/appsettings.json:/app/appsettings.json:ro`
+
+See the JSON example above for the exact keys and structure.
 
 ## Notes for Docker-based deployments
 
-- The published image already sets `ASPNETCORE_URLS=http://+:8080`
-- The image also sets `DockerUpdateGuard__DisplayVersion` from the image build argument
+- The container listens on port 8080 by default
+- The image sets `DockerUpdateGuard:DisplayVersion` from the image build argument
 - For Linux host monitoring, bind-mount `/var/run/docker.sock`
 - For TLS-secured remote engines, also mount the client certificate file if `CertificatePath` is used
 - The application needs outbound network access to the configured registry, optional Portainer endpoint, optional Trivy server, and optional OTLP collector
 
 ## License
 
-No license information is currently declared in this repository.
+This repository is distributed under the proprietary terms described in LICENSE.md. See LICENSE.md for the full license text.
