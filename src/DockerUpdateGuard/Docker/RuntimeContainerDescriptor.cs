@@ -25,9 +25,14 @@ public class RuntimeContainerDescriptor
     public string ImageReference { get; set; } = string.Empty;
 
     /// <summary>
-    /// Optional image digest
+    /// Optional repository digest
     /// </summary>
     public string? ImageDigest { get; set; }
+
+    /// <summary>
+    /// Docker engine image identifier for local lookups
+    /// </summary>
+    public string? LocalImageId { get; set; }
 
     /// <summary>
     /// Optional compose project name

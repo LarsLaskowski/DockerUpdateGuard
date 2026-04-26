@@ -13,8 +13,19 @@ public partial class RuntimeContainerDetail
 {
     #region Fields
 
+    /// <summary>
+    /// Runtime-container detail view data
+    /// </summary>
     private RuntimeContainerDetailViewData? _detail;
+
+    /// <summary>
+    /// Current error message
+    /// </summary>
     private string? _errorMessage;
+
+    /// <summary>
+    /// Busy-state flag
+    /// </summary>
     private bool _isBusy;
 
     #endregion // Fields
@@ -47,98 +58,7 @@ public partial class RuntimeContainerDetail
 
     #endregion // Properties
 
-    #region Methods
-
-    /// <inheritdoc/>
-    protected override async Task OnParametersSetAsync()
-    {
-        await LoadAsync().ConfigureAwait(false);
-    }
-
-    /// <summary>
-    /// Load the detail view model
-    /// </summary>
-    /// <returns>Task</returns>
-    private async Task LoadAsync()
-    {
-        var detail = await ViewService.GetRuntimeContainerDetailAsync(DockerInstanceId, ContainerId)
-                                      .ConfigureAwait(false);
-
-        await InvokeAsync(() =>
-                          {
-                              _detail = detail;
-                          }).ConfigureAwait(false);
-    }
-
-    /// <summary>
-    /// Save a manual tag selection
-    /// </summary>
-    /// <param name="tag">Selected tag</param>
-    /// <param name="digest">Selected digest</param>
-    /// <returns>Task</returns>
-    private async Task SaveSelectionAsync(string tag, string? digest)
-    {
-        await InvokeAsync(() =>
-                          {
-                              _isBusy = true;
-                              _errorMessage = null;
-                          }).ConfigureAwait(false);
-
-        try
-        {
-            await TagSelectionService.SaveSelectionAsync(DockerInstanceId, ContainerId, tag, digest)
-                                     .ConfigureAwait(false);
-            await LoadAsync().ConfigureAwait(false);
-        }
-        catch (Exception exception)
-        {
-            await InvokeAsync(() =>
-                              {
-                                  _errorMessage = exception.Message;
-                              }).ConfigureAwait(false);
-        }
-        finally
-        {
-            await InvokeAsync(() =>
-                              {
-                                  _isBusy = false;
-                              }).ConfigureAwait(false);
-        }
-    }
-
-    /// <summary>
-    /// Clear the manual tag selection
-    /// </summary>
-    /// <returns>Task</returns>
-    private async Task ClearSelectionAsync()
-    {
-        await InvokeAsync(() =>
-                          {
-                              _isBusy = true;
-                              _errorMessage = null;
-                          }).ConfigureAwait(false);
-
-        try
-        {
-            await TagSelectionService.ClearSelectionAsync(DockerInstanceId, ContainerId)
-                                     .ConfigureAwait(false);
-            await LoadAsync().ConfigureAwait(false);
-        }
-        catch (Exception exception)
-        {
-            await InvokeAsync(() =>
-                              {
-                                  _errorMessage = exception.Message;
-                              }).ConfigureAwait(false);
-        }
-        finally
-        {
-            await InvokeAsync(() =>
-                              {
-                                  _isBusy = false;
-                              }).ConfigureAwait(false);
-        }
-    }
+    #region Static methods
 
     /// <summary>
     /// Resolve the chip color for an update status
@@ -252,6 +172,101 @@ public partial class RuntimeContainerDetail
         return usage is null
                    ? "n/a"
                    : $"{ResourceUsageFormatter.FormatBytesPerSecond(usage.NetworkRxBytesPerSecond)} ↓ / {ResourceUsageFormatter.FormatBytesPerSecond(usage.NetworkTxBytesPerSecond)} ↑";
+    }
+
+    #endregion // Static methods
+
+    #region Methods
+
+    /// <inheritdoc/>
+    protected override async Task OnParametersSetAsync()
+    {
+        await LoadAsync().ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Load the detail view model
+    /// </summary>
+    /// <returns>Task</returns>
+    private async Task LoadAsync()
+    {
+        var detail = await ViewService.GetRuntimeContainerDetailAsync(DockerInstanceId, ContainerId)
+                                      .ConfigureAwait(false);
+
+        await InvokeAsync(() =>
+                          {
+                              _detail = detail;
+                          }).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Save a manual tag selection
+    /// </summary>
+    /// <param name="tag">Selected tag</param>
+    /// <param name="digest">Selected digest</param>
+    /// <returns>Task</returns>
+    private async Task SaveSelectionAsync(string tag, string? digest)
+    {
+        await InvokeAsync(() =>
+                          {
+                              _isBusy = true;
+                              _errorMessage = null;
+                          }).ConfigureAwait(false);
+
+        try
+        {
+            await TagSelectionService.SaveSelectionAsync(DockerInstanceId, ContainerId, tag, digest)
+                                     .ConfigureAwait(false);
+            await LoadAsync().ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            await InvokeAsync(() =>
+                              {
+                                  _errorMessage = exception.Message;
+                              }).ConfigureAwait(false);
+        }
+        finally
+        {
+            await InvokeAsync(() =>
+                              {
+                                  _isBusy = false;
+                              }).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Clear the manual tag selection
+    /// </summary>
+    /// <returns>Task</returns>
+    private async Task ClearSelectionAsync()
+    {
+        await InvokeAsync(() =>
+                          {
+                              _isBusy = true;
+                              _errorMessage = null;
+                          }).ConfigureAwait(false);
+
+        try
+        {
+            await TagSelectionService.ClearSelectionAsync(DockerInstanceId, ContainerId)
+                                     .ConfigureAwait(false);
+            await LoadAsync().ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            await InvokeAsync(() =>
+                              {
+                                  _errorMessage = exception.Message;
+                              }).ConfigureAwait(false);
+        }
+        finally
+        {
+            await InvokeAsync(() =>
+                              {
+                                  _isBusy = false;
+                              }).ConfigureAwait(false);
+        }
     }
 
     #endregion // Methods

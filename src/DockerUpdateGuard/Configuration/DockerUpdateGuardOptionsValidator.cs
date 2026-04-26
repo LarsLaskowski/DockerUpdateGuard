@@ -9,6 +9,9 @@ public class DockerUpdateGuardOptionsValidator : IValidateOptions<DockerUpdateGu
 {
     #region Fields
 
+    /// <summary>
+    /// Configuration root
+    /// </summary>
     private readonly IConfiguration _configuration;
 
     #endregion // Fields
@@ -26,28 +29,7 @@ public class DockerUpdateGuardOptionsValidator : IValidateOptions<DockerUpdateGu
 
     #endregion // Constructors
 
-    #region Methods
-
-    /// <inheritdoc/>
-    public ValidateOptionsResult Validate(string? name, DockerUpdateGuardOptions options)
-    {
-        ArgumentNullException.ThrowIfNull(options);
-
-        var failures = new List<string>();
-        var connectionString = DockerUpdateGuardConnectionStringResolver.ResolveConnectionString(options, _configuration);
-
-        if (string.IsNullOrWhiteSpace(connectionString))
-        {
-            failures.Add($"'{DockerUpdateGuardOptions.SectionName}:ConnectionString' or 'ConnectionStrings:{options.ConnectionStringName}' must be configured");
-        }
-
-        ValidateDockerHubOptions(options.DockerHub, failures);
-        ValidateVulnerabilityOptions(options.Vulnerabilities, failures);
-        ValidateScanningOptions(options.Scanning, failures);
-        ValidateDockerInstances(options.DockerInstances, failures);
-
-        return failures.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(failures);
-    }
+    #region Static methods
 
     /// <summary>
     /// Validate Docker Hub options
@@ -247,6 +229,31 @@ public class DockerUpdateGuardOptionsValidator : IValidateOptions<DockerUpdateGu
                || uri.Scheme == "tcp"
                || uri.Scheme == "unix"
                || uri.Scheme == "npipe";
+    }
+
+    #endregion // Static methods
+
+    #region Methods
+
+    /// <inheritdoc/>
+    public ValidateOptionsResult Validate(string? name, DockerUpdateGuardOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+
+        var failures = new List<string>();
+        var connectionString = DockerUpdateGuardConnectionStringResolver.ResolveConnectionString(options, _configuration);
+
+        if (string.IsNullOrWhiteSpace(connectionString))
+        {
+            failures.Add($"'{DockerUpdateGuardOptions.SectionName}:ConnectionString' or 'ConnectionStrings:{options.ConnectionStringName}' must be configured");
+        }
+
+        ValidateDockerHubOptions(options.DockerHub, failures);
+        ValidateVulnerabilityOptions(options.Vulnerabilities, failures);
+        ValidateScanningOptions(options.Scanning, failures);
+        ValidateDockerInstances(options.DockerInstances, failures);
+
+        return failures.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(failures);
     }
 
     #endregion // Methods

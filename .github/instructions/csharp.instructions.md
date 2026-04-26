@@ -125,6 +125,8 @@ public void DoSomething()
 8. `IDisposable` / `IDisposable implementation`
 9. Interface implementations (e.g. `IAppMetrics properties`, `IAppMetrics methods`)
 
+- Within the same visibility level, place **static methods before instance methods** (for example, `public static` before `public`, and `private static` before `private`)
+
 ---
 
 ## Code Formatting
@@ -399,13 +401,14 @@ public MyController(ILogger<MyController> logger, IMemoryCache cache)
 
 ### Required for:
 
-- All **public** classes, interfaces, enums, methods, properties
-- All **internal** and **private** members (except private fields)
+- All **public** classes, interfaces, enums, methods, and properties
+- All **internal** and **private** members, including private fields and private properties
 - Enum values documented individually
 
 ### Rules:
 
 - **No `<remarks>`**: Do **not** add `<remarks>` sections. All relevant information must be in the `<summary>` block alone
+- **All method parameters must be documented**: Every method with parameters must have one `<param>` tag for each parameter
 - **All methods must have `<returns>`**: Every method with a return type must have a `<returns>` tag — including methods returning `Task`, `Task<T>`, `ValueTask`, or `ValueTask<T>`
 - For interface implementations: use `/// <inheritdoc/>`
 - Documentation language: **English**

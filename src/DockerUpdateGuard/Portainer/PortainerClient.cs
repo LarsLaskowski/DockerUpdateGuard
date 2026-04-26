@@ -13,21 +13,31 @@ public class PortainerClient : IPortainerClient
 {
     #region Constants
 
-    private static readonly HashSet<string> _allowedContainerActions = new(StringComparer.OrdinalIgnoreCase)
-                                                                       {
-                                                                           "start",
-                                                                           "stop",
-                                                                           "restart",
-                                                                           "kill",
-                                                                           "pause",
-                                                                           "unpause",
-                                                                       };
+    /// <summary>
+    /// Supported container actions
+    /// </summary>
+    private static readonly HashSet<string> AllowedContainerActions = new(StringComparer.OrdinalIgnoreCase)
+                                                                      {
+                                                                          "start",
+                                                                          "stop",
+                                                                          "restart",
+                                                                          "kill",
+                                                                          "pause",
+                                                                          "unpause",
+                                                                      };
 
     #endregion // Constants
 
     #region Fields
 
+    /// <summary>
+    /// HTTP-client factory
+    /// </summary>
     private readonly IHttpClientFactory _httpClientFactory;
+
+    /// <summary>
+    /// Logger
+    /// </summary>
     private readonly ILogger<PortainerClient> _logger;
 
     #endregion // Fields
@@ -46,6 +56,60 @@ public class PortainerClient : IPortainerClient
     }
 
     #endregion // Constructors
+
+    #region Static methods
+
+    /// <summary>
+    /// Resolve the first available Portainer endpoint identifier
+    /// </summary>
+    /// <param name="client">Authenticated HTTP client</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Endpoint identifier or null</returns>
+    private static async Task<string?> ResolveEndpointIdAsync(HttpClient client, CancellationToken cancellationToken)
+    {
+        using var response = await client.GetAsync("/api/endpoints", cancellationToken).ConfigureAwait(false);
+
+        if (response.IsSuccessStatusCode == false)
+        {
+            return null;
+        }
+
+        var endpoints = await response.Content.ReadFromJsonAsync<PortainerEndpointItem[]>(cancellationToken: cancellationToken).ConfigureAwait(false);
+
+        return endpoints?.FirstOrDefault()?.Id.ToString();
+    }
+
+    /// <summary>
+    /// Find a container identifier by container name within an endpoint
+    /// </summary>
+    /// <param name="client">Authenticated HTTP client</param>
+    /// <param name="endpointId">Portainer endpoint identifier</param>
+    /// <param name="containerName">Container name to search for</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Container identifier or null</returns>
+    private static async Task<string?> FindContainerIdAsync(HttpClient client,
+                                                            string endpointId,
+                                                            string containerName,
+                                                            CancellationToken cancellationToken)
+    {
+        var filters = Uri.EscapeDataString($"{{\"name\":[\"{containerName}\"]}}");
+        var url = $"/api/endpoints/{endpointId}/docker/containers/json?all=true&filters={filters}";
+
+        using var response = await client.GetAsync(url, cancellationToken).ConfigureAwait(false);
+
+        if (response.IsSuccessStatusCode == false)
+        {
+            return null;
+        }
+
+        var containers = await response.Content.ReadFromJsonAsync<DockerContainerItem[]>(cancellationToken: cancellationToken).ConfigureAwait(false);
+
+        return containers?.FirstOrDefault(c =>
+        c.Names?.Any(n => string.Equals(n, $"/{containerName}", StringComparison.OrdinalIgnoreCase)
+                          || string.Equals(n, containerName, StringComparison.OrdinalIgnoreCase)) == true)?.Id;
+    }
+
+    #endregion // Static methods
 
     #region Methods
 
@@ -149,12 +213,12 @@ public class PortainerClient : IPortainerClient
                    };
         }
 
-        if (_allowedContainerActions.Contains(actionRequest.ActionName) == false)
+        if (AllowedContainerActions.Contains(actionRequest.ActionName) == false)
         {
             return new PortainerActionResult
                    {
                        Succeeded = false,
-                       Message = $"Action '{actionRequest.ActionName}' is not supported — allowed: {string.Join(", ", _allowedContainerActions)}",
+                       Message = $"Action '{actionRequest.ActionName}' is not supported — allowed: {string.Join(", ", AllowedContainerActions)}",
                    };
         }
 
@@ -287,68 +351,37 @@ public class PortainerClient : IPortainerClient
         }
     }
 
-    /// <summary>
-    /// Resolve the first available Portainer endpoint identifier
-    /// </summary>
-    /// <param name="client">Authenticated HTTP client</param>
-    /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>Endpoint identifier or null</returns>
-    private static async Task<string?> ResolveEndpointIdAsync(HttpClient client, CancellationToken cancellationToken)
-    {
-        using var response = await client.GetAsync("/api/endpoints", cancellationToken).ConfigureAwait(false);
-
-        if (response.IsSuccessStatusCode == false)
-        {
-            return null;
-        }
-
-        var endpoints = await response.Content.ReadFromJsonAsync<PortainerEndpointItem[]>(cancellationToken: cancellationToken).ConfigureAwait(false);
-
-        return endpoints?.FirstOrDefault()?.Id.ToString();
-    }
-
-    /// <summary>
-    /// Find a container identifier by container name within an endpoint
-    /// </summary>
-    /// <param name="client">Authenticated HTTP client</param>
-    /// <param name="endpointId">Portainer endpoint identifier</param>
-    /// <param name="containerName">Container name to search for</param>
-    /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>Container identifier or null</returns>
-    private static async Task<string?> FindContainerIdAsync(HttpClient client,
-                                                            string endpointId,
-                                                            string containerName,
-                                                            CancellationToken cancellationToken)
-    {
-        var filters = Uri.EscapeDataString($"{{\"name\":[\"{containerName}\"]}}");
-        var url = $"/api/endpoints/{endpointId}/docker/containers/json?all=true&filters={filters}";
-
-        using var response = await client.GetAsync(url, cancellationToken).ConfigureAwait(false);
-
-        if (response.IsSuccessStatusCode == false)
-        {
-            return null;
-        }
-
-        var containers = await response.Content.ReadFromJsonAsync<DockerContainerItem[]>(cancellationToken: cancellationToken).ConfigureAwait(false);
-
-        return containers?.FirstOrDefault(c =>
-        c.Names?.Any(n => string.Equals(n, $"/{containerName}", StringComparison.OrdinalIgnoreCase)
-                          || string.Equals(n, containerName, StringComparison.OrdinalIgnoreCase)) == true)?.Id;
-    }
-
     #endregion // Methods
 
     #region Response types
 
+    /// <summary>
+    /// Login request body for Portainer JWT authentication
+    /// </summary>
+    /// <param name="Username">Username for Portainer login</param>
+    /// <param name="Password">Password for Portainer login</param>
     private sealed record PortainerLoginRequest([property: JsonPropertyName("username")] string Username,
                                                 [property: JsonPropertyName("password")] string Password);
 
+    /// <summary>
+    /// Portainer authentication request response containing the JWT token
+    /// </summary>
+    /// <param name="Jwt">JWT token returned by Portainer authentication</param>
     private sealed record PortainerAuthResponse([property: JsonPropertyName("jwt")] string? Jwt);
 
+    /// <summary>
+    /// Portainer endpoint item containing identifier and name, as returned by the /api/endpoints endpoint
+    /// </summary>
+    /// <param name="Id">Identifier of the Portainer endpoint</param>
+    /// <param name="Name">Name of the Portainer endpoint</param>
     private sealed record PortainerEndpointItem([property: JsonPropertyName("Id")] int Id,
                                                 [property: JsonPropertyName("Name")] string? Name);
 
+    /// <summary>
+    /// Docker container item containing identifier and names, as returned by the Portainer Docker API when filtering containers
+    /// </summary>
+    /// <param name="Id">Identifier of the Docker container</param>
+    /// <param name="Names">Names of the Docker container</param>
     private sealed record DockerContainerItem([property: JsonPropertyName("Id")] string? Id,
                                               [property: JsonPropertyName("Names")] string[]? Names);
 

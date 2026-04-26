@@ -10,6 +10,9 @@ public class RegistryBaseImageResolver : IBaseImageResolver
 {
     #region Fields
 
+    /// <summary>
+    /// Registry-metadata service
+    /// </summary>
     private readonly IRegistryMetadataService _registryMetadataService;
 
     #endregion // Fields

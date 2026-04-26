@@ -5,6 +5,7 @@ using System.Text;
 using DockerUpdateGuard.DockerHub;
 using DockerUpdateGuard.Images;
 using DockerUpdateGuard.Infrastructure;
+using DockerUpdateGuard.Tests.Data;
 
 namespace DockerUpdateGuard.Tests;
 

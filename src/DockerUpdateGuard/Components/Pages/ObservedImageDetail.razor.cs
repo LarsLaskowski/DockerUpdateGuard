@@ -13,6 +13,9 @@ public partial class ObservedImageDetail
 {
     #region Fields
 
+    /// <summary>
+    /// Observed-image detail view data
+    /// </summary>
     private ObservedImageDetailViewData? _detail;
 
     #endregion // Fields
@@ -33,19 +36,7 @@ public partial class ObservedImageDetail
 
     #endregion // Properties
 
-    #region Methods
-
-    /// <inheritdoc/>
-    protected override async Task OnParametersSetAsync()
-    {
-        var detail = await ViewService.GetObservedImageDetailAsync(ObservedImageId)
-                                      .ConfigureAwait(false);
-
-        await InvokeAsync(() =>
-                          {
-                              _detail = detail;
-                          }).ConfigureAwait(false);
-    }
+    #region Static methods
 
     /// <summary>
     /// Resolve the chip color for a scan status
@@ -99,6 +90,22 @@ public partial class ObservedImageDetail
                    "UNSUPPORTED" => Color.Default,
                    _ => Color.Info,
                };
+    }
+
+    #endregion // Static methods
+
+    #region Methods
+
+    /// <inheritdoc/>
+    protected override async Task OnParametersSetAsync()
+    {
+        var detail = await ViewService.GetObservedImageDetailAsync(ObservedImageId)
+                                      .ConfigureAwait(false);
+
+        await InvokeAsync(() =>
+                          {
+                              _detail = detail;
+                          }).ConfigureAwait(false);
     }
 
     #endregion // Methods

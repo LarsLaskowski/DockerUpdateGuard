@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Logging;
 
-namespace DockerUpdateGuard.Tests;
+namespace DockerUpdateGuard.Tests.Data;
 
 /// <summary>
 /// Test logger that captures emitted log entries

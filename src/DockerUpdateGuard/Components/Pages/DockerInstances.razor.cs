@@ -11,7 +11,14 @@ public partial class DockerInstances
 {
     #region Fields
 
+    /// <summary>
+    /// Docker-instance list
+    /// </summary>
     private IReadOnlyList<DockerInstanceListItemData>? _instances;
+
+    /// <summary>
+    /// Single Docker-instance detail view data
+    /// </summary>
     private DockerInstanceDetailViewData? _singleInstanceDetail;
 
     #endregion // Fields
@@ -26,24 +33,7 @@ public partial class DockerInstances
 
     #endregion // Properties
 
-    #region Methods
-
-    /// <inheritdoc/>
-    protected override async Task OnInitializedAsync()
-    {
-        var instances = await ViewService.GetDockerInstancesAsync()
-                                         .ConfigureAwait(false);
-        var singleInstanceDetail = instances.Count == 1
-                                       ? await ViewService.GetDockerInstanceDetailAsync(instances[0].Id)
-                                                          .ConfigureAwait(false)
-                                       : null;
-
-        await InvokeAsync(() =>
-                          {
-                              _instances = instances;
-                              _singleInstanceDetail = singleInstanceDetail;
-                          }).ConfigureAwait(false);
-    }
+    #region Static methods
 
     /// <summary>
     /// Format CPU usage
@@ -75,6 +65,27 @@ public partial class DockerInstances
         return usage is null
                    ? "n/a"
                    : $"{ResourceUsageFormatter.FormatBytesPerSecond(usage.NetworkRxBytesPerSecond)} ↓ / {ResourceUsageFormatter.FormatBytesPerSecond(usage.NetworkTxBytesPerSecond)} ↑";
+    }
+
+    #endregion // Static methods
+
+    #region Methods
+
+    /// <inheritdoc/>
+    protected override async Task OnInitializedAsync()
+    {
+        var instances = await ViewService.GetDockerInstancesAsync()
+                                         .ConfigureAwait(false);
+        var singleInstanceDetail = instances.Count == 1
+                                       ? await ViewService.GetDockerInstanceDetailAsync(instances[0].Id)
+                                                          .ConfigureAwait(false)
+                                       : null;
+
+        await InvokeAsync(() =>
+                          {
+                              _instances = instances;
+                              _singleInstanceDetail = singleInstanceDetail;
+                          }).ConfigureAwait(false);
     }
 
     #endregion // Methods

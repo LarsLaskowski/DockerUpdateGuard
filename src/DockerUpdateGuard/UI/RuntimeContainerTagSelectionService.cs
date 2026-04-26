@@ -12,6 +12,9 @@ public class RuntimeContainerTagSelectionService : IRuntimeContainerTagSelection
 {
     #region Fields
 
+    /// <summary>
+    /// Database context
+    /// </summary>
     private readonly DockerUpdateGuardDbContext _dbContext;
 
     #endregion // Fields

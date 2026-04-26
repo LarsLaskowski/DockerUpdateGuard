@@ -4,6 +4,7 @@ using DockerUpdateGuard.Data.Repositories;
 using DockerUpdateGuard.DockerHub;
 using DockerUpdateGuard.Images;
 using DockerUpdateGuard.Infrastructure;
+using DockerUpdateGuard.Tests.Data;
 
 using Microsoft.EntityFrameworkCore;
 

@@ -13,6 +13,9 @@ public partial class Dashboard
 {
     #region Fields
 
+    /// <summary>
+    /// Dashboard view data
+    /// </summary>
     private DashboardViewData? _dashboard;
 
     #endregion // Fields
@@ -27,19 +30,7 @@ public partial class Dashboard
 
     #endregion // Properties
 
-    #region Methods
-
-    /// <inheritdoc/>
-    protected override async Task OnInitializedAsync()
-    {
-        var dashboard = await ViewService.GetDashboardAsync()
-                                         .ConfigureAwait(false);
-
-        await InvokeAsync(() =>
-                          {
-                              _dashboard = dashboard;
-                          }).ConfigureAwait(false);
-    }
+    #region Static methods
 
     /// <summary>
     /// Resolve the chip color for a scan status
@@ -56,6 +47,22 @@ public partial class Dashboard
                    "PENDING" => Color.Warning,
                    _ => Color.Default,
                };
+    }
+
+    #endregion // Static methods
+
+    #region Methods
+
+    /// <inheritdoc/>
+    protected override async Task OnInitializedAsync()
+    {
+        var dashboard = await ViewService.GetDashboardAsync()
+                                         .ConfigureAwait(false);
+
+        await InvokeAsync(() =>
+                          {
+                              _dashboard = dashboard;
+                          }).ConfigureAwait(false);
     }
 
     #endregion // Methods

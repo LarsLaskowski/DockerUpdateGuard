@@ -20,20 +20,53 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
 {
     #region Constants
 
+    /// <summary>
+    /// Maximum supported base-image depth
+    /// </summary>
     private const int MaxBaseImageDepth = 5;
+
+    /// <summary>
+    /// OCI base-image name label
+    /// </summary>
     private const string OciBaseImageNameLabel = "org.opencontainers.image.base.name";
+
+    /// <summary>
+    /// OCI base-image digest label
+    /// </summary>
     private const string OciBaseImageDigestLabel = "org.opencontainers.image.base.digest";
 
     #endregion // Constants
 
     #region Fields
 
+    /// <summary>
+    /// HTTP client
+    /// </summary>
     private readonly HttpClient _httpClient;
+
+    /// <summary>
+    /// Logger
+    /// </summary>
     private readonly ILogger<DockerHubClient> _logger;
+
+    /// <summary>
+    /// Options monitor
+    /// </summary>
     private readonly IOptionsMonitor<DockerUpdateGuardOptions> _optionsMonitor;
+
+    /// <summary>
+    /// Access-token refresh lock
+    /// </summary>
     private readonly SemaphoreSlim _tokenRefreshLock = new(1, 1);
 
+    /// <summary>
+    /// Access-token expiry timestamp
+    /// </summary>
     private DateTimeOffset _accessTokenExpiresAtUtc;
+
+    /// <summary>
+    /// Cached access token
+    /// </summary>
     private string? _accessToken;
 
     #endregion // Fields
@@ -89,6 +122,237 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
     public static bool SupportsRegistry(string registry)
     {
         return IsSupportedRegistry(registry);
+    }
+
+    /// <summary>
+    /// Resolve the expiry of a Docker Hub access token
+    /// </summary>
+    /// <param name="token">JWT access token</param>
+    /// <returns>Expiry timestamp</returns>
+    private static DateTimeOffset ResolveTokenExpiry(string token)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(token);
+
+        var segments = token.Split('.');
+
+        if (segments.Length >= 2)
+        {
+            var payloadBytes = DecodeBase64Url(segments[1]);
+
+            if (payloadBytes.Length > 0)
+            {
+                using var jsonDocument = JsonDocument.Parse(payloadBytes);
+
+                if (jsonDocument.RootElement.TryGetProperty("exp", out var expirationElement)
+                    && expirationElement.TryGetInt64(out var expirationUnixTimeSeconds))
+                {
+                    return DateTimeOffset.FromUnixTimeSeconds(expirationUnixTimeSeconds);
+                }
+            }
+        }
+
+        return DateTimeOffset.UtcNow.AddMinutes(5);
+    }
+
+    /// <summary>
+    /// Decode a Base64 URL value
+    /// </summary>
+    /// <param name="value">Encoded value</param>
+    /// <returns>Decoded bytes</returns>
+    private static byte[] DecodeBase64Url(string value)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(value);
+
+        var normalizedValue = value.Replace('-', '+')
+                                   .Replace('_', '/');
+        var paddingLength = (4 - (normalizedValue.Length % 4)) % 4;
+        var paddedValue = normalizedValue.PadRight(normalizedValue.Length + paddingLength, '=');
+
+        return Convert.FromBase64String(paddedValue);
+    }
+
+    /// <summary>
+    /// Create a synthetic response for an authentication failure
+    /// </summary>
+    /// <param name="message">Failure message</param>
+    /// <returns>HTTP response</returns>
+    private static HttpResponseMessage CreateAuthenticationFailureResponse(string? message)
+    {
+        return new HttpResponseMessage(HttpStatusCode.Unauthorized)
+               {
+                   Content = new StringContent(message ?? "Docker Hub authentication failed",
+                                               Encoding.UTF8,
+                                               "text/plain"),
+               };
+    }
+
+    /// <summary>
+    /// Create a typed failure result for an unsuccessful response
+    /// </summary>
+    /// <typeparam name="T">Payload type</typeparam>
+    /// <param name="response">HTTP response</param>
+    /// <param name="message">Failure message</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Typed failure result</returns>
+    private static async Task<ExternalOperationResult<T>> CreateFailureResultAsync<T>(HttpResponseMessage response,
+                                                                                      string message,
+                                                                                      CancellationToken cancellationToken)
+    {
+        var errorBody = await response.Content.ReadAsStringAsync(cancellationToken)
+                                              .ConfigureAwait(false);
+
+        return ExternalOperationResult<T>.Failed($"{message}. Status code: {(int)response.StatusCode}. Body: {errorBody}");
+    }
+
+    /// <summary>
+    /// Parse a Docker Hub tag payload
+    /// </summary>
+    /// <param name="element">JSON element</param>
+    /// <returns>Tag data</returns>
+    private static DockerHubTagData ParseTag(JsonElement element)
+    {
+        return new DockerHubTagData
+               {
+                   Tag = TryGetString(element, "name") ?? string.Empty,
+                   Digest = TryGetString(element, "digest"),
+                   PublishedAtUtc = TryGetDateTimeOffset(element, "last_pushed"),
+               };
+    }
+
+    /// <summary>
+    /// Parse a Docker Hub repository payload
+    /// </summary>
+    /// <param name="element">JSON element</param>
+    /// <returns>Repository data</returns>
+    private static DockerHubRepositoryData ParseRepository(JsonElement element)
+    {
+        var namespaceName = TryGetString(element, "namespace");
+        var repositoryName = TryGetString(element, "name");
+        var normalizedRepository = string.IsNullOrWhiteSpace(namespaceName) || string.IsNullOrWhiteSpace(repositoryName)
+                                       ? string.Empty
+                                       : $"{namespaceName.Trim().ToLowerInvariant()}/{repositoryName.Trim().ToLowerInvariant()}";
+
+        return new DockerHubRepositoryData
+               {
+                   Registry = "docker.io",
+                   Repository = normalizedRepository,
+                   Description = TryGetString(element, "description"),
+                   LastUpdatedAtUtc = TryGetDateTimeOffset(element, "last_updated"),
+               };
+    }
+
+    /// <summary>
+    /// Determine whether the registry can be served by Docker Hub endpoints
+    /// </summary>
+    /// <param name="registry">Registry value</param>
+    /// <returns>True when supported</returns>
+    private static bool IsSupportedRegistry(string registry)
+    {
+        if (string.IsNullOrWhiteSpace(registry))
+        {
+            return false;
+        }
+
+        if (Uri.TryCreate(registry, UriKind.Absolute, out var registryUri))
+        {
+            return IsSupportedDockerHubHost(registryUri.Host);
+        }
+
+        return IsSupportedDockerHubHost(registry);
+    }
+
+    /// <summary>
+    /// Normalize known Docker Hub URLs to the API host
+    /// </summary>
+    /// <param name="registryUri">Configured registry URI</param>
+    /// <param name="normalizedUri">Normalized Docker Hub base URI</param>
+    /// <returns>True when the URI points to Docker Hub</returns>
+    private static bool TryNormalizeDockerHubBaseUri(Uri registryUri, out Uri normalizedUri)
+    {
+        ArgumentNullException.ThrowIfNull(registryUri);
+
+        normalizedUri = new Uri("https://hub.docker.com/");
+
+        return IsSupportedDockerHubHost(registryUri.Host);
+    }
+
+    /// <summary>
+    /// Determine whether a host name belongs to Docker Hub
+    /// </summary>
+    /// <param name="host">Host or registry value</param>
+    /// <returns>True when the host is a supported Docker Hub alias</returns>
+    private static bool IsSupportedDockerHubHost(string host)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(host);
+
+        return string.Equals(host, "docker.io", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(host, "index.docker.io", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(host, "registry-1.docker.io", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(host, "hub.docker.com", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(host, "docker.com", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(host, "www.docker.com", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Split the Docker Hub repository path into namespace and repository name
+    /// </summary>
+    /// <param name="repository">Repository path</param>
+    /// <returns>Namespace and repository name</returns>
+    private static (string NamespaceName, string RepositoryName) SplitRepository(string repository)
+    {
+        var segments = repository.Split('/');
+
+        if (segments.Length == 1)
+        {
+            return ("library", segments[0]);
+        }
+
+        return (segments[0], string.Join('/', segments.Skip(1)));
+    }
+
+    /// <summary>
+    /// Escape a repository path for use in a request URI
+    /// </summary>
+    /// <param name="repository">Repository value</param>
+    /// <returns>Escaped repository path</returns>
+    private static string EscapeRepository(string repository)
+    {
+        return string.Join('/', repository.Split('/').Select(Uri.EscapeDataString));
+    }
+
+    /// <summary>
+    /// Read an optional string from JSON
+    /// </summary>
+    /// <param name="element">JSON element</param>
+    /// <param name="propertyName">Property name</param>
+    /// <returns>String value</returns>
+    private static string? TryGetString(JsonElement element, string propertyName)
+    {
+        if (element.TryGetProperty(propertyName, out var property)
+            && property.ValueKind == JsonValueKind.String)
+        {
+            return property.GetString();
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Read an optional timestamp from JSON
+    /// </summary>
+    /// <param name="element">JSON element</param>
+    /// <param name="propertyName">Property name</param>
+    /// <returns>Timestamp value</returns>
+    private static DateTimeOffset? TryGetDateTimeOffset(JsonElement element, string propertyName)
+    {
+        var rawValue = TryGetString(element, propertyName);
+
+        if (DateTimeOffset.TryParse(rawValue, out var timestamp))
+        {
+            return timestamp;
+        }
+
+        return null;
     }
 
     #endregion // Static methods
@@ -881,237 +1145,6 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
     {
         return string.IsNullOrWhiteSpace(_accessToken) == false
                && _accessTokenExpiresAtUtc > DateTimeOffset.UtcNow.AddMinutes(1);
-    }
-
-    /// <summary>
-    /// Resolve the expiry of a Docker Hub access token
-    /// </summary>
-    /// <param name="token">JWT access token</param>
-    /// <returns>Expiry timestamp</returns>
-    private static DateTimeOffset ResolveTokenExpiry(string token)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(token);
-
-        var segments = token.Split('.');
-
-        if (segments.Length >= 2)
-        {
-            var payloadBytes = DecodeBase64Url(segments[1]);
-
-            if (payloadBytes.Length > 0)
-            {
-                using var jsonDocument = JsonDocument.Parse(payloadBytes);
-
-                if (jsonDocument.RootElement.TryGetProperty("exp", out var expirationElement)
-                    && expirationElement.TryGetInt64(out var expirationUnixTimeSeconds))
-                {
-                    return DateTimeOffset.FromUnixTimeSeconds(expirationUnixTimeSeconds);
-                }
-            }
-        }
-
-        return DateTimeOffset.UtcNow.AddMinutes(5);
-    }
-
-    /// <summary>
-    /// Decode a Base64 URL value
-    /// </summary>
-    /// <param name="value">Encoded value</param>
-    /// <returns>Decoded bytes</returns>
-    private static byte[] DecodeBase64Url(string value)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(value);
-
-        var normalizedValue = value.Replace('-', '+')
-                                   .Replace('_', '/');
-        var paddingLength = (4 - (normalizedValue.Length % 4)) % 4;
-        var paddedValue = normalizedValue.PadRight(normalizedValue.Length + paddingLength, '=');
-
-        return Convert.FromBase64String(paddedValue);
-    }
-
-    /// <summary>
-    /// Create a synthetic response for an authentication failure
-    /// </summary>
-    /// <param name="message">Failure message</param>
-    /// <returns>HTTP response</returns>
-    private static HttpResponseMessage CreateAuthenticationFailureResponse(string? message)
-    {
-        return new HttpResponseMessage(HttpStatusCode.Unauthorized)
-               {
-                   Content = new StringContent(message ?? "Docker Hub authentication failed",
-                                               Encoding.UTF8,
-                                               "text/plain"),
-               };
-    }
-
-    /// <summary>
-    /// Create a typed failure result for an unsuccessful response
-    /// </summary>
-    /// <typeparam name="T">Payload type</typeparam>
-    /// <param name="response">HTTP response</param>
-    /// <param name="message">Failure message</param>
-    /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>Typed failure result</returns>
-    private static async Task<ExternalOperationResult<T>> CreateFailureResultAsync<T>(HttpResponseMessage response,
-                                                                                      string message,
-                                                                                      CancellationToken cancellationToken)
-    {
-        var errorBody = await response.Content.ReadAsStringAsync(cancellationToken)
-                                              .ConfigureAwait(false);
-
-        return ExternalOperationResult<T>.Failed($"{message}. Status code: {(int)response.StatusCode}. Body: {errorBody}");
-    }
-
-    /// <summary>
-    /// Parse a Docker Hub tag payload
-    /// </summary>
-    /// <param name="element">JSON element</param>
-    /// <returns>Tag data</returns>
-    private static DockerHubTagData ParseTag(JsonElement element)
-    {
-        return new DockerHubTagData
-               {
-                   Tag = TryGetString(element, "name") ?? string.Empty,
-                   Digest = TryGetString(element, "digest"),
-                   PublishedAtUtc = TryGetDateTimeOffset(element, "last_pushed"),
-               };
-    }
-
-    /// <summary>
-    /// Parse a Docker Hub repository payload
-    /// </summary>
-    /// <param name="element">JSON element</param>
-    /// <returns>Repository data</returns>
-    private static DockerHubRepositoryData ParseRepository(JsonElement element)
-    {
-        var namespaceName = TryGetString(element, "namespace");
-        var repositoryName = TryGetString(element, "name");
-        var normalizedRepository = string.IsNullOrWhiteSpace(namespaceName) || string.IsNullOrWhiteSpace(repositoryName)
-                                       ? string.Empty
-                                       : $"{namespaceName.Trim().ToLowerInvariant()}/{repositoryName.Trim().ToLowerInvariant()}";
-
-        return new DockerHubRepositoryData
-               {
-                   Registry = "docker.io",
-                   Repository = normalizedRepository,
-                   Description = TryGetString(element, "description"),
-                   LastUpdatedAtUtc = TryGetDateTimeOffset(element, "last_updated"),
-               };
-    }
-
-    /// <summary>
-    /// Determine whether the registry can be served by Docker Hub endpoints
-    /// </summary>
-    /// <param name="registry">Registry value</param>
-    /// <returns>True when supported</returns>
-    private static bool IsSupportedRegistry(string registry)
-    {
-        if (string.IsNullOrWhiteSpace(registry))
-        {
-            return false;
-        }
-
-        if (Uri.TryCreate(registry, UriKind.Absolute, out var registryUri))
-        {
-            return IsSupportedDockerHubHost(registryUri.Host);
-        }
-
-        return IsSupportedDockerHubHost(registry);
-    }
-
-    /// <summary>
-    /// Normalize known Docker Hub URLs to the API host
-    /// </summary>
-    /// <param name="registryUri">Configured registry URI</param>
-    /// <param name="normalizedUri">Normalized Docker Hub base URI</param>
-    /// <returns>True when the URI points to Docker Hub</returns>
-    private static bool TryNormalizeDockerHubBaseUri(Uri registryUri, out Uri normalizedUri)
-    {
-        ArgumentNullException.ThrowIfNull(registryUri);
-
-        normalizedUri = new Uri("https://hub.docker.com/");
-
-        return IsSupportedDockerHubHost(registryUri.Host);
-    }
-
-    /// <summary>
-    /// Determine whether a host name belongs to Docker Hub
-    /// </summary>
-    /// <param name="host">Host or registry value</param>
-    /// <returns>True when the host is a supported Docker Hub alias</returns>
-    private static bool IsSupportedDockerHubHost(string host)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(host);
-
-        return string.Equals(host, "docker.io", StringComparison.OrdinalIgnoreCase)
-               || string.Equals(host, "index.docker.io", StringComparison.OrdinalIgnoreCase)
-               || string.Equals(host, "registry-1.docker.io", StringComparison.OrdinalIgnoreCase)
-               || string.Equals(host, "hub.docker.com", StringComparison.OrdinalIgnoreCase)
-               || string.Equals(host, "docker.com", StringComparison.OrdinalIgnoreCase)
-               || string.Equals(host, "www.docker.com", StringComparison.OrdinalIgnoreCase);
-    }
-
-    /// <summary>
-    /// Split the Docker Hub repository path into namespace and repository name
-    /// </summary>
-    /// <param name="repository">Repository path</param>
-    /// <returns>Namespace and repository name</returns>
-    private static (string NamespaceName, string RepositoryName) SplitRepository(string repository)
-    {
-        var segments = repository.Split('/');
-
-        if (segments.Length == 1)
-        {
-            return ("library", segments[0]);
-        }
-
-        return (segments[0], string.Join('/', segments.Skip(1)));
-    }
-
-    /// <summary>
-    /// Escape a repository path for use in a request URI
-    /// </summary>
-    /// <param name="repository">Repository value</param>
-    /// <returns>Escaped repository path</returns>
-    private static string EscapeRepository(string repository)
-    {
-        return string.Join('/', repository.Split('/').Select(Uri.EscapeDataString));
-    }
-
-    /// <summary>
-    /// Read an optional string from JSON
-    /// </summary>
-    /// <param name="element">JSON element</param>
-    /// <param name="propertyName">Property name</param>
-    /// <returns>String value</returns>
-    private static string? TryGetString(JsonElement element, string propertyName)
-    {
-        if (element.TryGetProperty(propertyName, out var property)
-            && property.ValueKind == JsonValueKind.String)
-        {
-            return property.GetString();
-        }
-
-        return null;
-    }
-
-    /// <summary>
-    /// Read an optional timestamp from JSON
-    /// </summary>
-    /// <param name="element">JSON element</param>
-    /// <param name="propertyName">Property name</param>
-    /// <returns>Timestamp value</returns>
-    private static DateTimeOffset? TryGetDateTimeOffset(JsonElement element, string propertyName)
-    {
-        var rawValue = TryGetString(element, propertyName);
-
-        if (DateTimeOffset.TryParse(rawValue, out var timestamp))
-        {
-            return timestamp;
-        }
-
-        return null;
     }
 
     #endregion // Methods

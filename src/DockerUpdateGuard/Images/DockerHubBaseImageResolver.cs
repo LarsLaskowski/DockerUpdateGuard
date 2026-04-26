@@ -10,6 +10,9 @@ public class DockerHubBaseImageResolver : IBaseImageResolver
 {
     #region Fields
 
+    /// <summary>
+    /// Docker Hub client
+    /// </summary>
     private readonly IDockerHubClient _dockerHubClient;
 
     #endregion // Fields

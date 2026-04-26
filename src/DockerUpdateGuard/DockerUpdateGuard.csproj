@@ -30,10 +30,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <AdditionalFiles Include="..\..\rules\StyleCop.json" Link="StyleCop.json" />
-  </ItemGroup>
-
-  <ItemGroup>
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
@@ -43,15 +39,33 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
-    <PackageReference Include="StyleCop.Analyzers">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-    </PackageReference>
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\DockerUpdateGuard.Data\DockerUpdateGuard.Data.csproj" />
     <ProjectReference Include="..\DockerUpdateGuard.Telemetry\DockerUpdateGuard.Telemetry.csproj" />
   </ItemGroup>
+
+  <Target Name="GenerateVersionAssemblyInfo" BeforeTargets="BeforeCompile">
+    <PropertyGroup>
+      <DockerUpdateGuardVersionFile>$(IntermediateOutputPath)DockerUpdateGuard.Version.g.cs</DockerUpdateGuardVersionFile>
+      <DockerUpdateGuardFileVersion>$(Version)</DockerUpdateGuardFileVersion>
+      <DockerUpdateGuardInformationalVersion>$(Version)</DockerUpdateGuardInformationalVersion>
+      <DockerUpdateGuardFileVersion Condition="'$(FileVersion)' != ''">$(FileVersion)</DockerUpdateGuardFileVersion>
+      <DockerUpdateGuardInformationalVersion Condition="'$(InformationalVersion)' != ''">$(InformationalVersion)</DockerUpdateGuardInformationalVersion>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <DockerUpdateGuardVersionLines Include="using System.Reflection%3B" />
+      <DockerUpdateGuardVersionLines Include="[assembly: AssemblyFileVersion(&quot;$(DockerUpdateGuardFileVersion)&quot;)]" />
+      <DockerUpdateGuardVersionLines Include="[assembly: AssemblyInformationalVersion(&quot;$(DockerUpdateGuardInformationalVersion)&quot;)]" />
+    </ItemGroup>
+
+    <WriteLinesToFile File="$(DockerUpdateGuardVersionFile)" Overwrite="true" Lines="@(DockerUpdateGuardVersionLines)" />
+
+    <ItemGroup>
+      <Compile Include="$(DockerUpdateGuardVersionFile)" Visible="false" />
+    </ItemGroup>
+  </Target>
 
 </Project>

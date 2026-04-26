@@ -13,6 +13,9 @@ public partial class RuntimeContainers
 {
     #region Fields
 
+    /// <summary>
+    /// Runtime-container list
+    /// </summary>
     private IReadOnlyList<RuntimeContainerListItemData>? _containers;
 
     #endregion // Fields
@@ -27,19 +30,7 @@ public partial class RuntimeContainers
 
     #endregion // Properties
 
-    #region Methods
-
-    /// <inheritdoc/>
-    protected override async Task OnInitializedAsync()
-    {
-        var containers = await ViewService.GetRuntimeContainersAsync()
-                                          .ConfigureAwait(false);
-
-        await InvokeAsync(() =>
-                          {
-                              _containers = containers;
-                          }).ConfigureAwait(false);
-    }
+    #region Static methods
 
     /// <summary>
     /// Resolve the chip color for an update state
@@ -117,6 +108,22 @@ public partial class RuntimeContainers
         return usage is null
                    ? "n/a"
                    : $"{ResourceUsageFormatter.FormatBytesPerSecond(usage.NetworkRxBytesPerSecond)} ↓ / {ResourceUsageFormatter.FormatBytesPerSecond(usage.NetworkTxBytesPerSecond)} ↑";
+    }
+
+    #endregion // Static methods
+
+    #region Methods
+
+    /// <inheritdoc/>
+    protected override async Task OnInitializedAsync()
+    {
+        var containers = await ViewService.GetRuntimeContainersAsync()
+                                          .ConfigureAwait(false);
+
+        await InvokeAsync(() =>
+                          {
+                              _containers = containers;
+                          }).ConfigureAwait(false);
     }
 
     #endregion // Methods

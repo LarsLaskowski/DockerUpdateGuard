@@ -15,10 +15,29 @@ public class ResourceStatisticsCollector : IResourceStatisticsCollector
 {
     #region Fields
 
+    /// <summary>
+    /// Database context
+    /// </summary>
     private readonly DockerUpdateGuardDbContext _dbContext;
+
+    /// <summary>
+    /// Docker-instance client
+    /// </summary>
     private readonly IDockerInstanceClient _dockerInstanceClient;
+
+    /// <summary>
+    /// Instance-discovery service
+    /// </summary>
     private readonly IInstanceDiscoveryService _instanceDiscoveryService;
+
+    /// <summary>
+    /// Logger
+    /// </summary>
     private readonly ILogger<ResourceStatisticsCollector> _logger;
+
+    /// <summary>
+    /// Options monitor
+    /// </summary>
     private readonly IOptionsMonitor<DockerUpdateGuardOptions> _optionsMonitor;
 
     #endregion // Fields
@@ -47,6 +66,45 @@ public class ResourceStatisticsCollector : IResourceStatisticsCollector
     }
 
     #endregion // Constructors
+
+    #region Static methods
+
+    /// <summary>
+    /// Calculate a network throughput value
+    /// </summary>
+    /// <param name="previousTotal">Previous total</param>
+    /// <param name="currentTotal">Current total</param>
+    /// <param name="previousRecordedAtUtc">Previous timestamp</param>
+    /// <param name="currentRecordedAtUtc">Current timestamp</param>
+    /// <returns>Bytes per second</returns>
+    private static decimal CalculateBytesPerSecond(long? previousTotal,
+                                                   long currentTotal,
+                                                   DateTimeOffset? previousRecordedAtUtc,
+                                                   DateTimeOffset currentRecordedAtUtc)
+    {
+        if (previousTotal is null || previousRecordedAtUtc is null)
+        {
+            return 0;
+        }
+
+        var elapsedSeconds = (decimal)(currentRecordedAtUtc - previousRecordedAtUtc.Value).TotalSeconds;
+
+        if (elapsedSeconds <= 0)
+        {
+            return 0;
+        }
+
+        var delta = currentTotal - previousTotal.Value;
+
+        if (delta <= 0)
+        {
+            return 0;
+        }
+
+        return Math.Round(delta / elapsedSeconds, 4);
+    }
+
+    #endregion // Static methods
 
     #region Methods
 
@@ -178,41 +236,6 @@ public class ResourceStatisticsCollector : IResourceStatisticsCollector
                                                                                                            recordedAtUtc),
                                                          RecordedAtUtc = recordedAtUtc,
                                                      });
-    }
-
-    /// <summary>
-    /// Calculate a network throughput value
-    /// </summary>
-    /// <param name="previousTotal">Previous total</param>
-    /// <param name="currentTotal">Current total</param>
-    /// <param name="previousRecordedAtUtc">Previous timestamp</param>
-    /// <param name="currentRecordedAtUtc">Current timestamp</param>
-    /// <returns>Bytes per second</returns>
-    private static decimal CalculateBytesPerSecond(long? previousTotal,
-                                                   long currentTotal,
-                                                   DateTimeOffset? previousRecordedAtUtc,
-                                                   DateTimeOffset currentRecordedAtUtc)
-    {
-        if (previousTotal is null || previousRecordedAtUtc is null)
-        {
-            return 0;
-        }
-
-        var elapsedSeconds = (decimal)(currentRecordedAtUtc - previousRecordedAtUtc.Value).TotalSeconds;
-
-        if (elapsedSeconds <= 0)
-        {
-            return 0;
-        }
-
-        var delta = currentTotal - previousTotal.Value;
-
-        if (delta <= 0)
-        {
-            return 0;
-        }
-
-        return Math.Round(delta / elapsedSeconds, 4);
     }
 
     #endregion // Methods

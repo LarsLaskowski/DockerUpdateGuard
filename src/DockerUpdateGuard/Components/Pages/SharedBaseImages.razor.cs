@@ -11,6 +11,9 @@ public partial class SharedBaseImages
 {
     #region Fields
 
+    /// <summary>
+    /// Shared base-image items
+    /// </summary>
     private IReadOnlyList<SharedBaseImageListItemData>? _items;
 
     #endregion // Fields

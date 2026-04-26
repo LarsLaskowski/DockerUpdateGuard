@@ -9,6 +9,9 @@ public abstract class ScheduledBackgroundService : BackgroundService
 {
     #region Fields
 
+    /// <summary>
+    /// Logger
+    /// </summary>
     private readonly ILogger _logger;
 
     #endregion // Fields

@@ -11,6 +11,9 @@ public partial class NavMenu
 {
     #region Fields
 
+    /// <summary>
+    /// Displayed application version
+    /// </summary>
     private string _displayVersion = "unknown";
 
     #endregion // Fields
@@ -46,12 +49,26 @@ public partial class NavMenu
             return configuredVersion;
         }
 
+        var environmentVersion = Environment.GetEnvironmentVariable("DockerUpdateGuard__DisplayVersion");
+
+        if (string.IsNullOrWhiteSpace(environmentVersion) == false)
+        {
+            return environmentVersion;
+        }
+
         var entryAssembly = Assembly.GetEntryAssembly() ?? typeof(NavMenu).Assembly;
         var informationalVersion = entryAssembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
 
         if (string.IsNullOrWhiteSpace(informationalVersion) == false)
         {
             return informationalVersion;
+        }
+
+        var fileVersion = entryAssembly.GetCustomAttribute<AssemblyFileVersionAttribute>()?.Version;
+
+        if (string.IsNullOrWhiteSpace(fileVersion) == false)
+        {
+            return fileVersion;
         }
 
         var assemblyVersion = entryAssembly.GetName().Version;

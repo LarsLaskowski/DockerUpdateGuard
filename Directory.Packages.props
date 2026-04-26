@@ -3,7 +3,6 @@
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
     <CentralPackageFloatingVersionsEnabled>true</CentralPackageFloatingVersionsEnabled>
   </PropertyGroup>
-
   <ItemGroup>
     <PackageVersion Include="coverlet.collector" Version="10.*" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="10.*" />
@@ -22,7 +21,7 @@
     <PackageVersion Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.*" />
     <PackageVersion Include="OpenTelemetry.Instrumentation.Http" Version="1.*" />
     <PackageVersion Include="OpenTelemetry.Instrumentation.Runtime" Version="1.*" />
-    <PackageVersion Include="Reihitsu.Analyzer" Version="0.*" />
+    <PackageVersion Include="Reihitsu.Analyzer" Version="0.17.0" />
     <PackageVersion Include="StyleCop.Analyzers" Version="1.*-*" />
   </ItemGroup>
 </Project>

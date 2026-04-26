@@ -10,6 +10,9 @@ public class RegistryMetadataService : IRegistryMetadataService
 {
     #region Fields
 
+    /// <summary>
+    /// Registered registry-metadata clients
+    /// </summary>
     private readonly IReadOnlyList<IRegistryMetadataClient> _clients;
 
     #endregion // Fields
@@ -72,6 +75,16 @@ public class RegistryMetadataService : IRegistryMetadataService
     }
 
     /// <summary>
+    /// Create an unsupported registry message
+    /// </summary>
+    /// <param name="registry">Registry host</param>
+    /// <returns>Unsupported registry message</returns>
+    private static string CreateUnsupportedMessage(string registry)
+    {
+        return $"Registry '{registry}' is not supported by the current registry adapters";
+    }
+
+    /// <summary>
     /// Resolve the matching client for a registry
     /// </summary>
     /// <param name="registry">Registry host</param>
@@ -82,16 +95,6 @@ public class RegistryMetadataService : IRegistryMetadataService
         client = _clients.FirstOrDefault(entity => entity.CanHandle(registry)) ?? NullRegistryMetadataClient.Instance;
 
         return ReferenceEquals(client, NullRegistryMetadataClient.Instance) == false;
-    }
-
-    /// <summary>
-    /// Create an unsupported registry message
-    /// </summary>
-    /// <param name="registry">Registry host</param>
-    /// <returns>Unsupported registry message</returns>
-    private static string CreateUnsupportedMessage(string registry)
-    {
-        return $"Registry '{registry}' is not supported by the current registry adapters";
     }
 
     #endregion // Methods

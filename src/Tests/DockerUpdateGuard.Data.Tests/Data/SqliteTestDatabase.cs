@@ -1,9 +1,7 @@
-using DockerUpdateGuard.Data;
-
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
-namespace DockerUpdateGuard.Tests;
+namespace DockerUpdateGuard.Data.Tests.Data;
 
 /// <summary>
 /// SQLite-backed test database helper
@@ -41,6 +39,7 @@ internal sealed class SqliteTestDatabase : IDisposable
                                                                                .EnableSensitiveDataLogging()
                                                                                .Options;
         var dbContext = new DockerUpdateGuardDbContext(options);
+
         dbContext.Database.EnsureCreated();
 
         return dbContext;

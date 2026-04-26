@@ -18,13 +18,44 @@ public class ImageScanOrchestrator : IImageScanOrchestrator
 {
     #region Fields
 
+    /// <summary>
+    /// Application telemetry
+    /// </summary>
     private readonly ApplicationTelemetry _applicationTelemetry;
+
+    /// <summary>
+    /// Base-image resolver
+    /// </summary>
     private readonly IBaseImageResolver _baseImageResolver;
+
+    /// <summary>
+    /// Database context
+    /// </summary>
     private readonly DockerUpdateGuardDbContext _dbContext;
+
+    /// <summary>
+    /// Image-catalog repository
+    /// </summary>
     private readonly IImageCatalogRepository _imageCatalogRepository;
+
+    /// <summary>
+    /// Image-reference parser
+    /// </summary>
     private readonly IImageReferenceParser _imageReferenceParser;
+
+    /// <summary>
+    /// Logger
+    /// </summary>
     private readonly ILogger<ImageScanOrchestrator> _logger;
+
+    /// <summary>
+    /// Registry-metadata service
+    /// </summary>
     private readonly IRegistryMetadataService _registryMetadataService;
+
+    /// <summary>
+    /// Update-detection service
+    /// </summary>
     private readonly IUpdateDetectionService _updateDetectionService;
 
     #endregion // Fields

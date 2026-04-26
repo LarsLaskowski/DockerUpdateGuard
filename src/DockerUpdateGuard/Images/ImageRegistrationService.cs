@@ -13,8 +13,19 @@ public class ImageRegistrationService : IImageRegistrationService
 {
     #region Fields
 
+    /// <summary>
+    /// Database context
+    /// </summary>
     private readonly DockerUpdateGuardDbContext _dbContext;
+
+    /// <summary>
+    /// Image-catalog repository
+    /// </summary>
     private readonly IImageCatalogRepository _imageCatalogRepository;
+
+    /// <summary>
+    /// Image-reference parser
+    /// </summary>
     private readonly IImageReferenceParser _imageReferenceParser;
 
     #endregion // Fields

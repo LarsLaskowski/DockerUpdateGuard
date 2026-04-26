@@ -13,6 +13,9 @@ public partial class ScanHistory
 {
     #region Fields
 
+    /// <summary>
+    /// Scan-history items
+    /// </summary>
     private IReadOnlyList<ScanHistoryItemData>? _scans;
 
     #endregion // Fields
@@ -27,19 +30,7 @@ public partial class ScanHistory
 
     #endregion // Properties
 
-    #region Methods
-
-    /// <inheritdoc/>
-    protected override async Task OnInitializedAsync()
-    {
-        var scans = await ViewService.GetScanHistoryAsync()
-                                     .ConfigureAwait(false);
-
-        await InvokeAsync(() =>
-                          {
-                              _scans = scans;
-                          }).ConfigureAwait(false);
-    }
+    #region Static methods
 
     /// <summary>
     /// Resolve the chip color for a scan status
@@ -56,6 +47,22 @@ public partial class ScanHistory
                    "PENDING" => Color.Warning,
                    _ => Color.Default,
                };
+    }
+
+    #endregion // Static methods
+
+    #region Methods
+
+    /// <inheritdoc/>
+    protected override async Task OnInitializedAsync()
+    {
+        var scans = await ViewService.GetScanHistoryAsync()
+                                     .ConfigureAwait(false);
+
+        await InvokeAsync(() =>
+                          {
+                              _scans = scans;
+                          }).ConfigureAwait(false);
     }
 
     #endregion // Methods

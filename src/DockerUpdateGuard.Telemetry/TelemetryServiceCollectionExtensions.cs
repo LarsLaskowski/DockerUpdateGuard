@@ -246,12 +246,26 @@ public static class TelemetryServiceCollectionExtensions
     /// <returns>Service version value</returns>
     private static string GetServiceVersion()
     {
+        var environmentVersion = Environment.GetEnvironmentVariable("DockerUpdateGuard__DisplayVersion");
+
+        if (string.IsNullOrWhiteSpace(environmentVersion) == false)
+        {
+            return environmentVersion;
+        }
+
         var entryAssembly = Assembly.GetEntryAssembly() ?? typeof(TelemetryServiceCollectionExtensions).Assembly;
         var informationalVersion = entryAssembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
 
         if (string.IsNullOrWhiteSpace(informationalVersion) == false)
         {
             return informationalVersion;
+        }
+
+        var fileVersion = entryAssembly.GetCustomAttribute<AssemblyFileVersionAttribute>()?.Version;
+
+        if (string.IsNullOrWhiteSpace(fileVersion) == false)
+        {
+            return fileVersion;
         }
 
         var assemblyVersion = entryAssembly.GetName().Version?.ToString();

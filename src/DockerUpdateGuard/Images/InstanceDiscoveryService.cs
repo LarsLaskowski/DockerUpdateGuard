@@ -14,8 +14,19 @@ public class InstanceDiscoveryService : IInstanceDiscoveryService
 {
     #region Fields
 
+    /// <summary>
+    /// Database context
+    /// </summary>
     private readonly DockerUpdateGuardDbContext _dbContext;
+
+    /// <summary>
+    /// Logger
+    /// </summary>
     private readonly ILogger<InstanceDiscoveryService> _logger;
+
+    /// <summary>
+    /// Options monitor
+    /// </summary>
     private readonly IOptionsMonitor<DockerUpdateGuardOptions> _optionsMonitor;
 
     #endregion // Fields
@@ -38,6 +49,34 @@ public class InstanceDiscoveryService : IInstanceDiscoveryService
     }
 
     #endregion // Constructors
+
+    #region Static methods
+
+    /// <summary>
+    /// Map configuration to the persisted connection kind enum
+    /// </summary>
+    /// <param name="configuredInstance">Configured instance</param>
+    /// <returns>Connection kind</returns>
+    private static DockerConnectionKind MapConnectionKind(DockerInstanceOptions configuredInstance)
+    {
+        if (Uri.TryCreate(configuredInstance.BaseUrl, UriKind.Absolute, out var uri) == false)
+        {
+            return DockerConnectionKind.NotSet;
+        }
+
+        return uri.Scheme switch
+               {
+                   "tcp" when configuredInstance.UseTls => DockerConnectionKind.Https,
+                   "tcp" => DockerConnectionKind.Http,
+                   "http" => DockerConnectionKind.Http,
+                   "https" => DockerConnectionKind.Https,
+                   "npipe" => DockerConnectionKind.NamedPipe,
+                   "unix" => DockerConnectionKind.UnixSocket,
+                   _ => DockerConnectionKind.NotSet,
+               };
+    }
+
+    #endregion // Static methods
 
     #region Methods
 
@@ -159,30 +198,6 @@ public class InstanceDiscoveryService : IInstanceDiscoveryService
                                                        enabledInstanceCount,
                                                        disabledInstanceCount,
                                                        portainerEndpointCount);
-    }
-
-    /// <summary>
-    /// Map configuration to the persisted connection kind enum
-    /// </summary>
-    /// <param name="configuredInstance">Configured instance</param>
-    /// <returns>Connection kind</returns>
-    private static DockerConnectionKind MapConnectionKind(DockerInstanceOptions configuredInstance)
-    {
-        if (Uri.TryCreate(configuredInstance.BaseUrl, UriKind.Absolute, out var uri) == false)
-        {
-            return DockerConnectionKind.NotSet;
-        }
-
-        return uri.Scheme switch
-               {
-                   "tcp" when configuredInstance.UseTls => DockerConnectionKind.Https,
-                   "tcp" => DockerConnectionKind.Http,
-                   "http" => DockerConnectionKind.Http,
-                   "https" => DockerConnectionKind.Https,
-                   "npipe" => DockerConnectionKind.NamedPipe,
-                   "unix" => DockerConnectionKind.UnixSocket,
-                   _ => DockerConnectionKind.NotSet,
-               };
     }
 
     #endregion // Methods

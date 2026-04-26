@@ -50,8 +50,8 @@ The main host project is the composition root. It is expected to keep web startu
 - The repository uses the XML-based `.slnx` solution format.
 - Runtime projects target `net10.0`, enable nullable reference types, implicit usings, and XML documentation files.
 - Runtime projects disable generated assembly info and instead link `SharedAssemblyInfo.cs` from the repository root.
-- Runtime projects also link `rules\StyleCop.json` and use per-configuration rulesets from `rules\DockerUpdateGuard.Debug.ruleset` and `rules\DockerUpdateGuard.Release.ruleset`.
-- `StyleCop.Analyzers` and `Reihitsu.Analyzer` are part of the standard project setup.
+- Runtime and test projects also use per-configuration rulesets from `rules\DockerUpdateGuard.Debug.ruleset` and `rules\DockerUpdateGuard.Release.ruleset`.
+- `Reihitsu.Analyzer` are part of the standard project setup.
 - Tests are under `src\Tests`, not a top-level `tests` folder. Keep new test projects there.
 - The current test stack is MSTest with `coverlet.collector`.
 - Detailed C# formatting and style rules live in `.github\instructions\csharp.instructions.md`. Follow that file for naming, region layout, XML docs, and null-handling preferences.
@@ -60,8 +60,8 @@ The main host project is the composition root. It is expected to keep web startu
 
 - Target the latest stable .NET version used by the solution template. The reference project currently uses `net10.0`.
 - Enable nullable reference types, implicit usings, and XML documentation files in every main project.
-- Link shared files like `SharedAssemblyInfo.cs` and `rules\\StyleCop.json` into each project when the solution is created.
-- Use `StyleCop.Analyzers` and `Reihitsu.Analyzer` as build-time analyzers.
+- Link shared files like `SharedAssemblyInfo.cs` into each project when the solution is created.
+- Use `Reihitsu.Analyzer` as a build-time analyzer.
 - Use MSTest with `coverlet.collector` for tests.
 - Prefer MSTest's `Assert` and `CollectionAssert` APIs directly instead of FluentAssertions.
 - Name test classes `{Feature}Tests` and test methods `{Class}{Scenario}{ExpectedResult}`.

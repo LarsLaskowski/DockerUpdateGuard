@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Configuration;
 
-namespace DockerUpdateGuard.Tests;
+namespace DockerUpdateGuard.Tests.Data;
 
 /// <summary>
 /// Provides deterministic development configuration samples for tests

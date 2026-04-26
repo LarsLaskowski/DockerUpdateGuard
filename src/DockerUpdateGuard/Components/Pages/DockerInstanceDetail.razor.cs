@@ -11,6 +11,9 @@ public partial class DockerInstanceDetail
 {
     #region Fields
 
+    /// <summary>
+    /// Docker-instance detail view data
+    /// </summary>
     private DockerInstanceDetailViewData? _detail;
 
     #endregion // Fields
@@ -31,19 +34,7 @@ public partial class DockerInstanceDetail
 
     #endregion // Properties
 
-    #region Methods
-
-    /// <inheritdoc/>
-    protected override async Task OnParametersSetAsync()
-    {
-        var detail = await ViewService.GetDockerInstanceDetailAsync(DockerInstanceId)
-                                      .ConfigureAwait(false);
-
-        await InvokeAsync(() =>
-                          {
-                              _detail = detail;
-                          }).ConfigureAwait(false);
-    }
+    #region Static methods
 
     /// <summary>
     /// Format CPU usage
@@ -75,6 +66,22 @@ public partial class DockerInstanceDetail
         return usage is null
                    ? "n/a"
                    : $"{ResourceUsageFormatter.FormatBytesPerSecond(usage.NetworkRxBytesPerSecond)} ↓ / {ResourceUsageFormatter.FormatBytesPerSecond(usage.NetworkTxBytesPerSecond)} ↑";
+    }
+
+    #endregion // Static methods
+
+    #region Methods
+
+    /// <inheritdoc/>
+    protected override async Task OnParametersSetAsync()
+    {
+        var detail = await ViewService.GetDockerInstanceDetailAsync(DockerInstanceId)
+                                      .ConfigureAwait(false);
+
+        await InvokeAsync(() =>
+                          {
+                              _detail = detail;
+                          }).ConfigureAwait(false);
     }
 
     #endregion // Methods

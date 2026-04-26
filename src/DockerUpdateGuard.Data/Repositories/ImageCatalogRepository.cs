@@ -11,6 +11,9 @@ public class ImageCatalogRepository : IImageCatalogRepository
 {
     #region Fields
 
+    /// <summary>
+    /// DB context object
+    /// </summary>
     private readonly DockerUpdateGuardDbContext _dbContext;
 
     #endregion // Fields

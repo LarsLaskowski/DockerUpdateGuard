@@ -13,8 +13,19 @@ public class ScanCleanupBackgroundService : ScheduledBackgroundService
 {
     #region Fields
 
+    /// <summary>
+    /// Logger
+    /// </summary>
     private readonly ILogger<ScanCleanupBackgroundService> _logger;
+
+    /// <summary>
+    /// Options monitor
+    /// </summary>
     private readonly IOptionsMonitor<DockerUpdateGuardOptions> _optionsMonitor;
+
+    /// <summary>
+    /// Service-scope factory
+    /// </summary>
     private readonly IServiceScopeFactory _serviceScopeFactory;
 
     #endregion // Fields
@@ -24,6 +35,9 @@ public class ScanCleanupBackgroundService : ScheduledBackgroundService
     /// <summary>
     /// Constructor
     /// </summary>
+    /// <param name="logger">Logger</param>
+    /// <param name="optionsMonitor">Application options monitor</param>
+    /// <param name="serviceScopeFactory">Service scope factory</param>
     public ScanCleanupBackgroundService(ILogger<ScanCleanupBackgroundService> logger,
                                         IOptionsMonitor<DockerUpdateGuardOptions> optionsMonitor,
                                         IServiceScopeFactory serviceScopeFactory)

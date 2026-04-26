@@ -2,22 +2,18 @@
   <Folder Name="/00 Solution items/">
     <File Path=".editorconfig" />
     <File Path="azure-pipelines.yml" />
-    <File Path="rules/DockerUpdateGuard.Release.ruleset" />
-    <File Path="rules/DockerUpdateGuard.ruleset" />
-    <File Path="rules/StyleCop.Debug.ruleset" />
-    <File Path="rules/StyleCop.json" />
-    <File Path="rules/StyleCop.Release.ruleset" />
+    <File Path="DOCKER.md" />
+    <File Path="LICENSE.md" />
+    <File Path="README.md" />
+    <File Path="SharedAssemblyInfo.cs" />
   </Folder>
   <Folder Name="/00 Solution items/Copilot/">
     <File Path=".github/copilot-instructions.md" />
     <File Path=".github/instructions/csharp.instructions.md" />
   </Folder>
   <Folder Name="/00 Solution items/Rules/">
+    <File Path="rules/DockerUpdateGuard.Debug.ruleset" />
     <File Path="rules/DockerUpdateGuard.Release.ruleset" />
-    <File Path="rules/DockerUpdateGuard.ruleset" />
-    <File Path="rules/StyleCop.Debug.ruleset" />
-    <File Path="rules/StyleCop.json" />
-    <File Path="rules/StyleCop.Release.ruleset" />
   </Folder>
   <Folder Name="/src/">
     <Project Path="src/DockerUpdateGuard.Data/DockerUpdateGuard.Data.csproj" />

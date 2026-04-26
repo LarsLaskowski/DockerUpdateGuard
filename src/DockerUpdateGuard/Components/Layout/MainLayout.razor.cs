@@ -13,6 +13,9 @@ public partial class MainLayout : LayoutComponentBase
 {
     #region Fields
 
+    /// <summary>
+    /// Application theme
+    /// </summary>
     private readonly MudTheme _theme = new()
                                        {
                                            LayoutProperties = new LayoutProperties
@@ -34,7 +37,15 @@ public partial class MainLayout : LayoutComponentBase
                                                               DrawerText = "#e2e8f0",
                                                           },
                                        };
+
+    /// <summary>
+    /// Dashboard summary
+    /// </summary>
     private DashboardViewData? _dashboardSummary;
+
+    /// <summary>
+    /// Navigation-drawer state
+    /// </summary>
     private bool _drawerOpen = true;
 
     #endregion // Fields

@@ -19,10 +19,29 @@ public class DockerHubAccountImageDiscoveryService : IDockerHubAccountImageDisco
 {
     #region Fields
 
+    /// <summary>
+    /// Database context
+    /// </summary>
     private readonly DockerUpdateGuardDbContext _dbContext;
+
+    /// <summary>
+    /// Docker Hub client
+    /// </summary>
     private readonly IDockerHubClient _dockerHubClient;
+
+    /// <summary>
+    /// Image-catalog repository
+    /// </summary>
     private readonly IImageCatalogRepository _imageCatalogRepository;
+
+    /// <summary>
+    /// Logger
+    /// </summary>
     private readonly ILogger<DockerHubAccountImageDiscoveryService> _logger;
+
+    /// <summary>
+    /// Options monitor
+    /// </summary>
     private readonly IOptionsMonitor<DockerUpdateGuardOptions> _optionsMonitor;
 
     #endregion // Fields
@@ -51,6 +70,91 @@ public class DockerHubAccountImageDiscoveryService : IDockerHubAccountImageDisco
     }
 
     #endregion // Constructors
+
+    #region Static methods
+
+    /// <summary>
+    /// Determine whether an observed image matches one of the currently discovered repositories
+    /// </summary>
+    /// <param name="observedImage">Observed image</param>
+    /// <param name="repositories">Discovered repository paths</param>
+    /// <returns>True when the observed image belongs to a discovered repository</returns>
+    private static bool MatchesRepository(ObservedImage observedImage, ISet<string> repositories)
+    {
+        ArgumentNullException.ThrowIfNull(observedImage);
+        ArgumentNullException.ThrowIfNull(repositories);
+
+        var repository = observedImage.CurrentImageVersion?.RegistryRepository?.Repository;
+
+        return string.IsNullOrWhiteSpace(repository) == false
+               && repositories.Contains(repository);
+    }
+
+    /// <summary>
+    /// Determine whether an observed image matches the supplied repository coordinates
+    /// </summary>
+    /// <param name="observedImage">Observed image</param>
+    /// <param name="registry">Registry name</param>
+    /// <param name="repository">Repository path</param>
+    /// <returns>True when the observed image belongs to the repository</returns>
+    private static bool MatchesRepository(ObservedImage observedImage,
+                                          string registry,
+                                          string repository)
+    {
+        ArgumentNullException.ThrowIfNull(observedImage);
+        ArgumentException.ThrowIfNullOrWhiteSpace(registry);
+        ArgumentException.ThrowIfNullOrWhiteSpace(repository);
+
+        var existingRegistry = observedImage.CurrentImageVersion?.RegistryRepository?.Registry;
+        var existingRepository = observedImage.CurrentImageVersion?.RegistryRepository?.Repository;
+
+        return string.Equals(existingRegistry,
+                             registry,
+                             StringComparison.OrdinalIgnoreCase)
+               && string.Equals(existingRepository,
+                                repository,
+                                StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Select the tag that should be tracked for a repository
+    /// </summary>
+    /// <param name="tags">Available repository tags</param>
+    /// <returns>Selected tag data or null</returns>
+    private static DockerHubTagData? SelectTrackedTag(IEnumerable<DockerHubTagData> tags)
+    {
+        ArgumentNullException.ThrowIfNull(tags);
+
+        var candidates = tags.Where(entity => string.IsNullOrWhiteSpace(entity.Tag) == false)
+                             .GroupBy(entity => entity.Tag, StringComparer.OrdinalIgnoreCase)
+                             .Select(group => group.OrderByDescending(entity => entity.PublishedAtUtc)
+                                                   .First())
+                             .ToList();
+
+        if (candidates.Count == 0)
+        {
+            return null;
+        }
+
+        return candidates.OrderByDescending(entity => entity.PublishedAtUtc)
+                         .ThenByDescending(entity => string.Equals(entity.Tag,
+                                                                   "latest",
+                                                                   StringComparison.OrdinalIgnoreCase))
+                         .ThenBy(entity => entity.Tag, StringComparer.OrdinalIgnoreCase)
+                         .First();
+    }
+
+    /// <summary>
+    /// Normalize an optional repository description
+    /// </summary>
+    /// <param name="description">Raw description</param>
+    /// <returns>Normalized description</returns>
+    private static string? NormalizeDescription(string? description)
+    {
+        return string.IsNullOrWhiteSpace(description) ? null : description.Trim();
+    }
+
+    #endregion // Static methods
 
     #region Methods
 
@@ -193,87 +297,6 @@ public class DockerHubAccountImageDiscoveryService : IDockerHubAccountImageDisco
                                                          synchronizedImageCount,
                                                          disabledImageCount,
                                                          skippedRepositoryCount);
-    }
-
-    /// <summary>
-    /// Determine whether an observed image matches one of the currently discovered repositories
-    /// </summary>
-    /// <param name="observedImage">Observed image</param>
-    /// <param name="repositories">Discovered repository paths</param>
-    /// <returns>True when the observed image belongs to a discovered repository</returns>
-    private static bool MatchesRepository(ObservedImage observedImage, ISet<string> repositories)
-    {
-        ArgumentNullException.ThrowIfNull(observedImage);
-        ArgumentNullException.ThrowIfNull(repositories);
-
-        var repository = observedImage.CurrentImageVersion?.RegistryRepository?.Repository;
-
-        return string.IsNullOrWhiteSpace(repository) == false
-               && repositories.Contains(repository);
-    }
-
-    /// <summary>
-    /// Determine whether an observed image matches the supplied repository coordinates
-    /// </summary>
-    /// <param name="observedImage">Observed image</param>
-    /// <param name="registry">Registry name</param>
-    /// <param name="repository">Repository path</param>
-    /// <returns>True when the observed image belongs to the repository</returns>
-    private static bool MatchesRepository(ObservedImage observedImage,
-                                          string registry,
-                                          string repository)
-    {
-        ArgumentNullException.ThrowIfNull(observedImage);
-        ArgumentException.ThrowIfNullOrWhiteSpace(registry);
-        ArgumentException.ThrowIfNullOrWhiteSpace(repository);
-
-        var existingRegistry = observedImage.CurrentImageVersion?.RegistryRepository?.Registry;
-        var existingRepository = observedImage.CurrentImageVersion?.RegistryRepository?.Repository;
-
-        return string.Equals(existingRegistry,
-                             registry,
-                             StringComparison.OrdinalIgnoreCase)
-               && string.Equals(existingRepository,
-                                repository,
-                                StringComparison.OrdinalIgnoreCase);
-    }
-
-    /// <summary>
-    /// Select the tag that should be tracked for a repository
-    /// </summary>
-    /// <param name="tags">Available repository tags</param>
-    /// <returns>Selected tag data or null</returns>
-    private static DockerHubTagData? SelectTrackedTag(IEnumerable<DockerHubTagData> tags)
-    {
-        ArgumentNullException.ThrowIfNull(tags);
-
-        var candidates = tags.Where(entity => string.IsNullOrWhiteSpace(entity.Tag) == false)
-                             .GroupBy(entity => entity.Tag, StringComparer.OrdinalIgnoreCase)
-                             .Select(group => group.OrderByDescending(entity => entity.PublishedAtUtc)
-                                                   .First())
-                             .ToList();
-
-        if (candidates.Count == 0)
-        {
-            return null;
-        }
-
-        return candidates.OrderByDescending(entity => entity.PublishedAtUtc)
-                         .ThenByDescending(entity => string.Equals(entity.Tag,
-                                                                   "latest",
-                                                                   StringComparison.OrdinalIgnoreCase))
-                         .ThenBy(entity => entity.Tag, StringComparer.OrdinalIgnoreCase)
-                         .First();
-    }
-
-    /// <summary>
-    /// Normalize an optional repository description
-    /// </summary>
-    /// <param name="description">Raw description</param>
-    /// <returns>Normalized description</returns>
-    private static string? NormalizeDescription(string? description)
-    {
-        return string.IsNullOrWhiteSpace(description) ? null : description.Trim();
     }
 
     #endregion // Methods

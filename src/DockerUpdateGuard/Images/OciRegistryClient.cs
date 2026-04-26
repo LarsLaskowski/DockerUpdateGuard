@@ -14,16 +14,38 @@ public class OciRegistryClient : IRegistryMetadataClient
 {
     #region Constants
 
+    /// <summary>
+    /// Maximum supported base-image depth
+    /// </summary>
     private const int MaxBaseImageDepth = 5;
+
+    /// <summary>
+    /// Docker-content-digest header name
+    /// </summary>
     private const string DockerContentDigestHeaderName = "Docker-Content-Digest";
+
+    /// <summary>
+    /// OCI base-image name label
+    /// </summary>
     private const string OciBaseImageNameLabel = "org.opencontainers.image.base.name";
+
+    /// <summary>
+    /// OCI base-image digest label
+    /// </summary>
     private const string OciBaseImageDigestLabel = "org.opencontainers.image.base.digest";
 
     #endregion // Constants
 
     #region Fields
 
+    /// <summary>
+    /// HTTP client
+    /// </summary>
     private readonly HttpClient _httpClient;
+
+    /// <summary>
+    /// Logger
+    /// </summary>
     private readonly ILogger<OciRegistryClient> _logger;
 
     #endregion // Fields
@@ -42,6 +64,394 @@ public class OciRegistryClient : IRegistryMetadataClient
     }
 
     #endregion // Constructors
+
+    #region Static methods
+
+    /// <summary>
+    /// Create a token request URI from an authentication challenge
+    /// </summary>
+    /// <param name="response">Unauthorized response</param>
+    /// <param name="repository">Repository path</param>
+    /// <returns>Token request URI or null</returns>
+    private static Uri? CreateTokenRequestUri(HttpResponseMessage response, string repository)
+    {
+        var bearerChallenge = response.Headers.WwwAuthenticate.FirstOrDefault(entity => string.Equals(entity.Scheme,
+                                                                                                      "Bearer",
+                                                                                                      StringComparison.OrdinalIgnoreCase));
+
+        if (bearerChallenge is null || string.IsNullOrWhiteSpace(bearerChallenge.Parameter))
+        {
+            return null;
+        }
+
+        var parameters = ParseAuthenticationParameters(bearerChallenge.Parameter);
+
+        if (parameters.TryGetValue("realm", out var realm) == false
+            || Uri.TryCreate(realm, UriKind.Absolute, out var tokenUri) == false)
+        {
+            return null;
+        }
+
+        var builder = new UriBuilder(tokenUri);
+        var queryParameters = ParseQueryParameters(builder.Query);
+
+        if (parameters.TryGetValue("service", out var service) && string.IsNullOrWhiteSpace(service) == false)
+        {
+            queryParameters["service"] = service;
+        }
+
+        if (parameters.TryGetValue("scope", out var scope) && string.IsNullOrWhiteSpace(scope) == false)
+        {
+            queryParameters["scope"] = scope;
+        }
+        else
+        {
+            queryParameters["scope"] = $"repository:{repository}:pull";
+        }
+
+        builder.Query = string.Join("&",
+                                    queryParameters.Select(entity => $"{Uri.EscapeDataString(entity.Key)}={Uri.EscapeDataString(entity.Value)}"));
+
+        return builder.Uri;
+    }
+
+    /// <summary>
+    /// Parse the authentication challenge parameters
+    /// </summary>
+    /// <param name="parameter">Header parameter string</param>
+    /// <returns>Parsed parameters</returns>
+    private static Dictionary<string, string> ParseAuthenticationParameters(string parameter)
+    {
+        var parameters = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var current = new List<char>();
+        var segments = new List<string>();
+        var inQuotes = false;
+
+        foreach (var character in parameter)
+        {
+            if (character == '"')
+            {
+                inQuotes = inQuotes == false;
+            }
+
+            if (character == ',' && inQuotes == false)
+            {
+                if (current.Count > 0)
+                {
+                    segments.Add(new string([.. current]));
+                    current.Clear();
+                }
+
+                continue;
+            }
+
+            current.Add(character);
+        }
+
+        if (current.Count > 0)
+        {
+            segments.Add(new string([.. current]));
+        }
+
+        foreach (var segment in segments)
+        {
+            var separatorIndex = segment.IndexOf('=');
+
+            if (separatorIndex <= 0)
+            {
+                continue;
+            }
+
+            var key = segment[..separatorIndex].Trim();
+            var value = segment[(separatorIndex + 1)..].Trim().Trim('"');
+
+            if (string.IsNullOrWhiteSpace(key) == false)
+            {
+                parameters[key] = value;
+            }
+        }
+
+        return parameters;
+    }
+
+    /// <summary>
+    /// Parse query parameters into a mutable dictionary
+    /// </summary>
+    /// <param name="query">URI query string</param>
+    /// <returns>Parsed query parameters</returns>
+    private static Dictionary<string, string> ParseQueryParameters(string query)
+    {
+        var parameters = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var trimmedQuery = query.TrimStart('?');
+
+        if (string.IsNullOrWhiteSpace(trimmedQuery))
+        {
+            return parameters;
+        }
+
+        foreach (var pair in trimmedQuery.Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var separatorIndex = pair.IndexOf('=');
+
+            if (separatorIndex <= 0)
+            {
+                continue;
+            }
+
+            parameters[Uri.UnescapeDataString(pair[..separatorIndex])] = Uri.UnescapeDataString(pair[(separatorIndex + 1)..]);
+        }
+
+        return parameters;
+    }
+
+    /// <summary>
+    /// Determine whether a content type is a manifest list/index
+    /// </summary>
+    /// <param name="contentType">HTTP content type</param>
+    /// <returns>True when the content type is a manifest list or OCI index</returns>
+    private static bool IsManifestListContentType(string contentType)
+    {
+        return string.Equals(contentType,
+                             "application/vnd.docker.distribution.manifest.list.v2+json",
+                             StringComparison.OrdinalIgnoreCase)
+               || string.Equals(contentType,
+                                "application/vnd.oci.image.index.v1+json",
+                                StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Create a manifest URI for a registry repository and reference
+    /// </summary>
+    /// <param name="registry">Registry host</param>
+    /// <param name="repository">Repository path</param>
+    /// <param name="reference">Tag or digest</param>
+    /// <returns>Manifest URI</returns>
+    private static Uri CreateManifestUri(string registry, string repository, string reference)
+    {
+        return CreateRegistryUri(registry, $"v2/{EscapeRepository(repository)}/manifests/{Uri.EscapeDataString(reference)}");
+    }
+
+    /// <summary>
+    /// Create a blob URI for a registry repository and digest
+    /// </summary>
+    /// <param name="registry">Registry host</param>
+    /// <param name="repository">Repository path</param>
+    /// <param name="digest">Blob digest</param>
+    /// <returns>Blob URI</returns>
+    private static Uri CreateBlobUri(string registry, string repository, string digest)
+    {
+        return CreateRegistryUri(registry, $"v2/{EscapeRepository(repository)}/blobs/{Uri.EscapeDataString(digest)}");
+    }
+
+    /// <summary>
+    /// Create a tags endpoint URI
+    /// </summary>
+    /// <param name="registry">Registry host</param>
+    /// <param name="repository">Repository path</param>
+    /// <param name="lastTag">Optional pagination marker</param>
+    /// <returns>Tags URI</returns>
+    private static Uri CreateTagsUri(string registry, string repository, string? lastTag)
+    {
+        var relativePath = $"v2/{EscapeRepository(repository)}/tags/list?n=100";
+
+        if (string.IsNullOrWhiteSpace(lastTag) == false)
+        {
+            relativePath += $"&last={Uri.EscapeDataString(lastTag)}";
+        }
+
+        return CreateRegistryUri(registry, relativePath);
+    }
+
+    /// <summary>
+    /// Create an absolute registry URI
+    /// </summary>
+    /// <param name="registry">Registry host or base URI</param>
+    /// <param name="relativePath">Relative path</param>
+    /// <returns>Absolute URI</returns>
+    private static Uri CreateRegistryUri(string registry, string relativePath)
+    {
+        var querySeparatorIndex = relativePath.IndexOf('?');
+        var path = querySeparatorIndex >= 0 ? relativePath[..querySeparatorIndex] : relativePath;
+        var query = querySeparatorIndex >= 0 ? relativePath[(querySeparatorIndex + 1)..] : string.Empty;
+
+        if (Uri.TryCreate(registry, UriKind.Absolute, out var absoluteRegistryUri))
+        {
+            var absoluteBuilder = new UriBuilder(new Uri(EnsureTrailingSlash(absoluteRegistryUri), path))
+                                  {
+                                      Query = query,
+                                  };
+
+            return absoluteBuilder.Uri;
+        }
+
+        var registryBuilder = new UriBuilder(Uri.UriSchemeHttps, registry)
+                              {
+                                  Path = path,
+                                  Query = query,
+                              };
+
+        return registryBuilder.Uri;
+    }
+
+    /// <summary>
+    /// Ensure a base URI ends with a trailing slash
+    /// </summary>
+    /// <param name="uri">Original URI</param>
+    /// <returns>Normalized URI</returns>
+    private static Uri EnsureTrailingSlash(Uri uri)
+    {
+        var builder = new UriBuilder(uri);
+
+        if (builder.Path.EndsWith('/') == false)
+        {
+            builder.Path = $"{builder.Path.TrimEnd('/')}/";
+        }
+
+        return builder.Uri;
+    }
+
+    /// <summary>
+    /// Escape a repository path for registry APIs
+    /// </summary>
+    /// <param name="repository">Repository path</param>
+    /// <returns>Escaped repository path</returns>
+    private static string EscapeRepository(string repository)
+    {
+        return string.Join('/',
+                           repository.Split('/',
+                                            StringSplitOptions.RemoveEmptyEntries)
+                                     .Select(Uri.EscapeDataString));
+    }
+
+    /// <summary>
+    /// Normalize a registry value to a stable host representation
+    /// </summary>
+    /// <param name="registry">Raw registry value</param>
+    /// <returns>Normalized registry value</returns>
+    private static string NormalizeRegistry(string registry)
+    {
+        if (Uri.TryCreate(registry, UriKind.Absolute, out var absoluteRegistryUri))
+        {
+            return absoluteRegistryUri.IsDefaultPort
+                       ? absoluteRegistryUri.Host.ToLowerInvariant()
+                       : $"{absoluteRegistryUri.Host.ToLowerInvariant()}:{absoluteRegistryUri.Port}";
+        }
+
+        return registry.Trim().ToLowerInvariant();
+    }
+
+    /// <summary>
+    /// Read the digest header from a manifest response
+    /// </summary>
+    /// <param name="response">HTTP response</param>
+    /// <returns>Resolved content digest or null</returns>
+    private static string? GetContentDigest(HttpResponseMessage response)
+    {
+        return response.Headers.TryGetValues(DockerContentDigestHeaderName, out var values)
+                   ? values.SingleOrDefault()
+                   : null;
+    }
+
+    /// <summary>
+    /// Read an optional string property from a JSON element
+    /// </summary>
+    /// <param name="element">JSON element</param>
+    /// <param name="propertyName">Property name</param>
+    /// <returns>String value or null</returns>
+    private static string? TryGetString(JsonElement element, string propertyName)
+    {
+        return element.TryGetProperty(propertyName, out var propertyElement) && propertyElement.ValueKind == JsonValueKind.String
+                   ? propertyElement.GetString()
+                   : null;
+    }
+
+    /// <summary>
+    /// Read the created timestamp from a manifest or config blob
+    /// </summary>
+    /// <param name="element">JSON root element</param>
+    /// <returns>Created timestamp or null</returns>
+    private static DateTimeOffset? TryReadCreatedAtUtc(JsonElement element)
+    {
+        var createdValue = TryGetString(element, "created");
+
+        return DateTimeOffset.TryParse(createdValue, out var createdAtUtc) ? createdAtUtc : null;
+    }
+
+    /// <summary>
+    /// Determine the next tags page URI
+    /// </summary>
+    /// <param name="response">Current response</param>
+    /// <param name="registry">Registry host</param>
+    /// <param name="repository">Repository path</param>
+    /// <param name="tags">Accumulated tags</param>
+    /// <returns>Next page URI or null</returns>
+    private static Uri? GetNextTagsUri(HttpResponseMessage response,
+                                       string registry,
+                                       string repository,
+                                       IReadOnlyList<DockerHubTagData> tags)
+    {
+        if (response.Headers.TryGetValues("Link", out var linkValues))
+        {
+            var nextLink = linkValues.SelectMany(value => value.Split(',', StringSplitOptions.RemoveEmptyEntries))
+                                     .Select(value => value.Trim())
+                                     .FirstOrDefault(value => value.Contains("rel=\"next\"", StringComparison.OrdinalIgnoreCase));
+
+            if (string.IsNullOrWhiteSpace(nextLink) == false)
+            {
+                var start = nextLink.IndexOf('<');
+                var end = nextLink.IndexOf('>');
+
+                if (start >= 0 && end > start)
+                {
+                    var linkTarget = nextLink[(start + 1)..end];
+
+                    if (Uri.TryCreate(linkTarget, UriKind.Absolute, out var absoluteUri))
+                    {
+                        return absoluteUri;
+                    }
+
+                    if (Uri.TryCreate(CreateRegistryUri(registry, string.Empty), linkTarget, out var relativeUri))
+                    {
+                        return relativeUri;
+                    }
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Create a structured failure result from an HTTP response
+    /// </summary>
+    /// <typeparam name="T">Result payload type</typeparam>
+    /// <param name="response">HTTP response</param>
+    /// <param name="messagePrefix">Message prefix</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Failure result</returns>
+    private static async Task<ExternalOperationResult<T>> CreateFailureResultAsync<T>(HttpResponseMessage response,
+                                                                                      string messagePrefix,
+                                                                                      CancellationToken cancellationToken)
+    {
+        var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+
+        return ExternalOperationResult<T>.Failed($"{messagePrefix}: {(int)response.StatusCode} {response.ReasonPhrase}{(string.IsNullOrWhiteSpace(body) ? string.Empty : $" - {body}")}");
+    }
+
+    /// <summary>
+    /// Create a failure-shaped response when token exchange could not be completed
+    /// </summary>
+    /// <param name="message">Failure message</param>
+    /// <returns>Failure response</returns>
+    private static HttpResponseMessage CreateAuthenticationFailureResponse(string message)
+    {
+        return new HttpResponseMessage(HttpStatusCode.Unauthorized)
+               {
+                   Content = new StringContent(message),
+               };
+    }
+
+    #endregion // Static methods
 
     #region Methods
 
@@ -551,390 +961,6 @@ public class OciRegistryClient : IRegistryMetadataClient
                                                                  ?? TryGetString(jsonDocument.RootElement, "access_token")
                                                                  ?? string.Empty);
         }
-    }
-
-    /// <summary>
-    /// Create a token request URI from an authentication challenge
-    /// </summary>
-    /// <param name="response">Unauthorized response</param>
-    /// <param name="repository">Repository path</param>
-    /// <returns>Token request URI or null</returns>
-    private static Uri? CreateTokenRequestUri(HttpResponseMessage response, string repository)
-    {
-        var bearerChallenge = response.Headers.WwwAuthenticate.FirstOrDefault(entity => string.Equals(entity.Scheme,
-                                                                                                      "Bearer",
-                                                                                                      StringComparison.OrdinalIgnoreCase));
-
-        if (bearerChallenge is null || string.IsNullOrWhiteSpace(bearerChallenge.Parameter))
-        {
-            return null;
-        }
-
-        var parameters = ParseAuthenticationParameters(bearerChallenge.Parameter);
-
-        if (parameters.TryGetValue("realm", out var realm) == false
-            || Uri.TryCreate(realm, UriKind.Absolute, out var tokenUri) == false)
-        {
-            return null;
-        }
-
-        var builder = new UriBuilder(tokenUri);
-        var queryParameters = ParseQueryParameters(builder.Query);
-
-        if (parameters.TryGetValue("service", out var service) && string.IsNullOrWhiteSpace(service) == false)
-        {
-            queryParameters["service"] = service;
-        }
-
-        if (parameters.TryGetValue("scope", out var scope) && string.IsNullOrWhiteSpace(scope) == false)
-        {
-            queryParameters["scope"] = scope;
-        }
-        else
-        {
-            queryParameters["scope"] = $"repository:{repository}:pull";
-        }
-
-        builder.Query = string.Join("&",
-                                    queryParameters.Select(entity => $"{Uri.EscapeDataString(entity.Key)}={Uri.EscapeDataString(entity.Value)}"));
-
-        return builder.Uri;
-    }
-
-    /// <summary>
-    /// Parse the authentication challenge parameters
-    /// </summary>
-    /// <param name="parameter">Header parameter string</param>
-    /// <returns>Parsed parameters</returns>
-    private static Dictionary<string, string> ParseAuthenticationParameters(string parameter)
-    {
-        var parameters = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        var current = new List<char>();
-        var segments = new List<string>();
-        var inQuotes = false;
-
-        foreach (var character in parameter)
-        {
-            if (character == '"')
-            {
-                inQuotes = inQuotes == false;
-            }
-
-            if (character == ',' && inQuotes == false)
-            {
-                if (current.Count > 0)
-                {
-                    segments.Add(new string([.. current]));
-                    current.Clear();
-                }
-
-                continue;
-            }
-
-            current.Add(character);
-        }
-
-        if (current.Count > 0)
-        {
-            segments.Add(new string([.. current]));
-        }
-
-        foreach (var segment in segments)
-        {
-            var separatorIndex = segment.IndexOf('=');
-
-            if (separatorIndex <= 0)
-            {
-                continue;
-            }
-
-            var key = segment[..separatorIndex].Trim();
-            var value = segment[(separatorIndex + 1)..].Trim().Trim('"');
-
-            if (string.IsNullOrWhiteSpace(key) == false)
-            {
-                parameters[key] = value;
-            }
-        }
-
-        return parameters;
-    }
-
-    /// <summary>
-    /// Parse query parameters into a mutable dictionary
-    /// </summary>
-    /// <param name="query">URI query string</param>
-    /// <returns>Parsed query parameters</returns>
-    private static Dictionary<string, string> ParseQueryParameters(string query)
-    {
-        var parameters = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        var trimmedQuery = query.TrimStart('?');
-
-        if (string.IsNullOrWhiteSpace(trimmedQuery))
-        {
-            return parameters;
-        }
-
-        foreach (var pair in trimmedQuery.Split('&', StringSplitOptions.RemoveEmptyEntries))
-        {
-            var separatorIndex = pair.IndexOf('=');
-
-            if (separatorIndex <= 0)
-            {
-                continue;
-            }
-
-            parameters[Uri.UnescapeDataString(pair[..separatorIndex])] = Uri.UnescapeDataString(pair[(separatorIndex + 1)..]);
-        }
-
-        return parameters;
-    }
-
-    /// <summary>
-    /// Determine whether a content type is a manifest list/index
-    /// </summary>
-    /// <param name="contentType">HTTP content type</param>
-    /// <returns>True when the content type is a manifest list or OCI index</returns>
-    private static bool IsManifestListContentType(string contentType)
-    {
-        return string.Equals(contentType,
-                             "application/vnd.docker.distribution.manifest.list.v2+json",
-                             StringComparison.OrdinalIgnoreCase)
-               || string.Equals(contentType,
-                                "application/vnd.oci.image.index.v1+json",
-                                StringComparison.OrdinalIgnoreCase);
-    }
-
-    /// <summary>
-    /// Create a manifest URI for a registry repository and reference
-    /// </summary>
-    /// <param name="registry">Registry host</param>
-    /// <param name="repository">Repository path</param>
-    /// <param name="reference">Tag or digest</param>
-    /// <returns>Manifest URI</returns>
-    private static Uri CreateManifestUri(string registry, string repository, string reference)
-    {
-        return CreateRegistryUri(registry, $"v2/{EscapeRepository(repository)}/manifests/{Uri.EscapeDataString(reference)}");
-    }
-
-    /// <summary>
-    /// Create a blob URI for a registry repository and digest
-    /// </summary>
-    /// <param name="registry">Registry host</param>
-    /// <param name="repository">Repository path</param>
-    /// <param name="digest">Blob digest</param>
-    /// <returns>Blob URI</returns>
-    private static Uri CreateBlobUri(string registry, string repository, string digest)
-    {
-        return CreateRegistryUri(registry, $"v2/{EscapeRepository(repository)}/blobs/{Uri.EscapeDataString(digest)}");
-    }
-
-    /// <summary>
-    /// Create a tags endpoint URI
-    /// </summary>
-    /// <param name="registry">Registry host</param>
-    /// <param name="repository">Repository path</param>
-    /// <param name="lastTag">Optional pagination marker</param>
-    /// <returns>Tags URI</returns>
-    private static Uri CreateTagsUri(string registry, string repository, string? lastTag)
-    {
-        var relativePath = $"v2/{EscapeRepository(repository)}/tags/list?n=100";
-
-        if (string.IsNullOrWhiteSpace(lastTag) == false)
-        {
-            relativePath += $"&last={Uri.EscapeDataString(lastTag)}";
-        }
-
-        return CreateRegistryUri(registry, relativePath);
-    }
-
-    /// <summary>
-    /// Create an absolute registry URI
-    /// </summary>
-    /// <param name="registry">Registry host or base URI</param>
-    /// <param name="relativePath">Relative path</param>
-    /// <returns>Absolute URI</returns>
-    private static Uri CreateRegistryUri(string registry, string relativePath)
-    {
-        var querySeparatorIndex = relativePath.IndexOf('?');
-        var path = querySeparatorIndex >= 0 ? relativePath[..querySeparatorIndex] : relativePath;
-        var query = querySeparatorIndex >= 0 ? relativePath[(querySeparatorIndex + 1)..] : string.Empty;
-
-        if (Uri.TryCreate(registry, UriKind.Absolute, out var absoluteRegistryUri))
-        {
-            var absoluteBuilder = new UriBuilder(new Uri(EnsureTrailingSlash(absoluteRegistryUri), path))
-                                  {
-                                      Query = query,
-                                  };
-
-            return absoluteBuilder.Uri;
-        }
-
-        var registryBuilder = new UriBuilder(Uri.UriSchemeHttps, registry)
-                              {
-                                  Path = path,
-                                  Query = query,
-                              };
-
-        return registryBuilder.Uri;
-    }
-
-    /// <summary>
-    /// Ensure a base URI ends with a trailing slash
-    /// </summary>
-    /// <param name="uri">Original URI</param>
-    /// <returns>Normalized URI</returns>
-    private static Uri EnsureTrailingSlash(Uri uri)
-    {
-        var builder = new UriBuilder(uri);
-
-        if (builder.Path.EndsWith('/') == false)
-        {
-            builder.Path = $"{builder.Path.TrimEnd('/')}/";
-        }
-
-        return builder.Uri;
-    }
-
-    /// <summary>
-    /// Escape a repository path for registry APIs
-    /// </summary>
-    /// <param name="repository">Repository path</param>
-    /// <returns>Escaped repository path</returns>
-    private static string EscapeRepository(string repository)
-    {
-        return string.Join('/',
-                           repository.Split('/',
-                                            StringSplitOptions.RemoveEmptyEntries)
-                                     .Select(Uri.EscapeDataString));
-    }
-
-    /// <summary>
-    /// Normalize a registry value to a stable host representation
-    /// </summary>
-    /// <param name="registry">Raw registry value</param>
-    /// <returns>Normalized registry value</returns>
-    private static string NormalizeRegistry(string registry)
-    {
-        if (Uri.TryCreate(registry, UriKind.Absolute, out var absoluteRegistryUri))
-        {
-            return absoluteRegistryUri.IsDefaultPort
-                       ? absoluteRegistryUri.Host.ToLowerInvariant()
-                       : $"{absoluteRegistryUri.Host.ToLowerInvariant()}:{absoluteRegistryUri.Port}";
-        }
-
-        return registry.Trim().ToLowerInvariant();
-    }
-
-    /// <summary>
-    /// Read the digest header from a manifest response
-    /// </summary>
-    /// <param name="response">HTTP response</param>
-    /// <returns>Resolved content digest or null</returns>
-    private static string? GetContentDigest(HttpResponseMessage response)
-    {
-        return response.Headers.TryGetValues(DockerContentDigestHeaderName, out var values)
-                   ? values.SingleOrDefault()
-                   : null;
-    }
-
-    /// <summary>
-    /// Read an optional string property from a JSON element
-    /// </summary>
-    /// <param name="element">JSON element</param>
-    /// <param name="propertyName">Property name</param>
-    /// <returns>String value or null</returns>
-    private static string? TryGetString(JsonElement element, string propertyName)
-    {
-        return element.TryGetProperty(propertyName, out var propertyElement) && propertyElement.ValueKind == JsonValueKind.String
-                   ? propertyElement.GetString()
-                   : null;
-    }
-
-    /// <summary>
-    /// Read the created timestamp from a manifest or config blob
-    /// </summary>
-    /// <param name="element">JSON root element</param>
-    /// <returns>Created timestamp or null</returns>
-    private static DateTimeOffset? TryReadCreatedAtUtc(JsonElement element)
-    {
-        var createdValue = TryGetString(element, "created");
-
-        return DateTimeOffset.TryParse(createdValue, out var createdAtUtc) ? createdAtUtc : null;
-    }
-
-    /// <summary>
-    /// Determine the next tags page URI
-    /// </summary>
-    /// <param name="response">Current response</param>
-    /// <param name="registry">Registry host</param>
-    /// <param name="repository">Repository path</param>
-    /// <param name="tags">Accumulated tags</param>
-    /// <returns>Next page URI or null</returns>
-    private static Uri? GetNextTagsUri(HttpResponseMessage response,
-                                       string registry,
-                                       string repository,
-                                       IReadOnlyList<DockerHubTagData> tags)
-    {
-        if (response.Headers.TryGetValues("Link", out var linkValues))
-        {
-            var nextLink = linkValues.SelectMany(value => value.Split(',', StringSplitOptions.RemoveEmptyEntries))
-                                     .Select(value => value.Trim())
-                                     .FirstOrDefault(value => value.Contains("rel=\"next\"", StringComparison.OrdinalIgnoreCase));
-
-            if (string.IsNullOrWhiteSpace(nextLink) == false)
-            {
-                var start = nextLink.IndexOf('<');
-                var end = nextLink.IndexOf('>');
-
-                if (start >= 0 && end > start)
-                {
-                    var linkTarget = nextLink[(start + 1)..end];
-
-                    if (Uri.TryCreate(linkTarget, UriKind.Absolute, out var absoluteUri))
-                    {
-                        return absoluteUri;
-                    }
-
-                    if (Uri.TryCreate(CreateRegistryUri(registry, string.Empty), linkTarget, out var relativeUri))
-                    {
-                        return relativeUri;
-                    }
-                }
-            }
-        }
-
-        return null;
-    }
-
-    /// <summary>
-    /// Create a structured failure result from an HTTP response
-    /// </summary>
-    /// <typeparam name="T">Result payload type</typeparam>
-    /// <param name="response">HTTP response</param>
-    /// <param name="messagePrefix">Message prefix</param>
-    /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>Failure result</returns>
-    private static async Task<ExternalOperationResult<T>> CreateFailureResultAsync<T>(HttpResponseMessage response,
-                                                                                      string messagePrefix,
-                                                                                      CancellationToken cancellationToken)
-    {
-        var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-
-        return ExternalOperationResult<T>.Failed($"{messagePrefix}: {(int)response.StatusCode} {response.ReasonPhrase}{(string.IsNullOrWhiteSpace(body) ? string.Empty : $" - {body}")}");
-    }
-
-    /// <summary>
-    /// Create a failure-shaped response when token exchange could not be completed
-    /// </summary>
-    /// <param name="message">Failure message</param>
-    /// <returns>Failure response</returns>
-    private static HttpResponseMessage CreateAuthenticationFailureResponse(string message)
-    {
-        return new HttpResponseMessage(HttpStatusCode.Unauthorized)
-               {
-                   Content = new StringContent(message),
-               };
     }
 
     #endregion // Methods

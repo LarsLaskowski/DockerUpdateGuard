@@ -17,15 +17,54 @@ public class ApplicationTelemetry
 {
     #region Fields
 
+    /// <summary>
+    /// Logger
+    /// </summary>
     private readonly ILogger<ApplicationTelemetry> _logger;
+
+    /// <summary>
+    /// Scan-runs counter
+    /// </summary>
     private readonly Counter<long> _scanRunsCounter;
+
+    /// <summary>
+    /// Scan-failures counter
+    /// </summary>
     private readonly Counter<long> _scanFailuresCounter;
+
+    /// <summary>
+    /// Scan-duration histogram
+    /// </summary>
     private readonly Histogram<double> _scanDurationHistogram;
+
+    /// <summary>
+    /// Observed-image count
+    /// </summary>
     private long _observedImages;
+
+    /// <summary>
+    /// Runtime-container count
+    /// </summary>
     private long _runtimeContainers;
+
+    /// <summary>
+    /// Deduplicated base-image count
+    /// </summary>
     private long _deduplicatedBaseImages;
+
+    /// <summary>
+    /// Active update-finding count
+    /// </summary>
     private long _activeUpdateFindings;
+
+    /// <summary>
+    /// Active CVE-finding count
+    /// </summary>
     private long _activeCveFindings;
+
+    /// <summary>
+    /// Needs-review finding count
+    /// </summary>
     private long _needsReviewFindings;
 
     #endregion // Fields

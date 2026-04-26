@@ -11,7 +11,14 @@ public class DockerHubAccountImageDiscoveryBackgroundService : ScheduledBackgrou
 {
     #region Fields
 
+    /// <summary>
+    /// Options monitor
+    /// </summary>
     private readonly IOptionsMonitor<DockerUpdateGuardOptions> _optionsMonitor;
+
+    /// <summary>
+    /// Service-scope factory
+    /// </summary>
     private readonly IServiceScopeFactory _serviceScopeFactory;
 
     #endregion // Fields

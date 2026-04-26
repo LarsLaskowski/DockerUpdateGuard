@@ -1,6 +1,7 @@
 using DockerUpdateGuard.Data.Entities;
 using DockerUpdateGuard.Data.Repositories;
 using DockerUpdateGuard.Images;
+using DockerUpdateGuard.Tests.Data;
 
 using Microsoft.EntityFrameworkCore;
 

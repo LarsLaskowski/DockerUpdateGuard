@@ -11,7 +11,14 @@ public class ResourceStatisticsRefreshBackgroundService : ScheduledBackgroundSer
 {
     #region Fields
 
+    /// <summary>
+    /// Options monitor
+    /// </summary>
     private readonly IOptionsMonitor<DockerUpdateGuardOptions> _optionsMonitor;
+
+    /// <summary>
+    /// Service-scope factory
+    /// </summary>
     private readonly IServiceScopeFactory _serviceScopeFactory;
 
     #endregion // Fields
@@ -21,6 +28,9 @@ public class ResourceStatisticsRefreshBackgroundService : ScheduledBackgroundSer
     /// <summary>
     /// Constructor
     /// </summary>
+    /// <param name="logger">Logger</param>
+    /// <param name="optionsMonitor">Application options monitor</param>
+    /// <param name="serviceScopeFactory">Service scope factory</param>
     public ResourceStatisticsRefreshBackgroundService(ILogger<ResourceStatisticsRefreshBackgroundService> logger,
                                                       IOptionsMonitor<DockerUpdateGuardOptions> optionsMonitor,
                                                       IServiceScopeFactory serviceScopeFactory)

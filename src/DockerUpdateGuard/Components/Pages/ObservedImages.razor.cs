@@ -15,10 +15,24 @@ public partial class ObservedImages
 {
     #region Fields
 
+    /// <summary>
+    /// Observed-image registration request
+    /// </summary>
     private readonly ObservedImageRegistrationRequest _request = new();
 
+    /// <summary>
+    /// Current error message
+    /// </summary>
     private string? _errorMessage;
+
+    /// <summary>
+    /// Busy-state flag
+    /// </summary>
     private bool _isBusy;
+
+    /// <summary>
+    /// Observed-image list
+    /// </summary>
     private IReadOnlyList<ObservedImageListItemData>? _images;
 
     #endregion // Fields
@@ -50,6 +64,55 @@ public partial class ObservedImages
     public IApplicationViewService ViewService { get; set; } = null!;
 
     #endregion // Properties
+
+    #region Static methods
+
+    /// <summary>
+    /// Resolve the chip color for a scan status
+    /// </summary>
+    /// <param name="status">Scan status</param>
+    /// <returns>Chip color</returns>
+    private static Color GetScanStatusColor(string? status)
+    {
+        if (string.IsNullOrWhiteSpace(status))
+        {
+            return Color.Default;
+        }
+
+        return status.ToUpperInvariant() switch
+               {
+                   "COMPLETED" => Color.Success,
+                   "FAILED" => Color.Error,
+                   "RUNNING" => Color.Info,
+                   "PENDING" => Color.Warning,
+                   _ => Color.Default,
+               };
+    }
+
+    /// <summary>
+    /// Resolve the chip color for a vulnerability assessment status
+    /// </summary>
+    /// <param name="status">Vulnerability assessment status</param>
+    /// <returns>Chip color</returns>
+    private static Color GetVulnerabilityStatusColor(string? status)
+    {
+        if (string.IsNullOrWhiteSpace(status))
+        {
+            return Color.Default;
+        }
+
+        return status.ToUpperInvariant() switch
+               {
+                   "FINDINGS DETECTED" => Color.Warning,
+                   "NO FINDINGS" => Color.Success,
+                   "FAILED" => Color.Error,
+                   "NOT CONFIGURED" => Color.Default,
+                   "UNSUPPORTED" => Color.Default,
+                   _ => Color.Info,
+               };
+    }
+
+    #endregion // Static methods
 
     #region Methods
 
@@ -112,51 +175,6 @@ public partial class ObservedImages
                                   _isBusy = false;
                               }).ConfigureAwait(false);
         }
-    }
-
-    /// <summary>
-    /// Resolve the chip color for a scan status
-    /// </summary>
-    /// <param name="status">Scan status</param>
-    /// <returns>Chip color</returns>
-    private static Color GetScanStatusColor(string? status)
-    {
-        if (string.IsNullOrWhiteSpace(status))
-        {
-            return Color.Default;
-        }
-
-        return status.ToUpperInvariant() switch
-               {
-                   "COMPLETED" => Color.Success,
-                   "FAILED" => Color.Error,
-                   "RUNNING" => Color.Info,
-                   "PENDING" => Color.Warning,
-                   _ => Color.Default,
-               };
-    }
-
-    /// <summary>
-    /// Resolve the chip color for a vulnerability assessment status
-    /// </summary>
-    /// <param name="status">Vulnerability assessment status</param>
-    /// <returns>Chip color</returns>
-    private static Color GetVulnerabilityStatusColor(string? status)
-    {
-        if (string.IsNullOrWhiteSpace(status))
-        {
-            return Color.Default;
-        }
-
-        return status.ToUpperInvariant() switch
-               {
-                   "FINDINGS DETECTED" => Color.Warning,
-                   "NO FINDINGS" => Color.Success,
-                   "FAILED" => Color.Error,
-                   "NOT CONFIGURED" => Color.Default,
-                   "UNSUPPORTED" => Color.Default,
-                   _ => Color.Info,
-               };
     }
 
     /// <summary>

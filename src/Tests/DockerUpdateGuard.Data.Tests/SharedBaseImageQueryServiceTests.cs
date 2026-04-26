@@ -1,5 +1,6 @@
 using DockerUpdateGuard.Data.Entities;
 using DockerUpdateGuard.Data.Queries;
+using DockerUpdateGuard.Data.Tests.Data;
 
 namespace DockerUpdateGuard.Data.Tests;
 

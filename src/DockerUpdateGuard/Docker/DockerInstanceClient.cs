@@ -5,6 +5,7 @@ using System.Text.Json;
 
 using DockerUpdateGuard.Configuration;
 using DockerUpdateGuard.Data.Entities;
+using DockerUpdateGuard.Images;
 using DockerUpdateGuard.Infrastructure;
 using DockerUpdateGuard.Telemetry;
 
@@ -17,6 +18,19 @@ public class DockerInstanceClient : IDockerInstanceClient
 {
     #region Fields
 
+    /// <summary>
+    /// Image reference parser
+    /// </summary>
+    private static readonly IImageReferenceParser ImageReferenceParser = new ImageReferenceParser();
+
+    /// <summary>
+    /// HTTP-client factory
+    /// </summary>
+    private readonly Func<DockerInstanceOptions, Uri, HttpClient> _httpClientFactory;
+
+    /// <summary>
+    /// Logger
+    /// </summary>
     private readonly ILogger<DockerInstanceClient> _logger;
 
     #endregion // Fields
@@ -28,198 +42,183 @@ public class DockerInstanceClient : IDockerInstanceClient
     /// </summary>
     /// <param name="logger">Logger</param>
     public DockerInstanceClient(ILogger<DockerInstanceClient> logger)
+        : this(logger, CreateHttpClient)
+    {
+    }
+
+    /// <summary>
+    /// Constructor
+    /// </summary>
+    /// <param name="logger">Logger</param>
+    /// <param name="httpClientFactory">HTTP client factory</param>
+    public DockerInstanceClient(ILogger<DockerInstanceClient> logger,
+                                Func<DockerInstanceOptions, Uri, HttpClient> httpClientFactory)
     {
         _logger = logger;
+        _httpClientFactory = httpClientFactory;
     }
 
     #endregion // Constructors
 
-    #region Methods
+    #region Static methods
 
-    /// <inheritdoc/>
-    public async Task<ExternalOperationResult<IReadOnlyList<RuntimeContainerDescriptor>>> DiscoverContainersAsync(DockerInstanceOptions instanceOptions, CancellationToken cancellationToken = default)
+    /// <summary>
+    /// Populate runtime containers with repository digests resolved from Docker image inspect
+    /// </summary>
+    /// <param name="httpClient">Docker engine client</param>
+    /// <param name="containers">Discovered containers</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Task</returns>
+    private static async Task PopulateRepositoryDigestsAsync(HttpClient httpClient,
+                                                             IReadOnlyList<RuntimeContainerDescriptor> containers,
+                                                             CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(instanceOptions);
+        var digestsByImageId = new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase);
+        var imageIds = containers.Where(entity => string.IsNullOrWhiteSpace(entity.ImageDigest)
+                                                  && string.IsNullOrWhiteSpace(entity.LocalImageId) == false)
+                                 .Select(entity => entity.LocalImageId!)
+                                 .Distinct(StringComparer.OrdinalIgnoreCase)
+                                 .ToArray();
 
-        if (instanceOptions.Enabled == false)
+        foreach (var imageId in imageIds)
         {
-            _logger.DockerInstanceDiscoverySkippedDisabled(instanceOptions.Name);
-
-            return ExternalOperationResult<IReadOnlyList<RuntimeContainerDescriptor>>.NotConfigured($"Docker instance '{instanceOptions.Name}' is disabled");
+            digestsByImageId[imageId] = await GetRepositoryDigestsAsync(httpClient,
+                                                                        imageId,
+                                                                        cancellationToken).ConfigureAwait(false);
         }
 
-        if (TryCreateEngineUri(instanceOptions, out var engineUri) == false || engineUri is null)
+        foreach (var container in containers)
         {
-            _logger.DockerInstanceEndpointUnsupported(instanceOptions.Name, instanceOptions.BaseUrl);
-
-            return ExternalOperationResult<IReadOnlyList<RuntimeContainerDescriptor>>.Unsupported($"Docker instance '{instanceOptions.Name}' uses an unsupported endpoint '{instanceOptions.BaseUrl}'");
-        }
-
-        using var activity = DockerUpdateGuardTelemetry.ActivitySource.StartActivity(TelemetryActivityNames.DockerEngineRequest, ActivityKind.Client);
-
-        activity?.SetTag(TelemetryTagNames.DockerInstanceName, instanceOptions.Name);
-
-        try
-        {
-            using var httpClient = CreateHttpClient(instanceOptions, engineUri);
-            using var response = await httpClient.GetAsync("v1.41/containers/json?all=1", cancellationToken)
-                                                 .ConfigureAwait(false);
-
-            if (response.IsSuccessStatusCode == false)
+            if (string.IsNullOrWhiteSpace(container.LocalImageId)
+                || digestsByImageId.TryGetValue(container.LocalImageId, out var repoDigests) == false)
             {
-                var body = await response.Content.ReadAsStringAsync(cancellationToken)
-                                                 .ConfigureAwait(false);
-
-                _logger.DockerInstanceDiscoveryResponseFailed(instanceOptions.Name, (int)response.StatusCode);
-
-                return ExternalOperationResult<IReadOnlyList<RuntimeContainerDescriptor>>.Failed($"Docker instance '{instanceOptions.Name}' returned {(int)response.StatusCode}: {body}");
+                continue;
             }
 
-            var responseStreamTask = response.Content.ReadAsStreamAsync(cancellationToken);
-            var responseStream = await responseStreamTask.ConfigureAwait(false);
-
-            await using (responseStream.ConfigureAwait(false))
-            {
-                using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: cancellationToken)
-                                                           .ConfigureAwait(false);
-                var containers = new List<RuntimeContainerDescriptor>();
-
-                foreach (var element in jsonDocument.RootElement.EnumerateArray())
-                {
-                    containers.Add(ParseContainer(element));
-                }
-
-                _logger.DockerInstanceDiscoverySucceeded(instanceOptions.Name, containers.Count);
-
-                return ExternalOperationResult<IReadOnlyList<RuntimeContainerDescriptor>>.Succeeded(containers);
-            }
-        }
-        catch (Exception exception)
-        {
-            _logger.DockerInstanceDiscoveryFailed(exception, instanceOptions.Name);
-
-            return ExternalOperationResult<IReadOnlyList<RuntimeContainerDescriptor>>.Failed($"Docker container discovery failed for '{instanceOptions.Name}': {exception.Message}");
+            container.ImageDigest = ResolveRepositoryDigest(container.ImageReference, repoDigests);
         }
     }
 
-    /// <inheritdoc/>
-    public async Task<ExternalOperationResult<IReadOnlyList<RuntimeContainerResourceDescriptor>>> CollectContainerResourceUsageAsync(DockerInstanceOptions instanceOptions, CancellationToken cancellationToken = default)
+    /// <summary>
+    /// Read repository digests for a local Docker image
+    /// </summary>
+    /// <param name="httpClient">Docker engine client</param>
+    /// <param name="imageId">Local image identifier</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Repository digests</returns>
+    private static async Task<IReadOnlyList<string>> GetRepositoryDigestsAsync(HttpClient httpClient,
+                                                                               string imageId,
+                                                                               CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(instanceOptions);
+        using var response = await httpClient.GetAsync($"v1.41/images/{Uri.EscapeDataString(imageId)}/json", cancellationToken)
+                                             .ConfigureAwait(false);
 
-        if (instanceOptions.Enabled == false)
+        if (response.IsSuccessStatusCode == false)
         {
-            return ExternalOperationResult<IReadOnlyList<RuntimeContainerResourceDescriptor>>.NotConfigured($"Docker instance '{instanceOptions.Name}' is disabled");
+            return [];
         }
 
-        if (TryCreateEngineUri(instanceOptions, out var engineUri) == false || engineUri is null)
+        var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken)
+                                                   .ConfigureAwait(false);
+
+        await using (responseStream.ConfigureAwait(false))
         {
-            return ExternalOperationResult<IReadOnlyList<RuntimeContainerResourceDescriptor>>.Unsupported($"Docker instance '{instanceOptions.Name}' uses an unsupported endpoint '{instanceOptions.BaseUrl}'");
-        }
-
-        try
-        {
-            using var httpClient = CreateHttpClient(instanceOptions, engineUri);
-            using var response = await httpClient.GetAsync("v1.41/containers/json", cancellationToken)
-                                                 .ConfigureAwait(false);
-
-            if (response.IsSuccessStatusCode == false)
-            {
-                var body = await response.Content.ReadAsStringAsync(cancellationToken)
-                                                 .ConfigureAwait(false);
-
-                return ExternalOperationResult<IReadOnlyList<RuntimeContainerResourceDescriptor>>.Failed($"Docker instance '{instanceOptions.Name}' returned {(int)response.StatusCode}: {body}");
-            }
-
-            var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken)
+            using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: cancellationToken)
                                                        .ConfigureAwait(false);
 
-            await using (responseStream.ConfigureAwait(false))
+            if (jsonDocument.RootElement.TryGetProperty("RepoDigests", out var repoDigestsElement) == false
+                || repoDigestsElement.ValueKind != JsonValueKind.Array)
             {
-                using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: cancellationToken)
-                                                           .ConfigureAwait(false);
-                var samples = new List<RuntimeContainerResourceDescriptor>();
-
-                foreach (var containerElement in jsonDocument.RootElement.EnumerateArray())
-                {
-                    var containerId = TryGetString(containerElement, "Id");
-
-                    if (string.IsNullOrWhiteSpace(containerId))
-                    {
-                        continue;
-                    }
-
-                    using var statsResponse = await httpClient.GetAsync($"v1.41/containers/{Uri.EscapeDataString(containerId)}/stats?stream=false", cancellationToken)
-                                                              .ConfigureAwait(false);
-
-                    if (statsResponse.IsSuccessStatusCode == false)
-                    {
-                        continue;
-                    }
-
-                    var statsStream = await statsResponse.Content.ReadAsStreamAsync(cancellationToken)
-                                                                 .ConfigureAwait(false);
-
-                    await using (statsStream.ConfigureAwait(false))
-                    {
-                        using var statsDocument = await JsonDocument.ParseAsync(statsStream, cancellationToken: cancellationToken)
-                                                                    .ConfigureAwait(false);
-                        samples.Add(ParseResourceSample(containerElement, statsDocument.RootElement));
-                    }
-                }
-
-                return ExternalOperationResult<IReadOnlyList<RuntimeContainerResourceDescriptor>>.Succeeded(samples);
+                return [];
             }
-        }
-        catch (Exception exception)
-        {
-            return ExternalOperationResult<IReadOnlyList<RuntimeContainerResourceDescriptor>>.Failed($"Docker container resource sampling failed for '{instanceOptions.Name}': {exception.Message}");
+
+            return repoDigestsElement.EnumerateArray()
+                                     .Select(element => element.GetString())
+                                     .Where(value => string.IsNullOrWhiteSpace(value) == false)
+                                     .Cast<string>()
+                                     .ToArray();
         }
     }
 
-    /// <inheritdoc/>
-    public async Task<ExternalOperationResult<long>> GetHostMemoryTotalAsync(DockerInstanceOptions instanceOptions, CancellationToken cancellationToken = default)
+    /// <summary>
+    /// Resolve the repository digest that belongs to the reported image reference
+    /// </summary>
+    /// <param name="imageReference">Reported image reference</param>
+    /// <param name="repoDigests">Available repository digests</param>
+    /// <returns>Matching digest</returns>
+    private static string? ResolveRepositoryDigest(string imageReference, IReadOnlyList<string> repoDigests)
     {
-        ArgumentNullException.ThrowIfNull(instanceOptions);
-
-        if (instanceOptions.Enabled == false)
+        if (repoDigests.Count == 0)
         {
-            return ExternalOperationResult<long>.NotConfigured($"Docker instance '{instanceOptions.Name}' is disabled");
+            return null;
         }
 
-        if (TryCreateEngineUri(instanceOptions, out var engineUri) == false || engineUri is null)
+        if (TryParseImageReference(imageReference, out var parsedImageReference) == false
+            || parsedImageReference is null)
         {
-            return ExternalOperationResult<long>.Unsupported($"Docker instance '{instanceOptions.Name}' uses an unsupported endpoint '{instanceOptions.BaseUrl}'");
+            return ExtractDigest(repoDigests[0]);
+        }
+
+        foreach (var repoDigest in repoDigests)
+        {
+            if (TryParseImageReference(repoDigest, out var parsedRepoDigest) == false
+                || parsedRepoDigest is null)
+            {
+                continue;
+            }
+
+            if (string.Equals(parsedRepoDigest.Registry,
+                              parsedImageReference.Registry,
+                              StringComparison.OrdinalIgnoreCase)
+                && string.Equals(parsedRepoDigest.Repository,
+                                 parsedImageReference.Repository,
+                                 StringComparison.OrdinalIgnoreCase))
+            {
+                return parsedRepoDigest.Digest;
+            }
+        }
+
+        return repoDigests.Count == 1 ? ExtractDigest(repoDigests[0]) : null;
+    }
+
+    /// <summary>
+    /// Extract the digest portion from a repository digest reference
+    /// </summary>
+    /// <param name="repositoryDigest">Repository digest reference</param>
+    /// <returns>Digest</returns>
+    private static string? ExtractDigest(string repositoryDigest)
+    {
+        var separatorIndex = repositoryDigest.IndexOf('@');
+
+        return separatorIndex >= 0 && separatorIndex < repositoryDigest.Length - 1
+                   ? repositoryDigest[(separatorIndex + 1)..].Trim().ToLowerInvariant()
+                   : null;
+    }
+
+    /// <summary>
+    /// Parse an image reference without throwing for invalid inputs
+    /// </summary>
+    /// <param name="value">Image reference text</param>
+    /// <param name="imageReference">Parsed image reference</param>
+    /// <returns>True when parsing succeeded</returns>
+    private static bool TryParseImageReference(string value, out ImageReference? imageReference)
+    {
+        imageReference = null;
+
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
         }
 
         try
         {
-            using var httpClient = CreateHttpClient(instanceOptions, engineUri);
-            using var response = await httpClient.GetAsync("v1.41/info", cancellationToken)
-                                                 .ConfigureAwait(false);
+            imageReference = ImageReferenceParser.Parse(value);
 
-            if (response.IsSuccessStatusCode == false)
-            {
-                var body = await response.Content.ReadAsStringAsync(cancellationToken)
-                                                 .ConfigureAwait(false);
-
-                return ExternalOperationResult<long>.Failed($"Docker instance '{instanceOptions.Name}' returned {(int)response.StatusCode}: {body}");
-            }
-
-            var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken)
-                                                       .ConfigureAwait(false);
-
-            await using (responseStream.ConfigureAwait(false))
-            {
-                using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: cancellationToken)
-                                                           .ConfigureAwait(false);
-
-                return ExternalOperationResult<long>.Succeeded(TryGetInt64(jsonDocument.RootElement, "MemTotal"));
-            }
+            return true;
         }
-        catch (Exception exception)
+        catch (ArgumentException)
         {
-            return ExternalOperationResult<long>.Failed($"Docker host info request failed for '{instanceOptions.Name}': {exception.Message}");
+            return false;
         }
     }
 
@@ -397,7 +396,7 @@ public class DockerInstanceClient : IDockerInstanceClient
                    ContainerId = TryGetString(element, "Id") ?? string.Empty,
                    Name = GetPrimaryName(element),
                    ImageReference = TryGetString(element, "Image") ?? string.Empty,
-                   ImageDigest = TryGetString(element, "ImageID"),
+                   LocalImageId = TryGetString(element, "ImageID"),
                    ComposeProject = TryGetLabel(labels, "com.docker.compose.project"),
                    StackName = TryGetLabel(labels, "com.docker.stack.namespace"),
                    ServiceName = TryGetLabel(labels, "com.docker.swarm.service.name"),
@@ -651,6 +650,201 @@ public class DockerInstanceClient : IDockerInstanceClient
     private static DateTimeOffset? TryParseTimestamp(string? value)
     {
         return DateTimeOffset.TryParse(value, out var timestamp) ? timestamp : null;
+    }
+
+    #endregion // Static methods
+
+    #region Methods
+
+    /// <inheritdoc/>
+    public async Task<ExternalOperationResult<IReadOnlyList<RuntimeContainerDescriptor>>> DiscoverContainersAsync(DockerInstanceOptions instanceOptions, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(instanceOptions);
+
+        if (instanceOptions.Enabled == false)
+        {
+            _logger.DockerInstanceDiscoverySkippedDisabled(instanceOptions.Name);
+
+            return ExternalOperationResult<IReadOnlyList<RuntimeContainerDescriptor>>.NotConfigured($"Docker instance '{instanceOptions.Name}' is disabled");
+        }
+
+        if (TryCreateEngineUri(instanceOptions, out var engineUri) == false || engineUri is null)
+        {
+            _logger.DockerInstanceEndpointUnsupported(instanceOptions.Name, instanceOptions.BaseUrl);
+
+            return ExternalOperationResult<IReadOnlyList<RuntimeContainerDescriptor>>.Unsupported($"Docker instance '{instanceOptions.Name}' uses an unsupported endpoint '{instanceOptions.BaseUrl}'");
+        }
+
+        using var activity = DockerUpdateGuardTelemetry.ActivitySource.StartActivity(TelemetryActivityNames.DockerEngineRequest, ActivityKind.Client);
+
+        activity?.SetTag(TelemetryTagNames.DockerInstanceName, instanceOptions.Name);
+
+        try
+        {
+            using var httpClient = _httpClientFactory(instanceOptions, engineUri);
+            using var response = await httpClient.GetAsync("v1.41/containers/json?all=1", cancellationToken)
+                                                 .ConfigureAwait(false);
+
+            if (response.IsSuccessStatusCode == false)
+            {
+                var body = await response.Content.ReadAsStringAsync(cancellationToken)
+                                                 .ConfigureAwait(false);
+
+                _logger.DockerInstanceDiscoveryResponseFailed(instanceOptions.Name, (int)response.StatusCode);
+
+                return ExternalOperationResult<IReadOnlyList<RuntimeContainerDescriptor>>.Failed($"Docker instance '{instanceOptions.Name}' returned {(int)response.StatusCode}: {body}");
+            }
+
+            var responseStreamTask = response.Content.ReadAsStreamAsync(cancellationToken);
+            var responseStream = await responseStreamTask.ConfigureAwait(false);
+
+            await using (responseStream.ConfigureAwait(false))
+            {
+                using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: cancellationToken)
+                                                           .ConfigureAwait(false);
+                var containers = new List<RuntimeContainerDescriptor>();
+
+                foreach (var element in jsonDocument.RootElement.EnumerateArray())
+                {
+                    containers.Add(ParseContainer(element));
+                }
+
+                await PopulateRepositoryDigestsAsync(httpClient,
+                                                     containers,
+                                                     cancellationToken).ConfigureAwait(false);
+
+                _logger.DockerInstanceDiscoverySucceeded(instanceOptions.Name, containers.Count);
+
+                return ExternalOperationResult<IReadOnlyList<RuntimeContainerDescriptor>>.Succeeded(containers);
+            }
+        }
+        catch (Exception exception)
+        {
+            _logger.DockerInstanceDiscoveryFailed(exception, instanceOptions.Name);
+
+            return ExternalOperationResult<IReadOnlyList<RuntimeContainerDescriptor>>.Failed($"Docker container discovery failed for '{instanceOptions.Name}': {exception.Message}");
+        }
+    }
+
+    /// <inheritdoc/>
+    public async Task<ExternalOperationResult<IReadOnlyList<RuntimeContainerResourceDescriptor>>> CollectContainerResourceUsageAsync(DockerInstanceOptions instanceOptions, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(instanceOptions);
+
+        if (instanceOptions.Enabled == false)
+        {
+            return ExternalOperationResult<IReadOnlyList<RuntimeContainerResourceDescriptor>>.NotConfigured($"Docker instance '{instanceOptions.Name}' is disabled");
+        }
+
+        if (TryCreateEngineUri(instanceOptions, out var engineUri) == false || engineUri is null)
+        {
+            return ExternalOperationResult<IReadOnlyList<RuntimeContainerResourceDescriptor>>.Unsupported($"Docker instance '{instanceOptions.Name}' uses an unsupported endpoint '{instanceOptions.BaseUrl}'");
+        }
+
+        try
+        {
+            using var httpClient = _httpClientFactory(instanceOptions, engineUri);
+            using var response = await httpClient.GetAsync("v1.41/containers/json", cancellationToken)
+                                                 .ConfigureAwait(false);
+
+            if (response.IsSuccessStatusCode == false)
+            {
+                var body = await response.Content.ReadAsStringAsync(cancellationToken)
+                                                 .ConfigureAwait(false);
+
+                return ExternalOperationResult<IReadOnlyList<RuntimeContainerResourceDescriptor>>.Failed($"Docker instance '{instanceOptions.Name}' returned {(int)response.StatusCode}: {body}");
+            }
+
+            var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken)
+                                                       .ConfigureAwait(false);
+
+            await using (responseStream.ConfigureAwait(false))
+            {
+                using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: cancellationToken)
+                                                           .ConfigureAwait(false);
+                var samples = new List<RuntimeContainerResourceDescriptor>();
+
+                foreach (var containerElement in jsonDocument.RootElement.EnumerateArray())
+                {
+                    var containerId = TryGetString(containerElement, "Id");
+
+                    if (string.IsNullOrWhiteSpace(containerId))
+                    {
+                        continue;
+                    }
+
+                    using var statsResponse = await httpClient.GetAsync($"v1.41/containers/{Uri.EscapeDataString(containerId)}/stats?stream=false", cancellationToken)
+                                                              .ConfigureAwait(false);
+
+                    if (statsResponse.IsSuccessStatusCode == false)
+                    {
+                        continue;
+                    }
+
+                    var statsStream = await statsResponse.Content.ReadAsStreamAsync(cancellationToken)
+                                                                 .ConfigureAwait(false);
+
+                    await using (statsStream.ConfigureAwait(false))
+                    {
+                        using var statsDocument = await JsonDocument.ParseAsync(statsStream, cancellationToken: cancellationToken)
+                                                                    .ConfigureAwait(false);
+                        samples.Add(ParseResourceSample(containerElement, statsDocument.RootElement));
+                    }
+                }
+
+                return ExternalOperationResult<IReadOnlyList<RuntimeContainerResourceDescriptor>>.Succeeded(samples);
+            }
+        }
+        catch (Exception exception)
+        {
+            return ExternalOperationResult<IReadOnlyList<RuntimeContainerResourceDescriptor>>.Failed($"Docker container resource sampling failed for '{instanceOptions.Name}': {exception.Message}");
+        }
+    }
+
+    /// <inheritdoc/>
+    public async Task<ExternalOperationResult<long>> GetHostMemoryTotalAsync(DockerInstanceOptions instanceOptions, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(instanceOptions);
+
+        if (instanceOptions.Enabled == false)
+        {
+            return ExternalOperationResult<long>.NotConfigured($"Docker instance '{instanceOptions.Name}' is disabled");
+        }
+
+        if (TryCreateEngineUri(instanceOptions, out var engineUri) == false || engineUri is null)
+        {
+            return ExternalOperationResult<long>.Unsupported($"Docker instance '{instanceOptions.Name}' uses an unsupported endpoint '{instanceOptions.BaseUrl}'");
+        }
+
+        try
+        {
+            using var httpClient = _httpClientFactory(instanceOptions, engineUri);
+            using var response = await httpClient.GetAsync("v1.41/info", cancellationToken)
+                                                 .ConfigureAwait(false);
+
+            if (response.IsSuccessStatusCode == false)
+            {
+                var body = await response.Content.ReadAsStringAsync(cancellationToken)
+                                                 .ConfigureAwait(false);
+
+                return ExternalOperationResult<long>.Failed($"Docker instance '{instanceOptions.Name}' returned {(int)response.StatusCode}: {body}");
+            }
+
+            var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken)
+                                                       .ConfigureAwait(false);
+
+            await using (responseStream.ConfigureAwait(false))
+            {
+                using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: cancellationToken)
+                                                           .ConfigureAwait(false);
+
+                return ExternalOperationResult<long>.Succeeded(TryGetInt64(jsonDocument.RootElement, "MemTotal"));
+            }
+        }
+        catch (Exception exception)
+        {
+            return ExternalOperationResult<long>.Failed($"Docker host info request failed for '{instanceOptions.Name}': {exception.Message}");
+        }
     }
 
     #endregion // Methods

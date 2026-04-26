@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Options;
 
-namespace DockerUpdateGuard.Tests;
+namespace DockerUpdateGuard.Tests.Data;
 
 /// <summary>
 /// Lightweight options monitor for deterministic tests

@@ -1,4 +1,5 @@
 using DockerUpdateGuard.Telemetry;
+using DockerUpdateGuard.Tests.Data;
 
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -17,11 +18,11 @@ public class TelemetryServiceCollectionExtensionsTests
 {
     #region Fields
 
-    private static readonly string[] _removedTelemetryLoggingOptionKeys = [
-                                                                              "IncludeFormattedMessage",
-                                                                              "IncludeScopes",
-                                                                              "ParseStateValues",
-                                                                          ];
+    private static readonly string[] RemovedTelemetryLoggingOptionKeys = [
+                                                                             "IncludeFormattedMessage",
+                                                                             "IncludeScopes",
+                                                                             "ParseStateValues",
+                                                                         ];
 
     #endregion // Fields
 
@@ -147,7 +148,7 @@ public class TelemetryServiceCollectionExtensionsTests
                                                         StringComparer.Ordinal),
                       "The development telemetry sample must expose the OTLP endpoint option");
 
-        foreach (var removedOptionKey in _removedTelemetryLoggingOptionKeys)
+        foreach (var removedOptionKey in RemovedTelemetryLoggingOptionKeys)
         {
             Assert.IsFalse(baseTelemetryKeys.Contains(removedOptionKey, StringComparer.Ordinal),
                            $"The shipped telemetry configuration must not expose the removed '{removedOptionKey}' option");

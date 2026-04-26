@@ -1,4 +1,5 @@
 using DockerUpdateGuard.Configuration;
+using DockerUpdateGuard.Tests.Data;
 
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;

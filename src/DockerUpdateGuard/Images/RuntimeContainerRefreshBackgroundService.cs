@@ -12,7 +12,14 @@ public class RuntimeContainerRefreshBackgroundService : ScheduledBackgroundServi
 {
     #region Fields
 
+    /// <summary>
+    /// Options monitor
+    /// </summary>
     private readonly IOptionsMonitor<DockerUpdateGuardOptions> _optionsMonitor;
+
+    /// <summary>
+    /// Service-scope factory
+    /// </summary>
     private readonly IServiceScopeFactory _serviceScopeFactory;
 
     #endregion // Fields
@@ -22,6 +29,9 @@ public class RuntimeContainerRefreshBackgroundService : ScheduledBackgroundServi
     /// <summary>
     /// Constructor
     /// </summary>
+    /// <param name="logger">Logger</param>
+    /// <param name="optionsMonitor">Application options monitor</param>
+    /// <param name="serviceScopeFactory">Service scope factory</param>
     public RuntimeContainerRefreshBackgroundService(ILogger<RuntimeContainerRefreshBackgroundService> logger,
                                                     IOptionsMonitor<DockerUpdateGuardOptions> optionsMonitor,
                                                     IServiceScopeFactory serviceScopeFactory)

@@ -20,15 +20,54 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
 {
     #region Fields
 
+    /// <summary>
+    /// Application telemetry
+    /// </summary>
     private readonly ApplicationTelemetry _applicationTelemetry;
+
+    /// <summary>
+    /// Database context
+    /// </summary>
     private readonly DockerUpdateGuardDbContext _dbContext;
+
+    /// <summary>
+    /// Docker-instance client
+    /// </summary>
     private readonly IDockerInstanceClient _dockerInstanceClient;
+
+    /// <summary>
+    /// Image-catalog repository
+    /// </summary>
     private readonly IImageCatalogRepository _imageCatalogRepository;
+
+    /// <summary>
+    /// Image-reference parser
+    /// </summary>
     private readonly IImageReferenceParser _imageReferenceParser;
+
+    /// <summary>
+    /// Instance-discovery service
+    /// </summary>
     private readonly IInstanceDiscoveryService _instanceDiscoveryService;
+
+    /// <summary>
+    /// Logger
+    /// </summary>
     private readonly ILogger<RuntimeContainerScanOrchestrator> _logger;
+
+    /// <summary>
+    /// Options monitor
+    /// </summary>
     private readonly IOptionsMonitor<DockerUpdateGuardOptions> _optionsMonitor;
+
+    /// <summary>
+    /// Registry-metadata service
+    /// </summary>
     private readonly IRegistryMetadataService _registryMetadataService;
+
+    /// <summary>
+    /// Update-detection service
+    /// </summary>
     private readonly IUpdateDetectionService _updateDetectionService;
 
     #endregion // Fields
@@ -38,6 +77,16 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
     /// <summary>
     /// Constructor
     /// </summary>
+    /// <param name="applicationTelemetry">Application telemetry</param>
+    /// <param name="dbContext">Database context</param>
+    /// <param name="dockerInstanceClient">Docker instance client</param>
+    /// <param name="imageCatalogRepository">Image catalog repository</param>
+    /// <param name="imageReferenceParser">Image reference parser</param>
+    /// <param name="instanceDiscoveryService">Instance discovery service</param>
+    /// <param name="logger">Logger</param>
+    /// <param name="optionsMonitor">Application options monitor</param>
+    /// <param name="registryMetadataService">Registry metadata service</param>
+    /// <param name="updateDetectionService">Update detection service</param>
     public RuntimeContainerScanOrchestrator(ApplicationTelemetry applicationTelemetry,
                                             DockerUpdateGuardDbContext dbContext,
                                             IDockerInstanceClient dockerInstanceClient,
@@ -62,6 +111,33 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
     }
 
     #endregion // Constructors
+
+    #region Static methods
+
+    /// <summary>
+    /// Map an update evaluation result to the persisted runtime assessment
+    /// </summary>
+    /// <param name="snapshot">Runtime snapshot</param>
+    /// <param name="evaluation">Update evaluation</param>
+    private static void ApplyUpdateAssessment(ContainerSnapshot snapshot, UpdateEvaluationResult evaluation)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        ArgumentNullException.ThrowIfNull(evaluation);
+
+        snapshot.UpdateAssessmentStatus = evaluation.Status switch
+                                          {
+                                              UpdateEvaluationStatus.UpToDate => UpdateAssessmentStatus.UpToDate,
+                                              UpdateEvaluationStatus.UpdateAvailable => UpdateAssessmentStatus.UpdateAvailable,
+                                              UpdateEvaluationStatus.NeedsReview => UpdateAssessmentStatus.ManualReviewRequired,
+                                              UpdateEvaluationStatus.Unknown => UpdateAssessmentStatus.NoTagData,
+                                              _ => UpdateAssessmentStatus.NotEvaluated,
+                                          };
+        snapshot.UpdateAssessmentMessage = string.IsNullOrWhiteSpace(evaluation.Details)
+                                               ? evaluation.Summary
+                                               : $"{evaluation.Summary} {evaluation.Details}";
+    }
+
+    #endregion // Static methods
 
     #region Methods
 
@@ -385,29 +461,6 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
         }
 
         _dbContext.UpdateFindings.Add(finding);
-    }
-
-    /// <summary>
-    /// Map an update evaluation result to the persisted runtime assessment
-    /// </summary>
-    /// <param name="snapshot">Runtime snapshot</param>
-    /// <param name="evaluation">Update evaluation</param>
-    private static void ApplyUpdateAssessment(ContainerSnapshot snapshot, UpdateEvaluationResult evaluation)
-    {
-        ArgumentNullException.ThrowIfNull(snapshot);
-        ArgumentNullException.ThrowIfNull(evaluation);
-
-        snapshot.UpdateAssessmentStatus = evaluation.Status switch
-                                          {
-                                              UpdateEvaluationStatus.UpToDate => UpdateAssessmentStatus.UpToDate,
-                                              UpdateEvaluationStatus.UpdateAvailable => UpdateAssessmentStatus.UpdateAvailable,
-                                              UpdateEvaluationStatus.NeedsReview => UpdateAssessmentStatus.ManualReviewRequired,
-                                              UpdateEvaluationStatus.Unknown => UpdateAssessmentStatus.NoTagData,
-                                              _ => UpdateAssessmentStatus.NotEvaluated,
-                                          };
-        snapshot.UpdateAssessmentMessage = string.IsNullOrWhiteSpace(evaluation.Details)
-                                               ? evaluation.Summary
-                                               : $"{evaluation.Summary} {evaluation.Details}";
     }
 
     /// <summary>
