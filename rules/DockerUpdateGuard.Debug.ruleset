@@ -80,7 +80,6 @@
     <Rule Id="CA1710" Action="None" />
   </Rules>
   <Rules AnalyzerId="Reihitsu.Analyzer" RuleNamespace="Reihitsu.Analyzer">
-    <Rule Id="RH0378" Action="None" />
     <Rule Id="RH0428" Action="None" />
   </Rules>
   <Rules AnalyzerId="StyleCop.Analyzers" RuleNamespace="StyleCop.Analyzers">
