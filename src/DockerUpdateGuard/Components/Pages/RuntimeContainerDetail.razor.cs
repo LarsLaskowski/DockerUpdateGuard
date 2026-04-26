@@ -143,6 +143,16 @@ public partial class RuntimeContainerDetail
     }
 
     /// <summary>
+    /// Resolve the chip color for a base-runtime alert
+    /// </summary>
+    /// <param name="hasLinkedOwnImage">Whether the container is linked to an own image</param>
+    /// <returns>Chip color</returns>
+    private static Color GetBaseRuntimeAlertColor(bool hasLinkedOwnImage)
+    {
+        return hasLinkedOwnImage ? Color.Warning : Color.Info;
+    }
+
+    /// <summary>
     /// Format CPU usage
     /// </summary>
     /// <param name="usage">Usage data</param>

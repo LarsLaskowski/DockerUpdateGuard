@@ -37,5 +37,13 @@ public interface IRegistryMetadataService
     /// <returns>Base image result</returns>
     Task<ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>> ResolveBaseImagesAsync(ImageReference imageReference, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Read reduced image configuration metadata for an image reference
+    /// </summary>
+    /// <param name="imageReference">Image reference</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Image configuration result</returns>
+    Task<ExternalOperationResult<RegistryImageConfigurationData>> GetImageConfigurationAsync(ImageReference imageReference, CancellationToken cancellationToken = default);
+
     #endregion // Methods
 }

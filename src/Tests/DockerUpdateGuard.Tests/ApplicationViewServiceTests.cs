@@ -525,6 +525,105 @@ public class ApplicationViewServiceTests
     }
 
     /// <summary>
+    /// Verify derived base-runtime findings are projected into observed-image and runtime-container views
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task ApplicationViewServiceProjectsDerivedBaseRuntimeAlertsAsync()
+    {
+        var options = new DbContextOptionsBuilder<DockerUpdateGuardDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString())
+                                                                               .Options;
+
+        var dbContext = new DockerUpdateGuardDbContext(options);
+
+        await using (dbContext.ConfigureAwait(false))
+        {
+            var imageCatalogRepository = new ImageCatalogRepository(dbContext);
+            var observedImageVersion = await imageCatalogRepository.GetOrCreateImageVersionAsync("docker.io",
+                                                                                                 "company/api",
+                                                                                                 "1.0.0",
+                                                                                                 "sha256:current",
+                                                                                                 cancellationToken: CancellationToken.None)
+                                                                   .ConfigureAwait(false);
+            var runtimeImageVersion = await imageCatalogRepository.GetOrCreateImageVersionAsync("docker.io",
+                                                                                                "company/api",
+                                                                                                "1.0.0",
+                                                                                                "sha256:current",
+                                                                                                cancellationToken: CancellationToken.None)
+                                                                  .ConfigureAwait(false);
+            var observedImage = new ObservedImage
+                                {
+                                    Name = "Company API",
+                                    CurrentImageVersionId = observedImageVersion.Id,
+                                    Source = RegistrationSource.Discovery,
+                                };
+            var dockerInstance = new DockerInstance
+                                 {
+                                     Name = "Production",
+                                     EndpointUri = "https://docker.example.test",
+                                     ConnectionKind = DockerConnectionKind.Https,
+                                 };
+            var scanRun = new ScanRun
+                          {
+                              Type = ScanRunType.RuntimeContainer,
+                              Status = ScanRunStatus.Succeeded,
+                              TriggerSource = ScanTriggerSource.Manual,
+                              DockerInstance = dockerInstance,
+                          };
+            var snapshot = new ContainerSnapshot
+                           {
+                               DockerInstance = dockerInstance,
+                               ImageVersionId = runtimeImageVersion.Id,
+                               ScanRun = scanRun,
+                               ContainerId = "container-api",
+                               Name = "api",
+                               Status = ContainerRuntimeStatus.Running,
+                               IsRunning = true,
+                           };
+
+            dbContext.ObservedImages.Add(observedImage);
+            dbContext.ContainerSnapshots.Add(snapshot);
+            dbContext.UpdateFindings.Add(new UpdateFinding
+                                         {
+                                             ScanRun = scanRun,
+                                             ContainerSnapshot = snapshot,
+                                             SubjectImageVersionId = runtimeImageVersion.Id,
+                                             Type = UpdateFindingType.DerivedBaseRuntimeUpdate,
+                                             Summary = "Own image uses an outdated .NET base runtime",
+                                             Details = "Container 'api' on 'Production' appears to use .NET 9.0.13. Latest .NET 9.0 runtime is 9.0.15.",
+                                             IsActive = true,
+                                         });
+
+            await dbContext.SaveChangesAsync(CancellationToken.None)
+                           .ConfigureAwait(false);
+
+            var service = new ApplicationViewService(dbContext,
+                                                     new ImageReferenceParser(),
+                                                     new SharedBaseImageQueryService(dbContext));
+            var observedImages = await service.GetObservedImagesAsync(CancellationToken.None)
+                                              .ConfigureAwait(false);
+            var observedDetail = await service.GetObservedImageDetailAsync(observedImage.Id, CancellationToken.None)
+                                              .ConfigureAwait(false);
+            var runtimeDetail = await service.GetRuntimeContainerDetailAsync(dockerInstance.Id, "container-api", CancellationToken.None)
+                                             .ConfigureAwait(false);
+
+            Assert.AreEqual("Own image uses an outdated .NET base runtime",
+                            observedImages.Single().BaseRuntimeAlertSummary,
+                            "The observed image list must surface the linked base-runtime alert summary");
+            Assert.IsNotNull(observedDetail, "The observed image detail must be returned");
+            Assert.AreEqual("Own image uses an outdated .NET base runtime",
+                            observedDetail.BaseRuntimeAlertSummary,
+                            "The observed image detail must surface the linked base-runtime alert summary");
+            Assert.IsTrue(observedDetail.UpdateFindings.Any(entity => entity.Type == "Base runtime update"),
+                          "The observed image detail must include derived base-runtime findings in the update findings list");
+            Assert.IsNotNull(runtimeDetail, "The runtime container detail must be returned");
+            Assert.AreEqual("Own image uses an outdated .NET base runtime",
+                            runtimeDetail.BaseRuntimeAlertSummary,
+                            "The runtime container detail must surface the derived base-runtime alert summary");
+        }
+    }
+
+    /// <summary>
     /// Verify runtime-container and Docker-instance projections expose current resource usage and recent history
     /// </summary>
     /// <returns>Task</returns>
@@ -921,6 +1020,114 @@ public class ApplicationViewServiceTests
             Assert.AreEqual(1,
                             observedImagesTask.Result.Count,
                             "Concurrent observed image reads must complete successfully");
+        }
+    }
+
+    /// <summary>
+    /// Verify direct observed-image .NET runtime findings are preferred over runtime-linked fallback findings
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task ApplicationViewServiceObservedImagesPreferDirectDerivedBaseRuntimeFindingsAsync()
+    {
+        var options = new DbContextOptionsBuilder<DockerUpdateGuardDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString())
+                                                                               .Options;
+
+        var dbContext = new DockerUpdateGuardDbContext(options);
+
+        await using (dbContext.ConfigureAwait(false))
+        {
+            var imageCatalogRepository = new ImageCatalogRepository(dbContext);
+            var runtimeImageVersion = await imageCatalogRepository.GetOrCreateImageVersionAsync("ghcr.io",
+                                                                                                "acme/api",
+                                                                                                "1.0.0",
+                                                                                                "sha256:api",
+                                                                                                cancellationToken: CancellationToken.None)
+                                                                  .ConfigureAwait(false);
+            var observedImage = new ObservedImage
+                                {
+                                    Name = "Acme API",
+                                    Source = RegistrationSource.Discovery,
+                                    CurrentImageVersionId = runtimeImageVersion.Id,
+                                };
+            var dockerInstance = new DockerInstance
+                                 {
+                                     Name = "Production",
+                                     EndpointUri = "https://docker.example.test",
+                                     ConnectionKind = DockerConnectionKind.Https,
+                                 };
+            var runtimeScanRun = new ScanRun
+                                 {
+                                     Type = ScanRunType.RuntimeContainer,
+                                     Status = ScanRunStatus.Succeeded,
+                                     TriggerSource = ScanTriggerSource.Manual,
+                                     DockerInstance = dockerInstance,
+                                 };
+            var observedScanRun = new ScanRun
+                                  {
+                                      Type = ScanRunType.ObservedImage,
+                                      Status = ScanRunStatus.Succeeded,
+                                      TriggerSource = ScanTriggerSource.Manual,
+                                      ObservedImage = observedImage,
+                                  };
+            var snapshot = new ContainerSnapshot
+                           {
+                               DockerInstance = dockerInstance,
+                               ImageVersionId = runtimeImageVersion.Id,
+                               ScanRun = runtimeScanRun,
+                               ContainerId = "container-api",
+                               Name = "api",
+                               Status = ContainerRuntimeStatus.Running,
+                               IsRunning = true,
+                           };
+
+            dbContext.ObservedImages.Add(observedImage);
+            dbContext.ContainerSnapshots.Add(snapshot);
+            dbContext.UpdateFindings.AddRange(new UpdateFinding
+                                              {
+                                                  ScanRun = observedScanRun,
+                                                  ObservedImage = observedImage,
+                                                  SubjectImageVersionId = runtimeImageVersion.Id,
+                                                  Type = UpdateFindingType.DerivedBaseRuntimeUpdate,
+                                                  Summary = "Own image uses an outdated .NET base runtime",
+                                                  Details = "Observed image direct finding",
+                                                  IsActive = true,
+                                              },
+                                              new UpdateFinding
+                                              {
+                                                  ScanRun = runtimeScanRun,
+                                                  ContainerSnapshot = snapshot,
+                                                  SubjectImageVersionId = runtimeImageVersion.Id,
+                                                  Type = UpdateFindingType.DerivedBaseRuntimeUpdate,
+                                                  Summary = "Runtime fallback finding",
+                                                  Details = "Linked runtime fallback finding",
+                                                  IsActive = true,
+                                              });
+
+            await dbContext.SaveChangesAsync(CancellationToken.None)
+                           .ConfigureAwait(false);
+
+            var service = new ApplicationViewService(dbContext,
+                                                     new ImageReferenceParser(),
+                                                     new SharedBaseImageQueryService(dbContext));
+            var observedImages = await service.GetObservedImagesAsync(CancellationToken.None)
+                                              .ConfigureAwait(false);
+            var observedDetail = await service.GetObservedImageDetailAsync(observedImage.Id, CancellationToken.None)
+                                              .ConfigureAwait(false);
+            var runtimeDetail = await service.GetRuntimeContainerDetailAsync(dockerInstance.Id, "container-api", CancellationToken.None)
+                                             .ConfigureAwait(false);
+
+            Assert.AreEqual("Own image uses an outdated .NET base runtime",
+                            observedImages.Single().BaseRuntimeAlertSummary,
+                            "The observed image list must prefer the direct observed-image base-runtime finding");
+            Assert.IsNotNull(observedDetail, "The observed image detail must be returned");
+            Assert.AreEqual("Own image uses an outdated .NET base runtime",
+                            observedDetail.BaseRuntimeAlertSummary,
+                            "The observed image detail must prefer the direct observed-image base-runtime finding");
+            Assert.IsNotNull(runtimeDetail, "The runtime container detail must be returned");
+            Assert.AreEqual("Runtime fallback finding",
+                            runtimeDetail.BaseRuntimeAlertSummary,
+                            "Runtime container detail must keep the runtime-specific finding when it exists");
         }
     }
 

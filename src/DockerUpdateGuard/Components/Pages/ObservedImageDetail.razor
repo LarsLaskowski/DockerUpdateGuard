@@ -62,6 +62,22 @@
                         }
                     </MudPaper>
                 </MudItem>
+                @if (string.IsNullOrWhiteSpace(_detail.BaseRuntimeAlertSummary) == false)
+                {
+                    <MudItem xs="12" md="6">
+                        <MudPaper Class="summary-card" Elevation="0">
+                            <span class="summary-label">Base runtime</span>
+                            <MudChip T="string" Size="Size.Small" Color="@GetBaseRuntimeAlertColor(_detail.IsOwnImage)">
+                                @(_detail.IsOwnImage ? "Runtime warning" : "Runtime hint")
+                            </MudChip>
+                            <span class="table-secondary">@_detail.BaseRuntimeAlertSummary</span>
+                            @if (string.IsNullOrWhiteSpace(_detail.BaseRuntimeAlertDetails) == false)
+                            {
+                                <span class="table-secondary">@_detail.BaseRuntimeAlertDetails</span>
+                            }
+                        </MudPaper>
+                    </MudItem>
+                }
             </MudGrid>
         </MudPaper>
 

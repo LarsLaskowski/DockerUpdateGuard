@@ -53,6 +53,16 @@ public class ObservedImageDetailViewData
     public IReadOnlyList<UpdateFindingViewData> UpdateFindings { get; set; } = [];
 
     /// <summary>
+    /// Base-runtime alert summary
+    /// </summary>
+    public string? BaseRuntimeAlertSummary { get; set; }
+
+    /// <summary>
+    /// Base-runtime alert details
+    /// </summary>
+    public string? BaseRuntimeAlertDetails { get; set; }
+
+    /// <summary>
     /// Vulnerability assessment summary
     /// </summary>
     public VulnerabilityAssessmentViewData VulnerabilityAssessment { get; set; } = new();

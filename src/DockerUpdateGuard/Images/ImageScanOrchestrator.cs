@@ -4,6 +4,7 @@ using System.Text.Json;
 using DockerUpdateGuard.Data;
 using DockerUpdateGuard.Data.Entities;
 using DockerUpdateGuard.Data.Repositories;
+using DockerUpdateGuard.Docker;
 using DockerUpdateGuard.DockerHub;
 using DockerUpdateGuard.Infrastructure;
 
@@ -32,6 +33,21 @@ public class ImageScanOrchestrator : IImageScanOrchestrator
     /// Database context
     /// </summary>
     private readonly DockerUpdateGuardDbContext _dbContext;
+
+    /// <summary>
+    /// Derived base-runtime detector
+    /// </summary>
+    private readonly IDerivedBaseRuntimeDetector _derivedBaseRuntimeDetector;
+
+    /// <summary>
+    /// .NET release metadata service
+    /// </summary>
+    private readonly IDotNetReleaseMetadataService _dotNetReleaseMetadataService;
+
+    /// <summary>
+    /// NGINX release metadata service
+    /// </summary>
+    private readonly INginxReleaseMetadataService _nginxReleaseMetadataService;
 
     /// <summary>
     /// Image-catalog repository
@@ -68,6 +84,9 @@ public class ImageScanOrchestrator : IImageScanOrchestrator
     /// <param name="applicationTelemetry">Application telemetry</param>
     /// <param name="baseImageResolver">Base image resolver</param>
     /// <param name="dbContext">Database context</param>
+    /// <param name="derivedBaseRuntimeDetector">Derived base-runtime detector</param>
+    /// <param name="dotNetReleaseMetadataService">.NET release metadata service</param>
+    /// <param name="nginxReleaseMetadataService">NGINX release metadata service</param>
     /// <param name="imageCatalogRepository">Image catalog repository</param>
     /// <param name="imageReferenceParser">Image reference parser</param>
     /// <param name="logger">Logger</param>
@@ -76,6 +95,9 @@ public class ImageScanOrchestrator : IImageScanOrchestrator
     public ImageScanOrchestrator(ApplicationTelemetry applicationTelemetry,
                                  IBaseImageResolver baseImageResolver,
                                  DockerUpdateGuardDbContext dbContext,
+                                 IDerivedBaseRuntimeDetector derivedBaseRuntimeDetector,
+                                 IDotNetReleaseMetadataService dotNetReleaseMetadataService,
+                                 INginxReleaseMetadataService nginxReleaseMetadataService,
                                  IImageCatalogRepository imageCatalogRepository,
                                  IImageReferenceParser imageReferenceParser,
                                  ILogger<ImageScanOrchestrator> logger,
@@ -85,6 +107,9 @@ public class ImageScanOrchestrator : IImageScanOrchestrator
         _applicationTelemetry = applicationTelemetry;
         _baseImageResolver = baseImageResolver;
         _dbContext = dbContext;
+        _derivedBaseRuntimeDetector = derivedBaseRuntimeDetector;
+        _dotNetReleaseMetadataService = dotNetReleaseMetadataService;
+        _nginxReleaseMetadataService = nginxReleaseMetadataService;
         _imageCatalogRepository = imageCatalogRepository;
         _imageReferenceParser = imageReferenceParser;
         _logger = logger;
@@ -95,6 +120,29 @@ public class ImageScanOrchestrator : IImageScanOrchestrator
     #endregion // Constructors
 
     #region Methods
+
+    /// <summary>
+    /// Format a runtime version
+    /// </summary>
+    /// <param name="version">Version value</param>
+    /// <returns>Formatted version</returns>
+    private static string FormatVersion(Version version)
+    {
+        return version.Build >= 0 ? version.ToString(3) : version.ToString();
+    }
+
+    /// <summary>
+    /// Determine whether a newer patch exists in the same channel
+    /// </summary>
+    /// <param name="currentVersion">Current runtime version</param>
+    /// <param name="latestVersion">Latest runtime version</param>
+    /// <returns>True when a newer patch is available</returns>
+    private static bool IsPatchBehind(Version currentVersion, Version latestVersion)
+    {
+        return latestVersion.Major == currentVersion.Major
+               && latestVersion.Minor == currentVersion.Minor
+               && latestVersion > currentVersion;
+    }
 
     /// <inheritdoc/>
     public async Task ScanAllAsync(ScanTriggerSource triggerSource, CancellationToken cancellationToken = default)
@@ -281,6 +329,12 @@ public class ImageScanOrchestrator : IImageScanOrchestrator
                                                                    baseImagesResult.Status,
                                                                    baseImagesResult.Message);
             }
+
+            await CreateDerivedBaseRuntimeFindingAsync(scanRun,
+                                                       observedImage,
+                                                       imageReference,
+                                                       observedImage.CurrentImageVersion,
+                                                       cancellationToken).ConfigureAwait(false);
         }
         catch (Exception exception)
         {
@@ -398,6 +452,104 @@ public class ImageScanOrchestrator : IImageScanOrchestrator
     }
 
     /// <summary>
+    /// Create a derived base-runtime finding for an observed image when its .NET channel is behind
+    /// </summary>
+    /// <param name="scanRun">Scan run</param>
+    /// <param name="observedImage">Observed image</param>
+    /// <param name="imageReference">Image reference</param>
+    /// <param name="subjectImageVersion">Subject image version</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Task</returns>
+    private async Task CreateDerivedBaseRuntimeFindingAsync(ScanRun scanRun,
+                                                            ObservedImage observedImage,
+                                                            ImageReference imageReference,
+                                                            ImageVersion subjectImageVersion,
+                                                            CancellationToken cancellationToken)
+    {
+        var imageConfigurationResult = await _registryMetadataService.GetImageConfigurationAsync(imageReference, cancellationToken)
+                                                                     .ConfigureAwait(false);
+
+        if (imageConfigurationResult.Status != ExternalOperationStatus.Succeeded || imageConfigurationResult.Data is null)
+        {
+            return;
+        }
+
+        var runtimeDescriptor = _derivedBaseRuntimeDetector.Detect(new DockerImageInspectData
+                                                                   {
+                                                                       EnvironmentVariables = imageConfigurationResult.Data.EnvironmentVariables,
+                                                                       CreatedAtUtc = imageConfigurationResult.Data.CreatedAtUtc,
+                                                                       OperatingSystem = imageConfigurationResult.Data.OperatingSystem,
+                                                                       Architecture = imageConfigurationResult.Data.Architecture,
+                                                                   },
+                                                                   []);
+
+        if (runtimeDescriptor?.RuntimeVersion is null
+            || string.IsNullOrWhiteSpace(runtimeDescriptor.ChannelVersion))
+        {
+            return;
+        }
+
+        switch (runtimeDescriptor.Kind)
+        {
+            case DerivedBaseRuntimeKind.DotNet:
+                {
+                    var channelReleaseResult = await _dotNetReleaseMetadataService.GetChannelReleaseAsync(runtimeDescriptor.ChannelVersion, cancellationToken)
+                                                                                  .ConfigureAwait(false);
+
+                    if (channelReleaseResult.Status != ExternalOperationStatus.Succeeded
+                        || channelReleaseResult.Data is null
+                        || IsPatchBehind(runtimeDescriptor.RuntimeVersion, channelReleaseResult.Data.LatestRuntimeVersion) == false)
+                    {
+                        return;
+                    }
+
+                    _dbContext.UpdateFindings.Add(new UpdateFinding
+                                                  {
+                                                      ScanRunId = scanRun.Id,
+                                                      ObservedImageId = observedImage.Id,
+                                                      SubjectImageVersionId = subjectImageVersion.Id,
+                                                      Type = UpdateFindingType.DerivedBaseRuntimeUpdate,
+                                                      Summary = observedImage.Source == RegistrationSource.Discovery
+                                                                    ? "Own image uses an outdated .NET base runtime"
+                                                                    : "Observed image uses an outdated .NET base runtime",
+                                                      Details = BuildDotNetDerivedBaseRuntimeDetails(observedImage,
+                                                                                                     runtimeDescriptor,
+                                                                                                     channelReleaseResult.Data),
+                                                  });
+                }
+                break;
+
+            case DerivedBaseRuntimeKind.Nginx:
+                {
+                    var channelReleaseResult = await _nginxReleaseMetadataService.GetChannelReleaseAsync(runtimeDescriptor.ChannelVersion, cancellationToken)
+                                                                                 .ConfigureAwait(false);
+
+                    if (channelReleaseResult.Status != ExternalOperationStatus.Succeeded
+                        || channelReleaseResult.Data is null
+                        || IsPatchBehind(runtimeDescriptor.RuntimeVersion, channelReleaseResult.Data.LatestVersion) == false)
+                    {
+                        return;
+                    }
+
+                    _dbContext.UpdateFindings.Add(new UpdateFinding
+                                                  {
+                                                      ScanRunId = scanRun.Id,
+                                                      ObservedImageId = observedImage.Id,
+                                                      SubjectImageVersionId = subjectImageVersion.Id,
+                                                      Type = UpdateFindingType.DerivedBaseRuntimeUpdate,
+                                                      Summary = observedImage.Source == RegistrationSource.Discovery
+                                                                    ? "Own image uses an outdated NGINX base runtime"
+                                                                    : "Observed image uses an outdated NGINX base runtime",
+                                                      Details = BuildNginxDerivedBaseRuntimeDetails(observedImage,
+                                                                                                    runtimeDescriptor,
+                                                                                                    channelReleaseResult.Data),
+                                                  });
+                }
+                break;
+        }
+    }
+
+    /// <summary>
     /// Ensure the registry repository navigation is available on an image version
     /// </summary>
     /// <param name="imageVersion">Image version</param>
@@ -420,6 +572,51 @@ public class ImageScanOrchestrator : IImageScanOrchestrator
         }
 
         imageVersion.RegistryRepository = registryRepository;
+    }
+
+    /// <summary>
+    /// Build derived base-runtime finding details for an observed image
+    /// </summary>
+    /// <param name="observedImage">Observed image</param>
+    /// <param name="runtimeDescriptor">Runtime descriptor</param>
+    /// <param name="channelRelease">Channel release metadata</param>
+    /// <returns>Details text</returns>
+    private string BuildDotNetDerivedBaseRuntimeDetails(ObservedImage observedImage,
+                                                        DerivedBaseRuntimeDescriptor runtimeDescriptor,
+                                                        DotNetChannelReleaseData channelRelease)
+    {
+        ArgumentNullException.ThrowIfNull(runtimeDescriptor.RuntimeVersion);
+
+        var message = $"Observed image '{observedImage.Name}' appears to use .NET {FormatVersion(runtimeDescriptor.RuntimeVersion)}. Latest .NET {channelRelease.ChannelVersion} runtime is {FormatVersion(channelRelease.LatestRuntimeVersion)}.";
+
+        if (channelRelease.IsSecurityRelease)
+        {
+            message = $"{message} The latest channel release includes security fixes.";
+        }
+
+        return observedImage.Source == RegistrationSource.Discovery
+                   ? $"{message} Rebuild and republish the image so new deployments use the updated .NET base runtime."
+                   : $"{message} The upstream image publisher must rebuild the image before the newer .NET base runtime can be consumed.";
+    }
+
+    /// <summary>
+    /// Build NGINX derived base-runtime finding details for an observed image
+    /// </summary>
+    /// <param name="observedImage">Observed image</param>
+    /// <param name="runtimeDescriptor">Runtime descriptor</param>
+    /// <param name="channelRelease">Channel release metadata</param>
+    /// <returns>Details text</returns>
+    private string BuildNginxDerivedBaseRuntimeDetails(ObservedImage observedImage,
+                                                       DerivedBaseRuntimeDescriptor runtimeDescriptor,
+                                                       NginxChannelReleaseData channelRelease)
+    {
+        ArgumentNullException.ThrowIfNull(runtimeDescriptor.RuntimeVersion);
+
+        var message = $"Observed image '{observedImage.Name}' appears to use NGINX {FormatVersion(runtimeDescriptor.RuntimeVersion)}. Latest NGINX {channelRelease.ChannelVersion} release is {FormatVersion(channelRelease.LatestVersion)}.";
+
+        return observedImage.Source == RegistrationSource.Discovery
+                   ? $"{message} Rebuild and republish the image so new deployments use the updated NGINX base runtime."
+                   : $"{message} The upstream image publisher must rebuild the image before the newer NGINX base runtime can be consumed.";
     }
 
     #endregion // Methods

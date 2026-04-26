@@ -451,6 +451,23 @@ internal static partial class ImageHostLoggingExtensions
                                                                              string? message);
 
     /// <summary>
+    /// Log that a single runtime container could not be processed but the scan continues
+    /// </summary>
+    /// <param name="logger">Logger</param>
+    /// <param name="exception">Exception</param>
+    /// <param name="dockerInstance">Docker instance name</param>
+    /// <param name="containerName">Container name</param>
+    /// <param name="imageReference">Image reference</param>
+    [LoggerMessage(EventId = 2098,
+                   Level = LogLevel.Warning,
+                   Message = "Runtime container scan for {DockerInstance} skipped container {ContainerName} ({ImageReference}) because processing failed")]
+    public static partial void RuntimeContainerProcessingFailed(this ILogger logger,
+                                                                Exception exception,
+                                                                string dockerInstance,
+                                                                string containerName,
+                                                                string imageReference);
+
+    /// <summary>
     /// Log that vulnerability refresh has started
     /// </summary>
     /// <param name="logger">Logger</param>

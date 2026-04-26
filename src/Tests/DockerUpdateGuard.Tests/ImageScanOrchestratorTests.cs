@@ -1,5 +1,6 @@
 using DockerUpdateGuard.Data.Entities;
 using DockerUpdateGuard.Data.Repositories;
+using DockerUpdateGuard.Docker;
 using DockerUpdateGuard.DockerHub;
 using DockerUpdateGuard.Images;
 using DockerUpdateGuard.Infrastructure;
@@ -47,6 +48,9 @@ public class ImageScanOrchestratorTests
                                         CurrentImageVersionId = currentImageVersion.Id,
                                     };
                 var baseImageResolver = Substitute.For<IBaseImageResolver>();
+                var derivedBaseRuntimeDetector = Substitute.For<IDerivedBaseRuntimeDetector>();
+                var dotNetReleaseMetadataService = Substitute.For<IDotNetReleaseMetadataService>();
+                var nginxReleaseMetadataService = Substitute.For<INginxReleaseMetadataService>();
                 var registryMetadataService = Substitute.For<IRegistryMetadataService>();
 
                 dbContext.ObservedImages.Add(observedImage);
@@ -90,10 +94,15 @@ public class ImageScanOrchestratorTests
                                                                                                                            PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
                                                                                                                        },
                                                                                                                    ]));
+                registryMetadataService.GetImageConfigurationAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
+                                       .Returns(ExternalOperationResult<RegistryImageConfigurationData>.NotFound("No registry config"));
 
                 var orchestrator = new ImageScanOrchestrator(new ApplicationTelemetry(),
                                                              baseImageResolver,
                                                              dbContext,
+                                                             derivedBaseRuntimeDetector,
+                                                             dotNetReleaseMetadataService,
+                                                             nginxReleaseMetadataService,
                                                              imageCatalogRepository,
                                                              imageReferenceParser,
                                                              logger,
@@ -172,6 +181,9 @@ public class ImageScanOrchestratorTests
                 var orchestrator = new ImageScanOrchestrator(new ApplicationTelemetry(),
                                                              Substitute.For<IBaseImageResolver>(),
                                                              dbContext,
+                                                             Substitute.For<IDerivedBaseRuntimeDetector>(),
+                                                             Substitute.For<IDotNetReleaseMetadataService>(),
+                                                             Substitute.For<INginxReleaseMetadataService>(),
                                                              new ImageCatalogRepository(dbContext),
                                                              new ImageReferenceParser(),
                                                              logger,
@@ -182,6 +194,210 @@ public class ImageScanOrchestratorTests
                                   .ConfigureAwait(false);
 
                 Assert.IsTrue(logger.Entries.Any(entry => entry.EventId.Id == 2061), "Observed image batch scans must log when they are skipped because no images are enabled");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Verify observed image scans create derived .NET runtime findings from registry configuration metadata
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task ImageScanOrchestratorScanAsyncCreatesDerivedBaseRuntimeFindingWithoutRuntimeContainerAsync()
+    {
+        using (var database = new SqliteTestDatabase())
+        {
+            var dbContext = database.CreateDbContext();
+
+            await using (dbContext.ConfigureAwait(false))
+            {
+                var imageCatalogRepository = new ImageCatalogRepository(dbContext);
+                var imageReferenceParser = new ImageReferenceParser();
+                var currentImageVersion = await imageCatalogRepository.GetOrCreateImageVersionAsync("ghcr.io",
+                                                                                                    "acme/api",
+                                                                                                    "1.0.0",
+                                                                                                    "sha256:app",
+                                                                                                    cancellationToken: CancellationToken.None)
+                                                                      .ConfigureAwait(false);
+                var observedImage = new ObservedImage
+                                    {
+                                        Name = "Acme API",
+                                        Source = RegistrationSource.Discovery,
+                                        CurrentImageVersionId = currentImageVersion.Id,
+                                    };
+                var baseImageResolver = Substitute.For<IBaseImageResolver>();
+                var derivedBaseRuntimeDetector = Substitute.For<IDerivedBaseRuntimeDetector>();
+                var dotNetReleaseMetadataService = Substitute.For<IDotNetReleaseMetadataService>();
+                var nginxReleaseMetadataService = Substitute.For<INginxReleaseMetadataService>();
+                var registryMetadataService = Substitute.For<IRegistryMetadataService>();
+
+                dbContext.ObservedImages.Add(observedImage);
+                await dbContext.SaveChangesAsync()
+                               .ConfigureAwait(false);
+
+                baseImageResolver.ResolveAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
+                                 .Returns(ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>.Succeeded([]));
+                registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
+                                       .Returns(ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
+                                                                                                    {
+                                                                                                        Tag = "1.0.0",
+                                                                                                        Digest = "sha256:app",
+                                                                                                        PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
+                                                                                                    }));
+                registryMetadataService.GetImageConfigurationAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
+                                       .Returns(ExternalOperationResult<RegistryImageConfigurationData>.Succeeded(new RegistryImageConfigurationData
+                                                                                                                  {
+                                                                                                                      EnvironmentVariables = [
+                                                                                                                                                 "DOTNET_VERSION=9.0.13",
+                                                                                                                                             ],
+                                                                                                                  }));
+                derivedBaseRuntimeDetector.Detect(Arg.Any<DockerImageInspectData>(), Arg.Any<IReadOnlyList<DockerImageHistoryEntryData>>())
+                                          .Returns(new DerivedBaseRuntimeDescriptor
+                                                   {
+                                                       Kind = DerivedBaseRuntimeKind.DotNet,
+                                                       RuntimeVersion = new Version(9, 0, 13),
+                                                       ChannelVersion = "9.0",
+                                                   });
+                dotNetReleaseMetadataService.GetChannelReleaseAsync("9.0", Arg.Any<CancellationToken>())
+                                            .Returns(ExternalOperationResult<DotNetChannelReleaseData>.Succeeded(new DotNetChannelReleaseData
+                                                                                                                 {
+                                                                                                                     ChannelVersion = "9.0",
+                                                                                                                     LatestRuntimeVersion = new Version(9, 0, 15),
+                                                                                                                     IsSecurityRelease = true,
+                                                                                                                 }));
+
+                var orchestrator = new ImageScanOrchestrator(new ApplicationTelemetry(),
+                                                             baseImageResolver,
+                                                             dbContext,
+                                                             derivedBaseRuntimeDetector,
+                                                             dotNetReleaseMetadataService,
+                                                             nginxReleaseMetadataService,
+                                                             imageCatalogRepository,
+                                                             imageReferenceParser,
+                                                             NullLogger<ImageScanOrchestrator>.Instance,
+                                                             registryMetadataService,
+                                                             new UpdateDetectionService());
+
+                await orchestrator.ScanAsync(observedImage.Id,
+                                             ScanTriggerSource.Manual,
+                                             CancellationToken.None)
+                                  .ConfigureAwait(false);
+
+                var derivedFinding = await dbContext.UpdateFindings.SingleAsync(entity => entity.Type == UpdateFindingType.DerivedBaseRuntimeUpdate)
+                                                                   .ConfigureAwait(false);
+
+                Assert.AreEqual(observedImage.Id,
+                                derivedFinding.ObservedImageId,
+                                "Derived base-runtime findings must be attached directly to the observed image");
+                Assert.IsNull(derivedFinding.ContainerSnapshotId,
+                              "Derived base-runtime findings created during observed image scans must not depend on runtime containers");
+                Assert.AreEqual("Own image uses an outdated .NET base runtime",
+                                derivedFinding.Summary,
+                                "Own observed images must produce the stronger .NET base-runtime warning text");
+                Assert.IsNotNull(derivedFinding.Details, "The derived finding details must be persisted");
+                Assert.IsTrue(derivedFinding.Details.Contains(".NET 9.0.13", StringComparison.Ordinal),
+                              "The derived finding details must describe the detected .NET version");
+                Assert.IsTrue(derivedFinding.Details.Contains("9.0.15", StringComparison.Ordinal),
+                              "The derived finding details must describe the latest channel runtime version");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Verify observed image scans create derived NGINX runtime findings from registry configuration metadata
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task ImageScanOrchestratorScanAsyncCreatesDerivedNginxBaseRuntimeFindingWithoutRuntimeContainerAsync()
+    {
+        using (var database = new SqliteTestDatabase())
+        {
+            var dbContext = database.CreateDbContext();
+
+            await using (dbContext.ConfigureAwait(false))
+            {
+                var imageCatalogRepository = new ImageCatalogRepository(dbContext);
+                var imageReferenceParser = new ImageReferenceParser();
+                var currentImageVersion = await imageCatalogRepository.GetOrCreateImageVersionAsync("ghcr.io",
+                                                                                                    "acme/web",
+                                                                                                    "1.0.0",
+                                                                                                    "sha256:web",
+                                                                                                    cancellationToken: CancellationToken.None)
+                                                                      .ConfigureAwait(false);
+                var observedImage = new ObservedImage
+                                    {
+                                        Name = "Acme Web",
+                                        Source = RegistrationSource.Discovery,
+                                        CurrentImageVersionId = currentImageVersion.Id,
+                                    };
+                var baseImageResolver = Substitute.For<IBaseImageResolver>();
+                var derivedBaseRuntimeDetector = Substitute.For<IDerivedBaseRuntimeDetector>();
+                var dotNetReleaseMetadataService = Substitute.For<IDotNetReleaseMetadataService>();
+                var nginxReleaseMetadataService = Substitute.For<INginxReleaseMetadataService>();
+                var registryMetadataService = Substitute.For<IRegistryMetadataService>();
+
+                dbContext.ObservedImages.Add(observedImage);
+                await dbContext.SaveChangesAsync()
+                               .ConfigureAwait(false);
+
+                baseImageResolver.ResolveAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
+                                 .Returns(ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>.Succeeded([]));
+                registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
+                                       .Returns(ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
+                                                                                                    {
+                                                                                                        Tag = "1.0.0",
+                                                                                                        Digest = "sha256:web",
+                                                                                                        PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
+                                                                                                    }));
+                registryMetadataService.GetImageConfigurationAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
+                                       .Returns(ExternalOperationResult<RegistryImageConfigurationData>.Succeeded(new RegistryImageConfigurationData
+                                                                                                                  {
+                                                                                                                      EnvironmentVariables = [
+                                                                                                                                                 "NGINX_VERSION=1.29.1",
+                                                                                                                                             ],
+                                                                                                                  }));
+                derivedBaseRuntimeDetector.Detect(Arg.Any<DockerImageInspectData>(), Arg.Any<IReadOnlyList<DockerImageHistoryEntryData>>())
+                                          .Returns(new DerivedBaseRuntimeDescriptor
+                                                   {
+                                                       Kind = DerivedBaseRuntimeKind.Nginx,
+                                                       RuntimeVersion = new Version(1, 29, 1),
+                                                       ChannelVersion = "1.29",
+                                                   });
+                nginxReleaseMetadataService.GetChannelReleaseAsync("1.29", Arg.Any<CancellationToken>())
+                                           .Returns(ExternalOperationResult<NginxChannelReleaseData>.Succeeded(new NginxChannelReleaseData
+                                                                                                               {
+                                                                                                                   ChannelVersion = "1.29",
+                                                                                                                   LatestVersion = new Version(1, 29, 8),
+                                                                                                               }));
+
+                var orchestrator = new ImageScanOrchestrator(new ApplicationTelemetry(),
+                                                             baseImageResolver,
+                                                             dbContext,
+                                                             derivedBaseRuntimeDetector,
+                                                             dotNetReleaseMetadataService,
+                                                             nginxReleaseMetadataService,
+                                                             imageCatalogRepository,
+                                                             imageReferenceParser,
+                                                             NullLogger<ImageScanOrchestrator>.Instance,
+                                                             registryMetadataService,
+                                                             new UpdateDetectionService());
+
+                await orchestrator.ScanAsync(observedImage.Id,
+                                             ScanTriggerSource.Manual,
+                                             CancellationToken.None)
+                                  .ConfigureAwait(false);
+
+                var derivedFinding = await dbContext.UpdateFindings.SingleAsync(entity => entity.Type == UpdateFindingType.DerivedBaseRuntimeUpdate)
+                                                                   .ConfigureAwait(false);
+
+                Assert.AreEqual("Own image uses an outdated NGINX base runtime",
+                                derivedFinding.Summary,
+                                "Own observed images must produce an NGINX base-runtime warning when a newer patch exists");
+                Assert.IsNotNull(derivedFinding.Details, "The derived finding details must be persisted");
+                Assert.IsTrue(derivedFinding.Details.Contains("NGINX 1.29.1", StringComparison.Ordinal),
+                              "The derived finding details must describe the detected NGINX version");
+                Assert.IsTrue(derivedFinding.Details.Contains("1.29.8", StringComparison.Ordinal),
+                              "The derived finding details must describe the latest NGINX channel version");
             }
         }
     }

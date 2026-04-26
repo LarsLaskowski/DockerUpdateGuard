@@ -36,6 +36,21 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
     private readonly IDockerInstanceClient _dockerInstanceClient;
 
     /// <summary>
+    /// Derived base-runtime detector
+    /// </summary>
+    private readonly IDerivedBaseRuntimeDetector _derivedBaseRuntimeDetector;
+
+    /// <summary>
+    /// .NET release metadata service
+    /// </summary>
+    private readonly IDotNetReleaseMetadataService _dotNetReleaseMetadataService;
+
+    /// <summary>
+    /// NGINX release metadata service
+    /// </summary>
+    private readonly INginxReleaseMetadataService _nginxReleaseMetadataService;
+
+    /// <summary>
     /// Image-catalog repository
     /// </summary>
     private readonly IImageCatalogRepository _imageCatalogRepository;
@@ -80,6 +95,9 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
     /// <param name="applicationTelemetry">Application telemetry</param>
     /// <param name="dbContext">Database context</param>
     /// <param name="dockerInstanceClient">Docker instance client</param>
+    /// <param name="derivedBaseRuntimeDetector">Derived base-runtime detector</param>
+    /// <param name="dotNetReleaseMetadataService">.NET release metadata service</param>
+    /// <param name="nginxReleaseMetadataService">NGINX release metadata service</param>
     /// <param name="imageCatalogRepository">Image catalog repository</param>
     /// <param name="imageReferenceParser">Image reference parser</param>
     /// <param name="instanceDiscoveryService">Instance discovery service</param>
@@ -90,6 +108,9 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
     public RuntimeContainerScanOrchestrator(ApplicationTelemetry applicationTelemetry,
                                             DockerUpdateGuardDbContext dbContext,
                                             IDockerInstanceClient dockerInstanceClient,
+                                            IDerivedBaseRuntimeDetector derivedBaseRuntimeDetector,
+                                            IDotNetReleaseMetadataService dotNetReleaseMetadataService,
+                                            INginxReleaseMetadataService nginxReleaseMetadataService,
                                             IImageCatalogRepository imageCatalogRepository,
                                             IImageReferenceParser imageReferenceParser,
                                             IInstanceDiscoveryService instanceDiscoveryService,
@@ -101,6 +122,9 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
         _applicationTelemetry = applicationTelemetry;
         _dbContext = dbContext;
         _dockerInstanceClient = dockerInstanceClient;
+        _derivedBaseRuntimeDetector = derivedBaseRuntimeDetector;
+        _dotNetReleaseMetadataService = dotNetReleaseMetadataService;
+        _nginxReleaseMetadataService = nginxReleaseMetadataService;
         _imageCatalogRepository = imageCatalogRepository;
         _imageReferenceParser = imageReferenceParser;
         _instanceDiscoveryService = instanceDiscoveryService;
@@ -135,6 +159,111 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
         snapshot.UpdateAssessmentMessage = string.IsNullOrWhiteSpace(evaluation.Details)
                                                ? evaluation.Summary
                                                : $"{evaluation.Summary} {evaluation.Details}";
+    }
+
+    /// <summary>
+    /// Create a normalized repository key
+    /// </summary>
+    /// <param name="imageVersion">Image version</param>
+    /// <returns>Repository key</returns>
+    private static string CreateRepositoryKey(ImageVersion imageVersion)
+    {
+        ArgumentNullException.ThrowIfNull(imageVersion.RegistryRepository);
+
+        return CreateRepositoryKey(imageVersion.RegistryRepository.Registry, imageVersion.RegistryRepository.Repository);
+    }
+
+    /// <summary>
+    /// Create a normalized repository key
+    /// </summary>
+    /// <param name="registry">Registry host</param>
+    /// <param name="repository">Repository path</param>
+    /// <returns>Repository key</returns>
+    private static string CreateRepositoryKey(string registry, string repository)
+    {
+        return $"{registry.Trim().ToLowerInvariant()}|{repository.Trim().ToLowerInvariant()}";
+    }
+
+    /// <summary>
+    /// Format a runtime version
+    /// </summary>
+    /// <param name="version">Version value</param>
+    /// <returns>Formatted version</returns>
+    private static string FormatVersion(Version version)
+    {
+        return version.Build >= 0 ? version.ToString(3) : version.ToString();
+    }
+
+    /// <summary>
+    /// Determine whether a newer patch exists in the same channel
+    /// </summary>
+    /// <param name="currentVersion">Current runtime version</param>
+    /// <param name="latestVersion">Latest runtime version</param>
+    /// <returns>True when a newer patch is available</returns>
+    private static bool IsPatchBehind(Version currentVersion, Version latestVersion)
+    {
+        return latestVersion.Major == currentVersion.Major
+               && latestVersion.Minor == currentVersion.Minor
+               && latestVersion > currentVersion;
+    }
+
+    /// <summary>
+    /// Build a derived base-runtime finding details string
+    /// </summary>
+    /// <param name="dockerInstanceName">Docker instance name</param>
+    /// <param name="snapshot">Container snapshot</param>
+    /// <param name="runtimeDescriptor">Derived runtime descriptor</param>
+    /// <param name="channelRelease">Latest channel release</param>
+    /// <param name="isOwnImage">Whether the image is owned</param>
+    /// <returns>Details text</returns>
+    private static string BuildDotNetDerivedBaseRuntimeDetails(string dockerInstanceName,
+                                                               ContainerSnapshot snapshot,
+                                                               DerivedBaseRuntimeDescriptor runtimeDescriptor,
+                                                               DotNetChannelReleaseData channelRelease,
+                                                               bool isOwnImage)
+    {
+        ArgumentNullException.ThrowIfNull(runtimeDescriptor.RuntimeVersion);
+
+        var message = $"Container '{snapshot.Name}' on '{dockerInstanceName}' appears to use .NET {FormatVersion(runtimeDescriptor.RuntimeVersion)}. Latest .NET {channelRelease.ChannelVersion} runtime is {FormatVersion(channelRelease.LatestRuntimeVersion)}.";
+
+        if (channelRelease.IsSecurityRelease)
+        {
+            message = $"{message} The latest channel release includes security fixes.";
+        }
+
+        if (string.Equals(channelRelease.SupportPhase, "eol", StringComparison.OrdinalIgnoreCase)
+            || (channelRelease.EndOfLifeDateUtc is not null && channelRelease.EndOfLifeDateUtc <= DateTimeOffset.UtcNow))
+        {
+            message = $"{message} This channel is no longer supported.";
+        }
+
+        return isOwnImage
+                   ? $"{message} Rebuild and republish the image to pick up the newer .NET base runtime."
+                   : $"{message} This image must be refreshed by its upstream publisher before the newer .NET base runtime can be consumed.";
+    }
+
+    /// <summary>
+    /// Build a derived NGINX base-runtime finding details string
+    /// </summary>
+    /// <param name="dockerInstanceName">Docker instance name</param>
+    /// <param name="snapshot">Container snapshot</param>
+    /// <param name="runtimeDescriptor">Derived runtime descriptor</param>
+    /// <param name="channelRelease">Latest channel release</param>
+    /// <param name="isOwnImage">Whether the image is owned</param>
+    /// <returns>Details text</returns>
+    private static string BuildNginxDerivedBaseRuntimeDetails(string dockerInstanceName,
+                                                              ContainerSnapshot snapshot,
+                                                              DerivedBaseRuntimeDescriptor runtimeDescriptor,
+                                                              NginxChannelReleaseData channelRelease,
+                                                              bool isOwnImage)
+    {
+        ArgumentNullException.ThrowIfNull(runtimeDescriptor.RuntimeVersion);
+
+        var message = $"Container '{snapshot.Name}' on '{dockerInstanceName}' appears to use NGINX {FormatVersion(runtimeDescriptor.RuntimeVersion)}. Latest NGINX {channelRelease.ChannelVersion} release is {FormatVersion(channelRelease.LatestVersion)}.";
+
+        return isOwnImage
+                   ? $"{message} Rebuild and republish the image to pick up the newer NGINX base runtime."
+                   : $"{message} This image must be refreshed by its upstream publisher before the newer NGINX base runtime can be consumed.";
     }
 
     #endregion // Static methods
@@ -231,6 +360,7 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
 
         try
         {
+            var ownRepositoryKeys = await LoadOwnRepositoryKeysAsync(cancellationToken).ConfigureAwait(false);
             var discoveryResult = await _dockerInstanceClient.DiscoverContainersAsync(configuredInstance, cancellationToken)
                                                              .ConfigureAwait(false);
 
@@ -255,24 +385,28 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
 
                 foreach (var container in discoveryResult.Data)
                 {
-                    var parsedReference = _imageReferenceParser.Parse(container.ImageReference);
+                    ContainerSnapshot? snapshot = null;
 
-                    if (string.IsNullOrWhiteSpace(parsedReference.Digest)
-                        && string.IsNullOrWhiteSpace(container.ImageDigest) == false)
+                    try
                     {
-                        parsedReference.Digest = container.ImageDigest.Trim().ToLowerInvariant();
-                    }
+                        var parsedReference = _imageReferenceParser.Parse(container.ImageReference);
 
-                    var imageVersion = await _imageCatalogRepository.GetOrCreateImageVersionAsync(parsedReference.Registry,
-                                                                                                  parsedReference.Repository,
-                                                                                                  parsedReference.Tag,
-                                                                                                  parsedReference.Digest,
-                                                                                                  cancellationToken: cancellationToken)
-                                                                    .ConfigureAwait(false);
+                        if (string.IsNullOrWhiteSpace(parsedReference.Digest)
+                            && string.IsNullOrWhiteSpace(container.ImageDigest) == false)
+                        {
+                            parsedReference.Digest = container.ImageDigest.Trim().ToLowerInvariant();
+                        }
 
-                    imageVersion.Source = ImageVersionSource.RuntimeContainer;
+                        var imageVersion = await _imageCatalogRepository.GetOrCreateImageVersionAsync(parsedReference.Registry,
+                                                                                                      parsedReference.Repository,
+                                                                                                      parsedReference.Tag,
+                                                                                                      parsedReference.Digest,
+                                                                                                      cancellationToken: cancellationToken)
+                                                                        .ConfigureAwait(false);
 
-                    var snapshot = new ContainerSnapshot
+                        imageVersion.Source = ImageVersionSource.RuntimeContainer;
+
+                        snapshot = new ContainerSnapshot
                                    {
                                        DockerInstanceId = dockerInstance.Id,
                                        ImageVersionId = imageVersion.Id,
@@ -288,60 +422,87 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
                                        RecordedAtUtc = DateTimeOffset.UtcNow,
                                    };
 
-                    _dbContext.ContainerSnapshots.Add(snapshot);
+                        _dbContext.ContainerSnapshots.Add(snapshot);
 
-                    var tagsResult = await _registryMetadataService.GetTagsAsync(parsedReference.Registry,
-                                                                                 parsedReference.Repository,
-                                                                                 cancellationToken)
-                                                                   .ConfigureAwait(false);
+                        var tagsResult = await _registryMetadataService.GetTagsAsync(parsedReference.Registry,
+                                                                                     parsedReference.Repository,
+                                                                                     cancellationToken)
+                                                                       .ConfigureAwait(false);
 
-                    if (tagsResult.Status == ExternalOperationStatus.Succeeded && tagsResult.Data is not null)
-                    {
-                        var availableTags = await MergeCurrentTagMetadataAsync(parsedReference,
-                                                                               tagsResult.Data,
-                                                                               cancellationToken).ConfigureAwait(false);
-                        var evaluation = _updateDetectionService.Evaluate(parsedReference, availableTags);
-
-                        ApplyUpdateAssessment(snapshot, evaluation);
-
-                        if (evaluation.Status == UpdateEvaluationStatus.UpdateAvailable
-                            || evaluation.Status == UpdateEvaluationStatus.NeedsReview)
+                        if (tagsResult.Status == ExternalOperationStatus.Succeeded && tagsResult.Data is not null)
                         {
-                            await CreateRuntimeFindingAsync(scanRun,
-                                                            snapshot,
-                                                            imageVersion,
-                                                            evaluation,
-                                                            cancellationToken).ConfigureAwait(false);
+                            var availableTags = await MergeCurrentTagMetadataAsync(parsedReference,
+                                                                                   tagsResult.Data,
+                                                                                   cancellationToken).ConfigureAwait(false);
+                            var evaluation = _updateDetectionService.Evaluate(parsedReference, availableTags);
+
+                            ApplyUpdateAssessment(snapshot, evaluation);
+
+                            if (evaluation.Status == UpdateEvaluationStatus.UpdateAvailable
+                                || evaluation.Status == UpdateEvaluationStatus.NeedsReview)
+                            {
+                                await CreateRuntimeFindingAsync(scanRun,
+                                                                snapshot,
+                                                                imageVersion,
+                                                                evaluation,
+                                                                cancellationToken).ConfigureAwait(false);
+                            }
                         }
+                        else if (tagsResult.Status != ExternalOperationStatus.NotFound
+                                 && tagsResult.Status != ExternalOperationStatus.Unsupported)
+                        {
+                            snapshot.UpdateAssessmentStatus = UpdateAssessmentStatus.Failed;
+                            snapshot.UpdateAssessmentMessage = tagsResult.Message ?? $"Unable to evaluate runtime image '{container.ImageReference}'";
+                            finalStatus = ScanRunStatus.Partial;
+
+                            statusMessages.Add(tagsResult.Message ?? $"Unable to evaluate runtime image '{container.ImageReference}'");
+
+                            _logger.RuntimeContainerRegistryEvaluationIncomplete(dockerInstance.Name,
+                                                                                 container.ImageReference,
+                                                                                 tagsResult.Status,
+                                                                                 tagsResult.Message);
+                        }
+                        else
+                        {
+                            snapshot.UpdateAssessmentStatus = tagsResult.Status == ExternalOperationStatus.NotFound
+                                                                  ? UpdateAssessmentStatus.NoTagData
+                                                                  : UpdateAssessmentStatus.Unsupported;
+                            snapshot.UpdateAssessmentMessage = tagsResult.Message ?? $"Runtime image '{container.ImageReference}' cannot be evaluated by the current registry adapters";
+                            finalStatus = ScanRunStatus.Partial;
+
+                            statusMessages.Add(tagsResult.Message ?? $"Runtime image '{container.ImageReference}' cannot be evaluated by the current registry adapters");
+
+                            _logger.RuntimeContainerRegistryEvaluationUnsupported(dockerInstance.Name,
+                                                                                  container.ImageReference,
+                                                                                  tagsResult.Status,
+                                                                                  tagsResult.Message);
+                        }
+
+                        await CreateDerivedBaseRuntimeFindingAsync(scanRun,
+                                                                   snapshot,
+                                                                   imageVersion,
+                                                                   container,
+                                                                   dockerInstance.Name,
+                                                                   configuredInstance,
+                                                                   ownRepositoryKeys,
+                                                                   cancellationToken).ConfigureAwait(false);
                     }
-                    else if (tagsResult.Status != ExternalOperationStatus.NotFound
-                             && tagsResult.Status != ExternalOperationStatus.Unsupported)
+                    catch (Exception exception)
                     {
-                        snapshot.UpdateAssessmentStatus = UpdateAssessmentStatus.Failed;
-                        snapshot.UpdateAssessmentMessage = tagsResult.Message ?? $"Unable to evaluate runtime image '{container.ImageReference}'";
                         finalStatus = ScanRunStatus.Partial;
 
-                        statusMessages.Add(tagsResult.Message ?? $"Unable to evaluate runtime image '{container.ImageReference}'");
+                        if (snapshot is not null)
+                        {
+                            snapshot.UpdateAssessmentStatus = UpdateAssessmentStatus.Failed;
+                            snapshot.UpdateAssessmentMessage = exception.Message;
+                        }
 
-                        _logger.RuntimeContainerRegistryEvaluationIncomplete(dockerInstance.Name,
-                                                                             container.ImageReference,
-                                                                             tagsResult.Status,
-                                                                             tagsResult.Message);
-                    }
-                    else
-                    {
-                        snapshot.UpdateAssessmentStatus = tagsResult.Status == ExternalOperationStatus.NotFound
-                                                              ? UpdateAssessmentStatus.NoTagData
-                                                              : UpdateAssessmentStatus.Unsupported;
-                        snapshot.UpdateAssessmentMessage = tagsResult.Message ?? $"Runtime image '{container.ImageReference}' cannot be evaluated by the current registry adapters";
-                        finalStatus = ScanRunStatus.Partial;
+                        statusMessages.Add($"Container '{container.Name}' could not be processed: {exception.Message}");
 
-                        statusMessages.Add(tagsResult.Message ?? $"Runtime image '{container.ImageReference}' cannot be evaluated by the current registry adapters");
-
-                        _logger.RuntimeContainerRegistryEvaluationUnsupported(dockerInstance.Name,
-                                                                              container.ImageReference,
-                                                                              tagsResult.Status,
-                                                                              tagsResult.Message);
+                        _logger.RuntimeContainerProcessingFailed(exception,
+                                                                 dockerInstance.Name,
+                                                                 container.Name,
+                                                                 container.ImageReference);
                     }
                 }
             }
@@ -464,6 +625,123 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
     }
 
     /// <summary>
+    /// Create a derived base-runtime finding when the local image uses an outdated .NET runtime
+    /// </summary>
+    /// <param name="scanRun">Scan run</param>
+    /// <param name="snapshot">Container snapshot</param>
+    /// <param name="subjectImageVersion">Subject image version</param>
+    /// <param name="container">Runtime container descriptor</param>
+    /// <param name="dockerInstanceName">Docker instance name</param>
+    /// <param name="configuredInstance">Configured Docker instance</param>
+    /// <param name="ownRepositoryKeys">Known own repository keys</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Task</returns>
+    private async Task CreateDerivedBaseRuntimeFindingAsync(ScanRun scanRun,
+                                                            ContainerSnapshot snapshot,
+                                                            ImageVersion subjectImageVersion,
+                                                            RuntimeContainerDescriptor container,
+                                                            string dockerInstanceName,
+                                                            DockerInstanceOptions configuredInstance,
+                                                            IReadOnlySet<string> ownRepositoryKeys,
+                                                            CancellationToken cancellationToken)
+    {
+        await EnsureRegistryRepositoryLoadedAsync(subjectImageVersion, cancellationToken).ConfigureAwait(false);
+
+        var imageReferenceOrId = string.IsNullOrWhiteSpace(container.LocalImageId)
+                                     ? container.ImageReference
+                                     : container.LocalImageId!;
+        var inspectResult = await _dockerInstanceClient.InspectImageAsync(configuredInstance,
+                                                                          imageReferenceOrId,
+                                                                          cancellationToken)
+                                                       .ConfigureAwait(false);
+
+        if (inspectResult.Status != ExternalOperationStatus.Succeeded || inspectResult.Data is null)
+        {
+            return;
+        }
+
+        var historyResult = await _dockerInstanceClient.GetImageHistoryAsync(configuredInstance,
+                                                                             imageReferenceOrId,
+                                                                             cancellationToken)
+                                                       .ConfigureAwait(false);
+        var historyEntries = historyResult.Status == ExternalOperationStatus.Succeeded && historyResult.Data is not null
+                                 ? historyResult.Data
+                                 : [];
+        var runtimeDescriptor = _derivedBaseRuntimeDetector.Detect(inspectResult.Data, historyEntries);
+
+        if (runtimeDescriptor?.RuntimeVersion is null
+            || string.IsNullOrWhiteSpace(runtimeDescriptor.ChannelVersion))
+        {
+            return;
+        }
+
+        var isOwnImage = ownRepositoryKeys.Contains(CreateRepositoryKey(subjectImageVersion));
+
+        switch (runtimeDescriptor.Kind)
+        {
+            case DerivedBaseRuntimeKind.DotNet:
+                {
+                    var releaseResult = await _dotNetReleaseMetadataService.GetChannelReleaseAsync(runtimeDescriptor.ChannelVersion, cancellationToken)
+                                                                           .ConfigureAwait(false);
+
+                    if (releaseResult.Status != ExternalOperationStatus.Succeeded
+                        || releaseResult.Data is null
+                        || IsPatchBehind(runtimeDescriptor.RuntimeVersion, releaseResult.Data.LatestRuntimeVersion) == false)
+                    {
+                        return;
+                    }
+
+                    _dbContext.UpdateFindings.Add(new UpdateFinding
+                                                  {
+                                                      ScanRunId = scanRun.Id,
+                                                      ContainerSnapshotId = snapshot.Id,
+                                                      SubjectImageVersionId = subjectImageVersion.Id,
+                                                      Type = UpdateFindingType.DerivedBaseRuntimeUpdate,
+                                                      Summary = isOwnImage
+                                                                    ? "Own image uses an outdated .NET base runtime"
+                                                                    : "A linked image uses an outdated .NET base runtime",
+                                                      Details = BuildDotNetDerivedBaseRuntimeDetails(dockerInstanceName,
+                                                                                                     snapshot,
+                                                                                                     runtimeDescriptor,
+                                                                                                     releaseResult.Data,
+                                                                                                     isOwnImage),
+                                                  });
+                }
+                break;
+
+            case DerivedBaseRuntimeKind.Nginx:
+                {
+                    var releaseResult = await _nginxReleaseMetadataService.GetChannelReleaseAsync(runtimeDescriptor.ChannelVersion, cancellationToken)
+                                                                          .ConfigureAwait(false);
+
+                    if (releaseResult.Status != ExternalOperationStatus.Succeeded
+                        || releaseResult.Data is null
+                        || IsPatchBehind(runtimeDescriptor.RuntimeVersion, releaseResult.Data.LatestVersion) == false)
+                    {
+                        return;
+                    }
+
+                    _dbContext.UpdateFindings.Add(new UpdateFinding
+                                                  {
+                                                      ScanRunId = scanRun.Id,
+                                                      ContainerSnapshotId = snapshot.Id,
+                                                      SubjectImageVersionId = subjectImageVersion.Id,
+                                                      Type = UpdateFindingType.DerivedBaseRuntimeUpdate,
+                                                      Summary = isOwnImage
+                                                                    ? "Own image uses an outdated NGINX base runtime"
+                                                                    : "A linked image uses an outdated NGINX base runtime",
+                                                      Details = BuildNginxDerivedBaseRuntimeDetails(dockerInstanceName,
+                                                                                                    snapshot,
+                                                                                                    runtimeDescriptor,
+                                                                                                    releaseResult.Data,
+                                                                                                    isOwnImage),
+                                                  });
+                }
+                break;
+        }
+    }
+
+    /// <summary>
     /// Merge the exact metadata for the current tag into the available tag set
     /// </summary>
     /// <param name="currentImage">Current image reference</param>
@@ -510,6 +788,25 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
         }
 
         imageVersion.RegistryRepository = registryRepository;
+    }
+
+    /// <summary>
+    /// Load normalized repository keys for own observed images
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Own repository keys</returns>
+    private async Task<IReadOnlySet<string>> LoadOwnRepositoryKeysAsync(CancellationToken cancellationToken)
+    {
+        var observedImages = await _dbContext.ObservedImages.Include(entity => entity.CurrentImageVersion)
+                                                            .ThenInclude(entity => entity.RegistryRepository)
+                                                            .Where(entity => entity.Source == RegistrationSource.Discovery)
+                                                            .ToListAsync(cancellationToken)
+                                                            .ConfigureAwait(false);
+        var repositoryKeys = observedImages.Select(entity => CreateRepositoryKey(entity.CurrentImageVersion.RegistryRepository.Registry,
+                                                                                 entity.CurrentImageVersion.RegistryRepository.Repository))
+                                           .ToList();
+
+        return repositoryKeys.ToHashSet(StringComparer.OrdinalIgnoreCase);
     }
 
     #endregion // Methods

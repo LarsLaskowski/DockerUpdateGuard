@@ -672,6 +672,49 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
         return ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>.Succeeded(results);
     }
 
+    /// <inheritdoc/>
+    public async Task<ExternalOperationResult<RegistryImageConfigurationData>> GetImageConfigurationAsync(ImageReference imageReference, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(imageReference);
+
+        if (IsSupportedRegistry(imageReference.Registry) == false)
+        {
+            _logger.DockerHubRegistryUnsupported(imageReference.Registry, nameof(GetImageConfigurationAsync));
+
+            return ExternalOperationResult<RegistryImageConfigurationData>.Unsupported($"Registry '{imageReference.Registry}' is not supported by the Docker Hub adapter");
+        }
+
+        try
+        {
+            var registryToken = await GetRegistryTokenAsync(imageReference, cancellationToken).ConfigureAwait(false);
+
+            if (registryToken is null)
+            {
+                return ExternalOperationResult<RegistryImageConfigurationData>.Failed($"Registry token acquisition failed for '{imageReference.FullReference}'");
+            }
+
+            var configDigest = await GetImageConfigDigestAsync(imageReference, registryToken, cancellationToken).ConfigureAwait(false);
+
+            if (string.IsNullOrWhiteSpace(configDigest))
+            {
+                return ExternalOperationResult<RegistryImageConfigurationData>.NotFound($"Config blob digest could not be resolved for '{imageReference.FullReference}'");
+            }
+
+            var imageConfiguration = await ExtractImageConfigurationAsync(imageReference,
+                                                                          configDigest,
+                                                                          registryToken,
+                                                                          cancellationToken).ConfigureAwait(false);
+
+            return imageConfiguration is null
+                       ? ExternalOperationResult<RegistryImageConfigurationData>.Failed($"Image configuration blob could not be read for '{imageReference.FullReference}'")
+                       : ExternalOperationResult<RegistryImageConfigurationData>.Succeeded(imageConfiguration);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            return ExternalOperationResult<RegistryImageConfigurationData>.Failed($"Image configuration lookup failed for '{imageReference.FullReference}': {exception.Message}");
+        }
+    }
+
     /// <summary>
     /// Recursively resolve the base image chain for a given image reference
     /// </summary>
@@ -971,6 +1014,71 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
             }
 
             return parsedRef;
+        }
+    }
+
+    /// <summary>
+    /// Fetch the image config blob and extract reduced configuration metadata
+    /// </summary>
+    /// <param name="imageReference">Image reference to fetch the blob for</param>
+    /// <param name="configDigest">Config blob digest</param>
+    /// <param name="registryToken">Registry bearer token</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Configuration metadata or null when the blob could not be parsed</returns>
+    private async Task<RegistryImageConfigurationData?> ExtractImageConfigurationAsync(ImageReference imageReference,
+                                                                                       string configDigest,
+                                                                                       string registryToken,
+                                                                                       CancellationToken cancellationToken)
+    {
+        var (namespaceName, repositoryName) = SplitRepository(imageReference.Repository);
+        var blobUri = new Uri($"https://registry-1.docker.io/v2/{Uri.EscapeDataString(namespaceName)}/{EscapeRepository(repositoryName)}/blobs/{Uri.EscapeDataString(configDigest)}");
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, blobUri);
+
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", registryToken);
+
+        using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+
+        if (response.IsSuccessStatusCode == false)
+        {
+            return null;
+        }
+
+        var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+
+        await using (responseStream.ConfigureAwait(false))
+        {
+            using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: cancellationToken).ConfigureAwait(false);
+            var rootElement = jsonDocument.RootElement;
+            var environmentVariables = rootElement.TryGetProperty("config", out var configElement)
+                                       && configElement.ValueKind == JsonValueKind.Object
+                                       && configElement.TryGetProperty("Env", out var envElement)
+                                       && envElement.ValueKind == JsonValueKind.Array
+                                           ? envElement.EnumerateArray()
+                                                       .Select(element => element.GetString())
+                                                       .Where(value => string.IsNullOrWhiteSpace(value) == false)
+                                                       .Cast<string>()
+                                                       .ToArray()
+                                           : [];
+            var labels = rootElement.TryGetProperty("config", out configElement)
+                         && configElement.ValueKind == JsonValueKind.Object
+                         && configElement.TryGetProperty("Labels", out var labelsElement)
+                         && labelsElement.ValueKind == JsonValueKind.Object
+                             ? labelsElement.EnumerateObject()
+                                            .Where(property => property.Value.ValueKind == JsonValueKind.String)
+                                            .ToDictionary(property => property.Name,
+                                                          property => property.Value.GetString() ?? string.Empty,
+                                                          StringComparer.OrdinalIgnoreCase)
+                             : new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+            return new RegistryImageConfigurationData
+                   {
+                       EnvironmentVariables = environmentVariables,
+                       Labels = labels,
+                       CreatedAtUtc = DateTimeOffset.TryParse(TryGetString(rootElement, "created"), out var createdAtUtc) ? createdAtUtc : null,
+                       OperatingSystem = TryGetString(rootElement, "os"),
+                       Architecture = TryGetString(rootElement, "architecture"),
+                   };
         }
     }
 

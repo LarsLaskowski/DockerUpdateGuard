@@ -50,6 +50,9 @@ public class RuntimeContainerScanOrchestratorTests
                 var optionsMonitor = new TestOptionsMonitor<DockerUpdateGuardOptions>(options);
                 var imageCatalogRepository = new ImageCatalogRepository(dbContext);
                 var dockerInstanceClient = Substitute.For<IDockerInstanceClient>();
+                var derivedBaseRuntimeDetector = Substitute.For<IDerivedBaseRuntimeDetector>();
+                var dotNetReleaseMetadataService = Substitute.For<IDotNetReleaseMetadataService>();
+                var nginxReleaseMetadataService = Substitute.For<INginxReleaseMetadataService>();
                 var registryMetadataService = Substitute.For<IRegistryMetadataService>();
                 var instanceDiscoveryLogger = new TestLogger<InstanceDiscoveryService>();
                 var logger = new TestLogger<RuntimeContainerScanOrchestrator>();
@@ -70,6 +73,10 @@ public class RuntimeContainerScanOrchestratorTests
                                                                                                                                   ServiceName = "frontend",
                                                                                                                               },
                                                                                                                           ]));
+                dockerInstanceClient.InspectImageAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+                                    .Returns(ExternalOperationResult<DockerImageInspectData>.NotFound("The local image inspect payload is not available"));
+                dockerInstanceClient.GetImageHistoryAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+                                    .Returns(ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>.NotFound("The local image history payload is not available"));
                 registryMetadataService.GetTagsAsync("docker.io",
                                                      "library/nginx",
                                                      Arg.Any<CancellationToken>())
@@ -98,6 +105,9 @@ public class RuntimeContainerScanOrchestratorTests
                 var orchestrator = new RuntimeContainerScanOrchestrator(new ApplicationTelemetry(),
                                                                         dbContext,
                                                                         dockerInstanceClient,
+                                                                        derivedBaseRuntimeDetector,
+                                                                        dotNetReleaseMetadataService,
+                                                                        nginxReleaseMetadataService,
                                                                         imageCatalogRepository,
                                                                         new ImageReferenceParser(),
                                                                         instanceDiscoveryService,
@@ -188,6 +198,9 @@ public class RuntimeContainerScanOrchestratorTests
                                                                                                             ],
                                                                                       });
                 var dockerInstanceClient = Substitute.For<IDockerInstanceClient>();
+                var derivedBaseRuntimeDetector = Substitute.For<IDerivedBaseRuntimeDetector>();
+                var dotNetReleaseMetadataService = Substitute.For<IDotNetReleaseMetadataService>();
+                var nginxReleaseMetadataService = Substitute.For<INginxReleaseMetadataService>();
                 var registryMetadataService = Substitute.For<IRegistryMetadataService>();
                 var imageCatalogRepository = new ImageCatalogRepository(dbContext);
                 var logger = new TestLogger<RuntimeContainerScanOrchestrator>();
@@ -208,6 +221,10 @@ public class RuntimeContainerScanOrchestratorTests
                                                                                                                                   ServiceName = "frontend",
                                                                                                                               },
                                                                                                                           ]));
+                dockerInstanceClient.InspectImageAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+                                    .Returns(ExternalOperationResult<DockerImageInspectData>.NotFound("The local image inspect payload is not available"));
+                dockerInstanceClient.GetImageHistoryAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+                                    .Returns(ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>.NotFound("The local image history payload is not available"));
                 registryMetadataService.GetTagsAsync("docker.io",
                                                      "library/nginx",
                                                      Arg.Any<CancellationToken>())
@@ -216,6 +233,9 @@ public class RuntimeContainerScanOrchestratorTests
                 var orchestrator = new RuntimeContainerScanOrchestrator(new ApplicationTelemetry(),
                                                                         dbContext,
                                                                         dockerInstanceClient,
+                                                                        derivedBaseRuntimeDetector,
+                                                                        dotNetReleaseMetadataService,
+                                                                        nginxReleaseMetadataService,
                                                                         imageCatalogRepository,
                                                                         new ImageReferenceParser(),
                                                                         instanceDiscoveryService,
@@ -238,6 +258,138 @@ public class RuntimeContainerScanOrchestratorTests
                 Assert.IsTrue(logger.Entries.Any(entry => entry.EventId.Id == 2041
                                                           && entry.Message.Contains("Partial", StringComparison.Ordinal)),
                               "Runtime scans with unsupported registry evaluations must log a partial completion summary");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Verify a single invalid container image reference does not stop processing of remaining containers
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task RuntimeContainerScanOrchestratorScanAllAsyncContinuesAfterContainerProcessingFailureAsync()
+    {
+        using (var database = new SqliteTestDatabase())
+        {
+            var dbContext = database.CreateDbContext();
+
+            await using (dbContext.ConfigureAwait(false))
+            {
+                var optionsMonitor = new TestOptionsMonitor<DockerUpdateGuardOptions>(new DockerUpdateGuardOptions
+                                                                                      {
+                                                                                          DockerInstances = [
+                                                                                                                new DockerInstanceOptions
+                                                                                                                {
+                                                                                                                    Name = "Production",
+                                                                                                                    BaseUrl = "https://docker.example.test",
+                                                                                                                    Enabled = true,
+                                                                                                                },
+                                                                                                            ],
+                                                                                      });
+                var dockerInstanceClient = Substitute.For<IDockerInstanceClient>();
+                var derivedBaseRuntimeDetector = Substitute.For<IDerivedBaseRuntimeDetector>();
+                var dotNetReleaseMetadataService = Substitute.For<IDotNetReleaseMetadataService>();
+                var nginxReleaseMetadataService = Substitute.For<INginxReleaseMetadataService>();
+                var registryMetadataService = Substitute.For<IRegistryMetadataService>();
+                var imageCatalogRepository = new ImageCatalogRepository(dbContext);
+                var logger = new TestLogger<RuntimeContainerScanOrchestrator>();
+                var instanceDiscoveryService = new InstanceDiscoveryService(dbContext,
+                                                                            new TestLogger<InstanceDiscoveryService>(),
+                                                                            optionsMonitor);
+
+                dockerInstanceClient.DiscoverContainersAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<CancellationToken>())
+                                    .Returns(ExternalOperationResult<IReadOnlyList<RuntimeContainerDescriptor>>.Succeeded([
+                                                                                                                              new RuntimeContainerDescriptor
+                                                                                                                              {
+                                                                                                                                  ContainerId = "container-1",
+                                                                                                                                  Name = "web-1",
+                                                                                                                                  ImageReference = "docker.io/library/nginx:1.0.0",
+                                                                                                                                  RuntimeStatus = ContainerRuntimeStatus.Running,
+                                                                                                                                  IsRunning = true,
+                                                                                                                              },
+                                                                                                                              new RuntimeContainerDescriptor
+                                                                                                                              {
+                                                                                                                                  ContainerId = "container-2",
+                                                                                                                                  Name = "broken",
+                                                                                                                                  ImageReference = "sha256:local-only-image",
+                                                                                                                                  RuntimeStatus = ContainerRuntimeStatus.Running,
+                                                                                                                                  IsRunning = true,
+                                                                                                                              },
+                                                                                                                              new RuntimeContainerDescriptor
+                                                                                                                              {
+                                                                                                                                  ContainerId = "container-3",
+                                                                                                                                  Name = "web-3",
+                                                                                                                                  ImageReference = "docker.io/library/nginx:1.1.0",
+                                                                                                                                  RuntimeStatus = ContainerRuntimeStatus.Running,
+                                                                                                                                  IsRunning = true,
+                                                                                                                              },
+                                                                                                                          ]));
+                dockerInstanceClient.InspectImageAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+                                    .Returns(ExternalOperationResult<DockerImageInspectData>.NotFound("The local image inspect payload is not available"));
+                dockerInstanceClient.GetImageHistoryAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+                                    .Returns(ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>.NotFound("The local image history payload is not available"));
+                registryMetadataService.GetTagsAsync("docker.io",
+                                                     "library/nginx",
+                                                     Arg.Any<CancellationToken>())
+                                       .Returns(ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Succeeded([
+                                                                                                                       new DockerHubTagData
+                                                                                                                       {
+                                                                                                                           Tag = "1.1.0",
+                                                                                                                           Digest = "sha256:new",
+                                                                                                                           PublishedAtUtc = new DateTimeOffset(2025, 06, 02, 12, 00, 00, TimeSpan.Zero),
+                                                                                                                       },
+                                                                                                                       new DockerHubTagData
+                                                                                                                       {
+                                                                                                                           Tag = "1.0.0",
+                                                                                                                           Digest = "sha256:old",
+                                                                                                                           PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
+                                                                                                                       },
+                                                                                                                   ]));
+                registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
+                                       .Returns(ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
+                                                                                                    {
+                                                                                                        Tag = "1.0.0",
+                                                                                                        Digest = "sha256:old",
+                                                                                                        PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
+                                                                                                    }));
+
+                var orchestrator = new RuntimeContainerScanOrchestrator(new ApplicationTelemetry(),
+                                                                        dbContext,
+                                                                        dockerInstanceClient,
+                                                                        derivedBaseRuntimeDetector,
+                                                                        dotNetReleaseMetadataService,
+                                                                        nginxReleaseMetadataService,
+                                                                        imageCatalogRepository,
+                                                                        new ImageReferenceParser(),
+                                                                        instanceDiscoveryService,
+                                                                        logger,
+                                                                        optionsMonitor,
+                                                                        registryMetadataService,
+                                                                        new UpdateDetectionService());
+
+                await orchestrator.ScanAllAsync(ScanTriggerSource.Scheduled, CancellationToken.None)
+                                  .ConfigureAwait(false);
+
+                var scanRun = await dbContext.ScanRuns.SingleAsync().ConfigureAwait(false);
+                var snapshots = await dbContext.ContainerSnapshots.OrderBy(entity => entity.Name)
+                                                                  .ToListAsync()
+                                                                  .ConfigureAwait(false);
+
+                Assert.AreEqual(ScanRunStatus.Partial,
+                                scanRun.Status,
+                                "The runtime scan must degrade to partial when a single container cannot be processed");
+                Assert.AreEqual(3,
+                                snapshots.Count,
+                                "The runtime scan must preserve the failed container snapshot and continue with the remaining containers");
+                CollectionAssert.AreEqual(new[] { "broken", "web-1", "web-3" },
+                                          snapshots.Select(entity => entity.Name).ToArray(),
+                                          "The runtime scan must keep processing containers after an invalid image reference");
+                Assert.AreEqual(UpdateAssessmentStatus.Failed,
+                                snapshots.Single(entity => entity.Name == "broken").UpdateAssessmentStatus,
+                                "The invalid container must be marked as failed instead of aborting the complete scan");
+                Assert.IsTrue(logger.Entries.Any(entry => entry.EventId.Id == 2098
+                                                          && entry.Message.Contains("broken", StringComparison.Ordinal)),
+                              "The runtime scan must log which container was skipped when per-container processing fails");
             }
         }
     }
@@ -267,6 +419,9 @@ public class RuntimeContainerScanOrchestratorTests
                                                                                                             ],
                                                                                       });
                 var dockerInstanceClient = Substitute.For<IDockerInstanceClient>();
+                var derivedBaseRuntimeDetector = Substitute.For<IDerivedBaseRuntimeDetector>();
+                var dotNetReleaseMetadataService = Substitute.For<IDotNetReleaseMetadataService>();
+                var nginxReleaseMetadataService = Substitute.For<INginxReleaseMetadataService>();
                 var registryMetadataService = Substitute.For<IRegistryMetadataService>();
                 var imageCatalogRepository = new ImageCatalogRepository(dbContext);
                 var logger = new TestLogger<RuntimeContainerScanOrchestrator>();
@@ -285,6 +440,10 @@ public class RuntimeContainerScanOrchestratorTests
                                                                                                                                   IsRunning = true,
                                                                                                                               },
                                                                                                                           ]));
+                dockerInstanceClient.InspectImageAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+                                    .Returns(ExternalOperationResult<DockerImageInspectData>.NotFound("The local image inspect payload is not available"));
+                dockerInstanceClient.GetImageHistoryAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+                                    .Returns(ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>.NotFound("The local image history payload is not available"));
                 registryMetadataService.GetTagsAsync("docker.io",
                                                      "networlddev/f1-telemetry",
                                                      Arg.Any<CancellationToken>())
@@ -309,6 +468,9 @@ public class RuntimeContainerScanOrchestratorTests
                 var orchestrator = new RuntimeContainerScanOrchestrator(new ApplicationTelemetry(),
                                                                         dbContext,
                                                                         dockerInstanceClient,
+                                                                        derivedBaseRuntimeDetector,
+                                                                        dotNetReleaseMetadataService,
+                                                                        nginxReleaseMetadataService,
                                                                         imageCatalogRepository,
                                                                         new ImageReferenceParser(),
                                                                         instanceDiscoveryService,
@@ -363,6 +525,9 @@ public class RuntimeContainerScanOrchestratorTests
                                                                                                             ],
                                                                                       });
                 var dockerInstanceClient = Substitute.For<IDockerInstanceClient>();
+                var derivedBaseRuntimeDetector = Substitute.For<IDerivedBaseRuntimeDetector>();
+                var dotNetReleaseMetadataService = Substitute.For<IDotNetReleaseMetadataService>();
+                var nginxReleaseMetadataService = Substitute.For<INginxReleaseMetadataService>();
                 var registryMetadataService = Substitute.For<IRegistryMetadataService>();
                 var imageCatalogRepository = new ImageCatalogRepository(dbContext);
                 var logger = new TestLogger<RuntimeContainerScanOrchestrator>();
@@ -382,6 +547,10 @@ public class RuntimeContainerScanOrchestratorTests
                                                                                                                                   IsRunning = true,
                                                                                                                               },
                                                                                                                           ]));
+                dockerInstanceClient.InspectImageAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+                                    .Returns(ExternalOperationResult<DockerImageInspectData>.NotFound("The local image inspect payload is not available"));
+                dockerInstanceClient.GetImageHistoryAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+                                    .Returns(ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>.NotFound("The local image history payload is not available"));
                 registryMetadataService.GetTagsAsync("docker.io",
                                                      "networlddev/f1-telemetry",
                                                      Arg.Any<CancellationToken>())
@@ -418,6 +587,9 @@ public class RuntimeContainerScanOrchestratorTests
                 var orchestrator = new RuntimeContainerScanOrchestrator(new ApplicationTelemetry(),
                                                                         dbContext,
                                                                         dockerInstanceClient,
+                                                                        derivedBaseRuntimeDetector,
+                                                                        dotNetReleaseMetadataService,
+                                                                        nginxReleaseMetadataService,
                                                                         imageCatalogRepository,
                                                                         new ImageReferenceParser(),
                                                                         instanceDiscoveryService,
@@ -447,6 +619,263 @@ public class RuntimeContainerScanOrchestratorTests
                                                                .Select(entity => entity.Tag)
                                                                .ToArray(),
                                           "Persisted tag candidates must include the semantic successor and the resolved current version tag");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Verify runtime scans persist a derived base-runtime finding for outdated .NET runtimes
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task RuntimeContainerScanOrchestratorScanAllAsyncCreatesDerivedBaseRuntimeFindingAsync()
+    {
+        using (var database = new SqliteTestDatabase())
+        {
+            var dbContext = database.CreateDbContext();
+
+            await using (dbContext.ConfigureAwait(false))
+            {
+                var optionsMonitor = new TestOptionsMonitor<DockerUpdateGuardOptions>(new DockerUpdateGuardOptions
+                                                                                      {
+                                                                                          DockerInstances = [
+                                                                                                                new DockerInstanceOptions
+                                                                                                                {
+                                                                                                                    Name = "Production",
+                                                                                                                    BaseUrl = "https://docker.example.test",
+                                                                                                                    Enabled = true,
+                                                                                                                },
+                                                                                                            ],
+                                                                                      });
+                var imageCatalogRepository = new ImageCatalogRepository(dbContext);
+                var dockerInstanceClient = Substitute.For<IDockerInstanceClient>();
+                var derivedBaseRuntimeDetector = new DerivedBaseRuntimeDetector();
+                var dotNetReleaseMetadataService = Substitute.For<IDotNetReleaseMetadataService>();
+                var nginxReleaseMetadataService = Substitute.For<INginxReleaseMetadataService>();
+                var registryMetadataService = Substitute.For<IRegistryMetadataService>();
+                var logger = new TestLogger<RuntimeContainerScanOrchestrator>();
+                var instanceDiscoveryService = new InstanceDiscoveryService(dbContext,
+                                                                            new TestLogger<InstanceDiscoveryService>(),
+                                                                            optionsMonitor);
+                var ownImageVersion = await imageCatalogRepository.GetOrCreateImageVersionAsync("docker.io",
+                                                                                                "company/api",
+                                                                                                "1.0.0",
+                                                                                                "sha256:current",
+                                                                                                cancellationToken: CancellationToken.None)
+                                                                  .ConfigureAwait(false);
+
+                dbContext.ObservedImages.Add(new ObservedImage
+                                             {
+                                                 Name = "Company API",
+                                                 CurrentImageVersionId = ownImageVersion.Id,
+                                                 Source = RegistrationSource.Discovery,
+                                             });
+                await dbContext.SaveChangesAsync(CancellationToken.None)
+                               .ConfigureAwait(false);
+
+                dockerInstanceClient.DiscoverContainersAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<CancellationToken>())
+                                    .Returns(ExternalOperationResult<IReadOnlyList<RuntimeContainerDescriptor>>.Succeeded([
+                                                                                                                              new RuntimeContainerDescriptor
+                                                                                                                              {
+                                                                                                                                  ContainerId = "container-1",
+                                                                                                                                  Name = "api",
+                                                                                                                                  ImageReference = "docker.io/company/api:1.0.0",
+                                                                                                                                  LocalImageId = "sha256:local-image",
+                                                                                                                                  RuntimeStatus = ContainerRuntimeStatus.Running,
+                                                                                                                                  IsRunning = true,
+                                                                                                                              },
+                                                                                                                          ]));
+                dockerInstanceClient.InspectImageAsync(Arg.Any<DockerInstanceOptions>(), "sha256:local-image", Arg.Any<CancellationToken>())
+                                    .Returns(ExternalOperationResult<DockerImageInspectData>.Succeeded(new DockerImageInspectData
+                                                                                                       {
+                                                                                                           Id = "sha256:local-image",
+                                                                                                           EnvironmentVariables = ["DOTNET_VERSION=9.0.13"],
+                                                                                                       }));
+                dockerInstanceClient.GetImageHistoryAsync(Arg.Any<DockerInstanceOptions>(), "sha256:local-image", Arg.Any<CancellationToken>())
+                                    .Returns(ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>.Succeeded([]));
+                dotNetReleaseMetadataService.GetChannelReleaseAsync("9.0", Arg.Any<CancellationToken>())
+                                            .Returns(ExternalOperationResult<DotNetChannelReleaseData>.Succeeded(new DotNetChannelReleaseData
+                                                                                                                 {
+                                                                                                                     ChannelVersion = "9.0",
+                                                                                                                     LatestRuntimeVersion = new Version(9, 0, 15),
+                                                                                                                     IsSecurityRelease = true,
+                                                                                                                 }));
+                registryMetadataService.GetTagsAsync("docker.io",
+                                                     "company/api",
+                                                     Arg.Any<CancellationToken>())
+                                       .Returns(ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Succeeded([
+                                                                                                                       new DockerHubTagData
+                                                                                                                       {
+                                                                                                                           Tag = "1.0.0",
+                                                                                                                           Digest = "sha256:current",
+                                                                                                                           PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
+                                                                                                                       },
+                                                                                                                   ]));
+                registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
+                                       .Returns(ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
+                                                                                                    {
+                                                                                                        Tag = "1.0.0",
+                                                                                                        Digest = "sha256:current",
+                                                                                                        PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
+                                                                                                    }));
+
+                var orchestrator = new RuntimeContainerScanOrchestrator(new ApplicationTelemetry(),
+                                                                        dbContext,
+                                                                        dockerInstanceClient,
+                                                                        derivedBaseRuntimeDetector,
+                                                                        dotNetReleaseMetadataService,
+                                                                        nginxReleaseMetadataService,
+                                                                        imageCatalogRepository,
+                                                                        new ImageReferenceParser(),
+                                                                        instanceDiscoveryService,
+                                                                        logger,
+                                                                        optionsMonitor,
+                                                                        registryMetadataService,
+                                                                        new UpdateDetectionService());
+
+                await orchestrator.ScanAllAsync(ScanTriggerSource.Scheduled, CancellationToken.None)
+                                  .ConfigureAwait(false);
+
+                var finding = await dbContext.UpdateFindings.SingleAsync(entity => entity.Type == UpdateFindingType.DerivedBaseRuntimeUpdate)
+                                                            .ConfigureAwait(false);
+
+                Assert.AreEqual("Own image uses an outdated .NET base runtime",
+                                finding.Summary,
+                                "Runtime scans must persist a strong warning for own images with an outdated .NET base runtime");
+                StringAssert.Contains(finding.Details ?? string.Empty,
+                                      ".NET 9.0.13",
+                                      "The derived runtime finding must mention the detected .NET version");
+                StringAssert.Contains(finding.Details ?? string.Empty,
+                                      "9.0.15",
+                                      "The derived runtime finding must mention the latest channel runtime");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Verify runtime scans persist a derived base-runtime finding for outdated NGINX runtimes
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task RuntimeContainerScanOrchestratorScanAllAsyncCreatesDerivedNginxBaseRuntimeFindingAsync()
+    {
+        using (var database = new SqliteTestDatabase())
+        {
+            var dbContext = database.CreateDbContext();
+
+            await using (dbContext.ConfigureAwait(false))
+            {
+                var optionsMonitor = new TestOptionsMonitor<DockerUpdateGuardOptions>(new DockerUpdateGuardOptions
+                                                                                      {
+                                                                                          DockerInstances = [
+                                                                                                                new DockerInstanceOptions
+                                                                                                                {
+                                                                                                                    Name = "Production",
+                                                                                                                    BaseUrl = "https://docker.example.test",
+                                                                                                                    Enabled = true,
+                                                                                                                },
+                                                                                                            ],
+                                                                                      });
+                var imageCatalogRepository = new ImageCatalogRepository(dbContext);
+                var dockerInstanceClient = Substitute.For<IDockerInstanceClient>();
+                var derivedBaseRuntimeDetector = new DerivedBaseRuntimeDetector();
+                var dotNetReleaseMetadataService = Substitute.For<IDotNetReleaseMetadataService>();
+                var nginxReleaseMetadataService = Substitute.For<INginxReleaseMetadataService>();
+                var registryMetadataService = Substitute.For<IRegistryMetadataService>();
+                var logger = new TestLogger<RuntimeContainerScanOrchestrator>();
+                var instanceDiscoveryService = new InstanceDiscoveryService(dbContext,
+                                                                            new TestLogger<InstanceDiscoveryService>(),
+                                                                            optionsMonitor);
+                var ownImageVersion = await imageCatalogRepository.GetOrCreateImageVersionAsync("docker.io",
+                                                                                                "company/web",
+                                                                                                "1.0.0",
+                                                                                                "sha256:web",
+                                                                                                cancellationToken: CancellationToken.None)
+                                                                  .ConfigureAwait(false);
+
+                dbContext.ObservedImages.Add(new ObservedImage
+                                             {
+                                                 Name = "Company Web",
+                                                 CurrentImageVersionId = ownImageVersion.Id,
+                                                 Source = RegistrationSource.Discovery,
+                                             });
+                await dbContext.SaveChangesAsync(CancellationToken.None)
+                               .ConfigureAwait(false);
+
+                dockerInstanceClient.DiscoverContainersAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<CancellationToken>())
+                                    .Returns(ExternalOperationResult<IReadOnlyList<RuntimeContainerDescriptor>>.Succeeded([
+                                                                                                                              new RuntimeContainerDescriptor
+                                                                                                                              {
+                                                                                                                                  ContainerId = "container-1",
+                                                                                                                                  Name = "web",
+                                                                                                                                  ImageReference = "docker.io/company/web:1.0.0",
+                                                                                                                                  LocalImageId = "sha256:local-nginx-image",
+                                                                                                                                  RuntimeStatus = ContainerRuntimeStatus.Running,
+                                                                                                                                  IsRunning = true,
+                                                                                                                              },
+                                                                                                                          ]));
+                dockerInstanceClient.InspectImageAsync(Arg.Any<DockerInstanceOptions>(), "sha256:local-nginx-image", Arg.Any<CancellationToken>())
+                                    .Returns(ExternalOperationResult<DockerImageInspectData>.Succeeded(new DockerImageInspectData
+                                                                                                       {
+                                                                                                           Id = "sha256:local-nginx-image",
+                                                                                                           EnvironmentVariables = ["NGINX_VERSION=1.29.1"],
+                                                                                                       }));
+                dockerInstanceClient.GetImageHistoryAsync(Arg.Any<DockerInstanceOptions>(), "sha256:local-nginx-image", Arg.Any<CancellationToken>())
+                                    .Returns(ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>.Succeeded([]));
+                nginxReleaseMetadataService.GetChannelReleaseAsync("1.29", Arg.Any<CancellationToken>())
+                                           .Returns(ExternalOperationResult<NginxChannelReleaseData>.Succeeded(new NginxChannelReleaseData
+                                                                                                               {
+                                                                                                                   ChannelVersion = "1.29",
+                                                                                                                   LatestVersion = new Version(1, 29, 8),
+                                                                                                               }));
+                registryMetadataService.GetTagsAsync("docker.io",
+                                                     "company/web",
+                                                     Arg.Any<CancellationToken>())
+                                       .Returns(ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Succeeded([
+                                                                                                                       new DockerHubTagData
+                                                                                                                       {
+                                                                                                                           Tag = "1.0.0",
+                                                                                                                           Digest = "sha256:web",
+                                                                                                                           PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
+                                                                                                                       },
+                                                                                                                   ]));
+                registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
+                                       .Returns(ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
+                                                                                                    {
+                                                                                                        Tag = "1.0.0",
+                                                                                                        Digest = "sha256:web",
+                                                                                                        PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
+                                                                                                    }));
+
+                var orchestrator = new RuntimeContainerScanOrchestrator(new ApplicationTelemetry(),
+                                                                        dbContext,
+                                                                        dockerInstanceClient,
+                                                                        derivedBaseRuntimeDetector,
+                                                                        dotNetReleaseMetadataService,
+                                                                        nginxReleaseMetadataService,
+                                                                        imageCatalogRepository,
+                                                                        new ImageReferenceParser(),
+                                                                        instanceDiscoveryService,
+                                                                        logger,
+                                                                        optionsMonitor,
+                                                                        registryMetadataService,
+                                                                        new UpdateDetectionService());
+
+                await orchestrator.ScanAllAsync(ScanTriggerSource.Scheduled, CancellationToken.None)
+                                  .ConfigureAwait(false);
+
+                var finding = await dbContext.UpdateFindings.SingleAsync(entity => entity.Type == UpdateFindingType.DerivedBaseRuntimeUpdate)
+                                                            .ConfigureAwait(false);
+
+                Assert.AreEqual("Own image uses an outdated NGINX base runtime",
+                                finding.Summary,
+                                "Runtime scans must persist a strong warning for own images with an outdated NGINX base runtime");
+                StringAssert.Contains(finding.Details ?? string.Empty,
+                                      "NGINX 1.29.1",
+                                      "The derived runtime finding must mention the detected NGINX version");
+                StringAssert.Contains(finding.Details ?? string.Empty,
+                                      "1.29.8",
+                                      "The derived runtime finding must mention the latest channel release");
             }
         }
     }

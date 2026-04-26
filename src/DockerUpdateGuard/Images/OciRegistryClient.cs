@@ -366,6 +366,67 @@ public class OciRegistryClient : IRegistryMetadataClient
     }
 
     /// <summary>
+    /// Read an optional environment variable list from a config blob
+    /// </summary>
+    /// <param name="rootElement">Config blob root element</param>
+    /// <returns>Environment variables</returns>
+    private static IReadOnlyList<string> TryReadEnvironmentVariables(JsonElement rootElement)
+    {
+        if (rootElement.TryGetProperty("config", out var configElement) == false
+            || configElement.ValueKind != JsonValueKind.Object
+            || configElement.TryGetProperty("Env", out var envElement) == false
+            || envElement.ValueKind != JsonValueKind.Array)
+        {
+            return [];
+        }
+
+        return envElement.EnumerateArray()
+                         .Select(element => element.GetString())
+                         .Where(value => string.IsNullOrWhiteSpace(value) == false)
+                         .Cast<string>()
+                         .ToArray();
+    }
+
+    /// <summary>
+    /// Read optional labels from a config blob
+    /// </summary>
+    /// <param name="rootElement">Config blob root element</param>
+    /// <returns>Labels</returns>
+    private static IReadOnlyDictionary<string, string> TryReadLabels(JsonElement rootElement)
+    {
+        if (rootElement.TryGetProperty("config", out var configElement) == false
+            || configElement.ValueKind != JsonValueKind.Object
+            || configElement.TryGetProperty("Labels", out var labelsElement) == false
+            || labelsElement.ValueKind != JsonValueKind.Object)
+        {
+            return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        return labelsElement.EnumerateObject()
+                            .Where(property => property.Value.ValueKind == JsonValueKind.String)
+                            .ToDictionary(property => property.Name,
+                                          property => property.Value.GetString() ?? string.Empty,
+                                          StringComparer.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Parse reduced registry image configuration metadata
+    /// </summary>
+    /// <param name="rootElement">Config blob root element</param>
+    /// <returns>Parsed configuration metadata</returns>
+    private static RegistryImageConfigurationData ParseImageConfiguration(JsonElement rootElement)
+    {
+        return new RegistryImageConfigurationData
+               {
+                   EnvironmentVariables = TryReadEnvironmentVariables(rootElement),
+                   Labels = TryReadLabels(rootElement),
+                   CreatedAtUtc = TryReadCreatedAtUtc(rootElement),
+                   OperatingSystem = TryGetString(rootElement, "os"),
+                   Architecture = TryGetString(rootElement, "architecture"),
+               };
+    }
+
+    /// <summary>
     /// Read the created timestamp from a manifest or config blob
     /// </summary>
     /// <param name="element">JSON root element</param>
@@ -596,6 +657,67 @@ public class OciRegistryClient : IRegistryMetadataClient
         }
 
         return ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>.Succeeded(results);
+    }
+
+    /// <inheritdoc/>
+    public async Task<ExternalOperationResult<RegistryImageConfigurationData>> GetImageConfigurationAsync(ImageReference imageReference, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(imageReference);
+
+        if (CanHandle(imageReference.Registry) == false)
+        {
+            return ExternalOperationResult<RegistryImageConfigurationData>.Unsupported($"Registry '{imageReference.Registry}' is not supported by the OCI registry adapter");
+        }
+
+        var manifestResult = await GetManifestMetadataAsync(imageReference,
+                                                            string.IsNullOrWhiteSpace(imageReference.Digest) ? imageReference.Tag : imageReference.Digest,
+                                                            cancellationToken).ConfigureAwait(false);
+
+        if (manifestResult.Status != ExternalOperationStatus.Succeeded || manifestResult.Data is null)
+        {
+            return manifestResult.Status switch
+                   {
+                       ExternalOperationStatus.Unsupported => ExternalOperationResult<RegistryImageConfigurationData>.Unsupported(manifestResult.Message ?? "Registry lookup is unsupported"),
+                       ExternalOperationStatus.NotFound => ExternalOperationResult<RegistryImageConfigurationData>.NotFound(manifestResult.Message ?? "Registry image was not found"),
+                       ExternalOperationStatus.NotConfigured => ExternalOperationResult<RegistryImageConfigurationData>.NotConfigured(manifestResult.Message ?? "Registry lookup is not configured"),
+                       ExternalOperationStatus.Unknown => ExternalOperationResult<RegistryImageConfigurationData>.Unknown(manifestResult.Message ?? "Registry lookup status is unknown"),
+                       _ => ExternalOperationResult<RegistryImageConfigurationData>.Failed(manifestResult.Message ?? "Registry image configuration lookup failed"),
+                   };
+        }
+
+        if (string.IsNullOrWhiteSpace(manifestResult.Data.ConfigDigest))
+        {
+            return ExternalOperationResult<RegistryImageConfigurationData>.NotFound($"Registry image '{imageReference.FullReference}' did not expose a config digest");
+        }
+
+        var blobUri = CreateBlobUri(imageReference.Registry, imageReference.Repository, manifestResult.Data.ConfigDigest);
+
+        using var response = await SendRegistryRequestAsync(blobUri,
+                                                            imageReference.Repository,
+                                                            HttpMethod.Get,
+                                                            configureRequest: null,
+                                                            cancellationToken).ConfigureAwait(false);
+
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            return ExternalOperationResult<RegistryImageConfigurationData>.NotFound($"Config blob '{manifestResult.Data.ConfigDigest}' was not found for '{imageReference.FullReference}'");
+        }
+
+        if (response.IsSuccessStatusCode == false)
+        {
+            return await CreateFailureResultAsync<RegistryImageConfigurationData>(response,
+                                                                                  $"Registry image configuration lookup failed for '{imageReference.FullReference}'",
+                                                                                  cancellationToken).ConfigureAwait(false);
+        }
+
+        var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+
+        await using (responseStream.ConfigureAwait(false))
+        {
+            using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: cancellationToken).ConfigureAwait(false);
+
+            return ExternalOperationResult<RegistryImageConfigurationData>.Succeeded(ParseImageConfiguration(jsonDocument.RootElement));
+        }
     }
 
     /// <summary>

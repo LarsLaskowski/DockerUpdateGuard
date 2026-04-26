@@ -27,6 +27,24 @@ public interface IDockerInstanceClient
     Task<ExternalOperationResult<IReadOnlyList<RuntimeContainerResourceDescriptor>>> CollectContainerResourceUsageAsync(DockerInstanceOptions instanceOptions, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Inspect a local image from a configured Docker instance
+    /// </summary>
+    /// <param name="instanceOptions">Docker instance configuration</param>
+    /// <param name="imageReferenceOrId">Image reference or local image identifier</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Image inspect result</returns>
+    Task<ExternalOperationResult<DockerImageInspectData>> InspectImageAsync(DockerInstanceOptions instanceOptions, string imageReferenceOrId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Read history for a local image from a configured Docker instance
+    /// </summary>
+    /// <param name="instanceOptions">Docker instance configuration</param>
+    /// <param name="imageReferenceOrId">Image reference or local image identifier</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Image history result</returns>
+    Task<ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>> GetImageHistoryAsync(DockerInstanceOptions instanceOptions, string imageReferenceOrId, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Read the total host memory reported by a configured Docker instance
     /// </summary>
     /// <param name="instanceOptions">Docker instance configuration</param>

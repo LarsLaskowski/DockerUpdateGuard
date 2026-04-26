@@ -200,6 +200,138 @@ public class DockerInstanceClientTests
         }
     }
 
+    /// <summary>
+    /// Verify Docker image inspect parsing exposes environment variables and rootfs layers
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerInstanceClientInspectImageAsyncParsesEnvironmentVariablesAndRootFsLayersAsync()
+    {
+        var handler = new SequenceHttpMessageHandler();
+        var httpClient = new HttpClient(handler)
+                         {
+                             BaseAddress = new Uri("https://docker.example.test/"),
+                         };
+
+        try
+        {
+            handler.AddJsonResponse("https://docker.example.test/v1.41/images/sha256%3Alocal-image/json",
+                                    """
+                                    {
+                                      "Id": "sha256:local-image",
+                                      "Created": "2025-06-01T12:00:00Z",
+                                      "Os": "linux",
+                                      "Architecture": "amd64",
+                                      "RepoTags": [
+                                        "docker.io/company/api:1.0.0"
+                                      ],
+                                      "RepoDigests": [
+                                        "docker.io/company/api@sha256:current"
+                                      ],
+                                      "Config": {
+                                        "Env": [
+                                          "DOTNET_VERSION=9.0.13",
+                                          "ASPNET_VERSION=9.0.13"
+                                        ]
+                                      },
+                                      "RootFS": {
+                                        "Layers": [
+                                          "sha256:layer-1",
+                                          "sha256:layer-2"
+                                        ]
+                                      }
+                                    }
+                                    """);
+
+            var client = new DockerInstanceClient(new TestLogger<DockerInstanceClient>(),
+                                                  (_, _) => httpClient);
+            var instanceOptions = new DockerInstanceOptions
+                                  {
+                                      Name = "Production",
+                                      BaseUrl = "https://docker.example.test",
+                                      Enabled = true,
+                                  };
+
+            var result = await client.InspectImageAsync(instanceOptions, "sha256:local-image", CancellationToken.None)
+                                     .ConfigureAwait(false);
+
+            Assert.AreEqual(ExternalOperationStatus.Succeeded,
+                            result.Status,
+                            "Image inspect must succeed when the Docker engine returns an inspect payload");
+            Assert.IsNotNull(result.Data, "Image inspect must expose the parsed inspect payload");
+            CollectionAssert.AreEqual(new[] { "DOTNET_VERSION=9.0.13", "ASPNET_VERSION=9.0.13" },
+                                      result.Data.EnvironmentVariables.ToArray(),
+                                      "Image inspect must expose environment variables from the Docker image config");
+            CollectionAssert.AreEqual(new[] { "sha256:layer-1", "sha256:layer-2" },
+                                      result.Data.RootFsLayers.ToArray(),
+                                      "Image inspect must expose the rootfs layer chain");
+        }
+        finally
+        {
+            httpClient.Dispose();
+            handler.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Verify Docker image history parsing exposes created-by text and tags
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerInstanceClientGetImageHistoryAsyncParsesHistoryEntriesAsync()
+    {
+        var handler = new SequenceHttpMessageHandler();
+        var httpClient = new HttpClient(handler)
+                         {
+                             BaseAddress = new Uri("https://docker.example.test/"),
+                         };
+
+        try
+        {
+            handler.AddJsonResponse("https://docker.example.test/v1.41/images/sha256%3Alocal-image/history",
+                                    """
+                                    [
+                                      {
+                                        "Created": "2025-06-02T12:00:00Z",
+                                        "CreatedBy": "/bin/sh -c #(nop)  ENV DOTNET_VERSION=9.0.13",
+                                        "Comment": "final stage",
+                                        "Tags": [
+                                          "docker.io/company/api:1.0.0"
+                                        ]
+                                      }
+                                    ]
+                                    """);
+
+            var client = new DockerInstanceClient(new TestLogger<DockerInstanceClient>(),
+                                                  (_, _) => httpClient);
+            var instanceOptions = new DockerInstanceOptions
+                                  {
+                                      Name = "Production",
+                                      BaseUrl = "https://docker.example.test",
+                                      Enabled = true,
+                                  };
+
+            var result = await client.GetImageHistoryAsync(instanceOptions, "sha256:local-image", CancellationToken.None)
+                                     .ConfigureAwait(false);
+
+            Assert.AreEqual(ExternalOperationStatus.Succeeded,
+                            result.Status,
+                            "Image history must succeed when the Docker engine returns a history payload");
+            Assert.IsNotNull(result.Data, "Image history must expose parsed history entries");
+            Assert.AreEqual("/bin/sh -c #(nop)  ENV DOTNET_VERSION=9.0.13",
+                            result.Data.Single().CreatedBy,
+                            "Image history must expose the created-by command text");
+            CollectionAssert.AreEqual(new[] { "docker.io/company/api:1.0.0" },
+                                      result.Data.Single().Tags.ToArray(),
+                                      "Image history must expose tags when the Docker engine returns them");
+        }
+        finally
+        {
+            httpClient.Dispose();
+            handler.Dispose();
+        }
+    }
+
     #endregion // Methods
 
     #region Helper types

@@ -110,34 +110,14 @@ public class DockerInstanceClient : IDockerInstanceClient
                                                                                string imageId,
                                                                                CancellationToken cancellationToken)
     {
-        using var response = await httpClient.GetAsync($"v1.41/images/{Uri.EscapeDataString(imageId)}/json", cancellationToken)
-                                             .ConfigureAwait(false);
+        var inspectResult = await ReadImageInspectAsync(httpClient, imageId, cancellationToken).ConfigureAwait(false);
 
-        if (response.IsSuccessStatusCode == false)
+        if (inspectResult.Status != ExternalOperationStatus.Succeeded || inspectResult.Data is null)
         {
             return [];
         }
 
-        var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken)
-                                                   .ConfigureAwait(false);
-
-        await using (responseStream.ConfigureAwait(false))
-        {
-            using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: cancellationToken)
-                                                       .ConfigureAwait(false);
-
-            if (jsonDocument.RootElement.TryGetProperty("RepoDigests", out var repoDigestsElement) == false
-                || repoDigestsElement.ValueKind != JsonValueKind.Array)
-            {
-                return [];
-            }
-
-            return repoDigestsElement.EnumerateArray()
-                                     .Select(element => element.GetString())
-                                     .Where(value => string.IsNullOrWhiteSpace(value) == false)
-                                     .Cast<string>()
-                                     .ToArray();
-        }
+        return inspectResult.Data.RepoDigests;
     }
 
     /// <summary>
@@ -652,6 +632,172 @@ public class DockerInstanceClient : IDockerInstanceClient
         return DateTimeOffset.TryParse(value, out var timestamp) ? timestamp : null;
     }
 
+    /// <summary>
+    /// Parse Docker image inspect payload
+    /// </summary>
+    /// <param name="element">Root JSON element</param>
+    /// <returns>Inspect data</returns>
+    private static DockerImageInspectData ParseImageInspect(JsonElement element)
+    {
+        var environmentVariables = new List<string>();
+        var rootFsLayers = new List<string>();
+
+        if (element.TryGetProperty("Config", out var configElement)
+            && configElement.ValueKind == JsonValueKind.Object
+            && configElement.TryGetProperty("Env", out var envElement)
+            && envElement.ValueKind == JsonValueKind.Array)
+        {
+            environmentVariables.AddRange(envElement.EnumerateArray()
+                                                    .Select(item => item.GetString())
+                                                    .Where(value => string.IsNullOrWhiteSpace(value) == false)
+                                                    .Cast<string>());
+        }
+
+        if (element.TryGetProperty("RootFS", out var rootFsElement)
+            && rootFsElement.ValueKind == JsonValueKind.Object
+            && rootFsElement.TryGetProperty("Layers", out var layersElement)
+            && layersElement.ValueKind == JsonValueKind.Array)
+        {
+            rootFsLayers.AddRange(layersElement.EnumerateArray()
+                                               .Select(item => item.GetString())
+                                               .Where(value => string.IsNullOrWhiteSpace(value) == false)
+                                               .Cast<string>());
+        }
+
+        return new DockerImageInspectData
+               {
+                   Id = TryGetString(element, "Id") ?? string.Empty,
+                   RepoTags = ReadStringArray(element, "RepoTags"),
+                   RepoDigests = ReadStringArray(element, "RepoDigests"),
+                   EnvironmentVariables = environmentVariables,
+                   RootFsLayers = rootFsLayers,
+                   CreatedAtUtc = TryParseTimestamp(TryGetString(element, "Created")),
+                   OperatingSystem = TryGetString(element, "Os"),
+                   Architecture = TryGetString(element, "Architecture"),
+               };
+    }
+
+    /// <summary>
+    /// Parse Docker image history entry
+    /// </summary>
+    /// <param name="element">History JSON element</param>
+    /// <returns>History entry data</returns>
+    private static DockerImageHistoryEntryData ParseImageHistoryEntry(JsonElement element)
+    {
+        return new DockerImageHistoryEntryData
+               {
+                   CreatedAtUtc = TryParseTimestamp(TryGetString(element, "Created")),
+                   CreatedBy = TryGetString(element, "CreatedBy"),
+                   Comment = TryGetString(element, "Comment"),
+                   Tags = ReadStringArray(element, "Tags"),
+               };
+    }
+
+    /// <summary>
+    /// Read a string array property
+    /// </summary>
+    /// <param name="element">JSON element</param>
+    /// <param name="propertyName">Property name</param>
+    /// <returns>String values</returns>
+    private static IReadOnlyList<string> ReadStringArray(JsonElement element, string propertyName)
+    {
+        if (element.TryGetProperty(propertyName, out var property) == false
+            || property.ValueKind != JsonValueKind.Array)
+        {
+            return [];
+        }
+
+        return property.EnumerateArray()
+                       .Select(item => item.GetString())
+                       .Where(value => string.IsNullOrWhiteSpace(value) == false)
+                       .Cast<string>()
+                       .ToArray();
+    }
+
+    /// <summary>
+    /// Read image inspect data from the Docker engine
+    /// </summary>
+    /// <param name="httpClient">Docker HTTP client</param>
+    /// <param name="imageReferenceOrId">Image reference or identifier</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Inspect result</returns>
+    private static async Task<ExternalOperationResult<DockerImageInspectData>> ReadImageInspectAsync(HttpClient httpClient,
+                                                                                                     string imageReferenceOrId,
+                                                                                                     CancellationToken cancellationToken)
+    {
+        using var response = await httpClient.GetAsync($"v1.41/images/{Uri.EscapeDataString(imageReferenceOrId)}/json", cancellationToken)
+                                             .ConfigureAwait(false);
+
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return ExternalOperationResult<DockerImageInspectData>.NotFound($"Docker image '{imageReferenceOrId}' was not found");
+        }
+
+        if (response.IsSuccessStatusCode == false)
+        {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken)
+                                             .ConfigureAwait(false);
+
+            return ExternalOperationResult<DockerImageInspectData>.Failed($"Docker image inspect for '{imageReferenceOrId}' returned {(int)response.StatusCode}: {body}");
+        }
+
+        var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken)
+                                                   .ConfigureAwait(false);
+
+        await using (responseStream.ConfigureAwait(false))
+        {
+            using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: cancellationToken)
+                                                       .ConfigureAwait(false);
+
+            return ExternalOperationResult<DockerImageInspectData>.Succeeded(ParseImageInspect(jsonDocument.RootElement));
+        }
+    }
+
+    /// <summary>
+    /// Read image history data from the Docker engine
+    /// </summary>
+    /// <param name="httpClient">Docker HTTP client</param>
+    /// <param name="imageReferenceOrId">Image reference or identifier</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>History result</returns>
+    private static async Task<ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>> ReadImageHistoryAsync(HttpClient httpClient,
+                                                                                                                         string imageReferenceOrId,
+                                                                                                                         CancellationToken cancellationToken)
+    {
+        using var response = await httpClient.GetAsync($"v1.41/images/{Uri.EscapeDataString(imageReferenceOrId)}/history", cancellationToken)
+                                             .ConfigureAwait(false);
+
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>.NotFound($"Docker image '{imageReferenceOrId}' was not found");
+        }
+
+        if (response.IsSuccessStatusCode == false)
+        {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken)
+                                             .ConfigureAwait(false);
+
+            return ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>.Failed($"Docker image history for '{imageReferenceOrId}' returned {(int)response.StatusCode}: {body}");
+        }
+
+        var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken)
+                                                   .ConfigureAwait(false);
+
+        await using (responseStream.ConfigureAwait(false))
+        {
+            using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: cancellationToken)
+                                                       .ConfigureAwait(false);
+            var historyEntries = new List<DockerImageHistoryEntryData>();
+
+            foreach (var historyElement in jsonDocument.RootElement.EnumerateArray())
+            {
+                historyEntries.Add(ParseImageHistoryEntry(historyElement));
+            }
+
+            return ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>.Succeeded(historyEntries);
+        }
+    }
+
     #endregion // Static methods
 
     #region Methods
@@ -798,6 +944,66 @@ public class DockerInstanceClient : IDockerInstanceClient
         catch (Exception exception)
         {
             return ExternalOperationResult<IReadOnlyList<RuntimeContainerResourceDescriptor>>.Failed($"Docker container resource sampling failed for '{instanceOptions.Name}': {exception.Message}");
+        }
+    }
+
+    /// <inheritdoc/>
+    public async Task<ExternalOperationResult<DockerImageInspectData>> InspectImageAsync(DockerInstanceOptions instanceOptions,
+                                                                                         string imageReferenceOrId,
+                                                                                         CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(instanceOptions);
+        ArgumentException.ThrowIfNullOrWhiteSpace(imageReferenceOrId);
+
+        if (instanceOptions.Enabled == false)
+        {
+            return ExternalOperationResult<DockerImageInspectData>.NotConfigured($"Docker instance '{instanceOptions.Name}' is disabled");
+        }
+
+        if (TryCreateEngineUri(instanceOptions, out var engineUri) == false || engineUri is null)
+        {
+            return ExternalOperationResult<DockerImageInspectData>.Unsupported($"Docker instance '{instanceOptions.Name}' uses an unsupported endpoint '{instanceOptions.BaseUrl}'");
+        }
+
+        try
+        {
+            using var httpClient = _httpClientFactory(instanceOptions, engineUri);
+
+            return await ReadImageInspectAsync(httpClient, imageReferenceOrId, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            return ExternalOperationResult<DockerImageInspectData>.Failed($"Docker image inspect failed for '{instanceOptions.Name}': {exception.Message}");
+        }
+    }
+
+    /// <inheritdoc/>
+    public async Task<ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>> GetImageHistoryAsync(DockerInstanceOptions instanceOptions,
+                                                                                                                string imageReferenceOrId,
+                                                                                                                CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(instanceOptions);
+        ArgumentException.ThrowIfNullOrWhiteSpace(imageReferenceOrId);
+
+        if (instanceOptions.Enabled == false)
+        {
+            return ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>.NotConfigured($"Docker instance '{instanceOptions.Name}' is disabled");
+        }
+
+        if (TryCreateEngineUri(instanceOptions, out var engineUri) == false || engineUri is null)
+        {
+            return ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>.Unsupported($"Docker instance '{instanceOptions.Name}' uses an unsupported endpoint '{instanceOptions.BaseUrl}'");
+        }
+
+        try
+        {
+            using var httpClient = _httpClientFactory(instanceOptions, engineUri);
+
+            return await ReadImageHistoryAsync(httpClient, imageReferenceOrId, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            return ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>.Failed($"Docker image history failed for '{instanceOptions.Name}': {exception.Message}");
         }
     }
 

@@ -74,6 +74,19 @@ public class RegistryMetadataService : IRegistryMetadataService
         return client.ResolveBaseImagesAsync(imageReference, cancellationToken);
     }
 
+    /// <inheritdoc/>
+    public Task<ExternalOperationResult<RegistryImageConfigurationData>> GetImageConfigurationAsync(ImageReference imageReference, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(imageReference);
+
+        if (TryGetClient(imageReference.Registry, out var client) == false)
+        {
+            return Task.FromResult(ExternalOperationResult<RegistryImageConfigurationData>.Unsupported(CreateUnsupportedMessage(imageReference.Registry)));
+        }
+
+        return client.GetImageConfigurationAsync(imageReference, cancellationToken);
+    }
+
     /// <summary>
     /// Create an unsupported registry message
     /// </summary>
@@ -133,6 +146,12 @@ public class RegistryMetadataService : IRegistryMetadataService
 
         /// <inheritdoc/>
         public Task<ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>> ResolveBaseImagesAsync(ImageReference imageReference, CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException();
+        }
+
+        /// <inheritdoc/>
+        public Task<ExternalOperationResult<RegistryImageConfigurationData>> GetImageConfigurationAsync(ImageReference imageReference, CancellationToken cancellationToken = default)
         {
             throw new NotSupportedException();
         }

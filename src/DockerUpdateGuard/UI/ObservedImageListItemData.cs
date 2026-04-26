@@ -67,5 +67,15 @@ public class ObservedImageListItemData
     /// </summary>
     public int LinkedRuntimeContainerCount { get; set; }
 
+    /// <summary>
+    /// Base-runtime alert summary
+    /// </summary>
+    public string? BaseRuntimeAlertSummary { get; set; }
+
+    /// <summary>
+    /// Base-runtime alert details
+    /// </summary>
+    public string? BaseRuntimeAlertDetails { get; set; }
+
     #endregion // Properties
 }

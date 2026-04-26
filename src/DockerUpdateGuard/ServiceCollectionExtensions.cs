@@ -60,6 +60,18 @@ public static class ServiceCollectionExtensions
                                                       client.Timeout = TimeSpan.FromSeconds(applicationOptions.DockerHub.RequestTimeoutSeconds);
                                                       client.DefaultRequestHeaders.UserAgent.ParseAdd("DockerUpdateGuard/1.0");
                                                   });
+        services.AddHttpClient<DotNetReleaseMetadataService>(client =>
+                                                             {
+                                                                 client.BaseAddress = new Uri("https://dotnetcli.blob.core.windows.net/dotnet/release-metadata/");
+                                                                 client.Timeout = TimeSpan.FromSeconds(applicationOptions.DockerHub.RequestTimeoutSeconds);
+                                                                 client.DefaultRequestHeaders.UserAgent.ParseAdd("DockerUpdateGuard/1.0");
+                                                             });
+        services.AddHttpClient<NginxReleaseMetadataService>(client =>
+                                                            {
+                                                                client.BaseAddress = new Uri("https://nginx.org/");
+                                                                client.Timeout = TimeSpan.FromSeconds(applicationOptions.DockerHub.RequestTimeoutSeconds);
+                                                                client.DefaultRequestHeaders.UserAgent.ParseAdd("DockerUpdateGuard/1.0");
+                                                            });
         services.AddSingleton<ApplicationTelemetry>();
         services.AddSingleton<IDockerInstanceClient, DockerInstanceClient>();
         services.AddSingleton<IPortainerClient, PortainerClient>();
@@ -97,6 +109,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IRegistryMetadataService, RegistryMetadataService>();
         services.AddScoped<IImageReferenceParser, ImageReferenceParser>();
         services.AddScoped<IUpdateDetectionService, UpdateDetectionService>();
+        services.AddScoped<IDotNetReleaseMetadataService>(serviceProvider => serviceProvider.GetRequiredService<DotNetReleaseMetadataService>());
+        services.AddScoped<INginxReleaseMetadataService>(serviceProvider => serviceProvider.GetRequiredService<NginxReleaseMetadataService>());
+        services.AddScoped<IDerivedBaseRuntimeDetector, DerivedBaseRuntimeDetector>();
         services.AddScoped<IBaseImageResolver, RegistryBaseImageResolver>();
         services.AddScoped<IImageRegistrationService, ImageRegistrationService>();
         services.AddScoped<IInstanceDiscoveryService, InstanceDiscoveryService>();

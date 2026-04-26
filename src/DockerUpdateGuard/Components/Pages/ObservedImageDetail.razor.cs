@@ -92,6 +92,16 @@ public partial class ObservedImageDetail
                };
     }
 
+    /// <summary>
+    /// Resolve the chip color for a base-runtime alert
+    /// </summary>
+    /// <param name="isOwnImage">Whether the image is owned</param>
+    /// <returns>Chip color</returns>
+    private static Color GetBaseRuntimeAlertColor(bool isOwnImage)
+    {
+        return isOwnImage ? Color.Warning : Color.Info;
+    }
+
     #endregion // Static methods
 
     #region Methods

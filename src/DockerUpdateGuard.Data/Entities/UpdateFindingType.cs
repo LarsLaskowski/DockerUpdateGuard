@@ -23,5 +23,10 @@ public enum UpdateFindingType
     /// <summary>
     /// Alternative tag suggestion
     /// </summary>
-    TagRecommendation = 3
+    TagRecommendation = 3,
+
+    /// <summary>
+    /// Derived local base runtime update
+    /// </summary>
+    DerivedBaseRuntimeUpdate = 4,
 }
