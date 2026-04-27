@@ -33,6 +33,11 @@ public class DashboardViewData
     public int ActiveUpdateFindingCount { get; set; }
 
     /// <summary>
+    /// Active derived base-runtime warnings for own images
+    /// </summary>
+    public int OwnImageBaseRuntimeWarningCount { get; set; }
+
+    /// <summary>
     /// Active vulnerability finding count
     /// </summary>
     public int ActiveVulnerabilityFindingCount { get; set; }

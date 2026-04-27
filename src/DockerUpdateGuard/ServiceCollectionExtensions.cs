@@ -120,6 +120,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IRuntimeContainerScanOrchestrator, RuntimeContainerScanOrchestrator>();
         services.AddScoped<IResourceStatisticsCollector, ResourceStatisticsCollector>();
         services.AddScoped<IVulnerabilityEnrichmentService, VulnerabilityEnrichmentService>();
+        services.AddSingleton<DashboardRefreshState>();
         services.AddScoped<IApplicationViewService, ApplicationViewService>();
         services.AddScoped<IRuntimeContainerTagSelectionService, RuntimeContainerTagSelectionService>();
         services.AddHostedService<DockerInstanceDiscoveryBackgroundService>();

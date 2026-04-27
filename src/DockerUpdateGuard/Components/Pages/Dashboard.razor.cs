@@ -9,7 +9,7 @@ namespace DockerUpdateGuard.Components.Pages;
 /// <summary>
 /// Dashboard page
 /// </summary>
-public partial class Dashboard
+public sealed partial class Dashboard : IDisposable
 {
     #region Fields
 
@@ -27,6 +27,12 @@ public partial class Dashboard
     /// </summary>
     [Inject]
     public IApplicationViewService ViewService { get; set; } = null!;
+
+    /// <summary>
+    /// Dashboard refresh state
+    /// </summary>
+    [Inject]
+    public DashboardRefreshState DashboardRefreshState { get; set; } = null!;
 
     #endregion // Properties
 
@@ -56,13 +62,42 @@ public partial class Dashboard
     /// <inheritdoc/>
     protected override async Task OnInitializedAsync()
     {
+        DashboardRefreshState.Changed += OnDashboardRefreshRequested;
+
+        await LoadAsync().ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Dispose component subscriptions
+    /// </summary>
+    public void Dispose()
+    {
+        DashboardRefreshState.Changed -= OnDashboardRefreshRequested;
+    }
+
+    /// <summary>
+    /// Load the dashboard view model
+    /// </summary>
+    /// <returns>Task</returns>
+    private async Task LoadAsync()
+    {
         var dashboard = await ViewService.GetDashboardAsync()
                                          .ConfigureAwait(false);
 
         await InvokeAsync(() =>
                           {
                               _dashboard = dashboard;
+
+                              StateHasChanged();
                           }).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// React to explicit dashboard refresh notifications
+    /// </summary>
+    private void OnDashboardRefreshRequested()
+    {
+        _ = InvokeAsync(LoadAsync);
     }
 
     #endregion // Methods

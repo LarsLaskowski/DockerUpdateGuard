@@ -140,13 +140,23 @@ public class ApplicationViewServiceTests
                                 {
                                     Name = "Company API",
                                     CurrentImageVersionId = imageVersion.Id,
+                                    Source = RegistrationSource.Discovery,
                                 };
+
+            var manualObservedImage = new ObservedImage
+                                      {
+                                          Name = "Manual API",
+                                          CurrentImageVersionId = imageVersion.Id,
+                                          Source = RegistrationSource.Manual,
+                                      };
+
             var dockerInstance = new DockerInstance
                                  {
                                      Name = "Production Engine",
                                      EndpointUri = "https://docker.example.test",
                                      ConnectionKind = DockerConnectionKind.Https,
                                  };
+
             var scanRun = new ScanRun
                           {
                               Type = ScanRunType.ObservedImage,
@@ -156,6 +166,7 @@ public class ApplicationViewServiceTests
                           };
 
             dbContext.ObservedImages.Add(observedImage);
+            dbContext.ObservedImages.Add(manualObservedImage);
             dbContext.DockerInstances.Add(dockerInstance);
             dbContext.ScanRuns.Add(scanRun);
             dbContext.ContainerSnapshots.Add(new ContainerSnapshot
@@ -168,6 +179,7 @@ public class ApplicationViewServiceTests
                                                  Status = ContainerRuntimeStatus.Running,
                                                  IsRunning = true,
                                              });
+
             dbContext.UpdateFindings.Add(new UpdateFinding
                                          {
                                              ObservedImage = observedImage,
@@ -177,6 +189,27 @@ public class ApplicationViewServiceTests
                                              Summary = "Update available",
                                              IsActive = true,
                                          });
+
+            dbContext.UpdateFindings.Add(new UpdateFinding
+                                         {
+                                             ObservedImage = observedImage,
+                                             SubjectImageVersionId = imageVersion.Id,
+                                             ScanRun = scanRun,
+                                             Type = UpdateFindingType.DerivedBaseRuntimeUpdate,
+                                             Summary = "Own runtime warning",
+                                             IsActive = true,
+                                         });
+
+            dbContext.UpdateFindings.Add(new UpdateFinding
+                                         {
+                                             ObservedImage = manualObservedImage,
+                                             SubjectImageVersionId = imageVersion.Id,
+                                             ScanRun = scanRun,
+                                             Type = UpdateFindingType.DerivedBaseRuntimeUpdate,
+                                             Summary = "Manual runtime hint",
+                                             IsActive = true,
+                                         });
+
             dbContext.VulnerabilityFindings.Add(new VulnerabilityFinding
                                                 {
                                                     ImageVersionId = imageVersion.Id,
@@ -197,7 +230,7 @@ public class ApplicationViewServiceTests
             var dashboard = await service.GetDashboardAsync(CancellationToken.None)
                                          .ConfigureAwait(false);
 
-            Assert.AreEqual(1,
+            Assert.AreEqual(2,
                             dashboard.ObservedImageCount,
                             "The dashboard must report the observed image count");
             Assert.AreEqual(1,
@@ -206,9 +239,12 @@ public class ApplicationViewServiceTests
             Assert.AreEqual(1,
                             dashboard.RuntimeContainerCount,
                             "The dashboard must report the runtime container count");
-            Assert.AreEqual(1,
+            Assert.AreEqual(3,
                             dashboard.ActiveUpdateFindingCount,
                             "The dashboard must report the active update finding count");
+            Assert.AreEqual(1,
+                            dashboard.OwnImageBaseRuntimeWarningCount,
+                            "The dashboard must only count derived base-runtime warnings for own images");
             Assert.AreEqual(1,
                             dashboard.ActiveVulnerabilityFindingCount,
                             "The dashboard must report the active vulnerability finding count");
@@ -295,6 +331,7 @@ public class ApplicationViewServiceTests
                                                 IsRecommended = true,
                                                 Reason = "Latest compatible stable tag",
                                             });
+
             updateFinding.TagCandidates.Add(new TagCandidate
                                             {
                                                 Tag = "1.0.5",
@@ -302,6 +339,15 @@ public class ApplicationViewServiceTests
                                                 Rank = 1,
                                                 IsRecommended = false,
                                                 Reason = "Latest patch in the current minor line",
+                                            });
+
+            updateFinding.TagCandidates.Add(new TagCandidate
+                                            {
+                                                Tag = "broken",
+                                                Digest = string.Empty,
+                                                Rank = 2,
+                                                IsRecommended = false,
+                                                Reason = "Legacy invalid candidate",
                                             });
 
             dbContext.ContainerSnapshots.Add(snapshot);
@@ -314,6 +360,7 @@ public class ApplicationViewServiceTests
                                                             Tag = "1.0.5",
                                                             Digest = "sha256:manual",
                                                         });
+
             dbContext.VulnerabilityFindings.Add(new VulnerabilityFinding
                                                 {
                                                     ImageVersionId = imageVersion.Id,
@@ -333,6 +380,7 @@ public class ApplicationViewServiceTests
             var service = new ApplicationViewService(dbContext,
                                                      new ImageReferenceParser(),
                                                      new SharedBaseImageQueryService(dbContext));
+
             var detail = await service.GetRuntimeContainerDetailAsync(dockerInstance.Id, "container-a", CancellationToken.None)
                                       .ConfigureAwait(false);
 
@@ -351,6 +399,9 @@ public class ApplicationViewServiceTests
                             "The runtime detail must show the persisted manual tag preference");
             Assert.IsTrue(detail.AvailableTagCandidates.Single(entity => entity.Tag == "1.0.5").IsSelected,
                           "The saved manual tag candidate must be marked as selected");
+            Assert.DoesNotContain(entity => entity.Tag == "broken",
+                                  detail.AvailableTagCandidates,
+                                  "Runtime detail must hide legacy tag candidates without digests");
         }
     }
 

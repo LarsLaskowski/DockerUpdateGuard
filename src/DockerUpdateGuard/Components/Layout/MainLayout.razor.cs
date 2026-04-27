@@ -1,6 +1,7 @@
 using DockerUpdateGuard.UI;
 
 using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Routing;
 
 using MudBlazor;
 
@@ -9,7 +10,7 @@ namespace DockerUpdateGuard.Components.Layout;
 /// <summary>
 /// Main application layout
 /// </summary>
-public partial class MainLayout : LayoutComponentBase
+public sealed partial class MainLayout : LayoutComponentBase, IDisposable
 {
     #region Fields
 
@@ -58,6 +59,18 @@ public partial class MainLayout : LayoutComponentBase
     [Inject]
     public IApplicationViewService ViewService { get; set; } = null!;
 
+    /// <summary>
+    /// Navigation manager
+    /// </summary>
+    [Inject]
+    public NavigationManager NavigationManager { get; set; } = null!;
+
+    /// <summary>
+    /// Dashboard refresh state
+    /// </summary>
+    [Inject]
+    public DashboardRefreshState DashboardRefreshState { get; set; } = null!;
+
     #endregion // Properties
 
     #region Methods
@@ -65,13 +78,54 @@ public partial class MainLayout : LayoutComponentBase
     /// <inheritdoc/>
     protected override async Task OnInitializedAsync()
     {
+        NavigationManager.LocationChanged += OnLocationChanged;
+        DashboardRefreshState.Changed += OnDashboardRefreshRequested;
+
+        await LoadSummaryAsync().ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Dispose the component subscriptions
+    /// </summary>
+    public void Dispose()
+    {
+        NavigationManager.LocationChanged -= OnLocationChanged;
+        DashboardRefreshState.Changed -= OnDashboardRefreshRequested;
+    }
+
+    /// <summary>
+    /// Load the current dashboard summary
+    /// </summary>
+    /// <returns>Task</returns>
+    private async Task LoadSummaryAsync()
+    {
         var dashboardSummary = await ViewService.GetDashboardAsync()
                                                 .ConfigureAwait(false);
 
         await InvokeAsync(() =>
                           {
                               _dashboardSummary = dashboardSummary;
+
+                              StateHasChanged();
                           }).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// React to application navigation changes
+    /// </summary>
+    /// <param name="sender">Event sender</param>
+    /// <param name="args">Navigation event arguments</param>
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs args)
+    {
+        _ = InvokeAsync(LoadSummaryAsync);
+    }
+
+    /// <summary>
+    /// React to explicit dashboard refresh notifications
+    /// </summary>
+    private void OnDashboardRefreshRequested()
+    {
+        _ = InvokeAsync(LoadSummaryAsync);
     }
 
     /// <summary>

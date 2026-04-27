@@ -7,6 +7,15 @@ namespace DockerUpdateGuard.Images;
 /// </summary>
 public class UpdateDetectionService : IUpdateDetectionService
 {
+    #region Const fields
+
+    /// <summary>
+    /// Maximum number of tag candidates returned to the UI and persistence layers
+    /// </summary>
+    private const int MaxCandidateCount = 50;
+
+    #endregion // Const fields
+
     #region Methods
 
     /// <inheritdoc/>
@@ -33,6 +42,16 @@ public class UpdateDetectionService : IUpdateDetectionService
         var currentTagData = orderedTags.FirstOrDefault(tag => string.Equals(tag.Tag,
                                                                              currentImage.Tag,
                                                                              StringComparison.OrdinalIgnoreCase));
+
+        if (string.Equals(currentImage.Tag, "latest", StringComparison.OrdinalIgnoreCase)
+            && CurrentDigestMatches(currentImage.Digest, currentTagData?.Digest))
+        {
+            return new UpdateEvaluationResult
+                   {
+                       Status = UpdateEvaluationStatus.UpToDate,
+                       Summary = "The running image already matches the current 'latest' tag",
+                   };
+        }
 
         if (TryParseVersion(currentImage.Tag, out var currentVersion))
         {
@@ -91,21 +110,12 @@ public class UpdateDetectionService : IUpdateDetectionService
                    };
         }
 
-        if (string.Equals(currentImage.Tag, "latest", StringComparison.OrdinalIgnoreCase)
-            && CurrentDigestMatches(currentImage.Digest, currentTagData?.Digest))
-        {
-            return new UpdateEvaluationResult
-                   {
-                       Status = UpdateEvaluationStatus.UpToDate,
-                       Summary = "The running image already matches the current 'latest' tag",
-                   };
-        }
-
         var reviewCandidates = orderedTags.Where(tag => string.Equals(tag.Tag,
                                                                       currentImage.Tag,
                                                                       StringComparison.OrdinalIgnoreCase) == false
+                                                        && string.IsNullOrWhiteSpace(tag.Digest) == false
                                                         && IsCandidatePublishedAfterBaseline(tag.PublishedAtUtc, currentTagData?.PublishedAtUtc))
-                                          .Take(5)
+                                          .Take(MaxCandidateCount)
                                           .Select(tag => new UpdateCandidateData
                                                          {
                                                              Tag = tag.Tag,
@@ -163,7 +173,7 @@ public class UpdateDetectionService : IUpdateDetectionService
                                                                             UpdateCandidateData? resolvedCurrentVersionCandidate = null)
     {
         var recommended = versionCandidates[0].Tag;
-        var candidates = versionCandidates.Take(5)
+        var candidates = versionCandidates.Take(resolvedCurrentVersionCandidate is null ? MaxCandidateCount : MaxCandidateCount - 1)
                                           .Select(entity => new UpdateCandidateData
                                                             {
                                                                 Tag = entity.Tag.Tag,
@@ -362,7 +372,7 @@ public class UpdateDetectionService : IUpdateDetectionService
                           .ThenBy(tag => TryParseVersion(tag.Tag, out _) ? 0 : 1)
                           .ThenByDescending(tag => tag.PublishedAtUtc)
                           .ThenByDescending(tag => TryParseVersion(tag.Tag, out var tagVersion) ? tagVersion : new Version())
-                          .Take(5)
+                          .Take(MaxCandidateCount)
                           .Select(tag => new UpdateCandidateData
                                          {
                                              Tag = tag.Tag,

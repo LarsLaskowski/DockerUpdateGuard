@@ -545,7 +545,8 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
     /// <returns>Task</returns>
     private async Task DeactivateRuntimeFindingsAsync(Guid dockerInstanceId, CancellationToken cancellationToken)
     {
-        var activeFindings = await _dbContext.UpdateFindings.Include(entity => entity.ContainerSnapshot)
+        var activeFindings = await _dbContext.UpdateFindings.Include(entity => entity.TagCandidates)
+                                                            .Include(entity => entity.ContainerSnapshot)
                                                             .Where(entity => entity.ContainerSnapshot != null
                                                                              && entity.ContainerSnapshot.DockerInstanceId == dockerInstanceId
                                                                              && entity.IsActive)
@@ -556,6 +557,8 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
         {
             activeFinding.IsActive = false;
             activeFinding.ResolvedAtUtc = DateTimeOffset.UtcNow;
+
+            activeFinding.TagCandidates.Clear();
         }
     }
 
@@ -608,6 +611,11 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
                                                                                      Index = index
                                                                                  }))
         {
+            if (UpdateFindingPersistenceHelper.HasPersistableDigest(candidate.Value.Digest) == false)
+            {
+                continue;
+            }
+
             finding.TagCandidates.Add(new TagCandidate
                                       {
                                           Tag = candidate.Value.Tag,

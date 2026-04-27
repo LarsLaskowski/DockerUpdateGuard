@@ -275,16 +275,13 @@ public class ImageScanOrchestratorTests
                 var finding = await dbContext.UpdateFindings.Include(entity => entity.TagCandidates)
                                                             .SingleAsync(TestContext.CancellationToken)
                                                             .ConfigureAwait(false);
-                var candidate = finding.TagCandidates.Single();
 
                 Assert.AreEqual(ScanRunStatus.Succeeded,
                                 scanRun.Status,
                                 "Observed image scans must still complete when a registry candidate has no digest");
-                Assert.AreEqual("12.1.0",
-                                candidate.Tag,
-                                "The candidate tag must still be persisted when its digest is missing");
-                Assert.IsNull(candidate.Digest,
-                              "Persisted candidates without a digest must materialize back as null");
+                Assert.HasCount(0,
+                                finding.TagCandidates,
+                                "Candidates without a digest must not be persisted for observed-image findings");
             }
         }
     }

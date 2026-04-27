@@ -63,6 +63,12 @@ public partial class ObservedImages
     [Inject]
     public IApplicationViewService ViewService { get; set; } = null!;
 
+    /// <summary>
+    /// Dashboard refresh state
+    /// </summary>
+    [Inject]
+    public DashboardRefreshState DashboardRefreshState { get; set; } = null!;
+
     #endregion // Properties
 
     #region Static methods
@@ -163,6 +169,8 @@ public partial class ObservedImages
 
             await ImageScanOrchestrator.ScanAsync(observedImage.Id, ScanTriggerSource.Manual)
                                        .ConfigureAwait(false);
+
+            DashboardRefreshState.NotifyChanged();
 
             await InvokeAsync(() =>
                               {

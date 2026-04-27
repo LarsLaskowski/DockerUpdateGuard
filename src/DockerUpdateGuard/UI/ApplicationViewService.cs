@@ -15,6 +15,11 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
     #region Fields
 
     /// <summary>
+    /// Maximum number of tag candidates exposed to detail views
+    /// </summary>
+    private const int MaxAvailableTagCandidates = 50;
+
+    /// <summary>
     /// Resource-history window
     /// </summary>
     private static readonly TimeSpan ResourceHistoryWindow = TimeSpan.FromHours(24);
@@ -194,6 +199,38 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
     private static string CreateContainerKey(Guid dockerInstanceId, string containerId)
     {
         return $"{dockerInstanceId:D}|{containerId.Trim()}";
+    }
+
+    /// <summary>
+    /// Create a stable identity for a tag candidate
+    /// </summary>
+    /// <param name="tag">Tag name</param>
+    /// <param name="digest">Digest value</param>
+    /// <returns>Candidate identity</returns>
+    private static string CreateTagCandidateKey(string tag, string digest)
+    {
+        return $"{tag.Trim().ToLowerInvariant()}|{digest.Trim().ToLowerInvariant()}";
+    }
+
+    /// <summary>
+    /// Filter visible tag candidates for UI display
+    /// </summary>
+    /// <param name="candidates">Candidates to filter</param>
+    /// <param name="take">Maximum number of candidates</param>
+    /// <returns>Filtered candidates</returns>
+    private static List<TagCandidateViewData> FilterVisibleTagCandidates(IEnumerable<TagCandidateViewData> candidates, int take = MaxAvailableTagCandidates)
+    {
+        return candidates.Where(entity => string.IsNullOrWhiteSpace(entity.Tag) == false
+                                          && UpdateFindingPersistenceHelper.HasPersistableDigest(entity.Digest))
+                         .GroupBy(entity => CreateTagCandidateKey(entity.Tag, entity.Digest!),
+                                  StringComparer.OrdinalIgnoreCase)
+                         .Select(group => group.OrderByDescending(entity => entity.IsSelected)
+                                               .ThenByDescending(entity => entity.IsRecommended)
+                                               .ThenByDescending(entity => entity.PublishedAtUtc)
+                                               .ThenBy(entity => entity.Tag, StringComparer.OrdinalIgnoreCase)
+                                               .First())
+                         .Take(take)
+                         .ToList();
     }
 
     /// <summary>
@@ -397,6 +434,18 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                                                 var dockerInstanceCount = await _dbContext.DockerInstances.CountAsync(cancellationToken).ConfigureAwait(false);
                                                 var runtimeContainers = await GetRuntimeContainersCoreAsync(cancellationToken).ConfigureAwait(false);
                                                 var activeUpdateFindingCount = await _dbContext.UpdateFindings.CountAsync(entity => entity.IsActive, cancellationToken).ConfigureAwait(false);
+                                                var ownImageBaseRuntimeWarningCount = await _dbContext.UpdateFindings.Join(_dbContext.ObservedImages.Where(entity => entity.Source == RegistrationSource.Discovery),
+                                                                                                                           finding => finding.ObservedImageId,
+                                                                                                                           observedImage => (Guid?)observedImage.Id,
+                                                                                                                           (finding, observedImage) => new
+                                                                                                                                                       {
+                                                                                                                                                           finding.IsActive,
+                                                                                                                                                           finding.Type,
+                                                                                                                                                       })
+                                                                                                                     .CountAsync(entity => entity.IsActive
+                                                                                                                                           && entity.Type == UpdateFindingType.DerivedBaseRuntimeUpdate,
+                                                                                                                                 cancellationToken)
+                                                                                                                     .ConfigureAwait(false);
                                                 var activeVulnerabilityFindingCount = await _dbContext.VulnerabilityFindings.CountAsync(entity => entity.IsActive, cancellationToken).ConfigureAwait(false);
 
                                                 return new DashboardViewData
@@ -406,6 +455,7 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                                                            RuntimeContainerCount = runtimeContainers.Count,
                                                            SharedBaseImageCount = sharedBaseImages.Count,
                                                            ActiveUpdateFindingCount = activeUpdateFindingCount,
+                                                           OwnImageBaseRuntimeWarningCount = ownImageBaseRuntimeWarningCount,
                                                            ActiveVulnerabilityFindingCount = activeVulnerabilityFindingCount,
                                                            RecentScans = recentScans,
                                                        };
@@ -671,10 +721,10 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                                                 var mappedUpdateFindings = updateFindings.Select(entity => MapUpdateFinding(entity, recommendedImageVersions, manualSelection))
                                                                                          .ToList();
 
-                                                var availableTagCandidates = mappedUpdateFindings.SelectMany(entity => entity.TagCandidates)
-                                                                                                 .OrderByDescending(entity => entity.IsRecommended)
-                                                                                                 .ThenBy(entity => entity.Tag)
-                                                                                                 .ToList();
+                                                var availableTagCandidates = FilterVisibleTagCandidates(mappedUpdateFindings.SelectMany(entity => entity.TagCandidates)
+                                                                                                                            .OrderByDescending(entity => entity.IsRecommended)
+                                                                                                                            .ThenBy(entity => entity.Tag, StringComparer.OrdinalIgnoreCase));
+
                                                 var resolvedVersionTag = ResolveResolvedVersionTag(latestSnapshot.ImageVersion.Tag,
                                                                                                    latestSnapshot.ImageVersion.Digest,
                                                                                                    availableTagCandidates);
@@ -1291,21 +1341,20 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
             recommendedImageVersions.TryGetValue(entity.RecommendedImageVersionId.GetValueOrDefault(), out recommendedImageVersion);
         }
 
-        var tagCandidates = entity.TagCandidates.OrderBy(candidate => candidate.Rank)
-                                                .Select(candidate => new TagCandidateViewData
-                                                                     {
-                                                                         Tag = candidate.Tag,
-                                                                         Digest = candidate.Digest,
-                                                                         PublishedAtUtc = candidate.PublishedAtUtc,
-                                                                         Reason = candidate.Reason,
-                                                                         IsRecommended = candidate.IsRecommended,
-                                                                         IsSelected = manualSelection is not null
-                                                                                      && string.Equals(candidate.Tag, manualSelection.Tag, StringComparison.OrdinalIgnoreCase)
-                                                                                      && string.Equals(candidate.Digest ?? string.Empty,
-                                                                                                       manualSelection.Digest ?? string.Empty,
-                                                                                                       StringComparison.OrdinalIgnoreCase),
-                                                                     })
-                                                .ToList();
+        var tagCandidates = FilterVisibleTagCandidates(entity.TagCandidates.OrderBy(candidate => candidate.Rank)
+                                                                           .Select(candidate => new TagCandidateViewData
+                                                                                                {
+                                                                                                    Tag = candidate.Tag,
+                                                                                                    Digest = candidate.Digest,
+                                                                                                    PublishedAtUtc = candidate.PublishedAtUtc,
+                                                                                                    Reason = candidate.Reason,
+                                                                                                    IsRecommended = candidate.IsRecommended,
+                                                                                                    IsSelected = manualSelection is not null
+                                                                                                                 && string.Equals(candidate.Tag, manualSelection.Tag, StringComparison.OrdinalIgnoreCase)
+                                                                                                                 && string.Equals(candidate.Digest ?? string.Empty,
+                                                                                                                                  manualSelection.Digest ?? string.Empty,
+                                                                                                                                  StringComparison.OrdinalIgnoreCase),
+                                                                                                }));
 
         PopulateResolvedVersionTags(tagCandidates);
 

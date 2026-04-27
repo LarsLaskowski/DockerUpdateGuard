@@ -286,16 +286,134 @@ public class RuntimeContainerScanOrchestratorTests
                 var finding = await dbContext.UpdateFindings.Include(entity => entity.TagCandidates)
                                                             .SingleAsync(TestContext.CancellationToken)
                                                             .ConfigureAwait(false);
-                var candidate = finding.TagCandidates.Single();
 
                 Assert.AreEqual(ScanRunStatus.Succeeded,
                                 scanRun.Status,
                                 "Runtime scans must still complete when a registry candidate has no digest");
-                Assert.AreEqual("1.1.0",
-                                candidate.Tag,
-                                "The candidate tag must still be persisted when its digest is missing");
-                Assert.IsNull(candidate.Digest,
-                              "Persisted candidates without a digest must materialize back as null");
+                Assert.HasCount(0,
+                                finding.TagCandidates,
+                                "Candidates without a digest must not be persisted for runtime findings");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Verify stale tag candidates are removed when a later runtime scan no longer produces an update finding
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task RuntimeContainerScanOrchestratorScanAllAsyncRemovesStaleTagCandidatesAfterRescanAsync()
+    {
+        using (var database = new SqliteTestDatabase())
+        {
+            var dbContext = database.CreateDbContext();
+
+            await using (dbContext.ConfigureAwait(false))
+            {
+                var options = new DockerUpdateGuardOptions
+                              {
+                                  DockerInstances = [
+                                                        new DockerInstanceOptions
+                                                        {
+                                                            Name = "Production",
+                                                            BaseUrl = "https://docker.example.test",
+                                                            Enabled = true,
+                                                            RequestTimeoutSeconds = 15,
+                                                        },
+                                                    ],
+                              };
+                var optionsMonitor = new TestOptionsMonitor<DockerUpdateGuardOptions>(options);
+                var imageCatalogRepository = new ImageCatalogRepository(dbContext);
+                var dockerInstanceClient = Substitute.For<IDockerInstanceClient>();
+                var derivedBaseRuntimeDetector = Substitute.For<IDerivedBaseRuntimeDetector>();
+                var dotNetReleaseMetadataService = Substitute.For<IDotNetReleaseMetadataService>();
+                var nginxReleaseMetadataService = Substitute.For<INginxReleaseMetadataService>();
+                var registryMetadataService = Substitute.For<IRegistryMetadataService>();
+                var instanceDiscoveryService = new InstanceDiscoveryService(dbContext,
+                                                                            new TestLogger<InstanceDiscoveryService>(),
+                                                                            optionsMonitor);
+
+                dockerInstanceClient.DiscoverContainersAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<CancellationToken>())
+                                    .Returns(ExternalOperationResult<IReadOnlyList<RuntimeContainerDescriptor>>.Succeeded([
+                                                                                                                              new RuntimeContainerDescriptor
+                                                                                                                              {
+                                                                                                                                  ContainerId = "container-1",
+                                                                                                                                  Name = "web",
+                                                                                                                                  ImageReference = "docker.io/library/nginx:1.0.0@sha256:runtime-old",
+                                                                                                                                  RuntimeStatus = ContainerRuntimeStatus.Running,
+                                                                                                                                  IsRunning = true,
+                                                                                                                              },
+                                                                                                                          ]));
+                dockerInstanceClient.InspectImageAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+                                    .Returns(ExternalOperationResult<DockerImageInspectData>.NotFound("The local image inspect payload is not available"));
+                dockerInstanceClient.GetImageHistoryAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+                                    .Returns(ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>.NotFound("The local image history payload is not available"));
+                registryMetadataService.GetTagsAsync("docker.io",
+                                                     "library/nginx",
+                                                     Arg.Any<CancellationToken>())
+                                       .Returns(ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Succeeded([
+                                                                                                                       new DockerHubTagData
+                                                                                                                       {
+                                                                                                                           Tag = "1.1.0",
+                                                                                                                           Digest = "sha256:runtime-new",
+                                                                                                                           PublishedAtUtc = new DateTimeOffset(2025, 06, 02, 12, 00, 00, TimeSpan.Zero),
+                                                                                                                       },
+                                                                                                                       new DockerHubTagData
+                                                                                                                       {
+                                                                                                                           Tag = "1.0.0",
+                                                                                                                           Digest = "sha256:runtime-old",
+                                                                                                                           PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
+                                                                                                                       },
+                                                                                                                   ]),
+                                                ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Succeeded([
+                                                                                                                       new DockerHubTagData
+                                                                                                                       {
+                                                                                                                           Tag = "1.0.0",
+                                                                                                                           Digest = "sha256:runtime-old",
+                                                                                                                           PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
+                                                                                                                       },
+                                                                                                                   ]));
+                registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
+                                       .Returns(ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
+                                                                                                    {
+                                                                                                        Tag = "1.0.0",
+                                                                                                        Digest = "sha256:runtime-old",
+                                                                                                        PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
+                                                                                                    }));
+
+                var orchestrator = new RuntimeContainerScanOrchestrator(new ApplicationTelemetry(),
+                                                                        dbContext,
+                                                                        dockerInstanceClient,
+                                                                        derivedBaseRuntimeDetector,
+                                                                        dotNetReleaseMetadataService,
+                                                                        nginxReleaseMetadataService,
+                                                                        imageCatalogRepository,
+                                                                        new ImageReferenceParser(),
+                                                                        instanceDiscoveryService,
+                                                                        new TestLogger<RuntimeContainerScanOrchestrator>(),
+                                                                        optionsMonitor,
+                                                                        registryMetadataService,
+                                                                        new UpdateDetectionService());
+
+                await orchestrator.ScanAllAsync(ScanTriggerSource.Scheduled, CancellationToken.None)
+                                  .ConfigureAwait(false);
+                await orchestrator.ScanAllAsync(ScanTriggerSource.Scheduled, CancellationToken.None)
+                                  .ConfigureAwait(false);
+
+                dbContext.ChangeTracker.Clear();
+
+                var findings = await dbContext.UpdateFindings.Include(entity => entity.TagCandidates)
+                                                             .ToListAsync(TestContext.CancellationToken)
+                                                             .ConfigureAwait(false);
+
+                Assert.HasCount(1,
+                                findings,
+                                "The original finding record must remain for history after the rescan");
+                Assert.IsFalse(findings[0].IsActive,
+                               "The previous runtime finding must be deactivated when the update is no longer available");
+                Assert.HasCount(0,
+                                findings[0].TagCandidates,
+                                "Stale tag candidates must be removed when a later scan no longer keeps the finding active");
             }
         }
     }
@@ -731,24 +849,16 @@ public class RuntimeContainerScanOrchestratorTests
                 await orchestrator.ScanAllAsync(ScanTriggerSource.Scheduled, CancellationToken.None)
                                   .ConfigureAwait(false);
 
-                var finding = await dbContext.UpdateFindings.Include(entity => entity.TagCandidates)
-                                                            .SingleAsync(TestContext.CancellationToken)
-                                                            .ConfigureAwait(false);
                 var snapshot = await dbContext.ContainerSnapshots.SingleAsync(TestContext.CancellationToken).ConfigureAwait(false);
-                var recommendedImage = await dbContext.ImageVersions.SingleAsync(entity => entity.Id == finding.RecommendedImageVersionId, TestContext.CancellationToken)
-                                                                    .ConfigureAwait(false);
+                var findingCount = await dbContext.UpdateFindings.CountAsync(TestContext.CancellationToken)
+                                                                 .ConfigureAwait(false);
 
-                Assert.AreEqual(UpdateAssessmentStatus.UpdateAvailable,
+                Assert.AreEqual(UpdateAssessmentStatus.UpToDate,
                                 snapshot.UpdateAssessmentStatus,
-                                "The reported image digest must allow latest aliases to resolve their current semantic version");
-                Assert.AreEqual("2.5.0",
-                                recommendedImage.Tag,
-                                "The next semantic successor must be recommended when the running digest resolves to an older version tag");
-                CollectionAssert.AreEqual(new[] { "2.5.0", "2.4.1" },
-                                          finding.TagCandidates.OrderBy(entity => entity.Rank)
-                                                               .Select(entity => entity.Tag)
-                                                               .ToArray(),
-                                          "Persisted tag candidates must include the semantic successor and the resolved current version tag");
+                                "Latest aliases with a current latest digest must stay up to date even when higher semantic tags exist");
+                Assert.AreEqual(0,
+                                findingCount,
+                                "No runtime update finding must be persisted when the running latest digest already matches the registry latest digest");
             }
         }
     }

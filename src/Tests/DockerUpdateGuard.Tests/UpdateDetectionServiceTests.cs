@@ -192,10 +192,10 @@ public class UpdateDetectionServiceTests
     }
 
     /// <summary>
-    /// Verify latest aliases can resolve the running semantic version from the current digest
+    /// Verify current latest digests stay up to date even when higher semantic tags exist
     /// </summary>
     [TestMethod]
-    public void UpdateDetectionServiceLatestAliasWithMatchingSemanticDigestReturnsSemanticSuccessor()
+    public void UpdateDetectionServiceLatestAliasWithCurrentLatestDigestReturnsUpToDate()
     {
         var service = new UpdateDetectionService();
 
@@ -227,20 +227,19 @@ public class UpdateDetectionServiceTests
                                               },
                                           ]);
 
-        Assert.AreEqual(UpdateEvaluationStatus.UpdateAvailable,
+        Assert.AreEqual(UpdateEvaluationStatus.UpToDate,
                         evaluation.Status,
-                        "A latest alias with a digest-matched semantic version must report a newer semantic successor");
-        Assert.AreEqual("2.5.0",
-                        evaluation.RecommendedTag,
-                        "The highest semantic successor must be recommended once the running digest resolves to a version tag");
-        CollectionAssert.AreEqual(new[] { "2.5.0", "2.4.1" },
-                                  evaluation.Candidates.Select(candidate => candidate.Tag)
-                                                       .ToArray(),
-                                  "Candidates must include the newer semantic successor and the resolved current semantic version");
+                        "A current latest digest must stay up to date even when higher semantic tags exist");
+        Assert.AreEqual("The running image already matches the current 'latest' tag",
+                        evaluation.Summary,
+                        "The summary must explain that the running latest digest is already current");
+        Assert.HasCount(0,
+                        evaluation.Candidates,
+                        "No candidate list should be produced when the running latest digest already matches the registry latest digest");
     }
 
     /// <summary>
-    /// Verify stale calendar tags are not recommended ahead of newer published tags
+    /// Verify stale calendar tags do not matter when the running image already matches the current latest digest
     /// </summary>
     [TestMethod]
     public void UpdateDetectionServiceLatestAliasIgnoresOlderPublishedCalendarTagAsync()
@@ -281,16 +280,12 @@ public class UpdateDetectionServiceTests
                                               },
                                           ]);
 
-        Assert.AreEqual(UpdateEvaluationStatus.UpdateAvailable,
+        Assert.AreEqual(UpdateEvaluationStatus.UpToDate,
                         evaluation.Status,
-                        "A newer published semantic tag must still be reported as an available update");
-        Assert.AreEqual("2.5.0",
-                        evaluation.RecommendedTag,
-                        "Older calendar tags must not outrank newer published semantic successors");
-        CollectionAssert.AreEquivalent(new[] { "2.5.0", "2.4.1" },
-                                       evaluation.Candidates.Select(candidate => candidate.Tag)
-                                                            .ToArray(),
-                                       "Stale calendar tags must be excluded from the latest alias recommendation set");
+                        "A current latest digest must stay up to date regardless of stale calendar tags");
+        Assert.AreEqual("The running image already matches the current 'latest' tag",
+                        evaluation.Summary,
+                        "The summary must explain that the running latest digest is already current");
     }
 
     /// <summary>
@@ -326,9 +321,9 @@ public class UpdateDetectionServiceTests
         Assert.AreEqual(UpdateEvaluationStatus.UpToDate,
                         evaluation.Status,
                         "A latest alias must stay up to date when its digest resolves to the newest semantic version");
-        Assert.AreEqual("The running digest matches version tag '2.4.1'",
+        Assert.AreEqual("The running image already matches the current 'latest' tag",
                         evaluation.Summary,
-                        "The summary must explain which semantic version was resolved from the running digest");
+                        "The summary must explain that the running latest digest is already current");
     }
 
     /// <summary>
@@ -367,6 +362,50 @@ public class UpdateDetectionServiceTests
         Assert.AreEqual("The running image already matches the current 'latest' tag",
                         evaluation.Summary,
                         "The summary must explain that the running latest digest is already current");
+    }
+
+    /// <summary>
+    /// Verify semantic version candidates are capped at fifty entries
+    /// </summary>
+    [TestMethod]
+    public void UpdateDetectionServiceSemverCandidatesAreLimitedToFiftyEntries()
+    {
+        var service = new UpdateDetectionService();
+        var availableTags = Enumerable.Range(1, 60)
+                                      .Select(index => new DockerHubTagData
+                                                       {
+                                                           Tag = $"1.0.{index}",
+                                                           Digest = $"sha256:{index}",
+                                                           PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero).AddMinutes(index),
+                                                       })
+                                      .Cast<DockerHubTagData>()
+                                      .ToList();
+
+        availableTags.Add(new DockerHubTagData
+                          {
+                              Tag = "1.0.0",
+                              Digest = "sha256:current",
+                              PublishedAtUtc = new DateTimeOffset(2025, 05, 31, 12, 00, 00, TimeSpan.Zero),
+                          });
+
+        var evaluation = service.Evaluate(new ImageReference
+                                          {
+                                              Registry = "docker.io",
+                                              Repository = "library/nginx",
+                                              Tag = "1.0.0",
+                                              Digest = "sha256:current",
+                                          },
+                                          availableTags);
+
+        Assert.AreEqual(UpdateEvaluationStatus.UpdateAvailable,
+                        evaluation.Status,
+                        "A larger successor set must still produce an update result");
+        Assert.HasCount(50,
+                        evaluation.Candidates,
+                        "Semantic successor candidates must be capped at fifty entries");
+        Assert.AreEqual("1.0.60",
+                        evaluation.Candidates[0].Tag,
+                        "The highest semantic successor must remain first in the capped candidate set");
     }
 
     #endregion // Methods

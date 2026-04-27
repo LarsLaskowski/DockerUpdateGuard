@@ -374,7 +374,8 @@ public class ImageScanOrchestrator : IImageScanOrchestrator
     /// <returns>Task</returns>
     private async Task DeactivateObservedFindingsAsync(Guid observedImageId, CancellationToken cancellationToken)
     {
-        var activeFindings = await _dbContext.UpdateFindings.Where(entity => entity.ObservedImageId == observedImageId && entity.IsActive)
+        var activeFindings = await _dbContext.UpdateFindings.Include(entity => entity.TagCandidates)
+                                                            .Where(entity => entity.ObservedImageId == observedImageId && entity.IsActive)
                                                             .ToListAsync(cancellationToken)
                                                             .ConfigureAwait(false);
 
@@ -382,6 +383,8 @@ public class ImageScanOrchestrator : IImageScanOrchestrator
         {
             activeFinding.IsActive = false;
             activeFinding.ResolvedAtUtc = DateTimeOffset.UtcNow;
+
+            activeFinding.TagCandidates.Clear();
         }
     }
 
@@ -435,6 +438,11 @@ public class ImageScanOrchestrator : IImageScanOrchestrator
                                                                                      Index = index
                                                                                  }))
         {
+            if (UpdateFindingPersistenceHelper.HasPersistableDigest(candidate.Value.Digest) == false)
+            {
+                continue;
+            }
+
             finding.TagCandidates.Add(new TagCandidate
                                       {
                                           Tag = candidate.Value.Tag,

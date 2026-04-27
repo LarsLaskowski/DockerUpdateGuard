@@ -68,29 +68,39 @@ public class ScanCleanupBackgroundService : ScheduledBackgroundService
             var dbContext = scope.ServiceProvider.GetRequiredService<DockerUpdateGuardDbContext>();
             var applicationTelemetry = scope.ServiceProvider.GetRequiredService<ApplicationTelemetry>();
             var cutoff = DateTimeOffset.UtcNow.AddDays(-_optionsMonitor.CurrentValue.Scanning.RetainScanRunsDays);
+
             var oldTagCandidates = await dbContext.TagCandidates
                                                   .Where(entity => entity.UpdateFinding.ResolvedAtUtc != null
                                                                    && entity.UpdateFinding.ResolvedAtUtc < cutoff)
                                                   .ToListAsync(stoppingToken)
                                                   .ConfigureAwait(false);
+
+            var invalidTagCandidates = await dbContext.TagCandidates
+                                                      .Where(entity => entity.Digest == null || entity.Digest == string.Empty)
+                                                      .ToListAsync(stoppingToken)
+                                                      .ConfigureAwait(false);
+
             var oldUpdateFindings = await dbContext.UpdateFindings
                                                    .Where(entity => entity.IsActive == false
                                                                     && entity.ResolvedAtUtc != null
                                                                     && entity.ResolvedAtUtc < cutoff)
                                                    .ToListAsync(stoppingToken)
                                                    .ConfigureAwait(false);
+
             var oldVulnerabilityFindings = await dbContext.VulnerabilityFindings
                                                           .Where(entity => entity.IsActive == false
                                                                            && entity.ResolvedAtUtc != null
                                                                            && entity.ResolvedAtUtc < cutoff)
                                                           .ToListAsync(stoppingToken)
                                                           .ConfigureAwait(false);
+
             var oldSnapshots = await dbContext.ContainerSnapshots
                                               .Where(entity => entity.RecordedAtUtc < cutoff
                                                                && entity.UpdateFindings.Any(finding => finding.IsActive) == false
                                                                && entity.ContainerActionRuns.Any() == false)
                                               .ToListAsync(stoppingToken)
                                               .ConfigureAwait(false);
+
             var oldScanRuns = await dbContext.ScanRuns
                                              .Where(entity => entity.CompletedAtUtc != null
                                                               && entity.CompletedAtUtc < cutoff
@@ -100,28 +110,37 @@ public class ScanCleanupBackgroundService : ScheduledBackgroundService
                                                               && entity.ImageRelationships.Any() == false)
                                              .ToListAsync(stoppingToken)
                                              .ConfigureAwait(false);
+
             var oldRuntimeContainerSamples = await dbContext.RuntimeContainerResourceSamples
                                                             .Where(entity => entity.RecordedAtUtc < cutoff)
                                                             .ToListAsync(stoppingToken)
                                                             .ConfigureAwait(false);
+
             var oldDockerInstanceSamples = await dbContext.DockerInstanceResourceSamples
                                                           .Where(entity => entity.RecordedAtUtc < cutoff)
                                                           .ToListAsync(stoppingToken)
                                                           .ConfigureAwait(false);
 
-            dbContext.TagCandidates.RemoveRange(oldTagCandidates);
+            var removableTagCandidates = oldTagCandidates.Concat(invalidTagCandidates)
+                                                         .DistinctBy(entity => entity.Id)
+                                                         .ToList();
+
+            dbContext.TagCandidates.RemoveRange(removableTagCandidates);
             dbContext.UpdateFindings.RemoveRange(oldUpdateFindings);
             dbContext.VulnerabilityFindings.RemoveRange(oldVulnerabilityFindings);
             dbContext.ContainerSnapshots.RemoveRange(oldSnapshots);
             dbContext.ScanRuns.RemoveRange(oldScanRuns);
             dbContext.RuntimeContainerResourceSamples.RemoveRange(oldRuntimeContainerSamples);
             dbContext.DockerInstanceResourceSamples.RemoveRange(oldDockerInstanceSamples);
+
             await dbContext.SaveChangesAsync(stoppingToken)
                            .ConfigureAwait(false);
+
             await applicationTelemetry.RefreshInventoryMetricsAsync(dbContext, stoppingToken)
                                       .ConfigureAwait(false);
+
             _logger.ScanCleanupCompleted(_optionsMonitor.CurrentValue.Scanning.RetainScanRunsDays,
-                                         oldTagCandidates.Count,
+                                         removableTagCandidates.Count,
                                          oldUpdateFindings.Count,
                                          oldVulnerabilityFindings.Count,
                                          oldSnapshots.Count,
