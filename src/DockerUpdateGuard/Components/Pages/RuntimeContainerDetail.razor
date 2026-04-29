@@ -77,6 +77,10 @@
                     <MudPaper Class="summary-card" Elevation="0">
                         <span class="summary-label">Update assessment</span>
                         <MudChip T="string" Size="Size.Small" Color="@GetUpdateStateColor(_detail.UpdateStatus)">@_detail.UpdateStatus</MudChip>
+                        @if (string.IsNullOrWhiteSpace(_detail.AvailableUpdateVersionTag) == false)
+                        {
+                            <span class="table-secondary">@_detail.AvailableUpdateVersionTag</span>
+                        }
                         @if (string.IsNullOrWhiteSpace(_detail.UpdateMessage) == false)
                         {
                             <span class="table-secondary">@_detail.UpdateMessage</span>

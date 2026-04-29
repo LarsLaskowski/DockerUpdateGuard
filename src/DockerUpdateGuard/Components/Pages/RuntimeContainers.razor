@@ -69,6 +69,10 @@
                     <MudTd DataLabel="Network" Class="runtime-containers-table__resource">@FormatNetwork(context.CurrentResourceUsage)</MudTd>
                     <MudTd DataLabel="Update State" Class="runtime-containers-table__update-state">
                         <MudChip T="string" Size="Size.Small" Color="@GetUpdateStateColor(context.UpdateState)">@context.UpdateState</MudChip>
+                        @if (string.IsNullOrWhiteSpace(context.AvailableUpdateVersionTag) == false)
+                        {
+                            <span class="table-secondary">@context.AvailableUpdateVersionTag</span>
+                        }
                     </MudTd>
                 </RowTemplate>
             </MudTable>

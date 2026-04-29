@@ -208,15 +208,111 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
     /// Parse a Docker Hub tag payload
     /// </summary>
     /// <param name="element">JSON element</param>
+    /// <param name="operatingSystem">Preferred operating system</param>
+    /// <param name="architecture">Preferred architecture</param>
     /// <returns>Tag data</returns>
-    private static DockerHubTagData ParseTag(JsonElement element)
+    private static DockerHubTagData ParseTag(JsonElement element,
+                                             string? operatingSystem = null,
+                                             string? architecture = null)
     {
         return new DockerHubTagData
                {
                    Tag = TryGetString(element, "name") ?? string.Empty,
-                   Digest = TryGetString(element, "digest"),
+                   Digest = ResolveDockerHubDigest(element, operatingSystem, architecture),
                    PublishedAtUtc = TryGetDateTimeOffset(element, "last_pushed"),
                };
+    }
+
+    /// <summary>
+    /// Resolve a platform-specific digest from a Docker Hub tag payload
+    /// </summary>
+    /// <param name="element">Tag JSON element</param>
+    /// <param name="operatingSystem">Preferred operating system</param>
+    /// <param name="architecture">Preferred architecture</param>
+    /// <returns>Resolved digest or the payload digest when no platform image matches</returns>
+    private static string? ResolveDockerHubDigest(JsonElement element,
+                                                  string? operatingSystem,
+                                                  string? architecture)
+    {
+        if (element.TryGetProperty("images", out var imagesElement) == false
+            || imagesElement.ValueKind != JsonValueKind.Array)
+        {
+            return TryGetString(element, "digest");
+        }
+
+        var selectedDigest = SelectPlatformDigest(imagesElement, operatingSystem, architecture);
+
+        return string.IsNullOrWhiteSpace(selectedDigest)
+                   ? TryGetString(element, "digest")
+                   : selectedDigest;
+    }
+
+    /// <summary>
+    /// Select a manifest digest for a preferred platform
+    /// </summary>
+    /// <param name="imagesElement">Image array element</param>
+    /// <param name="operatingSystem">Preferred operating system</param>
+    /// <param name="architecture">Preferred architecture</param>
+    /// <returns>Resolved digest or null</returns>
+    private static string? SelectPlatformDigest(JsonElement imagesElement,
+                                                string? operatingSystem,
+                                                string? architecture)
+    {
+        var preferredOperatingSystem = NormalizePlatformValue(operatingSystem);
+        var preferredArchitecture = NormalizePlatformValue(architecture);
+        var fallbackDigest = default(string);
+
+        foreach (var imageElement in imagesElement.EnumerateArray())
+        {
+            var digest = TryGetString(imageElement, "digest");
+
+            if (string.IsNullOrWhiteSpace(digest))
+            {
+                continue;
+            }
+
+            fallbackDigest ??= digest;
+
+            var imageOperatingSystem = NormalizePlatformValue(TryGetString(imageElement, "os"));
+            var imageArchitecture = NormalizePlatformValue(TryGetString(imageElement, "architecture"));
+
+            if (string.IsNullOrWhiteSpace(preferredOperatingSystem) == false
+                && string.IsNullOrWhiteSpace(preferredArchitecture) == false
+                && string.Equals(imageOperatingSystem, preferredOperatingSystem, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(imageArchitecture, preferredArchitecture, StringComparison.OrdinalIgnoreCase))
+            {
+                return digest;
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(preferredArchitecture) == false)
+        {
+            foreach (var imageElement in imagesElement.EnumerateArray())
+            {
+                var digest = TryGetString(imageElement, "digest");
+                var imageArchitecture = NormalizePlatformValue(TryGetString(imageElement, "architecture"));
+
+                if (string.IsNullOrWhiteSpace(digest) == false
+                    && string.Equals(imageArchitecture, preferredArchitecture, StringComparison.OrdinalIgnoreCase))
+                {
+                    return digest;
+                }
+            }
+        }
+
+        return fallbackDigest;
+    }
+
+    /// <summary>
+    /// Normalize a platform value
+    /// </summary>
+    /// <param name="value">Platform value</param>
+    /// <returns>Normalized platform value</returns>
+    private static string? NormalizePlatformValue(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value)
+                   ? null
+                   : value.Trim().ToLowerInvariant();
     }
 
     /// <summary>
@@ -531,7 +627,10 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
     }
 
     /// <inheritdoc/>
-    public async Task<ExternalOperationResult<DockerHubTagData>> GetTagAsync(ImageReference imageReference, CancellationToken cancellationToken = default)
+    public async Task<ExternalOperationResult<DockerHubTagData>> GetTagAsync(ImageReference imageReference,
+                                                                             CancellationToken cancellationToken = default,
+                                                                             string? operatingSystem = null,
+                                                                             string? architecture = null)
     {
         if (IsSupportedRegistry(imageReference.Registry) == false)
         {
@@ -574,14 +673,18 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
             using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: cancellationToken)
                                                        .ConfigureAwait(false);
 
-            return ExternalOperationResult<DockerHubTagData>.Succeeded(ParseTag(jsonDocument.RootElement));
+            return ExternalOperationResult<DockerHubTagData>.Succeeded(ParseTag(jsonDocument.RootElement,
+                                                                                operatingSystem,
+                                                                                architecture));
         }
     }
 
     /// <inheritdoc/>
     public async Task<ExternalOperationResult<IReadOnlyList<DockerHubTagData>>> GetTagsAsync(string registry,
                                                                                              string repository,
-                                                                                             CancellationToken cancellationToken = default)
+                                                                                             CancellationToken cancellationToken = default,
+                                                                                             string? operatingSystem = null,
+                                                                                             string? architecture = null)
     {
         if (IsSupportedRegistry(registry) == false)
         {
@@ -629,7 +732,7 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
                 {
                     foreach (var resultElement in resultsElement.EnumerateArray())
                     {
-                        results.Add(ParseTag(resultElement));
+                        results.Add(ParseTag(resultElement, operatingSystem, architecture));
                     }
                 }
 
@@ -888,33 +991,11 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
 
         foreach (var manifest in manifestsElement.EnumerateArray())
         {
-            if (manifest.TryGetProperty("platform", out var platform) == false)
+            targetDigest = TryGetString(manifest, "digest");
+
+            if (string.IsNullOrWhiteSpace(targetDigest) == false)
             {
-                continue;
-            }
-
-            var os = TryGetString(platform, "os");
-            var arch = TryGetString(platform, "architecture");
-
-            if (string.Equals(os, "linux", StringComparison.OrdinalIgnoreCase)
-                && string.Equals(arch, "amd64", StringComparison.OrdinalIgnoreCase))
-            {
-                targetDigest = TryGetString(manifest, "digest");
-
                 break;
-            }
-        }
-
-        if (string.IsNullOrWhiteSpace(targetDigest))
-        {
-            foreach (var manifest in manifestsElement.EnumerateArray())
-            {
-                targetDigest = TryGetString(manifest, "digest");
-
-                if (string.IsNullOrWhiteSpace(targetDigest) == false)
-                {
-                    break;
-                }
             }
         }
 

@@ -15,8 +15,13 @@ public interface IRegistryMetadataService
     /// </summary>
     /// <param name="imageReference">Image reference</param>
     /// <param name="cancellationToken">Cancellation token</param>
+    /// <param name="operatingSystem">Preferred operating system</param>
+    /// <param name="architecture">Preferred architecture</param>
     /// <returns>Tag metadata result</returns>
-    Task<ExternalOperationResult<DockerHubTagData>> GetTagAsync(ImageReference imageReference, CancellationToken cancellationToken = default);
+    Task<ExternalOperationResult<DockerHubTagData>> GetTagAsync(ImageReference imageReference,
+                                                                CancellationToken cancellationToken = default,
+                                                                string? operatingSystem = null,
+                                                                string? architecture = null);
 
     /// <summary>
     /// Read tags for a repository
@@ -24,10 +29,14 @@ public interface IRegistryMetadataService
     /// <param name="registry">Registry name</param>
     /// <param name="repository">Repository path</param>
     /// <param name="cancellationToken">Cancellation token</param>
+    /// <param name="operatingSystem">Preferred operating system</param>
+    /// <param name="architecture">Preferred architecture</param>
     /// <returns>Tag list result</returns>
     Task<ExternalOperationResult<IReadOnlyList<DockerHubTagData>>> GetTagsAsync(string registry,
                                                                                 string repository,
-                                                                                CancellationToken cancellationToken = default);
+                                                                                CancellationToken cancellationToken = default,
+                                                                                string? operatingSystem = null,
+                                                                                string? architecture = null);
 
     /// <summary>
     /// Attempt to resolve base images for an observed image

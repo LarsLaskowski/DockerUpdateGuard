@@ -239,11 +239,19 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
     /// <param name="candidates">Tag candidates</param>
     private static void PopulateResolvedVersionTags(IList<TagCandidateViewData> candidates)
     {
+        var versionCandidates = candidates.Select(entity => new VersionTagCandidateData
+                                                            {
+                                                                Tag = entity.Tag,
+                                                                Digest = entity.Digest,
+                                                                PublishedAtUtc = entity.PublishedAtUtc,
+                                                            })
+                                          .ToList();
+
         foreach (var candidate in candidates)
         {
-            candidate.ResolvedVersionTag = ResolveResolvedVersionTag(candidate.Tag,
-                                                                     candidate.Digest,
-                                                                     candidates);
+            candidate.ResolvedVersionTag = VersionTagResolutionHelper.ResolveAliasVersionTag(candidate.Tag,
+                                                                                             candidate.Digest,
+                                                                                             versionCandidates);
         }
     }
 
@@ -258,90 +266,40 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                                                      string? currentDigest,
                                                      IEnumerable<TagCandidateViewData> candidates)
     {
-        if (string.IsNullOrWhiteSpace(currentTag)
-            || TryParseVersionTag(currentTag, out _))
-        {
-            return null;
-        }
+        return VersionTagResolutionHelper.ResolveAliasVersionTag(currentTag,
+                                                                 currentDigest,
+                                                                 candidates.Select(entity => new VersionTagCandidateData
+                                                                                             {
+                                                                                                 Tag = entity.Tag,
+                                                                                                 Digest = entity.Digest,
+                                                                                                 PublishedAtUtc = entity.PublishedAtUtc,
+                                                                                             }));
+    }
 
+    /// <summary>
+    /// Resolve the available update version tag for display
+    /// </summary>
+    /// <param name="candidates">Tag candidates</param>
+    /// <returns>Displayable version tag or null</returns>
+    private static string? ResolveAvailableUpdateVersionTag(IEnumerable<TagCandidateViewData> candidates)
+    {
         var candidateList = candidates.Where(entity => string.IsNullOrWhiteSpace(entity.Tag) == false)
                                       .ToList();
-        var currentTagCandidate = candidateList.FirstOrDefault(entity => string.Equals(entity.Tag, currentTag, StringComparison.OrdinalIgnoreCase)
-                                                                         && string.Equals(entity.Digest ?? string.Empty,
-                                                                                          currentDigest ?? string.Empty,
-                                                                                          StringComparison.OrdinalIgnoreCase))
-                                      ?? candidateList.FirstOrDefault(entity => string.Equals(entity.Tag, currentTag, StringComparison.OrdinalIgnoreCase));
-        var digest = string.IsNullOrWhiteSpace(currentTagCandidate?.Digest) ? currentDigest : currentTagCandidate.Digest;
+        var recommendedCandidate = candidateList.FirstOrDefault(entity => entity.IsRecommended);
 
-        if (string.IsNullOrWhiteSpace(digest))
+        if (recommendedCandidate is null)
         {
             return null;
         }
 
-        var matchingCandidates = candidateList.Where(entity => string.Equals(entity.Digest, digest, StringComparison.OrdinalIgnoreCase)
-                                                               && string.Equals(entity.Tag, currentTag, StringComparison.OrdinalIgnoreCase) == false)
-                                              .ToList();
-
-        if (matchingCandidates.Count == 0)
-        {
-            return null;
-        }
-
-        var semanticCandidates = matchingCandidates.Where(entity => TryParseVersionTag(entity.Tag, out _))
-                                                   .Select(entity => new
-                                                                     {
-                                                                         Candidate = entity,
-                                                                         Version = ParseVersionTag(entity.Tag),
-                                                                     })
-                                                   .OrderByDescending(entity => entity.Candidate.PublishedAtUtc)
-                                                   .ThenByDescending(entity => entity.Version)
-                                                   .ToList();
-
-        if (semanticCandidates.Count > 0)
-        {
-            return semanticCandidates[0].Candidate.Tag;
-        }
-
-        return matchingCandidates.OrderByDescending(entity => entity.IsRecommended)
-                                 .ThenByDescending(entity => entity.PublishedAtUtc)
-                                 .ThenBy(entity => entity.Tag, StringComparer.OrdinalIgnoreCase)
-                                 .Select(entity => entity.Tag)
-                                 .FirstOrDefault();
-    }
-
-    /// <summary>
-    /// Attempt to parse a semantic version tag
-    /// </summary>
-    /// <param name="value">Candidate tag</param>
-    /// <param name="version">Parsed version</param>
-    /// <returns>True when parsing succeeded</returns>
-    private static bool TryParseVersionTag(string value, out Version version)
-    {
-        version = new Version();
-
-        var normalized = value.Trim().TrimStart('v', 'V');
-
-        if (Version.TryParse(normalized, out var parsedVersion)
-            && parsedVersion is not null)
-        {
-            version = parsedVersion;
-
-            return true;
-        }
-
-        version = new Version();
-
-        return false;
-    }
-
-    /// <summary>
-    /// Parse a semantic version tag
-    /// </summary>
-    /// <param name="value">Candidate tag</param>
-    /// <returns>Parsed version</returns>
-    private static Version ParseVersionTag(string value)
-    {
-        return Version.Parse(value.Trim().TrimStart('v', 'V'));
+        return VersionTagResolutionHelper.ResolveDisplayVersionTag(recommendedCandidate.Tag,
+                                                                   recommendedCandidate.Digest,
+                                                                   candidateList.Select(entity => new VersionTagCandidateData
+                                                                                                  {
+                                                                                                      Tag = entity.Tag,
+                                                                                                      Digest = entity.Digest,
+                                                                                                      PublishedAtUtc = entity.PublishedAtUtc,
+                                                                                                  }));
     }
 
     /// <summary>
@@ -725,9 +683,14 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                                                                                                                             .OrderByDescending(entity => entity.IsRecommended)
                                                                                                                             .ThenBy(entity => entity.Tag, StringComparer.OrdinalIgnoreCase));
 
-                                                var resolvedVersionTag = ResolveResolvedVersionTag(latestSnapshot.ImageVersion.Tag,
-                                                                                                   latestSnapshot.ImageVersion.Digest,
-                                                                                                   availableTagCandidates);
+                                                var resolvedVersionTag = string.IsNullOrWhiteSpace(latestSnapshot.ResolvedVersionTag) == false
+                                                                             ? latestSnapshot.ResolvedVersionTag
+                                                                             : ResolveResolvedVersionTag(latestSnapshot.ImageVersion.Tag,
+                                                                                                         latestSnapshot.ImageVersion.Digest,
+                                                                                                         availableTagCandidates);
+                                                var availableUpdateVersionTag = string.IsNullOrWhiteSpace(latestSnapshot.AvailableUpdateVersionTag) == false
+                                                                                    ? latestSnapshot.AvailableUpdateVersionTag
+                                                                                    : ResolveAvailableUpdateVersionTag(availableTagCandidates);
 
                                                 var registryRepository = latestSnapshot.ImageVersion.RegistryRepository;
 
@@ -769,6 +732,7 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                                                            LinkedObservedImageName = linkedObservedImage?.Name,
                                                            UpdateStatus = FormatUpdateAssessmentStatus(latestSnapshot.UpdateAssessmentStatus),
                                                            UpdateMessage = latestSnapshot.UpdateAssessmentMessage,
+                                                           AvailableUpdateVersionTag = availableUpdateVersionTag,
                                                            ManualSelectionImage = manualSelection is null
                                                                                       ? null
                                                                                       : FormatImageReference(registryRepository.Registry,
@@ -986,9 +950,16 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                                           latestResourceSamples.TryGetValue(CreateContainerKey(entity.DockerInstanceId, entity.ContainerId), out var currentResourceUsage);
                                           tagCandidatesBySnapshot.TryGetValue(entity.Id, out var tagCandidates);
 
-                                          var resolvedVersionTag = tagCandidates is null
-                                                                       ? null
-                                                                       : ResolveResolvedVersionTag(imageVersion.Tag, imageVersion.Digest, tagCandidates);
+                                          var resolvedVersionTag = string.IsNullOrWhiteSpace(entity.ResolvedVersionTag) == false
+                                                                       ? entity.ResolvedVersionTag
+                                                                       : tagCandidates is null
+                                                                             ? null
+                                                                             : ResolveResolvedVersionTag(imageVersion.Tag, imageVersion.Digest, tagCandidates);
+                                          var availableUpdateVersionTag = string.IsNullOrWhiteSpace(entity.AvailableUpdateVersionTag) == false
+                                                                              ? entity.AvailableUpdateVersionTag
+                                                                              : tagCandidates is null
+                                                                                    ? null
+                                                                                    : ResolveAvailableUpdateVersionTag(tagCandidates);
 
                                           return new RuntimeContainerListItemData
                                                  {
@@ -1002,6 +973,7 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                                                      RuntimeStatus = entity.Status.ToString(),
                                                      UpdateState = FormatUpdateAssessmentStatus(entity.UpdateAssessmentStatus),
                                                      UpdateSummary = entity.UpdateAssessmentMessage,
+                                                     AvailableUpdateVersionTag = availableUpdateVersionTag,
                                                      PortainerAvailable = dockerInstance.PortainerEndpoint is not null && dockerInstance.PortainerEndpoint.IsEnabled,
                                                      ActiveVulnerabilityFindingCount = _dbContext.VulnerabilityFindings.Count(finding => finding.ImageVersionId == entity.ImageVersionId && finding.IsActive),
                                                      VulnerabilityStatus = FormatVulnerabilityAssessmentStatus(imageVersion.VulnerabilityAssessmentStatus),

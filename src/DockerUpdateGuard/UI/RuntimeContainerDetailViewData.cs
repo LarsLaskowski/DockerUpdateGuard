@@ -88,6 +88,11 @@ public class RuntimeContainerDetailViewData
     public string? UpdateMessage { get; set; }
 
     /// <summary>
+    /// Available update version tag
+    /// </summary>
+    public string? AvailableUpdateVersionTag { get; set; }
+
+    /// <summary>
     /// Manually selected image reference
     /// </summary>
     public string? ManualSelectionImage { get; set; }

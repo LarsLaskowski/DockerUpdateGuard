@@ -92,6 +92,92 @@ public class OciRegistryClientTests
         }
     }
 
+    /// <summary>
+    /// Verify OCI tag lookup resolves the digest for the requested runtime architecture from a manifest list
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task OciRegistryClientGetTagAsyncUsesRequestedArchitectureDigestAsync()
+    {
+        var handler = new SequenceHttpMessageHandler();
+        var httpClient = new HttpClient(handler);
+
+        try
+        {
+            handler.AddResponse("https://mcr.microsoft.com/v2/mssql/server/manifests/latest",
+                                CreateUnauthorizedResponse("https://mcr.microsoft.com/oauth2/token",
+                                                           "mcr.microsoft.com",
+                                                           "repository:mssql/server:pull"));
+            handler.AddJsonResponse("https://mcr.microsoft.com/oauth2/token?service=mcr.microsoft.com&scope=repository%3Amssql%2Fserver%3Apull",
+                                    """
+                                    {
+                                      "access_token": "mcr-token"
+                                    }
+                                    """);
+            handler.AddResponse("https://mcr.microsoft.com/v2/mssql/server/manifests/latest",
+                                CreateManifestListResponse("sha256:index",
+                                                           """
+                                                           {
+                                                             "schemaVersion": 2,
+                                                             "manifests": [
+                                                               {
+                                                                 "digest": "sha256:amd64",
+                                                                 "platform": {
+                                                                   "os": "linux",
+                                                                   "architecture": "amd64"
+                                                                 }
+                                                               },
+                                                               {
+                                                                 "digest": "sha256:arm64",
+                                                                 "platform": {
+                                                                   "os": "linux",
+                                                                   "architecture": "arm64"
+                                                                 }
+                                                               }
+                                                             ]
+                                                           }
+                                                           """));
+            handler.AddResponse("https://mcr.microsoft.com/v2/mssql/server/manifests/sha256%3Aarm64",
+                                CreateManifestResponse("sha256:arm64",
+                                                       """
+                                                       {
+                                                         "schemaVersion": 2,
+                                                         "config": {
+                                                           "digest": "sha256:config-arm64"
+                                                         }
+                                                       }
+                                                       """));
+
+            var client = new OciRegistryClient(httpClient, new TestLogger<OciRegistryClient>());
+            var result = await client.GetTagAsync(new ImageReference
+                                                  {
+                                                      Registry = "mcr.microsoft.com",
+                                                      Repository = "mssql/server",
+                                                      Tag = "latest",
+                                                  },
+                                                  CancellationToken.None,
+                                                  "linux",
+                                                  "arm64")
+                                     .ConfigureAwait(false);
+
+            Assert.AreEqual(ExternalOperationStatus.Succeeded,
+                            result.Status,
+                            "OCI tag lookup must succeed when the registry serves a multi-architecture manifest list");
+            Assert.IsNotNull(result.Data, "OCI tag lookup must return tag data");
+            Assert.AreEqual("sha256:index",
+                            result.Data.Digest,
+                            "OCI tag lookup must keep the top-level tag digest after resolving the requested platform manifest");
+            Assert.Contains(request => request.RequestUri == "https://mcr.microsoft.com/v2/mssql/server/manifests/sha256%3Aarm64",
+                            handler.Requests,
+                            "OCI tag lookup must follow the manifest digest that matches the requested runtime architecture");
+        }
+        finally
+        {
+            httpClient.Dispose();
+            handler.Dispose();
+        }
+    }
+
     #endregion // Methods
 
     #region Helper types
@@ -263,6 +349,26 @@ public class OciRegistryClientTests
                            Content = new StringContent(jsonContent,
                                                        Encoding.UTF8,
                                                        "application/vnd.oci.image.manifest.v1+json"),
+                       };
+
+        response.Headers.TryAddWithoutValidation("Docker-Content-Digest", digest);
+
+        return response;
+    }
+
+    /// <summary>
+    /// Create a manifest-list response with a digest header
+    /// </summary>
+    /// <param name="digest">Manifest-list digest</param>
+    /// <param name="jsonContent">Manifest-list JSON</param>
+    /// <returns>Manifest-list response</returns>
+    private static HttpResponseMessage CreateManifestListResponse(string digest, string jsonContent)
+    {
+        var response = new HttpResponseMessage(HttpStatusCode.OK)
+                       {
+                           Content = new StringContent(jsonContent,
+                                                       Encoding.UTF8,
+                                                       "application/vnd.oci.image.index.v1+json"),
                        };
 
         response.Headers.TryAddWithoutValidation("Docker-Content-Digest", digest);

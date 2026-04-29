@@ -47,6 +47,12 @@ public class ContainerSnapshotConfiguration : IEntityTypeConfiguration<Container
         builder.Property(entity => entity.UpdateAssessmentMessage)
                .HasMaxLength(2000);
 
+        builder.Property(entity => entity.ResolvedVersionTag)
+               .HasMaxLength(200);
+
+        builder.Property(entity => entity.AvailableUpdateVersionTag)
+               .HasMaxLength(200);
+
         builder.Property(entity => entity.RecordedAtUtc)
                .IsRequired();
 

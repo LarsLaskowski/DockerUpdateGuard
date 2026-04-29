@@ -58,6 +58,11 @@ public class RuntimeContainerListItemData
     public string? UpdateSummary { get; set; }
 
     /// <summary>
+    /// Available update version tag
+    /// </summary>
+    public string? AvailableUpdateVersionTag { get; set; }
+
+    /// <summary>
     /// Whether Portainer is available
     /// </summary>
     public bool PortainerAvailable { get; set; }

@@ -175,6 +175,84 @@ public class OciRegistryClient : IRegistryMetadataClient
     }
 
     /// <summary>
+    /// Normalize a platform value
+    /// </summary>
+    /// <param name="value">Platform value</param>
+    /// <returns>Normalized value</returns>
+    private static string? NormalizePlatformValue(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value)
+                   ? null
+                   : value.Trim().ToLowerInvariant();
+    }
+
+    /// <summary>
+    /// Select a manifest digest for a preferred platform
+    /// </summary>
+    /// <param name="manifestsElement">Manifest list element</param>
+    /// <param name="operatingSystem">Preferred operating system</param>
+    /// <param name="architecture">Preferred architecture</param>
+    /// <returns>Resolved manifest digest or null</returns>
+    private static string? SelectPlatformManifestDigest(JsonElement manifestsElement,
+                                                        string? operatingSystem,
+                                                        string? architecture)
+    {
+        var preferredOperatingSystem = NormalizePlatformValue(operatingSystem);
+        var preferredArchitecture = NormalizePlatformValue(architecture);
+        var fallbackDigest = default(string);
+
+        foreach (var manifestElement in manifestsElement.EnumerateArray())
+        {
+            var digest = TryGetString(manifestElement, "digest");
+
+            if (string.IsNullOrWhiteSpace(digest))
+            {
+                continue;
+            }
+
+            fallbackDigest ??= digest;
+
+            if (manifestElement.TryGetProperty("platform", out var platformElement) == false)
+            {
+                continue;
+            }
+
+            var manifestOperatingSystem = NormalizePlatformValue(TryGetString(platformElement, "os"));
+            var manifestArchitecture = NormalizePlatformValue(TryGetString(platformElement, "architecture"));
+
+            if (string.IsNullOrWhiteSpace(preferredOperatingSystem) == false
+                && string.IsNullOrWhiteSpace(preferredArchitecture) == false
+                && string.Equals(manifestOperatingSystem, preferredOperatingSystem, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(manifestArchitecture, preferredArchitecture, StringComparison.OrdinalIgnoreCase))
+            {
+                return digest;
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(preferredArchitecture) == false)
+        {
+            foreach (var manifestElement in manifestsElement.EnumerateArray())
+            {
+                if (manifestElement.TryGetProperty("platform", out var platformElement) == false)
+                {
+                    continue;
+                }
+
+                var digest = TryGetString(manifestElement, "digest");
+                var manifestArchitecture = NormalizePlatformValue(TryGetString(platformElement, "architecture"));
+
+                if (string.IsNullOrWhiteSpace(digest) == false
+                    && string.Equals(manifestArchitecture, preferredArchitecture, StringComparison.OrdinalIgnoreCase))
+                {
+                    return digest;
+                }
+            }
+        }
+
+        return fallbackDigest;
+    }
+
+    /// <summary>
     /// Parse query parameters into a mutable dictionary
     /// </summary>
     /// <param name="query">URI query string</param>
@@ -524,7 +602,10 @@ public class OciRegistryClient : IRegistryMetadataClient
     }
 
     /// <inheritdoc/>
-    public async Task<ExternalOperationResult<DockerHubTagData>> GetTagAsync(ImageReference imageReference, CancellationToken cancellationToken = default)
+    public async Task<ExternalOperationResult<DockerHubTagData>> GetTagAsync(ImageReference imageReference,
+                                                                             CancellationToken cancellationToken = default,
+                                                                             string? operatingSystem = null,
+                                                                             string? architecture = null)
     {
         ArgumentNullException.ThrowIfNull(imageReference);
 
@@ -533,7 +614,11 @@ public class OciRegistryClient : IRegistryMetadataClient
             return ExternalOperationResult<DockerHubTagData>.Unsupported($"Registry '{imageReference.Registry}' is not supported by the OCI registry adapter");
         }
 
-        var manifestResult = await GetManifestMetadataAsync(imageReference, imageReference.Tag, cancellationToken).ConfigureAwait(false);
+        var manifestResult = await GetManifestMetadataAsync(imageReference,
+                                                            imageReference.Tag,
+                                                            cancellationToken,
+                                                            operatingSystem,
+                                                            architecture).ConfigureAwait(false);
 
         if (manifestResult.Status != ExternalOperationStatus.Succeeded || manifestResult.Data is null)
         {
@@ -558,7 +643,9 @@ public class OciRegistryClient : IRegistryMetadataClient
     /// <inheritdoc/>
     public async Task<ExternalOperationResult<IReadOnlyList<DockerHubTagData>>> GetTagsAsync(string registry,
                                                                                              string repository,
-                                                                                             CancellationToken cancellationToken = default)
+                                                                                             CancellationToken cancellationToken = default,
+                                                                                             string? operatingSystem = null,
+                                                                                             string? architecture = null)
     {
         if (CanHandle(registry) == false)
         {
@@ -613,7 +700,10 @@ public class OciRegistryClient : IRegistryMetadataClient
                                                Repository = repository,
                                                Tag = tagName,
                                            };
-                        var tagResult = await GetTagAsync(tagReference, cancellationToken).ConfigureAwait(false);
+                        var tagResult = await GetTagAsync(tagReference,
+                                                          cancellationToken,
+                                                          operatingSystem,
+                                                          architecture).ConfigureAwait(false);
 
                         tags.Add(tagResult.Status == ExternalOperationStatus.Succeeded && tagResult.Data is not null
                                      ? tagResult.Data
@@ -777,10 +867,14 @@ public class OciRegistryClient : IRegistryMetadataClient
     /// <param name="imageReference">Image reference</param>
     /// <param name="reference">Tag or digest reference</param>
     /// <param name="cancellationToken">Cancellation token</param>
+    /// <param name="operatingSystem">Preferred operating system</param>
+    /// <param name="architecture">Preferred architecture</param>
     /// <returns>Manifest metadata result</returns>
     private async Task<ExternalOperationResult<ManifestMetadata>> GetManifestMetadataAsync(ImageReference imageReference,
                                                                                            string reference,
-                                                                                           CancellationToken cancellationToken)
+                                                                                           CancellationToken cancellationToken,
+                                                                                           string? operatingSystem = null,
+                                                                                           string? architecture = null)
     {
         using var response = await SendManifestRequestAsync(imageReference,
                                                             reference,
@@ -812,7 +906,9 @@ public class OciRegistryClient : IRegistryMetadataClient
                 return await GetConfigDigestFromManifestListAsync(imageReference,
                                                                   digest,
                                                                   jsonDocument.RootElement,
-                                                                  cancellationToken).ConfigureAwait(false);
+                                                                  cancellationToken,
+                                                                  operatingSystem,
+                                                                  architecture).ConfigureAwait(false);
             }
 
             return ExternalOperationResult<ManifestMetadata>.Succeeded(new ManifestMetadata
@@ -833,11 +929,15 @@ public class OciRegistryClient : IRegistryMetadataClient
     /// <param name="digest">Resolved digest</param>
     /// <param name="manifestListElement">Manifest list element</param>
     /// <param name="cancellationToken">Cancellation token</param>
+    /// <param name="operatingSystem">Preferred operating system</param>
+    /// <param name="architecture">Preferred architecture</param>
     /// <returns>Manifest metadata result</returns>
     private async Task<ExternalOperationResult<ManifestMetadata>> GetConfigDigestFromManifestListAsync(ImageReference imageReference,
                                                                                                        string? digest,
                                                                                                        JsonElement manifestListElement,
-                                                                                                       CancellationToken cancellationToken)
+                                                                                                       CancellationToken cancellationToken,
+                                                                                                       string? operatingSystem = null,
+                                                                                                       string? architecture = null)
     {
         if (manifestListElement.TryGetProperty("manifests", out var manifestsElement) == false
             || manifestsElement.ValueKind != JsonValueKind.Array)
@@ -845,43 +945,16 @@ public class OciRegistryClient : IRegistryMetadataClient
             return ExternalOperationResult<ManifestMetadata>.Failed($"Manifest list for '{imageReference.FullReference}' did not contain any platform manifests");
         }
 
-        var targetDigest = default(string);
-
-        foreach (var manifestElement in manifestsElement.EnumerateArray())
-        {
-            if (manifestElement.TryGetProperty("platform", out var platformElement) == false)
-            {
-                continue;
-            }
-
-            if (string.Equals(TryGetString(platformElement, "os"), "linux", StringComparison.OrdinalIgnoreCase)
-                && string.Equals(TryGetString(platformElement, "architecture"), "amd64", StringComparison.OrdinalIgnoreCase))
-            {
-                targetDigest = TryGetString(manifestElement, "digest");
-
-                break;
-            }
-        }
-
-        if (string.IsNullOrWhiteSpace(targetDigest))
-        {
-            foreach (var manifestElement in manifestsElement.EnumerateArray())
-            {
-                targetDigest = TryGetString(manifestElement, "digest");
-
-                if (string.IsNullOrWhiteSpace(targetDigest) == false)
-                {
-                    break;
-                }
-            }
-        }
+        var targetDigest = SelectPlatformManifestDigest(manifestsElement, operatingSystem, architecture);
 
         if (string.IsNullOrWhiteSpace(targetDigest))
         {
             return ExternalOperationResult<ManifestMetadata>.Failed($"Manifest list for '{imageReference.FullReference}' did not expose a target manifest digest");
         }
 
-        var platformManifestResult = await GetManifestMetadataAsync(imageReference, targetDigest, cancellationToken).ConfigureAwait(false);
+        var platformManifestResult = await GetManifestMetadataAsync(imageReference,
+                                                                    targetDigest,
+                                                                    cancellationToken).ConfigureAwait(false);
 
         if (platformManifestResult.Status != ExternalOperationStatus.Succeeded || platformManifestResult.Data is null)
         {

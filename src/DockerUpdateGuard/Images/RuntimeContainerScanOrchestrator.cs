@@ -162,6 +162,43 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
     }
 
     /// <summary>
+    /// Populate resolved version tag fields on a runtime snapshot
+    /// </summary>
+    /// <param name="snapshot">Runtime snapshot</param>
+    /// <param name="currentImage">Current image reference</param>
+    /// <param name="evaluation">Update evaluation</param>
+    /// <param name="availableTags">Available tags</param>
+    private static void PopulateResolvedVersionTags(ContainerSnapshot snapshot,
+                                                    ImageReference currentImage,
+                                                    UpdateEvaluationResult evaluation,
+                                                    IReadOnlyList<DockerHubTagData> availableTags)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        ArgumentNullException.ThrowIfNull(currentImage);
+        ArgumentNullException.ThrowIfNull(evaluation);
+        ArgumentNullException.ThrowIfNull(availableTags);
+
+        var versionCandidates = availableTags.Where(entity => string.IsNullOrWhiteSpace(entity.Tag) == false)
+                                             .Select(entity => new VersionTagCandidateData
+                                                               {
+                                                                   Tag = entity.Tag,
+                                                                   Digest = entity.Digest,
+                                                                   PublishedAtUtc = entity.PublishedAtUtc,
+                                                               })
+                                             .ToList();
+
+        snapshot.ResolvedVersionTag = VersionTagResolutionHelper.ResolveAliasVersionTag(currentImage.Tag,
+                                                                                        currentImage.Digest,
+                                                                                        versionCandidates);
+        snapshot.AvailableUpdateVersionTag = evaluation.Status == UpdateEvaluationStatus.UpdateAvailable
+                                             && string.IsNullOrWhiteSpace(evaluation.RecommendedTag) == false
+                                                 ? VersionTagResolutionHelper.ResolveDisplayVersionTag(evaluation.RecommendedTag,
+                                                                                                       evaluation.RecommendedDigest,
+                                                                                                       versionCandidates)
+                                                 : null;
+    }
+
+    /// <summary>
     /// Create a normalized repository key
     /// </summary>
     /// <param name="imageVersion">Image version</param>
@@ -390,6 +427,9 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
                     try
                     {
                         var parsedReference = _imageReferenceParser.Parse(container.ImageReference);
+                        var inspectData = await GetCurrentImageInspectDataAsync(configuredInstance,
+                                                                                container,
+                                                                                cancellationToken).ConfigureAwait(false);
 
                         if (string.IsNullOrWhiteSpace(parsedReference.Digest)
                             && string.IsNullOrWhiteSpace(container.ImageDigest) == false)
@@ -426,17 +466,22 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
 
                         var tagsResult = await _registryMetadataService.GetTagsAsync(parsedReference.Registry,
                                                                                      parsedReference.Repository,
-                                                                                     cancellationToken)
+                                                                                     cancellationToken,
+                                                                                     inspectData?.OperatingSystem,
+                                                                                     inspectData?.Architecture)
                                                                        .ConfigureAwait(false);
 
                         if (tagsResult.Status == ExternalOperationStatus.Succeeded && tagsResult.Data is not null)
                         {
                             var availableTags = await MergeCurrentTagMetadataAsync(parsedReference,
                                                                                    tagsResult.Data,
-                                                                                   cancellationToken).ConfigureAwait(false);
+                                                                                   cancellationToken,
+                                                                                   inspectData?.OperatingSystem,
+                                                                                   inspectData?.Architecture).ConfigureAwait(false);
                             var evaluation = _updateDetectionService.Evaluate(parsedReference, availableTags);
 
                             ApplyUpdateAssessment(snapshot, evaluation);
+                            PopulateResolvedVersionTags(snapshot, parsedReference, evaluation, availableTags);
 
                             if (evaluation.Status == UpdateEvaluationStatus.UpdateAvailable
                                 || evaluation.Status == UpdateEvaluationStatus.NeedsReview)
@@ -482,6 +527,7 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
                                                                    snapshot,
                                                                    imageVersion,
                                                                    container,
+                                                                   inspectData,
                                                                    dockerInstance.Name,
                                                                    configuredInstance,
                                                                    ownRepositoryKeys,
@@ -637,17 +683,19 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
     /// </summary>
     /// <param name="scanRun">Scan run</param>
     /// <param name="snapshot">Container snapshot</param>
-    /// <param name="subjectImageVersion">Subject image version</param>
-    /// <param name="container">Runtime container descriptor</param>
-    /// <param name="dockerInstanceName">Docker instance name</param>
-    /// <param name="configuredInstance">Configured Docker instance</param>
-    /// <param name="ownRepositoryKeys">Known own repository keys</param>
-    /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>Task</returns>
+     /// <param name="subjectImageVersion">Subject image version</param>
+     /// <param name="container">Runtime container descriptor</param>
+     /// <param name="inspectData">Current image inspect data</param>
+     /// <param name="dockerInstanceName">Docker instance name</param>
+     /// <param name="configuredInstance">Configured Docker instance</param>
+     /// <param name="ownRepositoryKeys">Known own repository keys</param>
+     /// <param name="cancellationToken">Cancellation token</param>
+     /// <returns>Task</returns>
     private async Task CreateDerivedBaseRuntimeFindingAsync(ScanRun scanRun,
                                                             ContainerSnapshot snapshot,
                                                             ImageVersion subjectImageVersion,
                                                             RuntimeContainerDescriptor container,
+                                                            DockerImageInspectData? inspectData,
                                                             string dockerInstanceName,
                                                             DockerInstanceOptions configuredInstance,
                                                             IReadOnlySet<string> ownRepositoryKeys,
@@ -655,19 +703,14 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
     {
         await EnsureRegistryRepositoryLoadedAsync(subjectImageVersion, cancellationToken).ConfigureAwait(false);
 
-        var imageReferenceOrId = string.IsNullOrWhiteSpace(container.LocalImageId)
-                                     ? container.ImageReference
-                                     : container.LocalImageId!;
-        var inspectResult = await _dockerInstanceClient.InspectImageAsync(configuredInstance,
-                                                                          imageReferenceOrId,
-                                                                          cancellationToken)
-                                                       .ConfigureAwait(false);
-
-        if (inspectResult.Status != ExternalOperationStatus.Succeeded || inspectResult.Data is null)
+        if (inspectData is null)
         {
             return;
         }
 
+        var imageReferenceOrId = string.IsNullOrWhiteSpace(container.LocalImageId)
+                                     ? container.ImageReference
+                                     : container.LocalImageId!;
         var historyResult = await _dockerInstanceClient.GetImageHistoryAsync(configuredInstance,
                                                                              imageReferenceOrId,
                                                                              cancellationToken)
@@ -675,7 +718,7 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
         var historyEntries = historyResult.Status == ExternalOperationStatus.Succeeded && historyResult.Data is not null
                                  ? historyResult.Data
                                  : [];
-        var runtimeDescriptor = _derivedBaseRuntimeDetector.Detect(inspectResult.Data, historyEntries);
+        var runtimeDescriptor = _derivedBaseRuntimeDetector.Detect(inspectData, historyEntries);
 
         if (runtimeDescriptor?.RuntimeVersion is null
             || string.IsNullOrWhiteSpace(runtimeDescriptor.ChannelVersion))
@@ -750,17 +793,48 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
     }
 
     /// <summary>
+    /// Inspect the current local image when possible
+    /// </summary>
+    /// <param name="configuredInstance">Configured Docker instance</param>
+    /// <param name="container">Runtime container descriptor</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Inspect payload or null</returns>
+    private async Task<DockerImageInspectData?> GetCurrentImageInspectDataAsync(DockerInstanceOptions configuredInstance,
+                                                                                RuntimeContainerDescriptor container,
+                                                                                CancellationToken cancellationToken)
+    {
+        var imageReferenceOrId = string.IsNullOrWhiteSpace(container.LocalImageId)
+                                     ? container.ImageReference
+                                     : container.LocalImageId!;
+        var inspectResult = await _dockerInstanceClient.InspectImageAsync(configuredInstance,
+                                                                          imageReferenceOrId,
+                                                                          cancellationToken)
+                                                       .ConfigureAwait(false);
+
+        return inspectResult.Status == ExternalOperationStatus.Succeeded
+                   ? inspectResult.Data
+                   : null;
+    }
+
+    /// <summary>
     /// Merge the exact metadata for the current tag into the available tag set
     /// </summary>
     /// <param name="currentImage">Current image reference</param>
     /// <param name="availableTags">Available tags</param>
     /// <param name="cancellationToken">Cancellation token</param>
+    /// <param name="operatingSystem">Preferred operating system</param>
+    /// <param name="architecture">Preferred architecture</param>
     /// <returns>Merged tag set</returns>
     private async Task<IReadOnlyList<DockerHubTagData>> MergeCurrentTagMetadataAsync(ImageReference currentImage,
                                                                                      IReadOnlyList<DockerHubTagData> availableTags,
-                                                                                     CancellationToken cancellationToken)
+                                                                                     CancellationToken cancellationToken,
+                                                                                     string? operatingSystem = null,
+                                                                                     string? architecture = null)
     {
-        var currentTagResult = await _registryMetadataService.GetTagAsync(currentImage, cancellationToken)
+        var currentTagResult = await _registryMetadataService.GetTagAsync(currentImage,
+                                                                          cancellationToken,
+                                                                          operatingSystem,
+                                                                          architecture)
                                                              .ConfigureAwait(false);
 
         if (currentTagResult.Status != ExternalOperationStatus.Succeeded || currentTagResult.Data is null)

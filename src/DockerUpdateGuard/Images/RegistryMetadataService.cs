@@ -33,7 +33,10 @@ public class RegistryMetadataService : IRegistryMetadataService
     #region Methods
 
     /// <inheritdoc/>
-    public Task<ExternalOperationResult<DockerHubTagData>> GetTagAsync(ImageReference imageReference, CancellationToken cancellationToken = default)
+    public Task<ExternalOperationResult<DockerHubTagData>> GetTagAsync(ImageReference imageReference,
+                                                                       CancellationToken cancellationToken = default,
+                                                                       string? operatingSystem = null,
+                                                                       string? architecture = null)
     {
         ArgumentNullException.ThrowIfNull(imageReference);
 
@@ -42,13 +45,15 @@ public class RegistryMetadataService : IRegistryMetadataService
             return Task.FromResult(ExternalOperationResult<DockerHubTagData>.Unsupported(CreateUnsupportedMessage(imageReference.Registry)));
         }
 
-        return client.GetTagAsync(imageReference, cancellationToken);
+        return client.GetTagAsync(imageReference, cancellationToken, operatingSystem, architecture);
     }
 
     /// <inheritdoc/>
     public Task<ExternalOperationResult<IReadOnlyList<DockerHubTagData>>> GetTagsAsync(string registry,
                                                                                        string repository,
-                                                                                       CancellationToken cancellationToken = default)
+                                                                                       CancellationToken cancellationToken = default,
+                                                                                       string? operatingSystem = null,
+                                                                                       string? architecture = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(registry);
         ArgumentException.ThrowIfNullOrWhiteSpace(repository);
@@ -58,7 +63,7 @@ public class RegistryMetadataService : IRegistryMetadataService
             return Task.FromResult(ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Unsupported(CreateUnsupportedMessage(registry)));
         }
 
-        return client.GetTagsAsync(registry, repository, cancellationToken);
+        return client.GetTagsAsync(registry, repository, cancellationToken, operatingSystem, architecture);
     }
 
     /// <inheritdoc/>
@@ -131,7 +136,10 @@ public class RegistryMetadataService : IRegistryMetadataService
         }
 
         /// <inheritdoc/>
-        public Task<ExternalOperationResult<DockerHubTagData>> GetTagAsync(ImageReference imageReference, CancellationToken cancellationToken = default)
+        public Task<ExternalOperationResult<DockerHubTagData>> GetTagAsync(ImageReference imageReference,
+                                                                           CancellationToken cancellationToken = default,
+                                                                           string? operatingSystem = null,
+                                                                           string? architecture = null)
         {
             throw new NotSupportedException();
         }
@@ -139,7 +147,9 @@ public class RegistryMetadataService : IRegistryMetadataService
         /// <inheritdoc/>
         public Task<ExternalOperationResult<IReadOnlyList<DockerHubTagData>>> GetTagsAsync(string registry,
                                                                                            string repository,
-                                                                                           CancellationToken cancellationToken = default)
+                                                                                           CancellationToken cancellationToken = default,
+                                                                                           string? operatingSystem = null,
+                                                                                           string? architecture = null)
         {
             throw new NotSupportedException();
         }

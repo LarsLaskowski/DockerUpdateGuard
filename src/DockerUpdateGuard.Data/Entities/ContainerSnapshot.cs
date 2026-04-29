@@ -73,6 +73,16 @@ public class ContainerSnapshot
     public string? UpdateAssessmentMessage { get; set; }
 
     /// <summary>
+    /// Optional resolved semantic version tag for the current runtime digest
+    /// </summary>
+    public string? ResolvedVersionTag { get; set; }
+
+    /// <summary>
+    /// Optional resolved semantic version tag for the recommended update digest
+    /// </summary>
+    public string? AvailableUpdateVersionTag { get; set; }
+
+    /// <summary>
     /// Snapshot timestamp
     /// </summary>
     public DateTimeOffset RecordedAtUtc { get; set; } = DateTimeOffset.UtcNow;

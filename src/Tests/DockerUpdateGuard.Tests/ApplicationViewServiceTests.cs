@@ -926,6 +926,87 @@ public class ApplicationViewServiceTests
     }
 
     /// <summary>
+    /// Verify runtime container projections expose persisted current and available version tags without relying on update findings
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task ApplicationViewServiceRuntimeContainersExposePersistedVersionTagsAsync()
+    {
+        var options = new DbContextOptionsBuilder<DockerUpdateGuardDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString())
+                                                                               .Options;
+
+        var dbContext = new DockerUpdateGuardDbContext(options);
+
+        await using (dbContext.ConfigureAwait(false))
+        {
+            var imageCatalogRepository = new ImageCatalogRepository(dbContext);
+            var imageVersion = await imageCatalogRepository.GetOrCreateImageVersionAsync("docker.io",
+                                                                                         "networlddev/f1-telemetry",
+                                                                                         "latest",
+                                                                                         "sha256:current",
+                                                                                         cancellationToken: CancellationToken.None)
+                                                           .ConfigureAwait(false);
+
+            var dockerInstance = new DockerInstance
+                                 {
+                                     Name = "Production",
+                                     EndpointUri = "https://docker.example.test",
+                                     ConnectionKind = DockerConnectionKind.Https,
+                                 };
+
+            var scanRun = new ScanRun
+                          {
+                              Type = ScanRunType.RuntimeContainer,
+                              Status = ScanRunStatus.Succeeded,
+                              TriggerSource = ScanTriggerSource.Manual,
+                              DockerInstance = dockerInstance,
+                              StartedAtUtc = DateTimeOffset.UtcNow.AddMinutes(-5),
+                              CompletedAtUtc = DateTimeOffset.UtcNow.AddMinutes(-4),
+                          };
+
+            dbContext.ContainerSnapshots.Add(new ContainerSnapshot
+                                             {
+                                                 DockerInstance = dockerInstance,
+                                                 ImageVersionId = imageVersion.Id,
+                                                 ScanRun = scanRun,
+                                                 ContainerId = "container-latest",
+                                                 Name = "telemetry",
+                                                 Status = ContainerRuntimeStatus.Running,
+                                                 IsRunning = true,
+                                                 UpdateAssessmentStatus = UpdateAssessmentStatus.UpdateAvailable,
+                                                 UpdateAssessmentMessage = "Update available",
+                                                 ResolvedVersionTag = "2.4.1",
+                                                 AvailableUpdateVersionTag = "2.5.0",
+                                             });
+
+            await dbContext.SaveChangesAsync(CancellationToken.None)
+                           .ConfigureAwait(false);
+
+            var service = new ApplicationViewService(dbContext,
+                                                     new ImageReferenceParser(),
+                                                     new SharedBaseImageQueryService(dbContext));
+            var runtimeContainers = await service.GetRuntimeContainersAsync(CancellationToken.None)
+                                                 .ConfigureAwait(false);
+            var runtimeDetail = await service.GetRuntimeContainerDetailAsync(dockerInstance.Id, "container-latest", CancellationToken.None)
+                                             .ConfigureAwait(false);
+
+            Assert.AreEqual("2.4.1",
+                            runtimeContainers.Single().ResolvedVersionTag,
+                            "Runtime container rows must expose the persisted resolved current version tag");
+            Assert.AreEqual("2.5.0",
+                            runtimeContainers.Single().AvailableUpdateVersionTag,
+                            "Runtime container rows must expose the persisted available update version tag");
+            Assert.IsNotNull(runtimeDetail, "The runtime container detail must be returned");
+            Assert.AreEqual("2.4.1",
+                            runtimeDetail.ResolvedVersionTag,
+                            "Runtime container detail must expose the persisted resolved current version tag");
+            Assert.AreEqual("2.5.0",
+                            runtimeDetail.AvailableUpdateVersionTag,
+                            "Runtime container detail must expose the persisted available update version tag");
+        }
+    }
+
+    /// <summary>
     /// Verify current runtime container projections ignore stale snapshots from older scans
     /// </summary>
     /// <returns>Task</returns>
