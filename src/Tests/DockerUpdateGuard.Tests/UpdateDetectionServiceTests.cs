@@ -147,6 +147,84 @@ public class UpdateDetectionServiceTests
     }
 
     /// <summary>
+    /// Verify year-based CU tags only advance within the current year line
+    /// </summary>
+    [TestMethod]
+    public void UpdateDetectionServiceYearCuTagOnlyUsesSameYearSuccessors()
+    {
+        var service = new UpdateDetectionService();
+
+        var evaluation = service.Evaluate(new ImageReference
+                                          {
+                                              Registry = "mcr.microsoft.com",
+                                              Repository = "mssql/server",
+                                              Tag = "2019-CU32-GDR1-ubuntu-20.04",
+                                          },
+                                          [
+                                              new DockerHubTagData
+                                              {
+                                                  Tag = "2019-CU33-GDR1-ubuntu-20.04",
+                                                  Digest = "sha256:2019-cu33",
+                                                  PublishedAtUtc = new DateTimeOffset(2025, 06, 03, 12, 00, 00, TimeSpan.Zero),
+                                              },
+                                              new DockerHubTagData
+                                              {
+                                                  Tag = "2022-CU14-ubuntu-22.04",
+                                                  Digest = "sha256:2022-cu14",
+                                                  PublishedAtUtc = new DateTimeOffset(2025, 06, 04, 12, 00, 00, TimeSpan.Zero),
+                                              },
+                                          ]);
+
+        Assert.AreEqual(UpdateEvaluationStatus.UpdateAvailable,
+                        evaluation.Status,
+                        "Year-based CU tags must still produce an update when a newer tag exists in the same year line");
+        Assert.AreEqual("2019-CU33-GDR1-ubuntu-20.04",
+                        evaluation.RecommendedTag,
+                        "Year-based CU tags must ignore higher tags from a different year line");
+        CollectionAssert.AreEqual(new[] { "2019-CU33-GDR1-ubuntu-20.04" },
+                                  evaluation.Candidates.Select(candidate => candidate.Tag)
+                                                       .ToArray(),
+                                  "Only candidates from the same year line must be considered for year-based CU tags");
+    }
+
+    /// <summary>
+    /// Verify generic year-prefixed tags are treated as part of the same year line
+    /// </summary>
+    [TestMethod]
+    public void UpdateDetectionServiceYearPrefixedTagUsesSameYearSuccessors()
+    {
+        var service = new UpdateDetectionService();
+
+        var evaluation = service.Evaluate(new ImageReference
+                                          {
+                                              Registry = "mcr.microsoft.com",
+                                              Repository = "example/app",
+                                              Tag = "2019-release9",
+                                          },
+                                          [
+                                              new DockerHubTagData
+                                              {
+                                                  Tag = "2019-release10",
+                                                  Digest = "sha256:2019-10",
+                                                  PublishedAtUtc = new DateTimeOffset(2025, 06, 03, 12, 00, 00, TimeSpan.Zero),
+                                              },
+                                              new DockerHubTagData
+                                              {
+                                                  Tag = "2022-release1",
+                                                  Digest = "sha256:2022-1",
+                                                  PublishedAtUtc = new DateTimeOffset(2025, 06, 04, 12, 00, 00, TimeSpan.Zero),
+                                              },
+                                          ]);
+
+        Assert.AreEqual(UpdateEvaluationStatus.UpdateAvailable,
+                        evaluation.Status,
+                        "Year-prefixed tags must produce an update when a newer tag exists in the same year line");
+        Assert.AreEqual("2019-release10",
+                        evaluation.RecommendedTag,
+                        "Year-prefixed tags must ignore tags from newer year lines");
+    }
+
+    /// <summary>
     /// Verify non-semantic current tags produce manual review candidates
     /// </summary>
     [TestMethod]

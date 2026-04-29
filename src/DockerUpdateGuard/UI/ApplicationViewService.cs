@@ -20,6 +20,11 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
     private const int MaxAvailableTagCandidates = 50;
 
     /// <summary>
+    /// Maximum number of resource samples shown in runtime list sparklines
+    /// </summary>
+    private const int RuntimeListResourceHistoryCount = 12;
+
+    /// <summary>
     /// Resource-history window
     /// </summary>
     private static readonly TimeSpan ResourceHistoryWindow = TimeSpan.FromHours(24);
@@ -234,6 +239,29 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
     }
 
     /// <summary>
+    /// Filter runtime tag candidates against the current image baseline
+    /// </summary>
+    /// <param name="candidates">Visible candidates</param>
+    /// <param name="currentTag">Current image tag</param>
+    /// <param name="resolvedVersionTag">Resolved current version tag</param>
+    /// <param name="currentPublishedAtUtc">Current image publication timestamp</param>
+    /// <returns>Filtered candidates</returns>
+    private static List<TagCandidateViewData> FilterRuntimeAvailableTagCandidates(IEnumerable<TagCandidateViewData> candidates,
+                                                                                  string currentTag,
+                                                                                  string? resolvedVersionTag,
+                                                                                  DateTimeOffset? currentPublishedAtUtc)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(currentTag);
+        ArgumentNullException.ThrowIfNull(candidates);
+
+        var currentComparableTag = ResolveComparableVersionTag(currentTag, resolvedVersionTag);
+
+        return candidates.Where(entity => IsCandidatePublishedOnOrAfterBaseline(entity.PublishedAtUtc, currentPublishedAtUtc)
+                                          && HasSameOrNewerComparableVersion(entity, currentComparableTag))
+                         .ToList();
+    }
+
+    /// <summary>
     /// Populate resolved semantic version tags for alias candidates
     /// </summary>
     /// <param name="candidates">Tag candidates</param>
@@ -300,6 +328,75 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                                                                                                       Digest = entity.Digest,
                                                                                                       PublishedAtUtc = entity.PublishedAtUtc,
                                                                                                   }));
+    }
+
+    /// <summary>
+    /// Resolve the comparable version tag for filtering
+    /// </summary>
+    /// <param name="tag">Tag value</param>
+    /// <param name="resolvedVersionTag">Resolved version tag</param>
+    /// <returns>Comparable version tag or null</returns>
+    private static string? ResolveComparableVersionTag(string tag, string? resolvedVersionTag)
+    {
+        if (string.IsNullOrWhiteSpace(resolvedVersionTag) == false)
+        {
+            return resolvedVersionTag;
+        }
+
+        return VersionTagResolutionHelper.IsDisplayableSpecificVersionTag(tag)
+                   ? tag
+                   : null;
+    }
+
+    /// <summary>
+    /// Determine whether a candidate is published on or after the current baseline
+    /// </summary>
+    /// <param name="candidatePublishedAtUtc">Candidate publication timestamp</param>
+    /// <param name="baselinePublishedAtUtc">Baseline publication timestamp</param>
+    /// <returns>True when the candidate is not older than the baseline</returns>
+    private static bool IsCandidatePublishedOnOrAfterBaseline(DateTimeOffset? candidatePublishedAtUtc, DateTimeOffset? baselinePublishedAtUtc)
+    {
+        return baselinePublishedAtUtc is null
+               || candidatePublishedAtUtc is null
+               || candidatePublishedAtUtc >= baselinePublishedAtUtc;
+    }
+
+    /// <summary>
+    /// Determine whether a candidate has the same or a newer comparable version
+    /// </summary>
+    /// <param name="candidate">Candidate tag</param>
+    /// <param name="currentComparableTag">Current comparable tag</param>
+    /// <returns>True when the candidate is not older than the current version</returns>
+    private static bool HasSameOrNewerComparableVersion(TagCandidateViewData candidate, string? currentComparableTag)
+    {
+        ArgumentNullException.ThrowIfNull(candidate);
+
+        if (string.IsNullOrWhiteSpace(currentComparableTag))
+        {
+            return true;
+        }
+
+        var candidateComparableTag = ResolveComparableVersionTag(candidate.Tag, candidate.ResolvedVersionTag);
+
+        if (string.IsNullOrWhiteSpace(candidateComparableTag))
+        {
+            return false;
+        }
+
+        if (VersionTagResolutionHelper.TryParseVersionTag(currentComparableTag, out var currentVersion)
+            && VersionTagResolutionHelper.TryParseVersionTag(candidateComparableTag, out var candidateVersion))
+        {
+            return candidateVersion >= currentVersion;
+        }
+
+        if (VersionTagResolutionHelper.TryParseYearPrefixedTag(currentComparableTag, out var currentYear, out _)
+            && VersionTagResolutionHelper.TryParseYearPrefixedTag(candidateComparableTag, out var candidateYear, out _))
+        {
+            return candidateYear == currentYear
+                   && VersionTagResolutionHelper.CompareYearPrefixedTags(candidateComparableTag, currentComparableTag) >= 0;
+        }
+
+        return false;
     }
 
     /// <summary>
@@ -679,9 +776,12 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                                                 var mappedUpdateFindings = updateFindings.Select(entity => MapUpdateFinding(entity, recommendedImageVersions, manualSelection))
                                                                                          .ToList();
 
-                                                var availableTagCandidates = FilterVisibleTagCandidates(mappedUpdateFindings.SelectMany(entity => entity.TagCandidates)
-                                                                                                                            .OrderByDescending(entity => entity.IsRecommended)
-                                                                                                                            .ThenBy(entity => entity.Tag, StringComparer.OrdinalIgnoreCase));
+                                                var availableTagCandidates = FilterRuntimeAvailableTagCandidates(FilterVisibleTagCandidates(mappedUpdateFindings.SelectMany(entity => entity.TagCandidates)
+                                                                                                                                                                .OrderByDescending(entity => entity.IsRecommended)
+                                                                                                                                                                .ThenBy(entity => entity.Tag, StringComparer.OrdinalIgnoreCase)),
+                                                                                                                 latestSnapshot.ImageVersion.Tag,
+                                                                                                                 latestSnapshot.ResolvedVersionTag,
+                                                                                                                 latestSnapshot.ImageVersion.PublishedAtUtc);
 
                                                 var resolvedVersionTag = string.IsNullOrWhiteSpace(latestSnapshot.ResolvedVersionTag) == false
                                                                              ? latestSnapshot.ResolvedVersionTag
@@ -909,7 +1009,7 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
     {
         var latestSnapshots = await GetLatestContainerSnapshotsAsync(cancellationToken).ConfigureAwait(false);
         var ownImagesByRepository = await LoadOwnImagesByRepositoryAsync(cancellationToken).ConfigureAwait(false);
-        var latestResourceSamples = await GetLatestRuntimeContainerResourceSamplesAsync(cancellationToken).ConfigureAwait(false);
+        var resourceHistories = await GetRuntimeContainerResourceHistoriesAsync(latestSnapshots, cancellationToken).ConfigureAwait(false);
         var latestSnapshotIds = latestSnapshots.Select(entity => entity.Id)
                                                .ToList();
 
@@ -947,8 +1047,9 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                                           ArgumentNullException.ThrowIfNull(imageVersion);
 
                                           ownImagesByRepository.TryGetValue(repositoryKey, out var linkedObservedImage);
-                                          latestResourceSamples.TryGetValue(CreateContainerKey(entity.DockerInstanceId, entity.ContainerId), out var currentResourceUsage);
+                                          resourceHistories.TryGetValue(CreateContainerKey(entity.DockerInstanceId, entity.ContainerId), out var resourceUsageHistory);
                                           tagCandidatesBySnapshot.TryGetValue(entity.Id, out var tagCandidates);
+                                          var currentResourceUsage = resourceUsageHistory?.FirstOrDefault();
 
                                           var resolvedVersionTag = string.IsNullOrWhiteSpace(entity.ResolvedVersionTag) == false
                                                                        ? entity.ResolvedVersionTag
@@ -981,7 +1082,8 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                                                      RecordedAtUtc = entity.RecordedAtUtc,
                                                      LinkedObservedImageId = linkedObservedImage?.Id,
                                                      LinkedObservedImageName = linkedObservedImage?.Name,
-                                                     CurrentResourceUsage = currentResourceUsage is null ? null : MapResourceUsage(currentResourceUsage),
+                                                     CurrentResourceUsage = currentResourceUsage,
+                                                     ResourceUsageHistory = resourceUsageHistory ?? [],
                                                  };
                                       })
                               .OrderByDescending(entity => entity.LinkedObservedImageId.HasValue)
@@ -1141,6 +1243,48 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
         return samples.GroupBy(entity => CreateContainerKey(entity.DockerInstanceId, entity.ContainerId))
                       .ToDictionary(group => group.Key,
                                     group => group.First(),
+                                    StringComparer.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Load recent runtime container resource histories for the runtime list
+    /// </summary>
+    /// <param name="snapshots">Latest container snapshots</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Recent resource histories by container key</returns>
+    private async Task<Dictionary<string, IReadOnlyList<ResourceUsagePointViewData>>> GetRuntimeContainerResourceHistoriesAsync(IReadOnlyList<ContainerSnapshot> snapshots,
+                                                                                                                                CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(snapshots);
+
+        if (snapshots.Count == 0)
+        {
+            return new Dictionary<string, IReadOnlyList<ResourceUsagePointViewData>>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        var cutoff = DateTimeOffset.UtcNow.Subtract(ResourceHistoryWindow);
+        var instanceIds = snapshots.Select(entity => entity.DockerInstanceId)
+                                   .Distinct()
+                                   .ToList();
+        var containerIds = snapshots.Select(entity => entity.ContainerId)
+                                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                                    .ToList();
+        var expectedKeys = snapshots.Select(entity => CreateContainerKey(entity.DockerInstanceId, entity.ContainerId))
+                                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var samples = await _dbContext.RuntimeContainerResourceSamples.Where(entity => instanceIds.Contains(entity.DockerInstanceId)
+                                                                                       && containerIds.Contains(entity.ContainerId)
+                                                                                       && entity.RecordedAtUtc >= cutoff)
+                                                                      .OrderByDescending(entity => entity.RecordedAtUtc)
+                                                                      .AsNoTracking()
+                                                                      .ToListAsync(cancellationToken)
+                                                                      .ConfigureAwait(false);
+
+        return samples.Where(entity => expectedKeys.Contains(CreateContainerKey(entity.DockerInstanceId, entity.ContainerId)))
+                      .GroupBy(entity => CreateContainerKey(entity.DockerInstanceId, entity.ContainerId))
+                      .ToDictionary(group => group.Key,
+                                    group => (IReadOnlyList<ResourceUsagePointViewData>)group.Take(RuntimeListResourceHistoryCount)
+                                                                                             .Select(MapResourceUsage)
+                                                                                             .ToList(),
                                     StringComparer.OrdinalIgnoreCase);
     }
 

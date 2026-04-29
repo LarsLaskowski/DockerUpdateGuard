@@ -102,5 +102,10 @@ public class RuntimeContainerListItemData
     /// </summary>
     public ResourceUsagePointViewData? CurrentResourceUsage { get; set; }
 
+    /// <summary>
+    /// Recent resource-usage history
+    /// </summary>
+    public IReadOnlyList<ResourceUsagePointViewData> ResourceUsageHistory { get; set; } = [];
+
     #endregion // Properties
 }

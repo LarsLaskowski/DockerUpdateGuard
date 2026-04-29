@@ -478,6 +478,15 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
                                                                                    cancellationToken,
                                                                                    inspectData?.OperatingSystem,
                                                                                    inspectData?.Architecture).ConfigureAwait(false);
+                            var currentTagMetadata = availableTags.FirstOrDefault(tag => string.Equals(tag.Tag,
+                                                                                                       parsedReference.Tag,
+                                                                                                       StringComparison.OrdinalIgnoreCase));
+
+                            if (currentTagMetadata?.PublishedAtUtc is not null)
+                            {
+                                imageVersion.PublishedAtUtc = currentTagMetadata.PublishedAtUtc;
+                            }
+
                             var evaluation = _updateDetectionService.Evaluate(parsedReference, availableTags);
 
                             ApplyUpdateAssessment(snapshot, evaluation);

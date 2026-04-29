@@ -79,6 +79,33 @@ public class UpdateDetectionService : IUpdateDetectionService
                    };
         }
 
+        if (TryParseYearPrefixedVersion(currentImage.Tag, out var currentYear, out _))
+        {
+            var versionCandidates = GetHigherYearPrefixedCandidates(orderedTags,
+                                                                    currentImage.Tag,
+                                                                    currentYear,
+                                                                    currentTagData?.PublishedAtUtc);
+
+            if (versionCandidates.Count > 0)
+            {
+                return CreateYearPrefixedUpdateResult(versionCandidates);
+            }
+
+            if (TryCreateDigestUpdateResult(currentImage,
+                                            currentTagData,
+                                            orderedTags,
+                                            out var digestUpdateResult))
+            {
+                return digestUpdateResult;
+            }
+
+            return new UpdateEvaluationResult
+                   {
+                       Status = UpdateEvaluationStatus.UpToDate,
+                       Summary = "No newer year-based version was found",
+                   };
+        }
+
         if (TryCreateDigestUpdateResult(currentImage,
                                         currentTagData,
                                         orderedTags,
@@ -164,6 +191,34 @@ public class UpdateDetectionService : IUpdateDetectionService
     }
 
     /// <summary>
+    /// Get higher year-prefixed candidates than the current tag
+    /// </summary>
+    /// <param name="orderedTags">Ordered available tags</param>
+    /// <param name="currentTag">Current tag</param>
+    /// <param name="currentYear">Current major year</param>
+    /// <param name="currentPublishedAtUtc">Current tag publication timestamp</param>
+    /// <returns>Higher year-based candidates</returns>
+    private static List<(DockerHubTagData Tag, int Year, string Suffix)> GetHigherYearPrefixedCandidates(IReadOnlyList<DockerHubTagData> orderedTags,
+                                                                                                         string currentTag,
+                                                                                                         int currentYear,
+                                                                                                         DateTimeOffset? currentPublishedAtUtc)
+    {
+        return orderedTags.Where(tag => TryParseYearPrefixedVersion(tag.Tag, out var tagYear, out _)
+                                        && tagYear == currentYear
+                                        && VersionTagResolutionHelper.CompareYearPrefixedTags(tag.Tag, currentTag) > 0
+                                        && IsCandidatePublishedAfterBaseline(tag.PublishedAtUtc, currentPublishedAtUtc))
+                          .Select(tag =>
+                                  {
+                                      TryParseYearPrefixedVersion(tag.Tag, out var tagYear, out var suffix);
+
+                                      return (Tag: tag, Year: tagYear, Suffix: suffix);
+                                  })
+                          .OrderByDescending(entity => entity.Tag.Tag, Comparer<string>.Create((left, right) => VersionTagResolutionHelper.CompareYearPrefixedTags(left, right)))
+                          .ThenByDescending(entity => entity.Tag.PublishedAtUtc)
+                          .ToList();
+    }
+
+    /// <summary>
     /// Create an update result for semantic version successors
     /// </summary>
     /// <param name="versionCandidates">Higher semantic version candidates</param>
@@ -201,6 +256,32 @@ public class UpdateDetectionService : IUpdateDetectionService
     }
 
     /// <summary>
+    /// Create an update result for year-prefixed successors
+    /// </summary>
+    /// <param name="versionCandidates">Higher year-based candidates</param>
+    /// <returns>Update evaluation result</returns>
+    private static UpdateEvaluationResult CreateYearPrefixedUpdateResult(IReadOnlyList<(DockerHubTagData Tag, int Year, string Suffix)> versionCandidates)
+    {
+        var recommended = versionCandidates[0].Tag;
+
+        return new UpdateEvaluationResult
+               {
+                   Status = UpdateEvaluationStatus.UpdateAvailable,
+                   Summary = $"Newer tag '{recommended.Tag}' is available",
+                   RecommendedTag = recommended.Tag,
+                   RecommendedDigest = recommended.Digest,
+                   Candidates = versionCandidates.Take(MaxCandidateCount)
+                                                 .Select(entity => new UpdateCandidateData
+                                                                   {
+                                                                       Tag = entity.Tag.Tag,
+                                                                       Digest = entity.Tag.Digest,
+                                                                       PublishedAtUtc = entity.Tag.PublishedAtUtc,
+                                                                   })
+                                                 .ToList(),
+               };
+    }
+
+    /// <summary>
     /// Parse a semantic version string
     /// </summary>
     /// <param name="value">Candidate version string</param>
@@ -208,20 +289,7 @@ public class UpdateDetectionService : IUpdateDetectionService
     /// <returns>True when parsing succeeded</returns>
     private static bool TryParseVersion(string value, out Version version)
     {
-        version = new Version();
-        var normalized = value.Trim().TrimStart('v', 'V');
-
-        if (Version.TryParse(normalized, out var parsedVersion)
-            && parsedVersion is not null)
-        {
-            version = parsedVersion;
-
-            return true;
-        }
-
-        version = new Version();
-
-        return false;
+        return VersionTagResolutionHelper.TryParseVersionTag(value, out version);
     }
 
     /// <summary>
@@ -231,9 +299,21 @@ public class UpdateDetectionService : IUpdateDetectionService
     /// <returns>Parsed version</returns>
     private static Version ParseVersion(string value)
     {
-        var normalized = value.Trim().TrimStart('v', 'V');
+        return VersionTagResolutionHelper.ParseVersionTag(value);
+    }
 
-        return Version.Parse(normalized);
+    /// <summary>
+    /// Attempt to parse a year-prefixed tag
+    /// </summary>
+    /// <param name="value">Candidate tag value</param>
+    /// <param name="year">Parsed major year</param>
+    /// <param name="suffix">Parsed suffix</param>
+    /// <returns>True when parsing succeeded</returns>
+    private static bool TryParseYearPrefixedVersion(string value,
+                                                    out int year,
+                                                    out string suffix)
+    {
+        return VersionTagResolutionHelper.TryParseYearPrefixedTag(value, out year, out suffix);
     }
 
     /// <summary>

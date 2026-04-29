@@ -228,11 +228,11 @@ public class DockerHubClientTests
     }
 
     /// <summary>
-    /// Verify Docker Hub tag lookup resolves the digest for the requested runtime architecture
+    /// Verify Docker Hub tag lookup uses the top-level Docker Hub digest
     /// </summary>
     /// <returns>Task</returns>
     [TestMethod]
-    public async Task DockerHubClientGetTagAsyncUsesRequestedArchitectureDigestAsync()
+    public async Task DockerHubClientGetTagAsyncUsesTopLevelDigestAsync()
     {
         var handler = new StubHttpMessageHandler();
         var httpClient = new HttpClient(handler);
@@ -283,9 +283,9 @@ public class DockerHubClientTests
                             result.Status,
                             "Tag lookup must succeed when Docker Hub returns tag details");
             Assert.IsNotNull(result.Data, "Tag lookup must return tag metadata");
-            Assert.AreEqual("sha256:arm64",
+            Assert.AreEqual("sha256:index",
                             result.Data.Digest,
-                            "Tag lookup must select the digest that matches the requested runtime architecture");
+                            "Tag lookup must use the top-level Docker Hub digest instead of a per-image entry digest");
         }
         finally
         {

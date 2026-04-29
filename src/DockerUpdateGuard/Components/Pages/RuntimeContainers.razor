@@ -7,7 +7,7 @@
         <div>
             <MudText Typo="Typo.overline" Class="page-eyebrow">Live workloads</MudText>
             <MudText Typo="Typo.h3">Runtime Containers</MudText>
-            <MudText Class="page-description">Review active containers, their source images, linked own images, and live resource usage.</MudText>
+            <MudText Class="page-description">Review active containers, their source images, own-image shortcuts, and live resource usage.</MudText>
         </div>
     </div>
 
@@ -28,13 +28,12 @@
         <MudPaper Class="section-paper" Elevation="0">
             <div class="section-header">
                 <MudText Typo="Typo.h5">Container inventory</MudText>
-                <MudText Class="section-description">Current runtime state correlated with own-image links, update results, vulnerabilities, and resource usage.</MudText>
+                <MudText Class="section-description">Current runtime state correlated with own-image shortcuts, update results, vulnerabilities, and resource usage.</MudText>
             </div>
             <MudTable Items="_containers" Hover="true" Dense="false" Breakpoint="Breakpoint.Md" Class="section-table runtime-containers-table">
                 <HeaderContent>
                     <MudTh>Container</MudTh>
                     <MudTh>Instance</MudTh>
-                    <MudTh>Own image</MudTh>
                     <MudTh Class="runtime-containers-table__resource">CPU</MudTh>
                     <MudTh Class="runtime-containers-table__resource">Memory</MudTh>
                     <MudTh Class="runtime-containers-table__resource">Network</MudTh>
@@ -42,7 +41,17 @@
                 </HeaderContent>
                     <RowTemplate>
                         <MudTd DataLabel="Container">
-                            <MudLink Href="@($"/runtime-containers/{context.DockerInstanceId}/{context.ContainerId}")" Class="table-link">@context.ContainerName</MudLink>
+                            <div class="runtime-containers-table__name">
+                                <MudLink Href="@($"/runtime-containers/{context.DockerInstanceId}/{context.ContainerId}")" Class="table-link">@context.ContainerName</MudLink>
+                                @if (context.LinkedObservedImageId is Guid observedImageId)
+                                {
+                                    <MudTooltip Text="@($"Open own image '{context.LinkedObservedImageName ?? "linked image"}'")">
+                                        <MudLink Href="@($"/observed-images/{observedImageId}")" Class="runtime-containers-table__name-icon-link">
+                                            <MudIcon Icon="@Icons.Material.Filled.Inventory2" Size="Size.Small" Class="runtime-containers-table__name-icon" />
+                                        </MudLink>
+                                    </MudTooltip>
+                                }
+                            </div>
                             @if (string.IsNullOrWhiteSpace(context.ResolvedVersionTag))
                             {
                                 <span class="table-secondary">@context.CurrentTag</span>
@@ -53,27 +62,48 @@
                             }
                             <span class="table-secondary">@context.RecordedAtUtc.ToLocalTime().ToString("g")</span>
                         </MudTd>
-                    <MudTd DataLabel="Instance">@context.DockerInstanceName</MudTd>
-                    <MudTd DataLabel="Own image">
-                        @if (context.LinkedObservedImageId is Guid observedImageId)
-                        {
-                            <MudLink Href="@($"/observed-images/{observedImageId}")" Class="table-link">@context.LinkedObservedImageName</MudLink>
-                        }
-                        else
-                        {
-                            <span class="table-secondary">No own image link</span>
-                        }
-                    </MudTd>
-                    <MudTd DataLabel="CPU" Class="runtime-containers-table__resource">@FormatCpu(context.CurrentResourceUsage)</MudTd>
-                    <MudTd DataLabel="Memory" Class="runtime-containers-table__resource">@FormatMemory(context.CurrentResourceUsage)</MudTd>
-                    <MudTd DataLabel="Network" Class="runtime-containers-table__resource">@FormatNetwork(context.CurrentResourceUsage)</MudTd>
-                    <MudTd DataLabel="Update State" Class="runtime-containers-table__update-state">
-                        <MudChip T="string" Size="Size.Small" Color="@GetUpdateStateColor(context.UpdateState)">@context.UpdateState</MudChip>
-                        @if (string.IsNullOrWhiteSpace(context.AvailableUpdateVersionTag) == false)
-                        {
-                            <span class="table-secondary">@context.AvailableUpdateVersionTag</span>
-                        }
-                    </MudTd>
+                        <MudTd DataLabel="Instance">@context.DockerInstanceName</MudTd>
+                        <MudTd DataLabel="CPU" Class="runtime-containers-table__resource">
+                            <div>@FormatCpu(context.CurrentResourceUsage)</div>
+                            @if (HasResourceHistory(context))
+                            {
+                                <div class="runtime-containers-table__sparkline">
+                                    <svg viewBox="0 0 100 26" preserveAspectRatio="none" aria-hidden="true">
+                                        <polyline points="@GetCpuSparklinePoints(context)" class="runtime-containers-table__sparkline-line runtime-containers-table__sparkline-line--cpu"></polyline>
+                                    </svg>
+                                </div>
+                            }
+                        </MudTd>
+                        <MudTd DataLabel="Memory" Class="runtime-containers-table__resource">
+                            <div>@FormatMemory(context.CurrentResourceUsage)</div>
+                            @if (HasResourceHistory(context))
+                            {
+                                <div class="runtime-containers-table__sparkline">
+                                    <svg viewBox="0 0 100 26" preserveAspectRatio="none" aria-hidden="true">
+                                        <polyline points="@GetMemorySparklinePoints(context)" class="runtime-containers-table__sparkline-line runtime-containers-table__sparkline-line--memory"></polyline>
+                                    </svg>
+                                </div>
+                            }
+                        </MudTd>
+                        <MudTd DataLabel="Network" Class="runtime-containers-table__resource">
+                            <div>@FormatNetwork(context.CurrentResourceUsage)</div>
+                            @if (HasResourceHistory(context))
+                            {
+                                <div class="runtime-containers-table__sparkline">
+                                    <svg viewBox="0 0 100 26" preserveAspectRatio="none" aria-hidden="true">
+                                        <polyline points="@GetNetworkReceiveSparklinePoints(context)" class="runtime-containers-table__sparkline-line runtime-containers-table__sparkline-line--network-rx"></polyline>
+                                        <polyline points="@GetNetworkTransmitSparklinePoints(context)" class="runtime-containers-table__sparkline-line runtime-containers-table__sparkline-line--network-tx"></polyline>
+                                    </svg>
+                                </div>
+                            }
+                        </MudTd>
+                        <MudTd DataLabel="Update State" Class="runtime-containers-table__update-state">
+                            <MudChip T="string" Size="Size.Small" Color="@GetUpdateStateColor(context.UpdateState)">@context.UpdateState</MudChip>
+                            @if (string.IsNullOrWhiteSpace(context.AvailableUpdateVersionTag) == false)
+                            {
+                                <span class="table-secondary">@context.AvailableUpdateVersionTag</span>
+                            }
+                        </MudTd>
                 </RowTemplate>
             </MudTable>
         </MudPaper>

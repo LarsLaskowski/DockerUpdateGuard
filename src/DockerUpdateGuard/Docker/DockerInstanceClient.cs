@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.IO.Pipes;
 using System.Net.Sockets;
 using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
@@ -216,6 +217,12 @@ public class DockerInstanceClient : IDockerInstanceClient
             return CreateUnixSocketHttpClient(parsedUri.AbsolutePath, instanceOptions);
         }
 
+        if (Uri.TryCreate(instanceOptions.BaseUrl, UriKind.Absolute, out parsedUri)
+            && parsedUri.Scheme == "npipe")
+        {
+            return CreateNamedPipeHttpClient(parsedUri, instanceOptions);
+        }
+
         var handler = new HttpClientHandler
                       {
                           UseProxy = false
@@ -280,6 +287,50 @@ public class DockerInstanceClient : IDockerInstanceClient
     }
 
     /// <summary>
+    /// Build an HTTP client backed by a Windows named pipe
+    /// </summary>
+    /// <param name="pipeUri">Named-pipe URI</param>
+    /// <param name="instanceOptions">Docker instance options</param>
+    /// <returns>HTTP client</returns>
+    private static HttpClient CreateNamedPipeHttpClient(Uri pipeUri, DockerInstanceOptions instanceOptions)
+    {
+        var serverName = string.IsNullOrWhiteSpace(pipeUri.Host) || pipeUri.Host == "."
+                             ? "."
+                             : pipeUri.Host;
+        var pipeName = GetNamedPipeName(pipeUri);
+        var handler = new SocketsHttpHandler
+                      {
+                          UseProxy = false,
+                          ConnectCallback = async (context, cancellationToken) =>
+                                            {
+                                                var stream = new NamedPipeClientStream(serverName,
+                                                                                       pipeName,
+                                                                                       PipeDirection.InOut,
+                                                                                       PipeOptions.Asynchronous);
+
+                                                try
+                                                {
+                                                    await stream.ConnectAsync(cancellationToken).ConfigureAwait(false);
+
+                                                    return stream;
+                                                }
+                                                catch
+                                                {
+                                                    stream.Dispose();
+
+                                                    throw;
+                                                }
+                                            }
+                      };
+
+        return new HttpClient(handler)
+               {
+                   BaseAddress = new Uri("http://localhost/"),
+                   Timeout = TimeSpan.FromSeconds(instanceOptions.RequestTimeoutSeconds),
+               };
+    }
+
+    /// <summary>
     /// Attempt to create an HTTP engine URI
     /// </summary>
     /// <param name="instanceOptions">Docker instance options</param>
@@ -314,7 +365,8 @@ public class DockerInstanceClient : IDockerInstanceClient
             return true;
         }
 
-        if (parsedUri.Scheme == "unix")
+        if (parsedUri.Scheme == "unix"
+            || parsedUri.Scheme == "npipe")
         {
             engineUri = new Uri("http://localhost/");
 
@@ -339,6 +391,30 @@ public class DockerInstanceClient : IDockerInstanceClient
         }
 
         return builder.Uri;
+    }
+
+    /// <summary>
+    /// Extract the pipe name from an npipe URI
+    /// </summary>
+    /// <param name="pipeUri">Named-pipe URI</param>
+    /// <returns>Pipe name</returns>
+    private static string GetNamedPipeName(Uri pipeUri)
+    {
+        ArgumentNullException.ThrowIfNull(pipeUri);
+
+        var pipePath = pipeUri.AbsolutePath.Trim('/');
+
+        if (pipePath.StartsWith("pipe/", StringComparison.OrdinalIgnoreCase))
+        {
+            pipePath = pipePath["pipe/".Length..];
+        }
+
+        if (string.IsNullOrWhiteSpace(pipePath))
+        {
+            throw new InvalidOperationException($"The Docker named pipe URI '{pipeUri}' does not contain a pipe name");
+        }
+
+        return pipePath;
     }
 
     /// <summary>

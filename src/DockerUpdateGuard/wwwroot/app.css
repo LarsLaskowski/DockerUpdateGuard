@@ -394,6 +394,61 @@ a {
     overflow-wrap: anywhere;
 }
 
+.runtime-containers-table .runtime-containers-table__name {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+}
+
+.runtime-containers-table .runtime-containers-table__name-icon-link {
+    display: inline-flex;
+    align-items: center;
+    color: #2563eb;
+}
+
+.runtime-containers-table .runtime-containers-table__name-icon-link:hover {
+    color: #1d4ed8;
+}
+
+.runtime-containers-table .runtime-containers-table__name-icon {
+    opacity: 0.9;
+}
+
+.runtime-containers-table .runtime-containers-table__sparkline {
+    width: 9rem;
+    height: 1.9rem;
+    margin-top: 0.35rem;
+}
+
+.runtime-containers-table .runtime-containers-table__sparkline svg {
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+}
+
+.runtime-containers-table .runtime-containers-table__sparkline-line {
+    fill: none;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.runtime-containers-table .runtime-containers-table__sparkline-line--cpu {
+    stroke: #2563eb;
+}
+
+.runtime-containers-table .runtime-containers-table__sparkline-line--memory {
+    stroke: #7c3aed;
+}
+
+.runtime-containers-table .runtime-containers-table__sparkline-line--network-rx {
+    stroke: #0891b2;
+}
+
+.runtime-containers-table .runtime-containers-table__sparkline-line--network-tx {
+    stroke: #ea580c;
+}
+
 .details-grid {
     margin-top: 0.5rem;
 }

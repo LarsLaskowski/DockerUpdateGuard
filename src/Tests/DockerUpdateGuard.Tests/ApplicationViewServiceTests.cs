@@ -273,6 +273,7 @@ public class ApplicationViewServiceTests
                                                                                          "acme/api",
                                                                                          "1.0.0",
                                                                                          "sha256:current",
+                                                                                         new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
                                                                                          cancellationToken: CancellationToken.None)
                                                            .ConfigureAwait(false);
             imageVersion.VulnerabilityAssessmentStatus = VulnerabilityAssessmentStatus.FindingsDetected;
@@ -329,6 +330,7 @@ public class ApplicationViewServiceTests
                                                 Digest = "sha256:recommended",
                                                 Rank = 0,
                                                 IsRecommended = true,
+                                                PublishedAtUtc = new DateTimeOffset(2025, 06, 03, 12, 00, 00, TimeSpan.Zero),
                                                 Reason = "Latest compatible stable tag",
                                             });
 
@@ -338,14 +340,35 @@ public class ApplicationViewServiceTests
                                                 Digest = "sha256:manual",
                                                 Rank = 1,
                                                 IsRecommended = false,
+                                                PublishedAtUtc = new DateTimeOffset(2025, 06, 02, 12, 00, 00, TimeSpan.Zero),
                                                 Reason = "Latest patch in the current minor line",
+                                            });
+
+            updateFinding.TagCandidates.Add(new TagCandidate
+                                            {
+                                                Tag = "0.9.9",
+                                                Digest = "sha256:legacy-version",
+                                                Rank = 2,
+                                                IsRecommended = false,
+                                                PublishedAtUtc = new DateTimeOffset(2025, 06, 04, 12, 00, 00, TimeSpan.Zero),
+                                                Reason = "Older major line",
+                                            });
+
+            updateFinding.TagCandidates.Add(new TagCandidate
+                                            {
+                                                Tag = "1.0.7",
+                                                Digest = "sha256:old-publish",
+                                                Rank = 3,
+                                                IsRecommended = false,
+                                                PublishedAtUtc = new DateTimeOffset(2025, 05, 30, 12, 00, 00, TimeSpan.Zero),
+                                                Reason = "Older publication timestamp",
                                             });
 
             updateFinding.TagCandidates.Add(new TagCandidate
                                             {
                                                 Tag = "broken",
                                                 Digest = string.Empty,
-                                                Rank = 2,
+                                                Rank = 4,
                                                 IsRecommended = false,
                                                 Reason = "Legacy invalid candidate",
                                             });
@@ -402,6 +425,12 @@ public class ApplicationViewServiceTests
             Assert.DoesNotContain(entity => entity.Tag == "broken",
                                   detail.AvailableTagCandidates,
                                   "Runtime detail must hide legacy tag candidates without digests");
+            Assert.DoesNotContain(entity => entity.Tag == "0.9.9",
+                                  detail.AvailableTagCandidates,
+                                  "Runtime detail must hide candidates with an older version than the current image");
+            Assert.DoesNotContain(entity => entity.Tag == "1.0.7",
+                                  detail.AvailableTagCandidates,
+                                  "Runtime detail must hide candidates published before the current image");
         }
     }
 
@@ -780,6 +809,9 @@ public class ApplicationViewServiceTests
             Assert.AreEqual(18.0m,
                             runtimeContainers.Single().CurrentResourceUsage?.CpuPercent,
                             "Runtime container list rows must expose the latest CPU value");
+            Assert.HasCount(2,
+                            runtimeContainers.Single().ResourceUsageHistory,
+                            "Runtime container list rows must expose recent resource history for mini charts");
             Assert.IsNotNull(runtimeDetail, "The runtime container detail must be returned");
             Assert.HasCount(2,
                             runtimeDetail.ResourceUsageHistory,

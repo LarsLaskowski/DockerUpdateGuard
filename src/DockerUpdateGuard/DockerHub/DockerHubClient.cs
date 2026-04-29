@@ -218,101 +218,19 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
         return new DockerHubTagData
                {
                    Tag = TryGetString(element, "name") ?? string.Empty,
-                   Digest = ResolveDockerHubDigest(element, operatingSystem, architecture),
+                   Digest = ResolveDockerHubDigest(element),
                    PublishedAtUtc = TryGetDateTimeOffset(element, "last_pushed"),
                };
     }
 
     /// <summary>
-    /// Resolve a platform-specific digest from a Docker Hub tag payload
+    /// Resolve the Docker Hub tag digest from the top-level payload
     /// </summary>
     /// <param name="element">Tag JSON element</param>
-    /// <param name="operatingSystem">Preferred operating system</param>
-    /// <param name="architecture">Preferred architecture</param>
-    /// <returns>Resolved digest or the payload digest when no platform image matches</returns>
-    private static string? ResolveDockerHubDigest(JsonElement element,
-                                                  string? operatingSystem,
-                                                  string? architecture)
+    /// <returns>Resolved digest</returns>
+    private static string? ResolveDockerHubDigest(JsonElement element)
     {
-        if (element.TryGetProperty("images", out var imagesElement) == false
-            || imagesElement.ValueKind != JsonValueKind.Array)
-        {
-            return TryGetString(element, "digest");
-        }
-
-        var selectedDigest = SelectPlatformDigest(imagesElement, operatingSystem, architecture);
-
-        return string.IsNullOrWhiteSpace(selectedDigest)
-                   ? TryGetString(element, "digest")
-                   : selectedDigest;
-    }
-
-    /// <summary>
-    /// Select a manifest digest for a preferred platform
-    /// </summary>
-    /// <param name="imagesElement">Image array element</param>
-    /// <param name="operatingSystem">Preferred operating system</param>
-    /// <param name="architecture">Preferred architecture</param>
-    /// <returns>Resolved digest or null</returns>
-    private static string? SelectPlatformDigest(JsonElement imagesElement,
-                                                string? operatingSystem,
-                                                string? architecture)
-    {
-        var preferredOperatingSystem = NormalizePlatformValue(operatingSystem);
-        var preferredArchitecture = NormalizePlatformValue(architecture);
-        var fallbackDigest = default(string);
-
-        foreach (var imageElement in imagesElement.EnumerateArray())
-        {
-            var digest = TryGetString(imageElement, "digest");
-
-            if (string.IsNullOrWhiteSpace(digest))
-            {
-                continue;
-            }
-
-            fallbackDigest ??= digest;
-
-            var imageOperatingSystem = NormalizePlatformValue(TryGetString(imageElement, "os"));
-            var imageArchitecture = NormalizePlatformValue(TryGetString(imageElement, "architecture"));
-
-            if (string.IsNullOrWhiteSpace(preferredOperatingSystem) == false
-                && string.IsNullOrWhiteSpace(preferredArchitecture) == false
-                && string.Equals(imageOperatingSystem, preferredOperatingSystem, StringComparison.OrdinalIgnoreCase)
-                && string.Equals(imageArchitecture, preferredArchitecture, StringComparison.OrdinalIgnoreCase))
-            {
-                return digest;
-            }
-        }
-
-        if (string.IsNullOrWhiteSpace(preferredArchitecture) == false)
-        {
-            foreach (var imageElement in imagesElement.EnumerateArray())
-            {
-                var digest = TryGetString(imageElement, "digest");
-                var imageArchitecture = NormalizePlatformValue(TryGetString(imageElement, "architecture"));
-
-                if (string.IsNullOrWhiteSpace(digest) == false
-                    && string.Equals(imageArchitecture, preferredArchitecture, StringComparison.OrdinalIgnoreCase))
-                {
-                    return digest;
-                }
-            }
-        }
-
-        return fallbackDigest;
-    }
-
-    /// <summary>
-    /// Normalize a platform value
-    /// </summary>
-    /// <param name="value">Platform value</param>
-    /// <returns>Normalized platform value</returns>
-    private static string? NormalizePlatformValue(string? value)
-    {
-        return string.IsNullOrWhiteSpace(value)
-                   ? null
-                   : value.Trim().ToLowerInvariant();
+        return TryGetString(element, "digest");
     }
 
     /// <summary>

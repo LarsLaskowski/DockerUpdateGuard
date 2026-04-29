@@ -1,4 +1,5 @@
 using System.Net;
+using System.Reflection;
 using System.Text;
 
 using DockerUpdateGuard.Configuration;
@@ -133,6 +134,68 @@ public class DockerInstanceClientTests
             Assert.AreEqual("sha256:776c51f79a433935b07226bc9d86761ab43ab265045a83f7803aeefe7c36b561",
                             result.Data.Single().ImageDigest,
                             "Container discovery must expose the matching repository digest instead of the Docker-internal image identifier");
+        }
+        finally
+        {
+            httpClient.Dispose();
+            handler.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Verify named-pipe Docker endpoints are accepted for local Windows Docker Desktop instances
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerInstanceClientDiscoverContainersAsyncWithNamedPipeEndpointUsesEngineRequestsAsync()
+    {
+        var handler = new SequenceHttpMessageHandler();
+        var httpClient = new HttpClient(handler)
+                         {
+                             BaseAddress = new Uri("http://localhost/"),
+                         };
+
+        try
+        {
+            handler.AddJsonResponse("http://localhost/v1.41/containers/json?all=1",
+                                    """
+                                    [
+                                      {
+                                        "Id": "container-1",
+                                        "Names": ["/dockerupdateguard"],
+                                        "Image": "docker.io/networlddev/dockerupdateguard:latest",
+                                        "State": "running",
+                                        "Labels": {}
+                                      }
+                                    ]
+                                    """);
+
+            var client = new DockerInstanceClient(new TestLogger<DockerInstanceClient>(),
+                                                  (_, engineUri) =>
+                                                  {
+                                                      Assert.AreEqual("http://localhost/",
+                                                                      engineUri.AbsoluteUri,
+                                                                      "Named-pipe Docker endpoints must use a localhost HTTP base address for API requests");
+
+                                                      return httpClient;
+                                                  });
+            var instanceOptions = new DockerInstanceOptions
+                                  {
+                                      Name = "Production",
+                                      BaseUrl = "npipe://./pipe/docker_engine",
+                                      Enabled = true,
+                                  };
+
+            var result = await client.DiscoverContainersAsync(instanceOptions, CancellationToken.None)
+                                     .ConfigureAwait(false);
+
+            Assert.AreEqual(ExternalOperationStatus.Succeeded,
+                            result.Status,
+                            "Named-pipe Docker endpoints must be supported for container discovery");
+            Assert.IsNotNull(result.Data, "Named-pipe Docker endpoints must return discovered containers");
+            Assert.AreEqual(1,
+                            result.Data.Count,
+                            "Named-pipe Docker endpoints must allow Docker engine container queries");
         }
         finally
         {
@@ -332,6 +395,36 @@ public class DockerInstanceClientTests
             httpClient.Dispose();
             handler.Dispose();
         }
+    }
+
+    /// <summary>
+    /// Verify named-pipe Docker endpoints create a localhost-based HTTP client
+    /// </summary>
+    [TestMethod]
+    public void DockerInstanceClientCreateHttpClientWithNamedPipeEndpointReturnsLocalhostBaseAddress()
+    {
+        var createHttpClientMethod = typeof(DockerInstanceClient).GetMethod("CreateHttpClient",
+                                                                            BindingFlags.Static | BindingFlags.NonPublic);
+        var instanceOptions = new DockerInstanceOptions
+                              {
+                                  Name = "Production",
+                                  BaseUrl = "npipe://./pipe/docker_engine",
+                                  Enabled = true,
+                                  RequestTimeoutSeconds = 42,
+                              };
+        var engineUri = new Uri("http://localhost/");
+
+        Assert.IsNotNull(createHttpClientMethod, "The Docker HTTP-client factory must remain discoverable for transport tests");
+
+        using var httpClient = (HttpClient?)createHttpClientMethod.Invoke(null, [instanceOptions, engineUri]);
+
+        Assert.IsNotNull(httpClient, "The Docker HTTP-client factory must return an HTTP client for named-pipe endpoints");
+        Assert.AreEqual("http://localhost/",
+                        httpClient.BaseAddress?.AbsoluteUri,
+                        "Named-pipe Docker endpoints must use a localhost base address for relative Docker API calls");
+        Assert.AreEqual(TimeSpan.FromSeconds(42),
+                        httpClient.Timeout,
+                        "Named-pipe Docker endpoints must preserve the configured request timeout");
     }
 
     #endregion // Methods
