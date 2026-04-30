@@ -84,8 +84,8 @@ stages:
               docker push $(dockerRepository):latest
             displayName: 'Build & Push image'
 
-         - task: Docker@2
-           displayName: 'Docker logout'
-           inputs:
-             command: 'logout'
-             containerRegistry: 'DockerHub'
+          - task: Docker@2
+            displayName: 'Docker logout'
+            inputs:
+              command: 'logout'
+              containerRegistry: 'DockerHub'
