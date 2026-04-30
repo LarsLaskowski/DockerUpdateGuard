@@ -78,6 +78,47 @@ public class DockerInstanceClientTests
     }
 
     /// <summary>
+    /// Verify Docker discovery timeouts return a failed result and the dedicated timeout log
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerInstanceClientDiscoverContainersAsyncWhenRequestTimesOutReturnsFailedAndLogsTimeoutAsync()
+    {
+        var logger = new TestLogger<DockerInstanceClient>();
+        using var httpClient = new HttpClient(new TimeoutHttpMessageHandler())
+                               {
+                                   BaseAddress = new Uri("https://docker.example.test/"),
+                                   Timeout = Timeout.InfiniteTimeSpan,
+                               };
+        var client = new DockerInstanceClient(logger,
+                                              (_, _) => httpClient);
+        var instanceOptions = new DockerInstanceOptions
+                              {
+                                  Name = "Docker Desktop",
+                                  BaseUrl = "https://docker.example.test",
+                                  Enabled = true,
+                                  RequestTimeoutSeconds = 1,
+                              };
+
+        var result = await client.DiscoverContainersAsync(instanceOptions, CancellationToken.None)
+                                 .ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Failed,
+                        result.Status,
+                        "Timed-out Docker discovery must return a failed result");
+        Assert.AreEqual("Docker container discovery for 'Docker Desktop' timed out after 1 seconds",
+                        result.Message,
+                        "Timed-out Docker discovery must surface a clear timeout message");
+        Assert.Contains(entry => entry.EventId.Id == 3105
+                                 && entry.LogLevel == LogLevel.Warning
+                                 && entry.Message.Contains("Docker Desktop", StringComparison.Ordinal),
+                        logger.Entries,
+                        "Timed-out Docker discovery must log the dedicated timeout warning");
+        Assert.IsFalse(logger.Entries.Any(entry => entry.EventId.Id == 3104),
+                       "Timed-out Docker discovery must avoid the generic exception-based discovery log");
+    }
+
+    /// <summary>
     /// Verify runtime container discovery resolves the repository digest instead of keeping the Docker-internal image identifier
     /// </summary>
     /// <returns>Task</returns>
@@ -422,9 +463,9 @@ public class DockerInstanceClientTests
         Assert.AreEqual("http://localhost/",
                         httpClient.BaseAddress?.AbsoluteUri,
                         "Named-pipe Docker endpoints must use a localhost base address for relative Docker API calls");
-        Assert.AreEqual(TimeSpan.FromSeconds(42),
+        Assert.AreEqual(Timeout.InfiniteTimeSpan,
                         httpClient.Timeout,
-                        "Named-pipe Docker endpoints must preserve the configured request timeout");
+                        "Named-pipe Docker endpoints must keep HttpClient.Timeout disabled because request timeouts are enforced per request");
     }
 
     #endregion // Methods
@@ -518,6 +559,24 @@ public class DockerInstanceClientTests
             }
 
             queue.Enqueue(response);
+        }
+
+        #endregion // Methods
+    }
+
+    /// <summary>
+    /// HTTP-message handler that waits for cancellation to simulate a request timeout
+    /// </summary>
+    private sealed class TimeoutHttpMessageHandler : HttpMessageHandler
+    {
+        #region Methods
+
+        /// <inheritdoc/>
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken).ConfigureAwait(false);
+
+            throw new InvalidOperationException("The timeout handler must be canceled before returning a response");
         }
 
         #endregion // Methods

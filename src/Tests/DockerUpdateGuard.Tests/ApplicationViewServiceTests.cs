@@ -255,6 +255,88 @@ public class ApplicationViewServiceTests
     }
 
     /// <summary>
+    /// Verify shared base images are exposed through the application view service
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task ApplicationViewServiceSharedBaseImagesReturnsAggregatedBaseUsageAsync()
+    {
+        var options = new DbContextOptionsBuilder<DockerUpdateGuardDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString())
+                                                                               .Options;
+
+        var dbContext = new DockerUpdateGuardDbContext(options);
+
+        await using (dbContext.ConfigureAwait(false))
+        {
+            var imageCatalogRepository = new ImageCatalogRepository(dbContext);
+            var sharedBaseVersion = await imageCatalogRepository.GetOrCreateImageVersionAsync("docker.io",
+                                                                                              "library/debian",
+                                                                                              "12-slim",
+                                                                                              "sha256:base",
+                                                                                              cancellationToken: CancellationToken.None)
+                                                                .ConfigureAwait(false);
+            var appVersionA = await imageCatalogRepository.GetOrCreateImageVersionAsync("docker.io",
+                                                                                        "company/app-a",
+                                                                                        "1.0.0",
+                                                                                        "sha256:app-a",
+                                                                                        cancellationToken: CancellationToken.None)
+                                                          .ConfigureAwait(false);
+            var appVersionB = await imageCatalogRepository.GetOrCreateImageVersionAsync("docker.io",
+                                                                                        "company/app-b",
+                                                                                        "2.0.0",
+                                                                                        "sha256:app-b",
+                                                                                        cancellationToken: CancellationToken.None)
+                                                          .ConfigureAwait(false);
+
+            dbContext.ObservedImages.AddRange(new ObservedImage
+                                              {
+                                                  Name = "App A",
+                                                  CurrentImageVersionId = appVersionA.Id,
+                                                  Source = RegistrationSource.Discovery,
+                                              },
+                                              new ObservedImage
+                                              {
+                                                  Name = "App B",
+                                                  CurrentImageVersionId = appVersionB.Id,
+                                                  Source = RegistrationSource.Manual,
+                                              });
+            dbContext.ImageRelationships.AddRange(new ImageRelationship
+                                                  {
+                                                      ChildImageVersionId = appVersionA.Id,
+                                                      BaseImageVersionId = sharedBaseVersion.Id,
+                                                      RelationshipType = ImageRelationshipType.BaseImage,
+                                                      Depth = 1,
+                                                  },
+                                                  new ImageRelationship
+                                                  {
+                                                      ChildImageVersionId = appVersionB.Id,
+                                                      BaseImageVersionId = sharedBaseVersion.Id,
+                                                      RelationshipType = ImageRelationshipType.BaseImage,
+                                                      Depth = 1,
+                                                  });
+
+            await dbContext.SaveChangesAsync(CancellationToken.None)
+                           .ConfigureAwait(false);
+
+            var service = new ApplicationViewService(dbContext,
+                                                     new ImageReferenceParser(),
+                                                     new SharedBaseImageQueryService(dbContext));
+            var sharedBaseImages = await service.GetSharedBaseImagesAsync(CancellationToken.None)
+                                                .ConfigureAwait(false);
+
+            Assert.HasCount(1,
+                            sharedBaseImages,
+                            "The application view service must surface shared base image data when one base image is used by multiple observed images");
+            Assert.IsTrue(sharedBaseImages[0].ImageReference.StartsWith("docker.io/library/debian:12-slim@",
+                                                                        StringComparison.Ordinal),
+                          "The shared base image must expose the formatted image reference including its digest");
+            Assert.AreEqual(2,
+                            sharedBaseImages[0].ObservedImageCount,
+                            "The shared base image must report the number of observed images that depend on it");
+        }
+    }
+
+    /// <summary>
     /// Verify runtime container detail exposes manual selection and explicit assessment states
     /// </summary>
     /// <returns>Task</returns>

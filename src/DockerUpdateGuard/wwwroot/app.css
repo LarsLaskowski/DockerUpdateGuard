@@ -262,6 +262,28 @@ a {
     min-height: 100%;
 }
 
+.metric-card-link {
+    display: block;
+    height: 100%;
+    color: inherit;
+}
+
+.metric-card-link:hover,
+.metric-card-link:focus-visible {
+    text-decoration: none;
+}
+
+.metric-card-link .metric-card {
+    transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+
+.metric-card-link:hover .metric-card,
+.metric-card-link:focus-visible .metric-card {
+    transform: translateY(-2px);
+    border-color: rgba(37, 99, 235, 0.35);
+    box-shadow: 0 24px 48px rgba(15, 23, 42, 0.14);
+}
+
 .metric-card--warning {
     background:
         linear-gradient(135deg, rgba(245, 158, 11, 0.12), rgba(255, 255, 255, 0.88)),

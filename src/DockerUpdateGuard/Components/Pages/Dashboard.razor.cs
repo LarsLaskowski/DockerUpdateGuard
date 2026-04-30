@@ -55,6 +55,23 @@ public sealed partial class Dashboard : IDisposable
                };
     }
 
+    /// <summary>
+    /// Resolve the overview route for a dashboard metric card
+    /// </summary>
+    /// <param name="metricLabel">Metric card label</param>
+    /// <returns>Navigation target</returns>
+    private static string GetMetricNavigationTarget(string metricLabel)
+    {
+        return metricLabel switch
+               {
+                   "Observed Images" => "/observed-images",
+                   "Docker Instances" => "/docker-instances",
+                   "Runtime Containers" => "/runtime-containers",
+                   "Shared Bases" => "/shared-base-images",
+                   _ => throw new ArgumentOutOfRangeException(nameof(metricLabel), metricLabel, "Dashboard metric cards must map to known overview routes"),
+               };
+    }
+
     #endregion // Static methods
 
     #region Methods

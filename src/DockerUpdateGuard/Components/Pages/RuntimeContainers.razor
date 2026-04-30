@@ -9,7 +9,29 @@
             <MudText Typo="Typo.h3">Runtime Containers</MudText>
             <MudText Class="page-description">Review active containers, their source images, own-image shortcuts, and live resource usage.</MudText>
         </div>
+        <MudButton Variant="Variant.Filled"
+                   Color="Color.Primary"
+                   Disabled="@_isBusy"
+                   OnClick="TriggerScanAsync">
+            @if (_isBusy)
+            {
+                <MudProgressCircular Class="me-2"
+                                     Size="Size.Small"
+                                     Indeterminate="true"
+                                     Color="Color.Inherit" />
+                <span>Checking image updates...</span>
+            }
+            else
+            {
+                <span>Check image updates</span>
+            }
+        </MudButton>
     </div>
+
+    @if (string.IsNullOrWhiteSpace(_errorMessage) == false)
+    {
+        <MudAlert Severity="Severity.Error" Dense="true">@_errorMessage</MudAlert>
+    }
 
     @if (_containers is null)
     {
@@ -69,7 +91,7 @@
                             {
                                 <div class="runtime-containers-table__sparkline">
                                     <svg viewBox="0 0 100 26" preserveAspectRatio="none" aria-hidden="true">
-                                        <polyline points="@GetCpuSparklinePoints(context)" class="runtime-containers-table__sparkline-line runtime-containers-table__sparkline-line--cpu"></polyline>
+                                        <path d="@GetCpuSparklinePath(context)" class="runtime-containers-table__sparkline-line runtime-containers-table__sparkline-line--cpu"></path>
                                     </svg>
                                 </div>
                             }
@@ -80,7 +102,7 @@
                             {
                                 <div class="runtime-containers-table__sparkline">
                                     <svg viewBox="0 0 100 26" preserveAspectRatio="none" aria-hidden="true">
-                                        <polyline points="@GetMemorySparklinePoints(context)" class="runtime-containers-table__sparkline-line runtime-containers-table__sparkline-line--memory"></polyline>
+                                        <path d="@GetMemorySparklinePath(context)" class="runtime-containers-table__sparkline-line runtime-containers-table__sparkline-line--memory"></path>
                                     </svg>
                                 </div>
                             }
@@ -91,8 +113,8 @@
                             {
                                 <div class="runtime-containers-table__sparkline">
                                     <svg viewBox="0 0 100 26" preserveAspectRatio="none" aria-hidden="true">
-                                        <polyline points="@GetNetworkReceiveSparklinePoints(context)" class="runtime-containers-table__sparkline-line runtime-containers-table__sparkline-line--network-rx"></polyline>
-                                        <polyline points="@GetNetworkTransmitSparklinePoints(context)" class="runtime-containers-table__sparkline-line runtime-containers-table__sparkline-line--network-tx"></polyline>
+                                        <path d="@GetNetworkReceiveSparklinePath(context)" class="runtime-containers-table__sparkline-line runtime-containers-table__sparkline-line--network-rx"></path>
+                                        <path d="@GetNetworkTransmitSparklinePath(context)" class="runtime-containers-table__sparkline-line runtime-containers-table__sparkline-line--network-tx"></path>
                                     </svg>
                                 </div>
                             }

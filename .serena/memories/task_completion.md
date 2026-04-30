@@ -1,0 +1,1 @@
+After source changes in DockerUpdateGuard, run reihitsu-format ./ before build. Then run dotnet build DockerUpdateGuard.slnx -c Release --no-restore and execute the existing MSTest projects under src\\Tests. Prefer the PowerShell Get-ChildItem expansion for running all test projects on Windows because the shell does not expand src\\Tests\\**\\*.csproj automatically.

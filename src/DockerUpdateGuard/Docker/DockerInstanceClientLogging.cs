@@ -71,5 +71,18 @@ internal static partial class DockerInstanceClientLogging
                                                              Exception exception,
                                                              string dockerInstanceName);
 
+    /// <summary>
+    /// Log that Docker discovery timed out without emitting an exception stack
+    /// </summary>
+    /// <param name="logger">Logger</param>
+    /// <param name="dockerInstanceName">Docker instance name</param>
+    /// <param name="requestTimeoutSeconds">Configured request timeout in seconds</param>
+    [LoggerMessage(EventId = 3105,
+                   Level = LogLevel.Warning,
+                   Message = "Docker container discovery timed out for {DockerInstanceName} after {RequestTimeoutSeconds} seconds")]
+    public static partial void DockerInstanceDiscoveryTimedOut(this ILogger logger,
+                                                               string dockerInstanceName,
+                                                               int requestTimeoutSeconds);
+
     #endregion // Methods
 }

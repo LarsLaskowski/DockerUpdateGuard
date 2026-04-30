@@ -68,10 +68,12 @@ public class DockerInstanceClient : IDockerInstanceClient
     /// </summary>
     /// <param name="httpClient">Docker engine client</param>
     /// <param name="containers">Discovered containers</param>
+    /// <param name="requestTimeoutSeconds">Configured request timeout in seconds</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Task</returns>
     private static async Task PopulateRepositoryDigestsAsync(HttpClient httpClient,
                                                              IReadOnlyList<RuntimeContainerDescriptor> containers,
+                                                             int requestTimeoutSeconds,
                                                              CancellationToken cancellationToken)
     {
         var digestsByImageId = new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase);
@@ -85,6 +87,7 @@ public class DockerInstanceClient : IDockerInstanceClient
         {
             digestsByImageId[imageId] = await GetRepositoryDigestsAsync(httpClient,
                                                                         imageId,
+                                                                        requestTimeoutSeconds,
                                                                         cancellationToken).ConfigureAwait(false);
         }
 
@@ -105,13 +108,18 @@ public class DockerInstanceClient : IDockerInstanceClient
     /// </summary>
     /// <param name="httpClient">Docker engine client</param>
     /// <param name="imageId">Local image identifier</param>
+    /// <param name="requestTimeoutSeconds">Configured request timeout in seconds</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Repository digests</returns>
     private static async Task<IReadOnlyList<string>> GetRepositoryDigestsAsync(HttpClient httpClient,
                                                                                string imageId,
+                                                                               int requestTimeoutSeconds,
                                                                                CancellationToken cancellationToken)
     {
-        var inspectResult = await ReadImageInspectAsync(httpClient, imageId, cancellationToken).ConfigureAwait(false);
+        var inspectResult = await ReadImageInspectAsync(httpClient,
+                                                        imageId,
+                                                        requestTimeoutSeconds,
+                                                        cancellationToken).ConfigureAwait(false);
 
         if (inspectResult.Status != ExternalOperationStatus.Succeeded || inspectResult.Data is null)
         {
@@ -204,6 +212,21 @@ public class DockerInstanceClient : IDockerInstanceClient
     }
 
     /// <summary>
+    /// Create a linked cancellation token source that enforces the configured request timeout
+    /// </summary>
+    /// <param name="requestTimeoutSeconds">Configured request timeout in seconds</param>
+    /// <param name="cancellationToken">Upstream cancellation token</param>
+    /// <returns>Linked cancellation token source</returns>
+    private static CancellationTokenSource CreateRequestTimeoutCancellationTokenSource(int requestTimeoutSeconds, CancellationToken cancellationToken)
+    {
+        var requestTimeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+
+        requestTimeoutSource.CancelAfter(TimeSpan.FromSeconds(requestTimeoutSeconds));
+
+        return requestTimeoutSource;
+    }
+
+    /// <summary>
     /// Build an HTTP client for the target Docker endpoint
     /// </summary>
     /// <param name="instanceOptions">Docker instance options</param>
@@ -244,7 +267,7 @@ public class DockerInstanceClient : IDockerInstanceClient
         return new HttpClient(handler)
                {
                    BaseAddress = engineUri,
-                   Timeout = TimeSpan.FromSeconds(instanceOptions.RequestTimeoutSeconds),
+                   Timeout = Timeout.InfiniteTimeSpan,
                };
     }
 
@@ -282,7 +305,7 @@ public class DockerInstanceClient : IDockerInstanceClient
         return new HttpClient(handler)
                {
                    BaseAddress = new Uri("http://localhost/"),
-                   Timeout = TimeSpan.FromSeconds(instanceOptions.RequestTimeoutSeconds),
+                   Timeout = Timeout.InfiniteTimeSpan,
                };
     }
 
@@ -326,7 +349,7 @@ public class DockerInstanceClient : IDockerInstanceClient
         return new HttpClient(handler)
                {
                    BaseAddress = new Uri("http://localhost/"),
-                   Timeout = TimeSpan.FromSeconds(instanceOptions.RequestTimeoutSeconds),
+                   Timeout = Timeout.InfiniteTimeSpan,
                };
     }
 
@@ -795,37 +818,51 @@ public class DockerInstanceClient : IDockerInstanceClient
     /// </summary>
     /// <param name="httpClient">Docker HTTP client</param>
     /// <param name="imageReferenceOrId">Image reference or identifier</param>
+    /// <param name="requestTimeoutSeconds">Configured request timeout in seconds</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Inspect result</returns>
     private static async Task<ExternalOperationResult<DockerImageInspectData>> ReadImageInspectAsync(HttpClient httpClient,
                                                                                                      string imageReferenceOrId,
+                                                                                                     int requestTimeoutSeconds,
                                                                                                      CancellationToken cancellationToken)
     {
-        using var response = await httpClient.GetAsync($"v1.41/images/{Uri.EscapeDataString(imageReferenceOrId)}/json", cancellationToken)
-                                             .ConfigureAwait(false);
-
-        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+        try
         {
-            return ExternalOperationResult<DockerImageInspectData>.NotFound($"Docker image '{imageReferenceOrId}' was not found");
-        }
+            using var requestTimeoutSource = CreateRequestTimeoutCancellationTokenSource(requestTimeoutSeconds, cancellationToken);
+            using var response = await httpClient.GetAsync($"v1.41/images/{Uri.EscapeDataString(imageReferenceOrId)}/json", requestTimeoutSource.Token)
+                                                 .ConfigureAwait(false);
 
-        if (response.IsSuccessStatusCode == false)
-        {
-            var body = await response.Content.ReadAsStringAsync(cancellationToken)
-                                             .ConfigureAwait(false);
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                return ExternalOperationResult<DockerImageInspectData>.NotFound($"Docker image '{imageReferenceOrId}' was not found");
+            }
 
-            return ExternalOperationResult<DockerImageInspectData>.Failed($"Docker image inspect for '{imageReferenceOrId}' returned {(int)response.StatusCode}: {body}");
-        }
+            if (response.IsSuccessStatusCode == false)
+            {
+                var body = await response.Content.ReadAsStringAsync(requestTimeoutSource.Token)
+                                                 .ConfigureAwait(false);
 
-        var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken)
-                                                   .ConfigureAwait(false);
+                return ExternalOperationResult<DockerImageInspectData>.Failed($"Docker image inspect for '{imageReferenceOrId}' returned {(int)response.StatusCode}: {body}");
+            }
 
-        await using (responseStream.ConfigureAwait(false))
-        {
-            using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: cancellationToken)
+            var responseStream = await response.Content.ReadAsStreamAsync(requestTimeoutSource.Token)
                                                        .ConfigureAwait(false);
 
-            return ExternalOperationResult<DockerImageInspectData>.Succeeded(ParseImageInspect(jsonDocument.RootElement));
+            await using (responseStream.ConfigureAwait(false))
+            {
+                using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: requestTimeoutSource.Token)
+                                                           .ConfigureAwait(false);
+
+                return ExternalOperationResult<DockerImageInspectData>.Succeeded(ParseImageInspect(jsonDocument.RootElement));
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (OperationCanceledException)
+        {
+            return ExternalOperationResult<DockerImageInspectData>.Failed($"Docker image inspect for '{imageReferenceOrId}' timed out after {requestTimeoutSeconds} seconds");
         }
     }
 
@@ -834,43 +871,57 @@ public class DockerInstanceClient : IDockerInstanceClient
     /// </summary>
     /// <param name="httpClient">Docker HTTP client</param>
     /// <param name="imageReferenceOrId">Image reference or identifier</param>
+    /// <param name="requestTimeoutSeconds">Configured request timeout in seconds</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>History result</returns>
     private static async Task<ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>> ReadImageHistoryAsync(HttpClient httpClient,
                                                                                                                          string imageReferenceOrId,
+                                                                                                                         int requestTimeoutSeconds,
                                                                                                                          CancellationToken cancellationToken)
     {
-        using var response = await httpClient.GetAsync($"v1.41/images/{Uri.EscapeDataString(imageReferenceOrId)}/history", cancellationToken)
-                                             .ConfigureAwait(false);
-
-        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+        try
         {
-            return ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>.NotFound($"Docker image '{imageReferenceOrId}' was not found");
-        }
+            using var requestTimeoutSource = CreateRequestTimeoutCancellationTokenSource(requestTimeoutSeconds, cancellationToken);
+            using var response = await httpClient.GetAsync($"v1.41/images/{Uri.EscapeDataString(imageReferenceOrId)}/history", requestTimeoutSource.Token)
+                                                 .ConfigureAwait(false);
 
-        if (response.IsSuccessStatusCode == false)
-        {
-            var body = await response.Content.ReadAsStringAsync(cancellationToken)
-                                             .ConfigureAwait(false);
-
-            return ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>.Failed($"Docker image history for '{imageReferenceOrId}' returned {(int)response.StatusCode}: {body}");
-        }
-
-        var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken)
-                                                   .ConfigureAwait(false);
-
-        await using (responseStream.ConfigureAwait(false))
-        {
-            using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: cancellationToken)
-                                                       .ConfigureAwait(false);
-            var historyEntries = new List<DockerImageHistoryEntryData>();
-
-            foreach (var historyElement in jsonDocument.RootElement.EnumerateArray())
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
             {
-                historyEntries.Add(ParseImageHistoryEntry(historyElement));
+                return ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>.NotFound($"Docker image '{imageReferenceOrId}' was not found");
             }
 
-            return ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>.Succeeded(historyEntries);
+            if (response.IsSuccessStatusCode == false)
+            {
+                var body = await response.Content.ReadAsStringAsync(requestTimeoutSource.Token)
+                                                 .ConfigureAwait(false);
+
+                return ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>.Failed($"Docker image history for '{imageReferenceOrId}' returned {(int)response.StatusCode}: {body}");
+            }
+
+            var responseStream = await response.Content.ReadAsStreamAsync(requestTimeoutSource.Token)
+                                                       .ConfigureAwait(false);
+
+            await using (responseStream.ConfigureAwait(false))
+            {
+                using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: requestTimeoutSource.Token)
+                                                           .ConfigureAwait(false);
+                var historyEntries = new List<DockerImageHistoryEntryData>();
+
+                foreach (var historyElement in jsonDocument.RootElement.EnumerateArray())
+                {
+                    historyEntries.Add(ParseImageHistoryEntry(historyElement));
+                }
+
+                return ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>.Succeeded(historyEntries);
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (OperationCanceledException)
+        {
+            return ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>.Failed($"Docker image history for '{imageReferenceOrId}' timed out after {requestTimeoutSeconds} seconds");
         }
     }
 
@@ -904,12 +955,13 @@ public class DockerInstanceClient : IDockerInstanceClient
         try
         {
             using var httpClient = _httpClientFactory(instanceOptions, engineUri);
-            using var response = await httpClient.GetAsync("v1.41/containers/json?all=1", cancellationToken)
+            using var requestTimeoutSource = CreateRequestTimeoutCancellationTokenSource(instanceOptions.RequestTimeoutSeconds, cancellationToken);
+            using var response = await httpClient.GetAsync("v1.41/containers/json?all=1", requestTimeoutSource.Token)
                                                  .ConfigureAwait(false);
 
             if (response.IsSuccessStatusCode == false)
             {
-                var body = await response.Content.ReadAsStringAsync(cancellationToken)
+                var body = await response.Content.ReadAsStringAsync(requestTimeoutSource.Token)
                                                  .ConfigureAwait(false);
 
                 _logger.DockerInstanceDiscoveryResponseFailed(instanceOptions.Name, (int)response.StatusCode);
@@ -917,12 +969,12 @@ public class DockerInstanceClient : IDockerInstanceClient
                 return ExternalOperationResult<IReadOnlyList<RuntimeContainerDescriptor>>.Failed($"Docker instance '{instanceOptions.Name}' returned {(int)response.StatusCode}: {body}");
             }
 
-            var responseStreamTask = response.Content.ReadAsStreamAsync(cancellationToken);
+            var responseStreamTask = response.Content.ReadAsStreamAsync(requestTimeoutSource.Token);
             var responseStream = await responseStreamTask.ConfigureAwait(false);
 
             await using (responseStream.ConfigureAwait(false))
             {
-                using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: cancellationToken)
+                using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: requestTimeoutSource.Token)
                                                            .ConfigureAwait(false);
                 var containers = new List<RuntimeContainerDescriptor>();
 
@@ -933,12 +985,23 @@ public class DockerInstanceClient : IDockerInstanceClient
 
                 await PopulateRepositoryDigestsAsync(httpClient,
                                                      containers,
+                                                     instanceOptions.RequestTimeoutSeconds,
                                                      cancellationToken).ConfigureAwait(false);
 
                 _logger.DockerInstanceDiscoverySucceeded(instanceOptions.Name, containers.Count);
 
                 return ExternalOperationResult<IReadOnlyList<RuntimeContainerDescriptor>>.Succeeded(containers);
             }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.DockerInstanceDiscoveryTimedOut(instanceOptions.Name, instanceOptions.RequestTimeoutSeconds);
+
+            return ExternalOperationResult<IReadOnlyList<RuntimeContainerDescriptor>>.Failed($"Docker container discovery for '{instanceOptions.Name}' timed out after {instanceOptions.RequestTimeoutSeconds} seconds");
         }
         catch (Exception exception)
         {
@@ -966,23 +1029,24 @@ public class DockerInstanceClient : IDockerInstanceClient
         try
         {
             using var httpClient = _httpClientFactory(instanceOptions, engineUri);
-            using var response = await httpClient.GetAsync("v1.41/containers/json", cancellationToken)
+            using var requestTimeoutSource = CreateRequestTimeoutCancellationTokenSource(instanceOptions.RequestTimeoutSeconds, cancellationToken);
+            using var response = await httpClient.GetAsync("v1.41/containers/json", requestTimeoutSource.Token)
                                                  .ConfigureAwait(false);
 
             if (response.IsSuccessStatusCode == false)
             {
-                var body = await response.Content.ReadAsStringAsync(cancellationToken)
+                var body = await response.Content.ReadAsStringAsync(requestTimeoutSource.Token)
                                                  .ConfigureAwait(false);
 
                 return ExternalOperationResult<IReadOnlyList<RuntimeContainerResourceDescriptor>>.Failed($"Docker instance '{instanceOptions.Name}' returned {(int)response.StatusCode}: {body}");
             }
 
-            var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken)
+            var responseStream = await response.Content.ReadAsStreamAsync(requestTimeoutSource.Token)
                                                        .ConfigureAwait(false);
 
             await using (responseStream.ConfigureAwait(false))
             {
-                using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: cancellationToken)
+                using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: requestTimeoutSource.Token)
                                                            .ConfigureAwait(false);
                 var samples = new List<RuntimeContainerResourceDescriptor>();
 
@@ -995,7 +1059,8 @@ public class DockerInstanceClient : IDockerInstanceClient
                         continue;
                     }
 
-                    using var statsResponse = await httpClient.GetAsync($"v1.41/containers/{Uri.EscapeDataString(containerId)}/stats?stream=false", cancellationToken)
+                    using var statsTimeoutSource = CreateRequestTimeoutCancellationTokenSource(instanceOptions.RequestTimeoutSeconds, cancellationToken);
+                    using var statsResponse = await httpClient.GetAsync($"v1.41/containers/{Uri.EscapeDataString(containerId)}/stats?stream=false", statsTimeoutSource.Token)
                                                               .ConfigureAwait(false);
 
                     if (statsResponse.IsSuccessStatusCode == false)
@@ -1003,12 +1068,12 @@ public class DockerInstanceClient : IDockerInstanceClient
                         continue;
                     }
 
-                    var statsStream = await statsResponse.Content.ReadAsStreamAsync(cancellationToken)
+                    var statsStream = await statsResponse.Content.ReadAsStreamAsync(statsTimeoutSource.Token)
                                                                  .ConfigureAwait(false);
 
                     await using (statsStream.ConfigureAwait(false))
                     {
-                        using var statsDocument = await JsonDocument.ParseAsync(statsStream, cancellationToken: cancellationToken)
+                        using var statsDocument = await JsonDocument.ParseAsync(statsStream, cancellationToken: statsTimeoutSource.Token)
                                                                     .ConfigureAwait(false);
                         samples.Add(ParseResourceSample(containerElement, statsDocument.RootElement));
                     }
@@ -1016,6 +1081,14 @@ public class DockerInstanceClient : IDockerInstanceClient
 
                 return ExternalOperationResult<IReadOnlyList<RuntimeContainerResourceDescriptor>>.Succeeded(samples);
             }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (OperationCanceledException)
+        {
+            return ExternalOperationResult<IReadOnlyList<RuntimeContainerResourceDescriptor>>.Failed($"Docker container resource sampling timed out for '{instanceOptions.Name}' after {instanceOptions.RequestTimeoutSeconds} seconds");
         }
         catch (Exception exception)
         {
@@ -1045,7 +1118,14 @@ public class DockerInstanceClient : IDockerInstanceClient
         {
             using var httpClient = _httpClientFactory(instanceOptions, engineUri);
 
-            return await ReadImageInspectAsync(httpClient, imageReferenceOrId, cancellationToken).ConfigureAwait(false);
+            return await ReadImageInspectAsync(httpClient,
+                                               imageReferenceOrId,
+                                               instanceOptions.RequestTimeoutSeconds,
+                                               cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception exception)
         {
@@ -1075,7 +1155,14 @@ public class DockerInstanceClient : IDockerInstanceClient
         {
             using var httpClient = _httpClientFactory(instanceOptions, engineUri);
 
-            return await ReadImageHistoryAsync(httpClient, imageReferenceOrId, cancellationToken).ConfigureAwait(false);
+            return await ReadImageHistoryAsync(httpClient,
+                                               imageReferenceOrId,
+                                               instanceOptions.RequestTimeoutSeconds,
+                                               cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception exception)
         {
@@ -1101,27 +1188,36 @@ public class DockerInstanceClient : IDockerInstanceClient
         try
         {
             using var httpClient = _httpClientFactory(instanceOptions, engineUri);
-            using var response = await httpClient.GetAsync("v1.41/info", cancellationToken)
+            using var requestTimeoutSource = CreateRequestTimeoutCancellationTokenSource(instanceOptions.RequestTimeoutSeconds, cancellationToken);
+            using var response = await httpClient.GetAsync("v1.41/info", requestTimeoutSource.Token)
                                                  .ConfigureAwait(false);
 
             if (response.IsSuccessStatusCode == false)
             {
-                var body = await response.Content.ReadAsStringAsync(cancellationToken)
+                var body = await response.Content.ReadAsStringAsync(requestTimeoutSource.Token)
                                                  .ConfigureAwait(false);
 
                 return ExternalOperationResult<long>.Failed($"Docker instance '{instanceOptions.Name}' returned {(int)response.StatusCode}: {body}");
             }
 
-            var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken)
+            var responseStream = await response.Content.ReadAsStreamAsync(requestTimeoutSource.Token)
                                                        .ConfigureAwait(false);
 
             await using (responseStream.ConfigureAwait(false))
             {
-                using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: cancellationToken)
+                using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: requestTimeoutSource.Token)
                                                            .ConfigureAwait(false);
 
                 return ExternalOperationResult<long>.Succeeded(TryGetInt64(jsonDocument.RootElement, "MemTotal"));
             }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (OperationCanceledException)
+        {
+            return ExternalOperationResult<long>.Failed($"Docker host info request timed out for '{instanceOptions.Name}' after {instanceOptions.RequestTimeoutSeconds} seconds");
         }
         catch (Exception exception)
         {
