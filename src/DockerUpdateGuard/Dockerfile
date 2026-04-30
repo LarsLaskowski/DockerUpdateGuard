@@ -10,7 +10,6 @@ ARG APP_VERSION
 ARG BASE_SDK
 
 LABEL org.opencontainers.image.base.name="${BASE_SDK}"
-LABEL org.opencontainers.image.base.digest="${BASE_SDK_DIGEST}"
 
 WORKDIR /src
 
@@ -32,14 +31,16 @@ ARG APP_VERSION
 ARG BASE_RUNTIME
 
 LABEL org.opencontainers.image.base.name="${BASE_RUNTIME}"
-LABEL org.opencontainers.image.base.digest="${BASE_RUNTIME_DIGEST}"
 
 WORKDIR /app
 EXPOSE 8080
 ENV ASPNETCORE_URLS=http://+:8080
 ENV DockerUpdateGuard__DisplayVersion=$APP_VERSION
 
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
+# Install CA certificates to enable secure outbound connections (e.g., for telemetry)
+# apt-get is not available in Alpine, so we use apk to install ca-certificates
+#RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache ca-certificates
 
 COPY --from=build /app/publish .
 
