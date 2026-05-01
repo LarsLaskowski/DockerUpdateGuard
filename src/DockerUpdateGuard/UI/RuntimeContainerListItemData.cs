@@ -83,6 +83,16 @@ public class RuntimeContainerListItemData
     public string? VulnerabilitySummary { get; set; }
 
     /// <summary>
+    /// Number of active base-image vulnerability findings
+    /// </summary>
+    public int ActiveBaseImageVulnerabilityFindingCount { get; set; }
+
+    /// <summary>
+    /// Base-image vulnerability summary
+    /// </summary>
+    public string? BaseImageVulnerabilitySummary { get; set; }
+
+    /// <summary>
     /// Timestamp when the container was recorded
     /// </summary>
     public DateTimeOffset RecordedAtUtc { get; set; }

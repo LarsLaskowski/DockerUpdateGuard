@@ -1,7 +1,9 @@
 using DockerUpdateGuard.Data;
 using DockerUpdateGuard.Data.Entities;
 using DockerUpdateGuard.Data.Queries;
-using DockerUpdateGuard.Images;
+using DockerUpdateGuard.Images.Data;
+using DockerUpdateGuard.Images.Helper;
+using DockerUpdateGuard.Images.Interfaces;
 
 using Microsoft.EntityFrameworkCore;
 
@@ -27,7 +29,7 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
     /// <summary>
     /// Resource-history window
     /// </summary>
-    private static readonly TimeSpan ResourceHistoryWindow = TimeSpan.FromHours(24);
+    private static readonly TimeSpan _resourceHistoryWindow = TimeSpan.FromHours(24);
 
     /// <summary>
     /// Database-access gate
@@ -111,6 +113,34 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                    CheckedAtUtc = imageVersion.VulnerabilityAssessmentCheckedAtUtc,
                    ActiveFindingCount = activeFindingCount,
                };
+    }
+
+    /// <summary>
+    /// Summarize base-image vulnerability findings for a relationship list
+    /// </summary>
+    /// <param name="baseImageRelationships">Base-image relationship list</param>
+    /// <returns>Active finding count and summary</returns>
+    private static (int ActiveFindingCount, string? Summary) SummarizeBaseImageVulnerabilities(IReadOnlyList<BaseImageRelationshipData>? baseImageRelationships)
+    {
+        if (baseImageRelationships is null || baseImageRelationships.Count == 0)
+        {
+            return (0, null);
+        }
+
+        var groupedAssessments = baseImageRelationships.GroupBy(entity => entity.ImageReference, StringComparer.OrdinalIgnoreCase)
+                                                       .Select(group => group.Max(entity => entity.VulnerabilityAssessment.ActiveFindingCount))
+                                                       .ToList();
+        var activeFindingCount = groupedAssessments.Sum();
+
+        if (activeFindingCount == 0)
+        {
+            return (0, null);
+        }
+
+        var vulnerableBaseImageCount = groupedAssessments.Count(entity => entity > 0);
+        var baseImageLabel = vulnerableBaseImageCount == 1 ? "base image" : "base images";
+
+        return (activeFindingCount, $"{activeFindingCount} active finding(s) across {vulnerableBaseImageCount} {baseImageLabel}");
     }
 
     /// <summary>
@@ -383,10 +413,11 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
             return false;
         }
 
-        if (VersionTagResolutionHelper.TryParseVersionTag(currentComparableTag, out var currentVersion)
-            && VersionTagResolutionHelper.TryParseVersionTag(candidateComparableTag, out var candidateVersion))
+        if (VersionTagResolutionHelper.TryCompareVersionTags(candidateComparableTag,
+                                                             currentComparableTag,
+                                                             out var versionComparison))
         {
-            return candidateVersion >= currentVersion;
+            return versionComparison >= 0;
         }
 
         if (VersionTagResolutionHelper.TryParseYearPrefixedTag(currentComparableTag, out var currentYear, out _)
@@ -484,8 +515,9 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
         return await ExecuteSerializedAsync(async () =>
                                             {
                                                 var recentScans = await GetScanHistoryCoreAsync(10, cancellationToken).ConfigureAwait(false);
-                                                var sharedBaseImages = await _sharedBaseImageQueryService.GetSharedBaseImagesAsync(cancellationToken).ConfigureAwait(false);
-                                                var observedImageCount = await _dbContext.ObservedImages.CountAsync(cancellationToken).ConfigureAwait(false);
+                                                var baseImages = await _sharedBaseImageQueryService.GetBaseImagesAsync(cancellationToken).ConfigureAwait(false);
+                                                var observedImageCount = await _dbContext.ObservedImages.CountAsync(entity => entity.Source == RegistrationSource.Manual, cancellationToken).ConfigureAwait(false);
+                                                var myImageCount = await _dbContext.ObservedImages.CountAsync(entity => entity.Source == RegistrationSource.Discovery, cancellationToken).ConfigureAwait(false);
                                                 var dockerInstanceCount = await _dbContext.DockerInstances.CountAsync(cancellationToken).ConfigureAwait(false);
                                                 var runtimeContainers = await GetRuntimeContainersCoreAsync(cancellationToken).ConfigureAwait(false);
                                                 var activeUpdateFindingCount = await _dbContext.UpdateFindings.CountAsync(entity => entity.IsActive, cancellationToken).ConfigureAwait(false);
@@ -506,9 +538,10 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                                                 return new DashboardViewData
                                                        {
                                                            ObservedImageCount = observedImageCount,
+                                                           MyImageCount = myImageCount,
                                                            DockerInstanceCount = dockerInstanceCount,
                                                            RuntimeContainerCount = runtimeContainers.Count,
-                                                           SharedBaseImageCount = sharedBaseImages.Count,
+                                                           BaseImageCount = baseImages.Count,
                                                            ActiveUpdateFindingCount = activeUpdateFindingCount,
                                                            OwnImageBaseRuntimeWarningCount = ownImageBaseRuntimeWarningCount,
                                                            ActiveVulnerabilityFindingCount = activeVulnerabilityFindingCount,
@@ -523,15 +556,52 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
     /// </summary>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Observed image list items</returns>
-    public async Task<IReadOnlyList<ObservedImageListItemData>> GetObservedImagesAsync(CancellationToken cancellationToken = default)
+    public Task<IReadOnlyList<ObservedImageListItemData>> GetObservedImagesAsync(CancellationToken cancellationToken = default)
+    {
+        return GetObservedImagesCoreAsync(source: null, cancellationToken);
+    }
+
+    /// <summary>
+    /// Read manually-registered observed images for the manual images page
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Manually-registered observed image list items</returns>
+    public Task<IReadOnlyList<ObservedImageListItemData>> GetManualObservedImagesAsync(CancellationToken cancellationToken = default)
+    {
+        return GetObservedImagesCoreAsync(RegistrationSource.Manual, cancellationToken);
+    }
+
+    /// <summary>
+    /// Read discovery-owned observed images for the own images page
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Discovery-owned observed image list items</returns>
+    public Task<IReadOnlyList<ObservedImageListItemData>> GetDiscoveryObservedImagesAsync(CancellationToken cancellationToken = default)
+    {
+        return GetObservedImagesCoreAsync(RegistrationSource.Discovery, cancellationToken);
+    }
+
+    /// <summary>
+    /// Core observed-image query, optionally filtered to a single registration source
+    /// </summary>
+    /// <param name="source">Registration source filter; null loads all sources</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Observed image list items</returns>
+    private async Task<IReadOnlyList<ObservedImageListItemData>> GetObservedImagesCoreAsync(RegistrationSource? source, CancellationToken cancellationToken)
     {
         return await ExecuteSerializedAsync(async () =>
                                             {
-                                                var observedImages = await _dbContext.ObservedImages.Include(entity => entity.CurrentImageVersion)
-                                                                                                    .ThenInclude(entity => entity.RegistryRepository)
-                                                                                                    .AsNoTracking()
-                                                                                                    .ToListAsync(cancellationToken)
-                                                                                                    .ConfigureAwait(false);
+                                                var observedImagesQuery = _dbContext.ObservedImages.Include(entity => entity.CurrentImageVersion)
+                                                                                                   .ThenInclude(entity => entity.RegistryRepository)
+                                                                                                   .AsNoTracking();
+
+                                                if (source.HasValue)
+                                                {
+                                                    observedImagesQuery = observedImagesQuery.Where(entity => entity.Source == source.Value);
+                                                }
+
+                                                var observedImages = await observedImagesQuery.ToListAsync(cancellationToken)
+                                                                                              .ConfigureAwait(false);
 
                                                 var latestSnapshots = await GetLatestContainerSnapshotsAsync(cancellationToken).ConfigureAwait(false);
                                                 var latestSnapshotIds = latestSnapshots.Select(entity => entity.Id)
@@ -568,6 +638,10 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                                                                                                     .ToDictionary(group => group.Key,
                                                                                                                   group => group.OrderByDescending(entity => entity.DetectedAtUtc)
                                                                                                                                 .First());
+                                                var baseImageRelationshipsByChildVersion = await LoadBaseImageRelationshipsByChildVersionAsync(observedImages.Select(entity => entity.CurrentImageVersionId)
+                                                                                                                                                             .Distinct()
+                                                                                                                                                             .ToList(),
+                                                                                                                                               cancellationToken).ConfigureAwait(false);
 
                                                 return observedImages.Select(entity =>
                                                                              {
@@ -575,6 +649,8 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                                                                                  observedAlertLookup.TryGetValue(entity.Id, out var observedAlert);
                                                                                  runtimeAlertLookup.TryGetValue(repositoryKey, out var runtimeAlert);
                                                                                  var baseRuntimeAlert = observedAlert ?? runtimeAlert;
+                                                                                 baseImageRelationshipsByChildVersion.TryGetValue(entity.CurrentImageVersionId, out var baseImageRelationships);
+                                                                                 var baseImageVulnerabilitySummary = SummarizeBaseImageVulnerabilities(baseImageRelationships);
 
                                                                                  return new ObservedImageListItemData
                                                                                         {
@@ -588,6 +664,8 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                                                                                             ActiveVulnerabilityFindingCount = _dbContext.VulnerabilityFindings.Count(finding => finding.ImageVersionId == entity.CurrentImageVersionId && finding.IsActive),
                                                                                             VulnerabilityStatus = FormatVulnerabilityAssessmentStatus(entity.CurrentImageVersion.VulnerabilityAssessmentStatus),
                                                                                             VulnerabilityMessage = entity.CurrentImageVersion.VulnerabilityAssessmentMessage,
+                                                                                            ActiveBaseImageVulnerabilityFindingCount = baseImageVulnerabilitySummary.ActiveFindingCount,
+                                                                                            BaseImageVulnerabilitySummary = baseImageVulnerabilitySummary.Summary,
                                                                                             IsOwnImage = entity.Source == RegistrationSource.Discovery,
                                                                                             LinkedRuntimeContainerCount = entity.Source == RegistrationSource.Discovery
                                                                                                                           && runtimeLinkLookup.TryGetValue(repositoryKey, out var linkedRuntimeContainerCount)
@@ -626,17 +704,10 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                                                     return null;
                                                 }
 
-                                                var baseImages = await _dbContext.ImageRelationships.Include(entity => entity.BaseImageVersion)
-                                                                                                    .ThenInclude(entity => entity.RegistryRepository)
-                                                                                                    .Where(entity => entity.ChildImageVersionId == observedImage.CurrentImageVersionId
-                                                                                                                     && entity.RelationshipType == ImageRelationshipType.BaseImage)
-                                                                                                    .OrderBy(entity => entity.Depth)
-                                                                                                    .AsNoTracking()
-                                                                                                    .ToListAsync(cancellationToken)
-                                                                                                    .ConfigureAwait(false);
+                                                var baseImageRelationshipsByChildVersion = await LoadBaseImageRelationshipsByChildVersionAsync([observedImage.CurrentImageVersionId], cancellationToken).ConfigureAwait(false);
 
                                                 var updateFindings = await _dbContext.UpdateFindings.Include(entity => entity.TagCandidates)
-                                                                                                    .Where(entity => entity.ObservedImageId == observedImage.Id)
+                                                                                                    .Where(entity => entity.ObservedImageId == observedImage.Id && entity.IsActive)
                                                                                                     .OrderByDescending(entity => entity.DetectedAtUtc)
                                                                                                     .AsNoTracking()
                                                                                                     .ToListAsync(cancellationToken)
@@ -675,6 +746,8 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                                                                                      .FirstOrDefault()
                                                                            ?? runtimeDerivedFindings.FirstOrDefault();
                                                 var recommendedImageVersions = await LoadRecommendedImageVersionsAsync(combinedUpdateFindings, cancellationToken).ConfigureAwait(false);
+                                                baseImageRelationshipsByChildVersion.TryGetValue(observedImage.CurrentImageVersionId, out var baseImages);
+                                                var baseImageVulnerabilitySummary = SummarizeBaseImageVulnerabilities(baseImages);
 
                                                 return new ObservedImageDetailViewData
                                                        {
@@ -685,13 +758,9 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                                                            LatestScanStatus = GetLatestObservedScanStatus(observedImage.Id),
                                                            LatestScanMessage = GetLatestObservedScanMessage(observedImage.Id),
                                                            IsOwnImage = observedImage.Source == RegistrationSource.Discovery,
-                                                           BaseImages = baseImages.Select(entity => new BaseImageRelationshipData
-                                                                                                    {
-                                                                                                        ImageReference = _imageReferenceParser.Format(entity.BaseImageVersion),
-                                                                                                        Depth = entity.Depth,
-                                                                                                        SourceReference = entity.SourceReference,
-                                                                                                    })
-                                                                                  .ToList(),
+                                                           BaseImages = baseImages ?? [],
+                                                           ActiveBaseImageVulnerabilityFindingCount = baseImageVulnerabilitySummary.ActiveFindingCount,
+                                                           BaseImageVulnerabilitySummary = baseImageVulnerabilitySummary.Summary,
                                                            UpdateFindings = combinedUpdateFindings.Select(entity => MapUpdateFinding(entity, recommendedImageVersions, manualSelection: null))
                                                                                                   .ToList(),
                                                            BaseRuntimeAlertSummary = baseRuntimeAlert?.Summary,
@@ -772,6 +841,7 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                                                                                                                   .AsNoTracking()
                                                                                                                   .ToListAsync(cancellationToken)
                                                                                                                   .ConfigureAwait(false);
+                                                var baseImageRelationshipsByChildVersion = await LoadBaseImageRelationshipsByChildVersionAsync([latestSnapshot.ImageVersionId], cancellationToken).ConfigureAwait(false);
 
                                                 var mappedUpdateFindings = updateFindings.Select(entity => MapUpdateFinding(entity, recommendedImageVersions, manualSelection))
                                                                                          .ToList();
@@ -814,6 +884,9 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                                                                                                       .ConfigureAwait(false);
                                                 }
 
+                                                baseImageRelationshipsByChildVersion.TryGetValue(latestSnapshot.ImageVersionId, out var baseImages);
+                                                var baseImageVulnerabilitySummary = SummarizeBaseImageVulnerabilities(baseImages);
+
                                                 return new RuntimeContainerDetailViewData
                                                        {
                                                            DockerInstanceId = dockerInstanceId,
@@ -841,6 +914,9 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                                                                                                              manualSelection.Digest),
                                                            ManualSelectionAtUtc = manualSelection?.SelectedAtUtc,
                                                            AvailableTagCandidates = availableTagCandidates,
+                                                           BaseImages = baseImages ?? [],
+                                                           ActiveBaseImageVulnerabilityFindingCount = baseImageVulnerabilitySummary.ActiveFindingCount,
+                                                           BaseImageVulnerabilitySummary = baseImageVulnerabilitySummary.Summary,
                                                            UpdateFindings = mappedUpdateFindings,
                                                            BaseRuntimeAlertSummary = baseRuntimeAlert?.Summary,
                                                            BaseRuntimeAlertDetails = baseRuntimeAlert?.Details,
@@ -948,20 +1024,29 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
     }
 
     /// <summary>
-    /// Read shared base images for the overview page
+    /// Determine whether any base images are available
     /// </summary>
     /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>Shared base image list items</returns>
-    public async Task<IReadOnlyList<SharedBaseImageListItemData>> GetSharedBaseImagesAsync(CancellationToken cancellationToken = default)
+    /// <returns>True when at least one base image is available</returns>
+    public async Task<bool> HasBaseImagesAsync(CancellationToken cancellationToken = default)
     {
         return await ExecuteSerializedAsync(async () =>
                                             {
-                                                var sharedBaseImages = await _sharedBaseImageQueryService.GetSharedBaseImagesAsync(cancellationToken).ConfigureAwait(false);
+                                                var baseImages = await _sharedBaseImageQueryService.GetBaseImagesAsync(cancellationToken).ConfigureAwait(false);
 
-                                                return sharedBaseImages.Select(MapSharedBaseImage)
-                                                                       .ToList();
+                                                return baseImages.Count > 0;
                                             },
                                             cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Read base images for the overview page
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Base image list items</returns>
+    public async Task<IReadOnlyList<SharedBaseImageListItemData>> GetBaseImagesAsync(CancellationToken cancellationToken = default)
+    {
+        return await ExecuteSerializedAsync(() => GetBaseImagesCoreAsync(cancellationToken), cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -970,14 +1055,10 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
     /// <param name="take">Maximum number of entries</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Scan history entries</returns>
-    public async Task<IReadOnlyList<ScanHistoryItemData>> GetScanHistoryAsync(int take = 50, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<ScanHistoryItemData>> GetScanHistoryAsync(int take = 20, CancellationToken cancellationToken = default)
     {
         return await ExecuteSerializedAsync(() => GetScanHistoryCoreAsync(take, cancellationToken), cancellationToken).ConfigureAwait(false);
     }
-
-    #endregion // Methods
-
-    #region Methods
 
     /// <summary>
     /// Execute a serialized database read operation for the scoped UI service
@@ -1010,6 +1091,10 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
         var latestSnapshots = await GetLatestContainerSnapshotsAsync(cancellationToken).ConfigureAwait(false);
         var ownImagesByRepository = await LoadOwnImagesByRepositoryAsync(cancellationToken).ConfigureAwait(false);
         var resourceHistories = await GetRuntimeContainerResourceHistoriesAsync(latestSnapshots, cancellationToken).ConfigureAwait(false);
+        var baseImageRelationshipsByChildVersion = await LoadBaseImageRelationshipsByChildVersionAsync(latestSnapshots.Select(entity => entity.ImageVersionId)
+                                                                                                                      .Distinct()
+                                                                                                                      .ToList(),
+                                                                                                       cancellationToken).ConfigureAwait(false);
         var latestSnapshotIds = latestSnapshots.Select(entity => entity.Id)
                                                .ToList();
 
@@ -1049,7 +1134,9 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                                           ownImagesByRepository.TryGetValue(repositoryKey, out var linkedObservedImage);
                                           resourceHistories.TryGetValue(CreateContainerKey(entity.DockerInstanceId, entity.ContainerId), out var resourceUsageHistory);
                                           tagCandidatesBySnapshot.TryGetValue(entity.Id, out var tagCandidates);
+                                          baseImageRelationshipsByChildVersion.TryGetValue(entity.ImageVersionId, out var baseImageRelationships);
                                           var currentResourceUsage = resourceUsageHistory?.FirstOrDefault();
+                                          var baseImageVulnerabilitySummary = SummarizeBaseImageVulnerabilities(baseImageRelationships);
 
                                           var resolvedVersionTag = string.IsNullOrWhiteSpace(entity.ResolvedVersionTag) == false
                                                                        ? entity.ResolvedVersionTag
@@ -1079,6 +1166,8 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                                                      ActiveVulnerabilityFindingCount = _dbContext.VulnerabilityFindings.Count(finding => finding.ImageVersionId == entity.ImageVersionId && finding.IsActive),
                                                      VulnerabilityStatus = FormatVulnerabilityAssessmentStatus(imageVersion.VulnerabilityAssessmentStatus),
                                                      VulnerabilitySummary = imageVersion.VulnerabilityAssessmentMessage,
+                                                     ActiveBaseImageVulnerabilityFindingCount = baseImageVulnerabilitySummary.ActiveFindingCount,
+                                                     BaseImageVulnerabilitySummary = baseImageVulnerabilitySummary.Summary,
                                                      RecordedAtUtc = entity.RecordedAtUtc,
                                                      LinkedObservedImageId = linkedObservedImage?.Id,
                                                      LinkedObservedImageName = linkedObservedImage?.Name,
@@ -1090,6 +1179,100 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                               .ThenBy(entity => entity.DockerInstanceName)
                               .ThenBy(entity => entity.ContainerName)
                               .ToList();
+    }
+
+    /// <summary>
+    /// Read base images without re-entering the service gate
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Base image list</returns>
+    private async Task<IReadOnlyList<SharedBaseImageListItemData>> GetBaseImagesCoreAsync(CancellationToken cancellationToken)
+    {
+        var baseImages = await _sharedBaseImageQueryService.GetBaseImagesAsync(cancellationToken).ConfigureAwait(false);
+
+        if (baseImages.Count == 0)
+        {
+            return [];
+        }
+
+        var groupedBaseImageVersionIds = baseImages.SelectMany(entity => entity.BaseImageVersionIds)
+                                                   .Distinct()
+                                                   .ToList();
+        var baseRelationships = await _dbContext.ImageRelationships.Include(entity => entity.BaseImageVersion)
+                                                                   .ThenInclude(entity => entity.RegistryRepository)
+                                                                   .Include(entity => entity.ChildImageVersion)
+                                                                   .ThenInclude(entity => entity.RegistryRepository)
+                                                                   .Where(entity => groupedBaseImageVersionIds.Contains(entity.BaseImageVersionId)
+                                                                                    && entity.RelationshipType == ImageRelationshipType.BaseImage)
+                                                                   .AsNoTracking()
+                                                                   .ToListAsync(cancellationToken)
+                                                                   .ConfigureAwait(false);
+        var activeFindingCounts = await _dbContext.VulnerabilityFindings.Where(entity => entity.IsActive
+                                                                                         && groupedBaseImageVersionIds.Contains(entity.ImageVersionId))
+                                                                        .GroupBy(entity => entity.ImageVersionId)
+                                                                        .Select(group => new
+                                                                                         {
+                                                                                             ImageVersionId = group.Key,
+                                                                                             ActiveFindingCount = group.Count(),
+                                                                                         })
+                                                                        .ToListAsync(cancellationToken)
+                                                                        .ConfigureAwait(false);
+        var activeFindingLookup = activeFindingCounts.ToDictionary(entity => entity.ImageVersionId, entity => entity.ActiveFindingCount);
+        var latestSnapshots = await GetLatestContainerSnapshotsAsync(cancellationToken).ConfigureAwait(false);
+
+        return baseImages.Select(entity =>
+                                 {
+                                     var baseImageVersionIdSet = entity.BaseImageVersionIds.ToHashSet();
+                                     HashSet<string>? sourceReferenceSet = null;
+
+                                     if (string.IsNullOrWhiteSpace(entity.Digest)
+                                         && entity.SourceReferences.Count > 0)
+                                     {
+                                         sourceReferenceSet = entity.SourceReferences.ToHashSet(StringComparer.OrdinalIgnoreCase);
+                                     }
+
+                                     var relevantRelationships = baseRelationships.Where(relationship => baseImageVersionIdSet.Contains(relationship.BaseImageVersionId)
+                                                                                                         && (sourceReferenceSet is null
+                                                                                                             || sourceReferenceSet.Contains(relationship.SourceReference ?? string.Empty)))
+                                                                                  .ToList();
+                                     var relevantBaseImageVersions = relevantRelationships.Select(relationship => relationship.BaseImageVersion)
+                                                                                          .GroupBy(relationship => relationship.Id)
+                                                                                          .Select(group => group.First())
+                                                                                          .ToList();
+                                     var representativeBaseImage = relevantBaseImageVersions.OrderByDescending(baseImageVersion => baseImageVersion.VulnerabilityAssessmentCheckedAtUtc ?? DateTimeOffset.MinValue)
+                                                                                            .ThenBy(baseImageVersion => baseImageVersion.Tag, StringComparer.OrdinalIgnoreCase)
+                                                                                            .First();
+                                     var activeFindingCount = relevantBaseImageVersions.Select(baseImageVersion => activeFindingLookup.TryGetValue(baseImageVersion.Id, out var findingCount)
+                                                                                                                       ? findingCount
+                                                                                                                       : 0)
+                                                                                       .DefaultIfEmpty(0)
+                                                                                       .Max();
+                                     var childImageVersionIdSet = relevantRelationships.Select(relationship => relationship.ChildImageVersionId)
+                                                                                       .ToHashSet();
+                                     var runtimeContainers = latestSnapshots.Where(snapshot => childImageVersionIdSet.Contains(snapshot.ImageVersionId))
+                                                                            .OrderBy(snapshot => snapshot.DockerInstance.Name, StringComparer.OrdinalIgnoreCase)
+                                                                            .ThenBy(snapshot => snapshot.Name, StringComparer.OrdinalIgnoreCase)
+                                                                            .Select(MapLinkedRuntimeContainer)
+                                                                            .ToList();
+
+                                     return new SharedBaseImageListItemData
+                                            {
+                                                BaseImageVersionId = entity.BaseImageVersionId,
+                                                BaseImageVersionIds = entity.BaseImageVersionIds,
+                                                ImageReference = FormatImageReference(entity.Registry, entity.Repository, entity.Tag, entity.Digest),
+                                                ObservedImageCount = entity.ObservedImageCount,
+                                                ParentImageReferences = relevantRelationships.Select(relationship => _imageReferenceParser.Format(relationship.ChildImageVersion))
+                                                                                             .Distinct(StringComparer.OrdinalIgnoreCase)
+                                                                                             .OrderBy(relationship => relationship, StringComparer.OrdinalIgnoreCase)
+                                                                                             .ToList(),
+                                                RuntimeContainers = runtimeContainers,
+                                                VulnerabilityAssessment = CreateVulnerabilityAssessment(representativeBaseImage, activeFindingCount),
+                                            };
+                                 })
+                         .OrderByDescending(entity => entity.RuntimeContainers.Count)
+                         .ThenByDescending(entity => entity.ObservedImageCount)
+                         .ThenBy(entity => entity.ImageReference, StringComparer.OrdinalIgnoreCase)
+                         .ToList();
     }
 
     /// <summary>
@@ -1111,18 +1294,6 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
         return scanRuns.Select(MapScanRun)
                        .ToList();
     }
-
-    #region IDisposable implementation
-
-    /// <summary>
-    /// Releases the resources used by the current instance of the class
-    /// </summary>
-    public void Dispose()
-    {
-        _dbContextLock.Dispose();
-    }
-
-    #endregion // IDisposable implementation
 
     /// <summary>
     /// Map a linked runtime container projection
@@ -1229,6 +1400,59 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
     }
 
     /// <summary>
+    /// Load base-image relationships keyed by child image version
+    /// </summary>
+    /// <param name="childImageVersionIds">Child image version identifiers</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Base-image relationships by child image version</returns>
+    private async Task<Dictionary<Guid, IReadOnlyList<BaseImageRelationshipData>>> LoadBaseImageRelationshipsByChildVersionAsync(IReadOnlyCollection<Guid> childImageVersionIds,
+                                                                                                                                 CancellationToken cancellationToken)
+    {
+        if (childImageVersionIds.Count == 0)
+        {
+            return [];
+        }
+
+        var relationships = await _dbContext.ImageRelationships.Include(entity => entity.BaseImageVersion)
+                                                               .ThenInclude(entity => entity.RegistryRepository)
+                                                               .Where(entity => childImageVersionIds.Contains(entity.ChildImageVersionId)
+                                                                                && entity.RelationshipType == ImageRelationshipType.BaseImage)
+                                                               .OrderBy(entity => entity.ChildImageVersionId)
+                                                               .ThenBy(entity => entity.Depth)
+                                                               .AsNoTracking()
+                                                               .ToListAsync(cancellationToken)
+                                                               .ConfigureAwait(false);
+        var baseImageVersionIds = relationships.Select(entity => entity.BaseImageVersionId)
+                                               .Distinct()
+                                               .ToList();
+        var activeFindingCounts = await _dbContext.VulnerabilityFindings.Where(entity => entity.IsActive
+                                                                                         && baseImageVersionIds.Contains(entity.ImageVersionId))
+                                                                        .GroupBy(entity => entity.ImageVersionId)
+                                                                        .Select(group => new
+                                                                                         {
+                                                                                             ImageVersionId = group.Key,
+                                                                                             ActiveFindingCount = group.Count(),
+                                                                                         })
+                                                                        .ToListAsync(cancellationToken)
+                                                                        .ConfigureAwait(false);
+        var activeFindingLookup = activeFindingCounts.ToDictionary(entity => entity.ImageVersionId, entity => entity.ActiveFindingCount);
+
+        return relationships.GroupBy(entity => entity.ChildImageVersionId)
+                            .ToDictionary(group => group.Key,
+                                          group => (IReadOnlyList<BaseImageRelationshipData>)group.Select(entity => new BaseImageRelationshipData
+                                                                                                                    {
+                                                                                                                        ImageReference = _imageReferenceParser.Format(entity.BaseImageVersion),
+                                                                                                                        Depth = entity.Depth,
+                                                                                                                        SourceReference = entity.SourceReference,
+                                                                                                                        VulnerabilityAssessment = CreateVulnerabilityAssessment(entity.BaseImageVersion,
+                                                                                                                                                                                activeFindingLookup.TryGetValue(entity.BaseImageVersionId, out var activeFindingCount)
+                                                                                                                                                                                    ? activeFindingCount
+                                                                                                                                                                                    : 0),
+                                                                                                                    })
+                                                                                                  .ToList());
+    }
+
+    /// <summary>
     /// Load latest runtime container resource samples
     /// </summary>
     /// <param name="cancellationToken">Cancellation token</param>
@@ -1262,7 +1486,7 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
             return new Dictionary<string, IReadOnlyList<ResourceUsagePointViewData>>(StringComparer.OrdinalIgnoreCase);
         }
 
-        var cutoff = DateTimeOffset.UtcNow.Subtract(ResourceHistoryWindow);
+        var cutoff = DateTimeOffset.UtcNow.Subtract(_resourceHistoryWindow);
         var instanceIds = snapshots.Select(entity => entity.DockerInstanceId)
                                    .Distinct()
                                    .ToList();
@@ -1368,7 +1592,7 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                                                                                                           string containerId,
                                                                                                           CancellationToken cancellationToken)
     {
-        var cutoff = DateTimeOffset.UtcNow.Subtract(ResourceHistoryWindow);
+        var cutoff = DateTimeOffset.UtcNow.Subtract(_resourceHistoryWindow);
         var samples = await _dbContext.RuntimeContainerResourceSamples.Where(entity => entity.DockerInstanceId == dockerInstanceId
                                                                                        && entity.ContainerId == containerId
                                                                                        && entity.RecordedAtUtc >= cutoff)
@@ -1390,7 +1614,7 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
     /// <returns>Resource history entries</returns>
     private async Task<IReadOnlyList<ResourceUsagePointViewData>> GetDockerInstanceResourceHistoryAsync(Guid dockerInstanceId, CancellationToken cancellationToken)
     {
-        var cutoff = DateTimeOffset.UtcNow.Subtract(ResourceHistoryWindow);
+        var cutoff = DateTimeOffset.UtcNow.Subtract(_resourceHistoryWindow);
         var samples = await _dbContext.DockerInstanceResourceSamples.Where(entity => entity.DockerInstanceId == dockerInstanceId
                                                                                      && entity.RecordedAtUtc >= cutoff)
                                                                     .OrderByDescending(entity => entity.RecordedAtUtc)
@@ -1420,22 +1644,6 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                    StartedAtUtc = scanRun.StartedAtUtc,
                    CompletedAtUtc = scanRun.CompletedAtUtc,
                    ErrorMessage = scanRun.ErrorMessage,
-               };
-    }
-
-    /// <summary>
-    /// Map a shared base image entry to view data
-    /// </summary>
-    /// <param name="entity">Shared base image usage data</param>
-    /// <returns>Shared base image item</returns>
-    private SharedBaseImageListItemData MapSharedBaseImage(SharedBaseImageUsageData entity)
-    {
-        return new SharedBaseImageListItemData
-               {
-                   BaseImageVersionId = entity.BaseImageVersionId,
-                   ImageReference = FormatImageReference(entity.Registry, entity.Repository, entity.Tag, entity.Digest),
-                   ObservedImageCount = entity.ObservedImageCount,
-                   ActiveFindingCount = _dbContext.UpdateFindings.Count(finding => finding.SubjectImageVersionId == entity.BaseImageVersionId && finding.IsActive),
                };
     }
 
@@ -1526,4 +1734,16 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
     }
 
     #endregion // Methods
+
+    #region IDisposable
+
+    /// <summary>
+    /// Releases the resources used by the current instance of the class
+    /// </summary>
+    public void Dispose()
+    {
+        _dbContextLock.Dispose();
+    }
+
+    #endregion // IDisposable
 }

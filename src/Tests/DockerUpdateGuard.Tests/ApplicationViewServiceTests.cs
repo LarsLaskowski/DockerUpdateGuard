@@ -18,7 +18,7 @@ public class ApplicationViewServiceTests
     #region Properties
 
     /// <summary>
-    /// Test context providing information about and functionality for the current test run.
+    /// Test context providing information about and functionality for the current test run
     /// </summary>
     public TestContext TestContext { get; set; }
 
@@ -230,9 +230,12 @@ public class ApplicationViewServiceTests
             var dashboard = await service.GetDashboardAsync(CancellationToken.None)
                                          .ConfigureAwait(false);
 
-            Assert.AreEqual(2,
+            Assert.AreEqual(1,
                             dashboard.ObservedImageCount,
-                            "The dashboard must report the observed image count");
+                            "The dashboard must report only manually-registered observed images");
+            Assert.AreEqual(1,
+                            dashboard.MyImageCount,
+                            "The dashboard must report only discovery-owned images in the My Images count");
             Assert.AreEqual(1,
                             dashboard.DockerInstanceCount,
                             "The dashboard must report the Docker instance count");
@@ -255,11 +258,11 @@ public class ApplicationViewServiceTests
     }
 
     /// <summary>
-    /// Verify shared base images are exposed through the application view service
+    /// Verify base images are exposed through the application view service
     /// </summary>
     /// <returns>Task</returns>
     [TestMethod]
-    public async Task ApplicationViewServiceSharedBaseImagesReturnsAggregatedBaseUsageAsync()
+    public async Task ApplicationViewServiceBaseImagesReturnsAggregatedUsageAsync()
     {
         var options = new DbContextOptionsBuilder<DockerUpdateGuardDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString())
                                                                                .Options;
@@ -321,18 +324,25 @@ public class ApplicationViewServiceTests
             var service = new ApplicationViewService(dbContext,
                                                      new ImageReferenceParser(),
                                                      new SharedBaseImageQueryService(dbContext));
-            var sharedBaseImages = await service.GetSharedBaseImagesAsync(CancellationToken.None)
-                                                .ConfigureAwait(false);
+            var hasBaseImages = await service.HasBaseImagesAsync(CancellationToken.None)
+                                             .ConfigureAwait(false);
+            var baseImages = await service.GetBaseImagesAsync(CancellationToken.None)
+                                          .ConfigureAwait(false);
 
+            Assert.IsTrue(hasBaseImages,
+                          "The application view service must report available base images when at least one relationship is stored");
             Assert.HasCount(1,
-                            sharedBaseImages,
-                            "The application view service must surface shared base image data when one base image is used by multiple observed images");
-            Assert.IsTrue(sharedBaseImages[0].ImageReference.StartsWith("docker.io/library/debian:12-slim@",
-                                                                        StringComparison.Ordinal),
-                          "The shared base image must expose the formatted image reference including its digest");
+                            baseImages,
+                            "The application view service must surface one base image entry for the seeded base image");
+            Assert.IsTrue(baseImages[0].ImageReference.StartsWith("docker.io/library/debian:12-slim@",
+                                                                  StringComparison.Ordinal),
+                          "The base image must expose the formatted image reference including its digest");
             Assert.AreEqual(2,
-                            sharedBaseImages[0].ObservedImageCount,
-                            "The shared base image must report the number of observed images that depend on it");
+                            baseImages[0].ObservedImageCount,
+                            "The base image must report the number of observed images that depend on it");
+            CollectionAssert.AreEquivalent(new[] { "docker.io/company/app-a:1.0.0@sha256:app-a", "docker.io/company/app-b:2.0.0@sha256:app-b" },
+                                           baseImages[0].ParentImageReferences.ToArray(),
+                                           "The base image must list the parent images that use it");
         }
     }
 
@@ -1375,6 +1385,128 @@ public class ApplicationViewServiceTests
             Assert.AreEqual("Runtime fallback finding",
                             runtimeDetail.BaseRuntimeAlertSummary,
                             "Runtime container detail must keep the runtime-specific finding when it exists");
+        }
+    }
+
+    /// <summary>
+    /// Verify GetManualObservedImagesAsync returns only manually-registered images
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task ApplicationViewServiceGetManualObservedImagesReturnsOnlyManualImagesAsync()
+    {
+        var options = new DbContextOptionsBuilder<DockerUpdateGuardDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString())
+                                                                               .Options;
+
+        var dbContext = new DockerUpdateGuardDbContext(options);
+
+        await using (dbContext.ConfigureAwait(false))
+        {
+            var imageCatalogRepository = new ImageCatalogRepository(dbContext);
+            var manualVersion = await imageCatalogRepository.GetOrCreateImageVersionAsync("docker.io",
+                                                                                          "company/manual",
+                                                                                          "1.0.0",
+                                                                                          "sha256:manual",
+                                                                                          cancellationToken: CancellationToken.None)
+                                                            .ConfigureAwait(false);
+            var discoveryVersion = await imageCatalogRepository.GetOrCreateImageVersionAsync("docker.io",
+                                                                                             "company/own",
+                                                                                             "2.0.0",
+                                                                                             "sha256:own",
+                                                                                             cancellationToken: CancellationToken.None)
+                                                               .ConfigureAwait(false);
+
+            dbContext.ObservedImages.AddRange(new ObservedImage
+                                              {
+                                                  Name = "Manual Image",
+                                                  CurrentImageVersionId = manualVersion.Id,
+                                                  Source = RegistrationSource.Manual,
+                                              },
+                                              new ObservedImage
+                                              {
+                                                  Name = "Own Image",
+                                                  CurrentImageVersionId = discoveryVersion.Id,
+                                                  Source = RegistrationSource.Discovery,
+                                              });
+
+            await dbContext.SaveChangesAsync(CancellationToken.None)
+                           .ConfigureAwait(false);
+
+            var service = new ApplicationViewService(dbContext,
+                                                     new ImageReferenceParser(),
+                                                     new SharedBaseImageQueryService(dbContext));
+            var manualImages = await service.GetManualObservedImagesAsync(CancellationToken.None)
+                                            .ConfigureAwait(false);
+
+            Assert.HasCount(1,
+                            manualImages,
+                            "GetManualObservedImagesAsync must return only manually-registered images");
+            Assert.AreEqual("Manual Image",
+                            manualImages.Single().Name,
+                            "GetManualObservedImagesAsync must return the manually-registered image by name");
+            Assert.IsFalse(manualImages.Single().IsOwnImage,
+                           "Manual images must not be flagged as own images");
+        }
+    }
+
+    /// <summary>
+    /// Verify GetDiscoveryObservedImagesAsync returns only discovery-owned images
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task ApplicationViewServiceGetDiscoveryObservedImagesReturnsOnlyDiscoveryImagesAsync()
+    {
+        var options = new DbContextOptionsBuilder<DockerUpdateGuardDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString())
+                                                                               .Options;
+
+        var dbContext = new DockerUpdateGuardDbContext(options);
+
+        await using (dbContext.ConfigureAwait(false))
+        {
+            var imageCatalogRepository = new ImageCatalogRepository(dbContext);
+            var manualVersion = await imageCatalogRepository.GetOrCreateImageVersionAsync("docker.io",
+                                                                                          "company/manual",
+                                                                                          "1.0.0",
+                                                                                          "sha256:manual",
+                                                                                          cancellationToken: CancellationToken.None)
+                                                            .ConfigureAwait(false);
+            var discoveryVersion = await imageCatalogRepository.GetOrCreateImageVersionAsync("docker.io",
+                                                                                             "company/own",
+                                                                                             "2.0.0",
+                                                                                             "sha256:own",
+                                                                                             cancellationToken: CancellationToken.None)
+                                                               .ConfigureAwait(false);
+
+            dbContext.ObservedImages.AddRange(new ObservedImage
+                                              {
+                                                  Name = "Manual Image",
+                                                  CurrentImageVersionId = manualVersion.Id,
+                                                  Source = RegistrationSource.Manual,
+                                              },
+                                              new ObservedImage
+                                              {
+                                                  Name = "Own Image",
+                                                  CurrentImageVersionId = discoveryVersion.Id,
+                                                  Source = RegistrationSource.Discovery,
+                                              });
+
+            await dbContext.SaveChangesAsync(CancellationToken.None)
+                           .ConfigureAwait(false);
+
+            var service = new ApplicationViewService(dbContext,
+                                                     new ImageReferenceParser(),
+                                                     new SharedBaseImageQueryService(dbContext));
+            var discoveryImages = await service.GetDiscoveryObservedImagesAsync(CancellationToken.None)
+                                               .ConfigureAwait(false);
+
+            Assert.HasCount(1,
+                            discoveryImages,
+                            "GetDiscoveryObservedImagesAsync must return only discovery-owned images");
+            Assert.AreEqual("Own Image",
+                            discoveryImages.Single().Name,
+                            "GetDiscoveryObservedImagesAsync must return the discovery-owned image by name");
+            Assert.IsTrue(discoveryImages.Single().IsOwnImage,
+                          "Discovery images must be flagged as own images");
         }
     }
 

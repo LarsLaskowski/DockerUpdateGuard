@@ -1,9 +1,7 @@
-using System.Net;
-using System.Text;
-
 using DockerUpdateGuard.Images;
 using DockerUpdateGuard.Infrastructure;
 using DockerUpdateGuard.Tests.Data;
+using DockerUpdateGuard.Tests.Helper;
 
 namespace DockerUpdateGuard.Tests;
 
@@ -11,7 +9,7 @@ namespace DockerUpdateGuard.Tests;
 /// Tests for <see cref="NginxReleaseMetadataService"/>
 /// </summary>
 [TestClass]
-public class NginxReleaseMetadataServiceTests
+public partial class NginxReleaseMetadataServiceTests
 {
     #region Methods
 
@@ -98,51 +96,7 @@ public class NginxReleaseMetadataServiceTests
     }
 
     #endregion // Methods
-
     #region Helper types
-
-    /// <summary>
-    /// Fixed-response HTTP message handler for metadata tests
-    /// </summary>
-    private sealed class StaticHttpMessageHandler : HttpMessageHandler
-    {
-        #region Fields
-
-        /// <summary>
-        /// Response payload
-        /// </summary>
-        private readonly string _payload;
-
-        #endregion // Fields
-
-        #region Constructors
-
-        /// <summary>
-        /// Constructor
-        /// </summary>
-        /// <param name="payload">Response payload</param>
-        public StaticHttpMessageHandler(string payload)
-        {
-            _payload = payload;
-        }
-
-        #endregion // Constructors
-
-        #region Methods
-
-        /// <inheritdoc/>
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-        {
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
-                                   {
-                                       Content = new StringContent(_payload,
-                                                                   Encoding.UTF8,
-                                                                   "text/html"),
-                                   });
-        }
-
-        #endregion // Methods
-    }
 
     #endregion // Helper types
 }

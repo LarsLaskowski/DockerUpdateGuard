@@ -79,7 +79,22 @@ stages:
               containerRegistry: 'DockerHub'
 
           - script: |
-              docker build -f $(dockerfilePath) --build-arg APP_VERSION=$(appVersion) -t $(dockerRepository):$(appVersion) -t $(dockerRepository):latest $(Build.SourcesDirectory)
+              echo "Pulling base images..."
+              docker pull mcr.microsoft.com/dotnet/runtime:10.0-alpine
+              
+              echo "Extracting digests..."
+              RUNTIME_DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' mcr.microsoft.com/dotnet/runtime:10.0-alpine)
+              
+              echo "##vso[task.setvariable variable=BASE_RUNTIME_DIGEST]$RUNTIME_DIGEST"
+            displayName: "Pull base images & extract digests"
+
+          - script: |
+              docker build --file $(dockerfilePath) \
+                           --build-arg APP_VERSION=$(appVersion) \
+                           --build-arg BASE_RUNTIME_DIGEST=$(BASE_RUNTIME_DIGEST) \
+                           --tag $(dockerRepository):$(appVersion) \
+                           --tag $(dockerRepository):latest \
+                           $(Build.SourcesDirectory)
               docker push $(dockerRepository):$(appVersion)
               docker push $(dockerRepository):latest
             displayName: 'Build & Push image'

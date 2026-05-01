@@ -8,11 +8,11 @@ public interface ISharedBaseImageQueryService
     #region Methods
 
     /// <summary>
-    /// Get all base images used by more than one observed image
+    /// Get all resolved base images for the overview page
     /// </summary>
     /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>Shared base images</returns>
-    Task<IReadOnlyList<SharedBaseImageUsageData>> GetSharedBaseImagesAsync(CancellationToken cancellationToken = default);
+    /// <returns>Base images</returns>
+    Task<IReadOnlyList<SharedBaseImageUsageData>> GetBaseImagesAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Get observed images that depend on a base image

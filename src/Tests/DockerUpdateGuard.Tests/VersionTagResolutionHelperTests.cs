@@ -1,4 +1,5 @@
-using DockerUpdateGuard.Images;
+using DockerUpdateGuard.Images.Data;
+using DockerUpdateGuard.Images.Helper;
 
 namespace DockerUpdateGuard.Tests;
 
@@ -54,6 +55,39 @@ public class VersionTagResolutionHelperTests
         Assert.AreEqual("2019-release42-build7",
                         displayTag,
                         "Display-version resolution must keep supported year-prefixed tags");
+    }
+
+    /// <summary>
+    /// Verify MCR aliases resolve to exact tags from the same variant family
+    /// </summary>
+    [TestMethod]
+    public void VersionTagResolutionHelperResolveAliasVersionTagKeepsSameMcrVariantFamily()
+    {
+        var resolvedTag = VersionTagResolutionHelper.ResolveAliasVersionTag("10.0-alpine",
+                                                                            "sha256:current",
+                                                                            [
+                                                                                new VersionTagCandidateData
+                                                                                {
+                                                                                    Tag = "10.0-alpine",
+                                                                                    Digest = "sha256:current",
+                                                                                },
+                                                                                new VersionTagCandidateData
+                                                                                {
+                                                                                    Tag = "10.0.7-alpine3.23",
+                                                                                    Digest = "sha256:current",
+                                                                                    PublishedAtUtc = new DateTimeOffset(2025, 06, 02, 12, 00, 00, TimeSpan.Zero),
+                                                                                },
+                                                                                new VersionTagCandidateData
+                                                                                {
+                                                                                    Tag = "10.0.7-jammy",
+                                                                                    Digest = "sha256:current",
+                                                                                    PublishedAtUtc = new DateTimeOffset(2025, 06, 03, 12, 00, 00, TimeSpan.Zero),
+                                                                                },
+                                                                            ]);
+
+        Assert.AreEqual("10.0.7-alpine3.23",
+                        resolvedTag,
+                        "Alias resolution must keep MCR tags within the same variant family when multiple digest-matching exact tags exist");
     }
 
     #endregion // Methods

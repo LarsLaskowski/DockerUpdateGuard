@@ -5,6 +5,7 @@ using DockerUpdateGuard.Data;
 using DockerUpdateGuard.Data.Entities;
 using DockerUpdateGuard.Data.Repositories;
 using DockerUpdateGuard.DockerHub;
+using DockerUpdateGuard.Images.Interfaces;
 using DockerUpdateGuard.Infrastructure;
 
 using Microsoft.EntityFrameworkCore;
@@ -180,6 +181,7 @@ public class DockerHubAccountImageDiscoveryService : IDockerHubAccountImageDisco
         var accountName = dockerHubOptions.UserName.Trim();
 
         _logger.DockerHubAccountSynchronizationStarted(accountName);
+
         var repositoriesResult = await _dockerHubClient.GetRepositoriesAsync(accountName, cancellationToken)
                                                        .ConfigureAwait(false);
 
@@ -204,6 +206,7 @@ public class DockerHubAccountImageDiscoveryService : IDockerHubAccountImageDisco
                                                      .Where(entity => entity.Source == RegistrationSource.Discovery)
                                                      .ToListAsync(cancellationToken)
                                                      .ConfigureAwait(false);
+
         var synchronizedImageCount = 0;
         var disabledImageCount = 0;
         var skippedRepositoryCount = 0;
@@ -230,6 +233,7 @@ public class DockerHubAccountImageDiscoveryService : IDockerHubAccountImageDisco
                 || tagsResult.Data is null)
             {
                 skippedRepositoryCount++;
+
                 _logger.DockerHubAccountSynchronizationRepositorySkipped(repository.Repository,
                                                                          tagsResult.Status,
                                                                          tagsResult.Message);
@@ -275,6 +279,7 @@ public class DockerHubAccountImageDiscoveryService : IDockerHubAccountImageDisco
                                         };
 
                 existingObservedImages.Add(existingObservedImage);
+
                 _dbContext.ObservedImages.Add(existingObservedImage);
             }
             else
@@ -292,6 +297,7 @@ public class DockerHubAccountImageDiscoveryService : IDockerHubAccountImageDisco
 
         await _dbContext.SaveChangesAsync(cancellationToken)
                         .ConfigureAwait(false);
+
         _logger.DockerHubAccountSynchronizationCompleted(accountName,
                                                          repositories.Count,
                                                          synchronizedImageCount,

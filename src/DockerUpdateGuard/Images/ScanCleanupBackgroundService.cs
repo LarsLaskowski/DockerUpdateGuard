@@ -11,6 +11,15 @@ namespace DockerUpdateGuard.Images;
 /// </summary>
 public class ScanCleanupBackgroundService : ScheduledBackgroundService
 {
+    #region Constants
+
+    /// <summary>
+    /// Maximum number of scan runs to retain for history views
+    /// </summary>
+    private const int MaxRetainedScanRuns = 20;
+
+    #endregion // Constants
+
     #region Fields
 
     /// <summary>
@@ -59,6 +68,12 @@ public class ScanCleanupBackgroundService : ScheduledBackgroundService
     }
 
     /// <inheritdoc/>
+    protected override bool ShouldExecuteImmediately()
+    {
+        return false;
+    }
+
+    /// <inheritdoc/>
     protected override async Task ExecuteCoreAsync(CancellationToken stoppingToken)
     {
         var scope = _serviceScopeFactory.CreateAsyncScope();
@@ -67,7 +82,23 @@ public class ScanCleanupBackgroundService : ScheduledBackgroundService
         {
             var dbContext = scope.ServiceProvider.GetRequiredService<DockerUpdateGuardDbContext>();
             var applicationTelemetry = scope.ServiceProvider.GetRequiredService<ApplicationTelemetry>();
-            var cutoff = DateTimeOffset.UtcNow.AddDays(-_optionsMonitor.CurrentValue.Scanning.RetainScanRunsDays);
+            var cleanupStartedAtUtc = DateTimeOffset.UtcNow;
+
+            var cutoff = cleanupStartedAtUtc.AddDays(-_optionsMonitor.CurrentValue.Scanning.RetainScanRunsDays);
+
+            var completedUnreferencedScanRuns = dbContext.ScanRuns
+                                                         .Where(entity => entity.CompletedAtUtc != null
+                                                                          && entity.CompletedAtUtc <= cleanupStartedAtUtc
+                                                                          && entity.UpdateFindings.Any() == false
+                                                                          && entity.VulnerabilityFindings.Any() == false
+                                                                          && entity.ContainerSnapshots.Any() == false
+                                                                          && entity.ImageRelationships.Any() == false);
+
+            var retainedScanRunIds = await completedUnreferencedScanRuns.OrderByDescending(entity => entity.CompletedAtUtc)
+                                                                        .Take(MaxRetainedScanRuns)
+                                                                        .Select(entity => entity.Id)
+                                                                        .ToListAsync(stoppingToken)
+                                                                        .ConfigureAwait(false);
 
             var oldTagCandidates = await dbContext.TagCandidates
                                                   .Where(entity => entity.UpdateFinding.ResolvedAtUtc != null
@@ -101,15 +132,13 @@ public class ScanCleanupBackgroundService : ScheduledBackgroundService
                                               .ToListAsync(stoppingToken)
                                               .ConfigureAwait(false);
 
-            var oldScanRuns = await dbContext.ScanRuns
-                                             .Where(entity => entity.CompletedAtUtc != null
-                                                              && entity.CompletedAtUtc < cutoff
-                                                              && entity.UpdateFindings.Any() == false
-                                                              && entity.VulnerabilityFindings.Any() == false
-                                                              && entity.ContainerSnapshots.Any() == false
-                                                              && entity.ImageRelationships.Any() == false)
-                                             .ToListAsync(stoppingToken)
-                                             .ConfigureAwait(false);
+            var oldScanRuns = await completedUnreferencedScanRuns.Where(entity => entity.CompletedAtUtc < cutoff)
+                                                                 .ToListAsync(stoppingToken)
+                                                                 .ConfigureAwait(false);
+
+            var excessScanRuns = await completedUnreferencedScanRuns.Where(entity => retainedScanRunIds.Contains(entity.Id) == false)
+                                                                    .ToListAsync(stoppingToken)
+                                                                    .ConfigureAwait(false);
 
             var oldRuntimeContainerSamples = await dbContext.RuntimeContainerResourceSamples
                                                             .Where(entity => entity.RecordedAtUtc < cutoff)
@@ -125,11 +154,15 @@ public class ScanCleanupBackgroundService : ScheduledBackgroundService
                                                          .DistinctBy(entity => entity.Id)
                                                          .ToList();
 
+            var removableScanRuns = oldScanRuns.Concat(excessScanRuns)
+                                               .DistinctBy(entity => entity.Id)
+                                               .ToList();
+
             dbContext.TagCandidates.RemoveRange(removableTagCandidates);
             dbContext.UpdateFindings.RemoveRange(oldUpdateFindings);
             dbContext.VulnerabilityFindings.RemoveRange(oldVulnerabilityFindings);
             dbContext.ContainerSnapshots.RemoveRange(oldSnapshots);
-            dbContext.ScanRuns.RemoveRange(oldScanRuns);
+            dbContext.ScanRuns.RemoveRange(removableScanRuns);
             dbContext.RuntimeContainerResourceSamples.RemoveRange(oldRuntimeContainerSamples);
             dbContext.DockerInstanceResourceSamples.RemoveRange(oldDockerInstanceSamples);
 
@@ -144,7 +177,7 @@ public class ScanCleanupBackgroundService : ScheduledBackgroundService
                                          oldUpdateFindings.Count,
                                          oldVulnerabilityFindings.Count,
                                          oldSnapshots.Count,
-                                         oldScanRuns.Count);
+                                         removableScanRuns.Count);
         }
     }
 

@@ -7,6 +7,8 @@ using System.Text.Json;
 using DockerUpdateGuard.Configuration;
 using DockerUpdateGuard.Data.Entities;
 using DockerUpdateGuard.Images;
+using DockerUpdateGuard.Images.Data;
+using DockerUpdateGuard.Images.Interfaces;
 using DockerUpdateGuard.Infrastructure;
 using DockerUpdateGuard.Telemetry;
 
@@ -22,7 +24,7 @@ public class DockerInstanceClient : IDockerInstanceClient
     /// <summary>
     /// Image reference parser
     /// </summary>
-    private static readonly IImageReferenceParser ImageReferenceParser = new ImageReferenceParser();
+    private static readonly IImageReferenceParser _imageReferenceParser = new ImageReferenceParser();
 
     /// <summary>
     /// HTTP-client factory
@@ -201,7 +203,7 @@ public class DockerInstanceClient : IDockerInstanceClient
 
         try
         {
-            imageReference = ImageReferenceParser.Parse(value);
+            imageReference = _imageReferenceParser.Parse(value);
 
             return true;
         }

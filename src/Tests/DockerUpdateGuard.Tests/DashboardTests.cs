@@ -15,9 +15,9 @@ public class DashboardTests
     /// <summary>
     /// Non-public dashboard route resolver
     /// </summary>
-    private static readonly MethodInfo GetMetricNavigationTargetMethod = typeof(Dashboard).GetMethod("GetMetricNavigationTarget",
-                                                                                                     BindingFlags.NonPublic | BindingFlags.Static)
-                                                                             ?? throw new InvalidOperationException("The dashboard page must expose the non-public GetMetricNavigationTarget method for metric-card navigation");
+    private static readonly MethodInfo _getMetricNavigationTargetMethod = typeof(Dashboard).GetMethod("GetMetricNavigationTarget",
+                                                                                                      BindingFlags.NonPublic | BindingFlags.Static)
+                                                                          ?? throw new InvalidOperationException("The dashboard page must expose the non-public GetMetricNavigationTarget method for metric-card navigation");
 
     #endregion // Fields
 
@@ -29,13 +29,14 @@ public class DashboardTests
     /// <param name="metricLabel">Metric label</param>
     /// <param name="expectedRoute">Expected route</param>
     [TestMethod]
+    [DataRow("My Images", "/my-images")]
     [DataRow("Observed Images", "/observed-images")]
     [DataRow("Docker Instances", "/docker-instances")]
     [DataRow("Runtime Containers", "/runtime-containers")]
-    [DataRow("Shared Bases", "/shared-base-images")]
+    [DataRow("Base Images", "/base-images")]
     public void DashboardGetMetricNavigationTargetKnownMetricReturnsExpectedRoute(string metricLabel, string expectedRoute)
     {
-        var route = GetMetricNavigationTargetMethod.Invoke(null, [metricLabel]) as string;
+        var route = _getMetricNavigationTargetMethod.Invoke(null, [metricLabel]) as string;
 
         Assert.AreEqual(expectedRoute,
                         route,

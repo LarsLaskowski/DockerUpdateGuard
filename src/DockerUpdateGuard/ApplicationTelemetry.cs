@@ -5,7 +5,6 @@ using DockerUpdateGuard.Data.Entities;
 using DockerUpdateGuard.Telemetry;
 
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace DockerUpdateGuard;

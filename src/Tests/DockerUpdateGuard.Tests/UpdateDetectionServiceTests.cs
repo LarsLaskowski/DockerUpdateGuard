@@ -1,5 +1,7 @@
 using DockerUpdateGuard.DockerHub;
 using DockerUpdateGuard.Images;
+using DockerUpdateGuard.Images.Data;
+using DockerUpdateGuard.Images.Enums;
 
 namespace DockerUpdateGuard.Tests;
 
@@ -222,6 +224,60 @@ public class UpdateDetectionServiceTests
         Assert.AreEqual("2019-release10",
                         evaluation.RecommendedTag,
                         "Year-prefixed tags must ignore tags from newer year lines");
+    }
+
+    /// <summary>
+    /// Verify MCR channel tags only advance within the same variant family
+    /// </summary>
+    [TestMethod]
+    public void UpdateDetectionServiceMcrChannelTagUsesSameVariantFamilySuccessors()
+    {
+        var service = new UpdateDetectionService();
+
+        var evaluation = service.Evaluate(new ImageReference
+                                          {
+                                              Registry = "mcr.microsoft.com",
+                                              Repository = "dotnet/runtime",
+                                              Tag = "10.0-alpine",
+                                              Digest = "sha256:current",
+                                          },
+                                          [
+                                              new DockerHubTagData
+                                              {
+                                                  Tag = "10.0-alpine",
+                                                  Digest = "sha256:current",
+                                                  PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
+                                              },
+                                              new DockerHubTagData
+                                              {
+                                                  Tag = "10.0.7-alpine3.23",
+                                                  Digest = "sha256:current",
+                                                  PublishedAtUtc = new DateTimeOffset(2025, 06, 02, 12, 00, 00, TimeSpan.Zero),
+                                              },
+                                              new DockerHubTagData
+                                              {
+                                                  Tag = "10.0.8-alpine3.24",
+                                                  Digest = "sha256:update",
+                                                  PublishedAtUtc = new DateTimeOffset(2025, 06, 03, 12, 00, 00, TimeSpan.Zero),
+                                              },
+                                              new DockerHubTagData
+                                              {
+                                                  Tag = "10.0.8-jammy",
+                                                  Digest = "sha256:other",
+                                                  PublishedAtUtc = new DateTimeOffset(2025, 06, 04, 12, 00, 00, TimeSpan.Zero),
+                                              },
+                                          ]);
+
+        Assert.AreEqual(UpdateEvaluationStatus.UpdateAvailable,
+                        evaluation.Status,
+                        "MCR channel tags must report an available update when a newer exact tag exists in the same variant family");
+        Assert.AreEqual("10.0.8-alpine3.24",
+                        evaluation.RecommendedTag,
+                        "MCR channel tags must recommend the newer exact tag from the same variant family");
+        CollectionAssert.AreEqual(new[] { "10.0.8-alpine3.24", "10.0.7-alpine3.23" },
+                                  evaluation.Candidates.Select(candidate => candidate.Tag)
+                                                       .ToArray(),
+                                  "MCR channel tag candidates must stay in the same variant family and include the resolved current exact tag");
     }
 
     /// <summary>

@@ -25,8 +25,8 @@ internal static class ImageReferenceFormatter
     }
 
     /// <summary>
-    /// Return a shortened digest for compact display, or null when no digest is present.
-    /// Returns only the first 12 characters of the hash, without algorithm prefix.
+    /// Return a shortened digest for compact display, or null when no digest is present
+    /// Returns only the first 12 characters of the hash, without algorithm prefix
     /// </summary>
     /// <param name="fullRef">Full image reference</param>
     /// <returns>Shortened digest or null</returns>

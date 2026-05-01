@@ -7,189 +7,128 @@
         <div>
             <MudText Typo="Typo.overline" Class="page-eyebrow">Registry monitoring</MudText>
             <MudText Typo="Typo.h3">Observed Images</MudText>
-            <MudText Class="page-description">Own images discovered from the configured Docker account are shown separately from manually tracked images.</MudText>
+            <MudText Class="page-description">Manually tracked images registered by the operator. Add a registry reference below and trigger a fresh scan immediately.</MudText>
         </div>
     </div>
 
-    <MudGrid Spacing="3">
-        <MudItem xs="12" lg="4">
-            <MudPaper Class="section-paper section-paper--accent" Elevation="0">
-                <div class="section-header">
-                    <MudText Typo="Typo.h5">Register image</MudText>
-                    <MudText Class="section-description">Add a registry reference and trigger a fresh scan immediately.</MudText>
-                </div>
+    <MudPaper Class="section-paper section-paper--accent" Elevation="0">
+        <div class="section-header">
+            <MudText Typo="Typo.h5">Register image</MudText>
+        </div>
 
-                @if (string.IsNullOrWhiteSpace(_errorMessage) == false)
-                {
-                    <MudAlert Severity="Severity.Error" Dense="true">@_errorMessage</MudAlert>
-                }
+        @if (string.IsNullOrWhiteSpace(_errorMessage) == false)
+        {
+            <MudAlert Severity="Severity.Error" Dense="true" Class="mb-3">@_errorMessage</MudAlert>
+        }
 
-                <EditForm Model="_request" OnValidSubmit="RegisterAsync">
-                    <DataAnnotationsValidator />
-                    <MudStack Spacing="2">
-                        <MudTextField T="string"
-                                      @bind-Value="_request.Name"
-                                      For="@(() => _request.Name)"
-                                      Label="Name"
-                                      Variant="Variant.Outlined" />
-                        <MudTextField T="string"
-                                      @bind-Value="_request.ImageReference"
-                                      For="@(() => _request.ImageReference)"
-                                      Label="Image reference"
-                                      Placeholder="nginx:1.25 or registry.com/repo/image:tag"
-                                      HelperText="Formats: image:tag · repo/image:tag · registry.com/image:tag · image:tag@sha256:… — digest is optional, registry defaults to docker.io"
-                                      Variant="Variant.Outlined" />
-                        <MudTextField T="string"
-                                      @bind-Value="_request.Description"
-                                      For="@(() => _request.Description)"
-                                      Label="Description"
-                                      Variant="Variant.Outlined"
-                                      Lines="4" />
-                        <ValidationSummary />
-                        <MudButton ButtonType="ButtonType.Submit"
-                                   Color="Color.Primary"
-                                   Variant="Variant.Filled"
-                                   Disabled="@_isBusy"
-                                   FullWidth="true">
-                            Register and scan
-                        </MudButton>
-                    </MudStack>
-                </EditForm>
+        <EditForm Model="_request" OnValidSubmit="RegisterAsync">
+            <DataAnnotationsValidator />
+            <MudGrid Spacing="2">
+                <MudItem xs="12" sm="6" md="3">
+                    <MudTextField T="string"
+                                  @bind-Value="_request.Name"
+                                  For="@(() => _request.Name)"
+                                  Label="Name"
+                                  Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" sm="6" md="4">
+                    <MudTextField T="string"
+                                  @bind-Value="_request.ImageReference"
+                                  For="@(() => _request.ImageReference)"
+                                  Label="Image reference"
+                                  Placeholder="nginx:1.25 or registry.com/repo/image:tag"
+                                  Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" sm="6" md="3">
+                    <MudTextField T="string"
+                                  @bind-Value="_request.Description"
+                                  For="@(() => _request.Description)"
+                                  Label="Description"
+                                  Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" sm="6" md="2" Class="d-flex align-center">
+                    <MudButton ButtonType="ButtonType.Submit"
+                               Color="Color.Primary"
+                               Variant="Variant.Filled"
+                               Disabled="@_isBusy"
+                               FullWidth="true">
+                        Register and scan
+                    </MudButton>
+                </MudItem>
+                <MudItem xs="12">
+                    <MudText Typo="Typo.caption" Class="table-secondary">
+                        Formats: image:tag · repo/image:tag · registry.com/image:tag · image:tag@sha256:… — digest is optional, registry defaults to docker.io
+                    </MudText>
+                </MudItem>
+            </MudGrid>
+            <ValidationSummary />
+        </EditForm>
+    </MudPaper>
+
+    <MudPaper Class="section-paper" Elevation="0">
+        <div class="section-header">
+            <MudText Typo="Typo.h5">Manual images</MudText>
+            <MudText Class="section-description">Images that were manually registered by the operator.</MudText>
+        </div>
+
+        @if (_images is null)
+        {
+            <MudPaper Class="empty-state-panel" Elevation="0">
+                <MudText>Loading manual images...</MudText>
             </MudPaper>
-        </MudItem>
-        <MudItem xs="12" lg="8">
-            @if (_images is null)
-            {
-                <MudPaper Class="empty-state-panel" Elevation="0">
-                    <MudText>Loading observed images...</MudText>
-                </MudPaper>
-            }
-            else
-            {
-                <MudStack Spacing="3">
-                    <MudPaper Class="section-paper" Elevation="0">
-                        <div class="section-header">
-                            <MudText Typo="Typo.h5">Own images from Docker account</MudText>
-                            <MudText Class="section-description">Automatically discovered images from the configured Docker account, prioritized when they are currently running.</MudText>
-                        </div>
-
-                        @if (GetOwnImages().Count == 0)
+        }
+        else if (_images.Count == 0)
+        {
+            <MudPaper Class="empty-state-panel" Elevation="0">
+                <MudText>No manual observed images are registered yet.</MudText>
+            </MudPaper>
+        }
+        else
+        {
+            <MudTable Items="_images" Hover="true" Dense="false" Breakpoint="Breakpoint.Md" Class="section-table">
+                <HeaderContent>
+                    <MudTh>Name</MudTh>
+                    <MudTh>Image</MudTh>
+                    <MudTh>Latest Scan</MudTh>
+                    <MudTh>Updates</MudTh>
+                    <MudTh>Base runtime</MudTh>
+                    <MudTh>Vulnerabilities</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Name">
+                        <MudLink Href="@($"/observed-images/{context.Id}")" Class="table-link">@context.Name</MudLink>
+                        <span class="table-secondary">@context.Description</span>
+                    </MudTd>
+                    <MudTd DataLabel="Image">
+                        <span>@ImageReferenceFormatter.GetReference(context.ImageReference)</span>
+                    </MudTd>
+                    <MudTd DataLabel="Latest Scan">
+                        <MudChip T="string" Size="Size.Small" Color="@GetScanStatusColor(context.LatestScanStatus)">@context.LatestScanStatus</MudChip>
+                        <span class="table-secondary">@context.LatestScanMessage</span>
+                    </MudTd>
+                    <MudTd DataLabel="Updates">@context.ActiveUpdateFindingCount</MudTd>
+                    <MudTd DataLabel="Base runtime">
+                        @if (string.IsNullOrWhiteSpace(context.BaseRuntimeAlertSummary))
                         {
-                            <MudPaper Class="empty-state-panel" Elevation="0">
-                                <MudText>No own images from the Docker account are currently available.</MudText>
-                            </MudPaper>
+                            <span class="table-secondary">No runtime hint</span>
                         }
                         else
                         {
-                            <MudTable Items="GetOwnImages()" Hover="true" Dense="false" Breakpoint="Breakpoint.Md" Class="section-table">
-                                <HeaderContent>
-                                    <MudTh>Name</MudTh>
-                                     <MudTh>Image</MudTh>
-                                     <MudTh>Latest Scan</MudTh>
-                                     <MudTh>Running</MudTh>
-                                     <MudTh>Base runtime</MudTh>
-                                     <MudTh>Vulnerabilities</MudTh>
-                                 </HeaderContent>
-                                <RowTemplate>
-                                    <MudTd DataLabel="Name">
-                                        <MudLink Href="@($"/observed-images/{context.Id}")" Class="table-link">@context.Name</MudLink>
-                                        <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Outlined">Own image</MudChip>
-                                        <span class="table-secondary">@context.Description</span>
-                                    </MudTd>
-                                    <MudTd DataLabel="Image">
-                                        <span>@ImageReferenceFormatter.GetReference(context.ImageReference)</span>
-                                    </MudTd>
-                                    <MudTd DataLabel="Latest Scan">
-                                        <MudChip T="string" Size="Size.Small" Color="@GetScanStatusColor(context.LatestScanStatus)">@context.LatestScanStatus</MudChip>
-                                        <span class="table-secondary">@context.LatestScanMessage</span>
-                                    </MudTd>
-                                     <MudTd DataLabel="Running">
-                                         <MudChip T="string" Size="Size.Small" Color="@(context.LinkedRuntimeContainerCount > 0 ? Color.Success : Color.Default)">
-                                             @(context.LinkedRuntimeContainerCount > 0 ? $"{context.LinkedRuntimeContainerCount} containers" : "Not running")
-                                         </MudChip>
-                                     </MudTd>
-                                     <MudTd DataLabel="Base runtime">
-                                         @if (string.IsNullOrWhiteSpace(context.BaseRuntimeAlertSummary))
-                                         {
-                                             <span class="table-secondary">No runtime warning</span>
-                                         }
-                                         else
-                                         {
-                                             <MudChip T="string" Size="Size.Small" Color="@GetBaseRuntimeAlertColor(context.IsOwnImage)">
-                                                 @(context.IsOwnImage ? "Runtime warning" : "Runtime hint")
-                                             </MudChip>
-                                             <span class="table-secondary">@context.BaseRuntimeAlertSummary</span>
-                                         }
-                                     </MudTd>
-                                     <MudTd DataLabel="Vulnerabilities">
-                                         <MudChip T="string" Size="Size.Small" Color="@GetVulnerabilityStatusColor(context.VulnerabilityStatus)">@context.VulnerabilityStatus</MudChip>
-                                         <span class="table-secondary">@($"{context.ActiveVulnerabilityFindingCount} active · {context.VulnerabilityMessage}")</span>
-                                    </MudTd>
-                                </RowTemplate>
-                            </MudTable>
+                            <MudChip T="string" Size="Size.Small" Color="Color.Info">Runtime hint</MudChip>
+                            <span class="table-secondary">@context.BaseRuntimeAlertSummary</span>
                         }
-                    </MudPaper>
-
-                    <MudPaper Class="section-paper" Elevation="0">
-                        <div class="section-header">
-                            <MudText Typo="Typo.h5">Manual images</MudText>
-                            <MudText Class="section-description">Images that were manually registered by the operator.</MudText>
-                        </div>
-
-                        @if (GetManualImages().Count == 0)
+                    </MudTd>
+                    <MudTd DataLabel="Vulnerabilities">
+                        <MudChip T="string" Size="Size.Small" Color="@GetVulnerabilityStatusColor(context.VulnerabilityStatus)">@context.VulnerabilityStatus</MudChip>
+                        <span class="table-secondary">@($"{context.ActiveVulnerabilityFindingCount} active · {context.VulnerabilityMessage}")</span>
+                        @if (context.ActiveBaseImageVulnerabilityFindingCount > 0)
                         {
-                            <MudPaper Class="empty-state-panel" Elevation="0">
-                                <MudText>No manual observed images are registered yet.</MudText>
-                            </MudPaper>
+                            <MudChip T="string" Size="Size.Small" Color="Color.Warning">Base images affected</MudChip>
+                            <span class="table-secondary">@context.BaseImageVulnerabilitySummary</span>
                         }
-                        else
-                        {
-                            <MudTable Items="GetManualImages()" Hover="true" Dense="false" Breakpoint="Breakpoint.Md" Class="section-table">
-                                <HeaderContent>
-                                    <MudTh>Name</MudTh>
-                                     <MudTh>Image</MudTh>
-                                     <MudTh>Latest Scan</MudTh>
-                                     <MudTh>Updates</MudTh>
-                                     <MudTh>Base runtime</MudTh>
-                                     <MudTh>Vulnerabilities</MudTh>
-                                 </HeaderContent>
-                                <RowTemplate>
-                                    <MudTd DataLabel="Name">
-                                        <MudLink Href="@($"/observed-images/{context.Id}")" Class="table-link">@context.Name</MudLink>
-                                        <MudChip T="string" Size="Size.Small" Color="Color.Default" Variant="Variant.Outlined">Manual</MudChip>
-                                        <span class="table-secondary">@context.Description</span>
-                                    </MudTd>
-                                    <MudTd DataLabel="Image">
-                                        <span>@ImageReferenceFormatter.GetReference(context.ImageReference)</span>
-                                    </MudTd>
-                                     <MudTd DataLabel="Latest Scan">
-                                         <MudChip T="string" Size="Size.Small" Color="@GetScanStatusColor(context.LatestScanStatus)">@context.LatestScanStatus</MudChip>
-                                         <span class="table-secondary">@context.LatestScanMessage</span>
-                                     </MudTd>
-                                     <MudTd DataLabel="Updates">@context.ActiveUpdateFindingCount</MudTd>
-                                     <MudTd DataLabel="Base runtime">
-                                         @if (string.IsNullOrWhiteSpace(context.BaseRuntimeAlertSummary))
-                                         {
-                                             <span class="table-secondary">No runtime hint</span>
-                                         }
-                                         else
-                                         {
-                                             <MudChip T="string" Size="Size.Small" Color="@GetBaseRuntimeAlertColor(context.IsOwnImage)">
-                                                 Runtime hint
-                                             </MudChip>
-                                             <span class="table-secondary">@context.BaseRuntimeAlertSummary</span>
-                                         }
-                                     </MudTd>
-                                     <MudTd DataLabel="Vulnerabilities">
-                                         <MudChip T="string" Size="Size.Small" Color="@GetVulnerabilityStatusColor(context.VulnerabilityStatus)">@context.VulnerabilityStatus</MudChip>
-                                         <span class="table-secondary">@($"{context.ActiveVulnerabilityFindingCount} active · {context.VulnerabilityMessage}")</span>
-                                    </MudTd>
-                                </RowTemplate>
-                            </MudTable>
-                        }
-                    </MudPaper>
-                </MudStack>
-            }
-        </MudItem>
-    </MudGrid>
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+    </MudPaper>
 </MudStack>

@@ -1,5 +1,7 @@
 using System.Text.RegularExpressions;
 
+using DockerUpdateGuard.Images.Data;
+using DockerUpdateGuard.Images.Interfaces;
 using DockerUpdateGuard.Infrastructure;
 
 namespace DockerUpdateGuard.Images;

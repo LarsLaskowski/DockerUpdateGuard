@@ -1,4 +1,6 @@
 using DockerUpdateGuard.DockerHub;
+using DockerUpdateGuard.Images.Data;
+using DockerUpdateGuard.Images.Interfaces;
 using DockerUpdateGuard.Infrastructure;
 
 namespace DockerUpdateGuard.Images;
@@ -6,7 +8,7 @@ namespace DockerUpdateGuard.Images;
 /// <summary>
 /// Registry metadata adapter dispatcher
 /// </summary>
-public class RegistryMetadataService : IRegistryMetadataService
+public partial class RegistryMetadataService : IRegistryMetadataService
 {
     #region Fields
 
@@ -53,7 +55,8 @@ public class RegistryMetadataService : IRegistryMetadataService
                                                                                        string repository,
                                                                                        CancellationToken cancellationToken = default,
                                                                                        string? operatingSystem = null,
-                                                                                       string? architecture = null)
+                                                                                       string? architecture = null,
+                                                                                       RegistryTagQueryOptions? queryOptions = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(registry);
         ArgumentException.ThrowIfNullOrWhiteSpace(repository);
@@ -63,7 +66,7 @@ public class RegistryMetadataService : IRegistryMetadataService
             return Task.FromResult(ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Unsupported(CreateUnsupportedMessage(registry)));
         }
 
-        return client.GetTagsAsync(registry, repository, cancellationToken, operatingSystem, architecture);
+        return client.GetTagsAsync(registry, repository, cancellationToken, operatingSystem, architecture, queryOptions);
     }
 
     /// <inheritdoc/>
@@ -116,56 +119,4 @@ public class RegistryMetadataService : IRegistryMetadataService
     }
 
     #endregion // Methods
-
-    #region Helper types
-
-    /// <summary>
-    /// Null object adapter used when no registry client matches
-    /// </summary>
-    private sealed class NullRegistryMetadataClient : IRegistryMetadataClient
-    {
-        /// <summary>
-        /// Singleton instance
-        /// </summary>
-        internal static readonly NullRegistryMetadataClient Instance = new();
-
-        /// <inheritdoc/>
-        public bool CanHandle(string registry)
-        {
-            return false;
-        }
-
-        /// <inheritdoc/>
-        public Task<ExternalOperationResult<DockerHubTagData>> GetTagAsync(ImageReference imageReference,
-                                                                           CancellationToken cancellationToken = default,
-                                                                           string? operatingSystem = null,
-                                                                           string? architecture = null)
-        {
-            throw new NotSupportedException();
-        }
-
-        /// <inheritdoc/>
-        public Task<ExternalOperationResult<IReadOnlyList<DockerHubTagData>>> GetTagsAsync(string registry,
-                                                                                           string repository,
-                                                                                           CancellationToken cancellationToken = default,
-                                                                                           string? operatingSystem = null,
-                                                                                           string? architecture = null)
-        {
-            throw new NotSupportedException();
-        }
-
-        /// <inheritdoc/>
-        public Task<ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>> ResolveBaseImagesAsync(ImageReference imageReference, CancellationToken cancellationToken = default)
-        {
-            throw new NotSupportedException();
-        }
-
-        /// <inheritdoc/>
-        public Task<ExternalOperationResult<RegistryImageConfigurationData>> GetImageConfigurationAsync(ImageReference imageReference, CancellationToken cancellationToken = default)
-        {
-            throw new NotSupportedException();
-        }
-    }
-
-    #endregion // Helper types
 }

@@ -6,7 +6,7 @@ namespace DockerUpdateGuard.Tests.Data;
 /// Test logger that captures emitted log entries
 /// </summary>
 /// <typeparam name="TCategoryName">Logger category</typeparam>
-internal sealed class TestLogger<TCategoryName> : ILogger<TCategoryName>
+internal sealed partial class TestLogger<TCategoryName> : ILogger<TCategoryName>
 {
     #region Fields
 
@@ -69,34 +69,4 @@ internal sealed class TestLogger<TCategoryName> : ILogger<TCategoryName>
     }
 
     #endregion // Methods
-
-    #region Helper types
-
-    /// <summary>
-    /// Empty logging scope
-    /// </summary>
-    private sealed class NullScope : IDisposable
-    {
-        #region Properties
-
-        /// <summary>
-        /// Shared instance
-        /// </summary>
-        public static NullScope Instance { get; } = new();
-
-        #endregion // Properties
-
-        #region Methods
-
-        /// <summary>
-        /// Release resources
-        /// </summary>
-        public void Dispose()
-        {
-        }
-
-        #endregion // Methods
-    }
-
-    #endregion // Helper types
 }

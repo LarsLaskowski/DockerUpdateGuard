@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text.Json;
 
@@ -6,6 +7,10 @@ using DockerUpdateGuard.Data.Entities;
 using DockerUpdateGuard.Data.Repositories;
 using DockerUpdateGuard.Docker;
 using DockerUpdateGuard.DockerHub;
+using DockerUpdateGuard.Images.Data;
+using DockerUpdateGuard.Images.Enums;
+using DockerUpdateGuard.Images.Helper;
+using DockerUpdateGuard.Images.Interfaces;
 using DockerUpdateGuard.Infrastructure;
 
 using Microsoft.EntityFrameworkCore;
@@ -17,7 +22,21 @@ namespace DockerUpdateGuard.Images;
 /// </summary>
 public class ImageScanOrchestrator : IImageScanOrchestrator
 {
+    #region Const fields
+
+    /// <summary>
+    /// Maximum number of tags to inspect while resolving an exact base-image tag
+    /// </summary>
+    private const int MaxBaseImageTagScanCount = 150;
+
+    #endregion // Const fields
+
     #region Fields
+
+    /// <summary>
+    /// Per-observed-image scan locks shared across orchestrator scopes
+    /// </summary>
+    private static readonly ConcurrentDictionary<Guid, SemaphoreSlim> _observedImageScanLocks = new();
 
     /// <summary>
     /// Application telemetry
@@ -69,11 +88,6 @@ public class ImageScanOrchestrator : IImageScanOrchestrator
     /// </summary>
     private readonly IRegistryMetadataService _registryMetadataService;
 
-    /// <summary>
-    /// Update-detection service
-    /// </summary>
-    private readonly IUpdateDetectionService _updateDetectionService;
-
     #endregion // Fields
 
     #region Constructors
@@ -91,7 +105,6 @@ public class ImageScanOrchestrator : IImageScanOrchestrator
     /// <param name="imageReferenceParser">Image reference parser</param>
     /// <param name="logger">Logger</param>
     /// <param name="registryMetadataService">Registry metadata service</param>
-    /// <param name="updateDetectionService">Update detection service</param>
     public ImageScanOrchestrator(ApplicationTelemetry applicationTelemetry,
                                  IBaseImageResolver baseImageResolver,
                                  DockerUpdateGuardDbContext dbContext,
@@ -101,8 +114,7 @@ public class ImageScanOrchestrator : IImageScanOrchestrator
                                  IImageCatalogRepository imageCatalogRepository,
                                  IImageReferenceParser imageReferenceParser,
                                  ILogger<ImageScanOrchestrator> logger,
-                                 IRegistryMetadataService registryMetadataService,
-                                 IUpdateDetectionService updateDetectionService)
+                                 IRegistryMetadataService registryMetadataService)
     {
         _applicationTelemetry = applicationTelemetry;
         _baseImageResolver = baseImageResolver;
@@ -114,7 +126,6 @@ public class ImageScanOrchestrator : IImageScanOrchestrator
         _imageReferenceParser = imageReferenceParser;
         _logger = logger;
         _registryMetadataService = registryMetadataService;
-        _updateDetectionService = updateDetectionService;
     }
 
     #endregion // Constructors
@@ -142,6 +153,16 @@ public class ImageScanOrchestrator : IImageScanOrchestrator
         return latestVersion.Major == currentVersion.Major
                && latestVersion.Minor == currentVersion.Minor
                && latestVersion > currentVersion;
+    }
+
+    /// <summary>
+    /// Resolve the scan lock for an observed image
+    /// </summary>
+    /// <param name="observedImageId">Observed image identifier</param>
+    /// <returns>Shared scan lock</returns>
+    private static SemaphoreSlim GetObservedImageScanLock(Guid observedImageId)
+    {
+        return _observedImageScanLocks.GetOrAdd(observedImageId, _ => new SemaphoreSlim(1, 1));
     }
 
     /// <inheritdoc/>
@@ -177,286 +198,254 @@ public class ImageScanOrchestrator : IImageScanOrchestrator
                                 CancellationToken cancellationToken = default)
     {
         var resolvedBaseImageCount = 0;
-        var observedImage = await _dbContext.ObservedImages.Include(entity => entity.CurrentImageVersion)
-                                                           .ThenInclude(entity => entity.RegistryRepository)
-                                                           .SingleAsync(entity => entity.Id == observedImageId, cancellationToken)
-                                                           .ConfigureAwait(false);
-        var scanRun = new ScanRun
-                      {
-                          Type = ScanRunType.ObservedImage,
-                          Status = ScanRunStatus.Running,
-                          TriggerSource = triggerSource,
-                          ObservedImageId = observedImage.Id,
-                          StartedAtUtc = DateTimeOffset.UtcNow,
-                      };
-
-        var stopwatch = Stopwatch.StartNew();
-        var statusMessages = new List<string>();
-        var finalStatus = ScanRunStatus.Succeeded;
-
-        _logger.ObservedImageScanStarted(observedImage.Name, triggerSource);
-
-        _dbContext.ScanRuns.Add(scanRun);
-
-        await _dbContext.SaveChangesAsync(cancellationToken)
-                        .ConfigureAwait(false);
-
-        await DeactivateObservedFindingsAsync(observedImage.Id, cancellationToken).ConfigureAwait(false);
+        var observedImageScanLock = GetObservedImageScanLock(observedImageId);
+        await observedImageScanLock.WaitAsync(cancellationToken).ConfigureAwait(false);
 
         try
         {
-            var imageReference = _imageReferenceParser.Parse(_imageReferenceParser.Format(observedImage.CurrentImageVersion));
-            var tagResult = await _registryMetadataService.GetTagAsync(imageReference, cancellationToken)
-                                                          .ConfigureAwait(false);
+            var observedImage = await _dbContext.ObservedImages.Include(entity => entity.CurrentImageVersion)
+                                                               .ThenInclude(entity => entity.RegistryRepository)
+                                                               .SingleAsync(entity => entity.Id == observedImageId, cancellationToken)
+                                                               .ConfigureAwait(false);
+            var scanRun = new ScanRun
+                          {
+                              Type = ScanRunType.ObservedImage,
+                              Status = ScanRunStatus.Running,
+                              TriggerSource = triggerSource,
+                              ObservedImageId = observedImage.Id,
+                              StartedAtUtc = DateTimeOffset.UtcNow,
+                          };
 
-            if (tagResult.Status == ExternalOperationStatus.Succeeded && tagResult.Data is not null)
+            var stopwatch = Stopwatch.StartNew();
+            var statusMessages = new List<string>();
+            var finalStatus = ScanRunStatus.Succeeded;
+
+            _logger.ObservedImageScanStarted(observedImage.Name, triggerSource);
+
+            _dbContext.ScanRuns.Add(scanRun);
+
+            await _dbContext.SaveChangesAsync(cancellationToken)
+                            .ConfigureAwait(false);
+
+            await DeleteSupersededObservedFindingsAsync(observedImage.Id, cancellationToken).ConfigureAwait(false);
+
+            try
             {
-                observedImage.CurrentImageVersion.MetadataJson = JsonSerializer.Serialize(tagResult.Data);
-                observedImage.CurrentImageVersion.PublishedAtUtc = tagResult.Data.PublishedAtUtc;
-                observedImage.CurrentImageVersion.UpdatedAtUtc = DateTimeOffset.UtcNow;
-            }
-            else
-            {
-                finalStatus = tagResult.Status == ExternalOperationStatus.Failed ? ScanRunStatus.Failed : ScanRunStatus.Partial;
+                var imageReference = _imageReferenceParser.Parse(_imageReferenceParser.Format(observedImage.CurrentImageVersion));
+                var tagResult = await _registryMetadataService.GetTagAsync(imageReference, cancellationToken)
+                                                              .ConfigureAwait(false);
 
-                statusMessages.Add(tagResult.Message ?? "Unable to refresh registry tag metadata");
-
-                _logger.ObservedImageMetadataRefreshIncomplete(observedImage.Name,
-                                                               tagResult.Status,
-                                                               tagResult.Message);
-            }
-
-            var baseImagesResult = await _baseImageResolver.ResolveAsync(imageReference, cancellationToken)
-                                                           .ConfigureAwait(false);
-
-            if (baseImagesResult.Status == ExternalOperationStatus.Succeeded && baseImagesResult.Data is not null)
-            {
-                resolvedBaseImageCount = baseImagesResult.Data.Count;
-
-                var existingRelationships = await _dbContext.ImageRelationships.Where(entity => entity.ChildImageVersionId == observedImage.CurrentImageVersionId
-                                                                                                && entity.RelationshipType == ImageRelationshipType.BaseImage)
-                                                                               .ToListAsync(cancellationToken)
-                                                                               .ConfigureAwait(false);
-
-                _dbContext.ImageRelationships.RemoveRange(existingRelationships);
-
-                foreach (var baseImage in baseImagesResult.Data)
+                if (tagResult.Status == ExternalOperationStatus.Succeeded && tagResult.Data is not null)
                 {
-                    var baseImageReference = $"{baseImage.Registry}/{baseImage.Repository}:{baseImage.Tag}";
+                    observedImage.CurrentImageVersion.MetadataJson = JsonSerializer.Serialize(tagResult.Data);
+                    observedImage.CurrentImageVersion.PublishedAtUtc = tagResult.Data.PublishedAtUtc;
+                    observedImage.CurrentImageVersion.UpdatedAtUtc = DateTimeOffset.UtcNow;
+                }
+                else
+                {
+                    finalStatus = tagResult.Status == ExternalOperationStatus.Failed ? ScanRunStatus.Failed : ScanRunStatus.Partial;
 
-                    var baseImageVersion = await _imageCatalogRepository.GetOrCreateImageVersionAsync(baseImage.Registry,
-                                                                                                      baseImage.Repository,
-                                                                                                      baseImage.Tag,
-                                                                                                      baseImage.Digest,
-                                                                                                      cancellationToken: cancellationToken)
-                                                                        .ConfigureAwait(false);
+                    statusMessages.Add(tagResult.Message ?? "Unable to refresh registry tag metadata");
 
-                    baseImageVersion.Source = ImageVersionSource.BaseImageResolution;
+                    _logger.ObservedImageMetadataRefreshIncomplete(observedImage.Name,
+                                                                   tagResult.Status,
+                                                                   tagResult.Message);
+                }
 
-                    _dbContext.ImageRelationships.Add(new ImageRelationship
-                                                      {
-                                                          ChildImageVersionId = observedImage.CurrentImageVersionId,
-                                                          BaseImageVersionId = baseImageVersion.Id,
-                                                          ScanRunId = scanRun.Id,
-                                                          RelationshipType = ImageRelationshipType.BaseImage,
-                                                          Depth = baseImage.Depth,
-                                                          SourceReference = baseImage.SourceReference,
-                                                      });
+                var baseImagesResult = await _baseImageResolver.ResolveAsync(imageReference, cancellationToken)
+                                                               .ConfigureAwait(false);
 
-                    var baseTagResult = await _registryMetadataService.GetTagsAsync(baseImage.Registry,
-                                                                                    baseImage.Repository,
-                                                                                    cancellationToken)
-                                                                      .ConfigureAwait(false);
+                if (baseImagesResult.Status == ExternalOperationStatus.Succeeded && baseImagesResult.Data is not null)
+                {
+                    resolvedBaseImageCount = baseImagesResult.Data.Count;
 
-                    if (baseTagResult.Status == ExternalOperationStatus.Succeeded && baseTagResult.Data is not null)
+                    await _dbContext.ImageRelationships.Where(entity => entity.ChildImageVersionId == observedImage.CurrentImageVersionId
+                                                                        && entity.RelationshipType == ImageRelationshipType.BaseImage)
+                                                       .ExecuteDeleteAsync(cancellationToken)
+                                                       .ConfigureAwait(false);
+
+                    foreach (var baseImage in baseImagesResult.Data)
                     {
-                        var evaluation = _updateDetectionService.Evaluate(new ImageReference
-                                                                          {
-                                                                              Registry = baseImage.Registry,
-                                                                              Repository = baseImage.Repository,
-                                                                              Tag = baseImage.Tag,
-                                                                              Digest = baseImage.Digest,
-                                                                          },
-                                                                          baseTagResult.Data);
+                        var baseImageReference = new ImageReference
+                                                 {
+                                                     Registry = baseImage.Registry,
+                                                     Repository = baseImage.Repository,
+                                                     Tag = baseImage.Tag,
+                                                     Digest = baseImage.Digest,
+                                                 };
 
-                        if (evaluation.Status == UpdateEvaluationStatus.UpdateAvailable
-                            || evaluation.Status == UpdateEvaluationStatus.NeedsReview)
+                        var baseTagResult = await _registryMetadataService.GetTagAsync(baseImageReference,
+                                                                                       cancellationToken)
+                                                                          .ConfigureAwait(false);
+                        var storedBaseImageTag = await ResolveStoredBaseImageTagAsync(baseImageReference,
+                                                                                      baseTagResult.Data,
+                                                                                      cancellationToken).ConfigureAwait(false);
+
+                        var baseImageVersion = await _imageCatalogRepository.GetOrCreateImageVersionAsync(baseImage.Registry,
+                                                                                                          baseImage.Repository,
+                                                                                                          storedBaseImageTag,
+                                                                                                          baseImage.Digest,
+                                                                                                          cancellationToken: cancellationToken)
+                                                                            .ConfigureAwait(false);
+
+                        baseImageVersion.Source = ImageVersionSource.BaseImageResolution;
+
+                        if (baseTagResult.Status == ExternalOperationStatus.Succeeded && baseTagResult.Data is not null)
                         {
-                            var findingType = evaluation.Status == UpdateEvaluationStatus.UpdateAvailable
-                                                  ? UpdateFindingType.BaseImageUpdate
-                                                  : UpdateFindingType.TagRecommendation;
-
-                            await CreateObservedFindingAsync(scanRun,
-                                                             observedImage,
-                                                             baseImageVersion,
-                                                             findingType,
-                                                             evaluation,
-                                                             cancellationToken).ConfigureAwait(false);
+                            baseImageVersion.MetadataJson = JsonSerializer.Serialize(baseTagResult.Data);
+                            baseImageVersion.PublishedAtUtc = baseTagResult.Data.PublishedAtUtc;
+                            baseImageVersion.UpdatedAtUtc = DateTimeOffset.UtcNow;
                         }
+                        else
+                        {
+                            finalStatus = ScanRunStatus.Partial;
+
+                            statusMessages.Add(baseTagResult.Message ?? $"Unable to refresh exact base image '{baseImageReference.FullReference}'");
+
+                            _logger.ObservedImageBaseImageMetadataRefreshIncomplete(observedImage.Name,
+                                                                                    baseImageReference.FullReference,
+                                                                                    baseTagResult.Status,
+                                                                                    baseTagResult.Message);
+                        }
+
+                        _dbContext.ImageRelationships.Add(new ImageRelationship
+                                                          {
+                                                              ChildImageVersionId = observedImage.CurrentImageVersionId,
+                                                              BaseImageVersionId = baseImageVersion.Id,
+                                                              ScanRunId = scanRun.Id,
+                                                              RelationshipType = ImageRelationshipType.BaseImage,
+                                                              Depth = baseImage.Depth,
+                                                              SourceReference = baseImage.SourceReference,
+                                                          });
                     }
-                    else
+
+                    if (baseImagesResult.Data.Count == 0)
                     {
-                        finalStatus = ScanRunStatus.Partial;
-
-                        statusMessages.Add(baseTagResult.Message ?? $"Unable to evaluate base image '{baseImage.Repository}:{baseImage.Tag}'");
-
-                        _logger.ObservedImageBaseImageEvaluationIncomplete(observedImage.Name,
-                                                                           baseImageReference,
-                                                                           baseTagResult.Status,
-                                                                           baseTagResult.Message);
+                        _logger.ObservedImageBaseImagesMissing(observedImage.Name);
                     }
                 }
-
-                if (baseImagesResult.Data.Count == 0)
+                else
                 {
-                    finalStatus = ScanRunStatus.Partial;
+                    if (finalStatus != ScanRunStatus.Failed)
+                    {
+                        finalStatus = baseImagesResult.Status == ExternalOperationStatus.Failed ? ScanRunStatus.Failed : ScanRunStatus.Partial;
+                    }
 
-                    statusMessages.Add("Base image resolution returned no results for the observed image");
+                    statusMessages.Add(baseImagesResult.Message ?? "Base image resolution is unavailable");
 
-                    _logger.ObservedImageBaseImagesMissing(observedImage.Name);
+                    _logger.ObservedImageBaseImageResolutionIncomplete(observedImage.Name,
+                                                                       baseImagesResult.Status,
+                                                                       baseImagesResult.Message);
                 }
+
+                await CreateDerivedBaseRuntimeFindingAsync(scanRun,
+                                                           observedImage,
+                                                           imageReference,
+                                                           observedImage.CurrentImageVersion,
+                                                           cancellationToken).ConfigureAwait(false);
             }
-            else
+            catch (Exception exception)
             {
-                if (finalStatus != ScanRunStatus.Failed)
-                {
-                    finalStatus = baseImagesResult.Status == ExternalOperationStatus.Failed ? ScanRunStatus.Failed : ScanRunStatus.Partial;
-                }
+                finalStatus = ScanRunStatus.Failed;
 
-                statusMessages.Add(baseImagesResult.Message ?? "Base image resolution is unavailable");
+                statusMessages.Add(exception.Message);
 
-                _logger.ObservedImageBaseImageResolutionIncomplete(observedImage.Name,
-                                                                   baseImagesResult.Status,
-                                                                   baseImagesResult.Message);
+                _logger.ObservedImageScanFailed(exception, observedImage.Name);
             }
 
-            await CreateDerivedBaseRuntimeFindingAsync(scanRun,
-                                                       observedImage,
-                                                       imageReference,
-                                                       observedImage.CurrentImageVersion,
-                                                       cancellationToken).ConfigureAwait(false);
+            scanRun.Status = finalStatus;
+            scanRun.CompletedAtUtc = DateTimeOffset.UtcNow;
+            scanRun.ErrorMessage = statusMessages.Count == 0 ? null : string.Join(Environment.NewLine, statusMessages.Distinct());
+
+            await _dbContext.SaveChangesAsync(cancellationToken)
+                            .ConfigureAwait(false);
+
+            await _applicationTelemetry.RefreshInventoryMetricsAsync(_dbContext, cancellationToken)
+                                       .ConfigureAwait(false);
+
+            _applicationTelemetry.RecordScanRun(ScanRunType.ObservedImage,
+                                                finalStatus,
+                                                stopwatch.Elapsed);
+
+            _logger.ObservedImageScanCompleted(observedImage.Name,
+                                               finalStatus,
+                                               resolvedBaseImageCount,
+                                               statusMessages.Count,
+                                               stopwatch.ElapsedMilliseconds);
         }
-        catch (Exception exception)
+        finally
         {
-            finalStatus = ScanRunStatus.Failed;
-
-            statusMessages.Add(exception.Message);
-
-            _logger.ObservedImageScanFailed(exception, observedImage.Name);
+            observedImageScanLock.Release();
         }
-
-        scanRun.Status = finalStatus;
-        scanRun.CompletedAtUtc = DateTimeOffset.UtcNow;
-        scanRun.ErrorMessage = statusMessages.Count == 0 ? null : string.Join(Environment.NewLine, statusMessages.Distinct());
-
-        await _dbContext.SaveChangesAsync(cancellationToken)
-                        .ConfigureAwait(false);
-
-        await _applicationTelemetry.RefreshInventoryMetricsAsync(_dbContext, cancellationToken)
-                                   .ConfigureAwait(false);
-
-        _applicationTelemetry.RecordScanRun(ScanRunType.ObservedImage,
-                                            finalStatus,
-                                            stopwatch.Elapsed);
-
-        _logger.ObservedImageScanCompleted(observedImage.Name,
-                                           finalStatus,
-                                           resolvedBaseImageCount,
-                                           statusMessages.Count,
-                                           stopwatch.ElapsedMilliseconds);
     }
 
     /// <summary>
-    /// Resolve existing active observed image findings
+    /// Resolve the stored base-image tag for display and persistence
+    /// </summary>
+    /// <param name="baseImageReference">Base image reference</param>
+    /// <param name="currentTagData">Current base-image tag metadata</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Resolved tag value</returns>
+    private async Task<string> ResolveStoredBaseImageTagAsync(ImageReference baseImageReference,
+                                                              DockerHubTagData? currentTagData,
+                                                              CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(baseImageReference);
+
+        if (VersionTagResolutionHelper.IsDisplayableSpecificVersionTag(baseImageReference.Tag)
+            || string.IsNullOrWhiteSpace(baseImageReference.Digest))
+        {
+            return baseImageReference.Tag;
+        }
+
+        var queryOptions = new RegistryTagQueryOptions
+                           {
+                               CurrentDigest = baseImageReference.Digest,
+                               CurrentTag = baseImageReference.Tag,
+                               MaximumTags = MaxBaseImageTagScanCount,
+                               VersionLineTag = string.Equals(baseImageReference.Tag,
+                                                              "latest",
+                                                              StringComparison.OrdinalIgnoreCase)
+                                                    ? null
+                                                    : baseImageReference.Tag,
+                               PublishedSinceUtc = currentTagData?.PublishedAtUtc,
+                           };
+        var baseTagsResult = await _registryMetadataService.GetTagsAsync(baseImageReference.Registry,
+                                                                         baseImageReference.Repository,
+                                                                         cancellationToken,
+                                                                         queryOptions: queryOptions)
+                                                           .ConfigureAwait(false);
+
+        if (baseTagsResult.Status != ExternalOperationStatus.Succeeded || baseTagsResult.Data is null)
+        {
+            return baseImageReference.Tag;
+        }
+
+        var resolvedTag = VersionTagResolutionHelper.ResolveDisplayVersionTag(baseImageReference.Tag,
+                                                                              baseImageReference.Digest,
+                                                                              baseTagsResult.Data.Select(entity => new VersionTagCandidateData
+                                                                                                                   {
+                                                                                                                       Tag = entity.Tag,
+                                                                                                                       Digest = entity.Digest,
+                                                                                                                       PublishedAtUtc = entity.PublishedAtUtc,
+                                                                                                                   }));
+
+        return string.IsNullOrWhiteSpace(resolvedTag)
+                   ? baseImageReference.Tag
+                   : resolvedTag;
+    }
+
+    /// <summary>
+    /// Delete existing active observed-image update findings superseded by a new scan
     /// </summary>
     /// <param name="observedImageId">Observed image identifier</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Task</returns>
-    private async Task DeactivateObservedFindingsAsync(Guid observedImageId, CancellationToken cancellationToken)
+    private async Task DeleteSupersededObservedFindingsAsync(Guid observedImageId, CancellationToken cancellationToken)
     {
-        var activeFindings = await _dbContext.UpdateFindings.Include(entity => entity.TagCandidates)
-                                                            .Where(entity => entity.ObservedImageId == observedImageId && entity.IsActive)
-                                                            .ToListAsync(cancellationToken)
-                                                            .ConfigureAwait(false);
-
-        foreach (var activeFinding in activeFindings)
-        {
-            activeFinding.IsActive = false;
-            activeFinding.ResolvedAtUtc = DateTimeOffset.UtcNow;
-
-            activeFinding.TagCandidates.Clear();
-        }
-    }
-
-    /// <summary>
-    /// Create a persisted observed image finding
-    /// </summary>
-    /// <param name="scanRun">Scan run</param>
-    /// <param name="observedImage">Observed image</param>
-    /// <param name="subjectImageVersion">Subject image version</param>
-    /// <param name="findingType">Finding type</param>
-    /// <param name="evaluation">Update evaluation</param>
-    /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>Task</returns>
-    private async Task CreateObservedFindingAsync(ScanRun scanRun,
-                                                  ObservedImage observedImage,
-                                                  ImageVersion subjectImageVersion,
-                                                  UpdateFindingType findingType,
-                                                  UpdateEvaluationResult evaluation,
-                                                  CancellationToken cancellationToken)
-    {
-        await EnsureRegistryRepositoryLoadedAsync(subjectImageVersion, cancellationToken).ConfigureAwait(false);
-
-        Guid? recommendedImageVersionId = null;
-
-        if (string.IsNullOrWhiteSpace(evaluation.RecommendedTag) == false)
-        {
-            var recommendedVersion = await _imageCatalogRepository.GetOrCreateImageVersionAsync(subjectImageVersion.RegistryRepository.Registry,
-                                                                                                subjectImageVersion.RegistryRepository.Repository,
-                                                                                                evaluation.RecommendedTag,
-                                                                                                evaluation.RecommendedDigest,
-                                                                                                cancellationToken: cancellationToken)
-                                                                  .ConfigureAwait(false);
-
-            recommendedImageVersionId = recommendedVersion.Id;
-        }
-
-        var finding = new UpdateFinding
-                      {
-                          ScanRunId = scanRun.Id,
-                          ObservedImageId = observedImage.Id,
-                          SubjectImageVersionId = subjectImageVersion.Id,
-                          RecommendedImageVersionId = recommendedImageVersionId,
-                          Type = findingType,
-                          Summary = evaluation.Summary,
-                          Details = evaluation.Details,
-                      };
-
-        foreach (var candidate in evaluation.Candidates.Select((value, index) => new
-                                                                                 {
-                                                                                     Value = value,
-                                                                                     Index = index
-                                                                                 }))
-        {
-            if (UpdateFindingPersistenceHelper.HasPersistableDigest(candidate.Value.Digest) == false)
-            {
-                continue;
-            }
-
-            finding.TagCandidates.Add(new TagCandidate
-                                      {
-                                          Tag = candidate.Value.Tag,
-                                          Digest = UpdateFindingPersistenceHelper.NormalizeCandidateDigest(candidate.Value.Digest),
-                                          Rank = candidate.Index + 1,
-                                          IsRecommended = string.Equals(candidate.Value.Tag,
-                                                                        evaluation.RecommendedTag,
-                                                                        StringComparison.OrdinalIgnoreCase),
-                                          PublishedAtUtc = candidate.Value.PublishedAtUtc,
-                                          Reason = evaluation.Summary
-                                      });
-        }
-
-        _dbContext.UpdateFindings.Add(finding);
+        await _dbContext.UpdateFindings.Where(entity => entity.ObservedImageId == observedImageId && entity.IsActive)
+                                       .ExecuteDeleteAsync(cancellationToken)
+                                       .ConfigureAwait(false);
     }
 
     /// <summary>
@@ -555,31 +544,6 @@ public class ImageScanOrchestrator : IImageScanOrchestrator
                 }
                 break;
         }
-    }
-
-    /// <summary>
-    /// Ensure the registry repository navigation is available on an image version
-    /// </summary>
-    /// <param name="imageVersion">Image version</param>
-    /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>Task</returns>
-    private async Task EnsureRegistryRepositoryLoadedAsync(ImageVersion imageVersion, CancellationToken cancellationToken)
-    {
-        if (imageVersion.RegistryRepository is not null)
-        {
-            return;
-        }
-
-        var registryRepository = await _dbContext.RegistryRepositories
-                                                 .SingleOrDefaultAsync(entity => entity.Id == imageVersion.RegistryRepositoryId, cancellationToken)
-                                                 .ConfigureAwait(false);
-
-        if (registryRepository is null)
-        {
-            throw new InvalidOperationException($"Registry repository '{imageVersion.RegistryRepositoryId}' was not found for image version '{imageVersion.Id}'");
-        }
-
-        imageVersion.RegistryRepository = registryRepository;
     }
 
     /// <summary>

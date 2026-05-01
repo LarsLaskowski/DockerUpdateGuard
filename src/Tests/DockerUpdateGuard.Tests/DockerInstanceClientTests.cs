@@ -1,11 +1,10 @@
-using System.Net;
 using System.Reflection;
-using System.Text;
 
 using DockerUpdateGuard.Configuration;
 using DockerUpdateGuard.Docker;
 using DockerUpdateGuard.Infrastructure;
 using DockerUpdateGuard.Tests.Data;
+using DockerUpdateGuard.Tests.Helper;
 
 using Microsoft.Extensions.Logging;
 
@@ -15,7 +14,7 @@ namespace DockerUpdateGuard.Tests;
 /// Tests for <see cref="DockerInstanceClient"/>
 /// </summary>
 [TestClass]
-public class DockerInstanceClientTests
+public partial class DockerInstanceClientTests
 {
     #region Methods
 
@@ -469,118 +468,4 @@ public class DockerInstanceClientTests
     }
 
     #endregion // Methods
-
-    #region Helper types
-
-    /// <summary>
-    /// Sequence-based HTTP message handler for deterministic Docker engine tests
-    /// </summary>
-    private sealed class SequenceHttpMessageHandler : HttpMessageHandler
-    {
-        #region Fields
-
-        private readonly Dictionary<string, Queue<HttpResponseMessage>> _responses = new(StringComparer.Ordinal);
-
-        #endregion // Fields
-
-        #region Methods
-
-        /// <summary>
-        /// Add a JSON response to the request sequence for a URI
-        /// </summary>
-        /// <param name="requestUri">Absolute request URI</param>
-        /// <param name="jsonContent">JSON content</param>
-        public void AddJsonResponse(string requestUri, string jsonContent)
-        {
-            AddResponse(requestUri,
-                        new HttpResponseMessage(HttpStatusCode.OK)
-                        {
-                            Content = new StringContent(jsonContent,
-                                                        Encoding.UTF8,
-                                                        "application/json"),
-                        });
-        }
-
-        /// <inheritdoc/>
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-        {
-            ArgumentNullException.ThrowIfNull(request.RequestUri);
-
-            if (_responses.TryGetValue(request.RequestUri.AbsoluteUri, out var queue)
-                && queue.Count > 0)
-            {
-                return Task.FromResult(CloneResponse(queue.Dequeue()));
-            }
-
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound)
-                                   {
-                                       RequestMessage = request,
-                                   });
-        }
-
-        /// <summary>
-        /// Clone a configured response for repeatable handler usage
-        /// </summary>
-        /// <param name="response">Template response</param>
-        /// <returns>Cloned response</returns>
-        private static HttpResponseMessage CloneResponse(HttpResponseMessage response)
-        {
-            var clone = new HttpResponseMessage(response.StatusCode)
-                        {
-                            Content = response.Content is null
-                                          ? null
-                                          : new StringContent(response.Content.ReadAsStringAsync().GetAwaiter().GetResult(),
-                                                              Encoding.UTF8,
-                                                              response.Content.Headers.ContentType?.MediaType),
-                        };
-
-            foreach (var header in response.Headers)
-            {
-                clone.Headers.TryAddWithoutValidation(header.Key, header.Value);
-            }
-
-            return clone;
-        }
-
-        /// <summary>
-        /// Add a response to the request sequence for a URI
-        /// </summary>
-        /// <param name="requestUri">Absolute request URI</param>
-        /// <param name="response">Configured response</param>
-        private void AddResponse(string requestUri, HttpResponseMessage response)
-        {
-            var normalizedRequestUri = new Uri(requestUri).AbsoluteUri;
-
-            if (_responses.TryGetValue(normalizedRequestUri, out var queue) == false)
-            {
-                queue = new Queue<HttpResponseMessage>();
-
-                _responses[normalizedRequestUri] = queue;
-            }
-
-            queue.Enqueue(response);
-        }
-
-        #endregion // Methods
-    }
-
-    /// <summary>
-    /// HTTP-message handler that waits for cancellation to simulate a request timeout
-    /// </summary>
-    private sealed class TimeoutHttpMessageHandler : HttpMessageHandler
-    {
-        #region Methods
-
-        /// <inheritdoc/>
-        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-        {
-            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken).ConfigureAwait(false);
-
-            throw new InvalidOperationException("The timeout handler must be canceled before returning a response");
-        }
-
-        #endregion // Methods
-    }
-
-    #endregion // Helper types
 }

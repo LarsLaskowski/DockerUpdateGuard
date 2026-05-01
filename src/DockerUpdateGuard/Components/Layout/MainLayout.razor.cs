@@ -147,7 +147,7 @@ public sealed partial class MainLayout : LayoutComponentBase, IDisposable
             return 0;
         }
 
-        return _dashboardSummary.ObservedImageCount + _dashboardSummary.RuntimeContainerCount;
+        return _dashboardSummary.ObservedImageCount + _dashboardSummary.MyImageCount + _dashboardSummary.RuntimeContainerCount;
     }
 
     /// <summary>

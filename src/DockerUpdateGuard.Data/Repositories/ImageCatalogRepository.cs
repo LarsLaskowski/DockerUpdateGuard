@@ -42,6 +42,7 @@ public class ImageCatalogRepository : IImageCatalogRepository
     {
         ValidateRegistryRepository(registry, repository);
         ValidateTag(tag);
+
         var normalizedDigest = NormalizeDigest(digest);
 
         return await _dbContext.ImageVersions
@@ -113,6 +114,7 @@ public class ImageCatalogRepository : IImageCatalogRepository
     {
         ValidateRegistryRepository(registry, repository);
         ValidateTag(tag);
+
         var normalizedDigest = NormalizeDigest(digest);
 
         var existingVersion = await FindImageVersionAsync(registry,
@@ -221,7 +223,21 @@ public class ImageCatalogRepository : IImageCatalogRepository
     /// <returns>Normalized digest</returns>
     private static string NormalizeDigest(string? digest)
     {
-        return string.IsNullOrWhiteSpace(digest) ? string.Empty : digest.Trim();
+        if (string.IsNullOrWhiteSpace(digest))
+        {
+            return string.Empty;
+        }
+
+        var normalizedDigest = digest.Trim();
+        var digestSeparatorIndex = normalizedDigest.LastIndexOf('@');
+
+        if (digestSeparatorIndex >= 0
+            && digestSeparatorIndex < (normalizedDigest.Length - 1))
+        {
+            normalizedDigest = normalizedDigest[(digestSeparatorIndex + 1)..];
+        }
+
+        return normalizedDigest;
     }
 
     #endregion // Methods

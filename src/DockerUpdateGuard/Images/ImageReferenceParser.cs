@@ -1,4 +1,6 @@
 using DockerUpdateGuard.Data.Entities;
+using DockerUpdateGuard.Images.Data;
+using DockerUpdateGuard.Images.Interfaces;
 
 namespace DockerUpdateGuard.Images;
 
@@ -61,7 +63,7 @@ public class ImageReferenceParser : IImageReferenceParser
                    Registry = registry,
                    Repository = repository,
                    Tag = string.IsNullOrWhiteSpace(tag) ? "latest" : tag,
-                   Digest = string.IsNullOrWhiteSpace(digest) ? null : digest.ToLowerInvariant(),
+                   Digest = NormalizeDigest(digest),
                };
     }
 
@@ -74,6 +76,30 @@ public class ImageReferenceParser : IImageReferenceParser
         return string.IsNullOrWhiteSpace(imageVersion.Digest)
                    ? $"{imageVersion.RegistryRepository.Registry}/{imageVersion.RegistryRepository.Repository}:{imageVersion.Tag}"
                    : $"{imageVersion.RegistryRepository.Registry}/{imageVersion.RegistryRepository.Repository}:{imageVersion.Tag}@{imageVersion.Digest}";
+    }
+
+    /// <summary>
+    /// Normalize a digest value that may contain a full image reference
+    /// </summary>
+    /// <param name="digest">Digest or digest-bearing image reference</param>
+    /// <returns>Normalized digest value or null</returns>
+    internal static string? NormalizeDigest(string? digest)
+    {
+        if (string.IsNullOrWhiteSpace(digest))
+        {
+            return null;
+        }
+
+        var trimmedDigest = digest.Trim();
+        var digestSeparatorIndex = trimmedDigest.LastIndexOf('@');
+
+        if (digestSeparatorIndex >= 0
+            && digestSeparatorIndex < (trimmedDigest.Length - 1))
+        {
+            trimmedDigest = trimmedDigest[(digestSeparatorIndex + 1)..];
+        }
+
+        return trimmedDigest.ToLowerInvariant();
     }
 
     /// <summary>

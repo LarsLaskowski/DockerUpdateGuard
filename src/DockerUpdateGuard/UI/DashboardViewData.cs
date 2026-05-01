@@ -8,9 +8,14 @@ public class DashboardViewData
     #region Properties
 
     /// <summary>
-    /// Observed image count
+    /// Manually-registered observed image count
     /// </summary>
     public int ObservedImageCount { get; set; }
+
+    /// <summary>
+    /// Discovery-owned observed image count
+    /// </summary>
+    public int MyImageCount { get; set; }
 
     /// <summary>
     /// Docker instance count
@@ -23,9 +28,9 @@ public class DashboardViewData
     public int RuntimeContainerCount { get; set; }
 
     /// <summary>
-    /// Shared base image count
+    /// Base image count
     /// </summary>
-    public int SharedBaseImageCount { get; set; }
+    public int BaseImageCount { get; set; }
 
     /// <summary>
     /// Active update finding count

@@ -3,10 +3,12 @@ using DockerUpdateGuard.Data;
 using DockerUpdateGuard.Docker;
 using DockerUpdateGuard.DockerHub;
 using DockerUpdateGuard.Images;
+using DockerUpdateGuard.Images.Interfaces;
 using DockerUpdateGuard.Portainer;
 using DockerUpdateGuard.Telemetry;
 using DockerUpdateGuard.UI;
 using DockerUpdateGuard.Vulnerabilities;
+using DockerUpdateGuard.Vulnerabilities.Interfaces;
 
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection.Extensions;

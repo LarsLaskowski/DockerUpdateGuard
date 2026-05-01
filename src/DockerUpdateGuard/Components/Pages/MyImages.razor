@@ -1,0 +1,84 @@
+@page "/my-images"
+
+<PageTitle>My Images</PageTitle>
+
+<MudStack Spacing="3" Class="page-shell">
+    <div class="page-header">
+        <div>
+            <MudText Typo="Typo.overline" Class="page-eyebrow">Registry monitoring</MudText>
+            <MudText Typo="Typo.h3">My Images</MudText>
+            <MudText Class="page-description">Own images automatically discovered from the configured Docker Hub account.</MudText>
+        </div>
+    </div>
+
+    @if (_images is null)
+    {
+        <MudPaper Class="empty-state-panel" Elevation="0">
+            <MudText>Loading own images...</MudText>
+        </MudPaper>
+    }
+    else if (_images.Count == 0)
+    {
+        <MudPaper Class="empty-state-panel" Elevation="0">
+            <MudText>No own images from the Docker account are currently available.</MudText>
+        </MudPaper>
+    }
+    else
+    {
+        <MudPaper Class="section-paper" Elevation="0">
+            <div class="section-header">
+                <MudText Typo="Typo.h5">@GetSectionTitle(_dockerHubUserName)</MudText>
+                <MudText Class="section-description">Automatically discovered images from the configured Docker account, prioritized when they are currently running.</MudText>
+            </div>
+
+            <MudTable Items="_images" Hover="true" Dense="false" Breakpoint="Breakpoint.Md" Class="section-table">
+                <HeaderContent>
+                    <MudTh>Name</MudTh>
+                    <MudTh>Image</MudTh>
+                    <MudTh>Latest Scan</MudTh>
+                    <MudTh>Running</MudTh>
+                    <MudTh>Base runtime</MudTh>
+                    <MudTh>Vulnerabilities</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Name">
+                        <MudLink Href="@($"/my-images/{context.Id}")" Class="table-link">@context.Name</MudLink>
+                        <span class="table-secondary">@context.Description</span>
+                    </MudTd>
+                    <MudTd DataLabel="Image">
+                        <span>@ImageReferenceFormatter.GetReference(context.ImageReference)</span>
+                    </MudTd>
+                    <MudTd DataLabel="Latest Scan">
+                        <MudChip T="string" Size="Size.Small" Color="@GetScanStatusColor(context.LatestScanStatus)">@context.LatestScanStatus</MudChip>
+                        <span class="table-secondary">@context.LatestScanMessage</span>
+                    </MudTd>
+                    <MudTd DataLabel="Running">
+                        <MudChip T="string" Size="Size.Small" Color="@(context.LinkedRuntimeContainerCount > 0 ? Color.Success : Color.Default)">
+                            @(context.LinkedRuntimeContainerCount > 0 ? $"{context.LinkedRuntimeContainerCount} containers" : "Not running")
+                        </MudChip>
+                    </MudTd>
+                    <MudTd DataLabel="Base runtime">
+                        @if (string.IsNullOrWhiteSpace(context.BaseRuntimeAlertSummary))
+                        {
+                            <span class="table-secondary">No runtime warning</span>
+                        }
+                        else
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="Color.Warning">Runtime warning</MudChip>
+                            <span class="table-secondary">@context.BaseRuntimeAlertSummary</span>
+                        }
+                    </MudTd>
+                    <MudTd DataLabel="Vulnerabilities">
+                        <MudChip T="string" Size="Size.Small" Color="@GetVulnerabilityStatusColor(context.VulnerabilityStatus)">@context.VulnerabilityStatus</MudChip>
+                        <span class="table-secondary">@($"{context.ActiveVulnerabilityFindingCount} active · {context.VulnerabilityMessage}")</span>
+                        @if (context.ActiveBaseImageVulnerabilityFindingCount > 0)
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="Color.Warning">Base images affected</MudChip>
+                            <span class="table-secondary">@context.BaseImageVulnerabilitySummary</span>
+                        }
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+        </MudPaper>
+    }
+</MudStack>

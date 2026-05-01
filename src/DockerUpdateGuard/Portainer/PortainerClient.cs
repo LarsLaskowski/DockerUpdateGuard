@@ -1,30 +1,29 @@
 using System.Net.Http.Headers;
-using System.Net.Http.Json;
-using System.Text.Json.Serialization;
 
 using DockerUpdateGuard.Configuration;
+using DockerUpdateGuard.Portainer.Data;
 
 namespace DockerUpdateGuard.Portainer;
 
 /// <summary>
 /// Portainer API adapter
 /// </summary>
-public class PortainerClient : IPortainerClient
+public partial class PortainerClient : IPortainerClient
 {
     #region Constants
 
     /// <summary>
     /// Supported container actions
     /// </summary>
-    private static readonly HashSet<string> AllowedContainerActions = new(StringComparer.OrdinalIgnoreCase)
-                                                                      {
-                                                                          "start",
-                                                                          "stop",
-                                                                          "restart",
-                                                                          "kill",
-                                                                          "pause",
-                                                                          "unpause",
-                                                                      };
+    private static readonly HashSet<string> _allowedContainerActions = new(StringComparer.OrdinalIgnoreCase)
+                                                                       {
+                                                                           "start",
+                                                                           "stop",
+                                                                           "restart",
+                                                                           "kill",
+                                                                           "pause",
+                                                                           "unpause",
+                                                                       };
 
     #endregion // Constants
 
@@ -213,12 +212,12 @@ public class PortainerClient : IPortainerClient
                    };
         }
 
-        if (AllowedContainerActions.Contains(actionRequest.ActionName) == false)
+        if (_allowedContainerActions.Contains(actionRequest.ActionName) == false)
         {
             return new PortainerActionResult
                    {
                        Succeeded = false,
-                       Message = $"Action '{actionRequest.ActionName}' is not supported — allowed: {string.Join(", ", AllowedContainerActions)}",
+                       Message = $"Action '{actionRequest.ActionName}' is not supported — allowed: {string.Join(", ", _allowedContainerActions)}",
                    };
         }
 
@@ -352,38 +351,4 @@ public class PortainerClient : IPortainerClient
     }
 
     #endregion // Methods
-
-    #region Response types
-
-    /// <summary>
-    /// Login request body for Portainer JWT authentication
-    /// </summary>
-    /// <param name="Username">Username for Portainer login</param>
-    /// <param name="Password">Password for Portainer login</param>
-    private sealed record PortainerLoginRequest([property: JsonPropertyName("username")] string Username,
-                                                [property: JsonPropertyName("password")] string Password);
-
-    /// <summary>
-    /// Portainer authentication request response containing the JWT token
-    /// </summary>
-    /// <param name="Jwt">JWT token returned by Portainer authentication</param>
-    private sealed record PortainerAuthResponse([property: JsonPropertyName("jwt")] string? Jwt);
-
-    /// <summary>
-    /// Portainer endpoint item containing identifier and name, as returned by the /api/endpoints endpoint
-    /// </summary>
-    /// <param name="Id">Identifier of the Portainer endpoint</param>
-    /// <param name="Name">Name of the Portainer endpoint</param>
-    private sealed record PortainerEndpointItem([property: JsonPropertyName("Id")] int Id,
-                                                [property: JsonPropertyName("Name")] string? Name);
-
-    /// <summary>
-    /// Docker container item containing identifier and names, as returned by the Portainer Docker API when filtering containers
-    /// </summary>
-    /// <param name="Id">Identifier of the Docker container</param>
-    /// <param name="Names">Names of the Docker container</param>
-    private sealed record DockerContainerItem([property: JsonPropertyName("Id")] string? Id,
-                                              [property: JsonPropertyName("Names")] string[]? Names);
-
-    #endregion // Response types
 }

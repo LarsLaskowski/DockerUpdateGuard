@@ -6,6 +6,10 @@ using DockerUpdateGuard.Data.Entities;
 using DockerUpdateGuard.Data.Repositories;
 using DockerUpdateGuard.Docker;
 using DockerUpdateGuard.DockerHub;
+using DockerUpdateGuard.Images.Data;
+using DockerUpdateGuard.Images.Enums;
+using DockerUpdateGuard.Images.Helper;
+using DockerUpdateGuard.Images.Interfaces;
 using DockerUpdateGuard.Infrastructure;
 
 using Microsoft.EntityFrameworkCore;
@@ -18,6 +22,15 @@ namespace DockerUpdateGuard.Images;
 /// </summary>
 public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrator
 {
+    #region Const fields
+
+    /// <summary>
+    /// Maximum number of repository tags to inspect during one runtime evaluation
+    /// </summary>
+    private const int MaxRepositoryTagScanCount = 250;
+
+    #endregion // Const fields
+
     #region Fields
 
     /// <summary>
@@ -199,6 +212,28 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
     }
 
     /// <summary>
+    /// Build bounded tag-scan options for the current runtime image
+    /// </summary>
+    /// <param name="currentImage">Current image reference</param>
+    /// <param name="currentTagData">Current tag metadata</param>
+    /// <returns>Tag-query options</returns>
+    private static RegistryTagQueryOptions CreateTagQueryOptions(ImageReference currentImage, DockerHubTagData? currentTagData)
+    {
+        ArgumentNullException.ThrowIfNull(currentImage);
+
+        return new RegistryTagQueryOptions
+               {
+                   CurrentDigest = currentImage.Digest,
+                   CurrentTag = currentImage.Tag,
+                   MaximumTags = MaxRepositoryTagScanCount,
+                   MinimumVersionTag = VersionTagResolutionHelper.IsDisplayableSpecificVersionTag(currentImage.Tag)
+                                           ? currentImage.Tag
+                                           : null,
+                   PublishedSinceUtc = currentTagData?.PublishedAtUtc,
+               };
+    }
+
+    /// <summary>
     /// Create a normalized repository key
     /// </summary>
     /// <param name="imageVersion">Image version</param>
@@ -242,6 +277,72 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
         return latestVersion.Major == currentVersion.Major
                && latestVersion.Minor == currentVersion.Minor
                && latestVersion > currentVersion;
+    }
+
+    /// <summary>
+    /// Filter available tags to the bounded candidate set relevant for evaluation
+    /// </summary>
+    /// <param name="currentImage">Current image reference</param>
+    /// <param name="currentTagData">Current tag metadata</param>
+    /// <param name="availableTags">Available tags</param>
+    /// <returns>Filtered tag set</returns>
+    private static IReadOnlyList<DockerHubTagData> FilterAvailableTags(ImageReference currentImage,
+                                                                       DockerHubTagData? currentTagData,
+                                                                       IReadOnlyList<DockerHubTagData> availableTags)
+    {
+        ArgumentNullException.ThrowIfNull(currentImage);
+        ArgumentNullException.ThrowIfNull(availableTags);
+
+        var resolvedVersionTag = string.Equals(currentImage.Tag,
+                                               "latest",
+                                               StringComparison.OrdinalIgnoreCase)
+                                     ? VersionTagResolutionHelper.ResolveAliasVersionTag(currentImage.Tag,
+                                                                                         currentImage.Digest,
+                                                                                         availableTags.Where(entity => string.IsNullOrWhiteSpace(entity.Tag) == false)
+                                                                                                      .Select(entity => new VersionTagCandidateData
+                                                                                                                        {
+                                                                                                                            Tag = entity.Tag,
+                                                                                                                            Digest = entity.Digest,
+                                                                                                                            PublishedAtUtc = entity.PublishedAtUtc,
+                                                                                                                        }))
+                                     : null;
+        var queryOptions = new RegistryTagQueryOptions
+                           {
+                               CurrentDigest = currentImage.Digest,
+                               CurrentTag = currentImage.Tag,
+                               MaximumTags = MaxRepositoryTagScanCount,
+                               MinimumVersionTag = VersionTagResolutionHelper.IsDisplayableSpecificVersionTag(currentImage.Tag)
+                                                       ? currentImage.Tag
+                                                       : resolvedVersionTag,
+                               PublishedSinceUtc = currentTagData?.PublishedAtUtc,
+                           };
+
+        return availableTags.Where(entity => RegistryTagQueryHelper.ShouldKeepTag(entity, queryOptions))
+                            .ToList();
+    }
+
+    /// <summary>
+    /// Merge the exact metadata for the current tag into the available tag set
+    /// </summary>
+    /// <param name="currentImage">Current image reference</param>
+    /// <param name="availableTags">Available tags</param>
+    /// <param name="currentTagData">Current tag metadata</param>
+    /// <returns>Merged tag set</returns>
+    private static IReadOnlyList<DockerHubTagData> MergeCurrentTagMetadata(ImageReference currentImage,
+                                                                           IReadOnlyList<DockerHubTagData> availableTags,
+                                                                           DockerHubTagData? currentTagData)
+    {
+        ArgumentNullException.ThrowIfNull(currentImage);
+        ArgumentNullException.ThrowIfNull(availableTags);
+
+        if (currentTagData is null)
+        {
+            return availableTags;
+        }
+
+        return availableTags.Where(tag => string.Equals(tag.Tag, currentImage.Tag, StringComparison.OrdinalIgnoreCase) == false)
+                            .Append(currentTagData)
+                            .ToList();
     }
 
     /// <summary>
@@ -464,27 +565,37 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
 
                         _dbContext.ContainerSnapshots.Add(snapshot);
 
+                        var currentTagResult = await _registryMetadataService.GetTagAsync(parsedReference,
+                                                                                          cancellationToken,
+                                                                                          inspectData?.OperatingSystem,
+                                                                                          inspectData?.Architecture)
+                                                                             .ConfigureAwait(false);
+                        var currentTagData = currentTagResult.Status == ExternalOperationStatus.Succeeded
+                                                 ? currentTagResult.Data
+                                                 : null;
                         var tagsResult = await _registryMetadataService.GetTagsAsync(parsedReference.Registry,
                                                                                      parsedReference.Repository,
                                                                                      cancellationToken,
                                                                                      inspectData?.OperatingSystem,
-                                                                                     inspectData?.Architecture)
+                                                                                     inspectData?.Architecture,
+                                                                                     CreateTagQueryOptions(parsedReference, currentTagData))
                                                                        .ConfigureAwait(false);
 
                         if (tagsResult.Status == ExternalOperationStatus.Succeeded && tagsResult.Data is not null)
                         {
-                            var availableTags = await MergeCurrentTagMetadataAsync(parsedReference,
-                                                                                   tagsResult.Data,
-                                                                                   cancellationToken,
-                                                                                   inspectData?.OperatingSystem,
-                                                                                   inspectData?.Architecture).ConfigureAwait(false);
-                            var currentTagMetadata = availableTags.FirstOrDefault(tag => string.Equals(tag.Tag,
-                                                                                                       parsedReference.Tag,
-                                                                                                       StringComparison.OrdinalIgnoreCase));
+                            var availableTags = MergeCurrentTagMetadata(parsedReference,
+                                                                        tagsResult.Data,
+                                                                        currentTagData);
+                            availableTags = FilterAvailableTags(parsedReference,
+                                                                currentTagData,
+                                                                availableTags);
+                            currentTagData ??= availableTags.FirstOrDefault(tag => string.Equals(tag.Tag,
+                                                                                                 parsedReference.Tag,
+                                                                                                 StringComparison.OrdinalIgnoreCase));
 
-                            if (currentTagMetadata?.PublishedAtUtc is not null)
+                            if (currentTagData?.PublishedAtUtc is not null)
                             {
-                                imageVersion.PublishedAtUtc = currentTagMetadata.PublishedAtUtc;
+                                imageVersion.PublishedAtUtc = currentTagData.PublishedAtUtc;
                             }
 
                             var evaluation = _updateDetectionService.Evaluate(parsedReference, availableTags);
@@ -823,37 +934,6 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
         return inspectResult.Status == ExternalOperationStatus.Succeeded
                    ? inspectResult.Data
                    : null;
-    }
-
-    /// <summary>
-    /// Merge the exact metadata for the current tag into the available tag set
-    /// </summary>
-    /// <param name="currentImage">Current image reference</param>
-    /// <param name="availableTags">Available tags</param>
-    /// <param name="cancellationToken">Cancellation token</param>
-    /// <param name="operatingSystem">Preferred operating system</param>
-    /// <param name="architecture">Preferred architecture</param>
-    /// <returns>Merged tag set</returns>
-    private async Task<IReadOnlyList<DockerHubTagData>> MergeCurrentTagMetadataAsync(ImageReference currentImage,
-                                                                                     IReadOnlyList<DockerHubTagData> availableTags,
-                                                                                     CancellationToken cancellationToken,
-                                                                                     string? operatingSystem = null,
-                                                                                     string? architecture = null)
-    {
-        var currentTagResult = await _registryMetadataService.GetTagAsync(currentImage,
-                                                                          cancellationToken,
-                                                                          operatingSystem,
-                                                                          architecture)
-                                                             .ConfigureAwait(false);
-
-        if (currentTagResult.Status != ExternalOperationStatus.Succeeded || currentTagResult.Data is null)
-        {
-            return availableTags;
-        }
-
-        return availableTags.Where(tag => string.Equals(tag.Tag, currentImage.Tag, StringComparison.OrdinalIgnoreCase) == false)
-                            .Append(currentTagResult.Data)
-                            .ToList();
     }
 
     /// <summary>

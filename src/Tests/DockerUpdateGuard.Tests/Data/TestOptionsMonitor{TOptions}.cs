@@ -6,7 +6,7 @@ namespace DockerUpdateGuard.Tests.Data;
 /// Lightweight options monitor for deterministic tests
 /// </summary>
 /// <typeparam name="TOptions">Options type</typeparam>
-internal sealed class TestOptionsMonitor<TOptions> : IOptionsMonitor<TOptions>
+internal sealed partial class TestOptionsMonitor<TOptions> : IOptionsMonitor<TOptions>
     where TOptions : class
 {
     #region Fields
@@ -52,34 +52,4 @@ internal sealed class TestOptionsMonitor<TOptions> : IOptionsMonitor<TOptions>
     }
 
     #endregion // Methods
-
-    #region IDisposable implementation
-
-    /// <summary>
-    /// Empty disposable for monitor subscriptions
-    /// </summary>
-    private sealed class NullDisposable : IDisposable
-    {
-        #region Properties
-
-        /// <summary>
-        /// Shared instance
-        /// </summary>
-        public static NullDisposable Instance { get; } = new();
-
-        #endregion // Properties
-
-        #region Methods
-
-        /// <summary>
-        /// Release resources
-        /// </summary>
-        public void Dispose()
-        {
-        }
-
-        #endregion // Methods
-    }
-
-    #endregion // IDisposable implementation
 }

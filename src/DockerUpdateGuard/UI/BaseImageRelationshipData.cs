@@ -22,5 +22,10 @@ public class BaseImageRelationshipData
     /// </summary>
     public string? SourceReference { get; set; }
 
+    /// <summary>
+    /// Vulnerability assessment summary
+    /// </summary>
+    public VulnerabilityAssessmentViewData VulnerabilityAssessment { get; set; } = new();
+
     #endregion // Properties
 }

@@ -34,7 +34,7 @@ public class SharedBaseImageQueryService : ISharedBaseImageQueryService
     #region Methods
 
     /// <inheritdoc/>
-    public async Task<IReadOnlyList<SharedBaseImageUsageData>> GetSharedBaseImagesAsync(CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<SharedBaseImageUsageData>> GetBaseImagesAsync(CancellationToken cancellationToken = default)
     {
         var flatResults = await _dbContext.ObservedImages.AsNoTracking()
                                                          .Join(_dbContext.ImageRelationships.AsNoTracking(),
@@ -72,38 +72,51 @@ public class SharedBaseImageQueryService : ISharedBaseImageQueryService
                                                                           x.registryRepository.Repository,
                                                                           x.baseImageVersion.Tag,
                                                                           x.baseImageVersion.Digest,
+                                                                          x.imageRelationship.SourceReference,
                                                                           ObservedImageId = x.observedImage.Id,
                                                                       })
                                                          .ToListAsync(cancellationToken)
                                                          .ConfigureAwait(false);
 
-        var sharedBaseImages = flatResults.GroupBy(entity => new
-                                                             {
-                                                                 entity.BaseImageVersionId,
-                                                                 entity.Registry,
-                                                                 entity.Repository,
-                                                                 entity.Tag,
-                                                                 entity.Digest,
-                                                             })
-                                          .Select(group => new SharedBaseImageUsageData
-                                                           {
-                                                               BaseImageVersionId = group.Key.BaseImageVersionId,
-                                                               Registry = group.Key.Registry,
-                                                               Repository = group.Key.Repository,
-                                                               Tag = group.Key.Tag,
-                                                               Digest = group.Key.Digest,
-                                                               ObservedImageCount = group.Select(entity => entity.ObservedImageId)
-                                                                                         .Distinct()
-                                                                                         .Count(),
-                                                           })
-                                          .Where(entity => entity.ObservedImageCount > 1)
-                                          .OrderByDescending(entity => entity.ObservedImageCount)
-                                          .ThenBy(entity => entity.Registry)
-                                          .ThenBy(entity => entity.Repository)
-                                          .ThenBy(entity => entity.Tag)
-                                          .ToList();
+        return flatResults.GroupBy(entity => BuildGroupingKey(entity.Registry,
+                                                              entity.Repository,
+                                                              entity.Tag,
+                                                              entity.Digest,
+                                                              entity.SourceReference),
+                                   StringComparer.OrdinalIgnoreCase)
+                          .Select(group =>
+                                  {
+                                      var first = group.OrderBy(entity => entity.Registry, StringComparer.OrdinalIgnoreCase)
+                                                       .ThenBy(entity => entity.Repository, StringComparer.OrdinalIgnoreCase)
+                                                       .ThenBy(entity => entity.Tag, StringComparer.OrdinalIgnoreCase)
+                                                       .ThenBy(entity => entity.SourceReference, StringComparer.OrdinalIgnoreCase)
+                                                       .First();
 
-        return sharedBaseImages;
+                                      return new SharedBaseImageUsageData
+                                             {
+                                                 BaseImageVersionId = first.BaseImageVersionId,
+                                                 BaseImageVersionIds = group.Select(entity => entity.BaseImageVersionId)
+                                                                            .Distinct()
+                                                                            .ToList(),
+                                                 Registry = first.Registry,
+                                                 Repository = first.Repository,
+                                                 Tag = first.Tag,
+                                                 Digest = first.Digest,
+                                                 SourceReferences = group.Select(entity => entity.SourceReference ?? string.Empty)
+                                                                         .Where(entity => string.IsNullOrWhiteSpace(entity) == false)
+                                                                         .Distinct(StringComparer.OrdinalIgnoreCase)
+                                                                         .OrderBy(entity => entity, StringComparer.OrdinalIgnoreCase)
+                                                                         .ToList(),
+                                                 ObservedImageCount = group.Select(entity => entity.ObservedImageId)
+                                                                           .Distinct()
+                                                                           .Count(),
+                                             };
+                                  })
+                          .OrderByDescending(entity => entity.ObservedImageCount)
+                          .ThenBy(entity => entity.Registry)
+                          .ThenBy(entity => entity.Repository)
+                          .ThenBy(entity => entity.Tag)
+                          .ToList();
     }
 
     /// <inheritdoc/>
@@ -156,6 +169,29 @@ public class SharedBaseImageQueryService : ISharedBaseImageQueryService
                           .Select(group => group.First())
                           .OrderBy(entity => entity.ObservedImageName)
                           .ToList();
+    }
+
+    /// <summary>
+    /// Build a grouping key for the base-image overview
+    /// </summary>
+    /// <param name="registry">Registry name</param>
+    /// <param name="repository">Repository path</param>
+    /// <param name="tag">Tag value</param>
+    /// <param name="digest">Digest value</param>
+    /// <param name="sourceReference">Source-reference value</param>
+    /// <returns>Grouping key</returns>
+    private static string BuildGroupingKey(string registry,
+                                           string repository,
+                                           string tag,
+                                           string? digest,
+                                           string? sourceReference)
+    {
+        if (string.IsNullOrWhiteSpace(digest) == false)
+        {
+            return $"{registry}/{repository}@{digest}";
+        }
+
+        return $"{registry}/{repository}:{tag}|{sourceReference ?? string.Empty}";
     }
 
     #endregion // Methods

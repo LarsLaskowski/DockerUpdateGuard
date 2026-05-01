@@ -1,4 +1,6 @@
 using DockerUpdateGuard.DockerHub;
+using DockerUpdateGuard.Images.Data;
+using DockerUpdateGuard.Images.Interfaces;
 using DockerUpdateGuard.Infrastructure;
 
 namespace DockerUpdateGuard.Images;

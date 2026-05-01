@@ -3,10 +3,17 @@
 
     <MudNavMenu Rounded="true" Dense="false" Class="app-nav-menu">
         <MudNavLink Href="" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.SpaceDashboard">Dashboard</MudNavLink>
+        @if (_showMyImages)
+        {
+            <MudNavLink Href="my-images" Icon="@Icons.Material.Filled.AccountCircle">My Images</MudNavLink>
+        }
         <MudNavLink Href="observed-images" Icon="@Icons.Material.Filled.Visibility">Observed Images</MudNavLink>
         <MudNavLink Href="runtime-containers" Icon="@Icons.Material.Filled.ViewInAr">Runtime Containers</MudNavLink>
         <MudNavLink Href="docker-instances" Icon="@Icons.Material.Filled.Dns">Docker Instances</MudNavLink>
-        <MudNavLink Href="shared-base-images" Icon="@Icons.Material.Filled.AccountTree">Shared Base Images</MudNavLink>
+        @if (_showBaseImages)
+        {
+            <MudNavLink Href="base-images" Icon="@Icons.Material.Filled.AccountTree">Base Images</MudNavLink>
+        }
         <MudNavLink Href="scan-history" Icon="@Icons.Material.Filled.History">Scan History</MudNavLink>
     </MudNavMenu>
 

@@ -5,14 +5,14 @@ using Microsoft.AspNetCore.Components;
 namespace DockerUpdateGuard.Components.Pages;
 
 /// <summary>
-/// Shared base images page
+    /// Base images page
 /// </summary>
 public partial class SharedBaseImages
 {
     #region Fields
 
     /// <summary>
-    /// Shared base-image items
+    /// Base-image items
     /// </summary>
     private IReadOnlyList<SharedBaseImageListItemData>? _items;
 
@@ -33,7 +33,7 @@ public partial class SharedBaseImages
     /// <inheritdoc/>
     protected override async Task OnInitializedAsync()
     {
-        var items = await ViewService.GetSharedBaseImagesAsync()
+        var items = await ViewService.GetBaseImagesAsync()
                                      .ConfigureAwait(false);
 
         await InvokeAsync(() =>

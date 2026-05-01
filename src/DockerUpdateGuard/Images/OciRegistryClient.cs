@@ -3,6 +3,9 @@ using System.Net.Http.Headers;
 using System.Text.Json;
 
 using DockerUpdateGuard.DockerHub;
+using DockerUpdateGuard.Images.Data;
+using DockerUpdateGuard.Images.Helper;
+using DockerUpdateGuard.Images.Interfaces;
 using DockerUpdateGuard.Infrastructure;
 
 namespace DockerUpdateGuard.Images;
@@ -10,7 +13,7 @@ namespace DockerUpdateGuard.Images;
 /// <summary>
 /// Generic OCI registry metadata adapter
 /// </summary>
-public class OciRegistryClient : IRegistryMetadataClient
+public partial class OciRegistryClient : IRegistryMetadataClient
 {
     #region Constants
 
@@ -645,7 +648,8 @@ public class OciRegistryClient : IRegistryMetadataClient
                                                                                              string repository,
                                                                                              CancellationToken cancellationToken = default,
                                                                                              string? operatingSystem = null,
-                                                                                             string? architecture = null)
+                                                                                             string? architecture = null,
+                                                                                             RegistryTagQueryOptions? queryOptions = null)
     {
         if (CanHandle(registry) == false)
         {
@@ -655,6 +659,7 @@ public class OciRegistryClient : IRegistryMetadataClient
         var normalizedRegistry = NormalizeRegistry(registry);
         var requestUri = CreateTagsUri(normalizedRegistry, repository, lastTag: null);
         var tags = new List<DockerHubTagData>();
+        var inspectedTagCount = 0;
 
         while (requestUri is not null)
         {
@@ -694,6 +699,18 @@ public class OciRegistryClient : IRegistryMetadataClient
                             continue;
                         }
 
+                        if (RegistryTagQueryHelper.ShouldInspectTagName(tagName, queryOptions) == false)
+                        {
+                            continue;
+                        }
+
+                        if (queryOptions is not null && inspectedTagCount >= queryOptions.MaximumTags)
+                        {
+                            requestUri = null;
+
+                            break;
+                        }
+
                         var tagReference = new ImageReference
                                            {
                                                Registry = normalizedRegistry,
@@ -704,18 +721,30 @@ public class OciRegistryClient : IRegistryMetadataClient
                                                           cancellationToken,
                                                           operatingSystem,
                                                           architecture).ConfigureAwait(false);
+                        inspectedTagCount++;
 
-                        tags.Add(tagResult.Status == ExternalOperationStatus.Succeeded && tagResult.Data is not null
-                                     ? tagResult.Data
-                                     : new DockerHubTagData
-                                       {
-                                           Tag = tagName,
-                                       });
+                        if (tagResult.Status == ExternalOperationStatus.Succeeded && tagResult.Data is not null)
+                        {
+                            if (RegistryTagQueryHelper.ShouldKeepTag(tagResult.Data, queryOptions))
+                            {
+                                tags.Add(tagResult.Data);
+                            }
+                        }
+                        else
+                        {
+                            tags.Add(new DockerHubTagData
+                                     {
+                                         Tag = tagName,
+                                     });
+                        }
                     }
                 }
             }
 
-            requestUri = GetNextTagsUri(response, normalizedRegistry, repository, tags);
+            if (requestUri is not null)
+            {
+                requestUri = GetNextTagsUri(response, normalizedRegistry, repository, tags);
+            }
         }
 
         return ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Succeeded(tags);
@@ -1016,7 +1045,7 @@ public class OciRegistryClient : IRegistryMetadataClient
             if (string.IsNullOrWhiteSpace(parsedReference.Digest)
                 && string.IsNullOrWhiteSpace(baseImageDigest) == false)
             {
-                parsedReference.Digest = baseImageDigest;
+                parsedReference.Digest = ImageReferenceParser.NormalizeDigest(baseImageDigest);
             }
 
             return parsedReference;
@@ -1159,29 +1188,4 @@ public class OciRegistryClient : IRegistryMetadataClient
     }
 
     #endregion // Methods
-
-    #region Helper types
-
-    /// <summary>
-    /// Manifest metadata used by update evaluation and base-image resolution
-    /// </summary>
-    private sealed class ManifestMetadata
-    {
-        /// <summary>
-        /// Resolved manifest digest
-        /// </summary>
-        public string? Digest { get; set; }
-
-        /// <summary>
-        /// Resolved config blob digest
-        /// </summary>
-        public string? ConfigDigest { get; set; }
-
-        /// <summary>
-        /// Optional created timestamp
-        /// </summary>
-        public DateTimeOffset? PublishedAtUtc { get; set; }
-    }
-
-    #endregion // Helper types
 }

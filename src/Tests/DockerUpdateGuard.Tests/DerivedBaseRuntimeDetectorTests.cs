@@ -1,5 +1,6 @@
 using DockerUpdateGuard.Docker;
 using DockerUpdateGuard.Images;
+using DockerUpdateGuard.Images.Enums;
 
 namespace DockerUpdateGuard.Tests;
 

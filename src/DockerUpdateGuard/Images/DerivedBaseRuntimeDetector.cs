@@ -1,6 +1,9 @@
 using System.Text.RegularExpressions;
 
 using DockerUpdateGuard.Docker;
+using DockerUpdateGuard.Images.Data;
+using DockerUpdateGuard.Images.Enums;
+using DockerUpdateGuard.Images.Interfaces;
 
 namespace DockerUpdateGuard.Images;
 
@@ -302,58 +305,4 @@ public partial class DerivedBaseRuntimeDetector : IDerivedBaseRuntimeDetector
     private static partial Regex HistoryRepositoryVersionRegex();
 
     #endregion // Methods
-
-    #region Helper types
-
-    /// <summary>
-    /// Internal runtime candidate
-    /// </summary>
-    private sealed class RuntimeCandidate
-    {
-        #region Properties
-
-        /// <summary>
-        /// Runtime kind
-        /// </summary>
-        public DerivedBaseRuntimeKind Kind { get; set; }
-
-        /// <summary>
-        /// Runtime version
-        /// </summary>
-        public Version? Version { get; set; }
-
-        /// <summary>
-        /// Channel version
-        /// </summary>
-        public string? ChannelVersion { get; set; }
-
-        /// <summary>
-        /// Detection source
-        /// </summary>
-        public DerivedBaseRuntimeDetectionSource Source { get; set; }
-
-        /// <summary>
-        /// Source priority
-        /// </summary>
-        public int SourcePriority { get; set; }
-
-        /// <summary>
-        /// Encounter order
-        /// </summary>
-        public int Order { get; set; }
-
-        /// <summary>
-        /// Whether the candidate has an exact version
-        /// </summary>
-        public bool HasExactVersion { get; set; }
-
-        /// <summary>
-        /// Evidence string
-        /// </summary>
-        public string? Evidence { get; set; }
-
-        #endregion // Properties
-    }
-
-    #endregion // Helper types
 }

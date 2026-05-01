@@ -1,5 +1,6 @@
 using DockerUpdateGuard.Data.Entities;
-using DockerUpdateGuard.Images;
+using DockerUpdateGuard.Images.Data;
+using DockerUpdateGuard.Images.Interfaces;
 using DockerUpdateGuard.UI;
 
 using Microsoft.AspNetCore.Components;
@@ -118,16 +119,6 @@ public partial class ObservedImages
                };
     }
 
-    /// <summary>
-    /// Resolve the chip color for a base-runtime alert
-    /// </summary>
-    /// <param name="isOwnImage">Whether the image is owned</param>
-    /// <returns>Chip color</returns>
-    private static Color GetBaseRuntimeAlertColor(bool isOwnImage)
-    {
-        return isOwnImage ? Color.Warning : Color.Info;
-    }
-
     #endregion // Static methods
 
     #region Methods
@@ -139,12 +130,12 @@ public partial class ObservedImages
     }
 
     /// <summary>
-    /// Load the observed image list
+    /// Load the manual image list
     /// </summary>
     /// <returns>Task</returns>
     private async Task LoadAsync()
     {
-        var images = await ViewService.GetObservedImagesAsync()
+        var images = await ViewService.GetManualObservedImagesAsync()
                                       .ConfigureAwait(false);
 
         await InvokeAsync(() =>
@@ -193,26 +184,6 @@ public partial class ObservedImages
                                   _isBusy = false;
                               }).ConfigureAwait(false);
         }
-    }
-
-    /// <summary>
-    /// Read account-discovered own images
-    /// </summary>
-    /// <returns>Own image list</returns>
-    private IReadOnlyList<ObservedImageListItemData> GetOwnImages()
-    {
-        return _images?.Where(entity => entity.IsOwnImage)
-                      .ToList() ?? [];
-    }
-
-    /// <summary>
-    /// Read manually registered images
-    /// </summary>
-    /// <returns>Manual image list</returns>
-    private IReadOnlyList<ObservedImageListItemData> GetManualImages()
-    {
-        return _images?.Where(entity => entity.IsOwnImage == false)
-                      .ToList() ?? [];
     }
 
     #endregion // Methods

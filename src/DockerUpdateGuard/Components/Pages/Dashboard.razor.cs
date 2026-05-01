@@ -1,6 +1,8 @@
+using DockerUpdateGuard.Configuration;
 using DockerUpdateGuard.UI;
 
 using Microsoft.AspNetCore.Components;
+using Microsoft.Extensions.Options;
 
 using MudBlazor;
 
@@ -18,6 +20,11 @@ public sealed partial class Dashboard : IDisposable
     /// </summary>
     private DashboardViewData? _dashboard;
 
+    /// <summary>
+    /// Whether the My Images tile should be shown
+    /// </summary>
+    private bool _showMyImages;
+
     #endregion // Fields
 
     #region Properties
@@ -33,6 +40,12 @@ public sealed partial class Dashboard : IDisposable
     /// </summary>
     [Inject]
     public DashboardRefreshState DashboardRefreshState { get; set; } = null!;
+
+    /// <summary>
+    /// Application options
+    /// </summary>
+    [Inject]
+    public IOptions<DockerUpdateGuardOptions> AppOptions { get; set; } = null!;
 
     #endregion // Properties
 
@@ -64,12 +77,24 @@ public sealed partial class Dashboard : IDisposable
     {
         return metricLabel switch
                {
+                   "My Images" => "/my-images",
                    "Observed Images" => "/observed-images",
                    "Docker Instances" => "/docker-instances",
                    "Runtime Containers" => "/runtime-containers",
-                   "Shared Bases" => "/shared-base-images",
+                   "Base Images" => "/base-images",
                    _ => throw new ArgumentOutOfRangeException(nameof(metricLabel), metricLabel, "Dashboard metric cards must map to known overview routes"),
                };
+    }
+
+    /// <summary>
+    /// Determine whether Docker Hub account discovery is configured for the given options
+    /// </summary>
+    /// <param name="dockerHub">Docker Hub options to evaluate</param>
+    /// <returns>True when both UserName and Pat are non-empty</returns>
+    private static bool IsDockerHubAccountConfigured(DockerHubOptions dockerHub)
+    {
+        return string.IsNullOrWhiteSpace(dockerHub.UserName) == false
+               && string.IsNullOrWhiteSpace(dockerHub.Pat) == false;
     }
 
     #endregion // Static methods
@@ -79,6 +104,8 @@ public sealed partial class Dashboard : IDisposable
     /// <inheritdoc/>
     protected override async Task OnInitializedAsync()
     {
+        _showMyImages = IsDockerHubAccountConfigured(AppOptions.Value.DockerHub);
+
         DashboardRefreshState.Changed += OnDashboardRefreshRequested;
 
         await LoadAsync().ConfigureAwait(false);

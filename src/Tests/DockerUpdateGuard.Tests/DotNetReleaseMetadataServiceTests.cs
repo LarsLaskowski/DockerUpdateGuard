@@ -1,9 +1,7 @@
-using System.Net;
-using System.Text;
-
 using DockerUpdateGuard.Images;
 using DockerUpdateGuard.Infrastructure;
 using DockerUpdateGuard.Tests.Data;
+using DockerUpdateGuard.Tests.Helper;
 
 namespace DockerUpdateGuard.Tests;
 
@@ -11,7 +9,7 @@ namespace DockerUpdateGuard.Tests;
 /// Tests for <see cref="DotNetReleaseMetadataService"/>
 /// </summary>
 [TestClass]
-public class DotNetReleaseMetadataServiceTests
+public partial class DotNetReleaseMetadataServiceTests
 {
     #region Methods
 
@@ -22,21 +20,21 @@ public class DotNetReleaseMetadataServiceTests
     [TestMethod]
     public async Task DotNetReleaseMetadataServiceGetChannelReleaseAsyncReturnsLatestRuntimeAsync()
     {
-        var handler = new StaticHttpMessageHandler("""
-                                                   {
-                                                     "releases-index": [
+        var handler = new StaticHttpJsonMessageHandler("""
                                                        {
-                                                         "channel-version": "9.0",
-                                                         "latest-runtime": "9.0.15",
-                                                         "latest-release-date": "2025-06-10",
-                                                         "security": true,
-                                                         "support-phase": "active",
-                                                         "eol-date": "2026-05-12",
-                                                         "releases.json": "https://example.test/9.0/releases.json"
+                                                         "releases-index": [
+                                                           {
+                                                             "channel-version": "9.0",
+                                                             "latest-runtime": "9.0.15",
+                                                             "latest-release-date": "2025-06-10",
+                                                             "security": true,
+                                                             "support-phase": "active",
+                                                             "eol-date": "2026-05-12",
+                                                             "releases.json": "https://example.test/9.0/releases.json"
+                                                           }
+                                                         ]
                                                        }
-                                                     ]
-                                                   }
-                                                   """);
+                                                       """);
         var httpClient = new HttpClient(handler)
                          {
                              BaseAddress = new Uri("https://dotnet.example.test/"),
@@ -74,11 +72,12 @@ public class DotNetReleaseMetadataServiceTests
     [TestMethod]
     public async Task DotNetReleaseMetadataServiceGetChannelReleaseAsyncForMissingChannelReturnsNotFoundAsync()
     {
-        var handler = new StaticHttpMessageHandler("""
-                                                   {
-                                                     "releases-index": []
-                                                   }
-                                                   """);
+        var handler = new StaticHttpJsonMessageHandler("""
+                                                       {
+                                                         "releases-index": []
+                                                       }
+                                                       """);
+
         var httpClient = new HttpClient(handler)
                          {
                              BaseAddress = new Uri("https://dotnet.example.test/"),
@@ -104,51 +103,4 @@ public class DotNetReleaseMetadataServiceTests
     }
 
     #endregion // Methods
-
-    #region Helper types
-
-    /// <summary>
-    /// Fixed-response HTTP message handler for metadata tests
-    /// </summary>
-    private sealed class StaticHttpMessageHandler : HttpMessageHandler
-    {
-        #region Fields
-
-        /// <summary>
-        /// JSON payload
-        /// </summary>
-        private readonly string _jsonPayload;
-
-        #endregion // Fields
-
-        #region Constructors
-
-        /// <summary>
-        /// Constructor
-        /// </summary>
-        /// <param name="jsonPayload">JSON payload</param>
-        public StaticHttpMessageHandler(string jsonPayload)
-        {
-            _jsonPayload = jsonPayload;
-        }
-
-        #endregion // Constructors
-
-        #region Methods
-
-        /// <inheritdoc/>
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-        {
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
-                                   {
-                                       Content = new StringContent(_jsonPayload,
-                                                                   Encoding.UTF8,
-                                                                   "application/json"),
-                                   });
-        }
-
-        #endregion // Methods
-    }
-
-    #endregion // Helper types
 }

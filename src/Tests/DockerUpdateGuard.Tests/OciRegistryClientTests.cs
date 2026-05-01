@@ -2,10 +2,11 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
 
-using DockerUpdateGuard.DockerHub;
 using DockerUpdateGuard.Images;
+using DockerUpdateGuard.Images.Data;
 using DockerUpdateGuard.Infrastructure;
 using DockerUpdateGuard.Tests.Data;
+using DockerUpdateGuard.Tests.Helper;
 
 namespace DockerUpdateGuard.Tests;
 
@@ -13,7 +14,7 @@ namespace DockerUpdateGuard.Tests;
 /// Tests for <see cref="OciRegistryClient"/>
 /// </summary>
 [TestClass]
-public class OciRegistryClientTests
+public partial class OciRegistryClientTests
 {
     #region Methods
 
@@ -84,6 +85,91 @@ public class OciRegistryClientTests
                                        && request.AuthorizationParameter == "mcr-token",
                             handler.Requests,
                             "OCI registry tag lookup must retry the tags endpoint with the resolved bearer token");
+        }
+        finally
+        {
+            httpClient.Dispose();
+            handler.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Verify OCI tag listing skips lower version tags before requesting metadata
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task OciRegistryClientGetTagsAsyncSkipsLowerVersionTagsBeforeMetadataRequestsAsync()
+    {
+        var handler = new SequenceHttpMessageHandler();
+        var httpClient = new HttpClient(handler);
+
+        try
+        {
+            handler.AddResponse("https://mcr.microsoft.com/v2/mssql/server/tags/list?n=100",
+                                CreateUnauthorizedResponse("https://mcr.microsoft.com/oauth2/token",
+                                                           "mcr.microsoft.com",
+                                                           "repository:mssql/server:pull"));
+            handler.AddJsonResponse("https://mcr.microsoft.com/oauth2/token?service=mcr.microsoft.com&scope=repository%3Amssql%2Fserver%3Apull",
+                                    """
+                                    {
+                                      "access_token": "mcr-token"
+                                    }
+                                    """);
+            handler.AddJsonResponse("https://mcr.microsoft.com/v2/mssql/server/tags/list?n=100",
+                                    """
+                                    {
+                                      "name": "mssql/server",
+                                      "tags": [
+                                        "2.4.0",
+                                        "2.4.1",
+                                        "2.5.0"
+                                      ]
+                                    }
+                                    """);
+            handler.AddResponse("https://mcr.microsoft.com/v2/mssql/server/manifests/2.4.1",
+                                CreateManifestResponse("sha256:241",
+                                                       """
+                                                       {
+                                                         "schemaVersion": 2,
+                                                         "config": {
+                                                           "digest": "sha256:config241"
+                                                         }
+                                                       }
+                                                       """));
+            handler.AddResponse("https://mcr.microsoft.com/v2/mssql/server/manifests/2.5.0",
+                                CreateManifestResponse("sha256:250",
+                                                       """
+                                                       {
+                                                         "schemaVersion": 2,
+                                                         "config": {
+                                                           "digest": "sha256:config250"
+                                                         }
+                                                       }
+                                                       """));
+
+            var client = new OciRegistryClient(httpClient, new TestLogger<OciRegistryClient>());
+            var result = await client.GetTagsAsync("mcr.microsoft.com",
+                                                   "mssql/server",
+                                                   CancellationToken.None,
+                                                   queryOptions: new RegistryTagQueryOptions
+                                                                 {
+                                                                     CurrentTag = "2.4.1",
+                                                                     MaximumTags = 10,
+                                                                     MinimumVersionTag = "2.4.1",
+                                                                 })
+                                     .ConfigureAwait(false);
+
+            Assert.AreEqual(ExternalOperationStatus.Succeeded,
+                            result.Status,
+                            "Bounded OCI tag listing must still succeed");
+            Assert.IsNotNull(result.Data, "Bounded OCI tag listing must return tag data");
+            CollectionAssert.AreEqual(new[] { "2.4.1", "2.5.0" },
+                                      result.Data.Select(entity => entity.Tag)
+                                                 .ToArray(),
+                                      "Bounded OCI tag listing must skip lower version tags before metadata lookups");
+            Assert.DoesNotContain(request => request.RequestUri == "https://mcr.microsoft.com/v2/mssql/server/manifests/2.4.0",
+                                  handler.Requests,
+                                  "Bounded OCI tag listing must avoid manifest requests for lower version tags");
         }
         finally
         {
@@ -178,144 +264,82 @@ public class OciRegistryClientTests
         }
     }
 
+    /// <summary>
+    /// Verify OCI base-image resolution strips an embedded image reference from the base digest label
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task OciRegistryClientResolveBaseImagesAsyncNormalizesDigestLabelReferenceAsync()
+    {
+        var handler = new SequenceHttpMessageHandler();
+        var httpClient = new HttpClient(handler);
+
+        try
+        {
+            handler.AddResponse("https://mcr.microsoft.com/v2/dotnet/aspnet/manifests/8.0",
+                                CreateUnauthorizedResponse("https://mcr.microsoft.com/oauth2/token",
+                                                           "mcr.microsoft.com",
+                                                           "repository:dotnet/aspnet:pull"));
+            handler.AddJsonResponse("https://mcr.microsoft.com/oauth2/token?service=mcr.microsoft.com&scope=repository%3Adotnet%2Faspnet%3Apull",
+                                    """
+                                    {
+                                      "access_token": "mcr-token"
+                                    }
+                                    """);
+            handler.AddResponse("https://mcr.microsoft.com/v2/dotnet/aspnet/manifests/8.0",
+                                CreateManifestResponse("sha256:aspnet",
+                                                       """
+                                                       {
+                                                         "schemaVersion": 2,
+                                                         "config": {
+                                                           "digest": "sha256:aspnet-config"
+                                                         }
+                                                       }
+                                                       """));
+            handler.AddJsonResponse("https://mcr.microsoft.com/v2/dotnet/aspnet/blobs/sha256%3Aaspnet-config",
+                                    """
+                                    {
+                                      "config": {
+                                        "Labels": {
+                                          "org.opencontainers.image.base.name": "mcr.microsoft.com/dotnet/runtime:8.0",
+                                          "org.opencontainers.image.base.digest": "mcr.microsoft.com/dotnet/runtime@sha256:runtime"
+                                        }
+                                      }
+                                    }
+                                    """);
+
+            var client = new OciRegistryClient(httpClient, new TestLogger<OciRegistryClient>());
+            var result = await client.ResolveBaseImagesAsync(new ImageReference
+                                                             {
+                                                                 Registry = "mcr.microsoft.com",
+                                                                 Repository = "dotnet/aspnet",
+                                                                 Tag = "8.0",
+                                                             },
+                                                             CancellationToken.None)
+                                     .ConfigureAwait(false);
+
+            Assert.AreEqual(ExternalOperationStatus.Succeeded,
+                            result.Status,
+                            "OCI base-image resolution must succeed when the manifest and config blob can be read");
+            Assert.IsNotNull(result.Data, "OCI base-image resolution must return resolved base images");
+            Assert.HasCount(1,
+                            result.Data,
+                            "OCI base-image resolution must return the discovered base image");
+            Assert.AreEqual("sha256:runtime",
+                            result.Data[0].Digest,
+                            "OCI base-image resolution must strip the image reference prefix from the base digest label");
+            Assert.Contains(request => request.RequestUri == "https://mcr.microsoft.com/v2/dotnet/runtime/manifests/sha256%3Aruntime",
+                            handler.Requests,
+                            "OCI base-image recursion must use the normalized digest when resolving the parent image chain");
+        }
+        finally
+        {
+            httpClient.Dispose();
+            handler.Dispose();
+        }
+    }
+
     #endregion // Methods
-
-    #region Helper types
-
-    /// <summary>
-    /// Sequence-based HTTP message handler for deterministic OCI registry tests
-    /// </summary>
-    private sealed class SequenceHttpMessageHandler : HttpMessageHandler
-    {
-        #region Fields
-
-        private readonly Dictionary<string, Queue<HttpResponseMessage>> _responses = new(StringComparer.Ordinal);
-        private readonly List<ObservedRequest> _requests = [];
-
-        #endregion // Fields
-
-        #region Properties
-
-        /// <summary>
-        /// Observed outbound requests
-        /// </summary>
-        public IReadOnlyList<ObservedRequest> Requests => _requests;
-
-        #endregion // Properties
-
-        #region Methods
-
-        /// <summary>
-        /// Add a response to the request sequence for a URI
-        /// </summary>
-        /// <param name="requestUri">Absolute request URI</param>
-        /// <param name="response">Configured response</param>
-        public void AddResponse(string requestUri, HttpResponseMessage response)
-        {
-            var normalizedRequestUri = new Uri(requestUri).AbsoluteUri;
-
-            if (_responses.TryGetValue(normalizedRequestUri, out var queue) == false)
-            {
-                queue = new Queue<HttpResponseMessage>();
-                _responses[normalizedRequestUri] = queue;
-            }
-
-            queue.Enqueue(response);
-        }
-
-        /// <summary>
-        /// Add a JSON response to the request sequence for a URI
-        /// </summary>
-        /// <param name="requestUri">Absolute request URI</param>
-        /// <param name="jsonContent">JSON content</param>
-        public void AddJsonResponse(string requestUri, string jsonContent)
-        {
-            AddResponse(requestUri,
-                        new HttpResponseMessage(HttpStatusCode.OK)
-                        {
-                            Content = new StringContent(jsonContent,
-                                                        Encoding.UTF8,
-                                                        "application/json"),
-                        });
-        }
-
-        /// <inheritdoc/>
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-        {
-            ArgumentNullException.ThrowIfNull(request.RequestUri);
-
-            _requests.Add(new ObservedRequest
-                          {
-                              RequestUri = request.RequestUri.ToString(),
-                              AuthorizationScheme = request.Headers.Authorization?.Scheme,
-                              AuthorizationParameter = request.Headers.Authorization?.Parameter,
-                          });
-
-            if (_responses.TryGetValue(request.RequestUri.AbsoluteUri, out var queue)
-                && queue.Count > 0)
-            {
-                return Task.FromResult(CloneResponse(queue.Dequeue()));
-            }
-
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound)
-                                   {
-                                       RequestMessage = request,
-                                   });
-        }
-
-        /// <summary>
-        /// Clone a configured response for repeatable handler usage
-        /// </summary>
-        /// <param name="response">Template response</param>
-        /// <returns>Cloned response</returns>
-        private static HttpResponseMessage CloneResponse(HttpResponseMessage response)
-        {
-            var clone = new HttpResponseMessage(response.StatusCode)
-                        {
-                            Content = response.Content is null
-                                          ? null
-                                          : new StringContent(response.Content.ReadAsStringAsync().GetAwaiter().GetResult(),
-                                                              Encoding.UTF8,
-                                                              response.Content.Headers.ContentType?.MediaType),
-                        };
-
-            foreach (var header in response.Headers)
-            {
-                clone.Headers.TryAddWithoutValidation(header.Key, header.Value);
-            }
-
-            return clone;
-        }
-
-        #endregion // Methods
-    }
-
-    /// <summary>
-    /// Observed outbound request data
-    /// </summary>
-    private sealed class ObservedRequest
-    {
-        #region Properties
-
-        /// <summary>
-        /// Authorization parameter
-        /// </summary>
-        public string? AuthorizationParameter { get; init; }
-
-        /// <summary>
-        /// Authorization scheme
-        /// </summary>
-        public string? AuthorizationScheme { get; init; }
-
-        /// <summary>
-        /// Request URI
-        /// </summary>
-        public string RequestUri { get; init; } = string.Empty;
-
-        #endregion // Properties
-    }
-
-    #endregion // Helper types
 
     #region Static methods
 

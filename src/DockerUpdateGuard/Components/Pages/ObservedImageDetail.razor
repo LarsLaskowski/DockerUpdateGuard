@@ -78,6 +78,16 @@
                         </MudPaper>
                     </MudItem>
                 }
+                @if (_detail.ActiveBaseImageVulnerabilityFindingCount > 0)
+                {
+                    <MudItem xs="12" md="6">
+                        <MudPaper Class="summary-card" Elevation="0">
+                            <span class="summary-label">Base image vulnerabilities</span>
+                            <MudChip T="string" Size="Size.Small" Color="Color.Warning">Findings detected</MudChip>
+                            <span class="table-secondary">@_detail.BaseImageVulnerabilitySummary</span>
+                        </MudPaper>
+                    </MudItem>
+                }
             </MudGrid>
         </MudPaper>
 
@@ -135,11 +145,16 @@
                         <MudTh>Depth</MudTh>
                         <MudTh>Base Image</MudTh>
                         <MudTh>Source</MudTh>
+                        <MudTh>Vulnerabilities</MudTh>
                     </HeaderContent>
                     <RowTemplate>
                         <MudTd DataLabel="Depth">@context.Depth</MudTd>
                         <MudTd DataLabel="Base Image">@ImageReferenceFormatter.GetReference(context.ImageReference)</MudTd>
                         <MudTd DataLabel="Source">@ImageReferenceFormatter.GetReference(context.SourceReference ?? string.Empty)</MudTd>
+                        <MudTd DataLabel="Vulnerabilities">
+                            <MudChip T="string" Size="Size.Small" Color="@GetVulnerabilityAssessmentColor(context.VulnerabilityAssessment.Status)">@context.VulnerabilityAssessment.Status</MudChip>
+                            <span class="table-secondary">@($"{context.VulnerabilityAssessment.ActiveFindingCount} active · {context.VulnerabilityAssessment.Source}")</span>
+                        </MudTd>
                     </RowTemplate>
                 </MudTable>
             }

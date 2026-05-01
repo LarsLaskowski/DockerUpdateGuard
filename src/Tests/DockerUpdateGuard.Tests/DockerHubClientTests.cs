@@ -1,12 +1,9 @@
-using System.Net;
-using System.Net.Http;
-using System.Text;
-
 using DockerUpdateGuard.Configuration;
 using DockerUpdateGuard.DockerHub;
-using DockerUpdateGuard.Images;
+using DockerUpdateGuard.Images.Data;
 using DockerUpdateGuard.Infrastructure;
 using DockerUpdateGuard.Tests.Data;
+using DockerUpdateGuard.Tests.Helper;
 
 namespace DockerUpdateGuard.Tests;
 
@@ -14,7 +11,7 @@ namespace DockerUpdateGuard.Tests;
 /// Tests for <see cref="DockerHubClient"/>
 /// </summary>
 [TestClass]
-public class DockerHubClientTests
+public partial class DockerHubClientTests
 {
     #region Methods
 
@@ -228,6 +225,86 @@ public class DockerHubClientTests
     }
 
     /// <summary>
+    /// Verify Docker Hub tag listing stops once older and lower-version tags are no longer relevant
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerHubClientGetTagsAsyncStopsAfterBaselineAndSkipsLowerVersionsAsync()
+    {
+        var handler = new StubHttpMessageHandler();
+        var httpClient = new HttpClient(handler);
+
+        try
+        {
+            httpClient.BaseAddress = new Uri("https://hub.docker.com/");
+            handler.AddResponse("https://hub.docker.com/v2/users/login",
+                                """
+                                {
+                                  "token": "header.eyJleHAiOjQxMDI0NDQ4MDB9.signature"
+                                }
+                                """);
+            handler.AddResponse("https://hub.docker.com/v2/namespaces/acme/repositories/api/tags?page_size=100",
+                                """
+                                {
+                                  "next": "https://hub.docker.com/v2/namespaces/acme/repositories/api/tags?page=2&page_size=100",
+                                  "results": [
+                                    {
+                                      "name": "3.0.0",
+                                      "digest": "sha256:300",
+                                      "last_pushed": "2025-04-03T10:00:00Z"
+                                    },
+                                    {
+                                      "name": "2.4.1",
+                                      "digest": "sha256:241",
+                                      "last_pushed": "2025-04-02T10:00:00Z"
+                                    },
+                                    {
+                                      "name": "2.4.0",
+                                      "digest": "sha256:240",
+                                      "last_pushed": "2025-04-02T10:00:00Z"
+                                    },
+                                    {
+                                      "name": "2.3.9",
+                                      "digest": "sha256:239",
+                                      "last_pushed": "2025-04-01T10:00:00Z"
+                                    }
+                                  ]
+                                }
+                                """);
+
+            var client = CreateClient(httpClient);
+            var result = await client.GetTagsAsync("docker.io",
+                                                   "acme/api",
+                                                   CancellationToken.None,
+                                                   queryOptions: new RegistryTagQueryOptions
+                                                                 {
+                                                                     CurrentTag = "2.4.1",
+                                                                     MaximumTags = 50,
+                                                                     MinimumVersionTag = "2.4.1",
+                                                                     PublishedSinceUtc = new DateTimeOffset(2025, 04, 02, 10, 00, 00, TimeSpan.Zero),
+                                                                 })
+                                     .ConfigureAwait(false);
+
+            Assert.AreEqual(ExternalOperationStatus.Succeeded,
+                            result.Status,
+                            "Bounded Docker Hub tag listing must still succeed");
+            Assert.IsNotNull(result.Data, "Bounded Docker Hub tag listing must return tag data");
+            CollectionAssert.AreEqual(new[] { "3.0.0", "2.4.1" },
+                                      result.Data.Select(entity => entity.Tag)
+                                                 .ToArray(),
+                                      "Bounded Docker Hub tag listing must skip lower versions and stop before older pages");
+            Assert.DoesNotContain(request => request.RequestUri == "https://hub.docker.com/v2/namespaces/acme/repositories/api/tags?page=2&page_size=100",
+                                  handler.Requests,
+                                  "Bounded Docker Hub tag listing must not request later pages after the publish-time cutoff");
+        }
+        finally
+        {
+            httpClient.Dispose();
+            handler.Dispose();
+        }
+    }
+
+    /// <summary>
     /// Verify Docker Hub tag lookup uses the top-level Docker Hub digest
     /// </summary>
     /// <returns>Task</returns>
@@ -295,6 +372,100 @@ public class DockerHubClientTests
     }
 
     /// <summary>
+    /// Verify Docker Hub base-image resolution strips an embedded image reference from the base digest label
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerHubClientResolveBaseImagesAsyncNormalizesDigestLabelReferenceAsync()
+    {
+        var handler = new StubHttpMessageHandler();
+        var httpClient = new HttpClient(handler);
+
+        try
+        {
+            httpClient.BaseAddress = new Uri("https://hub.docker.com/");
+            handler.AddResponse("https://auth.docker.io/token?service=registry.docker.io&scope=repository:library/app:pull",
+                                """
+                                {
+                                  "token": "registry-token"
+                                }
+                                """);
+            handler.AddResponse("https://registry-1.docker.io/v2/library/app/manifests/latest",
+                                """
+                                {
+                                  "schemaVersion": 2,
+                                  "config": {
+                                    "digest": "sha256:app-config"
+                                  }
+                                }
+                                """);
+            handler.AddResponse("https://registry-1.docker.io/v2/library/app/blobs/sha256%3Aapp-config",
+                                """
+                                {
+                                  "config": {
+                                    "Labels": {
+                                      "org.opencontainers.image.base.name": "debian:12",
+                                      "org.opencontainers.image.base.digest": "docker.io/library/debian@sha256:debian"
+                                    }
+                                  }
+                                }
+                                """);
+            handler.AddResponse("https://auth.docker.io/token?service=registry.docker.io&scope=repository:library/debian:pull",
+                                """
+                                {
+                                  "token": "base-registry-token"
+                                }
+                                """);
+            handler.AddResponse("https://registry-1.docker.io/v2/library/debian/manifests/sha256%3Adebian",
+                                """
+                                {
+                                  "schemaVersion": 2,
+                                  "config": {
+                                    "digest": "sha256:debian-config"
+                                  }
+                                }
+                                """);
+            handler.AddResponse("https://registry-1.docker.io/v2/library/debian/blobs/sha256%3Adebian-config",
+                                """
+                                {
+                                  "config": {
+                                    "Labels": {}
+                                  }
+                                }
+                                """);
+
+            var client = CreateClient(httpClient);
+            var result = await client.ResolveBaseImagesAsync(new ImageReference
+                                                             {
+                                                                 Registry = "docker.io",
+                                                                 Repository = "library/app",
+                                                                 Tag = "latest",
+                                                             },
+                                                             CancellationToken.None)
+                                     .ConfigureAwait(false);
+
+            Assert.AreEqual(ExternalOperationStatus.Succeeded,
+                            result.Status,
+                            "Docker Hub base-image resolution must succeed when the manifest and config blob can be read");
+            Assert.IsNotNull(result.Data, "Docker Hub base-image resolution must return resolved base images");
+            Assert.HasCount(1,
+                            result.Data,
+                            "Docker Hub base-image resolution must return the discovered base image");
+            Assert.AreEqual("sha256:debian",
+                            result.Data[0].Digest,
+                            "Docker Hub base-image resolution must strip the image reference prefix from the base digest label");
+            Assert.Contains(entry => entry.RequestUri == "https://registry-1.docker.io/v2/library/debian/manifests/sha256%3Adebian",
+                            handler.Requests,
+                            "Docker Hub base-image recursion must use the normalized digest when resolving the parent image chain");
+        }
+        finally
+        {
+            httpClient.Dispose();
+            handler.Dispose();
+        }
+    }
+
+    /// <summary>
     /// Create a Docker Hub client for tests
     /// </summary>
     /// <param name="httpClient">Configured HTTP client</param>
@@ -322,122 +493,4 @@ public class DockerHubClientTests
     }
 
     #endregion // Methods
-
-    #region Helper types
-
-    /// <summary>
-    /// Stub HTTP message handler for deterministic Docker Hub client tests
-    /// </summary>
-    private sealed class StubHttpMessageHandler : HttpMessageHandler
-    {
-        #region Fields
-
-        private readonly List<ObservedRequest> _requests = [];
-        private readonly Dictionary<string, HttpResponseMessage> _responses = new(StringComparer.Ordinal);
-
-        #endregion // Fields
-
-        #region Properties
-
-        /// <summary>
-        /// Observed outbound requests
-        /// </summary>
-        public IReadOnlyList<ObservedRequest> Requests => _requests;
-
-        #endregion // Properties
-
-        #region Methods
-
-        /// <summary>
-        /// Add a JSON response for a request URI
-        /// </summary>
-        /// <param name="requestUri">Absolute request URI</param>
-        /// <param name="jsonContent">JSON content</param>
-        public void AddResponse(string requestUri, string jsonContent)
-        {
-            _responses[requestUri] = new HttpResponseMessage(HttpStatusCode.OK)
-                                     {
-                                         Content = new StringContent(jsonContent,
-                                                                     Encoding.UTF8,
-                                                                     "application/json"),
-                                     };
-        }
-
-        /// <inheritdoc/>
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-        {
-            ArgumentNullException.ThrowIfNull(request.RequestUri);
-
-            _requests.Add(new ObservedRequest
-                          {
-                              Method = request.Method.Method,
-                              RequestUri = request.RequestUri.ToString(),
-                              AuthorizationScheme = request.Headers.Authorization?.Scheme,
-                              AuthorizationParameter = request.Headers.Authorization?.Parameter,
-                          });
-
-            if (_responses.TryGetValue(request.RequestUri.ToString(), out var response))
-            {
-                return Task.FromResult(CloneResponse(response));
-            }
-
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound)
-                                   {
-                                       RequestMessage = request,
-                                   });
-        }
-
-        /// <summary>
-        /// Clone a configured response for repeatable handler usage
-        /// </summary>
-        /// <param name="response">Template response</param>
-        /// <returns>Cloned response</returns>
-        private static HttpResponseMessage CloneResponse(HttpResponseMessage response)
-        {
-            var content = response.Content is null
-                              ? null
-                              : new StringContent(response.Content.ReadAsStringAsync().GetAwaiter().GetResult(),
-                                                  Encoding.UTF8,
-                                                  response.Content.Headers.ContentType?.MediaType);
-
-            return new HttpResponseMessage(response.StatusCode)
-                   {
-                       Content = content,
-                   };
-        }
-
-        #endregion // Methods
-    }
-
-    /// <summary>
-    /// Observed outbound request data
-    /// </summary>
-    private sealed class ObservedRequest
-    {
-        #region Properties
-
-        /// <summary>
-        /// Authorization parameter
-        /// </summary>
-        public string? AuthorizationParameter { get; init; }
-
-        /// <summary>
-        /// Authorization scheme
-        /// </summary>
-        public string? AuthorizationScheme { get; init; }
-
-        /// <summary>
-        /// HTTP method
-        /// </summary>
-        public string Method { get; init; } = string.Empty;
-
-        /// <summary>
-        /// Request URI
-        /// </summary>
-        public string RequestUri { get; init; } = string.Empty;
-
-        #endregion // Properties
-    }
-
-    #endregion // Helper types
 }

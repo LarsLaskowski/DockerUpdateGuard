@@ -1,6 +1,10 @@
 using System.Reflection;
 
+using DockerUpdateGuard.Configuration;
+using DockerUpdateGuard.UI;
+
 using Microsoft.AspNetCore.Components;
+using Microsoft.Extensions.Options;
 
 namespace DockerUpdateGuard.Components.Layout;
 
@@ -16,6 +20,16 @@ public partial class NavMenu
     /// </summary>
     private string _displayVersion = "unknown";
 
+    /// <summary>
+    /// Whether the My Images navigation entry should be shown
+    /// </summary>
+    private bool _showMyImages;
+
+    /// <summary>
+    /// Whether the Base Images navigation entry should be shown
+    /// </summary>
+    private bool _showBaseImages;
+
     #endregion // Fields
 
     #region Properties
@@ -26,14 +40,52 @@ public partial class NavMenu
     [Inject]
     public IConfiguration Configuration { get; set; } = null!;
 
+    /// <summary>
+    /// Application options
+    /// </summary>
+    [Inject]
+    public IOptions<DockerUpdateGuardOptions> AppOptions { get; set; } = null!;
+
+    /// <summary>
+    /// Application view service
+    /// </summary>
+    [Inject]
+    public IApplicationViewService ViewService { get; set; } = null!;
+
     #endregion // Properties
+
+    #region Static methods
+
+    /// <summary>
+    /// Determine whether Docker Hub account discovery is configured for the given options
+    /// </summary>
+    /// <param name="dockerHub">Docker Hub options to evaluate</param>
+    /// <returns>True when both UserName and Pat are non-empty</returns>
+    private static bool IsDockerHubAccountConfigured(DockerHubOptions dockerHub)
+    {
+        return string.IsNullOrWhiteSpace(dockerHub.UserName) == false
+               && string.IsNullOrWhiteSpace(dockerHub.Pat) == false;
+    }
+
+    #endregion // Static methods
 
     #region Methods
 
     /// <inheritdoc/>
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
         _displayVersion = ResolveDisplayVersion();
+        _showMyImages = IsDockerHubAccountConfigured();
+        _showBaseImages = await ViewService.HasBaseImagesAsync().ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Determine whether Docker Hub account discovery is configured
+    /// </summary>
+    /// <returns>True when both UserName and Pat are non-empty</returns>
+    private bool IsDockerHubAccountConfigured()
+    {
+        return IsDockerHubAccountConfigured(AppOptions.Value.DockerHub);
     }
 
     /// <summary>

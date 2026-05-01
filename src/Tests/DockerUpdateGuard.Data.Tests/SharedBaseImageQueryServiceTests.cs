@@ -22,11 +22,11 @@ public class SharedBaseImageQueryServiceTests
     #region Methods
 
     /// <summary>
-    /// Verify shared base image queries return the expected observed images
+    /// Verify base image queries return the expected observed images
     /// </summary>
     /// <returns>Task</returns>
     [TestMethod]
-    public async Task SharedBaseImageQueryServiceSharedBaseReturnsObservedImagesAsync()
+    public async Task SharedBaseImageQueryServiceBaseImagesReturnsObservedImagesAsync()
     {
         using (var database = new SqliteTestDatabase())
         {
@@ -113,7 +113,7 @@ public class SharedBaseImageQueryServiceTests
 
                 var queryService = new SharedBaseImageQueryService(dbContext);
 
-                var sharedBaseImages = await queryService.GetSharedBaseImagesAsync(TestContext.CancellationToken).ConfigureAwait(false);
+                var sharedBaseImages = await queryService.GetBaseImagesAsync(TestContext.CancellationToken).ConfigureAwait(false);
                 var observedImages = await queryService.GetObservedImagesByBaseImageAsync(sharedBaseImage.Id, TestContext.CancellationToken).ConfigureAwait(false);
 
                 Assert.HasCount(1,
@@ -129,6 +129,101 @@ public class SharedBaseImageQueryServiceTests
                 CollectionAssert.AreEquivalent(new[] { "App A", "App B" },
                                                observedImages.Select(entity => entity.ObservedImageName).ToArray(),
                                                "The query must return both observed images that share the base image");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Verify unresolved same-name base images are separated by source reference
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task SharedBaseImageQueryServiceBaseImagesWithoutDigestKeepSeparateSourceGroupsAsync()
+    {
+        using (var database = new SqliteTestDatabase())
+        {
+            var dbContext = database.CreateDbContext();
+
+            await using (dbContext.ConfigureAwait(false))
+            {
+                var unresolvedBaseRepository = new RegistryRepository
+                                               {
+                                                   Registry = "docker.io",
+                                                   Repository = "library/python"
+                                               };
+                var unresolvedBaseImage = new ImageVersion
+                                          {
+                                              RegistryRepository = unresolvedBaseRepository,
+                                              Tag = "3.12-alpine",
+                                              Digest = string.Empty
+                                          };
+                var parentRepositoryA = new RegistryRepository
+                                        {
+                                            Registry = "docker.io",
+                                            Repository = "company/api-a"
+                                        };
+                var parentRepositoryB = new RegistryRepository
+                                        {
+                                            Registry = "docker.io",
+                                            Repository = "company/api-b"
+                                        };
+                var parentImageA = new ImageVersion
+                                   {
+                                       RegistryRepository = parentRepositoryA,
+                                       Tag = "1.0.0",
+                                       Digest = "sha256:parent-a"
+                                   };
+                var parentImageB = new ImageVersion
+                                   {
+                                       RegistryRepository = parentRepositoryB,
+                                       Tag = "2.0.0",
+                                       Digest = "sha256:parent-b"
+                                   };
+
+                dbContext.AddRange(unresolvedBaseImage, parentImageA, parentImageB);
+                dbContext.ObservedImages.AddRange(new ObservedImage
+                                                  {
+                                                      Name = "API A",
+                                                      CurrentImageVersion = parentImageA
+                                                  },
+                                                  new ObservedImage
+                                                  {
+                                                      Name = "API B",
+                                                      CurrentImageVersion = parentImageB
+                                                  });
+                dbContext.ImageRelationships.AddRange(new ImageRelationship
+                                                      {
+                                                          ChildImageVersion = parentImageA,
+                                                          BaseImageVersion = unresolvedBaseImage,
+                                                          RelationshipType = ImageRelationshipType.BaseImage,
+                                                          Depth = 1,
+                                                          SourceReference = "docker.io/company/api-a:1.0.0@sha256:parent-a"
+                                                      },
+                                                      new ImageRelationship
+                                                      {
+                                                          ChildImageVersion = parentImageB,
+                                                          BaseImageVersion = unresolvedBaseImage,
+                                                          RelationshipType = ImageRelationshipType.BaseImage,
+                                                          Depth = 1,
+                                                          SourceReference = "docker.io/company/api-b:2.0.0@sha256:parent-b"
+                                                      });
+
+                await dbContext.SaveChangesAsync(TestContext.CancellationToken).ConfigureAwait(false);
+
+                var queryService = new SharedBaseImageQueryService(dbContext);
+
+                var baseImages = await queryService.GetBaseImagesAsync(TestContext.CancellationToken).ConfigureAwait(false);
+
+                Assert.AreEqual(2,
+                                baseImages.Count,
+                                "Unresolved base images with the same name must remain separable by source reference");
+                CollectionAssert.AreEquivalent(new[]
+                                               {
+                                                   "docker.io/company/api-a:1.0.0@sha256:parent-a",
+                                                   "docker.io/company/api-b:2.0.0@sha256:parent-b",
+                                               },
+                                               baseImages.SelectMany(entity => entity.SourceReferences).ToArray(),
+                                               "Each unresolved base image entry must keep the source reference that disambiguates it");
             }
         }
     }

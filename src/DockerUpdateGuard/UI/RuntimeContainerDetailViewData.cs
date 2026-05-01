@@ -108,6 +108,21 @@ public class RuntimeContainerDetailViewData
     public IReadOnlyList<TagCandidateViewData> AvailableTagCandidates { get; set; } = [];
 
     /// <summary>
+    /// Base image relationships
+    /// </summary>
+    public IReadOnlyList<BaseImageRelationshipData> BaseImages { get; set; } = [];
+
+    /// <summary>
+    /// Number of active base-image vulnerability findings
+    /// </summary>
+    public int ActiveBaseImageVulnerabilityFindingCount { get; set; }
+
+    /// <summary>
+    /// Base-image vulnerability summary
+    /// </summary>
+    public string? BaseImageVulnerabilitySummary { get; set; }
+
+    /// <summary>
     /// Update findings
     /// </summary>
     public IReadOnlyList<UpdateFindingViewData> UpdateFindings { get; set; } = [];

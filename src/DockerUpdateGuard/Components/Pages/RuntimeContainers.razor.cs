@@ -2,7 +2,7 @@ using System.Globalization;
 using System.Text;
 
 using DockerUpdateGuard.Data.Entities;
-using DockerUpdateGuard.Images;
+using DockerUpdateGuard.Images.Interfaces;
 using DockerUpdateGuard.UI;
 
 using Microsoft.AspNetCore.Components;

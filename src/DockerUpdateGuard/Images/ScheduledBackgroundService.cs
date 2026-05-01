@@ -38,6 +38,15 @@ public abstract class ScheduledBackgroundService : BackgroundService
     protected abstract TimeSpan GetInterval();
 
     /// <summary>
+    /// Determine whether the background operation should run immediately at startup
+    /// </summary>
+    /// <returns><see langword="true"/> when the operation should run immediately; otherwise, <see langword="false"/></returns>
+    protected virtual bool ShouldExecuteImmediately()
+    {
+        return true;
+    }
+
+    /// <summary>
     /// Execute the actual background operation
     /// </summary>
     /// <param name="stoppingToken">Cancellation token</param>
@@ -50,15 +59,28 @@ public abstract class ScheduledBackgroundService : BackgroundService
         var backgroundServiceName = GetType().Name;
 
         _logger.BackgroundServiceStarted(backgroundServiceName, GetInterval().TotalMinutes);
-        await ExecuteSafelyAsync(stoppingToken).ConfigureAwait(false);
+
+        if (ShouldExecuteImmediately())
+        {
+            await ExecuteSafelyAsync(stoppingToken).ConfigureAwait(false);
+        }
 
         while (stoppingToken.IsCancellationRequested == false)
         {
             var interval = GetInterval();
 
             _logger.BackgroundServiceWaiting(backgroundServiceName, interval.TotalMinutes);
-            await Task.Delay(interval, stoppingToken)
-                      .ConfigureAwait(false);
+
+            try
+            {
+                await Task.Delay(interval, stoppingToken)
+                          .ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                break;
+            }
+
             await ExecuteSafelyAsync(stoppingToken).ConfigureAwait(false);
         }
     }
@@ -78,6 +100,7 @@ public abstract class ScheduledBackgroundService : BackgroundService
         try
         {
             await ExecuteCoreAsync(stoppingToken).ConfigureAwait(false);
+
             _logger.BackgroundServiceExecutionCompleted(backgroundServiceName, stopwatch.ElapsedMilliseconds);
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)

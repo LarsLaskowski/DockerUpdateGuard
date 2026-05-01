@@ -18,11 +18,11 @@ public class TelemetryServiceCollectionExtensionsTests
 {
     #region Fields
 
-    private static readonly string[] RemovedTelemetryLoggingOptionKeys = [
-                                                                             "IncludeFormattedMessage",
-                                                                             "IncludeScopes",
-                                                                             "ParseStateValues",
-                                                                         ];
+    private static readonly string[] _removedTelemetryLoggingOptionKeys = [
+                                                                              "IncludeFormattedMessage",
+                                                                              "IncludeScopes",
+                                                                              "ParseStateValues",
+                                                                          ];
 
     #endregion // Fields
 
@@ -42,6 +42,7 @@ public class TelemetryServiceCollectionExtensionsTests
                                                            options.IncludeScopes = false;
                                                            options.ParseStateValues = false;
                                                        });
+
         services.AddDockerUpdateGuardTelemetry(options =>
                                                {
                                                    options.ServiceName = "DockerUpdateGuard.Tests";
@@ -59,7 +60,7 @@ public class TelemetryServiceCollectionExtensionsTests
                                               .Value;
         var loggerOptions = serviceProvider.GetRequiredService<IOptions<OpenTelemetryLoggerOptions>>()
                                            .Value;
-        var logger = loggerFactory.CreateLogger(DockerUpdateGuardTelemetry.LoggerCategoryName);
+                var logger = loggerFactory.CreateLogger(DockerUpdateGuardTelemetry.LoggerCategoryName);
 
         logger.LogInformation("Telemetry logging pipeline test {TestValue}", 42);
 
@@ -91,6 +92,7 @@ public class TelemetryServiceCollectionExtensionsTests
                                                                                  ["Telemetry:EnableTracing"] = "false",
                                                                              })
                                                       .Build();
+
         var services = new ServiceCollection();
 
         services.AddDockerUpdateGuardTelemetry(configuration);
@@ -148,7 +150,7 @@ public class TelemetryServiceCollectionExtensionsTests
                                                         StringComparer.Ordinal),
                       "The development telemetry sample must expose the OTLP endpoint option");
 
-        foreach (var removedOptionKey in RemovedTelemetryLoggingOptionKeys)
+        foreach (var removedOptionKey in _removedTelemetryLoggingOptionKeys)
         {
             Assert.IsFalse(baseTelemetryKeys.Contains(removedOptionKey, StringComparer.Ordinal),
                            $"The shipped telemetry configuration must not expose the removed '{removedOptionKey}' option");

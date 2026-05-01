@@ -13,6 +13,11 @@ public class SharedBaseImageUsageData
     public Guid BaseImageVersionId { get; set; }
 
     /// <summary>
+    /// Grouped base-image version identifiers
+    /// </summary>
+    public IReadOnlyList<Guid> BaseImageVersionIds { get; set; } = [];
+
+    /// <summary>
     /// Registry name
     /// </summary>
     public string Registry { get; set; } = string.Empty;
@@ -31,6 +36,11 @@ public class SharedBaseImageUsageData
     /// Optional digest value
     /// </summary>
     public string? Digest { get; set; }
+
+    /// <summary>
+    /// Source references used to disambiguate unresolved base images
+    /// </summary>
+    public IReadOnlyList<string> SourceReferences { get; set; } = [];
 
     /// <summary>
     /// Number of observed images using the base image

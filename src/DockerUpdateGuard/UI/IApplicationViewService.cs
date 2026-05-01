@@ -22,6 +22,20 @@ public interface IApplicationViewService
     Task<IReadOnlyList<ObservedImageListItemData>> GetObservedImagesAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Read manually-registered observed images for the manual images page
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Manually-registered observed image list items</returns>
+    Task<IReadOnlyList<ObservedImageListItemData>> GetManualObservedImagesAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Read discovery-owned observed images for the own images page
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Discovery-owned observed image list items</returns>
+    Task<IReadOnlyList<ObservedImageListItemData>> GetDiscoveryObservedImagesAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Read the detail view for a single observed image
     /// </summary>
     /// <param name="observedImageId">ID of the observed image</param>
@@ -61,11 +75,18 @@ public interface IApplicationViewService
     Task<DockerInstanceDetailViewData?> GetDockerInstanceDetailAsync(Guid dockerInstanceId, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Read shared base images for the overview page
+    /// Determine whether any base images are available for UI navigation
     /// </summary>
     /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>Shared base image list items</returns>
-    Task<IReadOnlyList<SharedBaseImageListItemData>> GetSharedBaseImagesAsync(CancellationToken cancellationToken = default);
+    /// <returns>True when at least one base image is available</returns>
+    Task<bool> HasBaseImagesAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Read base images for the overview page
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Base image list items</returns>
+    Task<IReadOnlyList<SharedBaseImageListItemData>> GetBaseImagesAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Read scan history entries for the activity overview
@@ -73,7 +94,7 @@ public interface IApplicationViewService
     /// <param name="take">Maximum number of entries</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Scan history entries</returns>
-    Task<IReadOnlyList<ScanHistoryItemData>> GetScanHistoryAsync(int take = 50, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<ScanHistoryItemData>> GetScanHistoryAsync(int take = 20, CancellationToken cancellationToken = default);
 
     #endregion // Methods
 }

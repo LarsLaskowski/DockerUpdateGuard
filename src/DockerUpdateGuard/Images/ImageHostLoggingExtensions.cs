@@ -1,8 +1,6 @@
 using DockerUpdateGuard.Data.Entities;
 using DockerUpdateGuard.Infrastructure;
 
-using Microsoft.Extensions.Logging;
-
 namespace DockerUpdateGuard.Images;
 
 /// <summary>
@@ -319,6 +317,23 @@ internal static partial class ImageHostLoggingExtensions
                                                                           string baseImageReference,
                                                                           ExternalOperationStatus operationStatus,
                                                                           string? message);
+
+    /// <summary>
+    /// Log that an exact base image metadata refresh was incomplete
+    /// </summary>
+    /// <param name="logger">Logger</param>
+    /// <param name="observedImage">Observed image name</param>
+    /// <param name="baseImageReference">Base image reference</param>
+    /// <param name="operationStatus">Operation status</param>
+    /// <param name="message">Status message</param>
+    [LoggerMessage(EventId = 2068,
+                   Level = LogLevel.Warning,
+                   Message = "Exact base image metadata refresh for {ObservedImage} dependency {BaseImageReference} returned {OperationStatus}: {Message}")]
+    public static partial void ObservedImageBaseImageMetadataRefreshIncomplete(this ILogger logger,
+                                                                               string observedImage,
+                                                                               string baseImageReference,
+                                                                               ExternalOperationStatus operationStatus,
+                                                                               string? message);
 
     /// <summary>
     /// Log that runtime container batch scanning has started

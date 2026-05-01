@@ -6,6 +6,9 @@ using System.Text.Json;
 
 using DockerUpdateGuard.Configuration;
 using DockerUpdateGuard.Images;
+using DockerUpdateGuard.Images.Data;
+using DockerUpdateGuard.Images.Helper;
+using DockerUpdateGuard.Images.Interfaces;
 using DockerUpdateGuard.Infrastructure;
 using DockerUpdateGuard.Telemetry;
 
@@ -602,7 +605,8 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
                                                                                              string repository,
                                                                                              CancellationToken cancellationToken = default,
                                                                                              string? operatingSystem = null,
-                                                                                             string? architecture = null)
+                                                                                             string? architecture = null,
+                                                                                             RegistryTagQueryOptions? queryOptions = null)
     {
         if (IsSupportedRegistry(registry) == false)
         {
@@ -614,6 +618,7 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
         var (namespaceName, repositoryName) = SplitRepository(repository);
         var requestUri = $"v2/namespaces/{Uri.EscapeDataString(namespaceName)}/repositories/{EscapeRepository(repositoryName)}/tags?page_size=100";
         var results = new List<DockerHubTagData>();
+        var resolvedCurrentVersionTag = false;
 
         while (string.IsNullOrWhiteSpace(requestUri) == false)
         {
@@ -650,11 +655,44 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
                 {
                     foreach (var resultElement in resultsElement.EnumerateArray())
                     {
-                        results.Add(ParseTag(resultElement, operatingSystem, architecture));
+                        var tagData = ParseTag(resultElement, operatingSystem, architecture);
+
+                        if (string.IsNullOrWhiteSpace(queryOptions?.CurrentDigest) == false
+                            && string.Equals(tagData.Digest,
+                                             queryOptions.CurrentDigest,
+                                             StringComparison.OrdinalIgnoreCase)
+                            && VersionTagResolutionHelper.IsDisplayableSpecificVersionTag(tagData.Tag))
+                        {
+                            resolvedCurrentVersionTag = true;
+                        }
+
+                        if (RegistryTagQueryHelper.ShouldKeepTag(tagData, queryOptions))
+                        {
+                            results.Add(tagData);
+
+                            if (queryOptions is not null && results.Count >= queryOptions.MaximumTags)
+                            {
+                                requestUri = null;
+
+                                break;
+                            }
+                        }
+
+                        if (RegistryTagQueryHelper.CanStopDockerHubScan(tagData,
+                                                                        queryOptions,
+                                                                        resolvedCurrentVersionTag))
+                        {
+                            requestUri = null;
+
+                            break;
+                        }
                     }
                 }
 
-                requestUri = TryGetString(jsonDocument.RootElement, "next");
+                if (string.IsNullOrWhiteSpace(requestUri) == false)
+                {
+                    requestUri = TryGetString(jsonDocument.RootElement, "next");
+                }
             }
         }
 
@@ -1009,7 +1047,7 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
             if (string.IsNullOrWhiteSpace(parsedRef.Digest)
                 && string.IsNullOrWhiteSpace(baseImageDigest) == false)
             {
-                parsedRef.Digest = baseImageDigest;
+                parsedRef.Digest = ImageReferenceParser.NormalizeDigest(baseImageDigest);
             }
 
             return parsedRef;
@@ -1256,7 +1294,7 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
 
     #endregion // Methods
 
-    #region IDisposable implementation
+    #region IDisposable
 
     /// <summary>
     /// Releases the resources used by the current instance of the class
@@ -1266,5 +1304,5 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
         _tokenRefreshLock.Dispose();
     }
 
-    #endregion // IDisposable implementation
+    #endregion // IDisposable
 }

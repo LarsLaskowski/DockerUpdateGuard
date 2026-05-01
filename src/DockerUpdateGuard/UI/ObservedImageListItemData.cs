@@ -58,6 +58,16 @@ public class ObservedImageListItemData
     public string? VulnerabilityMessage { get; set; }
 
     /// <summary>
+    /// Number of active base-image vulnerability findings
+    /// </summary>
+    public int ActiveBaseImageVulnerabilityFindingCount { get; set; }
+
+    /// <summary>
+    /// Base-image vulnerability summary
+    /// </summary>
+    public string? BaseImageVulnerabilitySummary { get; set; }
+
+    /// <summary>
     /// Whether the image is owned by this environment
     /// </summary>
     public bool IsOwnImage { get; set; }

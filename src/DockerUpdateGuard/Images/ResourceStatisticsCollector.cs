@@ -2,6 +2,7 @@ using DockerUpdateGuard.Configuration;
 using DockerUpdateGuard.Data;
 using DockerUpdateGuard.Data.Entities;
 using DockerUpdateGuard.Docker;
+using DockerUpdateGuard.Images.Interfaces;
 
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;

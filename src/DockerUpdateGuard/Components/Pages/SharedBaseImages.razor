@@ -1,45 +1,85 @@
-@page "/shared-base-images"
+@page "/base-images"
 
-<PageTitle>Shared Base Images</PageTitle>
+<PageTitle>Base Images</PageTitle>
 
 <MudStack Spacing="3" Class="page-shell">
     <div class="page-header">
         <div>
-            <MudText Typo="Typo.overline" Class="page-eyebrow">Dependency hotspots</MudText>
-            <MudText Typo="Typo.h3">Shared Base Images</MudText>
-            <MudText Class="page-description">Common upstream image layers shared across multiple observed workloads.</MudText>
+            <MudText Typo="Typo.overline" Class="page-eyebrow">Base image inventory</MudText>
+            <MudText Typo="Typo.h3">Base Images</MudText>
+            <MudText Class="page-description">Resolved base images with their parent images, linked runtime containers, and vulnerability posture.</MudText>
         </div>
     </div>
 
     @if (_items is null)
     {
         <MudPaper Class="empty-state-panel" Elevation="0">
-            <MudText>Loading shared base image data...</MudText>
+            <MudText>Loading base image data...</MudText>
         </MudPaper>
     }
     else if (_items.Count == 0)
     {
         <MudPaper Class="empty-state-panel" Elevation="0">
-            <MudText>No shared base images have been resolved yet.</MudText>
+            <MudText>No base images have been resolved yet.</MudText>
         </MudPaper>
     }
     else
     {
         <MudPaper Class="section-paper" Elevation="0">
             <div class="section-header">
-                <MudText Typo="Typo.h5">Shared dependency map</MudText>
-                <MudText Class="section-description">Find base images that can impact multiple tracked workloads.</MudText>
+                <MudText Typo="Typo.h5">Base image overview</MudText>
+                <MudText Class="section-description">Track resolved base images, the parent images that use them, linked runtime containers, and their vulnerability status.</MudText>
             </div>
             <MudTable Items="_items" Hover="true" Dense="false" Breakpoint="Breakpoint.Md" Class="section-table">
                 <HeaderContent>
                     <MudTh>Base Image</MudTh>
+                    <MudTh>Parent Images</MudTh>
+                    <MudTh>Runtime Containers</MudTh>
                     <MudTh>Observed Images</MudTh>
-                    <MudTh>Active Findings</MudTh>
+                    <MudTh>Vulnerabilities</MudTh>
                 </HeaderContent>
                 <RowTemplate>
-                    <MudTd DataLabel="Base Image">@context.ImageReference</MudTd>
+                    <MudTd DataLabel="Base Image">@ImageReferenceFormatter.GetReference(context.ImageReference)</MudTd>
+                    <MudTd DataLabel="Parent Images">
+                        @if (context.ParentImageReferences.Count == 0)
+                        {
+                            <span class="table-secondary">No parent image recorded</span>
+                        }
+                        else
+                        {
+                            <MudStack Spacing="1">
+                                @foreach (var parentImageReference in context.ParentImageReferences)
+                                {
+                                    <span>@ImageReferenceFormatter.GetReference(parentImageReference)</span>
+                                }
+                            </MudStack>
+                        }
+                    </MudTd>
+                    <MudTd DataLabel="Runtime Containers">
+                        @if (context.RuntimeContainers.Count == 0)
+                        {
+                            <span class="table-secondary">No linked container</span>
+                        }
+                        else
+                        {
+                            <MudStack Spacing="1">
+                                @foreach (var runtimeContainer in context.RuntimeContainers)
+                                {
+                                    <MudLink Href="@($"/runtime-containers/{runtimeContainer.DockerInstanceId}/{runtimeContainer.ContainerId}")" Class="table-link">@runtimeContainer.ContainerName</MudLink>
+                                    <span class="table-secondary">@runtimeContainer.DockerInstanceName</span>
+                                }
+                            </MudStack>
+                        }
+                    </MudTd>
                     <MudTd DataLabel="Observed Images">@context.ObservedImageCount</MudTd>
-                    <MudTd DataLabel="Active Findings">@context.ActiveFindingCount</MudTd>
+                    <MudTd DataLabel="Vulnerabilities">
+                        <MudChip T="string" Size="Size.Small" Color="@(context.VulnerabilityAssessment.ActiveFindingCount > 0 ? Color.Warning : Color.Success)">@context.VulnerabilityAssessment.Status</MudChip>
+                        <span class="table-secondary">@($"{context.VulnerabilityAssessment.ActiveFindingCount} active · {context.VulnerabilityAssessment.Source}")</span>
+                        @if (string.IsNullOrWhiteSpace(context.VulnerabilityAssessment.Message) == false)
+                        {
+                            <span class="table-secondary">@context.VulnerabilityAssessment.Message</span>
+                        }
+                    </MudTd>
                 </RowTemplate>
             </MudTable>
         </MudPaper>

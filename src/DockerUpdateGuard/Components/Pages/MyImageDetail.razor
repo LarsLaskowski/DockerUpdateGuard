@@ -1,0 +1,296 @@
+@page "/my-images/{ObservedImageId:guid}"
+
+<PageTitle>My Image Details</PageTitle>
+
+<MudStack Spacing="3" Class="page-shell">
+    <div class="page-header">
+        <div>
+            <MudText Typo="Typo.overline" Class="page-eyebrow">
+                <MudLink Href="/my-images" Class="eyebrow-link">My Images</MudLink>
+            </MudText>
+            <MudText Typo="Typo.h3">My Image Details</MudText>
+            <MudText Class="page-description">Inspect base lineage, update findings, vulnerability state, scan history, and live deployment links for a discovery-owned image.</MudText>
+        </div>
+    </div>
+
+    @if (_detail is null)
+    {
+        <MudPaper Class="empty-state-panel" Elevation="0">
+            <MudText>Loading image details...</MudText>
+        </MudPaper>
+    }
+    else
+    {
+        <MudPaper Class="section-paper" Elevation="0">
+            <div class="section-header">
+                <MudText Typo="Typo.h4">@_detail.Name</MudText>
+                <MudText Class="section-description">Latest state and metadata for this own image.</MudText>
+            </div>
+            @if (string.IsNullOrWhiteSpace(_detail.Description) == false)
+            {
+                <MudText Class="muted-text">@_detail.Description</MudText>
+            }
+
+            <MudGrid Spacing="2" Class="details-grid">
+                <MudItem xs="12" md="6">
+                    <MudPaper Class="summary-card" Elevation="0">
+                        <span class="summary-label">Image</span>
+                        <span class="summary-value">@ImageReferenceFormatter.GetReference(_detail.ImageReference)</span>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudPaper Class="summary-card" Elevation="0">
+                        <span class="summary-label">Latest scan</span>
+                        <MudChip T="string" Size="Size.Small" Color="@GetScanStatusColor(_detail.LatestScanStatus)">@_detail.LatestScanStatus</MudChip>
+                        @if (string.IsNullOrWhiteSpace(_detail.LatestScanMessage) == false)
+                        {
+                            <span class="table-secondary">@_detail.LatestScanMessage</span>
+                        }
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudPaper Class="summary-card" Elevation="0">
+                        <span class="summary-label">Vulnerability assessment</span>
+                        <MudChip T="string" Size="Size.Small" Color="@GetVulnerabilityAssessmentColor(_detail.VulnerabilityAssessment.Status)">@_detail.VulnerabilityAssessment.Status</MudChip>
+                        <span class="table-secondary">@($"{_detail.VulnerabilityAssessment.Source} · {_detail.VulnerabilityAssessment.ActiveFindingCount} active")</span>
+                        @if (string.IsNullOrWhiteSpace(_detail.VulnerabilityAssessment.Message) == false)
+                        {
+                            <span class="table-secondary">@_detail.VulnerabilityAssessment.Message</span>
+                        }
+                    </MudPaper>
+                </MudItem>
+                @if (string.IsNullOrWhiteSpace(_detail.BaseRuntimeAlertSummary) == false)
+                {
+                    <MudItem xs="12" md="6">
+                        <MudPaper Class="summary-card" Elevation="0">
+                            <span class="summary-label">Base runtime</span>
+                            <MudChip T="string" Size="Size.Small" Color="Color.Warning">Runtime warning</MudChip>
+                            <span class="table-secondary">@_detail.BaseRuntimeAlertSummary</span>
+                            @if (string.IsNullOrWhiteSpace(_detail.BaseRuntimeAlertDetails) == false)
+                            {
+                                <span class="table-secondary">@_detail.BaseRuntimeAlertDetails</span>
+                            }
+                        </MudPaper>
+                    </MudItem>
+                }
+                @if (_detail.ActiveBaseImageVulnerabilityFindingCount > 0)
+                {
+                    <MudItem xs="12" md="6">
+                        <MudPaper Class="summary-card" Elevation="0">
+                            <span class="summary-label">Base image vulnerabilities</span>
+                            <MudChip T="string" Size="Size.Small" Color="Color.Warning">Findings detected</MudChip>
+                            <span class="table-secondary">@_detail.BaseImageVulnerabilitySummary</span>
+                        </MudPaper>
+                    </MudItem>
+                }
+            </MudGrid>
+        </MudPaper>
+
+        <MudPaper Class="section-paper" Elevation="0">
+            <div class="section-header">
+                <MudText Typo="Typo.h5">Running containers</MudText>
+                <MudText Class="section-description">Runtime containers currently matched to this image by normalized registry/repository.</MudText>
+            </div>
+            @if (_detail.LinkedRuntimeContainers.Count == 0)
+            {
+                <MudPaper Class="empty-state-panel" Elevation="0">
+                    <MudText>This image is currently not linked to a running container.</MudText>
+                </MudPaper>
+            }
+            else
+            {
+                <MudTable Items="_detail.LinkedRuntimeContainers" Hover="true" Dense="false" Breakpoint="Breakpoint.Md" Class="section-table">
+                    <HeaderContent>
+                        <MudTh>Container</MudTh>
+                        <MudTh>Instance</MudTh>
+                        <MudTh>Status</MudTh>
+                        <MudTh>Image</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd DataLabel="Container">
+                            <MudLink Href="@($"/runtime-containers/{context.DockerInstanceId}/{context.ContainerId}")" Class="table-link">@context.ContainerName</MudLink>
+                            <span class="table-secondary">@context.RecordedAtUtc.ToLocalTime().ToString("g")</span>
+                        </MudTd>
+                        <MudTd DataLabel="Instance">@context.DockerInstanceName</MudTd>
+                        <MudTd DataLabel="Status">@context.RuntimeStatus</MudTd>
+                        <MudTd DataLabel="Image">@ImageReferenceFormatter.GetReference(context.ImageReference)</MudTd>
+                    </RowTemplate>
+                </MudTable>
+            }
+        </MudPaper>
+
+        <MudPaper Class="section-paper" Elevation="0">
+            <div class="section-header">
+                <MudText Typo="Typo.h5">Base image chain</MudText>
+                <MudText Class="section-description">Resolved dependency chain from this image to its parents.</MudText>
+            </div>
+            @if (_detail.BaseImages.Count == 0)
+            {
+                <MudPaper Class="empty-state-panel" Elevation="0">
+                    <MudText>No base image chain is currently stored for this image.</MudText>
+                </MudPaper>
+            }
+            else
+            {
+                <MudTable Items="_detail.BaseImages" Hover="true" Dense="false" Breakpoint="Breakpoint.Md" Class="section-table">
+                    <HeaderContent>
+                        <MudTh>Depth</MudTh>
+                        <MudTh>Base Image</MudTh>
+                        <MudTh>Source</MudTh>
+                        <MudTh>Vulnerabilities</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd DataLabel="Depth">@context.Depth</MudTd>
+                        <MudTd DataLabel="Base Image">@ImageReferenceFormatter.GetReference(context.ImageReference)</MudTd>
+                        <MudTd DataLabel="Source">@ImageReferenceFormatter.GetReference(context.SourceReference ?? string.Empty)</MudTd>
+                        <MudTd DataLabel="Vulnerabilities">
+                            <MudChip T="string" Size="Size.Small" Color="@GetVulnerabilityAssessmentColor(context.VulnerabilityAssessment.Status)">@context.VulnerabilityAssessment.Status</MudChip>
+                            <span class="table-secondary">@($"{context.VulnerabilityAssessment.ActiveFindingCount} active · {context.VulnerabilityAssessment.Source}")</span>
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+            }
+        </MudPaper>
+
+        <MudPaper Class="section-paper" Elevation="0">
+            <div class="section-header">
+                <MudText Typo="Typo.h5">Update findings</MudText>
+                <MudText Class="section-description">Recommended upgrades and alternative tags for manual review.</MudText>
+            </div>
+            @if (_detail.UpdateFindings.Count == 0)
+            {
+                <MudPaper Class="empty-state-panel" Elevation="0">
+                    <MudText>No update findings are currently stored.</MudText>
+                </MudPaper>
+            }
+            else
+            {
+                <MudTable Items="_detail.UpdateFindings" Hover="true" Dense="false" Breakpoint="Breakpoint.Md" Class="section-table">
+                    <HeaderContent>
+                        <MudTh>Type</MudTh>
+                        <MudTh>Summary</MudTh>
+                        <MudTh>Recommended</MudTh>
+                        <MudTh>Tag candidates</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd DataLabel="Type">@context.Type</MudTd>
+                        <MudTd DataLabel="Summary">
+                            <span>@context.Summary</span>
+                            <span class="table-secondary">@context.Details</span>
+                        </MudTd>
+                        <MudTd DataLabel="Recommended">@context.RecommendedImage</MudTd>
+                        <MudTd DataLabel="Tag candidates">
+                            <MudStack Row="true" Spacing="1">
+                                @foreach (var candidate in context.TagCandidates)
+                                {
+                                    <MudTooltip Text="@candidate.Reason">
+                                         <MudChip T="string"
+                                                  Size="Size.Small"
+                                                  Color="@(candidate.IsRecommended ? Color.Primary : Color.Default)"
+                                                  Variant="@(candidate.IsSelected ? Variant.Filled : Variant.Outlined)">
+                                            @candidate.Tag
+                                        </MudChip>
+                                    </MudTooltip>
+                                    @if (string.IsNullOrWhiteSpace(candidate.ResolvedVersionTag) == false)
+                                    {
+                                        <span class="table-secondary">@candidate.ResolvedVersionTag</span>
+                                    }
+                                }
+                            </MudStack>
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+            }
+        </MudPaper>
+
+        @if (_detail.VulnerabilityFindings.Count > 0)
+        {
+            <MudPaper Class="section-paper" Elevation="0">
+                <div class="section-header">
+                    <MudText Typo="Typo.h5">Vulnerability findings</MudText>
+                    <MudText Class="section-description">Active and historical vulnerability findings for the current image version.</MudText>
+                </div>
+                <MudTable Items="_detail.VulnerabilityFindings" Hover="true" Dense="false" Breakpoint="Breakpoint.Md" Class="section-table">
+                    <HeaderContent>
+                        <MudTh>Advisory</MudTh>
+                        <MudTh>Severity</MudTh>
+                        <MudTh>Package</MudTh>
+                        <MudTh>Fixed version</MudTh>
+                        <MudTh>Status</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd DataLabel="Advisory">
+                            @if (string.IsNullOrWhiteSpace(context.ReferenceUrl) == false)
+                            {
+                                <MudLink Href="@context.ReferenceUrl" Target="_blank" Class="table-link">@context.AdvisoryId</MudLink>
+                            }
+                            else
+                            {
+                                <span>@context.AdvisoryId</span>
+                            }
+                            @if (string.IsNullOrWhiteSpace(context.Title) == false)
+                            {
+                                <span class="table-secondary">@context.Title</span>
+                            }
+                        </MudTd>
+                        <MudTd DataLabel="Severity">
+                            <MudChip T="string" Size="Size.Small" Color="@GetVulnerabilitySeverityColor(context.Severity)">@context.Severity</MudChip>
+                            @if (context.CvssScore.HasValue)
+                            {
+                                <span class="table-secondary">CVSS @context.CvssScore.Value.ToString("F1")</span>
+                            }
+                        </MudTd>
+                        <MudTd DataLabel="Package">@context.AffectedPackage</MudTd>
+                        <MudTd DataLabel="Fixed version">@(context.FixedVersion ?? "—")</MudTd>
+                        <MudTd DataLabel="Status">
+                            <MudChip T="string" Size="Size.Small" Color="@(context.IsActive ? Color.Warning : Color.Default)">
+                                @(context.IsActive ? "Active" : "Resolved")
+                            </MudChip>
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+            </MudPaper>
+        }
+
+        @if (_detail.ScanHistory.Count > 0)
+        {
+            <MudPaper Class="section-paper" Elevation="0">
+                <div class="section-header">
+                    <MudText Typo="Typo.h5">Scan history</MudText>
+                    <MudText Class="section-description">Recent scan runs recorded for this image.</MudText>
+                </div>
+                <MudTable Items="_detail.ScanHistory" Hover="true" Dense="false" Breakpoint="Breakpoint.Md" Class="section-table">
+                    <HeaderContent>
+                        <MudTh>Type</MudTh>
+                        <MudTh>Status</MudTh>
+                        <MudTh>Trigger</MudTh>
+                        <MudTh>Started</MudTh>
+                        <MudTh>Completed</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd DataLabel="Type">@context.Type</MudTd>
+                        <MudTd DataLabel="Status">
+                            <MudChip T="string" Size="Size.Small" Color="@GetScanStatusColor(context.Status)">@context.Status</MudChip>
+                            @if (string.IsNullOrWhiteSpace(context.ErrorMessage) == false)
+                            {
+                                <span class="table-secondary">@context.ErrorMessage</span>
+                            }
+                        </MudTd>
+                        <MudTd DataLabel="Trigger">@context.TriggerSource</MudTd>
+                        <MudTd DataLabel="Started">@context.StartedAtUtc.ToLocalTime().ToString("g")</MudTd>
+                        <MudTd DataLabel="Completed">
+                            @if (context.CompletedAtUtc.HasValue)
+                            {
+                                @context.CompletedAtUtc.Value.ToLocalTime().ToString("g")
+                            }
+                            else
+                            {
+                                <span class="table-secondary">In progress</span>
+                            }
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+            </MudPaper>
+        }
+    }
+</MudStack>

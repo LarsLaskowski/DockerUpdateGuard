@@ -125,6 +125,16 @@
                             {
                                 <span class="table-secondary">@context.AvailableUpdateVersionTag</span>
                             }
+                            @if (context.ActiveVulnerabilityFindingCount > 0)
+                            {
+                                <MudChip T="string" Size="Size.Small" Color="@GetVulnerabilityStatusColor(context.VulnerabilityStatus)">Runtime vulnerabilities</MudChip>
+                                <span class="table-secondary">@($"{context.ActiveVulnerabilityFindingCount} active · {context.VulnerabilitySummary}")</span>
+                            }
+                            @if (context.ActiveBaseImageVulnerabilityFindingCount > 0)
+                            {
+                                <MudChip T="string" Size="Size.Small" Color="Color.Warning">Base images affected</MudChip>
+                                <span class="table-secondary">@context.BaseImageVulnerabilitySummary</span>
+                            }
                         </MudTd>
                 </RowTemplate>
             </MudTable>

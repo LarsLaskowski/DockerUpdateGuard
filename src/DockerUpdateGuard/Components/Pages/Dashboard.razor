@@ -28,6 +28,17 @@ else
         </MudPaper>
 
         <MudGrid Spacing="2">
+            @if (_showMyImages)
+            {
+                <MudItem xs="12" sm="6" lg="4">
+                    <MudLink Href='@GetMetricNavigationTarget("My Images")' Underline="Underline.None" Class="metric-card-link">
+                        <MudPaper Class="metric-card" Elevation="0">
+                            <span class="metric-label">My Images</span>
+                            <span class="metric-value">@_dashboard.MyImageCount</span>
+                        </MudPaper>
+                    </MudLink>
+                </MudItem>
+            }
             <MudItem xs="12" sm="6" lg="4">
                 <MudLink Href='@GetMetricNavigationTarget("Observed Images")' Underline="Underline.None" Class="metric-card-link">
                     <MudPaper Class="metric-card" Elevation="0">
@@ -52,14 +63,17 @@ else
                     </MudPaper>
                 </MudLink>
             </MudItem>
-            <MudItem xs="12" sm="6" lg="4">
-                <MudLink Href='@GetMetricNavigationTarget("Shared Bases")' Underline="Underline.None" Class="metric-card-link">
-                    <MudPaper Class="metric-card" Elevation="0">
-                        <span class="metric-label">Shared Bases</span>
-                        <span class="metric-value">@_dashboard.SharedBaseImageCount</span>
-                    </MudPaper>
-                </MudLink>
-            </MudItem>
+            @if (_dashboard.BaseImageCount > 0)
+            {
+                <MudItem xs="12" sm="6" lg="4">
+                    <MudLink Href='@GetMetricNavigationTarget("Base Images")' Underline="Underline.None" Class="metric-card-link">
+                        <MudPaper Class="metric-card" Elevation="0">
+                            <span class="metric-label">Base Images</span>
+                            <span class="metric-value">@_dashboard.BaseImageCount</span>
+                        </MudPaper>
+                    </MudLink>
+                </MudItem>
+            }
             <MudItem xs="12" sm="6" lg="4">
                 <MudPaper Class="metric-card metric-card--warning" Elevation="0">
                     <span class="metric-label">Update Findings</span>
@@ -110,6 +124,15 @@ else
                         <MudText Class="section-description">How much of the estate is currently observed.</MudText>
                     </div>
                     <MudGrid Spacing="2">
+                        @if (_showMyImages)
+                        {
+                            <MudItem xs="12" sm="6">
+                                <MudPaper Class="summary-card" Elevation="0">
+                                    <span class="summary-label">My images</span>
+                                    <span class="summary-value">@_dashboard.MyImageCount</span>
+                                </MudPaper>
+                            </MudItem>
+                        }
                         <MudItem xs="12" sm="6">
                             <MudPaper Class="summary-card" Elevation="0">
                                 <span class="summary-label">Observed images</span>
@@ -128,12 +151,15 @@ else
                                 <span class="summary-value">@_dashboard.DockerInstanceCount</span>
                             </MudPaper>
                         </MudItem>
-                        <MudItem xs="12" sm="6">
-                            <MudPaper Class="summary-card" Elevation="0">
-                                <span class="summary-label">Shared base images</span>
-                                <span class="summary-value">@_dashboard.SharedBaseImageCount</span>
-                            </MudPaper>
-                        </MudItem>
+                        @if (_dashboard.BaseImageCount > 0)
+                        {
+                            <MudItem xs="12" sm="6">
+                                <MudPaper Class="summary-card" Elevation="0">
+                                    <span class="summary-label">Base images</span>
+                                    <span class="summary-value">@_dashboard.BaseImageCount</span>
+                                </MudPaper>
+                            </MudItem>
+                        }
                     </MudGrid>
                 </MudPaper>
             </MudItem>

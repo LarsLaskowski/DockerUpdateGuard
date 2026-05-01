@@ -1,4 +1,4 @@
-using DockerUpdateGuard.Images;
+using DockerUpdateGuard.Images.Interfaces;
 
 using Microsoft.EntityFrameworkCore;
 

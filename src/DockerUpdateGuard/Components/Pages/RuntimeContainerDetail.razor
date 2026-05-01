@@ -118,7 +118,50 @@
                         }
                     </MudPaper>
                 </MudItem>
+                @if (_detail.ActiveBaseImageVulnerabilityFindingCount > 0)
+                {
+                    <MudItem xs="12" md="6">
+                        <MudPaper Class="summary-card" Elevation="0">
+                            <span class="summary-label">Base image vulnerabilities</span>
+                            <MudChip T="string" Size="Size.Small" Color="Color.Warning">Findings detected</MudChip>
+                            <span class="table-secondary">@_detail.BaseImageVulnerabilitySummary</span>
+                        </MudPaper>
+                    </MudItem>
+                }
             </MudGrid>
+        </MudPaper>
+
+        <MudPaper Class="section-paper" Elevation="0">
+            <div class="section-header">
+                <MudText Typo="Typo.h5">Base image chain</MudText>
+                <MudText Class="section-description">Resolved base-image lineage for the current runtime image, including vulnerability status.</MudText>
+            </div>
+            @if (_detail.BaseImages.Count == 0)
+            {
+                <MudPaper Class="empty-state-panel" Elevation="0">
+                    <MudText>No base image chain is currently stored for this runtime image.</MudText>
+                </MudPaper>
+            }
+            else
+            {
+                <MudTable Items="_detail.BaseImages" Hover="true" Dense="false" Breakpoint="Breakpoint.Md" Class="section-table">
+                    <HeaderContent>
+                        <MudTh>Depth</MudTh>
+                        <MudTh>Base Image</MudTh>
+                        <MudTh>Source</MudTh>
+                        <MudTh>Vulnerabilities</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd DataLabel="Depth">@context.Depth</MudTd>
+                        <MudTd DataLabel="Base Image">@ImageReferenceFormatter.GetReference(context.ImageReference)</MudTd>
+                        <MudTd DataLabel="Source">@ImageReferenceFormatter.GetReference(context.SourceReference ?? string.Empty)</MudTd>
+                        <MudTd DataLabel="Vulnerabilities">
+                            <MudChip T="string" Size="Size.Small" Color="@GetVulnerabilityStatusColor(context.VulnerabilityAssessment.Status)">@context.VulnerabilityAssessment.Status</MudChip>
+                            <span class="table-secondary">@($"{context.VulnerabilityAssessment.ActiveFindingCount} active · {context.VulnerabilityAssessment.Source}")</span>
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+            }
         </MudPaper>
 
         <MudPaper Class="section-paper" Elevation="0">

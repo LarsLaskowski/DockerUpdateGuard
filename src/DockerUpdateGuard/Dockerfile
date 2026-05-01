@@ -1,5 +1,6 @@
 ARG BASE_SDK="mcr.microsoft.com/dotnet/sdk:10.0-alpine"
 ARG BASE_RUNTIME="mcr.microsoft.com/dotnet/aspnet:10.0-alpine"
+ARG BASE_RUNTIME_DIGEST
 ARG APP_VERSION=1.0.0
 
 # ---------------------------
@@ -7,9 +8,6 @@ ARG APP_VERSION=1.0.0
 # ---------------------------
 FROM ${BASE_SDK} AS build
 ARG APP_VERSION
-ARG BASE_SDK
-
-LABEL org.opencontainers.image.base.name="${BASE_SDK}"
 
 WORKDIR /src
 
@@ -29,8 +27,10 @@ RUN dotnet publish src/DockerUpdateGuard/DockerUpdateGuard.csproj -c Release -o 
 FROM ${BASE_RUNTIME}
 ARG APP_VERSION
 ARG BASE_RUNTIME
+ARG BASE_RUNTIME_DIGEST
 
 LABEL org.opencontainers.image.base.name="${BASE_RUNTIME}"
+LABEL org.opencontainers.image.base.digest="${BASE_RUNTIME_DIGEST}"
 
 WORKDIR /app
 EXPOSE 8080

@@ -1,4 +1,5 @@
 using DockerUpdateGuard.Configuration;
+using DockerUpdateGuard.Images.Interfaces;
 
 using Microsoft.Extensions.Options;
 

@@ -1,4 +1,4 @@
-using DockerUpdateGuard.Images;
+using DockerUpdateGuard.Images.Data;
 using DockerUpdateGuard.Infrastructure;
 
 namespace DockerUpdateGuard.DockerHub;
@@ -54,12 +54,14 @@ public interface IDockerHubClient
     /// <param name="cancellationToken">Cancellation token</param>
     /// <param name="operatingSystem">Preferred operating system</param>
     /// <param name="architecture">Preferred architecture</param>
+    /// <param name="queryOptions">Bounded tag-query options</param>
     /// <returns>Tag list result</returns>
     Task<ExternalOperationResult<IReadOnlyList<DockerHubTagData>>> GetTagsAsync(string registry,
                                                                                 string repository,
                                                                                 CancellationToken cancellationToken = default,
                                                                                 string? operatingSystem = null,
-                                                                                string? architecture = null);
+                                                                                string? architecture = null,
+                                                                                RegistryTagQueryOptions? queryOptions = null);
 
     /// <summary>
     /// Attempt to resolve base images for an observed image

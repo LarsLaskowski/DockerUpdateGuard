@@ -1,4 +1,8 @@
 using DockerUpdateGuard.DockerHub;
+using DockerUpdateGuard.Images.Data;
+using DockerUpdateGuard.Images.Enums;
+using DockerUpdateGuard.Images.Helper;
+using DockerUpdateGuard.Images.Interfaces;
 
 namespace DockerUpdateGuard.Images;
 
@@ -56,6 +60,7 @@ public class UpdateDetectionService : IUpdateDetectionService
         if (TryParseVersion(currentImage.Tag, out var currentVersion))
         {
             var versionCandidates = GetHigherVersionCandidates(orderedTags,
+                                                               currentImage.Tag,
                                                                currentVersion,
                                                                currentTagData?.PublishedAtUtc);
 
@@ -120,6 +125,7 @@ public class UpdateDetectionService : IUpdateDetectionService
                                                out var resolvedVersion))
         {
             var versionCandidates = GetHigherVersionCandidates(orderedTags,
+                                                               resolvedVersionTagData!.Tag,
                                                                resolvedVersion,
                                                                resolvedVersionTagData?.PublishedAtUtc ?? currentTagData?.PublishedAtUtc);
 
@@ -175,15 +181,19 @@ public class UpdateDetectionService : IUpdateDetectionService
     /// Get higher semantic version candidates than the current version
     /// </summary>
     /// <param name="orderedTags">Ordered available tags</param>
+    /// <param name="currentTag">Current semantic tag or resolved exact tag</param>
     /// <param name="currentVersion">Current semantic version</param>
     /// <param name="currentPublishedAtUtc">Current tag publication timestamp</param>
     /// <returns>Higher semantic version candidates</returns>
     private static List<(DockerHubTagData Tag, Version Version)> GetHigherVersionCandidates(IReadOnlyList<DockerHubTagData> orderedTags,
+                                                                                            string currentTag,
                                                                                             Version currentVersion,
                                                                                             DateTimeOffset? currentPublishedAtUtc)
     {
-        return orderedTags.Where(tag => TryParseVersion(tag.Tag, out var tagVersion)
-                                        && tagVersion > currentVersion
+        return orderedTags.Where(tag => VersionTagResolutionHelper.TryCompareVersionTags(tag.Tag,
+                                                                                         currentTag,
+                                                                                         out var comparison)
+                                        && comparison > 0
                                         && IsCandidatePublishedAfterBaseline(tag.PublishedAtUtc, currentPublishedAtUtc))
                           .Select(tag => (Tag: tag, Version: ParseVersion(tag.Tag)))
                           .OrderByDescending(entity => entity.Version)
@@ -382,7 +392,10 @@ public class UpdateDetectionService : IUpdateDetectionService
         var matchingSemanticCandidates = orderedTags.Where(tag => string.Equals(tag.Digest,
                                                                                 currentImage.Digest,
                                                                                 StringComparison.OrdinalIgnoreCase)
-                                                                  && TryParseVersion(tag.Tag, out _))
+                                                                  && TryParseVersion(tag.Tag, out _)
+                                                                  && (VersionTagResolutionHelper.IsMatchingVersionLineTag(currentImage.Tag, tag.Tag)
+                                                                      || TryParseVersion(currentImage.Tag, out _)
+                                                                      || TryParseYearPrefixedVersion(currentImage.Tag, out _, out _)))
                                                     .Select(tag => new
                                                                    {
                                                                        Tag = tag,
@@ -449,6 +462,7 @@ public class UpdateDetectionService : IUpdateDetectionService
     {
         return orderedTags.Where(tag => string.Equals(tag.Digest, digest, StringComparison.OrdinalIgnoreCase))
                           .OrderBy(tag => string.Equals(tag.Tag, currentTag, StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+                          .ThenBy(tag => VersionTagResolutionHelper.IsMatchingVersionLineTag(currentTag, tag.Tag) ? 0 : 1)
                           .ThenBy(tag => TryParseVersion(tag.Tag, out _) ? 0 : 1)
                           .ThenByDescending(tag => tag.PublishedAtUtc)
                           .ThenByDescending(tag => TryParseVersion(tag.Tag, out var tagVersion) ? tagVersion : new Version())
