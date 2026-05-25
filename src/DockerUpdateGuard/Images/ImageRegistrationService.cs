@@ -66,6 +66,7 @@ public class ImageRegistrationService : IImageRegistrationService
                                                                                       cancellationToken: cancellationToken)
                                                         .ConfigureAwait(false);
         imageVersion.Source = ImageVersionSource.ObservedImage;
+
         var existingImage = await _dbContext.ObservedImages.SingleOrDefaultAsync(entity => entity.Name == request.Name, cancellationToken)
                                                            .ConfigureAwait(false);
 

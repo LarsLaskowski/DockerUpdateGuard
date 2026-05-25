@@ -721,6 +721,7 @@ public partial class OciRegistryClient : IRegistryMetadataClient
                                                           cancellationToken,
                                                           operatingSystem,
                                                           architecture).ConfigureAwait(false);
+
                         inspectedTagCount++;
 
                         if (tagResult.Status == ExternalOperationStatus.Succeeded && tagResult.Data is not null)

@@ -265,11 +265,11 @@ public partial class RuntimeContainers
         var usableHeight = SparklineHeight - (SparklinePadding * 2d);
         var points = valueArray.Select((value, index) =>
                                        {
-                                           var x = SparklinePadding + (usableWidth * index / (valueArray.Length - 1d));
+                                           var xValue = SparklinePadding + (usableWidth * index / (valueArray.Length - 1d));
                                            var normalizedValue = (value - minimum) / range;
-                                           var y = SparklinePadding + (usableHeight * (1d - normalizedValue));
+                                           var yValue = SparklinePadding + (usableHeight * (1d - normalizedValue));
 
-                                           return (X: x, Y: y);
+                                           return (X: xValue, Y: yValue);
                                        })
                                .ToArray();
         var pathBuilder = new StringBuilder();

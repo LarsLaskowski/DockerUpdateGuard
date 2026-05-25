@@ -199,6 +199,7 @@ public class ImageScanOrchestrator : IImageScanOrchestrator
     {
         var resolvedBaseImageCount = 0;
         var observedImageScanLock = GetObservedImageScanLock(observedImageId);
+
         await observedImageScanLock.WaitAsync(cancellationToken).ConfigureAwait(false);
 
         try

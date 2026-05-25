@@ -502,6 +502,7 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
         }
 
         var (namespaceName, repositoryName) = SplitRepository(imageReference.Repository);
+
         using var activity = DockerUpdateGuardTelemetry.ActivitySource.StartActivity(TelemetryActivityNames.DockerHubRequest, ActivityKind.Client);
 
         activity?.SetTag(TelemetryTagNames.ImageReference, imageReference.FullReference);
@@ -616,6 +617,7 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
         }
 
         var (namespaceName, repositoryName) = SplitRepository(repository);
+
         var requestUri = $"v2/namespaces/{Uri.EscapeDataString(namespaceName)}/repositories/{EscapeRepository(repositoryName)}/tags?page_size=100";
         var results = new List<DockerHubTagData>();
         var resolvedCurrentVersionTag = false;
@@ -835,6 +837,7 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
     private async Task<string?> GetRegistryTokenAsync(ImageReference imageReference, CancellationToken cancellationToken)
     {
         var (namespaceName, repositoryName) = SplitRepository(imageReference.Repository);
+
         var scope = $"repository:{Uri.EscapeDataString(namespaceName)}/{EscapeRepository(repositoryName)}:pull";
         var tokenUri = new Uri($"https://auth.docker.io/token?service=registry.docker.io&scope={scope}");
 
@@ -882,6 +885,7 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
                                                           CancellationToken cancellationToken)
     {
         var (namespaceName, repositoryName) = SplitRepository(imageReference.Repository);
+
         var reference = string.IsNullOrWhiteSpace(imageReference.Digest) ? imageReference.Tag : imageReference.Digest;
         var manifestUri = new Uri($"https://registry-1.docker.io/v2/{Uri.EscapeDataString(namespaceName)}/{EscapeRepository(repositoryName)}/manifests/{Uri.EscapeDataString(reference)}");
 
@@ -961,6 +965,7 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
         }
 
         var (namespaceName, repositoryName) = SplitRepository(imageReference.Repository);
+
         var singleManifestUri = new Uri($"https://registry-1.docker.io/v2/{Uri.EscapeDataString(namespaceName)}/{EscapeRepository(repositoryName)}/manifests/{Uri.EscapeDataString(targetDigest)}");
 
         using var request = new HttpRequestMessage(HttpMethod.Get, singleManifestUri);
@@ -1007,6 +1012,7 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
                                                                         CancellationToken cancellationToken)
     {
         var (namespaceName, repositoryName) = SplitRepository(imageReference.Repository);
+
         var blobUri = new Uri($"https://registry-1.docker.io/v2/{Uri.EscapeDataString(namespaceName)}/{EscapeRepository(repositoryName)}/blobs/{Uri.EscapeDataString(configDigest)}");
 
         using var request = new HttpRequestMessage(HttpMethod.Get, blobUri);
@@ -1068,6 +1074,7 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
                                                                                        CancellationToken cancellationToken)
     {
         var (namespaceName, repositoryName) = SplitRepository(imageReference.Repository);
+
         var blobUri = new Uri($"https://registry-1.docker.io/v2/{Uri.EscapeDataString(namespaceName)}/{EscapeRepository(repositoryName)}/blobs/{Uri.EscapeDataString(configDigest)}");
 
         using var request = new HttpRequestMessage(HttpMethod.Get, blobUri);

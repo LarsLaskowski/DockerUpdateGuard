@@ -49,6 +49,7 @@ public class MappingTests
                                                         nameof(ImageVersion.RegistryRepositoryId),
                                                         nameof(ImageVersion.Tag),
                                                         nameof(ImageVersion.Digest));
+
                 Assert.IsNotNull(imageVersionUniqueIndex,
                                  "Image version must have a unique index for repository, tag and digest");
                 Assert.IsTrue(imageVersionUniqueIndex.IsUnique,

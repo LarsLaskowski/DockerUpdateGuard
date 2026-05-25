@@ -70,6 +70,7 @@ public partial class ImageRegistrationServiceTests
                 Assert.AreNotEqual(Guid.Empty,
                                    persistedImage.CurrentImageVersionId,
                                    "Registering an image must associate the observed image with a current image version");
+
                 var imageVersionCountTask = dbContext.ImageVersions.CountAsync(CancellationToken.None);
                 var imageVersionCount = await imageVersionCountTask.ConfigureAwait(false);
 

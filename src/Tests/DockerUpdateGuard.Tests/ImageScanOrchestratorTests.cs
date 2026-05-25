@@ -876,9 +876,11 @@ public class ImageScanOrchestratorTests
                                                                      .ConfigureAwait(false);
 
                 var firstScanTask = orchestrator1.ScanAsync(observedImageId, ScanTriggerSource.Scheduled, CancellationToken.None);
+
                 await firstResolveStarted.Task.ConfigureAwait(false);
 
                 var secondScanTask = orchestrator2.ScanAsync(observedImageId, ScanTriggerSource.Scheduled, CancellationToken.None);
+
                 await Task.Delay(100, TestContext.CancellationToken).ConfigureAwait(false);
 
                 Assert.AreEqual(1,

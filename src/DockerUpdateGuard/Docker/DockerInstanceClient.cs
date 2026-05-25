@@ -1077,6 +1077,7 @@ public class DockerInstanceClient : IDockerInstanceClient
                     {
                         using var statsDocument = await JsonDocument.ParseAsync(statsStream, cancellationToken: statsTimeoutSource.Token)
                                                                     .ConfigureAwait(false);
+
                         samples.Add(ParseResourceSample(containerElement, statsDocument.RootElement));
                     }
                 }

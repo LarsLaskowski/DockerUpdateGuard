@@ -646,10 +646,14 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                                                 return observedImages.Select(entity =>
                                                                              {
                                                                                  var repositoryKey = CreateRepositoryKey(entity.CurrentImageVersion);
+
                                                                                  observedAlertLookup.TryGetValue(entity.Id, out var observedAlert);
                                                                                  runtimeAlertLookup.TryGetValue(repositoryKey, out var runtimeAlert);
+
                                                                                  var baseRuntimeAlert = observedAlert ?? runtimeAlert;
+
                                                                                  baseImageRelationshipsByChildVersion.TryGetValue(entity.CurrentImageVersionId, out var baseImageRelationships);
+
                                                                                  var baseImageVulnerabilitySummary = SummarizeBaseImageVulnerabilities(baseImageRelationships);
 
                                                                                  return new ObservedImageListItemData
@@ -746,7 +750,9 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                                                                                      .FirstOrDefault()
                                                                            ?? runtimeDerivedFindings.FirstOrDefault();
                                                 var recommendedImageVersions = await LoadRecommendedImageVersionsAsync(combinedUpdateFindings, cancellationToken).ConfigureAwait(false);
+
                                                 baseImageRelationshipsByChildVersion.TryGetValue(observedImage.CurrentImageVersionId, out var baseImages);
+
                                                 var baseImageVulnerabilitySummary = SummarizeBaseImageVulnerabilities(baseImages);
 
                                                 return new ObservedImageDetailViewData
@@ -870,6 +876,7 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                                                 ArgumentNullException.ThrowIfNull(registryRepository);
 
                                                 ownImagesByRepository.TryGetValue(CreateRepositoryKey(latestSnapshot), out var linkedObservedImage);
+
                                                 var baseRuntimeAlert = updateFindings.FirstOrDefault(entity => entity.IsActive
                                                                                                                && entity.Type == UpdateFindingType.DerivedBaseRuntimeUpdate);
 
@@ -885,6 +892,7 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                                                 }
 
                                                 baseImageRelationshipsByChildVersion.TryGetValue(latestSnapshot.ImageVersionId, out var baseImages);
+
                                                 var baseImageVulnerabilitySummary = SummarizeBaseImageVulnerabilities(baseImages);
 
                                                 return new RuntimeContainerDetailViewData
@@ -1135,6 +1143,7 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                                           resourceHistories.TryGetValue(CreateContainerKey(entity.DockerInstanceId, entity.ContainerId), out var resourceUsageHistory);
                                           tagCandidatesBySnapshot.TryGetValue(entity.Id, out var tagCandidates);
                                           baseImageRelationshipsByChildVersion.TryGetValue(entity.ImageVersionId, out var baseImageRelationships);
+
                                           var currentResourceUsage = resourceUsageHistory?.FirstOrDefault();
                                           var baseImageVulnerabilitySummary = SummarizeBaseImageVulnerabilities(baseImageRelationships);
 

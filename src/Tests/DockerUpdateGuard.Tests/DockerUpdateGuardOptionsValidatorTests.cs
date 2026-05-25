@@ -140,6 +140,7 @@ public class DockerUpdateGuardOptionsValidatorTests
                         applicationSection[nameof(DockerUpdateGuardOptions.ConnectionStringName)],
                         "The development configuration sample must include the configured connection string name");
         Assert.IsTrue(string.IsNullOrWhiteSpace(namedConnectionString) == false || string.IsNullOrWhiteSpace(inlineConnectionString) == false, "The development configuration sample must expose at least one configured database connection path");
+
         var dockerHubRegistry = applicationSection["DockerHub:Registry"];
         var supportedDockerHubRegistries = new[] { "docker.io", "https://hub.docker.com" };
 
@@ -256,6 +257,7 @@ public class DockerUpdateGuardOptionsValidatorTests
         scanningOptions.CleanupIntervalMinutes = 720;
         scanningOptions.RetryCount = 2;
         scanningOptions.RetainScanRunsDays = 30;
+
         var dockerHubOptions = new DockerHubOptions
                                {
                                    Registry = "docker.io",

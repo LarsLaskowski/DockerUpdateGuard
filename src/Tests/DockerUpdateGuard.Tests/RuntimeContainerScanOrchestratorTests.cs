@@ -140,6 +140,7 @@ public class RuntimeContainerScanOrchestratorTests
                 var finding = await dbContext.UpdateFindings.SingleAsync(TestContext.CancellationToken).ConfigureAwait(false);
                 var runtimeImageVersionTask = dbContext.ImageVersions.SingleAsync(entity => entity.Id == snapshot.ImageVersionId, TestContext.CancellationToken);
                 var runtimeImageVersion = await runtimeImageVersionTask.ConfigureAwait(false);
+
                 Assert.IsNotNull(finding.RecommendedImageVersionId, "Runtime update findings must persist the recommended image version");
 
                 var recommendedImageTask = dbContext.ImageVersions.SingleAsync(entity => entity.Id == finding.RecommendedImageVersionId.Value, TestContext.CancellationToken);
@@ -170,6 +171,7 @@ public class RuntimeContainerScanOrchestratorTests
                 Assert.AreEqual("1.1.0",
                                 recommendedImage.Tag,
                                 "Runtime scans must recommend the newer runtime image tag");
+
                 var imageRelationshipCount = await dbContext.ImageRelationships.CountAsync(TestContext.CancellationToken).ConfigureAwait(false);
 
                 Assert.AreEqual(0,

@@ -43,6 +43,7 @@ public class ImageCatalogRepositoryNullDigestTests
                                                                                    digest: null,
                                                                                    cancellationToken: CancellationToken.None)
                                                      .ConfigureAwait(false);
+
                 dbContext.ChangeTracker.Clear();
 
                 var persistedVersion = await dbContext.ImageVersions.SingleAsync(entity => entity.Id == createdVersion.Id, TestContext.CancellationToken)
@@ -84,6 +85,7 @@ public class ImageCatalogRepositoryNullDigestTests
                                                                                    "docker.io/library/debian@sha256:base",
                                                                                    cancellationToken: CancellationToken.None)
                                                      .ConfigureAwait(false);
+
                 dbContext.ChangeTracker.Clear();
 
                 var persistedVersion = await dbContext.ImageVersions.SingleAsync(entity => entity.Id == createdVersion.Id, TestContext.CancellationToken)

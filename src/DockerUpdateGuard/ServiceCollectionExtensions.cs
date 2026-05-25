@@ -105,6 +105,7 @@ public static class ServiceCollectionExtensions
         {
             services.AddSingleton<IVulnerabilityProvider, DefaultVulnerabilityProvider>();
         }
+
         services.AddScoped<IDockerHubClient>(serviceProvider => serviceProvider.GetRequiredService<DockerHubClient>());
         services.AddScoped<IRegistryMetadataClient>(serviceProvider => serviceProvider.GetRequiredService<DockerHubClient>());
         services.AddScoped<IRegistryMetadataClient>(serviceProvider => serviceProvider.GetRequiredService<OciRegistryClient>());

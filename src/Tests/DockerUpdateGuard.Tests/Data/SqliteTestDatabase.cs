@@ -41,6 +41,7 @@ internal sealed class SqliteTestDatabase : IDisposable
                                                                                .EnableSensitiveDataLogging()
                                                                                .Options;
         var dbContext = new DockerUpdateGuardDbContext(options);
+
         dbContext.Database.EnsureCreated();
 
         return dbContext;
