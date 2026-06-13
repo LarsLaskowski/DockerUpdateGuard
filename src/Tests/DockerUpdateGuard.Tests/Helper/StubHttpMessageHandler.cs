@@ -41,22 +41,7 @@ internal sealed class StubHttpMessageHandler : HttpMessageHandler
 
     #endregion // Properties
 
-    #region Methods
-
-    /// <summary>
-    /// Add a JSON response for a request URI
-    /// </summary>
-    /// <param name="requestUri">Absolute request URI</param>
-    /// <param name="jsonContent">JSON content</param>
-    public void AddResponse(string requestUri, string jsonContent)
-    {
-        _responses[requestUri] = new HttpResponseMessage(HttpStatusCode.OK)
-                                 {
-                                     Content = new StringContent(jsonContent,
-                                                                 Encoding.UTF8,
-                                                                 "application/json"),
-                                 };
-    }
+    #region HttpMessageHandler
 
     /// <inheritdoc/>
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
@@ -85,6 +70,25 @@ internal sealed class StubHttpMessageHandler : HttpMessageHandler
         fallbackResponse.RequestMessage = request;
 
         return Task.FromResult(fallbackResponse);
+    }
+
+    #endregion // HttpMessageHandler
+
+    #region Methods
+
+    /// <summary>
+    /// Add a JSON response for a request URI
+    /// </summary>
+    /// <param name="requestUri">Absolute request URI</param>
+    /// <param name="jsonContent">JSON content</param>
+    public void AddResponse(string requestUri, string jsonContent)
+    {
+        _responses[requestUri] = new HttpResponseMessage(HttpStatusCode.OK)
+                                 {
+                                     Content = new StringContent(jsonContent,
+                                                                 Encoding.UTF8,
+                                                                 "application/json"),
+                                 };
     }
 
     /// <summary>

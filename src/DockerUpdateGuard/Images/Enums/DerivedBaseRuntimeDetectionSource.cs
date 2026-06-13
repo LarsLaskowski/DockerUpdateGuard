@@ -33,5 +33,5 @@ public enum DerivedBaseRuntimeDetectionSource
     /// <summary>
     /// History command text
     /// </summary>
-    HistoryCommand = 5,
+    HistoryCommand = 5
 }

@@ -5,7 +5,7 @@ namespace DockerUpdateGuard.Tests.Helper;
 /// </summary>
 internal sealed class TimeoutHttpMessageHandler : HttpMessageHandler
 {
-    #region Methods
+    #region HttpMessageHandler
 
     /// <inheritdoc/>
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
@@ -15,5 +15,5 @@ internal sealed class TimeoutHttpMessageHandler : HttpMessageHandler
         throw new InvalidOperationException("The timeout handler must be canceled before returning a response");
     }
 
-    #endregion // Methods
+    #endregion // HttpMessageHandler
 }

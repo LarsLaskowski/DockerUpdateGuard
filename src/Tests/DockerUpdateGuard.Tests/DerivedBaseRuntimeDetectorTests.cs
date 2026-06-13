@@ -28,7 +28,7 @@ public class DerivedBaseRuntimeDetectorTests
                                  new DockerImageHistoryEntryData
                                  {
                                      CreatedBy = "/bin/sh -c #(nop)  ENV DOTNET_VERSION=9.0.11",
-                                 },
+                                 }
                              };
 
         var result = detector.Detect(inspectData, historyEntries);
@@ -57,7 +57,7 @@ public class DerivedBaseRuntimeDetectorTests
                                  new DockerImageHistoryEntryData
                                  {
                                      CreatedBy = "/bin/sh -c #(nop)  ENV DOTNET_VERSION=8.0.15",
-                                 },
+                                 }
                              };
 
         var result = detector.Detect(inspectData: null, historyEntries);
@@ -90,7 +90,7 @@ public class DerivedBaseRuntimeDetectorTests
                                  new DockerImageHistoryEntryData
                                  {
                                      CreatedBy = "/bin/sh -c apk add curl",
-                                 },
+                                 }
                              };
 
         var result = detector.Detect(inspectData, historyEntries);

@@ -220,7 +220,7 @@ public class SharedBaseImageQueryServiceTests
                 CollectionAssert.AreEquivalent(new[]
                                                {
                                                    "docker.io/company/api-a:1.0.0@sha256:parent-a",
-                                                   "docker.io/company/api-b:2.0.0@sha256:parent-b",
+                                                   "docker.io/company/api-b:2.0.0@sha256:parent-b"
                                                },
                                                baseImages.SelectMany(entity => entity.SourceReferences).ToArray(),
                                                "Each unresolved base image entry must keep the source reference that disambiguates it");

@@ -28,5 +28,5 @@ public enum UpdateFindingType
     /// <summary>
     /// Derived local base runtime update
     /// </summary>
-    DerivedBaseRuntimeUpdate = 4,
+    DerivedBaseRuntimeUpdate = 4
 }

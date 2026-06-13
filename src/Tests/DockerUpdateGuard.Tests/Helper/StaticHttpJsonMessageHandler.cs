@@ -30,7 +30,7 @@ internal sealed class StaticHttpJsonMessageHandler : HttpMessageHandler
 
     #endregion // Constructors
 
-    #region Methods
+    #region HttpMessageHandler
 
     /// <inheritdoc/>
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
@@ -43,5 +43,5 @@ internal sealed class StaticHttpJsonMessageHandler : HttpMessageHandler
                                });
     }
 
-    #endregion // Methods
+    #endregion // HttpMessageHandler
 }

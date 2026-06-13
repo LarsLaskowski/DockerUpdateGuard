@@ -38,5 +38,5 @@ public enum ExternalOperationStatus
     /// <summary>
     /// Operation produced an inconclusive result
     /// </summary>
-    Unknown = 6,
+    Unknown = 6
 }

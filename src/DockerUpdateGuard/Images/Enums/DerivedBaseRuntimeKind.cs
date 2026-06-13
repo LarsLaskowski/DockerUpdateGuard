@@ -18,5 +18,5 @@ public enum DerivedBaseRuntimeKind
     /// <summary>
     /// NGINX runtime
     /// </summary>
-    Nginx = 2,
+    Nginx = 2
 }

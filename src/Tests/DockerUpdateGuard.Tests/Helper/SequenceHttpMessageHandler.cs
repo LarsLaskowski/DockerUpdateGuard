@@ -26,6 +26,35 @@ internal sealed class SequenceHttpMessageHandler : HttpMessageHandler
 
     #endregion // Properties
 
+    #region HttpMessageHandler
+
+    /// <inheritdoc/>
+    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request.RequestUri);
+
+        _requests.Add(new ObservedRequest
+                      {
+                          Method = request.Method.Method,
+                          RequestUri = request.RequestUri.AbsoluteUri,
+                          AuthorizationScheme = request.Headers.Authorization?.Scheme,
+                          AuthorizationParameter = request.Headers.Authorization?.Parameter,
+                      });
+
+        if (_responses.TryGetValue(request.RequestUri.AbsoluteUri, out var queue)
+            && queue.Count > 0)
+        {
+            return Task.FromResult(CloneResponse(queue.Dequeue()));
+        }
+
+        return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound)
+                               {
+                                   RequestMessage = request,
+                               });
+    }
+
+    #endregion // HttpMessageHandler
+
     #region Methods
 
     /// <summary>
@@ -61,31 +90,6 @@ internal sealed class SequenceHttpMessageHandler : HttpMessageHandler
         }
 
         queue.Enqueue(response);
-    }
-
-    /// <inheritdoc/>
-    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(request.RequestUri);
-
-        _requests.Add(new ObservedRequest
-                      {
-                          Method = request.Method.Method,
-                          RequestUri = request.RequestUri.AbsoluteUri,
-                          AuthorizationScheme = request.Headers.Authorization?.Scheme,
-                          AuthorizationParameter = request.Headers.Authorization?.Parameter,
-                      });
-
-        if (_responses.TryGetValue(request.RequestUri.AbsoluteUri, out var queue)
-            && queue.Count > 0)
-        {
-            return Task.FromResult(CloneResponse(queue.Dequeue()));
-        }
-
-        return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound)
-                               {
-                                   RequestMessage = request,
-                               });
     }
 
     /// <summary>

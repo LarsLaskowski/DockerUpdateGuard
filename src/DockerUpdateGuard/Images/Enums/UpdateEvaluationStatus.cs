@@ -28,5 +28,5 @@ public enum UpdateEvaluationStatus
     /// <summary>
     /// Update state is unknown
     /// </summary>
-    Unknown = 4,
+    Unknown = 4
 }

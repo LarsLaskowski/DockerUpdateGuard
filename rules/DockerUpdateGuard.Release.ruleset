@@ -271,5 +271,8 @@
     <Rule Id="RH0612" Action="Error" />
     <Rule Id="RH0613" Action="Error" />
     <Rule Id="RH0614" Action="Error" />
+    <Rule Id="RH5515" Action="None" />
+    <Rule Id="RH7004" Action="None" />
+    <Rule Id="RH8027" Action="None" />
   </Rules>
 </RuleSet>

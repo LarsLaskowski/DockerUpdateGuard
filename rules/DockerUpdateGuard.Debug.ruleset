@@ -82,5 +82,8 @@
   <Rules AnalyzerId="Reihitsu.Analyzer" RuleNamespace="Reihitsu.Analyzer">
     <Rule Id="RH0396" Action="None" />
     <Rule Id="RH0428" Action="None" />
+    <Rule Id="RH5515" Action="None" />
+    <Rule Id="RH7004" Action="None" />
+    <Rule Id="RH8027" Action="None" />
   </Rules>
 </RuleSet>

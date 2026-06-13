@@ -22,7 +22,7 @@ public partial class PortainerClient : IPortainerClient
                                                                            "restart",
                                                                            "kill",
                                                                            "pause",
-                                                                           "unpause",
+                                                                           "unpause"
                                                                        };
 
     #endregion // Constants
