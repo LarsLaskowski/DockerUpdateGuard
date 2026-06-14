@@ -361,6 +361,3 @@ MigrationBackup/
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
 /src/DockerUpdateGuard/appsettings.Development.json
-
-# Internal review notes — not published
-docs/review/
