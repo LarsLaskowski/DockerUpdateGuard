@@ -243,7 +243,7 @@ Each file belongs to exactly **one phase** (P1–P8, see [README.md](README.md))
 | 227 | P1 | `src/DockerUpdateGuard/Portainer/PortainerClientLogging.cs` | App/Portainer | ✅ | 🟢 | 🟢 | 🟢 | — | |
 | 228 | P6 | `src/DockerUpdateGuard/Program.cs` | App (root) | ✅ | 🟢 | 🟢 | 🟢 | — |  |
 | 229 | P8 | `src/DockerUpdateGuard/Properties/launchSettings.json` | App/Properties | ✅ | 🟢 | 🟢 | 🟢 | — |  |
-| 230 | P6 | `src/DockerUpdateGuard/ServiceCollectionExtensions.cs` | App (root) | ✅ | 🟢 | 🟢 | 🟡 | — | F-045 |
+| 230 | P6 | `src/DockerUpdateGuard/ServiceCollectionExtensions.cs` | App (root) | ✅ | 🟢 | 🟢 | 🟡 | — | F-020, F-045 |
 | 231 | P5 | `src/DockerUpdateGuard/UI/ApplicationViewService.cs` | App/UI | ✅ | 🟢 | 🟠 | 🟡 | — | F-032, F-033 |
 | 232 | P5 | `src/DockerUpdateGuard/UI/BaseImageRelationshipData.cs` | App/UI | ✅ | — | — | 🟢 | — | |
 | 233 | P5 | `src/DockerUpdateGuard/UI/DashboardRefreshState.cs` | App/UI | ✅ | 🟢 | 🟢 | 🟢 | — | |
