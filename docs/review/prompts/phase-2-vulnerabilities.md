@@ -1,48 +1,48 @@
-# Phase 2 — Vulnerabilities (externe Scan-Provider)
+# Phase 2 — Vulnerabilities (external scan providers)
 
-> **Start in neuem Chat:** „Lies und führe `docs/review/prompts/phase-2-vulnerabilities.md` aus."
+> **Start in a new chat:** "Read and execute `docs/review/prompts/phase-2-vulnerabilities.md`."
 
-## Kontext
+## Context
 
-Diese Phase prüft die Vulnerability-Integration: Anbindung externer Provider
-(`None`, `DockerScout`, `Trivy`), Abruf, Parsing und Persistenz von
-Schwachstellen-Daten. Externer Netzwerk-Input + Konfig-gesteuerte Provider-Wahl.
+This phase reviews the vulnerability integration: connectivity to external providers
+(`None`, `DockerScout`, `Trivy`), retrieval, parsing, and persistence of
+vulnerability data. External network input + config-driven provider selection.
 
-**Umfang: 18 Dateien.** Modul: `App/Vulnerabilities`.
+**Scope: 18 files.** Module: `App/Vulnerabilities`.
 
-## Deine Dateiliste (autoritativ aus der Matrix)
+## Your file list (authoritative from the matrix)
 
 ```powershell
 Select-String -Path docs/review/file-inventory.md -Pattern '\| P2 \|' |
   ForEach-Object { ($_.Line -split '\|')[3].Trim().Trim('`') }
 ```
 
-## Kriterien
+## Criteria
 
-Lies [../criteria.md](../criteria.md). Besonderer Fokus:
+Read [../criteria.md](../criteria.md). Particular focus:
 
-- **K3/K4 Sicherheit & Resilienz:** `TrivyBaseUrl` als externer Endpunkt (SSRF,
-  Timeout, TLS), robustes Verhalten bei Provider-Ausfall/Teilantwort, kein
-  Credential-/Token-Leak in Logs.
-- **K1 Korrektheit:** Parsing der Provider-Antworten (Severity-Mapping, fehlende
-  Felder, Versions-/CVE-Zuordnung). Verhalten bei `Provider=None`/`Enabled=false`.
-- **K5 Async:** `CancellationToken` durchgereicht, Parallelität begrenzt.
-- **K8 Tests:** Sind alle drei Provider-Pfade getestet (auch Fehler-/Leerfälle)?
+- **K3/K4 Security & Resilience:** `TrivyBaseUrl` as an external endpoint (SSRF,
+  timeout, TLS), robust behavior on provider failure/partial response, no
+  credential/token leak in logs.
+- **K1 Correctness:** Parsing of provider responses (severity mapping, missing
+  fields, version/CVE mapping). Behavior with `Provider=None`/`Enabled=false`.
+- **K5 Async:** `CancellationToken` propagated, parallelism bounded.
+- **K8 Tests:** Are all three provider paths tested (including error/empty cases)?
 
 ## Workflow
 
-1. **Triage** aller 18 Dateien → Ampeln + Status in [../file-inventory.md](../file-inventory.md).
-2. **Deep-Dive** für 🔬 → Befunde `F-NNN` in [../findings.md](../findings.md)
-   (Abschnitt „Phase 2"), in Matrix verlinken, Status ✅.
-3. [../progress.md](../progress.md) Zeile P2 aktualisieren.
+1. **Triage** of all 18 files → indicators + status in [../file-inventory.md](../file-inventory.md).
+2. **Deep-dive** for 🔬 → findings `F-NNN` in [../findings.md](../findings.md)
+   (section "Phase 2"), link in the matrix, status ✅.
+3. Update [../progress.md](../progress.md) row P2.
 
-## Projektkonventionen
+## Project conventions
 
-Siehe [../criteria.md](../criteria.md) (K9). Nur Review/Doku, keine unrelated
-Code-Änderungen ohne Freigabe.
+See [../criteria.md](../criteria.md) (K9). Review/docs only, no unrelated
+code changes without approval.
 
-## Abschlussbedingung
+## Completion condition
 
 ```powershell
-(Select-String -Path docs/review/file-inventory.md -Pattern '\| P2 \|.*\| ⬜ \|').Count  # muss 0 sein
+(Select-String -Path docs/review/file-inventory.md -Pattern '\| P2 \|.*\| ⬜ \|').Count  # must be 0
 ```

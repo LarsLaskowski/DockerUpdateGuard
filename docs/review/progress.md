@@ -1,11 +1,11 @@
-# Review-Fortschritt
+# Review Progress
 
-Phasen-Status auf einen Blick. Quelle der Wahrheit für *Dateien* bleibt die
-[Review-Matrix](file-inventory.md); diese Tabelle ist die Phasen-Übersicht.
+Phase status at a glance. The source of truth for *files* remains the
+[review matrix](file-inventory.md); this table is the phase overview.
 
-Status: ⬜ nicht begonnen · 🔬 in Arbeit · ✅ abgeschlossen
+Status: ⬜ not started · 🔬 in progress · ✅ completed
 
-| Phase | Umfang | Dateien | Prompt | Status | Reviewt | Befunde |
+| Phase | Scope | Files | Prompt | Status | Reviewed | Findings |
 |-------|--------|--------:|--------|--------|--------:|--------:|
 | **P1** | Docker / DockerHub / Portainer / Configuration | 33 | [prompts/phase-1-docker-security.md](prompts/phase-1-docker-security.md) | ✅ | 33/33 | 12 |
 | **P2** | Vulnerabilities | 18 | [prompts/phase-2-vulnerabilities.md](prompts/phase-2-vulnerabilities.md) | ✅ | 18/18 | 8 |
@@ -14,37 +14,37 @@ Status: ⬜ nicht begonnen · 🔬 in Arbeit · ✅ abgeschlossen
 | **P5** | Components / UI / wwwroot | 59 | [prompts/phase-5-ui.md](prompts/phase-5-ui.md) | ✅ | 59/59 | 5 |
 | **P6** | Host / Telemetry / Infrastructure | 17 | [prompts/phase-6-host-telemetry.md](prompts/phase-6-host-telemetry.md) | ✅ | 17/17 | 6 |
 | **P7** | Tests | 52 | [prompts/phase-7-tests.md](prompts/phase-7-tests.md) | ✅ | 52/52 | 5 |
-| **P8** | Root / Konfiguration / Doku | 28 | [prompts/phase-8-config-docs.md](prompts/phase-8-config-docs.md) | ✅ | 28/28 | 8 |
-| | **Summe** | **332** | | | **332/332** | **56** |
+| **P8** | Root / Configuration / Docs | 28 | [prompts/phase-8-config-docs.md](prompts/phase-8-config-docs.md) | ✅ | 28/28 | 8 |
+| | **Total** | **332** | | | **332/332** | **56** |
 
-> **P8-Hinweis:** Die ursprüngliche Liste umfasste 26 Dateien inkl. `azure-pipelines.yml`,
-> die im Zuge der CI/CD-Migration (Commit fc81f4f) **gelöscht** wurde. Die real
-> wirksamen Workflows `.github/workflows/ci.yml` + `release.yml` fehlten in der Matrix
-> und wurden als Zeilen `4a`/`4b` ergänzt → P8 zählt jetzt 28 Matrix-Zeilen (27 reale
-> Dateien + die als „entfernt" markierte Azure-Zeile). Details: F-036.
+> **P8 note:** The original list comprised 26 files including `azure-pipelines.yml`,
+> which was **deleted** in the course of the CI/CD migration (commit fc81f4f). The
+> effectively active workflows `.github/workflows/ci.yml` + `release.yml` were missing from the matrix
+> and were added as rows `4a`/`4b` → P8 now counts 28 matrix rows (27 real
+> files + the Azure row marked as "removed"). Details: F-036.
 >
-> **Gesamt-Review abgeschlossen:** alle Phasen P1–P8 sind ✅, keine ⬜-Zeile mehr in
-> der [Matrix](file-inventory.md) (332/332 reviewt). **Schweregrad-Gesamtzusammenfassung
-> über alle 56 Befunde: 0 🔴 · 21 🟠 · 28 🟡 · 7 🔵.** Kein 🔴-Befund — der Sicherheits-
-> und Korrektheitskern ist solide; die 🟠-Befunde betreffen Resilienz/Härtung
-> (Retry/Backoff fehlt, Scan-Batch-Abbruch, transienter Finding-Verlust),
-> Korrektheits-Randfälle (SemVer-Pre-Release/Cross-Year, Scout-Severity/Registry) und
-> Test-Lücken (Provider-/Parser-/Resilienz-Pfade, Test-DB-Treue).
+> **Overall review completed:** all phases P1–P8 are ✅, no ⬜ row remains in
+> the [matrix](file-inventory.md) (332/332 reviewed). **Overall severity summary
+> across all 56 findings: 0 🔴 · 21 🟠 · 28 🟡 · 7 🔵.** No 🔴 finding — the security
+> and correctness core is solid; the 🟠 findings concern resilience/hardening
+> (missing retry/backoff, scan-batch abort, transient finding loss),
+> correctness edge cases (SemVer pre-release/cross-year, Scout severity/registry) and
+> test gaps (provider/parser/resilience paths, test-DB fidelity).
 >
-> **P7-Hinweis:** Befund-IDs sind über die Phasen hinweg nicht global eindeutig
-> (P3/P4 teilen sich `F-021`; P5/P8 teilen sich `F-032`–`F-036`). Phase 7 nutzt daher
-> bewusst den kollisionsfreien Bereich **F-046–F-050**.
+> **P7 note:** Finding IDs are not globally unique across the phases
+> (P3/P4 share `F-021`; P5/P8 share `F-032`–`F-036`). Phase 7 therefore
+> deliberately uses the collision-free range **F-046–F-050**.
 
-## Abschlussbedingung Gesamt-Review
+## Overall review completion condition
 
-Erledigt, wenn in der [Matrix](file-inventory.md) **keine ⬜-Zeile** mehr steht
-(zählbar) und jede Phase oben auf ✅.
+Done when **no ⬜ row** remains in the [matrix](file-inventory.md)
+(countable) and every phase above is ✅.
 
-Schnellzählung (PowerShell):
+Quick count (PowerShell):
 
 ```powershell
-# offene Zeilen gesamt
+# open rows total
 (Select-String -Path docs/review/file-inventory.md -Pattern '\| ⬜ \|').Count
-# offene Zeilen einer Phase, z. B. P1
+# open rows of a phase, e.g. P1
 (Select-String -Path docs/review/file-inventory.md -Pattern '\| P1 \|.*\| ⬜ \|').Count
 ```

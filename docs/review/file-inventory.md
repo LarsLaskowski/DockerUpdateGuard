@@ -1,16 +1,16 @@
-# DockerUpdateGuard – Review-Matrix
+# DockerUpdateGuard – Review Matrix
 
-Zentrale Tracking-Tabelle, ursprünglich generiert aus `git ls-files` (**330 Zeilen**).
-**332 Zeilen** nach P8-Korrektur: `.github/workflows/ci.yml` + `release.yml` ergänzt
-(Zeilen `4a`/`4b`), `azure-pipelines.yml` (Zeile 19) in Commit fc81f4f gelöscht und als
-„entfernt" markiert (CI/CD-Migration Azure DevOps → GitHub Actions, siehe F-036).
-Jede Datei gehört zu genau **einer Phase** (P1–P8, siehe [README.md](README.md)).
+Central tracking table, originally generated from `git ls-files` (**330 rows**).
+**332 rows** after the P8 correction: `.github/workflows/ci.yml` + `release.yml` added
+(rows `4a`/`4b`), `azure-pipelines.yml` (row 19) deleted in commit fc81f4f and marked as
+"removed" (CI/CD migration Azure DevOps → GitHub Actions, see F-036).
+Each file belongs to exactly **one phase** (P1–P8, see [README.md](README.md)).
 
-**Status:** ⬜ offen · 🔬 in Deep-Dive · ✅ reviewed
-**Ampel je Schwerpunkt:** 🟢 ok · 🟡 Hinweis · 🔴 Befund · — n/a
-**Befunde:** Kürzel-Verweis auf [findings.md](findings.md), z. B. `F-012`.
+**Status:** ⬜ open · 🔬 in deep dive · ✅ reviewed
+**Traffic light per focus area:** 🟢 ok · 🟡 note · 🔴 finding · — n/a
+**Findings:** short reference to [findings.md](findings.md), e.g. `F-012`.
 
-| # | Phase | Datei | Modul | Status | Sicher. | Korrekt. | Arch. | Tests | Befunde |
+| # | Phase | File | Module | Status | Sec. | Correct. | Arch. | Tests | Findings |
 |---|-------|-------|-------|--------|---------|----------|-------|-------|---------|
 | 1 | P8 | `.dockerignore` | Root | ✅ | 🟡 | 🟢 | — | — | F-038 |
 | 2 | P8 | `.editorconfig` | Root | ✅ | — | 🟢 | — | — |  |
@@ -32,7 +32,7 @@ Jede Datei gehört zu genau **einer Phase** (P1–P8, siehe [README.md](README.m
 | 16 | P8 | `LICENSE.md` | Root | ✅ | — | 🟡 | — | — | F-034 |
 | 17 | P8 | `README.md` | Root | ✅ | — | 🟡 | — | — | F-034, F-005, F-006 |
 | 18 | P8 | `SharedAssemblyInfo.cs` | Root | ✅ | — | 🟢 | 🟢 | — | F-039 |
-| 19 | P8 | `azure-pipelines.yml` | Root | ✅ | — | — | — | — | F-036 (Datei entfernt → `.github/workflows/`) |
+| 19 | P8 | `azure-pipelines.yml` | Root | ✅ | — | — | — | — | F-036 (file removed → `.github/workflows/`) |
 | 20 | P8 | `rules/DockerUpdateGuard.Debug.ruleset` | rules | ✅ | — | 🟢 | 🟢 | — |  |
 | 21 | P8 | `rules/DockerUpdateGuard.Release.ruleset` | rules | ✅ | — | 🟢 | 🟢 | — |  |
 | 22 | P4 | `src/DockerUpdateGuard.Data/Configurations/ContainerActionRunConfiguration.cs` | Data/Configurations | ✅ | 🟢 | 🟢 | 🟢 | — |  |

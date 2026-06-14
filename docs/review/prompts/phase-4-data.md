@@ -1,49 +1,49 @@
-# Phase 4 — Data (EF Core: Entities, Configurations, Migrations, Queries, Repos)
+# Phase 4 — Data (EF Core: entities, configurations, migrations, queries, repos)
 
-> **Start in neuem Chat:** „Lies und führe `docs/review/prompts/phase-4-data.md` aus."
+> **Start in a new chat:** "Read and execute `docs/review/prompts/phase-4-data.md`."
 
-## Kontext
+## Context
 
-Die Datenschicht (`src/DockerUpdateGuard.Data`, EF Core / PostgreSQL):
-Entities, Fluent-Configurations, Migrations, der DbContext, Repositories und
-Query-Services. Fokus auf Modell-/Migrations-Konsistenz und Query-Effizienz.
+The data layer (`src/DockerUpdateGuard.Data`, EF Core / PostgreSQL):
+entities, Fluent configurations, migrations, the DbContext, repositories, and
+query services. Focus on model/migration consistency and query efficiency.
 
-**Umfang: 65 Dateien.** Module: `Data/Entities` (31), `Data/Configurations` (15),
-`Data/Migrations` (9), `Data/Queries` (4), `Data/Repositories` (2) + Data-Root
-(DbContext, ServiceCollectionExtensions, Design-Factory, csproj).
+**Scope: 65 files.** Modules: `Data/Entities` (31), `Data/Configurations` (15),
+`Data/Migrations` (9), `Data/Queries` (4), `Data/Repositories` (2) + the Data root
+(DbContext, ServiceCollectionExtensions, design factory, csproj).
 
-## Deine Dateiliste (autoritativ aus der Matrix)
+## Your file list (authoritative from the matrix)
 
 ```powershell
 Select-String -Path docs/review/file-inventory.md -Pattern '\| P4 \|' |
   ForEach-Object { ($_.Line -split '\|')[3].Trim().Trim('`') }
 ```
 
-## Kriterien
+## Criteria
 
-Lies [../criteria.md](../criteria.md). Besonderer Fokus:
+Read [../criteria.md](../criteria.md). Particular focus:
 
-- **K6 Datenzugriff:** Migrations konsistent zum aktuellen Modell (Snapshot vs.
-  Entities/Configurations)? Indizes/Unique-Constraints für Lookup-Felder
-  (Digests, Tags, Endpoints) vorhanden? Nullable/Required korrekt gemappt?
-  Cascade-/Delete-Verhalten sinnvoll?
-- **K1 Korrektheit:** Query-Services (`SharedBaseImageQueryService`) – liefern sie
-  korrekte Aggregate? Randfälle (keine Treffer, Mehrfachnutzung).
-- **K7 Performance:** `AsNoTracking` für Lesepfade, Projektionen statt
-  Voll-Materialisierung, keine N+1.
-- **K2 Architektur:** Data-Schicht ohne UI-/Host-Abhängigkeiten; DI-Registrierung
-  (`ServiceCollectionExtensions`) mit korrekten Lifetimes.
+- **K6 Data access:** Are migrations consistent with the current model (snapshot vs.
+  entities/configurations)? Are indexes/unique constraints present for lookup fields
+  (digests, tags, endpoints)? Is nullable/required mapped correctly?
+  Is cascade/delete behavior sensible?
+- **K1 Correctness:** Query services (`SharedBaseImageQueryService`) — do they return
+  correct aggregates? Edge cases (no matches, multiple usage).
+- **K7 Performance:** `AsNoTracking` for read paths, projections instead of
+  full materialization, no N+1.
+- **K2 Architecture:** Data layer without UI/host dependencies; DI registration
+  (`ServiceCollectionExtensions`) with correct lifetimes.
 
 ## Workflow
 
-1. **Triage** → Ampeln + Status in [../file-inventory.md](../file-inventory.md).
-   Entities/Enums sind oft schnell ✅; Configurations/Queries/Migrations genauer.
-2. **Deep-Dive** für 🔬 → Befunde `F-NNN` in [../findings.md](../findings.md)
-   (Abschnitt „Phase 4"), verlinken, Status ✅.
-3. [../progress.md](../progress.md) Zeile P4 aktualisieren.
+1. **Triage** → indicators + status in [../file-inventory.md](../file-inventory.md).
+   Entities/enums are often quickly ✅; configurations/queries/migrations more closely.
+2. **Deep-dive** for 🔬 → findings `F-NNN` in [../findings.md](../findings.md)
+   (section "Phase 4"), link, status ✅.
+3. Update [../progress.md](../progress.md) row P4.
 
-## Abschlussbedingung
+## Completion condition
 
 ```powershell
-(Select-String -Path docs/review/file-inventory.md -Pattern '\| P4 \|.*\| ⬜ \|').Count  # muss 0 sein
+(Select-String -Path docs/review/file-inventory.md -Pattern '\| P4 \|.*\| ⬜ \|').Count  # must be 0
 ```

@@ -1,48 +1,48 @@
-# Phase 3 — Images (Tag/Digest-Logik, Base-Image-Ketten)
+# Phase 3 — Images (tag/digest logic, base image chains)
 
-> **Start in neuem Chat:** „Lies und führe `docs/review/prompts/phase-3-images.md` aus."
+> **Start in a new chat:** "Read and execute `docs/review/prompts/phase-3-images.md`."
 
-## Kontext
+## Context
 
-Größte Logik-Fläche der App: Auflösung von Tags/Digests, SemVer-Vergleich,
-Alias-Tags (`latest`), abgeleitete Base-Runtime-Erkennung, Update-Bewertung und
-geteilte Base-Image-Abhängigkeiten. Hier entstehen die Kern-Aussagen „aktuell /
-veraltet / manuelle Prüfung".
+The largest logic surface of the app: resolution of tags/digests, SemVer comparison,
+alias tags (`latest`), derived base runtime detection, update evaluation, and
+shared base image dependencies. This is where the core verdicts "up to date /
+outdated / manual check" are produced.
 
-**Umfang: 60 Dateien.** Modul: `App/Images` (inkl. Unterordner wie `Enums`).
+**Scope: 60 files.** Module: `App/Images` (incl. subfolders such as `Enums`).
 
-## Deine Dateiliste (autoritativ aus der Matrix)
+## Your file list (authoritative from the matrix)
 
 ```powershell
 Select-String -Path docs/review/file-inventory.md -Pattern '\| P3 \|' |
   ForEach-Object { ($_.Line -split '\|')[3].Trim().Trim('`') }
 ```
 
-## Kriterien
+## Criteria
 
-Lies [../criteria.md](../criteria.md). Besonderer Fokus:
+Read [../criteria.md](../criteria.md). Particular focus:
 
-- **K1 Korrektheit:** SemVer-Parsing & -Ordnung, Digest-Vergleich, Alias-Auflösung
-  (`latest` → konkrete Version bei gleichem Digest), `UpdateEvaluationStatus`-Logik,
-  Randfälle (pre-release, fehlende Tags, mehrdeutige Digests).
-- **K5 Async/Concurrency:** Parallelität bei Registry-Abfragen, Quota-/Request-Budget,
+- **K1 Correctness:** SemVer parsing & ordering, digest comparison, alias resolution
+  (`latest` → concrete version at the same digest), `UpdateEvaluationStatus` logic,
+  edge cases (pre-release, missing tags, ambiguous digests).
+- **K5 Async/Concurrency:** parallelism on registry queries, quota/request budget,
   `CancellationToken`.
-- **K6 Datenzugriff:** wie `ObservedImage`/`ImageVersion`/`TagCandidate` geladen
-  werden (N+1?), Tracking-Verhalten.
-- **K7 Performance:** Heißpfade beim Massen-Scan, Allokationen, Caching.
+- **K6 Data access:** how `ObservedImage`/`ImageVersion`/`TagCandidate` are loaded
+  (N+1?), tracking behavior.
+- **K7 Performance:** hot paths during mass scans, allocations, caching.
 
-> Wegen Größe (60 Dateien) ggf. in Teil-Sessions splitten – die Matrix hält den
-> Fortschritt, du kannst jederzeit an der ersten ⬜-P3-Zeile weitermachen.
+> Due to the size (60 files), split into sub-sessions if needed — the matrix tracks
+> progress, you can resume at the first ⬜ P3 row at any time.
 
 ## Workflow
 
-1. **Triage** → Ampeln + Status in [../file-inventory.md](../file-inventory.md).
-2. **Deep-Dive** für 🔬 → Befunde `F-NNN` in [../findings.md](../findings.md)
-   (Abschnitt „Phase 3"), verlinken, Status ✅.
-3. [../progress.md](../progress.md) Zeile P3 aktualisieren.
+1. **Triage** → indicators + status in [../file-inventory.md](../file-inventory.md).
+2. **Deep-dive** for 🔬 → findings `F-NNN` in [../findings.md](../findings.md)
+   (section "Phase 3"), link, status ✅.
+3. Update [../progress.md](../progress.md) row P3.
 
-## Abschlussbedingung
+## Completion condition
 
 ```powershell
-(Select-String -Path docs/review/file-inventory.md -Pattern '\| P3 \|.*\| ⬜ \|').Count  # muss 0 sein
+(Select-String -Path docs/review/file-inventory.md -Pattern '\| P3 \|.*\| ⬜ \|').Count  # must be 0
 ```

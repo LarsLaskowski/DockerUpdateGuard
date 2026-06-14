@@ -1,46 +1,46 @@
 # Phase 5 — Components / UI / wwwroot (Blazor)
 
-> **Start in neuem Chat:** „Lies und führe `docs/review/prompts/phase-5-ui.md` aus."
+> **Start in a new chat:** "Read and execute `docs/review/prompts/phase-5-ui.md`."
 
-## Kontext
+## Context
 
-Die Präsentationsschicht: Razor-Components, UI-Hilfslogik und statische Assets.
+The presentation layer: Razor components, UI helper logic, and static assets.
 Dashboard, Observed Images, Runtime Containers, Docker Instances, Shared Base
 Images, Scan History.
 
-**Umfang: 59 Dateien.** Module: `App/Components` (31), `App/UI` (24),
+**Scope: 59 files.** Modules: `App/Components` (31), `App/UI` (24),
 `App/wwwroot` (4).
 
-## Deine Dateiliste (autoritativ aus der Matrix)
+## Your file list (authoritative from the matrix)
 
 ```powershell
 Select-String -Path docs/review/file-inventory.md -Pattern '\| P5 \|' |
   ForEach-Object { ($_.Line -split '\|')[3].Trim().Trim('`') }
 ```
 
-## Kriterien
+## Criteria
 
-Lies [../criteria.md](../criteria.md). Besonderer Fokus:
+Read [../criteria.md](../criteria.md). Particular focus:
 
-- **K3 Sicherheit:** XSS – ungeprüfte `MarkupString`/`@((MarkupString))`-Nutzung,
-  Rendern von Registry-/Container-Strings ohne Encoding.
-- **K2 Architektur:** Greifen Components direkt auf den DbContext/HTTP-Clients zu
-  statt über Services? Trennung Markup ↔ Logik. Sinnvolle Component-Lebensdauer,
-  `IDisposable`/`await using` bei Subscriptions.
-- **K1 Korrektheit:** Render-Logik, Null-/Leerzustände, Lade-/Fehlerzustände in der
-  UI, korrekte Status-/Ampel-Darstellung.
-- **K9 Konventionen:** Razor-Stil konsistent; `@code`-Blöcke schlank.
+- **K3 Security:** XSS — unchecked `MarkupString`/`@((MarkupString))` usage,
+  rendering registry/container strings without encoding.
+- **K2 Architecture:** Do components access the DbContext/HTTP clients directly
+  instead of going through services? Separation of markup ↔ logic. Sensible component
+  lifetime, `IDisposable`/`await using` for subscriptions.
+- **K1 Correctness:** render logic, null/empty states, loading/error states in the
+  UI, correct status/indicator display.
+- **K9 Conventions:** consistent Razor style; lean `@code` blocks.
 
 ## Workflow
 
-1. **Triage** aller 59 Dateien → Ampeln + Status in [../file-inventory.md](../file-inventory.md).
-   CSS/SVG unter `wwwroot` meist schnell ✅ (Sicher./Korrekt. = —).
-2. **Deep-Dive** für 🔬 → Befunde `F-NNN` in [../findings.md](../findings.md)
-   (Abschnitt „Phase 5"), verlinken, Status ✅.
-3. [../progress.md](../progress.md) Zeile P5 aktualisieren.
+1. **Triage** of all 59 files → indicators + status in [../file-inventory.md](../file-inventory.md).
+   CSS/SVG under `wwwroot` are usually quickly ✅ (Sec./Correct. = —).
+2. **Deep-dive** for 🔬 → findings `F-NNN` in [../findings.md](../findings.md)
+   (section "Phase 5"), link, status ✅.
+3. Update [../progress.md](../progress.md) row P5.
 
-## Abschlussbedingung
+## Completion condition
 
 ```powershell
-(Select-String -Path docs/review/file-inventory.md -Pattern '\| P5 \|.*\| ⬜ \|').Count  # muss 0 sein
+(Select-String -Path docs/review/file-inventory.md -Pattern '\| P5 \|.*\| ⬜ \|').Count  # must be 0
 ```

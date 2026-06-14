@@ -1,65 +1,65 @@
-# Phase 1 — Docker / DockerHub / Portainer / Configuration (Sicherheitskern)
+# Phase 1 — Docker / DockerHub / Portainer / Configuration (Security Core)
 
-> **Start in neuem Chat:** „Lies und führe `docs/review/prompts/phase-1-docker-security.md` aus."
+> **Start in a new chat:** "Read and execute `docs/review/prompts/phase-1-docker-security.md`."
 
-## Kontext
+## Context
 
-DockerUpdateGuard ist eine ASP.NET-Core-Razor-Components-App, die Docker-Laufzeit
-überwacht und mit Registry-Metadaten vergleicht. Diese Phase prüft den
-**Sicherheitskern**: Anbindung an Docker-Engines, Docker Hub / OCI-Registries,
-Portainer und die zugehörige Konfiguration. Hier liegen Credentials, TLS-Optionen
-und Socket-Zugriffe – höchstes Risiko, daher Phase 1.
+DockerUpdateGuard is an ASP.NET Core Razor Components app that monitors the Docker
+runtime and compares it against registry metadata. This phase reviews the
+**security core**: connectivity to Docker engines, Docker Hub / OCI registries,
+Portainer, and the associated configuration. This is where credentials, TLS options,
+and socket access live — the highest risk, hence Phase 1.
 
-**Umfang: 33 Dateien.** Module: `App/Docker` (7), `App/DockerHub` (7),
+**Scope: 33 files.** Modules: `App/Docker` (7), `App/DockerHub` (7),
 `App/Portainer` (10), `App/Configuration` (9).
 
-## Deine Dateiliste (autoritativ aus der Matrix)
+## Your file list (authoritative from the matrix)
 
 ```powershell
 Select-String -Path docs/review/file-inventory.md -Pattern '\| P1 \|' |
   ForEach-Object { ($_.Line -split '\|')[3].Trim().Trim('`') }
 ```
 
-Diese Liste ist verbindlich – **jede** dieser Dateien muss am Ende Status ✅ haben.
+This list is binding — **every** one of these files must end up with status ✅.
 
-## Kriterien
+## Criteria
 
-Lies [../criteria.md](../criteria.md). Bewerte je Datei die vier Schwerpunkte
-(Sicher./Korrekt./Arch./Tests). In dieser Phase mit besonderem Fokus auf:
+Read [../criteria.md](../criteria.md). For each file, assess the four focus areas
+(Sec./Correct./Arch./Tests). In this phase, with particular focus on:
 
-- **K3 Sicherheit:** DockerHub `Pat` & Portainer `Password`/`ApiToken` – nie ins Log,
-  nicht in Exceptions/Telemetrie. `SkipCertificateValidation`/`UseTls`-Pfade prüfen
-  (kein stiller TLS-Bypass). Docker-Socket-Zugriff (`unix://`, `npipe://`). SSRF
-  über konfigurierbare `BaseUrl`. Auth-Header-Aufbau für Registry/Portainer.
-- **K4 Resilienz:** `RequestTimeoutSeconds` real angewandt? `HttpClient`-Lebensdauer
-  (IHttpClientFactory vs. `new HttpClient`)? Fehlerpfade bei nicht erreichbarer
-  Engine/Registry/Portainer – sauber behandelt statt geschluckt?
-- **K10 Konfiguration:** Options-Validatoren vorhanden & korrekt (Pflichtfelder bei
-  aktiviertem Portainer: `ApiToken` ODER `Username`+`Password`). Defaults gegen
-  README prüfen.
+- **K3 Security:** DockerHub `Pat` & Portainer `Password`/`ApiToken` — never logged,
+  not in exceptions/telemetry. Review `SkipCertificateValidation`/`UseTls` paths
+  (no silent TLS bypass). Docker socket access (`unix://`, `npipe://`). SSRF
+  via configurable `BaseUrl`. Auth header construction for registry/Portainer.
+- **K4 Resilience:** Is `RequestTimeoutSeconds` actually applied? `HttpClient` lifetime
+  (IHttpClientFactory vs. `new HttpClient`)? Error paths for an unreachable
+  engine/registry/Portainer — handled cleanly rather than swallowed?
+- **K10 Configuration:** Are options validators present & correct (required fields when
+  Portainer is enabled: `ApiToken` OR `Username`+`Password`)? Check defaults against
+  the README.
 
 ## Workflow
 
-1. **Triage:** Jede Datei der Liste öffnen, in [../file-inventory.md](../file-inventory.md)
-   die Ampeln setzen, Status → ✅ (oder 🔬 bei 🟡/🔴).
-2. **Deep-Dive** für 🔬-Dateien: zeilengenau. Für jeden Befund einen Eintrag
-   `F-NNN` in [../findings.md](../findings.md) (Abschnitt „Phase 1") nach der dortigen
-   Vorlage anlegen; ID in der Matrix-Spalte *Befunde* eintragen. Danach Status ✅.
-3. **Fortschritt** in [../progress.md](../progress.md) (Zeile P1: Status, Reviewt-Zähler,
-   Befundzahl) aktualisieren.
+1. **Triage:** Open each file in the list, set the indicators in
+   [../file-inventory.md](../file-inventory.md), status → ✅ (or 🔬 for 🟡/🔴).
+2. **Deep-dive** for 🔬 files: line by line. For each finding, create an entry
+   `F-NNN` in [../findings.md](../findings.md) (section "Phase 1") following the
+   template there; record the ID in the *Findings* column of the matrix. Then status ✅.
+3. **Update progress** in [../progress.md](../progress.md) (row P1: status, reviewed count,
+   finding count).
 
-## Projektkonventionen (beim Bewerten von K9 beachten)
+## Project conventions (consider when assessing K9)
 
-file-scoped Namespaces, ein Top-Level-Typ je Datei, `#region`-Blöcke, XML-Docs auf
-allen Membern, Allman-Braces, `var` bevorzugt, kein `this.`, `== false` statt `!`,
-Reihitsu-Analyzer, net10.0. **Keine** unrelated Änderungen am Produktivcode in
-dieser Phase – nur Review/Doku. Falls Fixes gewünscht: separat nach Freigabe.
+file-scoped namespaces, one top-level type per file, `#region` blocks, XML docs on
+all members, Allman braces, `var` preferred, no `this.`, `== false` instead of `!`,
+Reihitsu analyzer, net10.0. **No** unrelated changes to production code in
+this phase — review/docs only. If fixes are desired: separately, after approval.
 
-## Abschlussbedingung Phase 1
+## Completion condition Phase 1
 
 ```powershell
-(Select-String -Path docs/review/file-inventory.md -Pattern '\| P1 \|.*\| ⬜ \|').Count  # muss 0 sein
+(Select-String -Path docs/review/file-inventory.md -Pattern '\| P1 \|.*\| ⬜ \|').Count  # must be 0
 ```
 
-Wenn 0: P1 in [../progress.md](../progress.md) auf ✅ setzen und Befunde
-zusammenfassen.
+If 0: set P1 to ✅ in [../progress.md](../progress.md) and summarize the
+findings.
