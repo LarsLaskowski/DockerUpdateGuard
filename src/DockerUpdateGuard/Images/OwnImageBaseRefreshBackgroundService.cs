@@ -45,7 +45,7 @@ public class OwnImageBaseRefreshBackgroundService : ScheduledBackgroundService
 
     #endregion // Constructors
 
-    #region Methods
+    #region ScheduledBackgroundService
 
     /// <inheritdoc/>
     protected override TimeSpan GetInterval()
@@ -73,5 +73,5 @@ public class OwnImageBaseRefreshBackgroundService : ScheduledBackgroundService
         }
     }
 
-    #endregion // Methods
+    #endregion // ScheduledBackgroundService
 }

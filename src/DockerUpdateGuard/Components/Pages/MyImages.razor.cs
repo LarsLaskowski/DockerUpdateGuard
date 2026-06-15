@@ -107,7 +107,7 @@ public partial class MyImages
 
     #endregion // Static methods
 
-    #region Methods
+    #region ComponentBase
 
     /// <inheritdoc/>
     protected override async Task OnInitializedAsync()
@@ -123,5 +123,5 @@ public partial class MyImages
                           }).ConfigureAwait(false);
     }
 
-    #endregion // Methods
+    #endregion // ComponentBase
 }

@@ -7,7 +7,7 @@ namespace DockerUpdateGuard.Data.Migrations;
 /// <inheritdoc />
 public partial class Update3 : Migration
 {
-    #region Methods
+    #region Migration
 
     /// <inheritdoc />
     protected override void Up(MigrationBuilder migrationBuilder)
@@ -35,5 +35,5 @@ public partial class Update3 : Migration
                                     table: "ContainerSnapshots");
     }
 
-    #endregion // Methods
+    #endregion // Migration
 }

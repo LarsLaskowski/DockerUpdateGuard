@@ -101,7 +101,7 @@ public class DockerUpdateGuardDbContext : DbContext
 
     #endregion // Properties
 
-    #region Methods
+    #region DbContext
 
     /// <inheritdoc/>
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -111,5 +111,5 @@ public class DockerUpdateGuardDbContext : DbContext
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(DockerUpdateGuardDbContext).Assembly);
     }
 
-    #endregion // Methods
+    #endregion // DbContext
 }

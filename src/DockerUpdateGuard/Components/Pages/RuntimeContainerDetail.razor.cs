@@ -186,13 +186,17 @@ public partial class RuntimeContainerDetail
 
     #endregion // Static methods
 
-    #region Methods
+    #region ComponentBase
 
     /// <inheritdoc/>
     protected override async Task OnParametersSetAsync()
     {
         await LoadAsync().ConfigureAwait(false);
     }
+
+    #endregion // ComponentBase
+
+    #region Methods
 
     /// <summary>
     /// Load the detail view model

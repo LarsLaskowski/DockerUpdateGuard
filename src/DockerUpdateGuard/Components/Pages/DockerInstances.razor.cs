@@ -69,7 +69,7 @@ public partial class DockerInstances
 
     #endregion // Static methods
 
-    #region Methods
+    #region ComponentBase
 
     /// <inheritdoc/>
     protected override async Task OnInitializedAsync()
@@ -88,5 +88,5 @@ public partial class DockerInstances
                           }).ConfigureAwait(false);
     }
 
-    #endregion // Methods
+    #endregion // ComponentBase
 }

@@ -44,7 +44,7 @@ public class RuntimeContainerRefreshBackgroundService : ScheduledBackgroundServi
 
     #endregion // Constructors
 
-    #region Methods
+    #region ScheduledBackgroundService
 
     /// <inheritdoc/>
     protected override TimeSpan GetInterval()
@@ -66,5 +66,5 @@ public class RuntimeContainerRefreshBackgroundService : ScheduledBackgroundServi
         }
     }
 
-    #endregion // Methods
+    #endregion // ScheduledBackgroundService
 }
