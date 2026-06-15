@@ -53,6 +53,10 @@ public abstract class ScheduledBackgroundService : BackgroundService
     /// <returns>Task</returns>
     protected abstract Task ExecuteCoreAsync(CancellationToken stoppingToken);
 
+    #endregion // Methods
+
+    #region BackgroundService
+
     /// <inheritdoc/>
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -84,6 +88,10 @@ public abstract class ScheduledBackgroundService : BackgroundService
             await ExecuteSafelyAsync(stoppingToken).ConfigureAwait(false);
         }
     }
+
+    #endregion // BackgroundService
+
+    #region Methods
 
     /// <summary>
     /// Execute the background operation with exception logging

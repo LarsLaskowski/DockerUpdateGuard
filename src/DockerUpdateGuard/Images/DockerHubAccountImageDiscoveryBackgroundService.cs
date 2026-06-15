@@ -43,7 +43,7 @@ public class DockerHubAccountImageDiscoveryBackgroundService : ScheduledBackgrou
 
     #endregion // Constructors
 
-    #region Methods
+    #region ScheduledBackgroundService
 
     /// <inheritdoc/>
     protected override TimeSpan GetInterval()
@@ -65,5 +65,5 @@ public class DockerHubAccountImageDiscoveryBackgroundService : ScheduledBackgrou
         }
     }
 
-    #endregion // Methods
+    #endregion // ScheduledBackgroundService
 }

@@ -104,7 +104,7 @@ public partial class ObservedImageDetail
 
     #endregion // Static methods
 
-    #region Methods
+    #region ComponentBase
 
     /// <inheritdoc/>
     protected override async Task OnParametersSetAsync()
@@ -118,5 +118,5 @@ public partial class ObservedImageDetail
                           }).ConfigureAwait(false);
     }
 
-    #endregion // Methods
+    #endregion // ComponentBase
 }

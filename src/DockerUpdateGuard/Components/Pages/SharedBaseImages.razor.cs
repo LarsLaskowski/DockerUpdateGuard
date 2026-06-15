@@ -28,7 +28,7 @@ public partial class SharedBaseImages
 
     #endregion // Properties
 
-    #region Methods
+    #region ComponentBase
 
     /// <inheritdoc/>
     protected override async Task OnInitializedAsync()
@@ -42,5 +42,5 @@ public partial class SharedBaseImages
                           }).ConfigureAwait(false);
     }
 
-    #endregion // Methods
+    #endregion // ComponentBase
 }

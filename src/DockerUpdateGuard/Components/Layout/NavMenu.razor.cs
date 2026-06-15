@@ -69,7 +69,7 @@ public partial class NavMenu
 
     #endregion // Static methods
 
-    #region Methods
+    #region ComponentBase
 
     /// <inheritdoc/>
     protected override async Task OnInitializedAsync()
@@ -78,6 +78,10 @@ public partial class NavMenu
         _showMyImages = IsDockerHubAccountConfigured();
         _showBaseImages = await ViewService.HasBaseImagesAsync().ConfigureAwait(false);
     }
+
+    #endregion // ComponentBase
+
+    #region Methods
 
     /// <summary>
     /// Determine whether Docker Hub account discovery is configured
