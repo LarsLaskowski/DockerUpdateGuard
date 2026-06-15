@@ -11,21 +11,59 @@ permissions:
   checks: write
 
 jobs:
-  build-test:
-    name: Build & Test
+  build-test-analyze:
+    name: Build, Test & Analyze
     runs-on: ubuntu-latest
     steps:
+      - name: Set up JDK 17
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4.8.0
+        with:
+          java-version: 17
+          distribution: 'zulu'
+
       - name: Checkout
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
 
       - name: Install .NET 10 SDK
         uses: actions/setup-dotnet@9a946fdbd5fb07b82b2f5a4466058b876ab72bb2 # v5.3.0
         with:
           dotnet-version: '10.0.x'
-          dotnet-quality: 'preview'
+
+      - name: Cache SonarQube Cloud packages
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.sonar/cache
+          key: ${{ runner.os }}-sonar
+          restore-keys: ${{ runner.os }}-sonar
+
+      - name: Cache SonarQube Cloud scanner
+        id: cache-sonar-scanner
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ${{ runner.temp }}/scanner
+          key: ${{ runner.os }}-sonar-scanner
+          restore-keys: ${{ runner.os }}-sonar-scanner
+
+      - name: Install SonarQube Cloud scanner
+        if: steps.cache-sonar-scanner.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ${{ runner.temp }}/scanner
+          dotnet tool update dotnet-sonarscanner --tool-path ${{ runner.temp }}/scanner
 
       - name: Restore
         run: dotnet restore DockerUpdateGuard.slnx
+
+      - name: Begin SonarQube analysis
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          ${{ runner.temp }}/scanner/dotnet-sonarscanner begin \
+            /k:"LarsLaskowski_DockerUpdateGuard" \
+            /o:"networlddev" \
+            /d:sonar.token="${{ secrets.SONAR_TOKEN }}" \
+            /d:sonar.cs.opencover.reportsPaths="${{ runner.temp }}/TestResults/**/coverage.opencover.xml"
 
       - name: Build
         run: dotnet build DockerUpdateGuard.slnx -c Release --no-restore
@@ -37,6 +75,15 @@ jobs:
           --logger trx
           --collect:"XPlat Code Coverage"
           --results-directory ${{ runner.temp }}/TestResults
+          --
+          DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=opencover
+
+      - name: End SonarQube analysis
+        if: ${{ !cancelled() }}
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          ${{ runner.temp }}/scanner/dotnet-sonarscanner end /d:sonar.token="${{ secrets.SONAR_TOKEN }}"
 
       - name: Publish test report
         uses: dorny/test-reporter@a43b3a5f7366b97d083190328d2c652e1a8b6aa2 # v3.0.0
@@ -53,58 +100,5 @@ jobs:
           name: test-results
           path: |
             ${{ runner.temp }}/TestResults/**/*.trx
-            ${{ runner.temp }}/TestResults/**/coverage.cobertura.xml
+            ${{ runner.temp }}/TestResults/**/coverage.opencover.xml
           if-no-files-found: warn
-
-  sonarqube:
-    name: Build and analyze
-    runs-on: windows-latest
-    steps:
-      - name: Set up JDK 17
-        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4.8.0
-        with:
-          java-version: 17
-          distribution: 'zulu'
-
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-        with:
-          fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
-
-      - name: Install .NET 10 SDK
-        uses: actions/setup-dotnet@9a946fdbd5fb07b82b2f5a4466058b876ab72bb2 # v5.3.0
-        with:
-          dotnet-version: '10.0.x'
-          dotnet-quality: 'preview'
-
-      - name: Cache SonarQube Cloud packages
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
-        with:
-          path: ~\sonar\cache
-          key: ${{ runner.os }}-sonar
-          restore-keys: ${{ runner.os }}-sonar
-
-      - name: Cache SonarQube Cloud scanner
-        id: cache-sonar-scanner
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
-        with:
-          path: ${{ runner.temp }}\scanner
-          key: ${{ runner.os }}-sonar-scanner
-          restore-keys: ${{ runner.os }}-sonar-scanner
-
-      - name: Install SonarQube Cloud scanner
-        if: steps.cache-sonar-scanner.outputs.cache-hit != 'true'
-        shell: powershell
-        run: |
-          New-Item -Path ${{ runner.temp }}\scanner -ItemType Directory
-          dotnet tool update dotnet-sonarscanner --tool-path ${{ runner.temp }}\scanner
-
-      - name: Build and analyze
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        shell: powershell
-        run: |
-          ${{ runner.temp }}\scanner\dotnet-sonarscanner begin /k:"LarsLaskowski_DockerUpdateGuard" /o:"networlddev" /d:sonar.token="${{ secrets.SONAR_TOKEN }}" /d:sonar.cs.opencover.reportsPaths="${{ runner.temp }}\TestResults\**\coverage.opencover.xml"
-          dotnet restore DockerUpdateGuard.slnx
-          dotnet build DockerUpdateGuard.slnx -c Release --no-restore
-          dotnet test DockerUpdateGuard.slnx -c Release --no-build --collect:"XPlat Code Coverage" --results-directory ${{ runner.temp }}\TestResults -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=opencover
-          ${{ runner.temp }}\scanner\dotnet-sonarscanner end /d:sonar.token="${{ secrets.SONAR_TOKEN }}"
