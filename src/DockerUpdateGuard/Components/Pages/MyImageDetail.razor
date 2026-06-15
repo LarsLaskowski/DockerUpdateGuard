@@ -222,7 +222,7 @@
                         <MudTd DataLabel="Advisory">
                             @if (string.IsNullOrWhiteSpace(context.ReferenceUrl) == false)
                             {
-                                <MudLink Href="@context.ReferenceUrl" Target="_blank" Class="table-link">@context.AdvisoryId</MudLink>
+                                <MudLink Href="@context.ReferenceUrl" Target="_blank" rel="noopener noreferrer" Class="table-link">@context.AdvisoryId</MudLink>
                             }
                             else
                             {

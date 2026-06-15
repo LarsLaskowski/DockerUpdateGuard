@@ -527,6 +527,79 @@ public class ApplicationViewServiceTests
     }
 
     /// <summary>
+    /// Verify vulnerability finding reference URLs are sanitized so only absolute http(s) URLs reach the UI
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task ApplicationViewServiceSanitizesVulnerabilityReferenceUrlsAsync()
+    {
+        var options = new DbContextOptionsBuilder<DockerUpdateGuardDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString())
+                                                                               .Options;
+
+        var dbContext = new DockerUpdateGuardDbContext(options);
+
+        await using (dbContext.ConfigureAwait(false))
+        {
+            var imageCatalogRepository = new ImageCatalogRepository(dbContext);
+            var imageVersion = await imageCatalogRepository.GetOrCreateImageVersionAsync("docker.io",
+                                                                                         "company/api",
+                                                                                         "1.0.0",
+                                                                                         "sha256:api",
+                                                                                         cancellationToken: CancellationToken.None)
+                                                           .ConfigureAwait(false);
+
+            var observedImage = new ObservedImage
+                                {
+                                    Name = "Company API",
+                                    CurrentImageVersionId = imageVersion.Id,
+                                };
+
+            dbContext.ObservedImages.Add(observedImage);
+            dbContext.VulnerabilityFindings.Add(new VulnerabilityFinding
+                                                {
+                                                    ImageVersionId = imageVersion.Id,
+                                                    AdvisoryId = "CVE-2026-2001",
+                                                    Title = "Safe advisory link",
+                                                    Severity = VulnerabilitySeverity.High,
+                                                    Source = VulnerabilitySource.Trivy,
+                                                    ReferenceUrl = "https://nvd.nist.gov/vuln/detail/CVE-2026-2001",
+                                                    IsActive = true,
+                                                });
+            dbContext.VulnerabilityFindings.Add(new VulnerabilityFinding
+                                                {
+                                                    ImageVersionId = imageVersion.Id,
+                                                    AdvisoryId = "CVE-2026-2002",
+                                                    Title = "Malicious advisory link",
+                                                    Severity = VulnerabilitySeverity.Critical,
+                                                    Source = VulnerabilitySource.Trivy,
+                                                    ReferenceUrl = "javascript:alert(document.cookie)",
+                                                    IsActive = true,
+                                                });
+
+            await dbContext.SaveChangesAsync(CancellationToken.None)
+                           .ConfigureAwait(false);
+
+            var service = new ApplicationViewService(dbContext,
+                                                     new ImageReferenceParser(),
+                                                     new SharedBaseImageQueryService(dbContext));
+
+            var detail = await service.GetObservedImageDetailAsync(observedImage.Id, CancellationToken.None)
+                                      .ConfigureAwait(false);
+
+            Assert.IsNotNull(detail, "The observed image detail must be returned");
+
+            var safeFinding = detail.VulnerabilityFindings.Single(entity => entity.AdvisoryId == "CVE-2026-2001");
+            var maliciousFinding = detail.VulnerabilityFindings.Single(entity => entity.AdvisoryId == "CVE-2026-2002");
+
+            Assert.AreEqual("https://nvd.nist.gov/vuln/detail/CVE-2026-2001",
+                            safeFinding.ReferenceUrl,
+                            "A valid absolute https reference URL must be preserved for rendering");
+            Assert.IsNull(maliciousFinding.ReferenceUrl,
+                          "A javascript: reference URL must be dropped so it can never be rendered as an href");
+        }
+    }
+
+    /// <summary>
     /// Verify observed image list and detail expose vulnerability assessment metadata
     /// </summary>
     /// <returns>Task</returns>
