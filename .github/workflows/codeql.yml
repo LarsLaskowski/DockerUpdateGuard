@@ -26,7 +26,7 @@ jobs:
           dotnet-version: '10.0.x'
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@ce28f5bb42b1c2f8d12d9f2a048dd258f9b4ad96 # v3.29.0
+        uses: github/codeql-action/init@v3
         with:
           languages: csharp
 
@@ -37,6 +37,6 @@ jobs:
         run: dotnet build DockerUpdateGuard.slnx -c Release --no-restore
 
       - name: Perform CodeQL analysis
-        uses: github/codeql-action/analyze@ce28f5bb42b1c2f8d12d9f2a048dd258f9b4ad96 # v3.29.0
+        uses: github/codeql-action/analyze@v3
         with:
           category: /language:csharp
