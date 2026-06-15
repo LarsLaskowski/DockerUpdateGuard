@@ -62,7 +62,6 @@ jobs:
           ${{ runner.temp }}/scanner/dotnet-sonarscanner begin \
             /k:"LarsLaskowski_DockerUpdateGuard" \
             /o:"networlddev" \
-            /d:sonar.host.url="https://sonarcloud.io" \
             /d:sonar.token="$SONAR_TOKEN" \
             /d:sonar.cs.opencover.reportsPaths="${{ runner.temp }}/TestResults/**/coverage.opencover.xml"
 
