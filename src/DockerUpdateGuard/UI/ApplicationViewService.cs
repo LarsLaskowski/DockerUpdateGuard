@@ -98,10 +98,9 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
     }
 
     /// <summary>
-    /// Validate an external reference URL before it is exposed to the UI.
-    /// Only absolute <c>http</c>/<c>https</c> URLs are allowed; anything else
-    /// (for example a <c>javascript:</c> scheme) is dropped so it can never be
-    /// rendered as an <c>href</c>.
+    /// Validate an external reference URL before it is exposed to the UI so that only
+    /// absolute <c>http</c>/<c>https</c> URLs are kept and anything else (for example a
+    /// <c>javascript:</c> scheme) is dropped and can never be rendered as an <c>href</c>
     /// </summary>
     /// <param name="url">Untrusted reference URL from a vulnerability provider</param>
     /// <returns>The URL if it is a safe absolute http(s) URL; otherwise <c>null</c></returns>
