@@ -99,7 +99,7 @@ public sealed partial class Dashboard : IDisposable
 
     #endregion // Static methods
 
-    #region Methods
+    #region ComponentBase
 
     /// <inheritdoc/>
     protected override async Task OnInitializedAsync()
@@ -110,6 +110,10 @@ public sealed partial class Dashboard : IDisposable
 
         await LoadAsync().ConfigureAwait(false);
     }
+
+    #endregion // ComponentBase
+
+    #region Methods
 
     /// <summary>
     /// Dispose component subscriptions

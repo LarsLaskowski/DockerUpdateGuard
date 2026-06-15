@@ -59,7 +59,7 @@ public class ScanCleanupBackgroundService : ScheduledBackgroundService
 
     #endregion // Constructors
 
-    #region Methods
+    #region ScheduledBackgroundService
 
     /// <inheritdoc/>
     protected override TimeSpan GetInterval()
@@ -181,5 +181,5 @@ public class ScanCleanupBackgroundService : ScheduledBackgroundService
         }
     }
 
-    #endregion // Methods
+    #endregion // ScheduledBackgroundService
 }

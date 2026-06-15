@@ -7,7 +7,7 @@ namespace DockerUpdateGuard.Data.Migrations;
 /// <inheritdoc />
 public partial class InitialCreate : Migration
 {
-    #region Methods
+    #region Migration
 
     /// <inheritdoc />
     protected override void Up(MigrationBuilder migrationBuilder)
@@ -495,5 +495,5 @@ public partial class InitialCreate : Migration
         migrationBuilder.DropTable(name: "RegistryRepositories");
     }
 
-    #endregion // Methods
+    #endregion // Migration
 }

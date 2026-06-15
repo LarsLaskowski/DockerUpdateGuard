@@ -121,13 +121,17 @@ public partial class ObservedImages
 
     #endregion // Static methods
 
-    #region Methods
+    #region ComponentBase
 
     /// <inheritdoc/>
     protected override async Task OnInitializedAsync()
     {
         await LoadAsync().ConfigureAwait(false);
     }
+
+    #endregion // ComponentBase
+
+    #region Methods
 
     /// <summary>
     /// Load the manual image list

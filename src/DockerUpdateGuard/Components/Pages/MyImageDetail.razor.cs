@@ -94,7 +94,7 @@ public partial class MyImageDetail
 
     #endregion // Static methods
 
-    #region Methods
+    #region ComponentBase
 
     /// <inheritdoc/>
     protected override async Task OnParametersSetAsync()
@@ -108,5 +108,5 @@ public partial class MyImageDetail
                           }).ConfigureAwait(false);
     }
 
-    #endregion // Methods
+    #endregion // ComponentBase
 }
