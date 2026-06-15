@@ -91,10 +91,38 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                    AffectedPackage = entity.AffectedPackage,
                    FixedVersion = entity.FixedVersion,
                    CvssScore = entity.CvssScore,
-                   ReferenceUrl = entity.ReferenceUrl,
+                   ReferenceUrl = SanitizeHttpUrl(entity.ReferenceUrl),
                    IsActive = entity.IsActive,
                    DetectedAtUtc = entity.DetectedAtUtc,
                };
+    }
+
+    /// <summary>
+    /// Validate an external reference URL before it is exposed to the UI.
+    /// Only absolute <c>http</c>/<c>https</c> URLs are allowed; anything else
+    /// (for example a <c>javascript:</c> scheme) is dropped so it can never be
+    /// rendered as an <c>href</c>.
+    /// </summary>
+    /// <param name="url">Untrusted reference URL from a vulnerability provider</param>
+    /// <returns>The URL if it is a safe absolute http(s) URL; otherwise <c>null</c></returns>
+    private static string? SanitizeHttpUrl(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url) == true)
+        {
+            return null;
+        }
+
+        if (Uri.TryCreate(url, UriKind.Absolute, out Uri? parsed) == false)
+        {
+            return null;
+        }
+
+        if (parsed.Scheme != Uri.UriSchemeHttp && parsed.Scheme != Uri.UriSchemeHttps)
+        {
+            return null;
+        }
+
+        return url;
     }
 
     /// <summary>
