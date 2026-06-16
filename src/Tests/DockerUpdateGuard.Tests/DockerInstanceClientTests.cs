@@ -453,10 +453,11 @@ public partial class DockerInstanceClientTests
                                   RequestTimeoutSeconds = 42,
                               };
         var engineUri = new Uri("http://localhost/");
+        var logger = new TestLogger<DockerInstanceClient>();
 
         Assert.IsNotNull(createHttpClientMethod, "The Docker HTTP-client factory must remain discoverable for transport tests");
 
-        using var httpClient = (HttpClient?)createHttpClientMethod.Invoke(null, [instanceOptions, engineUri]);
+        using var httpClient = (HttpClient?)createHttpClientMethod.Invoke(null, [instanceOptions, engineUri, logger]);
 
         Assert.IsNotNull(httpClient, "The Docker HTTP-client factory must return an HTTP client for named-pipe endpoints");
         Assert.AreEqual("http://localhost/",
@@ -465,6 +466,67 @@ public partial class DockerInstanceClientTests
         Assert.AreEqual(Timeout.InfiniteTimeSpan,
                         httpClient.Timeout,
                         "Named-pipe Docker endpoints must keep HttpClient.Timeout disabled because request timeouts are enforced per request");
+    }
+
+    /// <summary>
+    /// Verify the Docker HTTP-client factory logs a warning only once per instance when server certificate validation is disabled
+    /// </summary>
+    [TestMethod]
+    public void DockerInstanceClientCreateHttpClientWhenSkipCertificateValidationLogsWarningOncePerInstance()
+    {
+        var createHttpClientMethod = typeof(DockerInstanceClient).GetMethod("CreateHttpClient",
+                                                                            BindingFlags.Static | BindingFlags.NonPublic);
+        var instanceName = $"tls-bypass-{Guid.NewGuid():N}";
+        var instanceOptions = new DockerInstanceOptions
+                              {
+                                  Name = instanceName,
+                                  BaseUrl = "https://docker.example.test",
+                                  Enabled = true,
+                                  SkipCertificateValidation = true,
+                              };
+        var engineUri = new Uri("https://docker.example.test/");
+        var logger = new TestLogger<DockerInstanceClient>();
+
+        Assert.IsNotNull(createHttpClientMethod, "The Docker HTTP-client factory must remain discoverable for transport tests");
+
+        using var firstHttpClient = (HttpClient?)createHttpClientMethod.Invoke(null, [instanceOptions, engineUri, logger]);
+        using var secondHttpClient = (HttpClient?)createHttpClientMethod.Invoke(null, [instanceOptions, engineUri, logger]);
+
+        Assert.IsNotNull(firstHttpClient, "The Docker HTTP-client factory must return an HTTP client for TLS endpoints");
+        Assert.IsNotNull(secondHttpClient, "The Docker HTTP-client factory must return an HTTP client on repeated calls for TLS endpoints");
+        Assert.AreEqual(1,
+                        logger.Entries.Count(entry => entry.EventId.Id == 3106
+                                                      && entry.LogLevel == LogLevel.Warning
+                                                      && entry.Message.Contains(instanceName, StringComparison.Ordinal)),
+                        "Disabling server certificate validation must emit the auditable warning exactly once per instance to avoid flooding the log under active polling");
+    }
+
+    /// <summary>
+    /// Verify the Docker HTTP-client factory does not warn when server certificate validation stays enabled
+    /// </summary>
+    [TestMethod]
+    public void DockerInstanceClientCreateHttpClientWhenCertificateValidationEnabledDoesNotWarn()
+    {
+        var createHttpClientMethod = typeof(DockerInstanceClient).GetMethod("CreateHttpClient",
+                                                                            BindingFlags.Static | BindingFlags.NonPublic);
+        var instanceOptions = new DockerInstanceOptions
+                              {
+                                  Name = "Production",
+                                  BaseUrl = "https://docker.example.test",
+                                  Enabled = true,
+                                  SkipCertificateValidation = false,
+                              };
+        var engineUri = new Uri("https://docker.example.test/");
+        var logger = new TestLogger<DockerInstanceClient>();
+
+        Assert.IsNotNull(createHttpClientMethod, "The Docker HTTP-client factory must remain discoverable for transport tests");
+
+        using var httpClient = (HttpClient?)createHttpClientMethod.Invoke(null, [instanceOptions, engineUri, logger]);
+
+        Assert.IsNotNull(httpClient, "The Docker HTTP-client factory must return an HTTP client for TLS endpoints");
+        Assert.DoesNotContain(entry => entry.EventId.Id == 3106,
+                              logger.Entries,
+                              "The Docker HTTP-client factory must not warn about disabled certificate validation when it stays enabled");
     }
 
     #endregion // Methods
