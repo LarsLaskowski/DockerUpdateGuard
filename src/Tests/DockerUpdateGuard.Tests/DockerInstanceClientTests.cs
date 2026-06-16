@@ -521,8 +521,9 @@ public partial class DockerInstanceClientTests
         using var httpClient = (HttpClient?)createHttpClientMethod.Invoke(null, [instanceOptions, engineUri, logger]);
 
         Assert.IsNotNull(httpClient, "The Docker HTTP-client factory must return an HTTP client for TLS endpoints");
-        Assert.IsFalse(logger.Entries.Any(entry => entry.EventId.Id == 3106),
-                       "The Docker HTTP-client factory must not warn about disabled certificate validation when it stays enabled");
+        Assert.DoesNotContain(entry => entry.EventId.Id == 3106,
+                              logger.Entries,
+                              "The Docker HTTP-client factory must not warn about disabled certificate validation when it stays enabled");
     }
 
     #endregion // Methods
