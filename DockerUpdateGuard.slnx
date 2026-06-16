@@ -10,6 +10,7 @@
     <File Path="LICENSE.md" />
     <File Path="README.md" />
     <File Path="SharedAssemblyInfo.cs" />
+    <File Path="src/GlobalSuppressions.cs" />
   </Folder>
   <Folder Name="/00 Solution items/Copilot/">
     <File Path=".github/copilot-instructions.md" />
