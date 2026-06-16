@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO.Pipes;
 using System.Net.Sockets;
@@ -25,6 +26,11 @@ public class DockerInstanceClient : IDockerInstanceClient
     /// Image reference parser
     /// </summary>
     private static readonly IImageReferenceParser _imageReferenceParser = new ImageReferenceParser();
+
+    /// <summary>
+    /// Tracks Docker instance names for which the disabled-certificate-validation warning has already been emitted
+    /// </summary>
+    private static readonly ConcurrentDictionary<string, byte> _certificateValidationWarningInstances = new(StringComparer.Ordinal);
 
     /// <summary>
     /// HTTP-client factory
@@ -256,7 +262,10 @@ public class DockerInstanceClient : IDockerInstanceClient
 
         if (instanceOptions.SkipCertificateValidation)
         {
-            logger.DockerInstanceCertificateValidationDisabled(instanceOptions.Name);
+            if (_certificateValidationWarningInstances.TryAdd(instanceOptions.Name, 0))
+            {
+                logger.DockerInstanceCertificateValidationDisabled(instanceOptions.Name);
+            }
 
             handler.ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator;
         }

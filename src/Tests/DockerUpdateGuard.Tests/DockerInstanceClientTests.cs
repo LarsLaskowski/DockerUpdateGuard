@@ -469,16 +469,17 @@ public partial class DockerInstanceClientTests
     }
 
     /// <summary>
-    /// Verify the Docker HTTP-client factory logs a warning when server certificate validation is disabled
+    /// Verify the Docker HTTP-client factory logs a warning only once per instance when server certificate validation is disabled
     /// </summary>
     [TestMethod]
-    public void DockerInstanceClientCreateHttpClientWhenSkipCertificateValidationLogsWarning()
+    public void DockerInstanceClientCreateHttpClientWhenSkipCertificateValidationLogsWarningOncePerInstance()
     {
         var createHttpClientMethod = typeof(DockerInstanceClient).GetMethod("CreateHttpClient",
                                                                             BindingFlags.Static | BindingFlags.NonPublic);
+        var instanceName = $"tls-bypass-{Guid.NewGuid():N}";
         var instanceOptions = new DockerInstanceOptions
                               {
-                                  Name = "Production",
+                                  Name = instanceName,
                                   BaseUrl = "https://docker.example.test",
                                   Enabled = true,
                                   SkipCertificateValidation = true,
@@ -488,14 +489,16 @@ public partial class DockerInstanceClientTests
 
         Assert.IsNotNull(createHttpClientMethod, "The Docker HTTP-client factory must remain discoverable for transport tests");
 
-        using var httpClient = (HttpClient?)createHttpClientMethod.Invoke(null, [instanceOptions, engineUri, logger]);
+        using var firstHttpClient = (HttpClient?)createHttpClientMethod.Invoke(null, [instanceOptions, engineUri, logger]);
+        using var secondHttpClient = (HttpClient?)createHttpClientMethod.Invoke(null, [instanceOptions, engineUri, logger]);
 
-        Assert.IsNotNull(httpClient, "The Docker HTTP-client factory must return an HTTP client for TLS endpoints");
-        Assert.Contains(entry => entry.EventId.Id == 3106
-                                 && entry.LogLevel == LogLevel.Warning
-                                 && entry.Message.Contains("Production", StringComparison.Ordinal),
-                        logger.Entries,
-                        "Disabling server certificate validation must emit an auditable warning naming the affected instance");
+        Assert.IsNotNull(firstHttpClient, "The Docker HTTP-client factory must return an HTTP client for TLS endpoints");
+        Assert.IsNotNull(secondHttpClient, "The Docker HTTP-client factory must return an HTTP client on repeated calls for TLS endpoints");
+        Assert.AreEqual(1,
+                        logger.Entries.Count(entry => entry.EventId.Id == 3106
+                                                      && entry.LogLevel == LogLevel.Warning
+                                                      && entry.Message.Contains(instanceName, StringComparison.Ordinal)),
+                        "Disabling server certificate validation must emit the auditable warning exactly once per instance to avoid flooding the log under active polling");
     }
 
     /// <summary>
