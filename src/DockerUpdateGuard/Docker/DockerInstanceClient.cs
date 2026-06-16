@@ -45,7 +45,7 @@ public class DockerInstanceClient : IDockerInstanceClient
     /// </summary>
     /// <param name="logger">Logger</param>
     public DockerInstanceClient(ILogger<DockerInstanceClient> logger)
-        : this(logger, CreateHttpClient)
+        : this(logger, (instanceOptions, engineUri) => CreateHttpClient(instanceOptions, engineUri, logger))
     {
     }
 
@@ -233,8 +233,9 @@ public class DockerInstanceClient : IDockerInstanceClient
     /// </summary>
     /// <param name="instanceOptions">Docker instance options</param>
     /// <param name="engineUri">Resolved engine URI</param>
+    /// <param name="logger">Logger</param>
     /// <returns>HTTP client</returns>
-    private static HttpClient CreateHttpClient(DockerInstanceOptions instanceOptions, Uri engineUri)
+    private static HttpClient CreateHttpClient(DockerInstanceOptions instanceOptions, Uri engineUri, ILogger logger)
     {
         if (Uri.TryCreate(instanceOptions.BaseUrl, UriKind.Absolute, out var parsedUri)
             && parsedUri.Scheme == "unix")
@@ -255,6 +256,8 @@ public class DockerInstanceClient : IDockerInstanceClient
 
         if (instanceOptions.SkipCertificateValidation)
         {
+            logger.DockerInstanceCertificateValidationDisabled(instanceOptions.Name);
+
             handler.ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator;
         }
 
