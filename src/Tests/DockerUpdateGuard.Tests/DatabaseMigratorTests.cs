@@ -18,6 +18,15 @@ namespace DockerUpdateGuard.Tests;
 [TestClass]
 public class DatabaseMigratorTests
 {
+    #region Properties
+
+    /// <summary>
+    /// Test context providing information about and functionality for the current test run
+    /// </summary>
+    public TestContext TestContext { get; set; }
+
+    #endregion // Properties
+
     #region Methods
 
     /// <summary>
@@ -40,7 +49,7 @@ public class DatabaseMigratorTests
 
             Assert.IsFalse(dbContext.Database.IsRelational(),
                            "The in-memory provider must remain non-relational so the migrator skips advisory locking");
-            Assert.IsTrue(await dbContext.Database.CanConnectAsync()
+            Assert.IsTrue(await dbContext.Database.CanConnectAsync(TestContext.CancellationToken)
                                                   .ConfigureAwait(false),
                           "The migrator must ensure the non-relational store is created");
         }
@@ -59,7 +68,7 @@ public class DatabaseMigratorTests
         // execution-strategy wrapped migration run and the diagnostic catch path
         var connection = new SqliteConnection("Data Source=:memory:");
 
-        await connection.OpenAsync()
+        await connection.OpenAsync(TestContext.CancellationToken)
                         .ConfigureAwait(false);
 
         using (connection)

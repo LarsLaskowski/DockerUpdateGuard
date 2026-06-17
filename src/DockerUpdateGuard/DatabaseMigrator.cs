@@ -54,8 +54,7 @@ public static class DatabaseMigrator
             return;
         }
 
-        await WaitForDatabaseAsync(dbContext, options, logger, cancellationToken)
-            .ConfigureAwait(false);
+        await WaitForDatabaseAsync(dbContext, options, logger, cancellationToken).ConfigureAwait(false);
 
         var useAdvisoryLock = string.Equals(dbContext.Database.ProviderName, NpgsqlProviderName, StringComparison.Ordinal);
         var executionStrategy = dbContext.Database.CreateExecutionStrategy();
@@ -163,8 +162,7 @@ public static class DatabaseMigrator
         }
         finally
         {
-            await ReleaseAdvisoryLockAsync(dbContext, useAdvisoryLock, logger)
-                .ConfigureAwait(false);
+            await ReleaseAdvisoryLockAsync(dbContext, useAdvisoryLock, logger).ConfigureAwait(false);
 
             await dbContext.Database.CloseConnectionAsync()
                                     .ConfigureAwait(false);

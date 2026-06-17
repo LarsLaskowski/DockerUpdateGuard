@@ -36,7 +36,7 @@ public class DockerUpdateGuardOptionsValidator : IValidateOptions<DockerUpdateGu
     /// </summary>
     /// <param name="options">Database options</param>
     /// <param name="failures">Failure list</param>
-    private static void ValidateDatabaseOptions(DatabaseOptions options, ICollection<string> failures)
+    private static void ValidateDatabaseOptions(DatabaseOptions options, List<string> failures)
     {
         if (options.MaxConnectionRetryCount <= 0)
         {
