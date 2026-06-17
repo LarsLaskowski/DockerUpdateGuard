@@ -70,7 +70,13 @@ public static class DatabaseMigrator
             await executionStrategy.ExecuteAsync(token => RunMigrationAsync(dbContext, useAdvisoryLock, logger, token), cancellationToken)
                                    .ConfigureAwait(false);
         }
-        catch (Exception exception) when (exception is not OperationCanceledException)
+        catch (DbException exception)
+        {
+            logger.ApplicationDatabaseMigrationFailed(exception);
+
+            throw;
+        }
+        catch (InvalidOperationException exception)
         {
             logger.ApplicationDatabaseMigrationFailed(exception);
 
@@ -184,10 +190,15 @@ public static class DatabaseMigrator
             await dbContext.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_unlock({MigrationAdvisoryLockKey})", CancellationToken.None)
                                     .ConfigureAwait(false);
         }
-        catch (Exception exception) when (exception is DbException or InvalidOperationException)
+        catch (DbException exception)
         {
             // A failed release must never overwrite the migration outcome; the advisory lock is
             // also released automatically once the connection session ends on close
+            logger.ApplicationDatabaseAdvisoryLockReleaseFailed(exception);
+        }
+        catch (InvalidOperationException exception)
+        {
+            // See above: the unlock is best-effort and is backstopped by the connection close
             logger.ApplicationDatabaseAdvisoryLockReleaseFailed(exception);
         }
     }

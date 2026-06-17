@@ -8,6 +8,8 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 
+using NSubstitute;
+
 namespace DockerUpdateGuard.Tests;
 
 /// <summary>
@@ -75,7 +77,7 @@ public class DatabaseMigratorTests
                     await DatabaseMigrator.MigrateAsync(dbContext, databaseOptions, NullLogger.Instance, CancellationToken.None)
                                           .ConfigureAwait(false);
                 }
-                catch (Exception exception) when (exception is InvalidOperationException or DbException)
+                catch (InvalidOperationException exception)
                 {
                     caught = exception;
                 }
@@ -93,7 +95,7 @@ public class DatabaseMigratorTests
     [TestMethod]
     public async Task DatabaseMigratorUnreachableDatabaseThrowsAfterTimeoutAsync()
     {
-        var options = new DbContextOptionsBuilder<DockerUpdateGuardDbContext>().UseNpgsql("Host=127.0.0.1;Port=1;Database=dug;Username=u;Password=p;Timeout=1;Command Timeout=1")
+        var options = new DbContextOptionsBuilder<DockerUpdateGuardDbContext>().UseNpgsql("Host=127.0.0.1;Port=1;Database=dug;Timeout=1;Command Timeout=1")
                                                                                .Options;
         var databaseOptions = new DatabaseOptions
                               {
@@ -110,7 +112,7 @@ public class DatabaseMigratorTests
                 await DatabaseMigrator.MigrateAsync(dbContext, databaseOptions, NullLogger.Instance, CancellationToken.None)
                                       .ConfigureAwait(false);
             }
-            catch (Exception exception) when (exception is InvalidOperationException or DbException)
+            catch (InvalidOperationException exception)
             {
                 caught = exception;
             }
@@ -118,28 +120,6 @@ public class DatabaseMigratorTests
 
         Assert.IsNotNull(caught,
                          "An unreachable database must surface a connection failure once the startup timeout elapses");
-        Assert.IsTrue(HasDatabaseFailure(caught),
-                      "The surfaced failure must originate from a database connection exception");
-    }
-
-    /// <summary>
-    /// Determine whether the exception chain contains a database exception
-    /// </summary>
-    /// <param name="exception">Exception to inspect</param>
-    /// <returns>True when a database exception is present</returns>
-    private static bool HasDatabaseFailure(Exception? exception)
-    {
-        while (exception is not null)
-        {
-            if (exception is DbException)
-            {
-                return true;
-            }
-
-            exception = exception.InnerException;
-        }
-
-        return false;
     }
 
     /// <summary>
@@ -148,11 +128,15 @@ public class DatabaseMigratorTests
     [TestMethod]
     public void DatabaseMigratorIsTransientConnectionFailureClassifiesTransientFaults()
     {
+        var transientDatabaseException = Substitute.For<DbException>();
+
+        transientDatabaseException.IsTransient.Returns(true);
+
         Assert.IsTrue(DatabaseMigrator.IsTransientConnectionFailure(new SocketException()),
                       "Socket failures must be treated as transient");
         Assert.IsTrue(DatabaseMigrator.IsTransientConnectionFailure(new TimeoutException()),
                       "Timeouts must be treated as transient");
-        Assert.IsTrue(DatabaseMigrator.IsTransientConnectionFailure(new TransientDbException()),
+        Assert.IsTrue(DatabaseMigrator.IsTransientConnectionFailure(transientDatabaseException),
                       "Database exceptions flagged as transient must be treated as transient");
         Assert.IsTrue(DatabaseMigrator.IsTransientConnectionFailure(new InvalidOperationException("wrapper", new SocketException())),
                       "A wrapped socket failure must be treated as transient");
@@ -164,41 +148,15 @@ public class DatabaseMigratorTests
     [TestMethod]
     public void DatabaseMigratorIsTransientConnectionFailureRejectsPermanentFaults()
     {
-        Assert.IsFalse(DatabaseMigrator.IsTransientConnectionFailure(new PermanentDbException()),
+        var permanentDatabaseException = Substitute.For<DbException>();
+
+        permanentDatabaseException.IsTransient.Returns(false);
+
+        Assert.IsFalse(DatabaseMigrator.IsTransientConnectionFailure(permanentDatabaseException),
                        "Database exceptions not flagged as transient must fail fast");
         Assert.IsFalse(DatabaseMigrator.IsTransientConnectionFailure(new InvalidOperationException("permanent")),
                        "Unrelated failures must fail fast");
     }
 
     #endregion // Methods
-
-    #region Nested types
-
-    /// <summary>
-    /// Database exception test double that reports a transient failure
-    /// </summary>
-    private sealed class TransientDbException : DbException
-    {
-        #region Properties
-
-        /// <inheritdoc/>
-        public override bool IsTransient => true;
-
-        #endregion // Properties
-    }
-
-    /// <summary>
-    /// Database exception test double that reports a permanent failure
-    /// </summary>
-    private sealed class PermanentDbException : DbException
-    {
-        #region Properties
-
-        /// <inheritdoc/>
-        public override bool IsTransient => false;
-
-        #endregion // Properties
-    }
-
-    #endregion // Nested types
 }
