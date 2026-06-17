@@ -48,7 +48,13 @@ public static class ServiceCollectionExtensions
 
         services.AddDockerUpdateGuardData(options =>
                                           {
-                                              options.UseNpgsql(connectionString, npgsqlOptions => npgsqlOptions.MigrationsAssembly(typeof(DockerUpdateGuard.Data.DockerUpdateGuardDbContext).Assembly.GetName().Name));
+                                              options.UseNpgsql(connectionString, npgsqlOptions =>
+                                                                                  {
+                                                                                      npgsqlOptions.MigrationsAssembly(typeof(DockerUpdateGuard.Data.DockerUpdateGuardDbContext).Assembly.GetName().Name);
+                                                                                      npgsqlOptions.EnableRetryOnFailure(applicationOptions.Database.MaxConnectionRetryCount,
+                                                                                                                         TimeSpan.FromSeconds(applicationOptions.Database.MaxConnectionRetryDelaySeconds),
+                                                                                                                         errorCodesToAdd: null);
+                                                                                  });
                                           });
         services.AddDockerUpdateGuardTelemetry(configuration);
         services.AddHttpClient<DockerHubClient>(client =>

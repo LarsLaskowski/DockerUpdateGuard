@@ -63,6 +63,7 @@ public class DockerUpdateGuardOptionsValidatorTests
         var options = CreateValidOptions();
 
         options.DockerHub.RequestTimeoutSeconds = 0;
+        options.Database.MigrationStartupTimeoutSeconds = 0;
         options.Vulnerabilities.Enabled = true;
         options.Scanning.CleanupIntervalMinutes = 0;
         options.Scanning.DockerHubAccountDiscoveryIntervalMinutes = 0;
@@ -96,6 +97,9 @@ public class DockerUpdateGuardOptionsValidatorTests
         Assert.Contains(message => message.Contains("DockerHub:RequestTimeoutSeconds", StringComparison.Ordinal),
                         failures,
                         "An invalid Docker Hub timeout must be reported");
+        Assert.Contains(message => message.Contains("Database:MigrationStartupTimeoutSeconds", StringComparison.Ordinal),
+                        failures,
+                        "An invalid database migration startup timeout must be reported");
         Assert.Contains(message => message.Contains("Vulnerabilities:Provider", StringComparison.Ordinal),
                         failures,
                         "An enabled vulnerability refresh without a provider must be reported");
