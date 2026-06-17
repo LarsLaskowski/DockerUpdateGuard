@@ -64,6 +64,16 @@ internal static partial class HostLoggingExtensions
     public static partial void ApplicationDatabaseMigrationFailed(this ILogger logger, Exception exception);
 
     /// <summary>
+    /// Log that releasing the migration advisory lock failed
+    /// </summary>
+    /// <param name="logger">Logger</param>
+    /// <param name="exception">Advisory lock release failure</param>
+    [LoggerMessage(EventId = 1006,
+                   Level = LogLevel.Warning,
+                   Message = "DockerUpdateGuard failed to release the migration advisory lock; it will be released when the connection closes")]
+    public static partial void ApplicationDatabaseAdvisoryLockReleaseFailed(this ILogger logger, Exception exception);
+
+    /// <summary>
     /// Log that application initialization has completed
     /// </summary>
     /// <param name="logger">Logger</param>

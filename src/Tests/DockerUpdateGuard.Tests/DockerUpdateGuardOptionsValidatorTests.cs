@@ -127,6 +127,42 @@ public class DockerUpdateGuardOptionsValidatorTests
     }
 
     /// <summary>
+    /// Verify invalid database resilience options are reported individually
+    /// </summary>
+    [TestMethod]
+    public void DockerUpdateGuardOptionsValidatorInvalidDatabaseOptionsReturnsFailures()
+    {
+        var configuration = CreateConfiguration(new Dictionary<string, string?>
+                                                {
+                                                    ["ConnectionStrings:DockerUpdateGuard"] = "Host=database;Database=dug",
+                                                });
+        var validator = new DockerUpdateGuardOptionsValidator(configuration);
+        var options = CreateValidOptions();
+
+        options.Database.MaxConnectionRetryCount = 0;
+        options.Database.MaxConnectionRetryDelaySeconds = 0;
+        options.Database.MigrationStartupTimeoutSeconds = 0;
+        options.Database.MigrationRetryDelaySeconds = 0;
+
+        var validationResult = validator.Validate(Options.DefaultName, options);
+        var failures = validationResult.Failures?.ToArray() ?? [];
+
+        Assert.IsTrue(validationResult.Failed, "Invalid database options must fail validation");
+        Assert.Contains(message => message.Contains("Database:MaxConnectionRetryCount", StringComparison.Ordinal),
+                        failures,
+                        "An invalid maximum connection retry count must be reported");
+        Assert.Contains(message => message.Contains("Database:MaxConnectionRetryDelaySeconds", StringComparison.Ordinal),
+                        failures,
+                        "An invalid maximum connection retry delay must be reported");
+        Assert.Contains(message => message.Contains("Database:MigrationStartupTimeoutSeconds", StringComparison.Ordinal),
+                        failures,
+                        "An invalid migration startup timeout must be reported");
+        Assert.Contains(message => message.Contains("Database:MigrationRetryDelaySeconds", StringComparison.Ordinal),
+                        failures,
+                        "An invalid migration retry delay must be reported");
+    }
+
+    /// <summary>
     /// Verify the development configuration sample exposes the complete host configuration schema
     /// </summary>
     [TestMethod]

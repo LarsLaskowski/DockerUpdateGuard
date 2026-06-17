@@ -58,34 +58,23 @@ public static class DatabaseMigrator
             .ConfigureAwait(false);
 
         var useAdvisoryLock = string.Equals(dbContext.Database.ProviderName, NpgsqlProviderName, StringComparison.Ordinal);
+        var executionStrategy = dbContext.Database.CreateExecutionStrategy();
 
         try
         {
-            if (useAdvisoryLock)
-            {
-                await dbContext.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_lock({MigrationAdvisoryLockKey})", cancellationToken)
-                                        .ConfigureAwait(false);
-            }
-
-            await dbContext.Database.MigrateAsync(cancellationToken)
-                                    .ConfigureAwait(false);
+            // Run the advisory lock acquisition and the migration as one retriable unit. When the
+            // Npgsql retrying execution strategy is active a transient fault re-runs the whole
+            // delegate, so the session-scoped advisory lock is always re-acquired on the same
+            // connection that the idempotent MigrateAsync then runs against instead of being
+            // stranded on an abandoned connection
+            await executionStrategy.ExecuteAsync(token => RunMigrationAsync(dbContext, useAdvisoryLock, logger, token), cancellationToken)
+                                   .ConfigureAwait(false);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
             logger.ApplicationDatabaseMigrationFailed(exception);
 
             throw;
-        }
-        finally
-        {
-            if (useAdvisoryLock)
-            {
-                await dbContext.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_unlock({MigrationAdvisoryLockKey})", CancellationToken.None)
-                                        .ConfigureAwait(false);
-            }
-
-            await dbContext.Database.CloseConnectionAsync()
-                                    .ConfigureAwait(false);
         }
     }
 
@@ -114,6 +103,8 @@ public static class DatabaseMigrator
             {
                 await dbContext.Database.OpenConnectionAsync(cancellationToken)
                                         .ConfigureAwait(false);
+                await dbContext.Database.CloseConnectionAsync()
+                                        .ConfigureAwait(false);
 
                 return;
             }
@@ -135,17 +126,93 @@ public static class DatabaseMigrator
     }
 
     /// <summary>
+    /// Acquire the advisory lock, apply pending migrations and release the lock on a single connection
+    /// </summary>
+    /// <param name="dbContext">Database context</param>
+    /// <param name="useAdvisoryLock">True when the provider supports the PostgreSQL advisory lock</param>
+    /// <param name="logger">Logger</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Task</returns>
+    private static async Task RunMigrationAsync(DockerUpdateGuardDbContext dbContext,
+                                                bool useAdvisoryLock,
+                                                ILogger logger,
+                                                CancellationToken cancellationToken)
+    {
+        // Open the connection explicitly so the advisory lock and the migration share one session;
+        // Entity Framework Core reuses an explicitly opened connection and leaves it open until it
+        // is closed again below
+        await dbContext.Database.OpenConnectionAsync(cancellationToken)
+                                .ConfigureAwait(false);
+
+        try
+        {
+            if (useAdvisoryLock)
+            {
+                await dbContext.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_lock({MigrationAdvisoryLockKey})", cancellationToken)
+                                        .ConfigureAwait(false);
+            }
+
+            await dbContext.Database.MigrateAsync(cancellationToken)
+                                    .ConfigureAwait(false);
+        }
+        finally
+        {
+            await ReleaseAdvisoryLockAsync(dbContext, useAdvisoryLock, logger)
+                .ConfigureAwait(false);
+
+            await dbContext.Database.CloseConnectionAsync()
+                                    .ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Release the advisory lock without masking a migration failure
+    /// </summary>
+    /// <param name="dbContext">Database context</param>
+    /// <param name="useAdvisoryLock">True when the provider supports the PostgreSQL advisory lock</param>
+    /// <param name="logger">Logger</param>
+    /// <returns>Task</returns>
+    private static async Task ReleaseAdvisoryLockAsync(DockerUpdateGuardDbContext dbContext, bool useAdvisoryLock, ILogger logger)
+    {
+        if (useAdvisoryLock == false)
+        {
+            return;
+        }
+
+        try
+        {
+            await dbContext.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_unlock({MigrationAdvisoryLockKey})", CancellationToken.None)
+                                    .ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is DbException or InvalidOperationException)
+        {
+            // A failed release must never overwrite the migration outcome; the advisory lock is
+            // also released automatically once the connection session ends on close
+            logger.ApplicationDatabaseAdvisoryLockReleaseFailed(exception);
+        }
+    }
+
+    /// <summary>
     /// Determine whether the exception represents a transient database connectivity failure
     /// </summary>
     /// <param name="exception">Exception to inspect</param>
     /// <returns>True when the failure is transient</returns>
-    private static bool IsTransientConnectionFailure(Exception exception)
+    internal static bool IsTransientConnectionFailure(Exception exception)
     {
-        return exception is DbException
-                            or SocketException
-                            or TimeoutException
-               || exception.InnerException is SocketException
-                                               or TimeoutException;
+        ArgumentNullException.ThrowIfNull(exception);
+
+        if (exception is DbException databaseException && databaseException.IsTransient)
+        {
+            return true;
+        }
+
+        if (exception is SocketException or TimeoutException)
+        {
+            return true;
+        }
+
+        return exception.InnerException is not null
+               && IsTransientConnectionFailure(exception.InnerException);
     }
 
     #endregion // Static methods
