@@ -26,6 +26,54 @@ internal static partial class HostLoggingExtensions
     public static partial void ApplicationDatabaseMigrated(this ILogger logger);
 
     /// <summary>
+    /// Log that a database connection attempt failed and will be retried
+    /// </summary>
+    /// <param name="logger">Logger</param>
+    /// <param name="attempt">Attempt number</param>
+    /// <param name="delaySeconds">Delay before the next attempt in seconds</param>
+    /// <param name="exception">Connection failure</param>
+    [LoggerMessage(EventId = 1003,
+                   Level = LogLevel.Warning,
+                   Message = "DockerUpdateGuard database connection attempt {Attempt} failed; retrying in {DelaySeconds} seconds")]
+    public static partial void ApplicationDatabaseConnectionRetrying(this ILogger logger,
+                                                                     int attempt,
+                                                                     double delaySeconds,
+                                                                     Exception exception);
+
+    /// <summary>
+    /// Log that the database never became reachable within the configured startup timeout
+    /// </summary>
+    /// <param name="logger">Logger</param>
+    /// <param name="attempts">Number of attempts performed</param>
+    /// <param name="exception">Last connection failure</param>
+    [LoggerMessage(EventId = 1004,
+                   Level = LogLevel.Critical,
+                   Message = "DockerUpdateGuard database did not become reachable after {Attempts} attempts within the configured startup timeout")]
+    public static partial void ApplicationDatabaseUnavailable(this ILogger logger,
+                                                              int attempts,
+                                                              Exception exception);
+
+    /// <summary>
+    /// Log that the database migration failed
+    /// </summary>
+    /// <param name="logger">Logger</param>
+    /// <param name="exception">Migration failure</param>
+    [LoggerMessage(EventId = 1005,
+                   Level = LogLevel.Critical,
+                   Message = "DockerUpdateGuard database migration failed")]
+    public static partial void ApplicationDatabaseMigrationFailed(this ILogger logger, Exception exception);
+
+    /// <summary>
+    /// Log that releasing the migration advisory lock failed
+    /// </summary>
+    /// <param name="logger">Logger</param>
+    /// <param name="exception">Advisory lock release failure</param>
+    [LoggerMessage(EventId = 1006,
+                   Level = LogLevel.Warning,
+                   Message = "DockerUpdateGuard failed to release the migration advisory lock; it will be released when the connection closes")]
+    public static partial void ApplicationDatabaseAdvisoryLockReleaseFailed(this ILogger logger, Exception exception);
+
+    /// <summary>
     /// Log that application initialization has completed
     /// </summary>
     /// <param name="logger">Logger</param>

@@ -27,6 +27,11 @@ public class DockerUpdateGuardOptions
     public string ConnectionStringName { get; set; } = "DockerUpdateGuard";
 
     /// <summary>
+    /// Database connection and startup migration configuration
+    /// </summary>
+    public DatabaseOptions Database { get; set; } = new();
+
+    /// <summary>
     /// Docker Hub configuration
     /// </summary>
     public DockerHubOptions DockerHub { get; set; } = new();

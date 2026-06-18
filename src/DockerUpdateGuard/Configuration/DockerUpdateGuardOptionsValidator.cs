@@ -32,6 +32,34 @@ public class DockerUpdateGuardOptionsValidator : IValidateOptions<DockerUpdateGu
     #region Static methods
 
     /// <summary>
+    /// Validate database options
+    /// </summary>
+    /// <param name="options">Database options</param>
+    /// <param name="failures">Failure list</param>
+    private static void ValidateDatabaseOptions(DatabaseOptions options, List<string> failures)
+    {
+        if (options.MaxConnectionRetryCount <= 0)
+        {
+            failures.Add($"'{DockerUpdateGuardOptions.SectionName}:Database:MaxConnectionRetryCount' must be greater than zero");
+        }
+
+        if (options.MaxConnectionRetryDelaySeconds <= 0)
+        {
+            failures.Add($"'{DockerUpdateGuardOptions.SectionName}:Database:MaxConnectionRetryDelaySeconds' must be greater than zero");
+        }
+
+        if (options.MigrationStartupTimeoutSeconds <= 0)
+        {
+            failures.Add($"'{DockerUpdateGuardOptions.SectionName}:Database:MigrationStartupTimeoutSeconds' must be greater than zero");
+        }
+
+        if (options.MigrationRetryDelaySeconds <= 0)
+        {
+            failures.Add($"'{DockerUpdateGuardOptions.SectionName}:Database:MigrationRetryDelaySeconds' must be greater than zero");
+        }
+    }
+
+    /// <summary>
     /// Validate Docker Hub options
     /// </summary>
     /// <param name="options">Docker Hub options</param>
@@ -248,6 +276,7 @@ public class DockerUpdateGuardOptionsValidator : IValidateOptions<DockerUpdateGu
             failures.Add($"'{DockerUpdateGuardOptions.SectionName}:ConnectionString' or 'ConnectionStrings:{options.ConnectionStringName}' must be configured");
         }
 
+        ValidateDatabaseOptions(options.Database, failures);
         ValidateDockerHubOptions(options.DockerHub, failures);
         ValidateVulnerabilityOptions(options.Vulnerabilities, failures);
         ValidateScanningOptions(options.Scanning, failures);
