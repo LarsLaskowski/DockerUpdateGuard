@@ -144,7 +144,7 @@ Each entry describes one Docker Engine endpoint.
 | `BaseUrl` | none | Yes | Docker endpoint URI; validation allows `http`, `https`, `tcp`, `unix`, and `npipe` |
 | `Enabled` | `true` | No | Enables or disables this Docker instance |
 | `UseTls` | `false` | No | For `tcp://` endpoints, upgrade the connection to HTTPS |
-| `SkipCertificateValidation` | `false` | No | Skip server certificate validation for TLS endpoints |
+| `SkipCertificateValidation` | `false` | No | Skip server certificate validation for TLS endpoints. **Insecure:** disables TLS authentication and exposes the connection to man-in-the-middle attacks; a warning is logged at runtime whenever it is active. Use only for trusted endpoints with self-signed certificates. |
 | `CertificatePath` | none | No | Optional client certificate path for TLS-secured engine access |
 | `RequestTimeoutSeconds` | `15` | No | Timeout for Docker Engine requests |
 

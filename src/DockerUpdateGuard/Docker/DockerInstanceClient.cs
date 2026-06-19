@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO.Pipes;
 using System.Net.Sockets;
@@ -27,6 +28,11 @@ public class DockerInstanceClient : IDockerInstanceClient
     private static readonly IImageReferenceParser _imageReferenceParser = new ImageReferenceParser();
 
     /// <summary>
+    /// Tracks Docker instance names for which the disabled-certificate-validation warning has already been emitted
+    /// </summary>
+    private static readonly ConcurrentDictionary<string, byte> _certificateValidationWarningInstances = new(StringComparer.Ordinal);
+
+    /// <summary>
     /// HTTP-client factory
     /// </summary>
     private readonly Func<DockerInstanceOptions, Uri, HttpClient> _httpClientFactory;
@@ -45,7 +51,7 @@ public class DockerInstanceClient : IDockerInstanceClient
     /// </summary>
     /// <param name="logger">Logger</param>
     public DockerInstanceClient(ILogger<DockerInstanceClient> logger)
-        : this(logger, CreateHttpClient)
+        : this(logger, (instanceOptions, engineUri) => CreateHttpClient(instanceOptions, engineUri, logger))
     {
     }
 
@@ -233,8 +239,9 @@ public class DockerInstanceClient : IDockerInstanceClient
     /// </summary>
     /// <param name="instanceOptions">Docker instance options</param>
     /// <param name="engineUri">Resolved engine URI</param>
+    /// <param name="logger">Logger</param>
     /// <returns>HTTP client</returns>
-    private static HttpClient CreateHttpClient(DockerInstanceOptions instanceOptions, Uri engineUri)
+    private static HttpClient CreateHttpClient(DockerInstanceOptions instanceOptions, Uri engineUri, ILogger logger)
     {
         if (Uri.TryCreate(instanceOptions.BaseUrl, UriKind.Absolute, out var parsedUri)
             && parsedUri.Scheme == "unix")
@@ -255,6 +262,11 @@ public class DockerInstanceClient : IDockerInstanceClient
 
         if (instanceOptions.SkipCertificateValidation)
         {
+            if (_certificateValidationWarningInstances.TryAdd(instanceOptions.Name, 0))
+            {
+                logger.DockerInstanceCertificateValidationDisabled(instanceOptions.Name);
+            }
+
             handler.ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator;
         }
 

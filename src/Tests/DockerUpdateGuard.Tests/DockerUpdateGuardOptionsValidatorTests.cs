@@ -63,6 +63,7 @@ public class DockerUpdateGuardOptionsValidatorTests
         var options = CreateValidOptions();
 
         options.DockerHub.RequestTimeoutSeconds = 0;
+        options.Database.MigrationStartupTimeoutSeconds = 0;
         options.Vulnerabilities.Enabled = true;
         options.Scanning.CleanupIntervalMinutes = 0;
         options.Scanning.DockerHubAccountDiscoveryIntervalMinutes = 0;
@@ -96,6 +97,9 @@ public class DockerUpdateGuardOptionsValidatorTests
         Assert.Contains(message => message.Contains("DockerHub:RequestTimeoutSeconds", StringComparison.Ordinal),
                         failures,
                         "An invalid Docker Hub timeout must be reported");
+        Assert.Contains(message => message.Contains("Database:MigrationStartupTimeoutSeconds", StringComparison.Ordinal),
+                        failures,
+                        "An invalid database migration startup timeout must be reported");
         Assert.Contains(message => message.Contains("Vulnerabilities:Provider", StringComparison.Ordinal),
                         failures,
                         "An enabled vulnerability refresh without a provider must be reported");
@@ -120,6 +124,42 @@ public class DockerUpdateGuardOptionsValidatorTests
         Assert.Contains(message => message.Contains("Portainer' must have either ApiToken or Username+Password configured", StringComparison.Ordinal),
                         failures,
                         "Missing Portainer authentication credentials must be reported");
+    }
+
+    /// <summary>
+    /// Verify invalid database resilience options are reported individually
+    /// </summary>
+    [TestMethod]
+    public void DockerUpdateGuardOptionsValidatorInvalidDatabaseOptionsReturnsFailures()
+    {
+        var configuration = CreateConfiguration(new Dictionary<string, string?>
+                                                {
+                                                    ["ConnectionStrings:DockerUpdateGuard"] = "Host=database;Database=dug",
+                                                });
+        var validator = new DockerUpdateGuardOptionsValidator(configuration);
+        var options = CreateValidOptions();
+
+        options.Database.MaxConnectionRetryCount = 0;
+        options.Database.MaxConnectionRetryDelaySeconds = 0;
+        options.Database.MigrationStartupTimeoutSeconds = 0;
+        options.Database.MigrationRetryDelaySeconds = 0;
+
+        var validationResult = validator.Validate(Options.DefaultName, options);
+        var failures = validationResult.Failures?.ToArray() ?? [];
+
+        Assert.IsTrue(validationResult.Failed, "Invalid database options must fail validation");
+        Assert.Contains(message => message.Contains("Database:MaxConnectionRetryCount", StringComparison.Ordinal),
+                        failures,
+                        "An invalid maximum connection retry count must be reported");
+        Assert.Contains(message => message.Contains("Database:MaxConnectionRetryDelaySeconds", StringComparison.Ordinal),
+                        failures,
+                        "An invalid maximum connection retry delay must be reported");
+        Assert.Contains(message => message.Contains("Database:MigrationStartupTimeoutSeconds", StringComparison.Ordinal),
+                        failures,
+                        "An invalid migration startup timeout must be reported");
+        Assert.Contains(message => message.Contains("Database:MigrationRetryDelaySeconds", StringComparison.Ordinal),
+                        failures,
+                        "An invalid migration retry delay must be reported");
     }
 
     /// <summary>

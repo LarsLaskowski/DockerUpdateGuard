@@ -82,5 +82,15 @@ internal static partial class DockerInstanceClientLogging
                                                                string dockerInstanceName,
                                                                int requestTimeoutSeconds);
 
+    /// <summary>
+    /// Log that server certificate validation is disabled for a Docker instance
+    /// </summary>
+    /// <param name="logger">Logger</param>
+    /// <param name="dockerInstanceName">Docker instance name</param>
+    [LoggerMessage(EventId = 3106,
+                   Level = LogLevel.Warning,
+                   Message = "Server certificate validation is disabled for Docker instance {DockerInstanceName}; TLS connections are not authenticated and are vulnerable to man-in-the-middle attacks")]
+    public static partial void DockerInstanceCertificateValidationDisabled(this ILogger logger, string dockerInstanceName);
+
     #endregion // Methods
 }

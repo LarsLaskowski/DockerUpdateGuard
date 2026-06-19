@@ -1,6 +1,7 @@
+using DockerUpdateGuard.Configuration;
 using DockerUpdateGuard.Images.Interfaces;
 
-using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace DockerUpdateGuard;
 
@@ -32,9 +33,11 @@ public static class ApplicationInitializationExtensions
             var dockerHubAccountDiscoveryService = scope.ServiceProvider.GetRequiredService<IDockerHubAccountImageDiscoveryService>();
             var instanceDiscoveryService = scope.ServiceProvider.GetRequiredService<IInstanceDiscoveryService>();
             var applicationTelemetry = scope.ServiceProvider.GetRequiredService<ApplicationTelemetry>();
+            var applicationOptions = scope.ServiceProvider.GetRequiredService<IOptions<DockerUpdateGuardOptions>>().Value;
+            var applicationLifetime = scope.ServiceProvider.GetRequiredService<IHostApplicationLifetime>();
 
-            await dbContext.Database.MigrateAsync()
-                                    .ConfigureAwait(false);
+            await DatabaseMigrator.MigrateAsync(dbContext, applicationOptions.Database, logger, applicationLifetime.ApplicationStopping)
+                                  .ConfigureAwait(false);
             logger.ApplicationDatabaseMigrated();
             await instanceDiscoveryService.SynchronizeConfiguredInstancesAsync(CancellationToken.None)
                                           .ConfigureAwait(false);
