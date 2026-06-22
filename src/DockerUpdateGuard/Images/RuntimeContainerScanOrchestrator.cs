@@ -152,6 +152,21 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
     #region Static methods
 
     /// <summary>
+    /// Mark the supplied runtime findings as resolved and clear their tag candidates
+    /// </summary>
+    /// <param name="findings">Findings to deactivate</param>
+    private static void DeactivateFindings(IReadOnlyList<UpdateFinding> findings)
+    {
+        foreach (var finding in findings)
+        {
+            finding.IsActive = false;
+            finding.ResolvedAtUtc = DateTimeOffset.UtcNow;
+
+            finding.TagCandidates.Clear();
+        }
+    }
+
+    /// <summary>
     /// Map an update evaluation result to the persisted runtime assessment
     /// </summary>
     /// <param name="snapshot">Runtime snapshot</param>
@@ -494,8 +509,6 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
         await _dbContext.SaveChangesAsync(cancellationToken)
                         .ConfigureAwait(false);
 
-        await DeactivateRuntimeFindingsAsync(dockerInstance.Id, cancellationToken).ConfigureAwait(false);
-
         try
         {
             var ownRepositoryKeys = await LoadOwnRepositoryKeysAsync(cancellationToken).ConfigureAwait(false);
@@ -524,6 +537,7 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
                 foreach (var container in discoveryResult.Data)
                 {
                     ContainerSnapshot? snapshot = null;
+                    var reEvaluated = false;
 
                     try
                     {
@@ -583,6 +597,8 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
 
                         if (tagsResult.Status == ExternalOperationStatus.Succeeded && tagsResult.Data is not null)
                         {
+                            reEvaluated = true;
+
                             var availableTags = MergeCurrentTagMetadata(parsedReference,
                                                                         tagsResult.Data,
                                                                         currentTagData);
@@ -629,6 +645,8 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
                         }
                         else
                         {
+                            reEvaluated = true;
+
                             snapshot.UpdateAssessmentStatus = tagsResult.Status == ExternalOperationStatus.NotFound
                                                                   ? UpdateAssessmentStatus.NoTagData
                                                                   : UpdateAssessmentStatus.Unsupported;
@@ -643,15 +661,22 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
                                                                                   tagsResult.Message);
                         }
 
-                        await CreateDerivedBaseRuntimeFindingAsync(scanRun,
-                                                                   snapshot,
-                                                                   imageVersion,
-                                                                   container,
-                                                                   inspectData,
-                                                                   dockerInstance.Name,
-                                                                   configuredInstance,
-                                                                   ownRepositoryKeys,
-                                                                   cancellationToken).ConfigureAwait(false);
+                        if (reEvaluated)
+                        {
+                            await DeactivateSupersededRuntimeFindingsAsync(dockerInstance.Id,
+                                                                           container.ContainerId,
+                                                                           cancellationToken).ConfigureAwait(false);
+
+                            await CreateDerivedBaseRuntimeFindingAsync(scanRun,
+                                                                       snapshot,
+                                                                       imageVersion,
+                                                                       container,
+                                                                       inspectData,
+                                                                       dockerInstance.Name,
+                                                                       configuredInstance,
+                                                                       ownRepositoryKeys,
+                                                                       cancellationToken).ConfigureAwait(false);
+                        }
                     }
                     catch (Exception exception)
                     {
@@ -671,6 +696,13 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
                                                                  container.ImageReference);
                     }
                 }
+
+                var discoveredContainerIds = discoveryResult.Data.Select(entity => entity.ContainerId)
+                                                                 .ToHashSet(StringComparer.Ordinal);
+
+                await DeactivateRemovedRuntimeFindingsAsync(dockerInstance.Id,
+                                                            discoveredContainerIds,
+                                                            cancellationToken).ConfigureAwait(false);
             }
         }
         catch (Exception exception)
@@ -704,28 +736,49 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
     }
 
     /// <summary>
-    /// Resolve existing active runtime findings
+    /// Deactivate the previous active runtime findings of a re-evaluated container
     /// </summary>
     /// <param name="dockerInstanceId">Docker instance identifier</param>
+    /// <param name="containerId">Container identifier</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Task</returns>
-    private async Task DeactivateRuntimeFindingsAsync(Guid dockerInstanceId, CancellationToken cancellationToken)
+    private async Task DeactivateSupersededRuntimeFindingsAsync(Guid dockerInstanceId,
+                                                               string containerId,
+                                                               CancellationToken cancellationToken)
     {
-        var activeFindings = await _dbContext.UpdateFindings.Include(entity => entity.TagCandidates)
-                                                            .Include(entity => entity.ContainerSnapshot)
-                                                            .Where(entity => entity.ContainerSnapshot != null
-                                                                             && entity.ContainerSnapshot.DockerInstanceId == dockerInstanceId
-                                                                             && entity.IsActive)
-                                                            .ToListAsync(cancellationToken)
-                                                            .ConfigureAwait(false);
+        var supersededFindings = await _dbContext.UpdateFindings.Include(entity => entity.TagCandidates)
+                                                                .Include(entity => entity.ContainerSnapshot)
+                                                                .Where(entity => entity.ContainerSnapshot != null
+                                                                                 && entity.ContainerSnapshot.DockerInstanceId == dockerInstanceId
+                                                                                 && entity.ContainerSnapshot.ContainerId == containerId
+                                                                                 && entity.IsActive)
+                                                                .ToListAsync(cancellationToken)
+                                                                .ConfigureAwait(false);
 
-        foreach (var activeFinding in activeFindings)
-        {
-            activeFinding.IsActive = false;
-            activeFinding.ResolvedAtUtc = DateTimeOffset.UtcNow;
+        DeactivateFindings(supersededFindings);
+    }
 
-            activeFinding.TagCandidates.Clear();
-        }
+    /// <summary>
+    /// Deactivate active runtime findings of containers that are no longer present on the instance
+    /// </summary>
+    /// <param name="dockerInstanceId">Docker instance identifier</param>
+    /// <param name="discoveredContainerIds">Container identifiers observed in the current discovery</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Task</returns>
+    private async Task DeactivateRemovedRuntimeFindingsAsync(Guid dockerInstanceId,
+                                                            IReadOnlyCollection<string> discoveredContainerIds,
+                                                            CancellationToken cancellationToken)
+    {
+        var supersededFindings = await _dbContext.UpdateFindings.Include(entity => entity.TagCandidates)
+                                                                .Include(entity => entity.ContainerSnapshot)
+                                                                .Where(entity => entity.ContainerSnapshot != null
+                                                                                 && entity.ContainerSnapshot.DockerInstanceId == dockerInstanceId
+                                                                                 && entity.IsActive
+                                                                                 && discoveredContainerIds.Contains(entity.ContainerSnapshot.ContainerId) == false)
+                                                                .ToListAsync(cancellationToken)
+                                                                .ConfigureAwait(false);
+
+        DeactivateFindings(supersededFindings);
     }
 
     /// <summary>

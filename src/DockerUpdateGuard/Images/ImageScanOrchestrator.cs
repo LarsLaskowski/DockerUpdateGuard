@@ -228,8 +228,6 @@ public class ImageScanOrchestrator : IImageScanOrchestrator
             await _dbContext.SaveChangesAsync(cancellationToken)
                             .ConfigureAwait(false);
 
-            await DeleteSupersededObservedFindingsAsync(observedImage.Id, cancellationToken).ConfigureAwait(false);
-
             try
             {
                 var imageReference = _imageReferenceParser.Parse(_imageReferenceParser.Format(observedImage.CurrentImageVersion));
@@ -444,9 +442,11 @@ public class ImageScanOrchestrator : IImageScanOrchestrator
     /// <returns>Task</returns>
     private async Task DeleteSupersededObservedFindingsAsync(Guid observedImageId, CancellationToken cancellationToken)
     {
-        await _dbContext.UpdateFindings.Where(entity => entity.ObservedImageId == observedImageId && entity.IsActive)
-                                       .ExecuteDeleteAsync(cancellationToken)
-                                       .ConfigureAwait(false);
+        var supersededFindings = await _dbContext.UpdateFindings.Where(entity => entity.ObservedImageId == observedImageId && entity.IsActive)
+                                                                .ToListAsync(cancellationToken)
+                                                                .ConfigureAwait(false);
+
+        _dbContext.UpdateFindings.RemoveRange(supersededFindings);
     }
 
     /// <summary>
@@ -484,6 +484,8 @@ public class ImageScanOrchestrator : IImageScanOrchestrator
         if (runtimeDescriptor?.RuntimeVersion is null
             || string.IsNullOrWhiteSpace(runtimeDescriptor.ChannelVersion))
         {
+            await DeleteSupersededObservedFindingsAsync(observedImage.Id, cancellationToken).ConfigureAwait(false);
+
             return;
         }
 
@@ -494,9 +496,14 @@ public class ImageScanOrchestrator : IImageScanOrchestrator
                     var channelReleaseResult = await _dotNetReleaseMetadataService.GetChannelReleaseAsync(runtimeDescriptor.ChannelVersion, cancellationToken)
                                                                                   .ConfigureAwait(false);
 
-                    if (channelReleaseResult.Status != ExternalOperationStatus.Succeeded
-                        || channelReleaseResult.Data is null
-                        || IsPatchBehind(runtimeDescriptor.RuntimeVersion, channelReleaseResult.Data.LatestRuntimeVersion) == false)
+                    if (channelReleaseResult.Status != ExternalOperationStatus.Succeeded || channelReleaseResult.Data is null)
+                    {
+                        return;
+                    }
+
+                    await DeleteSupersededObservedFindingsAsync(observedImage.Id, cancellationToken).ConfigureAwait(false);
+
+                    if (IsPatchBehind(runtimeDescriptor.RuntimeVersion, channelReleaseResult.Data.LatestRuntimeVersion) == false)
                     {
                         return;
                     }
@@ -522,9 +529,14 @@ public class ImageScanOrchestrator : IImageScanOrchestrator
                     var channelReleaseResult = await _nginxReleaseMetadataService.GetChannelReleaseAsync(runtimeDescriptor.ChannelVersion, cancellationToken)
                                                                                  .ConfigureAwait(false);
 
-                    if (channelReleaseResult.Status != ExternalOperationStatus.Succeeded
-                        || channelReleaseResult.Data is null
-                        || IsPatchBehind(runtimeDescriptor.RuntimeVersion, channelReleaseResult.Data.LatestVersion) == false)
+                    if (channelReleaseResult.Status != ExternalOperationStatus.Succeeded || channelReleaseResult.Data is null)
+                    {
+                        return;
+                    }
+
+                    await DeleteSupersededObservedFindingsAsync(observedImage.Id, cancellationToken).ConfigureAwait(false);
+
+                    if (IsPatchBehind(runtimeDescriptor.RuntimeVersion, channelReleaseResult.Data.LatestVersion) == false)
                     {
                         return;
                     }

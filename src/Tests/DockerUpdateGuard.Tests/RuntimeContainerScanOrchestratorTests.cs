@@ -432,6 +432,232 @@ public class RuntimeContainerScanOrchestratorTests
     }
 
     /// <summary>
+    /// Verify a transient discovery failure does not deactivate existing runtime findings
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task RuntimeContainerScanOrchestratorScanAllAsyncPreservesFindingsWhenDiscoveryFailsAsync()
+    {
+        using (var database = new SqliteTestDatabase())
+        {
+            var dbContext = database.CreateDbContext();
+
+            await using (dbContext.ConfigureAwait(false))
+            {
+                var options = new DockerUpdateGuardOptions
+                              {
+                                  DockerInstances = [
+                                                        new DockerInstanceOptions
+                                                        {
+                                                            Name = "Production",
+                                                            BaseUrl = "https://docker.example.test",
+                                                            Enabled = true,
+                                                            RequestTimeoutSeconds = 15,
+                                                        },
+                                                    ],
+                              };
+                var optionsMonitor = new TestOptionsMonitor<DockerUpdateGuardOptions>(options);
+                var imageCatalogRepository = new ImageCatalogRepository(dbContext);
+                var dockerInstanceClient = Substitute.For<IDockerInstanceClient>();
+                var derivedBaseRuntimeDetector = Substitute.For<IDerivedBaseRuntimeDetector>();
+                var dotNetReleaseMetadataService = Substitute.For<IDotNetReleaseMetadataService>();
+                var nginxReleaseMetadataService = Substitute.For<INginxReleaseMetadataService>();
+                var registryMetadataService = Substitute.For<IRegistryMetadataService>();
+                var instanceDiscoveryService = new InstanceDiscoveryService(dbContext,
+                                                                            new TestLogger<InstanceDiscoveryService>(),
+                                                                            optionsMonitor);
+
+                dockerInstanceClient.DiscoverContainersAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<CancellationToken>())
+                                    .Returns(ExternalOperationResult<IReadOnlyList<RuntimeContainerDescriptor>>.Succeeded([
+                                                                                                                              new RuntimeContainerDescriptor
+                                                                                                                              {
+                                                                                                                                  ContainerId = "container-1",
+                                                                                                                                  Name = "web",
+                                                                                                                                  ImageReference = "docker.io/library/nginx:1.0.0@sha256:runtime-old",
+                                                                                                                                  RuntimeStatus = ContainerRuntimeStatus.Running,
+                                                                                                                                  IsRunning = true,
+                                                                                                                              },
+                                                                                                                          ]),
+                                             ExternalOperationResult<IReadOnlyList<RuntimeContainerDescriptor>>.Failed("The Docker daemon is unreachable"));
+                dockerInstanceClient.InspectImageAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+                                    .Returns(ExternalOperationResult<DockerImageInspectData>.NotFound("The local image inspect payload is not available"));
+                dockerInstanceClient.GetImageHistoryAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+                                    .Returns(ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>.NotFound("The local image history payload is not available"));
+                registryMetadataService.GetTagsAsync("docker.io",
+                                                     "library/nginx",
+                                                     Arg.Any<CancellationToken>(),
+                                                     Arg.Any<string?>(),
+                                                     Arg.Any<string?>(),
+                                                     Arg.Any<RegistryTagQueryOptions?>())
+                                       .Returns(ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Succeeded([
+                                                                                                                       new DockerHubTagData
+                                                                                                                       {
+                                                                                                                           Tag = "1.1.0",
+                                                                                                                           Digest = "sha256:runtime-new",
+                                                                                                                           PublishedAtUtc = new DateTimeOffset(2025, 06, 02, 12, 00, 00, TimeSpan.Zero),
+                                                                                                                       },
+                                                                                                                       new DockerHubTagData
+                                                                                                                       {
+                                                                                                                           Tag = "1.0.0",
+                                                                                                                           Digest = "sha256:runtime-old",
+                                                                                                                           PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
+                                                                                                                       },
+                                                                                                                   ]));
+                registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
+                                       .Returns(ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
+                                                                                                    {
+                                                                                                        Tag = "1.0.0",
+                                                                                                        Digest = "sha256:runtime-old",
+                                                                                                        PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
+                                                                                                    }));
+
+                var orchestrator = new RuntimeContainerScanOrchestrator(new ApplicationTelemetry(),
+                                                                        dbContext,
+                                                                        dockerInstanceClient,
+                                                                        derivedBaseRuntimeDetector,
+                                                                        dotNetReleaseMetadataService,
+                                                                        nginxReleaseMetadataService,
+                                                                        imageCatalogRepository,
+                                                                        new ImageReferenceParser(),
+                                                                        instanceDiscoveryService,
+                                                                        new TestLogger<RuntimeContainerScanOrchestrator>(),
+                                                                        optionsMonitor,
+                                                                        registryMetadataService,
+                                                                        new UpdateDetectionService());
+
+                await orchestrator.ScanAllAsync(ScanTriggerSource.Scheduled, CancellationToken.None)
+                                  .ConfigureAwait(false);
+                await orchestrator.ScanAllAsync(ScanTriggerSource.Scheduled, CancellationToken.None)
+                                  .ConfigureAwait(false);
+
+                dbContext.ChangeTracker.Clear();
+
+                var findings = await dbContext.UpdateFindings.ToListAsync(TestContext.CancellationToken)
+                                                             .ConfigureAwait(false);
+
+                Assert.HasCount(1,
+                                findings,
+                                "A transient discovery failure must not create or remove runtime findings");
+                Assert.IsTrue(findings[0].IsActive,
+                              "A transient discovery failure must keep the existing runtime finding active instead of flickering it away");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Verify a transient registry evaluation failure does not deactivate existing runtime findings
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task RuntimeContainerScanOrchestratorScanAllAsyncPreservesFindingsWhenRegistryEvaluationFailsAsync()
+    {
+        using (var database = new SqliteTestDatabase())
+        {
+            var dbContext = database.CreateDbContext();
+
+            await using (dbContext.ConfigureAwait(false))
+            {
+                var options = new DockerUpdateGuardOptions
+                              {
+                                  DockerInstances = [
+                                                        new DockerInstanceOptions
+                                                        {
+                                                            Name = "Production",
+                                                            BaseUrl = "https://docker.example.test",
+                                                            Enabled = true,
+                                                            RequestTimeoutSeconds = 15,
+                                                        },
+                                                    ],
+                              };
+                var optionsMonitor = new TestOptionsMonitor<DockerUpdateGuardOptions>(options);
+                var imageCatalogRepository = new ImageCatalogRepository(dbContext);
+                var dockerInstanceClient = Substitute.For<IDockerInstanceClient>();
+                var derivedBaseRuntimeDetector = Substitute.For<IDerivedBaseRuntimeDetector>();
+                var dotNetReleaseMetadataService = Substitute.For<IDotNetReleaseMetadataService>();
+                var nginxReleaseMetadataService = Substitute.For<INginxReleaseMetadataService>();
+                var registryMetadataService = Substitute.For<IRegistryMetadataService>();
+                var instanceDiscoveryService = new InstanceDiscoveryService(dbContext,
+                                                                            new TestLogger<InstanceDiscoveryService>(),
+                                                                            optionsMonitor);
+
+                dockerInstanceClient.DiscoverContainersAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<CancellationToken>())
+                                    .Returns(ExternalOperationResult<IReadOnlyList<RuntimeContainerDescriptor>>.Succeeded([
+                                                                                                                              new RuntimeContainerDescriptor
+                                                                                                                              {
+                                                                                                                                  ContainerId = "container-1",
+                                                                                                                                  Name = "web",
+                                                                                                                                  ImageReference = "docker.io/library/nginx:1.0.0@sha256:runtime-old",
+                                                                                                                                  RuntimeStatus = ContainerRuntimeStatus.Running,
+                                                                                                                                  IsRunning = true,
+                                                                                                                              },
+                                                                                                                          ]));
+                dockerInstanceClient.InspectImageAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+                                    .Returns(ExternalOperationResult<DockerImageInspectData>.NotFound("The local image inspect payload is not available"));
+                dockerInstanceClient.GetImageHistoryAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+                                    .Returns(ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>.NotFound("The local image history payload is not available"));
+                registryMetadataService.GetTagsAsync("docker.io",
+                                                     "library/nginx",
+                                                     Arg.Any<CancellationToken>(),
+                                                     Arg.Any<string?>(),
+                                                     Arg.Any<string?>(),
+                                                     Arg.Any<RegistryTagQueryOptions?>())
+                                       .Returns(ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Succeeded([
+                                                                                                                       new DockerHubTagData
+                                                                                                                       {
+                                                                                                                           Tag = "1.1.0",
+                                                                                                                           Digest = "sha256:runtime-new",
+                                                                                                                           PublishedAtUtc = new DateTimeOffset(2025, 06, 02, 12, 00, 00, TimeSpan.Zero),
+                                                                                                                       },
+                                                                                                                       new DockerHubTagData
+                                                                                                                       {
+                                                                                                                           Tag = "1.0.0",
+                                                                                                                           Digest = "sha256:runtime-old",
+                                                                                                                           PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
+                                                                                                                       },
+                                                                                                                   ]),
+                                                ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Failed("The registry is temporarily unavailable"));
+                registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
+                                       .Returns(ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
+                                                                                                    {
+                                                                                                        Tag = "1.0.0",
+                                                                                                        Digest = "sha256:runtime-old",
+                                                                                                        PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
+                                                                                                    }));
+
+                var orchestrator = new RuntimeContainerScanOrchestrator(new ApplicationTelemetry(),
+                                                                        dbContext,
+                                                                        dockerInstanceClient,
+                                                                        derivedBaseRuntimeDetector,
+                                                                        dotNetReleaseMetadataService,
+                                                                        nginxReleaseMetadataService,
+                                                                        imageCatalogRepository,
+                                                                        new ImageReferenceParser(),
+                                                                        instanceDiscoveryService,
+                                                                        new TestLogger<RuntimeContainerScanOrchestrator>(),
+                                                                        optionsMonitor,
+                                                                        registryMetadataService,
+                                                                        new UpdateDetectionService());
+
+                await orchestrator.ScanAllAsync(ScanTriggerSource.Scheduled, CancellationToken.None)
+                                  .ConfigureAwait(false);
+                await orchestrator.ScanAllAsync(ScanTriggerSource.Scheduled, CancellationToken.None)
+                                  .ConfigureAwait(false);
+
+                dbContext.ChangeTracker.Clear();
+
+                var findings = await dbContext.UpdateFindings.ToListAsync(TestContext.CancellationToken)
+                                                             .ConfigureAwait(false);
+
+                Assert.HasCount(1,
+                                findings,
+                                "A transient registry evaluation failure must not create or remove runtime findings");
+                Assert.IsTrue(findings[0].IsActive,
+                              "A transient registry evaluation failure must keep the existing runtime finding active instead of flickering it away");
+            }
+        }
+    }
+
+    /// <summary>
     /// Verify unsupported registry evaluations are logged and produce a partial runtime scan
     /// </summary>
     /// <returns>Task</returns>
