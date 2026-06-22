@@ -1,5 +1,7 @@
 using DockerUpdateGuard.Data.Design;
 
+using Microsoft.EntityFrameworkCore;
+
 namespace DockerUpdateGuard.Data.Tests;
 
 /// <summary>
