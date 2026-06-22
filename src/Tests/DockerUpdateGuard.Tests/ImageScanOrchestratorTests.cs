@@ -763,6 +763,110 @@ public class ImageScanOrchestratorTests
     }
 
     /// <summary>
+    /// Verify a transient configuration refresh failure does not delete existing derived findings
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task ImageScanOrchestratorScanAsyncPreservesDerivedFindingWhenConfigurationRefreshFailsAsync()
+    {
+        using (var database = new SqliteTestDatabase())
+        {
+            var dbContext = database.CreateDbContext();
+
+            await using (dbContext.ConfigureAwait(false))
+            {
+                var imageCatalogRepository = new ImageCatalogRepository(dbContext);
+                var imageReferenceParser = new ImageReferenceParser();
+                var currentImageVersion = await imageCatalogRepository.GetOrCreateImageVersionAsync("ghcr.io",
+                                                                                                    "acme/api",
+                                                                                                    "1.0.0",
+                                                                                                    "sha256:app",
+                                                                                                    cancellationToken: CancellationToken.None)
+                                                                      .ConfigureAwait(false);
+                var observedImage = new ObservedImage
+                                    {
+                                        Name = "Acme API",
+                                        Source = RegistrationSource.Discovery,
+                                        CurrentImageVersionId = currentImageVersion.Id,
+                                    };
+                var baseImageResolver = Substitute.For<IBaseImageResolver>();
+                var derivedBaseRuntimeDetector = Substitute.For<IDerivedBaseRuntimeDetector>();
+                var dotNetReleaseMetadataService = Substitute.For<IDotNetReleaseMetadataService>();
+                var nginxReleaseMetadataService = Substitute.For<INginxReleaseMetadataService>();
+                var registryMetadataService = Substitute.For<IRegistryMetadataService>();
+
+                dbContext.ObservedImages.Add(observedImage);
+                await dbContext.SaveChangesAsync(TestContext.CancellationToken)
+                               .ConfigureAwait(false);
+
+                baseImageResolver.ResolveAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
+                                 .Returns(ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>.Succeeded([]));
+                registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
+                                       .Returns(ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
+                                                                                                    {
+                                                                                                        Tag = "1.0.0",
+                                                                                                        Digest = "sha256:app",
+                                                                                                        PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
+                                                                                                    }));
+                registryMetadataService.GetImageConfigurationAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
+                                       .Returns(ExternalOperationResult<RegistryImageConfigurationData>.Succeeded(new RegistryImageConfigurationData
+                                                                                                                  {
+                                                                                                                      EnvironmentVariables = [
+                                                                                                                                                 "DOTNET_VERSION=9.0.13",
+                                                                                                                                             ],
+                                                                                                                  }),
+                                                ExternalOperationResult<RegistryImageConfigurationData>.Failed("The registry configuration is temporarily unavailable"));
+                derivedBaseRuntimeDetector.Detect(Arg.Any<DockerImageInspectData>(), Arg.Any<IReadOnlyList<DockerImageHistoryEntryData>>())
+                                          .Returns(new DerivedBaseRuntimeDescriptor
+                                                   {
+                                                       Kind = DerivedBaseRuntimeKind.DotNet,
+                                                       RuntimeVersion = new Version(9, 0, 13),
+                                                       ChannelVersion = "9.0",
+                                                   });
+                dotNetReleaseMetadataService.GetChannelReleaseAsync("9.0", Arg.Any<CancellationToken>())
+                                            .Returns(ExternalOperationResult<DotNetChannelReleaseData>.Succeeded(new DotNetChannelReleaseData
+                                                                                                                 {
+                                                                                                                     ChannelVersion = "9.0",
+                                                                                                                     LatestRuntimeVersion = new Version(9, 0, 15),
+                                                                                                                     IsSecurityRelease = true,
+                                                                                                                 }));
+
+                var orchestrator = new ImageScanOrchestrator(new ApplicationTelemetry(),
+                                                             baseImageResolver,
+                                                             dbContext,
+                                                             derivedBaseRuntimeDetector,
+                                                             dotNetReleaseMetadataService,
+                                                             nginxReleaseMetadataService,
+                                                             imageCatalogRepository,
+                                                             imageReferenceParser,
+                                                             NullLogger<ImageScanOrchestrator>.Instance,
+                                                             registryMetadataService);
+
+                await orchestrator.ScanAsync(observedImage.Id,
+                                             ScanTriggerSource.Manual,
+                                             CancellationToken.None)
+                                  .ConfigureAwait(false);
+                await orchestrator.ScanAsync(observedImage.Id,
+                                             ScanTriggerSource.Manual,
+                                             CancellationToken.None)
+                                  .ConfigureAwait(false);
+
+                dbContext.ChangeTracker.Clear();
+
+                var findings = await dbContext.UpdateFindings.Where(entity => entity.Type == UpdateFindingType.DerivedBaseRuntimeUpdate)
+                                                             .ToListAsync(TestContext.CancellationToken)
+                                                             .ConfigureAwait(false);
+
+                Assert.HasCount(1,
+                                findings,
+                                "A transient configuration refresh failure must not duplicate or delete the derived base-runtime finding");
+                Assert.IsTrue(findings[0].IsActive,
+                              "A transient configuration refresh failure must keep the existing derived finding active instead of flickering it away");
+            }
+        }
+    }
+
+    /// <summary>
     /// Verify concurrent scans for the same observed image are serialized across orchestrator scopes
     /// </summary>
     /// <returns>Task</returns>
