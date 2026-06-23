@@ -40,6 +40,11 @@ public class PortainerOptions
     public string? EndpointId { get; set; }
 
     /// <summary>
+    /// Permits plaintext HTTP for the Portainer base URL; credentials are sent unencrypted — only enable on localhost or fully trusted private networks
+    /// </summary>
+    public bool AllowInsecureHttp { get; set; }
+
+    /// <summary>
     /// Request timeout in seconds
     /// </summary>
     [Range(1, 300)]

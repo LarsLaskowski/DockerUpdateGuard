@@ -222,6 +222,10 @@ public class DockerUpdateGuardOptionsValidator : IValidateOptions<DockerUpdateGu
                 {
                     failures.Add($"'{DockerUpdateGuardOptions.SectionName}:DockerInstances:{instance.Name}:Portainer:BaseUrl' must be an absolute http or https URI");
                 }
+                else if (portainerUri.Scheme == Uri.UriSchemeHttp && instance.Portainer.AllowInsecureHttp == false)
+                {
+                    failures.Add($"'{DockerUpdateGuardOptions.SectionName}:DockerInstances:{instance.Name}:Portainer:BaseUrl' uses plaintext HTTP; API keys, passwords and tokens will be transmitted unencrypted — set '{DockerUpdateGuardOptions.SectionName}:DockerInstances:{instance.Name}:Portainer:AllowInsecureHttp: true' to explicitly allow it");
+                }
 
                 var hasApiToken = string.IsNullOrWhiteSpace(instance.Portainer.ApiToken) == false;
                 var hasUsernamePassword = string.IsNullOrWhiteSpace(instance.Portainer.Username) == false
