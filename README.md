@@ -163,7 +163,8 @@ Portainer settings are optional and are only needed when Portainer-backed action
 | Key | Default | Required | Description |
 | --- | --- | --- | --- |
 | `Enabled` | `false` | No | Enables Portainer integration for the Docker instance |
-| `BaseUrl` | none | Required when enabled | Absolute `http` or `https` Portainer URL |
+| `BaseUrl` | none | Required when enabled | Absolute `https` Portainer URL (strongly recommended); see `AllowInsecureHttp` |
+| `AllowInsecureHttp` | `false` | No | Allow plaintext `http` for `BaseUrl`; credentials are transmitted unencrypted — only use on localhost or trusted private networks |
 | `Username` | none | Conditional | Username for Portainer login |
 | `Password` | none | Conditional | Password for Portainer login |
 | `ApiToken` | none | Conditional | Portainer API token; takes precedence over username/password |

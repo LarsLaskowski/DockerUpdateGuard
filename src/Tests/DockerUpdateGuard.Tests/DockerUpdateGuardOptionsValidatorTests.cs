@@ -279,6 +279,78 @@ public class DockerUpdateGuardOptionsValidatorTests
     }
 
     /// <summary>
+    /// Verify that a Portainer BaseUrl using http without AllowInsecureHttp fails validation
+    /// </summary>
+    [TestMethod]
+    public void DockerUpdateGuardOptionsValidatorPortainerHttpWithoutAllowInsecureHttpReturnsFailure()
+    {
+        var configuration = CreateConfiguration(new Dictionary<string, string?>
+                                                {
+                                                    ["ConnectionStrings:DockerUpdateGuard"] = "Host=database;Database=dug",
+                                                });
+        var validator = new DockerUpdateGuardOptionsValidator(configuration);
+        var options = CreateValidOptions();
+
+        options.DockerInstances = [
+                                      new DockerInstanceOptions
+                                      {
+                                          Name = "Production",
+                                          BaseUrl = "unix:///var/run/docker.sock",
+                                          RequestTimeoutSeconds = 15,
+                                          Portainer = new PortainerOptions
+                                                      {
+                                                          Enabled = true,
+                                                          BaseUrl = "http://portainer.local",
+                                                          ApiToken = "api-token",
+                                                          AllowInsecureHttp = false,
+                                                      }
+                                      },
+                                  ];
+
+        var validationResult = validator.Validate(Options.DefaultName, options);
+        var failures = validationResult.Failures?.ToArray() ?? [];
+
+        Assert.IsTrue(validationResult.Failed, "A Portainer BaseUrl with plaintext http and AllowInsecureHttp=false must fail validation");
+        Assert.Contains(message => message.Contains("AllowInsecureHttp", StringComparison.Ordinal),
+                        failures,
+                        "The plaintext HTTP failure must reference AllowInsecureHttp");
+    }
+
+    /// <summary>
+    /// Verify that a Portainer BaseUrl using http with AllowInsecureHttp set to true passes validation
+    /// </summary>
+    [TestMethod]
+    public void DockerUpdateGuardOptionsValidatorPortainerHttpWithAllowInsecureHttpReturnsSuccess()
+    {
+        var configuration = CreateConfiguration(new Dictionary<string, string?>
+                                                {
+                                                    ["ConnectionStrings:DockerUpdateGuard"] = "Host=database;Database=dug",
+                                                });
+        var validator = new DockerUpdateGuardOptionsValidator(configuration);
+        var options = CreateValidOptions();
+
+        options.DockerInstances = [
+                                      new DockerInstanceOptions
+                                      {
+                                          Name = "Production",
+                                          BaseUrl = "unix:///var/run/docker.sock",
+                                          RequestTimeoutSeconds = 15,
+                                          Portainer = new PortainerOptions
+                                                      {
+                                                          Enabled = true,
+                                                          BaseUrl = "http://portainer.local",
+                                                          ApiToken = "api-token",
+                                                          AllowInsecureHttp = true,
+                                                      }
+                                      },
+                                  ];
+
+        var validationResult = validator.Validate(Options.DefaultName, options);
+
+        Assert.IsFalse(validationResult.Failed, "A Portainer BaseUrl with plaintext http and AllowInsecureHttp=true must pass validation");
+    }
+
+    /// <summary>
     /// Create a valid options object for tests
     /// </summary>
     /// <returns>Configured options</returns>
