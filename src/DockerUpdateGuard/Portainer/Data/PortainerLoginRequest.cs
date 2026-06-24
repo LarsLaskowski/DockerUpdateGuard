@@ -8,4 +8,14 @@ namespace DockerUpdateGuard.Portainer.Data;
 /// <param name="Username">Username for Portainer login</param>
 /// <param name="Password">Password for Portainer login</param>
 internal sealed record PortainerLoginRequest([property: JsonPropertyName("username")] string Username,
-                                             [property: JsonPropertyName("password")] string Password);
+                                             [property: JsonPropertyName("password")] string Password)
+{
+    /// <summary>
+    /// Returns a string representation that omits the password to prevent credential leakage
+    /// </summary>
+    /// <returns>String representation without the password</returns>
+    public override string ToString()
+    {
+        return $"{nameof(PortainerLoginRequest)} {{ {nameof(Username)} = {Username} }}";
+    }
+}
