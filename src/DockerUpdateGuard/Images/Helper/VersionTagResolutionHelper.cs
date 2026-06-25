@@ -44,7 +44,7 @@ public static class VersionTagResolutionHelper
                                                                          "nightly",
                                                                          "canary",
                                                                          "milestone",
-                                                                         "ea",
+                                                                         "ea"
                                                                      };
 
     #endregion // Const fields
