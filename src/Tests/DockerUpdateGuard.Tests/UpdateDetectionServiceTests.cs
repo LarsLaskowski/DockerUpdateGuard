@@ -149,6 +149,49 @@ public class UpdateDetectionServiceTests
     }
 
     /// <summary>
+    /// Verify a pre-release current tag prefers the general-availability release over a later-published pre-release
+    /// </summary>
+    [TestMethod]
+    public void UpdateDetectionServicePreReleaseCurrentTagPrefersReleaseOverLaterPreRelease()
+    {
+        var service = new UpdateDetectionService();
+
+        var evaluation = service.Evaluate(new ImageReference
+                                          {
+                                              Registry = "docker.io",
+                                              Repository = "library/nginx",
+                                              Tag = "1.2.3-rc1",
+                                          },
+                                          [
+                                              new DockerHubTagData
+                                              {
+                                                  Tag = "1.2.3-rc5",
+                                                  Digest = "sha256:rc5",
+                                                  PublishedAtUtc = new DateTimeOffset(2025, 06, 10, 12, 00, 00, TimeSpan.Zero),
+                                              },
+                                              new DockerHubTagData
+                                              {
+                                                  Tag = "1.2.3",
+                                                  Digest = "sha256:ga",
+                                                  PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
+                                              },
+                                          ]);
+
+        Assert.AreEqual(UpdateEvaluationStatus.UpdateAvailable,
+                        evaluation.Status,
+                        "A pre-release current tag must report the general-availability release as an available update");
+        Assert.AreEqual("1.2.3",
+                        evaluation.RecommendedTag,
+                        "The general-availability release must outrank a later-published pre-release of the same version");
+        Assert.AreEqual("sha256:ga",
+                        evaluation.RecommendedDigest,
+                        "The recommended digest must come from the general-availability release");
+        Assert.AreEqual("1.2.3",
+                        evaluation.Candidates[0].Tag,
+                        "Candidates must be ordered by version-tag precedence, not publication date");
+    }
+
+    /// <summary>
     /// Verify year-based CU tags only advance within the current year line
     /// </summary>
     [TestMethod]

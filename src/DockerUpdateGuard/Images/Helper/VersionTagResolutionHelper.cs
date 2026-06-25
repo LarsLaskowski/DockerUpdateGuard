@@ -154,12 +154,14 @@ public static class VersionTagResolutionHelper
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(value);
 
-        if (TryParseVersionTagComponents(value, out _, out _) == false)
+        var match = _numericVersionTagExpression.Match(value.Trim());
+
+        if (match.Success == false)
         {
             return false;
         }
 
-        ParseSuffixOrdering(GetVersionTagSuffix(value),
+        ParseSuffixOrdering(match.Groups["suffix"].Value,
                             out _,
                             out var hasPreRelease,
                             out _);
@@ -516,6 +518,9 @@ public static class VersionTagResolutionHelper
 
     /// <summary>
     /// Determine whether a suffix segment is a known pre-release identifier
+    /// Only segments whose leading letters exactly match a known identifier
+    /// (such as 'rc' or 'beta') count as pre-releases; any other leading word
+    /// (for example 'alpine' or 'previewfoo') is treated as a build variant
     /// </summary>
     /// <param name="segment">Raw variant segment</param>
     /// <returns>True when the segment denotes a pre-release</returns>
