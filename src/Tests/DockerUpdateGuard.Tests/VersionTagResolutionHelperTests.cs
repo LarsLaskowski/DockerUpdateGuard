@@ -90,5 +90,82 @@ public class VersionTagResolutionHelperTests
                         "Alias resolution must keep MCR tags within the same variant family when multiple digest-matching exact tags exist");
     }
 
+    /// <summary>
+    /// Verify pre-release increments order numerically instead of comparing equal
+    /// </summary>
+    [TestMethod]
+    public void VersionTagResolutionHelperTryCompareVersionTagsOrdersPreReleaseIncrements()
+    {
+        var firstComparison = VersionTagResolutionHelper.TryCompareVersionTags("1.2.3-rc1", "1.2.3-rc2", out var rc1ToRc2);
+        var secondComparison = VersionTagResolutionHelper.TryCompareVersionTags("1.2.3-rc2", "1.2.3-rc10", out var rc2ToRc10);
+
+        Assert.IsTrue(firstComparison, "Pre-release tags of the same version must be comparable");
+        Assert.IsLessThan(0, rc1ToRc2, "'1.2.3-rc1' must order below '1.2.3-rc2'");
+        Assert.IsTrue(secondComparison, "Pre-release tags of the same version must be comparable");
+        Assert.IsLessThan(0, rc2ToRc10, "'1.2.3-rc2' must order below '1.2.3-rc10' using numeric ordering");
+    }
+
+    /// <summary>
+    /// Verify the general-availability release ranks above its pre-releases
+    /// </summary>
+    [TestMethod]
+    public void VersionTagResolutionHelperTryCompareVersionTagsRanksReleaseAbovePreRelease()
+    {
+        var comparable = VersionTagResolutionHelper.TryCompareVersionTags("1.2.3", "1.2.3-rc1", out var comparison);
+
+        Assert.IsTrue(comparable, "A pre-release and its general-availability release must be comparable");
+        Assert.IsGreaterThan(0, comparison, "'1.2.3' must order above '1.2.3-rc1'");
+    }
+
+    /// <summary>
+    /// Verify a pre-release tag is offered an update to its general-availability release
+    /// </summary>
+    [TestMethod]
+    public void VersionTagResolutionHelperIsMatchingVersionLineTagMatchesPreReleaseWithRelease()
+    {
+        var isMatching = VersionTagResolutionHelper.IsMatchingVersionLineTag("1.2.3-rc1", "1.2.3");
+
+        Assert.IsTrue(isMatching,
+                      "A pre-release tag and its general-availability release must belong to the same version line");
+    }
+
+    /// <summary>
+    /// Verify variant sub-versions of the same family order by their numeric base
+    /// </summary>
+    [TestMethod]
+    public void VersionTagResolutionHelperTryCompareVersionTagsOrdersVariantSubVersions()
+    {
+        var comparable = VersionTagResolutionHelper.TryCompareVersionTags("1.2.3-alpine3.19", "1.2.3-alpine3.18", out var comparison);
+
+        Assert.IsTrue(comparable, "Tags of the same variant family must be comparable");
+        Assert.IsGreaterThan(0, comparison, "'1.2.3-alpine3.19' must order above '1.2.3-alpine3.18'");
+    }
+
+    /// <summary>
+    /// Verify pre-release detection distinguishes pre-releases, releases and build variants
+    /// </summary>
+    [TestMethod]
+    public void VersionTagResolutionHelperIsPreReleaseVersionTagDetectsPreReleaseTags()
+    {
+        Assert.IsTrue(VersionTagResolutionHelper.IsPreReleaseVersionTag("1.2.3-rc1"),
+                      "'1.2.3-rc1' must be detected as a pre-release tag");
+        Assert.IsFalse(VersionTagResolutionHelper.IsPreReleaseVersionTag("1.2.3"),
+                       "'1.2.3' must not be detected as a pre-release tag");
+        Assert.IsFalse(VersionTagResolutionHelper.IsPreReleaseVersionTag("1.2.3-alpine3.19"),
+                       "A build variant such as '1.2.3-alpine3.19' must not be detected as a pre-release tag");
+    }
+
+    /// <summary>
+    /// Verify a build variant is kept separate from the plain release family
+    /// </summary>
+    [TestMethod]
+    public void VersionTagResolutionHelperTryCompareVersionTagsRejectsCrossVariantComparison()
+    {
+        var comparable = VersionTagResolutionHelper.TryCompareVersionTags("1.2.3-alpine", "1.2.3", out _);
+
+        Assert.IsFalse(comparable,
+                       "A build variant and a plain release must not be treated as the same variant family");
+    }
+
     #endregion // Methods
 }

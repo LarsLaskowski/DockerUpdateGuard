@@ -190,13 +190,18 @@ public class UpdateDetectionService : IUpdateDetectionService
                                                                                             Version currentVersion,
                                                                                             DateTimeOffset? currentPublishedAtUtc)
     {
+        var currentIsPreRelease = VersionTagResolutionHelper.IsPreReleaseVersionTag(currentTag);
+
         return orderedTags.Where(tag => VersionTagResolutionHelper.TryCompareVersionTags(tag.Tag,
                                                                                          currentTag,
                                                                                          out var comparison)
                                         && comparison > 0
+                                        && (currentIsPreRelease
+                                            || VersionTagResolutionHelper.IsPreReleaseVersionTag(tag.Tag) == false)
                                         && IsCandidatePublishedAfterBaseline(tag.PublishedAtUtc, currentPublishedAtUtc))
                           .Select(tag => (Tag: tag, Version: ParseVersion(tag.Tag)))
-                          .OrderByDescending(entity => entity.Version)
+                          .OrderByDescending(entity => entity.Tag.Tag, Comparer<string>.Create((left, right) => VersionTagResolutionHelper.TryCompareVersionTags(left, right, out var comparison) ? comparison : 0))
+                          .ThenByDescending(entity => entity.Tag.PublishedAtUtc)
                           .ToList();
     }
 
