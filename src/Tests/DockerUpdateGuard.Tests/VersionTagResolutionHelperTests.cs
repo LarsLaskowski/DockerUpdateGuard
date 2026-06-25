@@ -100,9 +100,9 @@ public class VersionTagResolutionHelperTests
         var secondComparison = VersionTagResolutionHelper.TryCompareVersionTags("1.2.3-rc2", "1.2.3-rc10", out var rc2ToRc10);
 
         Assert.IsTrue(firstComparison, "Pre-release tags of the same version must be comparable");
-        Assert.IsTrue(rc1ToRc2 < 0, "'1.2.3-rc1' must order below '1.2.3-rc2'");
+        Assert.IsLessThan(0, rc1ToRc2, "'1.2.3-rc1' must order below '1.2.3-rc2'");
         Assert.IsTrue(secondComparison, "Pre-release tags of the same version must be comparable");
-        Assert.IsTrue(rc2ToRc10 < 0, "'1.2.3-rc2' must order below '1.2.3-rc10' using numeric ordering");
+        Assert.IsLessThan(0, rc2ToRc10, "'1.2.3-rc2' must order below '1.2.3-rc10' using numeric ordering");
     }
 
     /// <summary>
@@ -114,7 +114,7 @@ public class VersionTagResolutionHelperTests
         var comparable = VersionTagResolutionHelper.TryCompareVersionTags("1.2.3", "1.2.3-rc1", out var comparison);
 
         Assert.IsTrue(comparable, "A pre-release and its general-availability release must be comparable");
-        Assert.IsTrue(comparison > 0, "'1.2.3' must order above '1.2.3-rc1'");
+        Assert.IsGreaterThan(0, comparison, "'1.2.3' must order above '1.2.3-rc1'");
     }
 
     /// <summary>
@@ -138,7 +138,7 @@ public class VersionTagResolutionHelperTests
         var comparable = VersionTagResolutionHelper.TryCompareVersionTags("1.2.3-alpine3.19", "1.2.3-alpine3.18", out var comparison);
 
         Assert.IsTrue(comparable, "Tags of the same variant family must be comparable");
-        Assert.IsTrue(comparison > 0, "'1.2.3-alpine3.19' must order above '1.2.3-alpine3.18'");
+        Assert.IsGreaterThan(0, comparison, "'1.2.3-alpine3.19' must order above '1.2.3-alpine3.18'");
     }
 
     /// <summary>

@@ -481,7 +481,6 @@ public static class VersionTagResolutionHelper
     /// <param name="variantOrdering">Ordering-relevant variant segments</param>
     /// <param name="hasPreRelease">Whether the suffix contains a pre-release segment</param>
     /// <param name="preReleaseOrdering">Ordering-relevant pre-release segments</param>
-    /// <returns>Nothing</returns>
     private static void ParseSuffixOrdering(string? suffix,
                                             out string variantOrdering,
                                             out bool hasPreRelease,
