@@ -12,6 +12,11 @@ public static class VersionTagResolutionHelper
     #region Const fields
 
     /// <summary>
+    /// Regular-expression group name for the variant suffix
+    /// </summary>
+    private const string SuffixGroupName = "suffix";
+
+    /// <summary>
     /// Strict numeric version-tag pattern
     /// </summary>
     private static readonly Regex _numericVersionTagExpression = new("^[vV]?(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)(?<suffix>-.+)?$",
@@ -161,7 +166,7 @@ public static class VersionTagResolutionHelper
             return false;
         }
 
-        ParseSuffixOrdering(match.Groups["suffix"].Value,
+        ParseSuffixOrdering(match.Groups[SuffixGroupName].Value,
                             out _,
                             out var hasPreRelease,
                             out _);
@@ -311,7 +316,7 @@ public static class VersionTagResolutionHelper
         }
 
         year = int.Parse(match.Groups["year"].Value);
-        suffix = match.Groups["suffix"].Value;
+        suffix = match.Groups[SuffixGroupName].Value;
 
         return true;
     }
@@ -368,7 +373,7 @@ public static class VersionTagResolutionHelper
 
         major = int.Parse(match.Groups["major"].Value);
         minor = int.Parse(match.Groups["minor"].Value);
-        variantFamilyKey = NormalizeVariantFamilyKey(match.Groups["suffix"].Value);
+        variantFamilyKey = NormalizeVariantFamilyKey(match.Groups[SuffixGroupName].Value);
 
         return true;
     }
@@ -399,7 +404,7 @@ public static class VersionTagResolutionHelper
         version = new Version(int.Parse(match.Groups["major"].Value),
                               int.Parse(match.Groups["minor"].Value),
                               int.Parse(match.Groups["patch"].Value));
-        variantFamilyKey = NormalizeVariantFamilyKey(match.Groups["suffix"].Value);
+        variantFamilyKey = NormalizeVariantFamilyKey(match.Groups[SuffixGroupName].Value);
 
         return true;
     }
@@ -560,7 +565,7 @@ public static class VersionTagResolutionHelper
         var match = _numericVersionTagExpression.Match(value.Trim());
 
         return match.Success
-                   ? match.Groups["suffix"].Value
+                   ? match.Groups[SuffixGroupName].Value
                    : string.Empty;
     }
 
