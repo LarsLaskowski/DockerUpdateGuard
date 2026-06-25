@@ -29,6 +29,24 @@ public static class VersionTagResolutionHelper
     private static readonly Regex _yearPrefixedTagExpression = new("^(?<year>\\d{4})-(?<suffix>.+)$",
                                                                    RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
 
+    /// <summary>
+    /// Known pre-release identifiers that order below their general-availability release
+    /// </summary>
+    private static readonly HashSet<string> _preReleaseIdentifiers = new(StringComparer.OrdinalIgnoreCase)
+                                                                     {
+                                                                         "alpha",
+                                                                         "beta",
+                                                                         "rc",
+                                                                         "pre",
+                                                                         "preview",
+                                                                         "dev",
+                                                                         "snapshot",
+                                                                         "nightly",
+                                                                         "canary",
+                                                                         "milestone",
+                                                                         "ea",
+                                                                     };
+
     #endregion // Const fields
 
     #region Methods
@@ -128,6 +146,28 @@ public static class VersionTagResolutionHelper
     }
 
     /// <summary>
+    /// Determine whether a concrete version tag carries a pre-release identifier
+    /// </summary>
+    /// <param name="value">Candidate tag value</param>
+    /// <returns>True when the tag is a recognized pre-release version tag</returns>
+    public static bool IsPreReleaseVersionTag(string value)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(value);
+
+        if (TryParseVersionTagComponents(value, out _, out _) == false)
+        {
+            return false;
+        }
+
+        ParseSuffixOrdering(GetVersionTagSuffix(value),
+                            out _,
+                            out var hasPreRelease,
+                            out _);
+
+        return hasPreRelease;
+    }
+
+    /// <summary>
     /// Determine whether a concrete version tag belongs to the same version line
     /// </summary>
     /// <param name="tag">Current exact or channel tag</param>
@@ -181,6 +221,13 @@ public static class VersionTagResolutionHelper
         }
 
         comparison = leftVersion.CompareTo(rightVersion);
+
+        if (comparison != 0)
+        {
+            return true;
+        }
+
+        comparison = CompareVariantSuffixes(GetVersionTagSuffix(left), GetVersionTagSuffix(right));
 
         return true;
     }
@@ -376,6 +423,7 @@ public static class VersionTagResolutionHelper
 
         return string.Join('-',
                            trimmedSuffix.Split('-', StringSplitOptions.RemoveEmptyEntries)
+                                        .Where(segment => IsPreReleaseSegment(segment) == false)
                                         .Select(NormalizeVariantSegment)
                                         .Where(entity => string.IsNullOrWhiteSpace(entity) == false));
     }
@@ -387,6 +435,106 @@ public static class VersionTagResolutionHelper
     /// <returns>Normalized segment</returns>
     private static string NormalizeVariantSegment(string segment)
     {
+        var leadingLetters = GetLeadingLetters(segment);
+
+        return string.IsNullOrEmpty(leadingLetters)
+                   ? segment.Trim().ToLowerInvariant()
+                   : leadingLetters;
+    }
+
+    /// <summary>
+    /// Compare the ordering-relevant parts of two variant suffixes
+    /// </summary>
+    /// <param name="leftSuffix">Left raw suffix</param>
+    /// <param name="rightSuffix">Right raw suffix</param>
+    /// <returns>Comparison result</returns>
+    private static int CompareVariantSuffixes(string leftSuffix, string rightSuffix)
+    {
+        ParseSuffixOrdering(leftSuffix,
+                            out var leftVariantOrdering,
+                            out var leftHasPreRelease,
+                            out var leftPreReleaseOrdering);
+        ParseSuffixOrdering(rightSuffix,
+                            out var rightVariantOrdering,
+                            out var rightHasPreRelease,
+                            out var rightPreReleaseOrdering);
+
+        var variantComparison = CompareNaturalSortStrings(leftVariantOrdering, rightVariantOrdering);
+
+        if (variantComparison != 0)
+        {
+            return variantComparison;
+        }
+
+        if (leftHasPreRelease != rightHasPreRelease)
+        {
+            return leftHasPreRelease ? -1 : 1;
+        }
+
+        return CompareNaturalSortStrings(leftPreReleaseOrdering, rightPreReleaseOrdering);
+    }
+
+    /// <summary>
+    /// Split a variant suffix into its variant-ordering and pre-release-ordering parts
+    /// </summary>
+    /// <param name="suffix">Raw variant suffix</param>
+    /// <param name="variantOrdering">Ordering-relevant variant segments</param>
+    /// <param name="hasPreRelease">Whether the suffix contains a pre-release segment</param>
+    /// <param name="preReleaseOrdering">Ordering-relevant pre-release segments</param>
+    /// <returns>Nothing</returns>
+    private static void ParseSuffixOrdering(string? suffix,
+                                            out string variantOrdering,
+                                            out bool hasPreRelease,
+                                            out string preReleaseOrdering)
+    {
+        variantOrdering = string.Empty;
+        hasPreRelease = false;
+        preReleaseOrdering = string.Empty;
+
+        if (string.IsNullOrWhiteSpace(suffix))
+        {
+            return;
+        }
+
+        var trimmedSuffix = suffix.Trim().TrimStart('-');
+
+        if (string.IsNullOrWhiteSpace(trimmedSuffix))
+        {
+            return;
+        }
+
+        var segments = trimmedSuffix.Split('-', StringSplitOptions.RemoveEmptyEntries);
+        var variantSegments = segments.Where(segment => IsPreReleaseSegment(segment) == false)
+                                      .Select(segment => segment.Trim().ToLowerInvariant());
+        var preReleaseSegments = segments.Where(IsPreReleaseSegment)
+                                         .Select(segment => segment.Trim().ToLowerInvariant())
+                                         .ToList();
+
+        variantOrdering = string.Join('-', variantSegments);
+        hasPreRelease = preReleaseSegments.Count > 0;
+        preReleaseOrdering = string.Join('-', preReleaseSegments);
+    }
+
+    /// <summary>
+    /// Determine whether a suffix segment is a known pre-release identifier
+    /// </summary>
+    /// <param name="segment">Raw variant segment</param>
+    /// <returns>True when the segment denotes a pre-release</returns>
+    private static bool IsPreReleaseSegment(string segment)
+    {
+        var leadingLetters = GetLeadingLetters(segment);
+
+        return string.IsNullOrEmpty(leadingLetters) == false
+               && _preReleaseIdentifiers.Contains(leadingLetters);
+    }
+
+    /// <summary>
+    /// Extract the leading lower-cased letters of a suffix segment
+    /// </summary>
+    /// <param name="segment">Raw variant segment</param>
+    /// <returns>Leading letters of the segment</returns>
+    private static string GetLeadingLetters(string segment)
+    {
         var trimmedSegment = segment.Trim().ToLowerInvariant();
         var letterCount = 0;
 
@@ -395,9 +543,21 @@ public static class VersionTagResolutionHelper
             letterCount++;
         }
 
-        return letterCount == 0
-                   ? trimmedSegment
-                   : trimmedSegment[..letterCount];
+        return trimmedSegment[..letterCount];
+    }
+
+    /// <summary>
+    /// Extract the raw variant suffix of a concrete version tag
+    /// </summary>
+    /// <param name="value">Candidate tag value</param>
+    /// <returns>Raw suffix including its leading dash or an empty string</returns>
+    private static string GetVersionTagSuffix(string value)
+    {
+        var match = _numericVersionTagExpression.Match(value.Trim());
+
+        return match.Success
+                   ? match.Groups["suffix"].Value
+                   : string.Empty;
     }
 
     /// <summary>
