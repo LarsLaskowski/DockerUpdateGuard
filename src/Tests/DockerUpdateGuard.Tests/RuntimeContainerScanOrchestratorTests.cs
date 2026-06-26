@@ -1654,5 +1654,65 @@ public class RuntimeContainerScanOrchestratorTests
         }
     }
 
+    /// <summary>
+    /// Verify a failing Docker instance scan does not abort the remaining batch items
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task RuntimeContainerScanOrchestratorScanAllAsyncContinuesAfterInstanceScanFailureAsync()
+    {
+        using (var database = new SqliteTestDatabase())
+        {
+            var discoveryContext = database.CreateDbContext();
+
+            await using (discoveryContext.ConfigureAwait(false))
+            {
+                var failingContext = database.CreateSaveChangesFailingDbContext();
+
+                await using (failingContext.ConfigureAwait(false))
+                {
+                    var options = new DockerUpdateGuardOptions
+                                  {
+                                      DockerInstances = [
+                                                            new DockerInstanceOptions
+                                                            {
+                                                                Name = "Production",
+                                                                BaseUrl = "https://docker.example.test",
+                                                                Enabled = true,
+                                                                RequestTimeoutSeconds = 15,
+                                                            },
+                                                        ],
+                                  };
+                    var optionsMonitor = new TestOptionsMonitor<DockerUpdateGuardOptions>(options);
+                    var logger = new TestLogger<RuntimeContainerScanOrchestrator>();
+                    var instanceDiscoveryService = new InstanceDiscoveryService(discoveryContext,
+                                                                                new TestLogger<InstanceDiscoveryService>(),
+                                                                                optionsMonitor);
+                    var orchestrator = new RuntimeContainerScanOrchestrator(new ApplicationTelemetry(),
+                                                                            failingContext,
+                                                                            Substitute.For<IDockerInstanceClient>(),
+                                                                            Substitute.For<IDerivedBaseRuntimeDetector>(),
+                                                                            Substitute.For<IDotNetReleaseMetadataService>(),
+                                                                            Substitute.For<INginxReleaseMetadataService>(),
+                                                                            new ImageCatalogRepository(failingContext),
+                                                                            new ImageReferenceParser(),
+                                                                            instanceDiscoveryService,
+                                                                            logger,
+                                                                            optionsMonitor,
+                                                                            Substitute.For<IRegistryMetadataService>(),
+                                                                            new UpdateDetectionService());
+
+                    failingContext.FailOnSaveChanges = true;
+
+                    await orchestrator.ScanAllAsync(ScanTriggerSource.Scheduled, CancellationToken.None)
+                                      .ConfigureAwait(false);
+
+                    Assert.Contains(entry => entry.EventId.Id == 2042, logger.Entries, "A failing Docker instance scan must be logged so later instances are still attempted");
+                    Assert.Contains(entry => entry.EventId.Id == 2072, logger.Entries, "The batch must complete even when individual Docker instance scans fail");
+                }
+            }
+        }
+    }
+
     #endregion // Methods
 }
