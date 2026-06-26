@@ -668,6 +668,64 @@ public class ImageScanOrchestratorTests
     }
 
     /// <summary>
+    /// Verify cancellation during an observed image scan aborts the batch instead of being swallowed
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task ImageScanOrchestratorScanAllAsyncRethrowsCancellationFromItemScanAsync()
+    {
+        using (var database = new SqliteTestDatabase())
+        {
+            var seedContext = database.CreateDbContext();
+
+            await using (seedContext.ConfigureAwait(false))
+            {
+                var imageVersion = await new ImageCatalogRepository(seedContext).GetOrCreateImageVersionAsync("docker.io",
+                                                                                                              "company/app",
+                                                                                                              "1.0.0",
+                                                                                                              "sha256:app",
+                                                                                                              cancellationToken: CancellationToken.None)
+                                                                                .ConfigureAwait(false);
+
+                seedContext.ObservedImages.Add(new ObservedImage
+                                               {
+                                                   Name = "App",
+                                                   CurrentImageVersionId = imageVersion.Id,
+                                               });
+
+                await seedContext.SaveChangesAsync(TestContext.CancellationToken)
+                                 .ConfigureAwait(false);
+
+                var failingContext = database.CreateSaveChangesFailingDbContext();
+
+                await using (failingContext.ConfigureAwait(false))
+                {
+                    var logger = new TestLogger<ImageScanOrchestrator>();
+                    var orchestrator = new ImageScanOrchestrator(new ApplicationTelemetry(),
+                                                                 Substitute.For<IBaseImageResolver>(),
+                                                                 failingContext,
+                                                                 Substitute.For<IDerivedBaseRuntimeDetector>(),
+                                                                 Substitute.For<IDotNetReleaseMetadataService>(),
+                                                                 Substitute.For<INginxReleaseMetadataService>(),
+                                                                 new ImageCatalogRepository(failingContext),
+                                                                 new ImageReferenceParser(),
+                                                                 logger,
+                                                                 Substitute.For<IRegistryMetadataService>());
+
+                    failingContext.SaveChangesException = new OperationCanceledException();
+                    failingContext.FailOnSaveChanges = true;
+
+                    await Assert.ThrowsExactlyAsync<OperationCanceledException>(() => orchestrator.ScanAllAsync(ScanTriggerSource.Scheduled, CancellationToken.None),
+                                                                               "Cancellation during an observed image scan must abort the batch instead of being swallowed")
+                                .ConfigureAwait(false);
+
+                    Assert.DoesNotContain(entry => entry.EventId.Id == 2033, logger.Entries, "A cancelled observed image scan must not be reported as an item failure");
+                }
+            }
+        }
+    }
+
+    /// <summary>
     /// Verify observed image scans create derived .NET runtime findings from registry configuration metadata
     /// </summary>
     /// <returns>Task</returns>

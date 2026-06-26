@@ -29,6 +29,11 @@ internal sealed class SaveChangesFailingDbContext : DockerUpdateGuardDbContext
     /// </summary>
     public bool FailOnSaveChanges { get; set; }
 
+    /// <summary>
+    /// Exception thrown when persistence is forced to fail
+    /// </summary>
+    public Exception? SaveChangesException { get; set; }
+
     #endregion // Properties
 
     #region Methods
@@ -38,7 +43,7 @@ internal sealed class SaveChangesFailingDbContext : DockerUpdateGuardDbContext
     {
         if (FailOnSaveChanges)
         {
-            throw new InvalidOperationException("Simulated persistence failure");
+            throw SaveChangesException ?? new InvalidOperationException("Simulated persistence failure");
         }
 
         return base.SaveChangesAsync(cancellationToken);

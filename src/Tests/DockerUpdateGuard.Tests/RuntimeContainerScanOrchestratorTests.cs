@@ -1714,5 +1714,66 @@ public class RuntimeContainerScanOrchestratorTests
         }
     }
 
+    /// <summary>
+    /// Verify cancellation during a Docker instance scan aborts the batch instead of being swallowed
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task RuntimeContainerScanOrchestratorScanAllAsyncRethrowsCancellationFromInstanceScanAsync()
+    {
+        using (var database = new SqliteTestDatabase())
+        {
+            var discoveryContext = database.CreateDbContext();
+
+            await using (discoveryContext.ConfigureAwait(false))
+            {
+                var failingContext = database.CreateSaveChangesFailingDbContext();
+
+                await using (failingContext.ConfigureAwait(false))
+                {
+                    var options = new DockerUpdateGuardOptions
+                                  {
+                                      DockerInstances = [
+                                                            new DockerInstanceOptions
+                                                            {
+                                                                Name = "Production",
+                                                                BaseUrl = "https://docker.example.test",
+                                                                Enabled = true,
+                                                                RequestTimeoutSeconds = 15,
+                                                            },
+                                                        ],
+                                  };
+                    var optionsMonitor = new TestOptionsMonitor<DockerUpdateGuardOptions>(options);
+                    var logger = new TestLogger<RuntimeContainerScanOrchestrator>();
+                    var instanceDiscoveryService = new InstanceDiscoveryService(discoveryContext,
+                                                                                new TestLogger<InstanceDiscoveryService>(),
+                                                                                optionsMonitor);
+                    var orchestrator = new RuntimeContainerScanOrchestrator(new ApplicationTelemetry(),
+                                                                            failingContext,
+                                                                            Substitute.For<IDockerInstanceClient>(),
+                                                                            Substitute.For<IDerivedBaseRuntimeDetector>(),
+                                                                            Substitute.For<IDotNetReleaseMetadataService>(),
+                                                                            Substitute.For<INginxReleaseMetadataService>(),
+                                                                            new ImageCatalogRepository(failingContext),
+                                                                            new ImageReferenceParser(),
+                                                                            instanceDiscoveryService,
+                                                                            logger,
+                                                                            optionsMonitor,
+                                                                            Substitute.For<IRegistryMetadataService>(),
+                                                                            new UpdateDetectionService());
+
+                    failingContext.SaveChangesException = new OperationCanceledException();
+                    failingContext.FailOnSaveChanges = true;
+
+                    await Assert.ThrowsExactlyAsync<OperationCanceledException>(() => orchestrator.ScanAllAsync(ScanTriggerSource.Scheduled, CancellationToken.None),
+                                                                               "Cancellation during a Docker instance scan must abort the batch instead of being swallowed")
+                                .ConfigureAwait(false);
+
+                    Assert.DoesNotContain(entry => entry.EventId.Id == 2042, logger.Entries, "A cancelled Docker instance scan must not be reported as an item failure");
+                }
+            }
+        }
+    }
+
     #endregion // Methods
 }
