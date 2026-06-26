@@ -561,6 +561,42 @@ public class ImageScanOrchestratorTests
     }
 
     /// <summary>
+    /// Verify a scan for an observed image removed after listing is skipped without throwing
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task ImageScanOrchestratorScanAsyncWithMissingObservedImageSkipsWithoutThrowingAsync()
+    {
+        using (var database = new SqliteTestDatabase())
+        {
+            var dbContext = database.CreateDbContext();
+
+            await using (dbContext.ConfigureAwait(false))
+            {
+                var logger = new TestLogger<ImageScanOrchestrator>();
+                var orchestrator = new ImageScanOrchestrator(new ApplicationTelemetry(),
+                                                             Substitute.For<IBaseImageResolver>(),
+                                                             dbContext,
+                                                             Substitute.For<IDerivedBaseRuntimeDetector>(),
+                                                             Substitute.For<IDotNetReleaseMetadataService>(),
+                                                             Substitute.For<INginxReleaseMetadataService>(),
+                                                             new ImageCatalogRepository(dbContext),
+                                                             new ImageReferenceParser(),
+                                                             logger,
+                                                             Substitute.For<IRegistryMetadataService>());
+
+                await orchestrator.ScanAsync(Guid.NewGuid(), ScanTriggerSource.Scheduled, CancellationToken.None)
+                                  .ConfigureAwait(false);
+
+                var scanRunCount = await dbContext.ScanRuns.CountAsync(TestContext.CancellationToken).ConfigureAwait(false);
+
+                Assert.Contains(entry => entry.EventId.Id == 2032, logger.Entries, "A scan for an observed image removed after listing must log that it was skipped");
+                Assert.AreEqual(0, scanRunCount, "A scan for a missing observed image must not persist a scan run");
+            }
+        }
+    }
+
+    /// <summary>
     /// Verify observed image scans create derived .NET runtime findings from registry configuration metadata
     /// </summary>
     /// <returns>Task</returns>
