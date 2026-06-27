@@ -3,6 +3,7 @@ using System.Reflection;
 using DockerUpdateGuard.DockerHub;
 using DockerUpdateGuard.Images;
 using DockerUpdateGuard.Images.Interfaces;
+using DockerUpdateGuard.Infrastructure;
 
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -51,6 +52,7 @@ public class ServiceCollectionExtensionsTests
         var loggerFactory = serviceProvider.GetRequiredService<ILoggerFactory>();
         var loggerProviders = serviceProvider.GetServices<ILoggerProvider>().ToArray();
 
+        Assert.IsNotNull(serviceProvider.GetService<TransientHttpRetryHandler>(), "The transient HTTP retry handler must be registered for outbound HTTP clients");
         Assert.IsNotNull(serviceProvider.GetService<IImageScanOrchestrator>(), "The observed image scan orchestrator must be registered");
         Assert.IsNotNull(serviceProvider.GetService<IRuntimeContainerScanOrchestrator>(), "The runtime container scan orchestrator must be registered");
         Assert.IsNotNull(serviceProvider.GetService<IVulnerabilityEnrichmentService>(), "The vulnerability enrichment service must be registered");
