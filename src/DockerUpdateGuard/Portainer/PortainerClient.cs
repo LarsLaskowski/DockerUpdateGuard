@@ -13,6 +13,11 @@ public partial class PortainerClient : IPortainerClient
     #region Constants
 
     /// <summary>
+    /// Named HTTP client used for Portainer API requests
+    /// </summary>
+    public const string HttpClientName = "Portainer";
+
+    /// <summary>
     /// Supported container actions
     /// </summary>
     private static readonly HashSet<string> _allowedContainerActions = new(StringComparer.OrdinalIgnoreCase)
@@ -297,7 +302,7 @@ public partial class PortainerClient : IPortainerClient
     /// <returns>Authenticated HTTP client</returns>
     private async Task<HttpClient> CreateAuthenticatedClientAsync(PortainerOptions options, CancellationToken cancellationToken)
     {
-        var client = _httpClientFactory.CreateClient();
+        var client = _httpClientFactory.CreateClient(HttpClientName);
 
         try
         {
