@@ -465,10 +465,21 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
                 continue;
             }
 
-            await ScanInstanceAsync(dockerInstance,
-                                    configuredInstance,
-                                    triggerSource,
-                                    cancellationToken).ConfigureAwait(false);
+            try
+            {
+                await ScanInstanceAsync(dockerInstance,
+                                        configuredInstance,
+                                        triggerSource,
+                                        cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception exception)
+            {
+                _logger.RuntimeContainerScanBatchItemFailed(exception, dockerInstance.Name);
+            }
         }
 
         _logger.RuntimeContainerScanBatchCompleted(triggerSource,

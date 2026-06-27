@@ -48,6 +48,22 @@ internal sealed class SqliteTestDatabase : IDisposable
     }
 
     /// <summary>
+    /// Create a database context that can be forced to fail when persisting changes
+    /// </summary>
+    /// <returns>Fault-injecting database context sharing the same database</returns>
+    public SaveChangesFailingDbContext CreateSaveChangesFailingDbContext()
+    {
+        var options = new DbContextOptionsBuilder<DockerUpdateGuardDbContext>().UseSqlite(_connection)
+                                                                               .EnableSensitiveDataLogging()
+                                                                               .Options;
+        var dbContext = new SaveChangesFailingDbContext(options);
+
+        dbContext.Database.EnsureCreated();
+
+        return dbContext;
+    }
+
+    /// <summary>
     /// Release resources
     /// </summary>
     public void Dispose()

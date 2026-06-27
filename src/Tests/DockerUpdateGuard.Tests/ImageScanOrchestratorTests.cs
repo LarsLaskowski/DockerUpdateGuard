@@ -561,6 +561,171 @@ public class ImageScanOrchestratorTests
     }
 
     /// <summary>
+    /// Verify a scan for an observed image removed after listing is skipped without throwing
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task ImageScanOrchestratorScanAsyncWithMissingObservedImageSkipsWithoutThrowingAsync()
+    {
+        using (var database = new SqliteTestDatabase())
+        {
+            var dbContext = database.CreateDbContext();
+
+            await using (dbContext.ConfigureAwait(false))
+            {
+                var logger = new TestLogger<ImageScanOrchestrator>();
+                var orchestrator = new ImageScanOrchestrator(new ApplicationTelemetry(),
+                                                             Substitute.For<IBaseImageResolver>(),
+                                                             dbContext,
+                                                             Substitute.For<IDerivedBaseRuntimeDetector>(),
+                                                             Substitute.For<IDotNetReleaseMetadataService>(),
+                                                             Substitute.For<INginxReleaseMetadataService>(),
+                                                             new ImageCatalogRepository(dbContext),
+                                                             new ImageReferenceParser(),
+                                                             logger,
+                                                             Substitute.For<IRegistryMetadataService>());
+
+                await orchestrator.ScanAsync(Guid.NewGuid(), ScanTriggerSource.Scheduled, CancellationToken.None)
+                                  .ConfigureAwait(false);
+
+                var scanRunCount = await dbContext.ScanRuns.CountAsync(TestContext.CancellationToken).ConfigureAwait(false);
+
+                Assert.Contains(entry => entry.EventId.Id == 2032, logger.Entries, "A scan for an observed image removed after listing must log that it was skipped");
+                Assert.AreEqual(0, scanRunCount, "A scan for a missing observed image must not persist a scan run");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Verify a failing observed image scan does not abort the remaining batch items
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task ImageScanOrchestratorScanAllAsyncContinuesAfterItemScanFailureAsync()
+    {
+        using (var database = new SqliteTestDatabase())
+        {
+            var seedContext = database.CreateDbContext();
+
+            await using (seedContext.ConfigureAwait(false))
+            {
+                var imageCatalogRepository = new ImageCatalogRepository(seedContext);
+                var firstImageVersion = await imageCatalogRepository.GetOrCreateImageVersionAsync("docker.io",
+                                                                                                  "company/first",
+                                                                                                  "1.0.0",
+                                                                                                  "sha256:first",
+                                                                                                  cancellationToken: CancellationToken.None)
+                                                                    .ConfigureAwait(false);
+                var secondImageVersion = await imageCatalogRepository.GetOrCreateImageVersionAsync("docker.io",
+                                                                                                   "company/second",
+                                                                                                   "2.0.0",
+                                                                                                   "sha256:second",
+                                                                                                   cancellationToken: CancellationToken.None)
+                                                                     .ConfigureAwait(false);
+
+                seedContext.ObservedImages.Add(new ObservedImage
+                                               {
+                                                   Name = "First",
+                                                   CurrentImageVersionId = firstImageVersion.Id,
+                                               });
+                seedContext.ObservedImages.Add(new ObservedImage
+                                               {
+                                                   Name = "Second",
+                                                   CurrentImageVersionId = secondImageVersion.Id,
+                                               });
+
+                await seedContext.SaveChangesAsync(TestContext.CancellationToken)
+                                 .ConfigureAwait(false);
+
+                var failingContext = database.CreateSaveChangesFailingDbContext();
+
+                await using (failingContext.ConfigureAwait(false))
+                {
+                    var logger = new TestLogger<ImageScanOrchestrator>();
+                    var orchestrator = new ImageScanOrchestrator(new ApplicationTelemetry(),
+                                                                 Substitute.For<IBaseImageResolver>(),
+                                                                 failingContext,
+                                                                 Substitute.For<IDerivedBaseRuntimeDetector>(),
+                                                                 Substitute.For<IDotNetReleaseMetadataService>(),
+                                                                 Substitute.For<INginxReleaseMetadataService>(),
+                                                                 new ImageCatalogRepository(failingContext),
+                                                                 new ImageReferenceParser(),
+                                                                 logger,
+                                                                 Substitute.For<IRegistryMetadataService>());
+
+                    failingContext.FailOnSaveChanges = true;
+
+                    await orchestrator.ScanAllAsync(ScanTriggerSource.Scheduled, CancellationToken.None)
+                                      .ConfigureAwait(false);
+
+                    var itemFailures = logger.Entries.Count(entry => entry.EventId.Id == 2033);
+
+                    Assert.AreEqual(2, itemFailures, "Every failing observed image scan must be logged so later items are still attempted");
+                    Assert.Contains(entry => entry.EventId.Id == 2062, logger.Entries, "The batch must complete even when individual observed image scans fail");
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Verify cancellation during an observed image scan aborts the batch instead of being swallowed
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task ImageScanOrchestratorScanAllAsyncRethrowsCancellationFromItemScanAsync()
+    {
+        using (var database = new SqliteTestDatabase())
+        {
+            var seedContext = database.CreateDbContext();
+
+            await using (seedContext.ConfigureAwait(false))
+            {
+                var imageVersion = await new ImageCatalogRepository(seedContext).GetOrCreateImageVersionAsync("docker.io",
+                                                                                                              "company/app",
+                                                                                                              "1.0.0",
+                                                                                                              "sha256:app",
+                                                                                                              cancellationToken: CancellationToken.None)
+                                                                                .ConfigureAwait(false);
+
+                seedContext.ObservedImages.Add(new ObservedImage
+                                               {
+                                                   Name = "App",
+                                                   CurrentImageVersionId = imageVersion.Id,
+                                               });
+
+                await seedContext.SaveChangesAsync(TestContext.CancellationToken)
+                                 .ConfigureAwait(false);
+
+                var failingContext = database.CreateSaveChangesFailingDbContext();
+
+                await using (failingContext.ConfigureAwait(false))
+                {
+                    var logger = new TestLogger<ImageScanOrchestrator>();
+                    var orchestrator = new ImageScanOrchestrator(new ApplicationTelemetry(),
+                                                                 Substitute.For<IBaseImageResolver>(),
+                                                                 failingContext,
+                                                                 Substitute.For<IDerivedBaseRuntimeDetector>(),
+                                                                 Substitute.For<IDotNetReleaseMetadataService>(),
+                                                                 Substitute.For<INginxReleaseMetadataService>(),
+                                                                 new ImageCatalogRepository(failingContext),
+                                                                 new ImageReferenceParser(),
+                                                                 logger,
+                                                                 Substitute.For<IRegistryMetadataService>());
+
+                    failingContext.SaveChangesException = new OperationCanceledException();
+                    failingContext.FailOnSaveChanges = true;
+
+                    await Assert.ThrowsExactlyAsync<OperationCanceledException>(() => orchestrator.ScanAllAsync(ScanTriggerSource.Scheduled, CancellationToken.None),
+                                                                                "Cancellation during an observed image scan must abort the batch instead of being swallowed")
+                                .ConfigureAwait(false);
+
+                    Assert.DoesNotContain(entry => entry.EventId.Id == 2033, logger.Entries, "A cancelled observed image scan must not be reported as an item failure");
+                }
+            }
+        }
+    }
+
+    /// <summary>
     /// Verify observed image scans create derived .NET runtime findings from registry configuration metadata
     /// </summary>
     /// <returns>Task</returns>
