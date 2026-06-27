@@ -716,7 +716,7 @@ public class ImageScanOrchestratorTests
                     failingContext.FailOnSaveChanges = true;
 
                     await Assert.ThrowsExactlyAsync<OperationCanceledException>(() => orchestrator.ScanAllAsync(ScanTriggerSource.Scheduled, CancellationToken.None),
-                                                                               "Cancellation during an observed image scan must abort the batch instead of being swallowed")
+                                                                                "Cancellation during an observed image scan must abort the batch instead of being swallowed")
                                 .ConfigureAwait(false);
 
                     Assert.DoesNotContain(entry => entry.EventId.Id == 2033, logger.Entries, "A cancelled observed image scan must not be reported as an item failure");

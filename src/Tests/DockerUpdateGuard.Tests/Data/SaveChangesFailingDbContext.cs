@@ -36,7 +36,7 @@ internal sealed class SaveChangesFailingDbContext : DockerUpdateGuardDbContext
 
     #endregion // Properties
 
-    #region Methods
+    #region DbContext
 
     /// <inheritdoc/>
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
@@ -49,5 +49,5 @@ internal sealed class SaveChangesFailingDbContext : DockerUpdateGuardDbContext
         return base.SaveChangesAsync(cancellationToken);
     }
 
-    #endregion // Methods
+    #endregion // DbContext
 }

@@ -1766,7 +1766,7 @@ public class RuntimeContainerScanOrchestratorTests
                     failingContext.FailOnSaveChanges = true;
 
                     await Assert.ThrowsExactlyAsync<OperationCanceledException>(() => orchestrator.ScanAllAsync(ScanTriggerSource.Scheduled, CancellationToken.None),
-                                                                               "Cancellation during a Docker instance scan must abort the batch instead of being swallowed")
+                                                                                "Cancellation during a Docker instance scan must abort the batch instead of being swallowed")
                                 .ConfigureAwait(false);
 
                     Assert.DoesNotContain(entry => entry.EventId.Id == 2042, logger.Entries, "A cancelled Docker instance scan must not be reported as an item failure");
