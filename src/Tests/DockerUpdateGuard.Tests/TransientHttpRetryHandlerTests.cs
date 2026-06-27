@@ -42,11 +42,13 @@ public partial class TransientHttpRetryHandlerTests
     /// <param name="probe">Inner probe handler</param>
     /// <param name="capturedDelays">Optional list that receives the backoff delays</param>
     /// <param name="request">Optional request; a GET request is used when null</param>
+    /// <param name="nextJitterMilliseconds">Optional jitter provider; no jitter is applied when null</param>
     /// <returns>Resulting response</returns>
     private static async Task<HttpResponseMessage> SendThroughRetryHandlerAsync(int retryCount,
                                                                                 RetryProbeHttpMessageHandler probe,
                                                                                 List<TimeSpan>? capturedDelays = null,
-                                                                                HttpRequestMessage? request = null)
+                                                                                HttpRequestMessage? request = null,
+                                                                                Func<int, int>? nextJitterMilliseconds = null)
     {
         var handler = new TransientHttpRetryHandler(CreateOptions(retryCount),
                                                     new TestLogger<TransientHttpRetryHandler>(),
@@ -55,7 +57,8 @@ public partial class TransientHttpRetryHandlerTests
                                                         capturedDelays?.Add(delay);
 
                                                         return Task.CompletedTask;
-                                                    })
+                                                    },
+                                                    nextJitterMilliseconds ?? (_ => 0))
                       {
                           InnerHandler = probe,
                       };
@@ -358,6 +361,46 @@ public partial class TransientHttpRetryHandlerTests
         CollectionAssert.AreEqual(new[] { TimeSpan.FromMilliseconds(500) },
                                   capturedDelays,
                                   "The retry handler must fall back to exponential backoff for a past Retry-After date");
+    }
+
+    /// <summary>
+    /// Verify a Retry-After value longer than the maximum backoff is clamped
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task TransientHttpRetryHandlerClampsRetryAfterToMaximumBackoffAsync()
+    {
+        var probe = new RetryProbeHttpMessageHandler([HttpStatusCode.ServiceUnavailable, HttpStatusCode.OK], HttpStatusCode.OK)
+                    {
+                        RetryAfter = new RetryConditionHeaderValue(TimeSpan.FromHours(1)),
+                    };
+        var capturedDelays = new List<TimeSpan>();
+
+        using var response = await SendThroughRetryHandlerAsync(1, probe, capturedDelays).ConfigureAwait(false);
+
+        Assert.HasCount(1,
+                        capturedDelays,
+                        "The retry handler must apply a single Retry-After delay");
+        Assert.AreEqual(TimeSpan.FromMilliseconds(30000),
+                        capturedDelays[0],
+                        "The retry handler must clamp an excessive Retry-After value to the maximum backoff");
+    }
+
+    /// <summary>
+    /// Verify random jitter is added on top of the exponential backoff
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task TransientHttpRetryHandlerAppliesJitterToExponentialBackoffAsync()
+    {
+        var probe = new RetryProbeHttpMessageHandler([], HttpStatusCode.ServiceUnavailable);
+        var capturedDelays = new List<TimeSpan>();
+
+        using var response = await SendThroughRetryHandlerAsync(1, probe, capturedDelays, nextJitterMilliseconds: _ => 50).ConfigureAwait(false);
+
+        CollectionAssert.AreEqual(new[] { TimeSpan.FromMilliseconds(550) },
+                                  capturedDelays,
+                                  "The retry handler must add the jitter value on top of the exponential backoff");
     }
 
     /// <summary>

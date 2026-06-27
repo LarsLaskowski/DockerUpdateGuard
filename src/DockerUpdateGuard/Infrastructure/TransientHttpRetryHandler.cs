@@ -24,6 +24,11 @@ public class TransientHttpRetryHandler : DelegatingHandler
     /// </summary>
     private const int MaxBackoffMilliseconds = 30000;
 
+    /// <summary>
+    /// Fraction of the exponential delay added as random jitter to avoid synchronized retries
+    /// </summary>
+    private const double JitterFactor = 0.2;
+
     #endregion // Const fields
 
     #region Fields
@@ -31,6 +36,7 @@ public class TransientHttpRetryHandler : DelegatingHandler
     private readonly IOptionsMonitor<DockerUpdateGuardOptions> _options;
     private readonly ILogger<TransientHttpRetryHandler> _logger;
     private readonly Func<TimeSpan, CancellationToken, Task> _delayAsync;
+    private readonly Func<int, int> _nextJitterMilliseconds;
 
     #endregion // Fields
 
@@ -43,23 +49,29 @@ public class TransientHttpRetryHandler : DelegatingHandler
     /// <param name="logger">Logger</param>
     public TransientHttpRetryHandler(IOptionsMonitor<DockerUpdateGuardOptions> options,
                                      ILogger<TransientHttpRetryHandler> logger)
-        : this(options, logger, (delay, cancellationToken) => Task.Delay(delay, cancellationToken))
+        : this(options,
+               logger,
+               (delay, cancellationToken) => Task.Delay(delay, cancellationToken),
+               maxExclusive => maxExclusive <= 0 ? 0 : Random.Shared.Next(maxExclusive))
     {
     }
 
     /// <summary>
-    /// Constructor that allows the backoff delay to be supplied, used for deterministic testing
+    /// Constructor that allows the backoff delay and jitter to be supplied, used for deterministic testing
     /// </summary>
     /// <param name="options">Application options monitor</param>
     /// <param name="logger">Logger</param>
     /// <param name="delayAsync">Delay callback invoked before each retry attempt</param>
+    /// <param name="nextJitterMilliseconds">Jitter provider returning a value in the range zero to the supplied exclusive upper bound</param>
     internal TransientHttpRetryHandler(IOptionsMonitor<DockerUpdateGuardOptions> options,
                                        ILogger<TransientHttpRetryHandler> logger,
-                                       Func<TimeSpan, CancellationToken, Task> delayAsync)
+                                       Func<TimeSpan, CancellationToken, Task> delayAsync,
+                                       Func<int, int> nextJitterMilliseconds)
     {
         _options = options;
         _logger = logger;
         _delayAsync = delayAsync;
+        _nextJitterMilliseconds = nextJitterMilliseconds;
     }
 
     #endregion // Constructors
@@ -89,37 +101,15 @@ public class TransientHttpRetryHandler : DelegatingHandler
     }
 
     /// <summary>
-    /// Compute the backoff delay before the next retry attempt, honoring a Retry-After hint when present
+    /// Clamp a delay to the configured maximum backoff
     /// </summary>
-    /// <param name="attempt">Zero-based index of the attempt that just failed</param>
-    /// <param name="response">Response that failed, or null when an exception occurred</param>
-    /// <returns>Delay to wait before the next attempt</returns>
-    private static TimeSpan GetRetryDelay(int attempt, HttpResponseMessage? response)
+    /// <param name="delay">Delay to clamp</param>
+    /// <returns>Delay no greater than the maximum backoff</returns>
+    private static TimeSpan ClampToMaximum(TimeSpan delay)
     {
-        var retryAfter = response?.Headers.RetryAfter;
+        var maximum = TimeSpan.FromMilliseconds(MaxBackoffMilliseconds);
 
-        if (retryAfter is not null)
-        {
-            if (retryAfter.Delta is TimeSpan delta && delta > TimeSpan.Zero)
-            {
-                return delta;
-            }
-
-            if (retryAfter.Date is DateTimeOffset date)
-            {
-                var untilDate = date - DateTimeOffset.UtcNow;
-
-                if (untilDate > TimeSpan.Zero)
-                {
-                    return untilDate;
-                }
-            }
-        }
-
-        var exponentialMilliseconds = BaseBackoffMilliseconds * Math.Pow(2, attempt);
-        var cappedMilliseconds = Math.Min(exponentialMilliseconds, MaxBackoffMilliseconds);
-
-        return TimeSpan.FromMilliseconds(cappedMilliseconds);
+        return delay > maximum ? maximum : delay;
     }
 
     /// <summary>
@@ -146,6 +136,45 @@ public class TransientHttpRetryHandler : DelegatingHandler
 
     #endregion // Static methods
 
+    #region Methods
+
+    /// <summary>
+    /// Compute the backoff delay before the next retry attempt, honoring a Retry-After hint when present
+    /// </summary>
+    /// <param name="attempt">Zero-based index of the attempt that just failed</param>
+    /// <param name="response">Response that failed, or null when an exception occurred</param>
+    /// <returns>Delay to wait before the next attempt</returns>
+    private TimeSpan GetRetryDelay(int attempt, HttpResponseMessage? response)
+    {
+        var retryAfter = response?.Headers.RetryAfter;
+
+        if (retryAfter is not null)
+        {
+            if (retryAfter.Delta is TimeSpan delta && delta > TimeSpan.Zero)
+            {
+                return ClampToMaximum(delta);
+            }
+
+            if (retryAfter.Date is DateTimeOffset date)
+            {
+                var untilDate = date - DateTimeOffset.UtcNow;
+
+                if (untilDate > TimeSpan.Zero)
+                {
+                    return ClampToMaximum(untilDate);
+                }
+            }
+        }
+
+        var exponentialMilliseconds = Math.Min(BaseBackoffMilliseconds * Math.Pow(2, attempt), MaxBackoffMilliseconds);
+        var jitterMilliseconds = _nextJitterMilliseconds((int)(exponentialMilliseconds * JitterFactor));
+        var totalMilliseconds = Math.Min(exponentialMilliseconds + jitterMilliseconds, MaxBackoffMilliseconds);
+
+        return TimeSpan.FromMilliseconds(totalMilliseconds);
+    }
+
+    #endregion // Methods
+
     #region HttpMessageHandler
 
     /// <inheritdoc/>
@@ -154,17 +183,17 @@ public class TransientHttpRetryHandler : DelegatingHandler
     {
         ArgumentNullException.ThrowIfNull(request);
 
+        if (request.Content is not null)
+        {
+            await request.Content.LoadIntoBufferAsync(cancellationToken).ConfigureAwait(false);
+        }
+
         var retryCount = Math.Max(0, _options.CurrentValue.Scanning.RetryCount);
         var requestTarget = GetRequestTarget(request);
         var attempt = 0;
 
         while (true)
         {
-            if (request.Content is not null)
-            {
-                await request.Content.LoadIntoBufferAsync(cancellationToken).ConfigureAwait(false);
-            }
-
             try
             {
                 var response = await base.SendAsync(request, cancellationToken).ConfigureAwait(false);
