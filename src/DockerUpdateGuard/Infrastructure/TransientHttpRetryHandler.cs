@@ -74,8 +74,8 @@ public class TransientHttpRetryHandler : DelegatingHandler
     private static bool IsTransientStatusCode(HttpStatusCode statusCode)
     {
         return statusCode == HttpStatusCode.RequestTimeout
-            || statusCode == HttpStatusCode.TooManyRequests
-            || (int)statusCode >= 500;
+               || statusCode == HttpStatusCode.TooManyRequests
+               || (int)statusCode >= 500;
     }
 
     /// <summary>
@@ -146,7 +146,7 @@ public class TransientHttpRetryHandler : DelegatingHandler
 
     #endregion // Static methods
 
-    #region Methods
+    #region HttpMessageHandler
 
     /// <inheritdoc/>
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,
@@ -207,5 +207,5 @@ public class TransientHttpRetryHandler : DelegatingHandler
         }
     }
 
-    #endregion // Methods
+    #endregion // HttpMessageHandler
 }

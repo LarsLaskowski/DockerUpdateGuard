@@ -280,8 +280,8 @@ public partial class TransientHttpRetryHandlerTests
 
         using var response = await SendThroughRetryHandlerAsync(7, probe, capturedDelays).ConfigureAwait(false);
 
-        Assert.AreEqual(7,
-                        capturedDelays.Count,
+        Assert.HasCount(7,
+                        capturedDelays,
                         "The retry handler must compute one delay per retry attempt");
         Assert.AreEqual(TimeSpan.FromMilliseconds(30000),
                         capturedDelays[^1],
@@ -306,8 +306,8 @@ public partial class TransientHttpRetryHandlerTests
         Assert.AreEqual(HttpStatusCode.OK,
                         response.StatusCode,
                         "The retry handler must succeed after honoring the Retry-After header");
-        Assert.AreEqual(1,
-                        capturedDelays.Count,
+        Assert.HasCount(1,
+                        capturedDelays,
                         "The retry handler must apply a single Retry-After delay");
         Assert.AreEqual(TimeSpan.FromSeconds(7),
                         capturedDelays[0],
@@ -329,11 +329,15 @@ public partial class TransientHttpRetryHandlerTests
 
         using var response = await SendThroughRetryHandlerAsync(1, probe, capturedDelays).ConfigureAwait(false);
 
-        Assert.AreEqual(1,
-                        capturedDelays.Count,
+        Assert.HasCount(1,
+                        capturedDelays,
                         "The retry handler must apply a single Retry-After delay");
-        Assert.IsTrue(capturedDelays[0] > TimeSpan.FromSeconds(27) && capturedDelays[0] <= TimeSpan.FromSeconds(30),
-                      "The retry handler must wait until the Retry-After date before retrying");
+        Assert.IsGreaterThan(TimeSpan.FromSeconds(27),
+                             capturedDelays[0],
+                             "The retry handler must wait close to the Retry-After date before retrying");
+        Assert.IsLessThanOrEqualTo(TimeSpan.FromSeconds(30),
+                                   capturedDelays[0],
+                                   "The retry handler must not wait longer than the Retry-After date");
     }
 
     /// <summary>
