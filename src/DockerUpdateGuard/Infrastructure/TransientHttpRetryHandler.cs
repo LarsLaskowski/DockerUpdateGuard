@@ -30,6 +30,7 @@ public class TransientHttpRetryHandler : DelegatingHandler
 
     private readonly IOptionsMonitor<DockerUpdateGuardOptions> _options;
     private readonly ILogger<TransientHttpRetryHandler> _logger;
+    private readonly Func<TimeSpan, CancellationToken, Task> _delayAsync;
 
     #endregion // Fields
 
@@ -42,9 +43,23 @@ public class TransientHttpRetryHandler : DelegatingHandler
     /// <param name="logger">Logger</param>
     public TransientHttpRetryHandler(IOptionsMonitor<DockerUpdateGuardOptions> options,
                                      ILogger<TransientHttpRetryHandler> logger)
+        : this(options, logger, (delay, cancellationToken) => Task.Delay(delay, cancellationToken))
+    {
+    }
+
+    /// <summary>
+    /// Constructor that allows the backoff delay to be supplied, used for deterministic testing
+    /// </summary>
+    /// <param name="options">Application options monitor</param>
+    /// <param name="logger">Logger</param>
+    /// <param name="delayAsync">Delay callback invoked before each retry attempt</param>
+    internal TransientHttpRetryHandler(IOptionsMonitor<DockerUpdateGuardOptions> options,
+                                       ILogger<TransientHttpRetryHandler> logger,
+                                       Func<TimeSpan, CancellationToken, Task> delayAsync)
     {
         _options = options;
         _logger = logger;
+        _delayAsync = delayAsync;
     }
 
     #endregion // Constructors
@@ -170,7 +185,7 @@ public class TransientHttpRetryHandler : DelegatingHandler
                                                retryCount,
                                                (int)delay.TotalMilliseconds);
 
-                await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+                await _delayAsync(delay, cancellationToken).ConfigureAwait(false);
             }
             catch (Exception exception) when (IsTransientException(exception)
                                               && cancellationToken.IsCancellationRequested == false
@@ -185,7 +200,7 @@ public class TransientHttpRetryHandler : DelegatingHandler
                                                 retryCount,
                                                 (int)delay.TotalMilliseconds);
 
-                await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+                await _delayAsync(delay, cancellationToken).ConfigureAwait(false);
             }
 
             attempt++;

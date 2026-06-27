@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Headers;
 
 namespace DockerUpdateGuard.Tests.Helper;
 
@@ -36,6 +37,11 @@ internal sealed class RetryProbeHttpMessageHandler : HttpMessageHandler
     /// </summary>
     public int AttemptCount { get; private set; }
 
+    /// <summary>
+    /// Optional Retry-After header value applied to every emitted response
+    /// </summary>
+    public RetryConditionHeaderValue? RetryAfter { get; set; }
+
     #endregion // Properties
 
     #region HttpMessageHandler
@@ -52,10 +58,17 @@ internal sealed class RetryProbeHttpMessageHandler : HttpMessageHandler
             throw new HttpRequestException("Simulated transient transport failure");
         }
 
-        return Task.FromResult(new HttpResponseMessage(outcome.Value)
-                               {
-                                   RequestMessage = request,
-                               });
+        var response = new HttpResponseMessage(outcome.Value)
+                       {
+                           RequestMessage = request,
+                       };
+
+        if (RetryAfter is not null)
+        {
+            response.Headers.RetryAfter = RetryAfter;
+        }
+
+        return Task.FromResult(response);
     }
 
     #endregion // HttpMessageHandler
