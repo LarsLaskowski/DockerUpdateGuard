@@ -1,4 +1,6 @@
 using System.Reflection;
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 
 using DockerUpdateGuard.Configuration;
 using DockerUpdateGuard.Docker;
@@ -16,6 +18,27 @@ namespace DockerUpdateGuard.Tests;
 [TestClass]
 public partial class DockerInstanceClientTests
 {
+    #region Constants
+
+    /// <summary>
+    /// Local image reference used by the pooled-client tests
+    /// </summary>
+    private const string PooledImageReference = "sha256:local-image";
+
+    /// <summary>
+    /// Image inspect endpoint URI used by the pooled-client tests
+    /// </summary>
+    private const string PooledImageInspectUri = "https://docker.example.test/v1.41/images/sha256%3Alocal-image/json";
+
+    /// <summary>
+    /// Image inspect payload used by the pooled-client tests
+    /// </summary>
+    private const string PooledImageInspectJson = """
+                                                  { "Id": "sha256:local-image", "RepoDigests": [] }
+                                                  """;
+
+    #endregion // Constants
+
     #region Methods
 
     /// <summary>
@@ -453,14 +476,8 @@ public partial class DockerInstanceClientTests
 
         try
         {
-            handler.AddJsonResponse("https://docker.example.test/v1.41/images/sha256%3Alocal-image/json",
-                                    """
-                                    { "Id": "sha256:local-image", "RepoDigests": [] }
-                                    """);
-            handler.AddJsonResponse("https://docker.example.test/v1.41/images/sha256%3Alocal-image/json",
-                                    """
-                                    { "Id": "sha256:local-image", "RepoDigests": [] }
-                                    """);
+            handler.AddJsonResponse(PooledImageInspectUri, PooledImageInspectJson);
+            handler.AddJsonResponse(PooledImageInspectUri, PooledImageInspectJson);
 
             var client = new DockerInstanceClient(new TestLogger<DockerInstanceClient>(),
                                                   (_, _) =>
@@ -476,9 +493,9 @@ public partial class DockerInstanceClientTests
                                       Enabled = true,
                                   };
 
-            var firstResult = await client.InspectImageAsync(instanceOptions, "sha256:local-image", CancellationToken.None)
+            var firstResult = await client.InspectImageAsync(instanceOptions, PooledImageReference, CancellationToken.None)
                                           .ConfigureAwait(false);
-            var secondResult = await client.InspectImageAsync(instanceOptions, "sha256:local-image", CancellationToken.None)
+            var secondResult = await client.InspectImageAsync(instanceOptions, PooledImageReference, CancellationToken.None)
                                            .ConfigureAwait(false);
 
             Assert.AreEqual(ExternalOperationStatus.Succeeded,
@@ -495,6 +512,101 @@ public partial class DockerInstanceClientTests
         {
             httpClient.Dispose();
             handler.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Verify disposing the adapter disposes the pooled HTTP clients it created
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerInstanceClientDisposeDisposesPooledHttpClientsAsync()
+    {
+        var handler = new SequenceHttpMessageHandler();
+        var httpClient = new HttpClient(handler)
+                         {
+                             BaseAddress = new Uri("https://docker.example.test/"),
+                         };
+
+        try
+        {
+            handler.AddJsonResponse(PooledImageInspectUri, PooledImageInspectJson);
+
+            var client = new DockerInstanceClient(new TestLogger<DockerInstanceClient>(),
+                                                  (_, _) => httpClient);
+            var instanceOptions = new DockerInstanceOptions
+                                  {
+                                      Name = "Production",
+                                      BaseUrl = "https://docker.example.test",
+                                      Enabled = true,
+                                  };
+
+            var result = await client.InspectImageAsync(instanceOptions, PooledImageReference, CancellationToken.None)
+                                     .ConfigureAwait(false);
+
+            Assert.AreEqual(ExternalOperationStatus.Succeeded,
+                            result.Status,
+                            "The pooled HTTP client must serve the engine call before the adapter is disposed");
+
+            client.Dispose();
+
+            await Assert.ThrowsExactlyAsync<ObjectDisposedException>(() => httpClient.GetAsync("v1.41/info"),
+                                                                     "Disposing the adapter must dispose the pooled HTTP clients it created")
+                        .ConfigureAwait(false);
+        }
+        finally
+        {
+            httpClient.Dispose();
+            handler.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Verify the Docker HTTP-client factory loads a configured client certificate for TLS endpoints
+    /// </summary>
+    [TestMethod]
+    public void DockerInstanceClientCreateHttpClientWithClientCertificateReturnsConfiguredClient()
+    {
+        var createHttpClientMethod = typeof(DockerInstanceClient).GetMethod("CreateHttpClient",
+                                                                            BindingFlags.Static | BindingFlags.NonPublic);
+        var certificatePath = Path.Combine(Path.GetTempPath(), $"dug-client-cert-{Guid.NewGuid():N}.pfx");
+
+        Assert.IsNotNull(createHttpClientMethod, "The Docker HTTP-client factory must remain discoverable for transport tests");
+
+        try
+        {
+            using (var rsa = RSA.Create(2048))
+            {
+                var certificateRequest = new CertificateRequest("CN=DockerUpdateGuardClientCertificateTest",
+                                                                rsa,
+                                                                HashAlgorithmName.SHA256,
+                                                                RSASignaturePadding.Pkcs1);
+                using var certificate = certificateRequest.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1),
+                                                                            DateTimeOffset.UtcNow.AddDays(1));
+
+                File.WriteAllBytes(certificatePath, certificate.Export(X509ContentType.Pfx));
+            }
+
+            var instanceOptions = new DockerInstanceOptions
+                                  {
+                                      Name = "Production",
+                                      BaseUrl = "https://docker.example.test",
+                                      Enabled = true,
+                                      CertificatePath = certificatePath,
+                                  };
+            var engineUri = new Uri("https://docker.example.test/");
+            var logger = new TestLogger<DockerInstanceClient>();
+
+            using var httpClient = (HttpClient?)createHttpClientMethod.Invoke(null, [instanceOptions, engineUri, logger]);
+
+            Assert.IsNotNull(httpClient, "The Docker HTTP-client factory must return an HTTP client when a client certificate is configured");
+            Assert.AreEqual("https://docker.example.test/",
+                            httpClient.BaseAddress?.AbsoluteUri,
+                            "TLS Docker endpoints with a client certificate must use the resolved engine URI as base address");
+        }
+        finally
+        {
+            File.Delete(certificatePath);
         }
     }
 
