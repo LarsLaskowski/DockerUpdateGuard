@@ -39,6 +39,15 @@ public partial class DockerInstanceClientTests
 
     #endregion // Constants
 
+    #region Properties
+
+    /// <summary>
+    /// Context for the tests
+    /// </summary>
+    public TestContext TestContext { get; set; }
+
+    #endregion // Properties
+
     #region Methods
 
     /// <summary>
@@ -493,9 +502,9 @@ public partial class DockerInstanceClientTests
                                       Enabled = true,
                                   };
 
-            var firstResult = await client.InspectImageAsync(instanceOptions, PooledImageReference, CancellationToken.None)
+            var firstResult = await client.InspectImageAsync(instanceOptions, PooledImageReference, TestContext.CancellationToken)
                                           .ConfigureAwait(false);
-            var secondResult = await client.InspectImageAsync(instanceOptions, PooledImageReference, CancellationToken.None)
+            var secondResult = await client.InspectImageAsync(instanceOptions, PooledImageReference, TestContext.CancellationToken)
                                            .ConfigureAwait(false);
 
             Assert.AreEqual(ExternalOperationStatus.Succeeded,
@@ -541,7 +550,7 @@ public partial class DockerInstanceClientTests
                                       Enabled = true,
                                   };
 
-            var result = await client.InspectImageAsync(instanceOptions, PooledImageReference, CancellationToken.None)
+            var result = await client.InspectImageAsync(instanceOptions, PooledImageReference, TestContext.CancellationToken)
                                      .ConfigureAwait(false);
 
             Assert.AreEqual(ExternalOperationStatus.Succeeded,
@@ -550,7 +559,7 @@ public partial class DockerInstanceClientTests
 
             client.Dispose();
 
-            await Assert.ThrowsExactlyAsync<ObjectDisposedException>(() => httpClient.GetAsync("v1.41/info"),
+            await Assert.ThrowsExactlyAsync<ObjectDisposedException>(() => httpClient.GetAsync("v1.41/info", TestContext.CancellationToken),
                                                                      "Disposing the adapter must dispose the pooled HTTP clients it created")
                         .ConfigureAwait(false);
         }

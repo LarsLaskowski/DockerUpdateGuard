@@ -18,7 +18,7 @@ namespace DockerUpdateGuard.Docker;
 /// <summary>
 /// Conservative Docker engine adapter for HTTP based endpoints
 /// </summary>
-public class DockerInstanceClient : IDockerInstanceClient, IDisposable
+public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
 {
     #region Fields
 
@@ -1281,7 +1281,7 @@ public class DockerInstanceClient : IDockerInstanceClient, IDisposable
 
     #endregion // Methods
 
-    #region IDisposable implementation
+    #region IDisposable
 
     /// <summary>
     /// Releases the resources used by the current instance of the class
@@ -1297,9 +1297,7 @@ public class DockerInstanceClient : IDockerInstanceClient, IDisposable
         }
 
         _httpClients.Clear();
-
-        GC.SuppressFinalize(this);
     }
 
-    #endregion // IDisposable implementation
+    #endregion // IDisposable
 }
