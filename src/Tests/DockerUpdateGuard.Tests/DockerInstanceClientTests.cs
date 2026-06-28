@@ -438,6 +438,67 @@ public partial class DockerInstanceClientTests
     }
 
     /// <summary>
+    /// Verify repeated engine calls reuse a single pooled HTTP client instead of recreating one per request
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerInstanceClientReusesPooledHttpClientAcrossEngineCallsAsync()
+    {
+        var handler = new SequenceHttpMessageHandler();
+        var httpClient = new HttpClient(handler)
+                         {
+                             BaseAddress = new Uri("https://docker.example.test/"),
+                         };
+        var factoryInvocationCount = 0;
+
+        try
+        {
+            handler.AddJsonResponse("https://docker.example.test/v1.41/images/sha256%3Alocal-image/json",
+                                    """
+                                    { "Id": "sha256:local-image", "RepoDigests": [] }
+                                    """);
+            handler.AddJsonResponse("https://docker.example.test/v1.41/images/sha256%3Alocal-image/json",
+                                    """
+                                    { "Id": "sha256:local-image", "RepoDigests": [] }
+                                    """);
+
+            var client = new DockerInstanceClient(new TestLogger<DockerInstanceClient>(),
+                                                  (_, _) =>
+                                                  {
+                                                      Interlocked.Increment(ref factoryInvocationCount);
+
+                                                      return httpClient;
+                                                  });
+            var instanceOptions = new DockerInstanceOptions
+                                  {
+                                      Name = "Production",
+                                      BaseUrl = "https://docker.example.test",
+                                      Enabled = true,
+                                  };
+
+            var firstResult = await client.InspectImageAsync(instanceOptions, "sha256:local-image", CancellationToken.None)
+                                          .ConfigureAwait(false);
+            var secondResult = await client.InspectImageAsync(instanceOptions, "sha256:local-image", CancellationToken.None)
+                                           .ConfigureAwait(false);
+
+            Assert.AreEqual(ExternalOperationStatus.Succeeded,
+                            firstResult.Status,
+                            "The first engine call must succeed against the pooled HTTP client");
+            Assert.AreEqual(ExternalOperationStatus.Succeeded,
+                            secondResult.Status,
+                            "The second engine call must succeed against the pooled HTTP client");
+            Assert.AreEqual(1,
+                            factoryInvocationCount,
+                            "Repeated engine calls for the same instance must reuse a single pooled HTTP client instead of creating one per request");
+        }
+        finally
+        {
+            httpClient.Dispose();
+            handler.Dispose();
+        }
+    }
+
+    /// <summary>
     /// Verify named-pipe Docker endpoints create a localhost-based HTTP client
     /// </summary>
     [TestMethod]
