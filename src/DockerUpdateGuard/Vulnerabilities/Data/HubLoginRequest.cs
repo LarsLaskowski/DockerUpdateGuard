@@ -23,16 +23,13 @@ internal sealed record HubLoginRequest
 
     #endregion // Properties
 
-    #region Methods
+    #region Object
 
-    /// <summary>
-    /// Returns a string representation that omits the password to prevent credential leakage
-    /// </summary>
-    /// <returns>String representation without the password</returns>
+    /// <inheritdoc/>
     public override string ToString()
     {
         return $"{nameof(HubLoginRequest)} {{ {nameof(Username)} = {Username} }}";
     }
 
-    #endregion // Methods
+    #endregion // Object
 }

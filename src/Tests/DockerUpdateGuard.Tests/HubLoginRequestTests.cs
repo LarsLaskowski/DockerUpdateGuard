@@ -16,11 +16,7 @@ public class HubLoginRequestTests
     [TestMethod]
     public void HubLoginRequestToStringOmitsPassword()
     {
-        var request = new HubLoginRequest
-        {
-            Username = "admin",
-            Password = "s3cr3t-pat",
-        };
+        var request = new HubLoginRequest { Username = "admin", Password = "s3cr3t-pat" };
 
         var text = request.ToString();
 
