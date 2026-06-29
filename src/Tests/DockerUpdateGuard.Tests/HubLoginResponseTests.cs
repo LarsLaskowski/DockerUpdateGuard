@@ -17,9 +17,9 @@ public class HubLoginResponseTests
     public void HubLoginResponseToStringOmitsToken()
     {
         var response = new HubLoginResponse
-        {
-            Token = "header.payload.signature",
-        };
+                       {
+                           Token = "header.payload.signature",
+                       };
 
         var text = response.ToString();
 

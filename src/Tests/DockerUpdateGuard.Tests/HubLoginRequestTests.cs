@@ -17,10 +17,10 @@ public class HubLoginRequestTests
     public void HubLoginRequestToStringOmitsPassword()
     {
         var request = new HubLoginRequest
-        {
-            Username = "admin",
-            Password = "s3cr3t-pat",
-        };
+                      {
+                          Username = "admin",
+                          Password = "s3cr3t-pat",
+                      };
 
         var text = request.ToString();
 
