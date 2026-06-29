@@ -1,4 +1,5 @@
 using System.Net.Http.Headers;
+using System.Text.Json;
 
 using DockerUpdateGuard.Configuration;
 using DockerUpdateGuard.Portainer.Data;
@@ -96,7 +97,12 @@ public partial class PortainerClient : IPortainerClient
                                                             string containerName,
                                                             CancellationToken cancellationToken)
     {
-        var filters = Uri.EscapeDataString($"{{\"name\":[\"{containerName}\"]}}");
+        var filter = new Dictionary<string, string[]>(StringComparer.Ordinal)
+                     {
+                         ["name"] = [containerName],
+                     };
+
+        var filters = Uri.EscapeDataString(JsonSerializer.Serialize(filter));
         var url = $"/api/endpoints/{endpointId}/docker/containers/json?all=true&filters={filters}";
 
         using var response = await client.GetAsync(url, cancellationToken).ConfigureAwait(false);
