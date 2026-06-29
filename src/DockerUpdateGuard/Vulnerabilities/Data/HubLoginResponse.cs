@@ -16,4 +16,17 @@ internal sealed record HubLoginResponse
     public string? Token { get; init; }
 
     #endregion // Properties
+
+    #region Methods
+
+    /// <summary>
+    /// Returns a string representation that omits the token to prevent credential leakage
+    /// </summary>
+    /// <returns>String representation without the token</returns>
+    public override string ToString()
+    {
+        return $"{nameof(HubLoginResponse)} {{ }}";
+    }
+
+    #endregion // Methods
 }

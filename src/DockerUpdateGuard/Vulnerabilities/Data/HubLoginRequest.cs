@@ -22,4 +22,17 @@ internal sealed record HubLoginRequest
     public string Password { get; init; } = string.Empty;
 
     #endregion // Properties
+
+    #region Methods
+
+    /// <summary>
+    /// Returns a string representation that omits the password to prevent credential leakage
+    /// </summary>
+    /// <returns>String representation without the password</returns>
+    public override string ToString()
+    {
+        return $"{nameof(HubLoginRequest)} {{ {nameof(Username)} = {Username} }}";
+    }
+
+    #endregion // Methods
 }
