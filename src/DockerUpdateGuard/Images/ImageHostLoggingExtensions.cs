@@ -126,6 +126,29 @@ internal static partial class ImageHostLoggingExtensions
                                                        string observedImage);
 
     /// <summary>
+    /// Log that an observed image was no longer present when its scan started
+    /// </summary>
+    /// <param name="logger">Logger</param>
+    /// <param name="observedImageId">Observed image identifier</param>
+    [LoggerMessage(EventId = 2032,
+                   Level = LogLevel.Warning,
+                   Message = "Skipping observed image scan for {ObservedImageId} because the observed image no longer exists")]
+    public static partial void ObservedImageScanSkippedMissing(this ILogger logger, Guid observedImageId);
+
+    /// <summary>
+    /// Log that a single observed image scan failed but the batch continues
+    /// </summary>
+    /// <param name="logger">Logger</param>
+    /// <param name="exception">Exception</param>
+    /// <param name="observedImageId">Observed image identifier</param>
+    [LoggerMessage(EventId = 2033,
+                   Level = LogLevel.Error,
+                   Message = "Observed image scan batch skipped {ObservedImageId} because its scan failed")]
+    public static partial void ObservedImageScanBatchItemFailed(this ILogger logger,
+                                                                Exception exception,
+                                                                Guid observedImageId);
+
+    /// <summary>
     /// Log an observed image scan summary
     /// </summary>
     /// <param name="logger">Logger</param>
@@ -156,6 +179,19 @@ internal static partial class ImageHostLoggingExtensions
     public static partial void RuntimeContainerScanFailed(this ILogger logger,
                                                           Exception exception,
                                                           string dockerInstance);
+
+    /// <summary>
+    /// Log that a single Docker instance scan failed but the batch continues
+    /// </summary>
+    /// <param name="logger">Logger</param>
+    /// <param name="exception">Exception</param>
+    /// <param name="dockerInstance">Docker instance name</param>
+    [LoggerMessage(EventId = 2042,
+                   Level = LogLevel.Error,
+                   Message = "Runtime container scan batch skipped {DockerInstance} because its scan failed")]
+    public static partial void RuntimeContainerScanBatchItemFailed(this ILogger logger,
+                                                                   Exception exception,
+                                                                   string dockerInstance);
 
     /// <summary>
     /// Log a runtime container scan summary

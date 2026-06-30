@@ -18,7 +18,7 @@ namespace DockerUpdateGuard.Docker;
 /// <summary>
 /// Conservative Docker engine adapter for HTTP based endpoints
 /// </summary>
-public class DockerInstanceClient : IDockerInstanceClient
+public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
 {
     #region Fields
 
@@ -31,6 +31,11 @@ public class DockerInstanceClient : IDockerInstanceClient
     /// Tracks Docker instance names for which the disabled-certificate-validation warning has already been emitted
     /// </summary>
     private static readonly ConcurrentDictionary<string, byte> _certificateValidationWarningInstances = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Pooled HTTP clients keyed by their connection-relevant configuration to avoid the new-client-per-request anti-pattern
+    /// </summary>
+    private readonly ConcurrentDictionary<string, Lazy<HttpClient>> _httpClients = new(StringComparer.Ordinal);
 
     /// <summary>
     /// HTTP-client factory
@@ -235,6 +240,23 @@ public class DockerInstanceClient : IDockerInstanceClient
     }
 
     /// <summary>
+    /// Build a cache key that captures every connection-relevant setting of a Docker instance
+    /// </summary>
+    /// <param name="instanceOptions">Docker instance options</param>
+    /// <param name="engineUri">Resolved engine URI</param>
+    /// <returns>Cache key</returns>
+    private static string BuildHttpClientCacheKey(DockerInstanceOptions instanceOptions, Uri engineUri)
+    {
+        return string.Join('\n',
+                           instanceOptions.Name,
+                           instanceOptions.BaseUrl,
+                           engineUri.AbsoluteUri,
+                           instanceOptions.UseTls ? "tls" : "plain",
+                           instanceOptions.SkipCertificateValidation ? "skip" : "verify",
+                           instanceOptions.CertificatePath ?? string.Empty);
+    }
+
+    /// <summary>
     /// Build an HTTP client for the target Docker endpoint
     /// </summary>
     /// <param name="instanceOptions">Docker instance options</param>
@@ -255,9 +277,10 @@ public class DockerInstanceClient : IDockerInstanceClient
             return CreateNamedPipeHttpClient(parsedUri, instanceOptions);
         }
 
-        var handler = new HttpClientHandler
+        var handler = new SocketsHttpHandler
                       {
-                          UseProxy = false
+                          UseProxy = false,
+                          PooledConnectionLifetime = TimeSpan.FromMinutes(5),
                       };
 
         if (instanceOptions.SkipCertificateValidation)
@@ -267,7 +290,7 @@ public class DockerInstanceClient : IDockerInstanceClient
                 logger.DockerInstanceCertificateValidationDisabled(instanceOptions.Name);
             }
 
-            handler.ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator;
+            handler.SslOptions.RemoteCertificateValidationCallback = (_, _, _, _) => true;
         }
 
         var certificatePath = instanceOptions.CertificatePath;
@@ -275,7 +298,8 @@ public class DockerInstanceClient : IDockerInstanceClient
         if (string.IsNullOrWhiteSpace(certificatePath) == false
             && File.Exists(certificatePath))
         {
-            handler.ClientCertificates.Add(LoadCertificate(certificatePath));
+            handler.SslOptions.ClientCertificates ??= new X509CertificateCollection();
+            handler.SslOptions.ClientCertificates.Add(LoadCertificate(certificatePath));
         }
 
         return new HttpClient(handler)
@@ -968,7 +992,7 @@ public class DockerInstanceClient : IDockerInstanceClient
 
         try
         {
-            using var httpClient = _httpClientFactory(instanceOptions, engineUri);
+            var httpClient = GetOrCreateHttpClient(instanceOptions, engineUri);
             using var requestTimeoutSource = CreateRequestTimeoutCancellationTokenSource(instanceOptions.RequestTimeoutSeconds, cancellationToken);
             using var response = await httpClient.GetAsync("v1.41/containers/json?all=1", requestTimeoutSource.Token)
                                                  .ConfigureAwait(false);
@@ -1042,7 +1066,7 @@ public class DockerInstanceClient : IDockerInstanceClient
 
         try
         {
-            using var httpClient = _httpClientFactory(instanceOptions, engineUri);
+            var httpClient = GetOrCreateHttpClient(instanceOptions, engineUri);
             using var requestTimeoutSource = CreateRequestTimeoutCancellationTokenSource(instanceOptions.RequestTimeoutSeconds, cancellationToken);
             using var response = await httpClient.GetAsync("v1.41/containers/json", requestTimeoutSource.Token)
                                                  .ConfigureAwait(false);
@@ -1131,7 +1155,7 @@ public class DockerInstanceClient : IDockerInstanceClient
 
         try
         {
-            using var httpClient = _httpClientFactory(instanceOptions, engineUri);
+            var httpClient = GetOrCreateHttpClient(instanceOptions, engineUri);
 
             return await ReadImageInspectAsync(httpClient,
                                                imageReferenceOrId,
@@ -1168,7 +1192,7 @@ public class DockerInstanceClient : IDockerInstanceClient
 
         try
         {
-            using var httpClient = _httpClientFactory(instanceOptions, engineUri);
+            var httpClient = GetOrCreateHttpClient(instanceOptions, engineUri);
 
             return await ReadImageHistoryAsync(httpClient,
                                                imageReferenceOrId,
@@ -1202,7 +1226,7 @@ public class DockerInstanceClient : IDockerInstanceClient
 
         try
         {
-            using var httpClient = _httpClientFactory(instanceOptions, engineUri);
+            var httpClient = GetOrCreateHttpClient(instanceOptions, engineUri);
             using var requestTimeoutSource = CreateRequestTimeoutCancellationTokenSource(instanceOptions.RequestTimeoutSeconds, cancellationToken);
             using var response = await httpClient.GetAsync("v1.41/info", requestTimeoutSource.Token)
                                                  .ConfigureAwait(false);
@@ -1240,5 +1264,40 @@ public class DockerInstanceClient : IDockerInstanceClient
         }
     }
 
+    /// <summary>
+    /// Resolve a pooled HTTP client for the Docker instance, creating it once per connection configuration
+    /// </summary>
+    /// <param name="instanceOptions">Docker instance options</param>
+    /// <param name="engineUri">Resolved engine URI</param>
+    /// <returns>Pooled HTTP client</returns>
+    private HttpClient GetOrCreateHttpClient(DockerInstanceOptions instanceOptions, Uri engineUri)
+    {
+        var cacheKey = BuildHttpClientCacheKey(instanceOptions, engineUri);
+        var pooledClient = _httpClients.GetOrAdd(cacheKey,
+                                                 _ => new Lazy<HttpClient>(() => _httpClientFactory(instanceOptions, engineUri)));
+
+        return pooledClient.Value;
+    }
+
     #endregion // Methods
+
+    #region IDisposable
+
+    /// <summary>
+    /// Releases the resources used by the current instance of the class
+    /// </summary>
+    public void Dispose()
+    {
+        foreach (var pooledClient in _httpClients.Values)
+        {
+            if (pooledClient.IsValueCreated)
+            {
+                pooledClient.Value.Dispose();
+            }
+        }
+
+        _httpClients.Clear();
+    }
+
+    #endregion // IDisposable
 }

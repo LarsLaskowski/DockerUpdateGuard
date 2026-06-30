@@ -63,6 +63,11 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
     private readonly SemaphoreSlim _tokenRefreshLock = new(1, 1);
 
     /// <summary>
+    /// Throttle bounding the number of concurrent outbound Docker Hub and registry requests
+    /// </summary>
+    private readonly SemaphoreSlim _requestThrottle;
+
+    /// <summary>
     /// Access-token expiry timestamp
     /// </summary>
     private DateTimeOffset _accessTokenExpiresAtUtc;
@@ -89,6 +94,9 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
         _httpClient = httpClient;
         _logger = logger;
         _optionsMonitor = optionsMonitor;
+
+        var maxParallelRequests = Math.Max(1, optionsMonitor.CurrentValue.DockerHub.MaxParallelRequests);
+        _requestThrottle = new SemaphoreSlim(maxParallelRequests, maxParallelRequests);
     }
 
     #endregion // Constructors
@@ -853,7 +861,7 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
             request.Headers.Authorization = new AuthenticationHeaderValue("Basic", credentials);
         }
 
-        using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+        using var response = await SendThrottledAsync(request, cancellationToken).ConfigureAwait(false);
 
         if (response.IsSuccessStatusCode == false)
         {
@@ -897,7 +905,7 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
         request.Headers.Accept.ParseAdd("application/vnd.docker.distribution.manifest.v2+json");
         request.Headers.Accept.ParseAdd("application/vnd.oci.image.manifest.v1+json");
 
-        using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+        using var response = await SendThrottledAsync(request, cancellationToken).ConfigureAwait(false);
 
         if (response.IsSuccessStatusCode == false)
         {
@@ -974,7 +982,7 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
         request.Headers.Accept.ParseAdd("application/vnd.docker.distribution.manifest.v2+json");
         request.Headers.Accept.ParseAdd("application/vnd.oci.image.manifest.v1+json");
 
-        using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+        using var response = await SendThrottledAsync(request, cancellationToken).ConfigureAwait(false);
 
         if (response.IsSuccessStatusCode == false)
         {
@@ -1019,7 +1027,7 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
 
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", registryToken);
 
-        using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+        using var response = await SendThrottledAsync(request, cancellationToken).ConfigureAwait(false);
 
         if (response.IsSuccessStatusCode == false)
         {
@@ -1081,7 +1089,7 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
 
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", registryToken);
 
-        using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+        using var response = await SendThrottledAsync(request, cancellationToken).ConfigureAwait(false);
 
         if (response.IsSuccessStatusCode == false)
         {
@@ -1142,12 +1150,30 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
             return CreateAuthenticationFailureResponse(authenticationResult.Message);
         }
 
-        var response = await _httpClient.SendAsync(request,
-                                                   HttpCompletionOption.ResponseHeadersRead,
-                                                   cancellationToken)
-                                        .ConfigureAwait(false);
+        return await SendThrottledAsync(request, cancellationToken).ConfigureAwait(false);
+    }
 
-        return response;
+    /// <summary>
+    /// Send an HTTP request while honoring the configured Docker Hub request parallelism limit
+    /// </summary>
+    /// <param name="request">Outbound HTTP request</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>HTTP response</returns>
+    private async Task<HttpResponseMessage> SendThrottledAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        await _requestThrottle.WaitAsync(cancellationToken).ConfigureAwait(false);
+
+        try
+        {
+            return await _httpClient.SendAsync(request,
+                                               HttpCompletionOption.ResponseHeadersRead,
+                                               cancellationToken)
+                                    .ConfigureAwait(false);
+        }
+        finally
+        {
+            _requestThrottle.Release();
+        }
     }
 
     /// <summary>
@@ -1258,10 +1284,7 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
                                                             Encoding.UTF8,
                                                             "application/json"),
                             };
-        using var response = await _httpClient.SendAsync(request,
-                                                         HttpCompletionOption.ResponseHeadersRead,
-                                                         cancellationToken)
-                                              .ConfigureAwait(false);
+        using var response = await SendThrottledAsync(request, cancellationToken).ConfigureAwait(false);
 
         if (response.IsSuccessStatusCode == false)
         {
@@ -1309,6 +1332,7 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
     public void Dispose()
     {
         _tokenRefreshLock.Dispose();
+        _requestThrottle.Dispose();
     }
 
     #endregion // IDisposable
