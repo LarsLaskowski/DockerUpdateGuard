@@ -201,51 +201,72 @@ public class DockerUpdateGuardOptionsValidator : IValidateOptions<DockerUpdateGu
                 failures.Add($"'{DockerUpdateGuardOptions.SectionName}:DockerInstances' contains duplicate instance name '{instance.Name}'");
             }
 
-            if (string.IsNullOrWhiteSpace(instance.BaseUrl))
-            {
-                failures.Add($"'{DockerUpdateGuardOptions.SectionName}:DockerInstances:{instance.Name}:BaseUrl' must be configured");
-            }
-            else if (TryValidateDockerUri(instance.BaseUrl) == false)
-            {
-                failures.Add($"'{DockerUpdateGuardOptions.SectionName}:DockerInstances:{instance.Name}:BaseUrl' must use http, https, tcp, unix or npipe");
-            }
+            ValidateDockerInstance(instance, failures);
+        }
+    }
 
-            if (instance.RequestTimeoutSeconds is <= 0 or > 300)
-            {
-                failures.Add($"'{DockerUpdateGuardOptions.SectionName}:DockerInstances:{instance.Name}:RequestTimeoutSeconds' must be between 1 and 300");
-            }
+    /// <summary>
+    /// Validate a single Docker instance
+    /// </summary>
+    /// <param name="instance">Docker instance</param>
+    /// <param name="failures">Failure list</param>
+    private static void ValidateDockerInstance(DockerInstanceOptions instance, ICollection<string> failures)
+    {
+        if (string.IsNullOrWhiteSpace(instance.BaseUrl))
+        {
+            failures.Add($"'{DockerUpdateGuardOptions.SectionName}:DockerInstances:{instance.Name}:BaseUrl' must be configured");
+        }
+        else if (TryValidateDockerUri(instance.BaseUrl) == false)
+        {
+            failures.Add($"'{DockerUpdateGuardOptions.SectionName}:DockerInstances:{instance.Name}:BaseUrl' must use http, https, tcp, unix or npipe");
+        }
 
-            if (instance.Portainer.Enabled)
-            {
-                if (string.IsNullOrWhiteSpace(instance.Portainer.BaseUrl))
-                {
-                    failures.Add($"'{DockerUpdateGuardOptions.SectionName}:DockerInstances:{instance.Name}:Portainer:BaseUrl' must be configured when Portainer is enabled");
-                }
-                else if (Uri.TryCreate(instance.Portainer.BaseUrl, UriKind.Absolute, out var portainerUri) == false
-                         || (portainerUri.Scheme != Uri.UriSchemeHttp
-                             && portainerUri.Scheme != Uri.UriSchemeHttps))
-                {
-                    failures.Add($"'{DockerUpdateGuardOptions.SectionName}:DockerInstances:{instance.Name}:Portainer:BaseUrl' must be an absolute http or https URI");
-                }
-                else if (portainerUri.Scheme == Uri.UriSchemeHttp && instance.Portainer.AllowInsecureHttp == false)
-                {
-                    failures.Add($"'{DockerUpdateGuardOptions.SectionName}:DockerInstances:{instance.Name}:Portainer:BaseUrl' uses plaintext HTTP; API keys, passwords and tokens will be transmitted unencrypted — set '{DockerUpdateGuardOptions.SectionName}:DockerInstances:{instance.Name}:Portainer:AllowInsecureHttp: true' to explicitly allow it");
-                }
+        if (instance.RequestTimeoutSeconds is <= 0 or > 300)
+        {
+            failures.Add($"'{DockerUpdateGuardOptions.SectionName}:DockerInstances:{instance.Name}:RequestTimeoutSeconds' must be between 1 and 300");
+        }
 
-                var hasApiToken = string.IsNullOrWhiteSpace(instance.Portainer.ApiToken) == false;
-                var hasUsernamePassword = string.IsNullOrWhiteSpace(instance.Portainer.Username) == false
-                                          && string.IsNullOrWhiteSpace(instance.Portainer.Password) == false;
+        if (instance.Portainer.Enabled)
+        {
+            ValidatePortainerOptions(instance.Name, instance.Portainer, failures);
+        }
+    }
 
-                if (hasApiToken == false && hasUsernamePassword == false)
-                {
-                    failures.Add($"'{DockerUpdateGuardOptions.SectionName}:DockerInstances:{instance.Name}:Portainer' must have either ApiToken or Username+Password configured");
-                }
+    /// <summary>
+    /// Validate the Portainer configuration of a Docker instance
+    /// </summary>
+    /// <param name="instanceName">Owning Docker instance name</param>
+    /// <param name="portainer">Portainer options</param>
+    /// <param name="failures">Failure list</param>
+    private static void ValidatePortainerOptions(string instanceName, PortainerOptions portainer, ICollection<string> failures)
+    {
+        if (string.IsNullOrWhiteSpace(portainer.BaseUrl))
+        {
+            failures.Add($"'{DockerUpdateGuardOptions.SectionName}:DockerInstances:{instanceName}:Portainer:BaseUrl' must be configured when Portainer is enabled");
+        }
+        else if (Uri.TryCreate(portainer.BaseUrl, UriKind.Absolute, out var portainerUri) == false
+                 || (portainerUri.Scheme != Uri.UriSchemeHttp
+                     && portainerUri.Scheme != Uri.UriSchemeHttps))
+        {
+            failures.Add($"'{DockerUpdateGuardOptions.SectionName}:DockerInstances:{instanceName}:Portainer:BaseUrl' must be an absolute http or https URI");
+        }
+        else if (portainerUri.Scheme == Uri.UriSchemeHttp && portainer.AllowInsecureHttp == false)
+        {
+            failures.Add($"'{DockerUpdateGuardOptions.SectionName}:DockerInstances:{instanceName}:Portainer:BaseUrl' uses plaintext HTTP; API keys, passwords and tokens will be transmitted unencrypted — set '{DockerUpdateGuardOptions.SectionName}:DockerInstances:{instanceName}:Portainer:AllowInsecureHttp: true' to explicitly allow it");
+        }
 
-                if (instance.Portainer.RequestTimeoutSeconds is <= 0 or > 300)
-                {
-                    failures.Add($"'{DockerUpdateGuardOptions.SectionName}:DockerInstances:{instance.Name}:Portainer:RequestTimeoutSeconds' must be between 1 and 300");
-                }
-            }
+        var hasApiToken = string.IsNullOrWhiteSpace(portainer.ApiToken) == false;
+        var hasUsernamePassword = string.IsNullOrWhiteSpace(portainer.Username) == false
+                                  && string.IsNullOrWhiteSpace(portainer.Password) == false;
+
+        if (hasApiToken == false && hasUsernamePassword == false)
+        {
+            failures.Add($"'{DockerUpdateGuardOptions.SectionName}:DockerInstances:{instanceName}:Portainer' must have either ApiToken or Username+Password configured");
+        }
+
+        if (portainer.RequestTimeoutSeconds is <= 0 or > 300)
+        {
+            failures.Add($"'{DockerUpdateGuardOptions.SectionName}:DockerInstances:{instanceName}:Portainer:RequestTimeoutSeconds' must be between 1 and 300");
         }
     }
 
