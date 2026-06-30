@@ -46,6 +46,17 @@ COPY --from=build /app/publish .
 
 # Copy startup script that imports any mounted CA certificates and starts the app
 COPY src/DockerUpdateGuard/entrypoint.sh .
-RUN chmod +x /app/entrypoint.sh
+# Make the entrypoint executable and run as a dedicated non-root user (UID 64000) in the
+# root group (GID 0) to reduce the container blast radius. The root group keeps a host
+# Docker socket owned by root:root readable without extra privileges (e.g. on Synology DSM)
+# while still avoiding a root UID. /app is group-owned and group permissions mirror the
+# owner so the arbitrary UID retains read/write access. The optional CA import in
+# entrypoint.sh degrades gracefully when the trust store is not writable.
+RUN chmod +x /app/entrypoint.sh \
+ && adduser -u 64000 -S -G root -H -h /app dockerupdateguard \
+ && chown -R 64000:0 /app \
+ && chmod -R g=u /app
+
+USER 64000:0
 
 ENTRYPOINT ["/app/entrypoint.sh"]

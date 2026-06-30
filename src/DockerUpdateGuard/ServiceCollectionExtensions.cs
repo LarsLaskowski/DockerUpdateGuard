@@ -4,6 +4,7 @@ using DockerUpdateGuard.Docker;
 using DockerUpdateGuard.DockerHub;
 using DockerUpdateGuard.Images;
 using DockerUpdateGuard.Images.Interfaces;
+using DockerUpdateGuard.Infrastructure;
 using DockerUpdateGuard.Portainer;
 using DockerUpdateGuard.Telemetry;
 using DockerUpdateGuard.UI;
@@ -58,29 +59,36 @@ public static class ServiceCollectionExtensions
                                                                 });
                                           });
         services.AddDockerUpdateGuardTelemetry(configuration);
+        services.AddTransient<TransientHttpRetryHandler>();
         services.AddHttpClient<DockerHubClient>(client =>
                                                 {
                                                     client.BaseAddress = DockerHubClient.GetBaseUri(applicationOptions.DockerHub);
                                                     client.Timeout = TimeSpan.FromSeconds(applicationOptions.DockerHub.RequestTimeoutSeconds);
                                                     client.DefaultRequestHeaders.UserAgent.ParseAdd("DockerUpdateGuard/1.0");
-                                                });
+                                                })
+                .AddHttpMessageHandler<TransientHttpRetryHandler>();
         services.AddHttpClient<OciRegistryClient>(client =>
                                                   {
                                                       client.Timeout = TimeSpan.FromSeconds(applicationOptions.DockerHub.RequestTimeoutSeconds);
                                                       client.DefaultRequestHeaders.UserAgent.ParseAdd("DockerUpdateGuard/1.0");
-                                                  });
+                                                  })
+                .AddHttpMessageHandler<TransientHttpRetryHandler>();
         services.AddHttpClient<DotNetReleaseMetadataService>(client =>
                                                              {
                                                                  client.BaseAddress = new Uri("https://dotnetcli.blob.core.windows.net/dotnet/release-metadata/");
                                                                  client.Timeout = TimeSpan.FromSeconds(applicationOptions.DockerHub.RequestTimeoutSeconds);
                                                                  client.DefaultRequestHeaders.UserAgent.ParseAdd("DockerUpdateGuard/1.0");
-                                                             });
+                                                             })
+                .AddHttpMessageHandler<TransientHttpRetryHandler>();
         services.AddHttpClient<NginxReleaseMetadataService>(client =>
                                                             {
                                                                 client.BaseAddress = new Uri("https://nginx.org/");
                                                                 client.Timeout = TimeSpan.FromSeconds(applicationOptions.DockerHub.RequestTimeoutSeconds);
                                                                 client.DefaultRequestHeaders.UserAgent.ParseAdd("DockerUpdateGuard/1.0");
-                                                            });
+                                                            })
+                .AddHttpMessageHandler<TransientHttpRetryHandler>();
+        services.AddHttpClient(PortainerClient.HttpClientName)
+                .AddHttpMessageHandler<TransientHttpRetryHandler>();
         services.AddSingleton<ApplicationTelemetry>();
         services.AddSingleton<IDockerInstanceClient, DockerInstanceClient>();
         services.AddSingleton<IPortainerClient, PortainerClient>();

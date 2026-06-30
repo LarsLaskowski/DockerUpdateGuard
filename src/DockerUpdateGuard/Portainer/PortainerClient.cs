@@ -1,4 +1,5 @@
 using System.Net.Http.Headers;
+using System.Text.Json;
 
 using DockerUpdateGuard.Configuration;
 using DockerUpdateGuard.Portainer.Data;
@@ -11,6 +12,11 @@ namespace DockerUpdateGuard.Portainer;
 public partial class PortainerClient : IPortainerClient
 {
     #region Constants
+
+    /// <summary>
+    /// Named HTTP client used for Portainer API requests
+    /// </summary>
+    public const string HttpClientName = "Portainer";
 
     /// <summary>
     /// Supported container actions
@@ -91,7 +97,12 @@ public partial class PortainerClient : IPortainerClient
                                                             string containerName,
                                                             CancellationToken cancellationToken)
     {
-        var filters = Uri.EscapeDataString($"{{\"name\":[\"{containerName}\"]}}");
+        var filter = new Dictionary<string, string[]>(StringComparer.Ordinal)
+                     {
+                         ["name"] = [containerName],
+                     };
+
+        var filters = Uri.EscapeDataString(JsonSerializer.Serialize(filter));
         var url = $"/api/endpoints/{endpointId}/docker/containers/json?all=true&filters={filters}";
 
         using var response = await client.GetAsync(url, cancellationToken).ConfigureAwait(false);
@@ -297,7 +308,7 @@ public partial class PortainerClient : IPortainerClient
     /// <returns>Authenticated HTTP client</returns>
     private async Task<HttpClient> CreateAuthenticatedClientAsync(PortainerOptions options, CancellationToken cancellationToken)
     {
-        var client = _httpClientFactory.CreateClient();
+        var client = _httpClientFactory.CreateClient(HttpClientName);
 
         try
         {

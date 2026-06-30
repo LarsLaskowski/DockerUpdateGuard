@@ -16,4 +16,14 @@ internal sealed record HubLoginResponse
     public string? Token { get; init; }
 
     #endregion // Properties
+
+    #region Object
+
+    /// <inheritdoc/>
+    public override string ToString()
+    {
+        return $"{nameof(HubLoginResponse)} {{ }}";
+    }
+
+    #endregion // Object
 }

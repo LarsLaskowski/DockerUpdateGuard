@@ -184,9 +184,20 @@ public class ImageScanOrchestrator : IImageScanOrchestrator
 
         foreach (var observedImageId in observedImages)
         {
-            await ScanAsync(observedImageId,
-                            triggerSource,
-                            cancellationToken).ConfigureAwait(false);
+            try
+            {
+                await ScanAsync(observedImageId,
+                                triggerSource,
+                                cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception exception)
+            {
+                _logger.ObservedImageScanBatchItemFailed(exception, observedImageId);
+            }
         }
 
         _logger.ObservedImageScanBatchCompleted(triggerSource, observedImages.Count);
@@ -206,8 +217,16 @@ public class ImageScanOrchestrator : IImageScanOrchestrator
         {
             var observedImage = await _dbContext.ObservedImages.Include(entity => entity.CurrentImageVersion)
                                                                .ThenInclude(entity => entity.RegistryRepository)
-                                                               .SingleAsync(entity => entity.Id == observedImageId, cancellationToken)
+                                                               .SingleOrDefaultAsync(entity => entity.Id == observedImageId, cancellationToken)
                                                                .ConfigureAwait(false);
+
+            if (observedImage is null)
+            {
+                _logger.ObservedImageScanSkippedMissing(observedImageId);
+
+                return;
+            }
+
             var scanRun = new ScanRun
                           {
                               Type = ScanRunType.ObservedImage,

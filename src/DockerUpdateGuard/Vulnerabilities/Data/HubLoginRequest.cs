@@ -22,4 +22,14 @@ internal sealed record HubLoginRequest
     public string Password { get; init; } = string.Empty;
 
     #endregion // Properties
+
+    #region Object
+
+    /// <inheritdoc/>
+    public override string ToString()
+    {
+        return $"{nameof(HubLoginRequest)} {{ {nameof(Username)} = {Username} }}";
+    }
+
+    #endregion // Object
 }
