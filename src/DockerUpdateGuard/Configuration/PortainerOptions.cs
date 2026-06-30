@@ -1,5 +1,3 @@
-using System.ComponentModel.DataAnnotations;
-
 namespace DockerUpdateGuard.Configuration;
 
 /// <summary>
@@ -47,7 +45,6 @@ public class PortainerOptions
     /// <summary>
     /// Request timeout in seconds
     /// </summary>
-    [Range(1, 300)]
     public int RequestTimeoutSeconds { get; set; } = 15;
 
     #endregion // Properties

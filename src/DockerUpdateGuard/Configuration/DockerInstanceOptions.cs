@@ -44,7 +44,6 @@ public class DockerInstanceOptions
     /// <summary>
     /// Docker engine request timeout in seconds
     /// </summary>
-    [Range(1, 300)]
     public int RequestTimeoutSeconds { get; set; } = 15;
 
     /// <summary>
