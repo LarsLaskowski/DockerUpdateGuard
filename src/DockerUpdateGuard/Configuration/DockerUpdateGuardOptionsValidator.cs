@@ -112,69 +112,87 @@ public class DockerUpdateGuardOptionsValidator : IValidateOptions<DockerUpdateGu
     /// <param name="failures">Failure list</param>
     private static void ValidateScanningOptions(ScanningOptions options, ICollection<string> failures)
     {
-        if (options.DiscoveryIntervalMinutes is <= 0 or > 1440)
-        {
-            failures.Add($"'{DockerUpdateGuardOptions.SectionName}:Scanning:DiscoveryIntervalMinutes' must be between 1 and 1440");
-        }
-
-        if (options.OwnImageBaseScanIntervalMinutes is <= 0 or > 10080)
-        {
-            failures.Add($"'{DockerUpdateGuardOptions.SectionName}:Scanning:OwnImageBaseScanIntervalMinutes' must be between 1 and 10080");
-        }
-
-        if (options.DockerHubRequestLimitWindowHours is <= 0 or > 168)
-        {
-            failures.Add($"'{DockerUpdateGuardOptions.SectionName}:Scanning:DockerHubRequestLimitWindowHours' must be between 1 and 168");
-        }
-
-        if (options.DockerHubRequestLimitPerWindow is <= 0 or > 100000)
-        {
-            failures.Add($"'{DockerUpdateGuardOptions.SectionName}:Scanning:DockerHubRequestLimitPerWindow' must be between 1 and 100000");
-        }
-
-        if (options.DockerHubReservedManualRequestsPerWindow is < 0 or > 100000)
-        {
-            failures.Add($"'{DockerUpdateGuardOptions.SectionName}:Scanning:DockerHubReservedManualRequestsPerWindow' must be between 0 and 100000");
-        }
+        ValidateRange(options.DiscoveryIntervalMinutes,
+                      1,
+                      1440,
+                      $"{DockerUpdateGuardOptions.SectionName}:Scanning:DiscoveryIntervalMinutes",
+                      failures);
+        ValidateRange(options.OwnImageBaseScanIntervalMinutes,
+                      1,
+                      10080,
+                      $"{DockerUpdateGuardOptions.SectionName}:Scanning:OwnImageBaseScanIntervalMinutes",
+                      failures);
+        ValidateRange(options.DockerHubRequestLimitWindowHours,
+                      1,
+                      168,
+                      $"{DockerUpdateGuardOptions.SectionName}:Scanning:DockerHubRequestLimitWindowHours",
+                      failures);
+        ValidateRange(options.DockerHubRequestLimitPerWindow,
+                      1,
+                      100000,
+                      $"{DockerUpdateGuardOptions.SectionName}:Scanning:DockerHubRequestLimitPerWindow",
+                      failures);
+        ValidateRange(options.DockerHubReservedManualRequestsPerWindow,
+                      0,
+                      100000,
+                      $"{DockerUpdateGuardOptions.SectionName}:Scanning:DockerHubReservedManualRequestsPerWindow",
+                      failures);
 
         if (options.DockerHubReservedManualRequestsPerWindow >= options.DockerHubRequestLimitPerWindow)
         {
             failures.Add($"'{DockerUpdateGuardOptions.SectionName}:Scanning:DockerHubReservedManualRequestsPerWindow' must be smaller than DockerHubRequestLimitPerWindow");
         }
 
-        if (options.DockerHubAccountDiscoveryIntervalMinutes is <= 0 or > 10080)
-        {
-            failures.Add($"'{DockerUpdateGuardOptions.SectionName}:Scanning:DockerHubAccountDiscoveryIntervalMinutes' must be between 1 and 10080");
-        }
+        ValidateRange(options.DockerHubAccountDiscoveryIntervalMinutes,
+                      1,
+                      10080,
+                      $"{DockerUpdateGuardOptions.SectionName}:Scanning:DockerHubAccountDiscoveryIntervalMinutes",
+                      failures);
+        ValidateRange(options.RuntimeImageUpdateScanIntervalMinutes,
+                      1,
+                      1440,
+                      $"{DockerUpdateGuardOptions.SectionName}:Scanning:RuntimeImageUpdateScanIntervalMinutes",
+                      failures);
+        ValidateRange(options.ResourceStatisticsIntervalMinutes,
+                      1,
+                      1440,
+                      $"{DockerUpdateGuardOptions.SectionName}:Scanning:ResourceStatisticsIntervalMinutes",
+                      failures);
+        ValidateRange(options.VulnerabilityRefreshIntervalMinutes,
+                      1,
+                      10080,
+                      $"{DockerUpdateGuardOptions.SectionName}:Scanning:VulnerabilityRefreshIntervalMinutes",
+                      failures);
+        ValidateRange(options.CleanupIntervalMinutes,
+                      1,
+                      10080,
+                      $"{DockerUpdateGuardOptions.SectionName}:Scanning:CleanupIntervalMinutes",
+                      failures);
+        ValidateRange(options.RetryCount,
+                      0,
+                      10,
+                      $"{DockerUpdateGuardOptions.SectionName}:Scanning:RetryCount",
+                      failures);
+        ValidateRange(options.RetainScanRunsDays,
+                      1,
+                      3650,
+                      $"{DockerUpdateGuardOptions.SectionName}:Scanning:RetainScanRunsDays",
+                      failures);
+    }
 
-        if (options.RuntimeImageUpdateScanIntervalMinutes is <= 0 or > 1440)
+    /// <summary>
+    /// Validate that a value falls within an inclusive range
+    /// </summary>
+    /// <param name="value">Value to validate</param>
+    /// <param name="minimum">Inclusive minimum</param>
+    /// <param name="maximum">Inclusive maximum</param>
+    /// <param name="propertyPath">Fully qualified configuration path</param>
+    /// <param name="failures">Failure list</param>
+    private static void ValidateRange(int value, int minimum, int maximum, string propertyPath, ICollection<string> failures)
+    {
+        if (value < minimum || value > maximum)
         {
-            failures.Add($"'{DockerUpdateGuardOptions.SectionName}:Scanning:RuntimeImageUpdateScanIntervalMinutes' must be between 1 and 1440");
-        }
-
-        if (options.ResourceStatisticsIntervalMinutes is <= 0 or > 1440)
-        {
-            failures.Add($"'{DockerUpdateGuardOptions.SectionName}:Scanning:ResourceStatisticsIntervalMinutes' must be between 1 and 1440");
-        }
-
-        if (options.VulnerabilityRefreshIntervalMinutes is <= 0 or > 10080)
-        {
-            failures.Add($"'{DockerUpdateGuardOptions.SectionName}:Scanning:VulnerabilityRefreshIntervalMinutes' must be between 1 and 10080");
-        }
-
-        if (options.CleanupIntervalMinutes is <= 0 or > 10080)
-        {
-            failures.Add($"'{DockerUpdateGuardOptions.SectionName}:Scanning:CleanupIntervalMinutes' must be between 1 and 10080");
-        }
-
-        if (options.RetryCount is < 0 or > 10)
-        {
-            failures.Add($"'{DockerUpdateGuardOptions.SectionName}:Scanning:RetryCount' must be between 0 and 10");
-        }
-
-        if (options.RetainScanRunsDays is <= 0 or > 3650)
-        {
-            failures.Add($"'{DockerUpdateGuardOptions.SectionName}:Scanning:RetainScanRunsDays' must be between 1 and 3650");
+            failures.Add($"'{propertyPath}' must be between {minimum} and {maximum}");
         }
     }
 
