@@ -6,3 +6,13 @@
 **/.idea
 *.md
 .gitignore
+
+# Prevent local developer configuration and secrets from leaking into local builds.
+# The base appsettings.json is required by the publish output and is kept on purpose.
+**/appsettings.*.json
+**/*.pfx
+**/*.crt
+**/*.pem
+**/*.key
+**/certs/
+docs/

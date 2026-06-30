@@ -48,4 +48,12 @@ COPY --from=build /app/publish .
 COPY src/DockerUpdateGuard/entrypoint.sh .
 RUN chmod +x /app/entrypoint.sh
 
+# Run as a dedicated non-root user (numeric UID/GID) to reduce the container blast radius.
+# The optional CA import in entrypoint.sh degrades gracefully when the trust store is not writable.
+RUN addgroup -g 64000 -S dockerupdateguard \
+ && adduser -u 64000 -S -G dockerupdateguard -H -h /app dockerupdateguard \
+ && chown -R 64000:64000 /app
+
+USER 64000:64000
+
 ENTRYPOINT ["/app/entrypoint.sh"]

@@ -466,6 +466,50 @@ public partial class DockerHubClientTests
     }
 
     /// <summary>
+    /// Verify outbound Docker Hub requests honor the configured parallelism limit
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerHubClientSendHonorsMaxParallelRequestsAsync()
+    {
+        var handler = new ConcurrencyTrackingHttpMessageHandler("""{ "username": "acme" }""", TimeSpan.FromMilliseconds(50));
+        var httpClient = new HttpClient(handler);
+
+        try
+        {
+            httpClient.BaseAddress = new Uri("https://hub.docker.com/");
+
+            var options = new DockerUpdateGuardOptions
+                          {
+                              DockerHub = new DockerHubOptions
+                                          {
+                                              Registry = "docker.io",
+                                              UserName = "acme",
+                                              MaxParallelRequests = 2,
+                                          },
+                          };
+            var client = new DockerHubClient(httpClient,
+                                             new TestLogger<DockerHubClient>(),
+                                             new TestOptionsMonitor<DockerUpdateGuardOptions>(options));
+            var requests = Enumerable.Range(0, 8)
+                                     .Select(_ => client.GetCurrentUserAsync(CancellationToken.None))
+                                     .ToArray();
+
+            await Task.WhenAll(requests).ConfigureAwait(false);
+
+            Assert.IsTrue(requests.All(task => task.Result.Status == ExternalOperationStatus.Succeeded),
+                          "All throttled Docker Hub requests must complete successfully");
+            Assert.IsTrue(handler.MaxObservedConcurrency <= 2,
+                          $"Outbound Docker Hub parallelism must never exceed MaxParallelRequests; observed {handler.MaxObservedConcurrency}");
+        }
+        finally
+        {
+            httpClient.Dispose();
+            handler.Dispose();
+        }
+    }
+
+    /// <summary>
     /// Create a Docker Hub client for tests
     /// </summary>
     /// <param name="httpClient">Configured HTTP client</param>
