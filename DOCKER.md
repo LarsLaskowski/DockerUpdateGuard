@@ -52,7 +52,9 @@ and configure the matching Docker instance URL in appsettings.json, for example:
 
 Both are required. Mounting the socket without setting the matching `BaseUrl`, or configuring the `BaseUrl` without mounting the socket, is not enough.
 
-The image runs as a non-root user (UID/GID `64000`) by default. The Docker socket is usually owned by the host `docker` group, so the container process must be a member of that group to read it. Grant access by passing the host socket's group id, for example:
+The image runs as a non-root user (UID `64000`) in the root group (GID `0`) by default. This keeps the container off a root UID while still allowing access to a Docker socket that is owned by `root:root` (the common case on Synology DSM and similar appliances) without any extra flags.
+
+On standard Linux hosts the socket is usually owned by the host `docker` group instead, so the container process must additionally be a member of that group to read it. Grant access by passing the host socket's group id, for example:
 
 ```bash
 --group-add "$(stat -c '%g' /var/run/docker.sock)"
@@ -107,7 +109,7 @@ The published image now includes a small entrypoint script that will import any 
 
 - If `/app/certs` contains one or more `*.crt`/`*.pem` files and the container has permission to write the system trust store, the root certificates are imported automatically and become trusted by HttpClient, Npgsql, and other system TLS consumers.
 - If no certificates are provided, the import step is skipped and the container starts normally.
-- The image runs as a non-root user by default and therefore cannot write the system trust store, so this automatic import is skipped. To use it, run the container as root for the trust-store import (for example `--user 0`) or bake the CA into a derived image at build time; the application still runs as non-root otherwise.
+- The image runs as a non-root user (UID `64000`) by default and therefore cannot write the system trust store, so this automatic import is skipped. To use it, run the container as root for the trust-store import (for example `--user 0`) or bake the CA into a derived image at build time; the application still runs as non-root otherwise.
 
 Certificate formats and usage
 
@@ -159,7 +161,7 @@ Permissions and security
 Notes
 
 - The automatic import is optional; the image works without any mounted certificates.
-- The image runs as the non-root user `64000` by default. If the environment requires importing certificates, bake the CA into a derived image or run the container as root (for example `--user 0`) so the script can update the trust store.
+- The image runs as the non-root user `64000` (root group, GID `0`) by default. If the environment requires importing certificates, bake the CA into a derived image or run the container as root (for example `--user 0`) so the script can update the trust store.
 ## Networking
 
 The image needs outbound access to:
