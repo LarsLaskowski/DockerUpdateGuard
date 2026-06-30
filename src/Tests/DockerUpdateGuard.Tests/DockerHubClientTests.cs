@@ -499,8 +499,9 @@ public partial class DockerHubClientTests
 
             Assert.IsTrue(requests.All(task => task.Result.Status == ExternalOperationStatus.Succeeded),
                           "All throttled Docker Hub requests must complete successfully");
-            Assert.IsTrue(handler.MaxObservedConcurrency <= 2,
-                          $"Outbound Docker Hub parallelism must never exceed MaxParallelRequests; observed {handler.MaxObservedConcurrency}");
+            Assert.IsLessThanOrEqualTo(2,
+                                       handler.MaxObservedConcurrency,
+                                       $"Outbound Docker Hub parallelism must never exceed MaxParallelRequests; observed {handler.MaxObservedConcurrency}");
         }
         finally
         {
