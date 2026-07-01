@@ -371,8 +371,14 @@ public static class VersionTagResolutionHelper
             return false;
         }
 
-        major = int.Parse(match.Groups["major"].Value);
-        minor = int.Parse(match.Groups["minor"].Value);
+        if (int.TryParse(match.Groups["major"].Value, out var parsedMajor) == false
+            || int.TryParse(match.Groups["minor"].Value, out var parsedMinor) == false)
+        {
+            return false;
+        }
+
+        major = parsedMajor;
+        minor = parsedMinor;
         variantFamilyKey = NormalizeVariantFamilyKey(match.Groups[SuffixGroupName].Value);
 
         return true;
@@ -401,9 +407,14 @@ public static class VersionTagResolutionHelper
             return false;
         }
 
-        version = new Version(int.Parse(match.Groups["major"].Value),
-                              int.Parse(match.Groups["minor"].Value),
-                              int.Parse(match.Groups["patch"].Value));
+        if (int.TryParse(match.Groups["major"].Value, out var major) == false
+            || int.TryParse(match.Groups["minor"].Value, out var minor) == false
+            || int.TryParse(match.Groups["patch"].Value, out var patch) == false)
+        {
+            return false;
+        }
+
+        version = new Version(major, minor, patch);
         variantFamilyKey = NormalizeVariantFamilyKey(match.Groups[SuffixGroupName].Value);
 
         return true;
