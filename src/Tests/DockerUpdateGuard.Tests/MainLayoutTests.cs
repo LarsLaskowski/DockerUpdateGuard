@@ -18,11 +18,11 @@ public class MainLayoutTests
     /// </summary>
     private static readonly MethodInfo _getProtectedAssetCountMethod = typeof(MainLayout).GetMethod("GetProtectedAssetCount",
                                                                                                     BindingFlags.NonPublic | BindingFlags.Instance)
-                                                                       ?? throw new InvalidOperationException("MainLayout must expose the non-public GetProtectedAssetCount method");
+                                                                           ?? throw new InvalidOperationException("MainLayout must expose the non-public GetProtectedAssetCount method");
 
     private static readonly FieldInfo _dashboardSummaryField = typeof(MainLayout).GetField("_dashboardSummary",
                                                                                            BindingFlags.NonPublic | BindingFlags.Instance)
-                                                               ?? throw new InvalidOperationException("MainLayout must expose the _dashboardSummary field for test setup");
+                                                                   ?? throw new InvalidOperationException("MainLayout must expose the _dashboardSummary field for test setup");
 
     #endregion // Fields
 

@@ -60,7 +60,7 @@ public class TelemetryServiceCollectionExtensionsTests
                                               .Value;
         var loggerOptions = serviceProvider.GetRequiredService<IOptions<OpenTelemetryLoggerOptions>>()
                                            .Value;
-                var logger = loggerFactory.CreateLogger(DockerUpdateGuardTelemetry.LoggerCategoryName);
+        var logger = loggerFactory.CreateLogger(DockerUpdateGuardTelemetry.LoggerCategoryName);
 
         logger.LogInformation("Telemetry logging pipeline test {TestValue}", 42);
 

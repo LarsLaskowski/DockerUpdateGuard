@@ -18,19 +18,19 @@ public class MyImagesTests
     /// Non-public section-title builder
     /// </summary>
     private static readonly MethodInfo _getSectionTitleMethod = typeof(MyImages).GetMethod("GetSectionTitle", BindingFlags.NonPublic | BindingFlags.Static)
-                                                                ?? throw new InvalidOperationException("MyImages must expose the non-public static GetSectionTitle method");
+                                                                    ?? throw new InvalidOperationException("MyImages must expose the non-public static GetSectionTitle method");
 
     /// <summary>
     /// Non-public scan-status chip color resolver
     /// </summary>
     private static readonly MethodInfo _getScanStatusColorMethod = typeof(MyImages).GetMethod("GetScanStatusColor", BindingFlags.NonPublic | BindingFlags.Static)
-                                                                   ?? throw new InvalidOperationException("MyImages must expose the non-public static GetScanStatusColor method");
+                                                                       ?? throw new InvalidOperationException("MyImages must expose the non-public static GetScanStatusColor method");
 
     /// <summary>
     /// Non-public vulnerability-status chip color resolver
     /// </summary>
     private static readonly MethodInfo _getVulnerabilityStatusColorMethod = typeof(MyImages).GetMethod("GetVulnerabilityStatusColor", BindingFlags.NonPublic | BindingFlags.Static)
-                                                                            ?? throw new InvalidOperationException("MyImages must expose the non-public static GetVulnerabilityStatusColor method");
+                                                                                ?? throw new InvalidOperationException("MyImages must expose the non-public static GetVulnerabilityStatusColor method");
 
     #endregion // Fields
 

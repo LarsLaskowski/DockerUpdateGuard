@@ -17,7 +17,7 @@ public class RuntimeContainersTests
     /// </summary>
     private static readonly MethodInfo _buildSparklinePathMethod = typeof(RuntimeContainers).GetMethod("BuildSparklinePath",
                                                                                                        BindingFlags.NonPublic | BindingFlags.Static)
-                                                                   ?? throw new InvalidOperationException("The runtime containers page must expose the non-public BuildSparklinePath method for sparkline rendering");
+                                                                       ?? throw new InvalidOperationException("The runtime containers page must expose the non-public BuildSparklinePath method for sparkline rendering");
 
     #endregion // Fields
 
