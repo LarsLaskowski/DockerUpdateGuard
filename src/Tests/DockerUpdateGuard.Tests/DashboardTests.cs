@@ -17,7 +17,7 @@ public class DashboardTests
     /// </summary>
     private static readonly MethodInfo _getMetricNavigationTargetMethod = typeof(Dashboard).GetMethod("GetMetricNavigationTarget",
                                                                                                       BindingFlags.NonPublic | BindingFlags.Static)
-                                                                          ?? throw new InvalidOperationException("The dashboard page must expose the non-public GetMetricNavigationTarget method for metric-card navigation");
+                                                                              ?? throw new InvalidOperationException("The dashboard page must expose the non-public GetMetricNavigationTarget method for metric-card navigation");
 
     #endregion // Fields
 

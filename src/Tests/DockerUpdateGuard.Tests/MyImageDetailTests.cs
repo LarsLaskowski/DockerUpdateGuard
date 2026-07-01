@@ -18,19 +18,19 @@ public class MyImageDetailTests
     /// Non-public scan-status chip color resolver
     /// </summary>
     private static readonly MethodInfo _getScanStatusColorMethod = typeof(MyImageDetail).GetMethod("GetScanStatusColor", BindingFlags.NonPublic | BindingFlags.Static)
-                                                                   ?? throw new InvalidOperationException("MyImageDetail must expose the non-public static GetScanStatusColor method");
+                                                                       ?? throw new InvalidOperationException("MyImageDetail must expose the non-public static GetScanStatusColor method");
 
     /// <summary>
     /// Non-public vulnerability-severity chip color resolver
     /// </summary>
     private static readonly MethodInfo _getVulnerabilitySeverityColorMethod = typeof(MyImageDetail).GetMethod("GetVulnerabilitySeverityColor", BindingFlags.NonPublic | BindingFlags.Static)
-                                                                              ?? throw new InvalidOperationException("MyImageDetail must expose the non-public static GetVulnerabilitySeverityColor method");
+                                                                                  ?? throw new InvalidOperationException("MyImageDetail must expose the non-public static GetVulnerabilitySeverityColor method");
 
     /// <summary>
     /// Non-public vulnerability-assessment chip color resolver
     /// </summary>
     private static readonly MethodInfo _getVulnerabilityAssessmentColorMethod = typeof(MyImageDetail).GetMethod("GetVulnerabilityAssessmentColor", BindingFlags.NonPublic | BindingFlags.Static)
-                                                                                ?? throw new InvalidOperationException("MyImageDetail must expose the non-public static GetVulnerabilityAssessmentColor method");
+                                                                                    ?? throw new InvalidOperationException("MyImageDetail must expose the non-public static GetVulnerabilityAssessmentColor method");
 
     #endregion // Fields
 

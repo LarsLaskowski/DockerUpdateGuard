@@ -19,7 +19,7 @@ public class NavMenuTests
     private static readonly MethodInfo _isDockerHubAccountConfiguredMethod = typeof(NavMenu).GetMethod("IsDockerHubAccountConfigured",
                                                                                                        BindingFlags.NonPublic | BindingFlags.Static,
                                                                                                        [typeof(DockerHubOptions)])
-                                                                             ?? throw new InvalidOperationException("NavMenu must expose the non-public static IsDockerHubAccountConfigured(DockerHubOptions) overload for testability");
+                                                                                 ?? throw new InvalidOperationException("NavMenu must expose the non-public static IsDockerHubAccountConfigured(DockerHubOptions) overload for testability");
 
     #endregion // Fields
 

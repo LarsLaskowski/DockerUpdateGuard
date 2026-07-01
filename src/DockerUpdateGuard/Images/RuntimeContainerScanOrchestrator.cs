@@ -754,8 +754,8 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Task</returns>
     private async Task DeactivateSupersededRuntimeFindingsAsync(Guid dockerInstanceId,
-                                                               string containerId,
-                                                               CancellationToken cancellationToken)
+                                                                string containerId,
+                                                                CancellationToken cancellationToken)
     {
         var supersededFindings = await _dbContext.UpdateFindings.Include(entity => entity.TagCandidates)
                                                                 .Include(entity => entity.ContainerSnapshot)
@@ -777,8 +777,8 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Task</returns>
     private async Task DeactivateRemovedRuntimeFindingsAsync(Guid dockerInstanceId,
-                                                            IReadOnlyCollection<string> discoveredContainerIds,
-                                                            CancellationToken cancellationToken)
+                                                             IReadOnlyCollection<string> discoveredContainerIds,
+                                                             CancellationToken cancellationToken)
     {
         var supersededFindings = await _dbContext.UpdateFindings.Include(entity => entity.TagCandidates)
                                                                 .Include(entity => entity.ContainerSnapshot)

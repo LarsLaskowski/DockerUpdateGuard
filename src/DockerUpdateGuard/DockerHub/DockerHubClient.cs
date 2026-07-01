@@ -219,12 +219,8 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
     /// Parse a Docker Hub tag payload
     /// </summary>
     /// <param name="element">JSON element</param>
-    /// <param name="operatingSystem">Preferred operating system</param>
-    /// <param name="architecture">Preferred architecture</param>
     /// <returns>Tag data</returns>
-    private static DockerHubTagData ParseTag(JsonElement element,
-                                             string? operatingSystem = null,
-                                             string? architecture = null)
+    private static DockerHubTagData ParseTag(JsonElement element)
     {
         return new DockerHubTagData
                {
@@ -242,6 +238,52 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
     private static string? ResolveDockerHubDigest(JsonElement element)
     {
         return TryGetString(element, "digest");
+    }
+
+    /// <summary>
+    /// Select the platform manifest digest from a multi-arch manifest list
+    /// </summary>
+    /// <param name="manifestsElement">Manifest list "manifests" array element</param>
+    /// <returns>Resolved platform manifest digest or null</returns>
+    private static string? SelectManifestDigest(JsonElement manifestsElement)
+    {
+        var linuxDigest = default(string);
+        var fallbackDigest = default(string);
+
+        foreach (var manifest in manifestsElement.EnumerateArray())
+        {
+            var digest = TryGetString(manifest, "digest");
+
+            if (string.IsNullOrWhiteSpace(digest))
+            {
+                continue;
+            }
+
+            if (manifest.TryGetProperty("platform", out var platformElement) == false)
+            {
+                fallbackDigest ??= digest;
+
+                continue;
+            }
+
+            var manifestOperatingSystem = TryGetString(platformElement, "os");
+            var manifestArchitecture = TryGetString(platformElement, "architecture");
+
+            if (string.Equals(manifestOperatingSystem, "unknown", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(manifestArchitecture, "unknown", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            fallbackDigest ??= digest;
+
+            if (string.Equals(manifestOperatingSystem, "linux", StringComparison.OrdinalIgnoreCase))
+            {
+                linuxDigest ??= digest;
+            }
+        }
+
+        return linuxDigest ?? fallbackDigest;
     }
 
     /// <summary>
@@ -603,9 +645,7 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
             using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: cancellationToken)
                                                        .ConfigureAwait(false);
 
-            return ExternalOperationResult<DockerHubTagData>.Succeeded(ParseTag(jsonDocument.RootElement,
-                                                                                operatingSystem,
-                                                                                architecture));
+            return ExternalOperationResult<DockerHubTagData>.Succeeded(ParseTag(jsonDocument.RootElement));
         }
     }
 
@@ -665,7 +705,7 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
                 {
                     foreach (var resultElement in resultsElement.EnumerateArray())
                     {
-                        var tagData = ParseTag(resultElement, operatingSystem, architecture);
+                        var tagData = ParseTag(resultElement);
 
                         if (string.IsNullOrWhiteSpace(queryOptions?.CurrentDigest) == false
                             && string.Equals(tagData.Digest,
@@ -955,17 +995,7 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
             return null;
         }
 
-        var targetDigest = default(string);
-
-        foreach (var manifest in manifestsElement.EnumerateArray())
-        {
-            targetDigest = TryGetString(manifest, "digest");
-
-            if (string.IsNullOrWhiteSpace(targetDigest) == false)
-            {
-                break;
-            }
-        }
+        var targetDigest = SelectManifestDigest(manifestsElement);
 
         if (string.IsNullOrWhiteSpace(targetDigest))
         {

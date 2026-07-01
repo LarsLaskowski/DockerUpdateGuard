@@ -83,11 +83,22 @@ internal sealed class StubHttpMessageHandler : HttpMessageHandler
     /// <param name="jsonContent">JSON content</param>
     public void AddResponse(string requestUri, string jsonContent)
     {
+        AddResponse(requestUri, jsonContent, "application/json");
+    }
+
+    /// <summary>
+    /// Add a response with an explicit media type for a request URI
+    /// </summary>
+    /// <param name="requestUri">Absolute request URI</param>
+    /// <param name="content">Response content</param>
+    /// <param name="mediaType">Response media type</param>
+    public void AddResponse(string requestUri, string content, string mediaType)
+    {
         _responses[requestUri] = new HttpResponseMessage(HttpStatusCode.OK)
                                  {
-                                     Content = new StringContent(jsonContent,
+                                     Content = new StringContent(content,
                                                                  Encoding.UTF8,
-                                                                 "application/json"),
+                                                                 mediaType),
                                  };
     }
 
