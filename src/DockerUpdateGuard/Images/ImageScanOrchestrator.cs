@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text.Json;
 
@@ -34,9 +33,14 @@ public class ImageScanOrchestrator : IImageScanOrchestrator
     #region Fields
 
     /// <summary>
-    /// Per-observed-image scan locks shared across orchestrator scopes
+    /// Synchronization root guarding per-observed-image scan lock bookkeeping
     /// </summary>
-    private static readonly ConcurrentDictionary<Guid, SemaphoreSlim> _observedImageScanLocks = new();
+    private static readonly object _observedImageScanLockRegistrySync = new();
+
+    /// <summary>
+    /// Per-observed-image scan locks shared across orchestrator scopes, retained only while referenced
+    /// </summary>
+    private static readonly Dictionary<Guid, ObservedImageScanLockEntry> _observedImageScanLocks = new();
 
     /// <summary>
     /// Application telemetry
@@ -156,13 +160,53 @@ public class ImageScanOrchestrator : IImageScanOrchestrator
     }
 
     /// <summary>
-    /// Resolve the scan lock for an observed image
+    /// Acquire a reference to the shared scan lock for an observed image, creating it on first use
     /// </summary>
     /// <param name="observedImageId">Observed image identifier</param>
     /// <returns>Shared scan lock</returns>
-    private static SemaphoreSlim GetObservedImageScanLock(Guid observedImageId)
+    private static SemaphoreSlim AcquireObservedImageScanLock(Guid observedImageId)
     {
-        return _observedImageScanLocks.GetOrAdd(observedImageId, _ => new SemaphoreSlim(1, 1));
+        lock (_observedImageScanLockRegistrySync)
+        {
+            if (_observedImageScanLocks.TryGetValue(observedImageId, out var entry) == false)
+            {
+                entry = new ObservedImageScanLockEntry
+                        {
+                            Semaphore = new SemaphoreSlim(1, 1),
+                        };
+
+                _observedImageScanLocks[observedImageId] = entry;
+            }
+
+            entry.ReferenceCount++;
+
+            return entry.Semaphore;
+        }
+    }
+
+    /// <summary>
+    /// Release a reference to the shared scan lock for an observed image, disposing it once unreferenced
+    /// </summary>
+    /// <param name="observedImageId">Observed image identifier</param>
+    /// <param name="observedImageScanLock">Scan lock previously obtained via <see cref="AcquireObservedImageScanLock"/></param>
+    private static void ReleaseObservedImageScanLockReference(Guid observedImageId, SemaphoreSlim observedImageScanLock)
+    {
+        lock (_observedImageScanLockRegistrySync)
+        {
+            if (_observedImageScanLocks.TryGetValue(observedImageId, out var entry) == false
+                || ReferenceEquals(entry.Semaphore, observedImageScanLock) == false)
+            {
+                return;
+            }
+
+            entry.ReferenceCount--;
+
+            if (entry.ReferenceCount <= 0)
+            {
+                _observedImageScanLocks.Remove(observedImageId);
+                entry.Semaphore.Dispose();
+            }
+        }
     }
 
     /// <inheritdoc/>
@@ -209,12 +253,15 @@ public class ImageScanOrchestrator : IImageScanOrchestrator
                                 CancellationToken cancellationToken = default)
     {
         var resolvedBaseImageCount = 0;
-        var observedImageScanLock = GetObservedImageScanLock(observedImageId);
-
-        await observedImageScanLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        var observedImageScanLock = AcquireObservedImageScanLock(observedImageId);
+        var observedImageScanLockAcquired = false;
 
         try
         {
+            await observedImageScanLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+
+            observedImageScanLockAcquired = true;
+
             var observedImage = await _dbContext.ObservedImages.Include(entity => entity.CurrentImageVersion)
                                                                .ThenInclude(entity => entity.RegistryRepository)
                                                                .SingleOrDefaultAsync(entity => entity.Id == observedImageId, cancellationToken)
@@ -393,7 +440,12 @@ public class ImageScanOrchestrator : IImageScanOrchestrator
         }
         finally
         {
-            observedImageScanLock.Release();
+            if (observedImageScanLockAcquired)
+            {
+                observedImageScanLock.Release();
+            }
+
+            ReleaseObservedImageScanLockReference(observedImageId, observedImageScanLock);
         }
     }
 
