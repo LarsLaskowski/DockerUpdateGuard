@@ -71,14 +71,14 @@ public class DockerUpdateGuardOptionsValidator : IValidateOptions<DockerUpdateGu
             failures.Add($"'{DockerUpdateGuardOptions.SectionName}:DockerHub:Registry' must be configured");
         }
 
-        if (options.RequestTimeoutSeconds <= 0)
+        if (options.RequestTimeoutSeconds is <= 0 or > 300)
         {
-            failures.Add($"'{DockerUpdateGuardOptions.SectionName}:DockerHub:RequestTimeoutSeconds' must be greater than zero");
+            failures.Add($"'{DockerUpdateGuardOptions.SectionName}:DockerHub:RequestTimeoutSeconds' must be between 1 and 300");
         }
 
-        if (options.MaxParallelRequests <= 0)
+        if (options.MaxParallelRequests is <= 0 or > 32)
         {
-            failures.Add($"'{DockerUpdateGuardOptions.SectionName}:DockerHub:MaxParallelRequests' must be greater than zero");
+            failures.Add($"'{DockerUpdateGuardOptions.SectionName}:DockerHub:MaxParallelRequests' must be between 1 and 32");
         }
     }
 
@@ -99,9 +99,9 @@ public class DockerUpdateGuardOptionsValidator : IValidateOptions<DockerUpdateGu
             failures.Add($"'{DockerUpdateGuardOptions.SectionName}:Vulnerabilities:TrivyBaseUrl' must be configured when the Trivy provider is selected");
         }
 
-        if (options.RequestTimeoutSeconds <= 0)
+        if (options.RequestTimeoutSeconds is <= 0 or > 300)
         {
-            failures.Add($"'{DockerUpdateGuardOptions.SectionName}:Vulnerabilities:RequestTimeoutSeconds' must be greater than zero");
+            failures.Add($"'{DockerUpdateGuardOptions.SectionName}:Vulnerabilities:RequestTimeoutSeconds' must be between 1 and 300");
         }
     }
 
@@ -112,64 +112,87 @@ public class DockerUpdateGuardOptionsValidator : IValidateOptions<DockerUpdateGu
     /// <param name="failures">Failure list</param>
     private static void ValidateScanningOptions(ScanningOptions options, ICollection<string> failures)
     {
-        if (options.DiscoveryIntervalMinutes <= 0)
-        {
-            failures.Add($"'{DockerUpdateGuardOptions.SectionName}:Scanning:DiscoveryIntervalMinutes' must be greater than zero");
-        }
-
-        if (options.OwnImageBaseScanIntervalMinutes <= 0)
-        {
-            failures.Add($"'{DockerUpdateGuardOptions.SectionName}:Scanning:OwnImageBaseScanIntervalMinutes' must be greater than zero");
-        }
-
-        if (options.DockerHubRequestLimitWindowHours <= 0)
-        {
-            failures.Add($"'{DockerUpdateGuardOptions.SectionName}:Scanning:DockerHubRequestLimitWindowHours' must be greater than zero");
-        }
-
-        if (options.DockerHubRequestLimitPerWindow <= 0)
-        {
-            failures.Add($"'{DockerUpdateGuardOptions.SectionName}:Scanning:DockerHubRequestLimitPerWindow' must be greater than zero");
-        }
-
-        if (options.DockerHubReservedManualRequestsPerWindow < 0)
-        {
-            failures.Add($"'{DockerUpdateGuardOptions.SectionName}:Scanning:DockerHubReservedManualRequestsPerWindow' must be zero or greater");
-        }
+        ValidateRange(options.DiscoveryIntervalMinutes,
+                      1,
+                      1440,
+                      $"{DockerUpdateGuardOptions.SectionName}:Scanning:DiscoveryIntervalMinutes",
+                      failures);
+        ValidateRange(options.OwnImageBaseScanIntervalMinutes,
+                      1,
+                      10080,
+                      $"{DockerUpdateGuardOptions.SectionName}:Scanning:OwnImageBaseScanIntervalMinutes",
+                      failures);
+        ValidateRange(options.DockerHubRequestLimitWindowHours,
+                      1,
+                      168,
+                      $"{DockerUpdateGuardOptions.SectionName}:Scanning:DockerHubRequestLimitWindowHours",
+                      failures);
+        ValidateRange(options.DockerHubRequestLimitPerWindow,
+                      1,
+                      100000,
+                      $"{DockerUpdateGuardOptions.SectionName}:Scanning:DockerHubRequestLimitPerWindow",
+                      failures);
+        ValidateRange(options.DockerHubReservedManualRequestsPerWindow,
+                      0,
+                      100000,
+                      $"{DockerUpdateGuardOptions.SectionName}:Scanning:DockerHubReservedManualRequestsPerWindow",
+                      failures);
 
         if (options.DockerHubReservedManualRequestsPerWindow >= options.DockerHubRequestLimitPerWindow)
         {
             failures.Add($"'{DockerUpdateGuardOptions.SectionName}:Scanning:DockerHubReservedManualRequestsPerWindow' must be smaller than DockerHubRequestLimitPerWindow");
         }
 
-        if (options.DockerHubAccountDiscoveryIntervalMinutes <= 0)
-        {
-            failures.Add($"'{DockerUpdateGuardOptions.SectionName}:Scanning:DockerHubAccountDiscoveryIntervalMinutes' must be greater than zero");
-        }
+        ValidateRange(options.DockerHubAccountDiscoveryIntervalMinutes,
+                      1,
+                      10080,
+                      $"{DockerUpdateGuardOptions.SectionName}:Scanning:DockerHubAccountDiscoveryIntervalMinutes",
+                      failures);
+        ValidateRange(options.RuntimeImageUpdateScanIntervalMinutes,
+                      1,
+                      1440,
+                      $"{DockerUpdateGuardOptions.SectionName}:Scanning:RuntimeImageUpdateScanIntervalMinutes",
+                      failures);
+        ValidateRange(options.ResourceStatisticsIntervalMinutes,
+                      1,
+                      1440,
+                      $"{DockerUpdateGuardOptions.SectionName}:Scanning:ResourceStatisticsIntervalMinutes",
+                      failures);
+        ValidateRange(options.VulnerabilityRefreshIntervalMinutes,
+                      1,
+                      10080,
+                      $"{DockerUpdateGuardOptions.SectionName}:Scanning:VulnerabilityRefreshIntervalMinutes",
+                      failures);
+        ValidateRange(options.CleanupIntervalMinutes,
+                      1,
+                      10080,
+                      $"{DockerUpdateGuardOptions.SectionName}:Scanning:CleanupIntervalMinutes",
+                      failures);
+        ValidateRange(options.RetryCount,
+                      0,
+                      10,
+                      $"{DockerUpdateGuardOptions.SectionName}:Scanning:RetryCount",
+                      failures);
+        ValidateRange(options.RetainScanRunsDays,
+                      1,
+                      3650,
+                      $"{DockerUpdateGuardOptions.SectionName}:Scanning:RetainScanRunsDays",
+                      failures);
+    }
 
-        if (options.RuntimeImageUpdateScanIntervalMinutes <= 0)
+    /// <summary>
+    /// Validate that a value falls within an inclusive range
+    /// </summary>
+    /// <param name="value">Value to validate</param>
+    /// <param name="minimum">Inclusive minimum</param>
+    /// <param name="maximum">Inclusive maximum</param>
+    /// <param name="propertyPath">Fully qualified configuration path</param>
+    /// <param name="failures">Failure list</param>
+    private static void ValidateRange(int value, int minimum, int maximum, string propertyPath, ICollection<string> failures)
+    {
+        if (value < minimum || value > maximum)
         {
-            failures.Add($"'{DockerUpdateGuardOptions.SectionName}:Scanning:RuntimeImageUpdateScanIntervalMinutes' must be greater than zero");
-        }
-
-        if (options.ResourceStatisticsIntervalMinutes <= 0)
-        {
-            failures.Add($"'{DockerUpdateGuardOptions.SectionName}:Scanning:ResourceStatisticsIntervalMinutes' must be greater than zero");
-        }
-
-        if (options.VulnerabilityRefreshIntervalMinutes <= 0)
-        {
-            failures.Add($"'{DockerUpdateGuardOptions.SectionName}:Scanning:VulnerabilityRefreshIntervalMinutes' must be greater than zero");
-        }
-
-        if (options.CleanupIntervalMinutes <= 0)
-        {
-            failures.Add($"'{DockerUpdateGuardOptions.SectionName}:Scanning:CleanupIntervalMinutes' must be greater than zero");
-        }
-
-        if (options.RetainScanRunsDays <= 0)
-        {
-            failures.Add($"'{DockerUpdateGuardOptions.SectionName}:Scanning:RetainScanRunsDays' must be greater than zero");
+            failures.Add($"'{propertyPath}' must be between {minimum} and {maximum}");
         }
     }
 
@@ -196,51 +219,72 @@ public class DockerUpdateGuardOptionsValidator : IValidateOptions<DockerUpdateGu
                 failures.Add($"'{DockerUpdateGuardOptions.SectionName}:DockerInstances' contains duplicate instance name '{instance.Name}'");
             }
 
-            if (string.IsNullOrWhiteSpace(instance.BaseUrl))
-            {
-                failures.Add($"'{DockerUpdateGuardOptions.SectionName}:DockerInstances:{instance.Name}:BaseUrl' must be configured");
-            }
-            else if (TryValidateDockerUri(instance.BaseUrl) == false)
-            {
-                failures.Add($"'{DockerUpdateGuardOptions.SectionName}:DockerInstances:{instance.Name}:BaseUrl' must use http, https, tcp, unix or npipe");
-            }
+            ValidateDockerInstance(instance, failures);
+        }
+    }
 
-            if (instance.RequestTimeoutSeconds <= 0)
-            {
-                failures.Add($"'{DockerUpdateGuardOptions.SectionName}:DockerInstances:{instance.Name}:RequestTimeoutSeconds' must be greater than zero");
-            }
+    /// <summary>
+    /// Validate a single Docker instance
+    /// </summary>
+    /// <param name="instance">Docker instance</param>
+    /// <param name="failures">Failure list</param>
+    private static void ValidateDockerInstance(DockerInstanceOptions instance, ICollection<string> failures)
+    {
+        if (string.IsNullOrWhiteSpace(instance.BaseUrl))
+        {
+            failures.Add($"'{DockerUpdateGuardOptions.SectionName}:DockerInstances:{instance.Name}:BaseUrl' must be configured");
+        }
+        else if (TryValidateDockerUri(instance.BaseUrl) == false)
+        {
+            failures.Add($"'{DockerUpdateGuardOptions.SectionName}:DockerInstances:{instance.Name}:BaseUrl' must use http, https, tcp, unix or npipe");
+        }
 
-            if (instance.Portainer.Enabled)
-            {
-                if (string.IsNullOrWhiteSpace(instance.Portainer.BaseUrl))
-                {
-                    failures.Add($"'{DockerUpdateGuardOptions.SectionName}:DockerInstances:{instance.Name}:Portainer:BaseUrl' must be configured when Portainer is enabled");
-                }
-                else if (Uri.TryCreate(instance.Portainer.BaseUrl, UriKind.Absolute, out var portainerUri) == false
-                         || (portainerUri.Scheme != Uri.UriSchemeHttp
-                             && portainerUri.Scheme != Uri.UriSchemeHttps))
-                {
-                    failures.Add($"'{DockerUpdateGuardOptions.SectionName}:DockerInstances:{instance.Name}:Portainer:BaseUrl' must be an absolute http or https URI");
-                }
-                else if (portainerUri.Scheme == Uri.UriSchemeHttp && instance.Portainer.AllowInsecureHttp == false)
-                {
-                    failures.Add($"'{DockerUpdateGuardOptions.SectionName}:DockerInstances:{instance.Name}:Portainer:BaseUrl' uses plaintext HTTP; API keys, passwords and tokens will be transmitted unencrypted — set '{DockerUpdateGuardOptions.SectionName}:DockerInstances:{instance.Name}:Portainer:AllowInsecureHttp: true' to explicitly allow it");
-                }
+        if (instance.RequestTimeoutSeconds is <= 0 or > 300)
+        {
+            failures.Add($"'{DockerUpdateGuardOptions.SectionName}:DockerInstances:{instance.Name}:RequestTimeoutSeconds' must be between 1 and 300");
+        }
 
-                var hasApiToken = string.IsNullOrWhiteSpace(instance.Portainer.ApiToken) == false;
-                var hasUsernamePassword = string.IsNullOrWhiteSpace(instance.Portainer.Username) == false
-                                          && string.IsNullOrWhiteSpace(instance.Portainer.Password) == false;
+        if (instance.Portainer.Enabled)
+        {
+            ValidatePortainerOptions(instance.Name, instance.Portainer, failures);
+        }
+    }
 
-                if (hasApiToken == false && hasUsernamePassword == false)
-                {
-                    failures.Add($"'{DockerUpdateGuardOptions.SectionName}:DockerInstances:{instance.Name}:Portainer' must have either ApiToken or Username+Password configured");
-                }
+    /// <summary>
+    /// Validate the Portainer configuration of a Docker instance
+    /// </summary>
+    /// <param name="instanceName">Owning Docker instance name</param>
+    /// <param name="portainer">Portainer options</param>
+    /// <param name="failures">Failure list</param>
+    private static void ValidatePortainerOptions(string instanceName, PortainerOptions portainer, ICollection<string> failures)
+    {
+        if (string.IsNullOrWhiteSpace(portainer.BaseUrl))
+        {
+            failures.Add($"'{DockerUpdateGuardOptions.SectionName}:DockerInstances:{instanceName}:Portainer:BaseUrl' must be configured when Portainer is enabled");
+        }
+        else if (Uri.TryCreate(portainer.BaseUrl, UriKind.Absolute, out var portainerUri) == false
+                 || (portainerUri.Scheme != Uri.UriSchemeHttp
+                     && portainerUri.Scheme != Uri.UriSchemeHttps))
+        {
+            failures.Add($"'{DockerUpdateGuardOptions.SectionName}:DockerInstances:{instanceName}:Portainer:BaseUrl' must be an absolute http or https URI");
+        }
+        else if (portainerUri.Scheme == Uri.UriSchemeHttp && portainer.AllowInsecureHttp == false)
+        {
+            failures.Add($"'{DockerUpdateGuardOptions.SectionName}:DockerInstances:{instanceName}:Portainer:BaseUrl' uses plaintext HTTP; API keys, passwords and tokens will be transmitted unencrypted — set '{DockerUpdateGuardOptions.SectionName}:DockerInstances:{instanceName}:Portainer:AllowInsecureHttp: true' to explicitly allow it");
+        }
 
-                if (instance.Portainer.RequestTimeoutSeconds <= 0)
-                {
-                    failures.Add($"'{DockerUpdateGuardOptions.SectionName}:DockerInstances:{instance.Name}:Portainer:RequestTimeoutSeconds' must be greater than zero");
-                }
-            }
+        var hasApiToken = string.IsNullOrWhiteSpace(portainer.ApiToken) == false;
+        var hasUsernamePassword = string.IsNullOrWhiteSpace(portainer.Username) == false
+                                  && string.IsNullOrWhiteSpace(portainer.Password) == false;
+
+        if (hasApiToken == false && hasUsernamePassword == false)
+        {
+            failures.Add($"'{DockerUpdateGuardOptions.SectionName}:DockerInstances:{instanceName}:Portainer' must have either ApiToken or Username+Password configured");
+        }
+
+        if (portainer.RequestTimeoutSeconds is <= 0 or > 300)
+        {
+            failures.Add($"'{DockerUpdateGuardOptions.SectionName}:DockerInstances:{instanceName}:Portainer:RequestTimeoutSeconds' must be between 1 and 300");
         }
     }
 

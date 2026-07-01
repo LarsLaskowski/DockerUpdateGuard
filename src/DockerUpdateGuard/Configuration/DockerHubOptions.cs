@@ -1,5 +1,3 @@
-using System.ComponentModel.DataAnnotations;
-
 namespace DockerUpdateGuard.Configuration;
 
 /// <summary>
@@ -27,13 +25,11 @@ public class DockerHubOptions
     /// <summary>
     /// Outbound timeout in seconds
     /// </summary>
-    [Range(1, 300)]
     public int RequestTimeoutSeconds { get; set; } = 30;
 
     /// <summary>
     /// Maximum logical request parallelism
     /// </summary>
-    [Range(1, 32)]
     public int MaxParallelRequests { get; set; } = 4;
 
     #endregion // Properties

@@ -127,6 +127,107 @@ public class DockerUpdateGuardOptionsValidatorTests
     }
 
     /// <summary>
+    /// Verify out-of-range upper bound values are reported individually
+    /// </summary>
+    [TestMethod]
+    public void DockerUpdateGuardOptionsValidatorOutOfRangeUpperBoundsReturnsFailures()
+    {
+        var configuration = CreateConfiguration(new Dictionary<string, string?>
+                                                {
+                                                    ["ConnectionStrings:DockerUpdateGuard"] = "Host=database;Database=dug",
+                                                });
+        var validator = new DockerUpdateGuardOptionsValidator(configuration);
+        var options = CreateValidOptions();
+
+        options.DockerHub.RequestTimeoutSeconds = 301;
+        options.DockerHub.MaxParallelRequests = 33;
+        options.Vulnerabilities.RequestTimeoutSeconds = 301;
+        options.Scanning.DiscoveryIntervalMinutes = 1441;
+        options.Scanning.OwnImageBaseScanIntervalMinutes = 10081;
+        options.Scanning.DockerHubRequestLimitWindowHours = 169;
+        options.Scanning.DockerHubRequestLimitPerWindow = 100001;
+        options.Scanning.DockerHubReservedManualRequestsPerWindow = 100001;
+        options.Scanning.DockerHubAccountDiscoveryIntervalMinutes = 10081;
+        options.Scanning.RuntimeImageUpdateScanIntervalMinutes = 1441;
+        options.Scanning.ResourceStatisticsIntervalMinutes = 1441;
+        options.Scanning.VulnerabilityRefreshIntervalMinutes = 10081;
+        options.Scanning.CleanupIntervalMinutes = 10081;
+        options.Scanning.RetryCount = 11;
+        options.Scanning.RetainScanRunsDays = 3651;
+        options.DockerInstances = [
+                                      new DockerInstanceOptions
+                                      {
+                                          Name = "Production",
+                                          BaseUrl = "unix:///var/run/docker.sock",
+                                          RequestTimeoutSeconds = 301,
+                                          Portainer = new PortainerOptions
+                                                      {
+                                                          Enabled = true,
+                                                          BaseUrl = "https://portainer.local",
+                                                          ApiToken = "api-token",
+                                                          RequestTimeoutSeconds = 301,
+                                                      }
+                                      },
+                                  ];
+
+        var validationResult = validator.Validate(Options.DefaultName, options);
+        var failures = validationResult.Failures?.ToArray() ?? [];
+
+        Assert.IsTrue(validationResult.Failed, "Values above the documented upper bounds must fail validation");
+        Assert.Contains(message => message.Contains("DockerHub:RequestTimeoutSeconds", StringComparison.Ordinal),
+                        failures,
+                        "A Docker Hub timeout above the upper bound must be reported");
+        Assert.Contains(message => message.Contains("DockerHub:MaxParallelRequests", StringComparison.Ordinal),
+                        failures,
+                        "A Docker Hub parallelism above the upper bound must be reported");
+        Assert.Contains(message => message.Contains("Vulnerabilities:RequestTimeoutSeconds", StringComparison.Ordinal),
+                        failures,
+                        "A vulnerability timeout above the upper bound must be reported");
+        Assert.Contains(message => message.Contains("Scanning:DiscoveryIntervalMinutes", StringComparison.Ordinal),
+                        failures,
+                        "A discovery interval above the upper bound must be reported");
+        Assert.Contains(message => message.Contains("Scanning:OwnImageBaseScanIntervalMinutes", StringComparison.Ordinal),
+                        failures,
+                        "An own-image scan interval above the upper bound must be reported");
+        Assert.Contains(message => message.Contains("Scanning:DockerHubRequestLimitWindowHours", StringComparison.Ordinal),
+                        failures,
+                        "A Docker Hub quota window above the upper bound must be reported");
+        Assert.Contains(message => message.Contains("Scanning:DockerHubRequestLimitPerWindow", StringComparison.Ordinal),
+                        failures,
+                        "A Docker Hub quota above the upper bound must be reported");
+        Assert.Contains(message => message.Contains("Scanning:DockerHubReservedManualRequestsPerWindow", StringComparison.Ordinal),
+                        failures,
+                        "A manual Docker Hub request reserve above the upper bound must be reported");
+        Assert.Contains(message => message.Contains("Scanning:DockerHubAccountDiscoveryIntervalMinutes", StringComparison.Ordinal),
+                        failures,
+                        "A Docker Hub account discovery interval above the upper bound must be reported");
+        Assert.Contains(message => message.Contains("Scanning:RuntimeImageUpdateScanIntervalMinutes", StringComparison.Ordinal),
+                        failures,
+                        "A runtime scan interval above the upper bound must be reported");
+        Assert.Contains(message => message.Contains("Scanning:ResourceStatisticsIntervalMinutes", StringComparison.Ordinal),
+                        failures,
+                        "A resource statistics interval above the upper bound must be reported");
+        Assert.Contains(message => message.Contains("Scanning:VulnerabilityRefreshIntervalMinutes", StringComparison.Ordinal),
+                        failures,
+                        "A vulnerability refresh interval above the upper bound must be reported");
+        Assert.Contains(message => message.Contains("Scanning:CleanupIntervalMinutes", StringComparison.Ordinal),
+                        failures,
+                        "A cleanup interval above the upper bound must be reported");
+        Assert.Contains(message => message.Contains("Scanning:RetryCount", StringComparison.Ordinal),
+                        failures,
+                        "A retry count above the upper bound must be reported");
+        Assert.Contains(message => message.Contains("Scanning:RetainScanRunsDays", StringComparison.Ordinal),
+                        failures,
+                        "A scan retention period above the upper bound must be reported");
+        Assert.Contains(message => message.Contains("DockerInstances:Production:RequestTimeoutSeconds", StringComparison.Ordinal),
+                        failures,
+                        "A Docker instance timeout above the upper bound must be reported");
+        Assert.Contains(message => message.Contains("DockerInstances:Production:Portainer:RequestTimeoutSeconds", StringComparison.Ordinal),
+                        failures,
+                        "A Portainer timeout above the upper bound must be reported");
+    }
+
+    /// <summary>
     /// Verify invalid database resilience options are reported individually
     /// </summary>
     [TestMethod]
