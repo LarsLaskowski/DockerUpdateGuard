@@ -371,15 +371,14 @@ public static class VersionTagResolutionHelper
             return false;
         }
 
-        if (int.TryParse(match.Groups["major"].Value, out major) == false
-            || int.TryParse(match.Groups["minor"].Value, out minor) == false)
+        if (int.TryParse(match.Groups["major"].Value, out var parsedMajor) == false
+            || int.TryParse(match.Groups["minor"].Value, out var parsedMinor) == false)
         {
-            major = 0;
-            minor = 0;
-
             return false;
         }
 
+        major = parsedMajor;
+        minor = parsedMinor;
         variantFamilyKey = NormalizeVariantFamilyKey(match.Groups[SuffixGroupName].Value);
 
         return true;
