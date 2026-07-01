@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text.Json;
@@ -37,6 +38,16 @@ public partial class OciRegistryClient : IRegistryMetadataClient
     /// </summary>
     private const string OciBaseImageDigestLabel = "org.opencontainers.image.base.digest";
 
+    /// <summary>
+    /// Assumed bearer token lifetime when the token response omits "expires_in"
+    /// </summary>
+    private static readonly TimeSpan _defaultTokenLifetime = TimeSpan.FromSeconds(60);
+
+    /// <summary>
+    /// Safety margin subtracted from a cached token's expiration to avoid using an almost-expired token
+    /// </summary>
+    private static readonly TimeSpan _tokenExpiryBuffer = TimeSpan.FromSeconds(5);
+
     #endregion // Constants
 
     #region Fields
@@ -50,6 +61,11 @@ public partial class OciRegistryClient : IRegistryMetadataClient
     /// Logger
     /// </summary>
     private readonly ILogger<OciRegistryClient> _logger;
+
+    /// <summary>
+    /// Cached bearer tokens keyed by registry authority and repository, reused across a scan
+    /// </summary>
+    private readonly ConcurrentDictionary<string, CachedBearerToken> _tokenCache = new(StringComparer.Ordinal);
 
     #endregion // Fields
 
@@ -429,8 +445,35 @@ public partial class OciRegistryClient : IRegistryMetadataClient
     private static string? GetContentDigest(HttpResponseMessage response)
     {
         return response.Headers.TryGetValues(DockerContentDigestHeaderName, out var values)
-                   ? values.SingleOrDefault()
+                   ? values.FirstOrDefault()
                    : null;
+    }
+
+    /// <summary>
+    /// Build the bearer-token cache key for a registry authority and repository
+    /// </summary>
+    /// <param name="requestUri">Request URI</param>
+    /// <param name="repository">Repository path</param>
+    /// <returns>Token cache key</returns>
+    private static string GetTokenCacheKey(Uri requestUri, string repository)
+    {
+        return $"{requestUri.Authority}|{repository}";
+    }
+
+    /// <summary>
+    /// Resolve the effective expiration for a bearer token response
+    /// </summary>
+    /// <param name="rootElement">Token response root element</param>
+    /// <returns>Expiration timestamp, reduced by a safety margin</returns>
+    private static DateTimeOffset GetTokenExpirationUtc(JsonElement rootElement)
+    {
+        var issuedAtValue = TryGetString(rootElement, "issued_at");
+        var issuedAtUtc = DateTimeOffset.TryParse(issuedAtValue, out var parsedIssuedAtUtc) ? parsedIssuedAtUtc : DateTimeOffset.UtcNow;
+        var expiresInSeconds = rootElement.TryGetProperty("expires_in", out var expiresInElement) && expiresInElement.TryGetInt32(out var parsedExpiresInSeconds)
+                                   ? parsedExpiresInSeconds
+                                   : (int)_defaultTokenLifetime.TotalSeconds;
+
+        return issuedAtUtc.AddSeconds(expiresInSeconds) - _tokenExpiryBuffer;
     }
 
     /// <summary>
@@ -1096,6 +1139,25 @@ public partial class OciRegistryClient : IRegistryMetadataClient
                                                                      Action<HttpRequestMessage>? configureRequest,
                                                                      CancellationToken cancellationToken)
     {
+        var cacheKey = GetTokenCacheKey(requestUri, repository);
+
+        if (_tokenCache.TryGetValue(cacheKey, out var cachedToken) && cachedToken.ExpiresAtUtc > DateTimeOffset.UtcNow)
+        {
+            var cachedResponse = await SendCoreAsync(requestUri,
+                                                     method,
+                                                     new AuthenticationHeaderValue("Bearer", cachedToken.Token),
+                                                     configureRequest,
+                                                     cancellationToken).ConfigureAwait(false);
+
+            if (cachedResponse.StatusCode != HttpStatusCode.Unauthorized)
+            {
+                return cachedResponse;
+            }
+
+            _tokenCache.TryRemove(cacheKey, out _);
+            cachedResponse.Dispose();
+        }
+
         var response = await SendCoreAsync(requestUri, method, authorization: null, configureRequest, cancellationToken).ConfigureAwait(false);
 
         if (response.StatusCode != HttpStatusCode.Unauthorized)
@@ -1114,14 +1176,16 @@ public partial class OciRegistryClient : IRegistryMetadataClient
 
         var tokenResult = await GetBearerTokenAsync(tokenRequestUri, cancellationToken).ConfigureAwait(false);
 
-        if (tokenResult.Status != ExternalOperationStatus.Succeeded || string.IsNullOrWhiteSpace(tokenResult.Data))
+        if (tokenResult.Status != ExternalOperationStatus.Succeeded || tokenResult.Data is null)
         {
             return CreateAuthenticationFailureResponse(tokenResult.Message ?? $"Registry token lookup failed for '{repository}'");
         }
 
+        _tokenCache[cacheKey] = tokenResult.Data;
+
         return await SendCoreAsync(requestUri,
                                    method,
-                                   new AuthenticationHeaderValue("Bearer", tokenResult.Data),
+                                   new AuthenticationHeaderValue("Bearer", tokenResult.Data.Token),
                                    configureRequest,
                                    cancellationToken).ConfigureAwait(false);
     }
@@ -1162,7 +1226,7 @@ public partial class OciRegistryClient : IRegistryMetadataClient
     /// <param name="tokenRequestUri">Token request URI</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Bearer token result</returns>
-    private async Task<ExternalOperationResult<string>> GetBearerTokenAsync(Uri tokenRequestUri, CancellationToken cancellationToken)
+    private async Task<ExternalOperationResult<CachedBearerToken>> GetBearerTokenAsync(Uri tokenRequestUri, CancellationToken cancellationToken)
     {
         using var response = await _httpClient.GetAsync(tokenRequestUri,
                                                         HttpCompletionOption.ResponseHeadersRead,
@@ -1171,9 +1235,9 @@ public partial class OciRegistryClient : IRegistryMetadataClient
 
         if (response.IsSuccessStatusCode == false)
         {
-            return await CreateFailureResultAsync<string>(response,
-                                                          $"Registry token request failed for '{tokenRequestUri}'",
-                                                          cancellationToken).ConfigureAwait(false);
+            return await CreateFailureResultAsync<CachedBearerToken>(response,
+                                                                     $"Registry token request failed for '{tokenRequestUri}'",
+                                                                     cancellationToken).ConfigureAwait(false);
         }
 
         var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
@@ -1182,9 +1246,19 @@ public partial class OciRegistryClient : IRegistryMetadataClient
         {
             using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: cancellationToken).ConfigureAwait(false);
 
-            return ExternalOperationResult<string>.Succeeded(TryGetString(jsonDocument.RootElement, "token")
-                                                                 ?? TryGetString(jsonDocument.RootElement, "access_token")
-                                                                 ?? string.Empty);
+            var token = TryGetString(jsonDocument.RootElement, "token")
+                            ?? TryGetString(jsonDocument.RootElement, "access_token");
+
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return ExternalOperationResult<CachedBearerToken>.Failed($"Registry token response for '{tokenRequestUri}' did not contain a token");
+            }
+
+            return ExternalOperationResult<CachedBearerToken>.Succeeded(new CachedBearerToken
+                                                                        {
+                                                                            Token = token,
+                                                                            ExpiresAtUtc = GetTokenExpirationUtc(jsonDocument.RootElement),
+                                                                        });
         }
     }
 
