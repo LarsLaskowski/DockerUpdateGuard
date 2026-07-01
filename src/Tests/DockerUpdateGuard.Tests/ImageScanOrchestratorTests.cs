@@ -1243,8 +1243,9 @@ public class ImageScanOrchestratorTests
 
                 var scanLocksField = typeof(ImageScanOrchestrator).GetField("_observedImageScanLocks", BindingFlags.NonPublic | BindingFlags.Static);
                 var scanLocks = (IDictionary)scanLocksField!.GetValue(null)!;
+                var scanLockKeys = scanLocks.Keys.Cast<Guid>();
 
-                Assert.IsFalse(scanLocks.Contains(observedImage.Id), "The per-observed-image scan lock must be removed once its scan completes so the registry does not grow unboundedly");
+                Assert.DoesNotContain(key => key == observedImage.Id, scanLockKeys, "The per-observed-image scan lock must be removed once its scan completes so the registry does not grow unboundedly");
             }
         }
     }
