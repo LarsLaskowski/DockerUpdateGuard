@@ -466,6 +466,126 @@ public partial class DockerHubClientTests
     }
 
     /// <summary>
+    /// Verify Docker Hub base-image resolution selects a real platform manifest and skips attestation manifests
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerHubClientResolveBaseImagesAsyncSkipsAttestationManifestAsync()
+    {
+        var handler = new StubHttpMessageHandler();
+        var httpClient = new HttpClient(handler);
+
+        try
+        {
+            httpClient.BaseAddress = new Uri("https://hub.docker.com/");
+            handler.AddResponse("https://auth.docker.io/token?service=registry.docker.io&scope=repository:library/app:pull",
+                                """
+                                {
+                                  "token": "registry-token"
+                                }
+                                """);
+            handler.AddResponse("https://registry-1.docker.io/v2/library/app/manifests/latest",
+                                """
+                                {
+                                  "schemaVersion": 2,
+                                  "mediaType": "application/vnd.oci.image.index.v1+json",
+                                  "manifests": [
+                                    {
+                                      "digest": "sha256:attestation",
+                                      "platform": {
+                                        "os": "unknown",
+                                        "architecture": "unknown"
+                                      }
+                                    },
+                                    {
+                                      "digest": "sha256:amd64",
+                                      "platform": {
+                                        "os": "linux",
+                                        "architecture": "amd64"
+                                      }
+                                    }
+                                  ]
+                                }
+                                """,
+                                "application/vnd.oci.image.index.v1+json");
+            handler.AddResponse("https://registry-1.docker.io/v2/library/app/manifests/sha256%3Aamd64",
+                                """
+                                {
+                                  "schemaVersion": 2,
+                                  "config": {
+                                    "digest": "sha256:app-config"
+                                  }
+                                }
+                                """);
+            handler.AddResponse("https://registry-1.docker.io/v2/library/app/blobs/sha256%3Aapp-config",
+                                """
+                                {
+                                  "config": {
+                                    "Labels": {
+                                      "org.opencontainers.image.base.name": "debian:12"
+                                    }
+                                  }
+                                }
+                                """);
+            handler.AddResponse("https://auth.docker.io/token?service=registry.docker.io&scope=repository:library/debian:pull",
+                                """
+                                {
+                                  "token": "base-registry-token"
+                                }
+                                """);
+            handler.AddResponse("https://registry-1.docker.io/v2/library/debian/manifests/12",
+                                """
+                                {
+                                  "schemaVersion": 2,
+                                  "config": {
+                                    "digest": "sha256:debian-config"
+                                  }
+                                }
+                                """);
+            handler.AddResponse("https://registry-1.docker.io/v2/library/debian/blobs/sha256%3Adebian-config",
+                                """
+                                {
+                                  "config": {
+                                    "Labels": {}
+                                  }
+                                }
+                                """);
+
+            var client = CreateClient(httpClient);
+            var result = await client.ResolveBaseImagesAsync(new ImageReference
+                                                             {
+                                                                 Registry = "docker.io",
+                                                                 Repository = "library/app",
+                                                                 Tag = "latest",
+                                                             },
+                                                             CancellationToken.None)
+                                     .ConfigureAwait(false);
+
+            Assert.AreEqual(ExternalOperationStatus.Succeeded,
+                            result.Status,
+                            "Docker Hub base-image resolution must succeed when a platform manifest can be selected from the manifest list");
+            Assert.IsNotNull(result.Data, "Docker Hub base-image resolution must return resolved base images");
+            Assert.HasCount(1,
+                            result.Data,
+                            "Docker Hub base-image resolution must return the discovered base image");
+            Assert.AreEqual("debian",
+                            result.Data[0].Repository.Split('/')[^1],
+                            "Docker Hub base-image resolution must resolve the base image from the selected platform manifest config");
+            Assert.Contains(entry => entry.RequestUri == "https://registry-1.docker.io/v2/library/app/manifests/sha256%3Aamd64",
+                            handler.Requests,
+                            "Docker Hub manifest-list selection must fetch the real linux/amd64 platform manifest");
+            Assert.DoesNotContain(entry => entry.RequestUri == "https://registry-1.docker.io/v2/library/app/manifests/sha256%3Aattestation",
+                                  handler.Requests,
+                                  "Docker Hub manifest-list selection must skip attestation manifests with an unknown platform");
+        }
+        finally
+        {
+            httpClient.Dispose();
+            handler.Dispose();
+        }
+    }
+
+    /// <summary>
     /// Verify outbound Docker Hub requests honor the configured parallelism limit
     /// </summary>
     /// <returns>Task</returns>
