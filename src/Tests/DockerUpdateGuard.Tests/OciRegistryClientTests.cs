@@ -265,6 +265,90 @@ public partial class OciRegistryClientTests
     }
 
     /// <summary>
+    /// Verify OCI tag listing reuses a cached bearer token across the per-tag manifest fan-out
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task OciRegistryClientGetTagsAsyncReusesCachedBearerTokenAcrossTagsAsync()
+    {
+        var handler = new SequenceHttpMessageHandler();
+        var httpClient = new HttpClient(handler);
+
+        try
+        {
+            handler.AddResponse("https://mcr.microsoft.com/v2/mssql/server/tags/list?n=100",
+                                CreateUnauthorizedResponse("https://mcr.microsoft.com/oauth2/token",
+                                                           "mcr.microsoft.com",
+                                                           "repository:mssql/server:pull"));
+            handler.AddJsonResponse("https://mcr.microsoft.com/oauth2/token?service=mcr.microsoft.com&scope=repository%3Amssql%2Fserver%3Apull",
+                                    """
+                                    {
+                                      "access_token": "mcr-token",
+                                      "expires_in": 300
+                                    }
+                                    """);
+            handler.AddJsonResponse("https://mcr.microsoft.com/v2/mssql/server/tags/list?n=100",
+                                    """
+                                    {
+                                      "name": "mssql/server",
+                                      "tags": [
+                                        "2019-CU32-GDR7-ubuntu-20.04",
+                                        "2022-CU12-ubuntu-20.04"
+                                      ]
+                                    }
+                                    """);
+            handler.AddResponse("https://mcr.microsoft.com/v2/mssql/server/manifests/2019-CU32-GDR7-ubuntu-20.04",
+                                CreateManifestResponse("sha256:mcr-tag",
+                                                       """
+                                                       {
+                                                         "schemaVersion": 2,
+                                                         "config": {
+                                                           "digest": "sha256:config"
+                                                         }
+                                                       }
+                                                       """));
+            handler.AddResponse("https://mcr.microsoft.com/v2/mssql/server/manifests/2022-CU12-ubuntu-20.04",
+                                CreateManifestResponse("sha256:mcr-tag2",
+                                                       """
+                                                       {
+                                                         "schemaVersion": 2,
+                                                         "config": {
+                                                           "digest": "sha256:config2"
+                                                         }
+                                                       }
+                                                       """));
+
+            var client = new OciRegistryClient(httpClient, new TestLogger<OciRegistryClient>());
+
+            var result = await client.GetTagsAsync("mcr.microsoft.com",
+                                                   "mssql/server",
+                                                   CancellationToken.None)
+                                     .ConfigureAwait(false);
+
+            Assert.AreEqual(ExternalOperationStatus.Succeeded,
+                            result.Status,
+                            "OCI registry tag lookup must succeed across the per-tag fan-out");
+            Assert.IsNotNull(result.Data, "OCI registry tag lookup must return tag data");
+            Assert.HasCount(2,
+                            result.Data,
+                            "OCI registry tag lookup must return all discovered tags");
+            Assert.HasCount(1,
+                            handler.Requests.Where(request => request.RequestUri == "https://mcr.microsoft.com/oauth2/token?service=mcr.microsoft.com&scope=repository%3Amssql%2Fserver%3Apull"),
+                            "OCI registry tag lookup must request the bearer token only once and reuse it across the per-tag manifest fan-out");
+            Assert.Contains(request => request.RequestUri == "https://mcr.microsoft.com/v2/mssql/server/manifests/2022-CU12-ubuntu-20.04"
+                                       && request.AuthorizationScheme == "Bearer"
+                                       && request.AuthorizationParameter == "mcr-token",
+                            handler.Requests,
+                            "OCI registry tag lookup must send the cached bearer token directly for subsequent manifest requests");
+        }
+        finally
+        {
+            httpClient.Dispose();
+            handler.Dispose();
+        }
+    }
+
+    /// <summary>
     /// Verify OCI base-image resolution strips an embedded image reference from the base digest label
     /// </summary>
     /// <returns>Task</returns>
