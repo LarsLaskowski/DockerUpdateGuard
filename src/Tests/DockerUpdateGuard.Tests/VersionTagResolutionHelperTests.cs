@@ -167,5 +167,27 @@ public class VersionTagResolutionHelperTests
                        "A build variant and a plain release must not be treated as the same variant family");
     }
 
+    /// <summary>
+    /// Verify an overly long numeric version component is rejected instead of throwing
+    /// </summary>
+    [TestMethod]
+    public void VersionTagResolutionHelperTryParseVersionTagRejectsOverlyLongComponent()
+    {
+        var parsed = VersionTagResolutionHelper.TryParseVersionTag("99999999999.0.0", out _);
+
+        Assert.IsFalse(parsed, "A version component exceeding Int32 range must not throw and must return false");
+    }
+
+    /// <summary>
+    /// Verify an overly long numeric version-line component is rejected instead of throwing
+    /// </summary>
+    [TestMethod]
+    public void VersionTagResolutionHelperIsMatchingVersionLineTagRejectsOverlyLongComponent()
+    {
+        var isMatching = VersionTagResolutionHelper.IsMatchingVersionLineTag("99999999999.0", "1.2.3");
+
+        Assert.IsFalse(isMatching, "A version-line component exceeding Int32 range must not throw and must return false");
+    }
+
     #endregion // Methods
 }
