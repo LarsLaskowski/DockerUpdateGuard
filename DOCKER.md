@@ -192,6 +192,15 @@ access to arbitrary container UIDs/GIDs. Fixes:
   whether the container's user can read the file at all — the underlying host permissions still
   govern read access.
 
+No matching local account for UID `64000` needs to exist anywhere — Linux permission checks are
+purely numeric, so `chmod`/`chown` work on a bare UID/GID even without a corresponding `/etc/passwd`
+entry. On Synology DSM in particular, File Station's per-user permission picker only offers
+existing DSM accounts, so it cannot grant access to UID `64000` directly. Do not create a DSM user
+for this. Instead, either:
+
+- set an "Everyone" read entry in File Station's advanced permissions for the file/folder, or
+- SSH into the NAS and run `chmod 644` on the file directly.
+
 ## Networking
 
 The image needs outbound access to:
