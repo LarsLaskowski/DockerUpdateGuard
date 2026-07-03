@@ -162,6 +162,36 @@ Notes
 
 - The automatic import is optional; the image works without any mounted certificates.
 - The image runs as the non-root user `64000` (root group, GID `0`) by default. If the environment requires importing certificates, bake the CA into a derived image or run the container as root (for example `--user 0`) so the script can update the trust store.
+## Troubleshooting
+
+### UnauthorizedAccessException / "Permission denied" reading appsettings.json
+
+The image runs as UID `64000` in GID `0`, not root. A bind-mounted `appsettings.json` keeps
+whatever ownership and permission bits it has on the host — the `chown`/`chmod` steps in the
+Dockerfile only apply to files baked into the image, not to files mounted at `docker run` time.
+If the host file is not readable by UID `64000` or GID `0`, the app fails immediately at startup
+with:
+
+```
+Unhandled exception. System.UnauthorizedAccessException: Access to the path '/app/appsettings.json' is denied.
+ ---> System.IO.IOException: Permission denied
+```
+
+The entrypoint script checks this before starting the app and now fails with a short, actionable
+message instead of the raw .NET stack trace.
+
+This is common when the file lives on a network share (for example a Synology NAS exposed over
+SMB/CIFS and mounted on the Docker host) where the share's permission mapping does not grant read
+access to arbitrary container UIDs/GIDs. Fixes:
+
+- On a local bind mount: `chmod 644 /path/to/appsettings.json` (or `chown` the file to GID `0`) on
+  the host so it is group- or world-readable.
+- On a CIFS/SMB mount of the host directory, pass mount options that make the file readable, e.g.
+  `file_mode=0644,dir_mode=0755` (and `uid=`/`gid=` if the share requires a specific owner).
+- Marking the volume `:ro` only makes the mount read-only inside the container; it does not affect
+  whether the container's user can read the file at all — the underlying host permissions still
+  govern read access.
+
 ## Networking
 
 The image needs outbound access to:
