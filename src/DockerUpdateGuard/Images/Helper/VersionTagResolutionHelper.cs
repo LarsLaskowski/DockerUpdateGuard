@@ -62,10 +62,12 @@ public static class VersionTagResolutionHelper
     /// <param name="currentTag">Current tag</param>
     /// <param name="currentDigest">Current digest</param>
     /// <param name="candidates">Available candidates</param>
+    /// <param name="preferredVariantFamilySourceTag">Optional concrete tag whose variant family is preferred among digest-matching candidates</param>
     /// <returns>Resolved semantic version tag or null</returns>
     public static string? ResolveAliasVersionTag(string currentTag,
                                                  string? currentDigest,
-                                                 IEnumerable<VersionTagCandidateData> candidates)
+                                                 IEnumerable<VersionTagCandidateData> candidates,
+                                                 string? preferredVariantFamilySourceTag = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(currentTag);
         ArgumentNullException.ThrowIfNull(candidates);
@@ -99,6 +101,8 @@ public static class VersionTagResolutionHelper
             return null;
         }
 
+        var preferredVariantFamilyKey = ResolvePreferredVariantFamilyKey(preferredVariantFamilySourceTag);
+
         return candidateList.Where(entity => string.Equals(entity.Digest,
                                                            digest,
                                                            StringComparison.OrdinalIgnoreCase)
@@ -114,7 +118,9 @@ public static class VersionTagResolutionHelper
                                                   Candidate = entity,
                                                   Version = ParseVersionTag(entity.Tag),
                                               })
-                            .OrderByDescending(entity => entity.Candidate.PublishedAtUtc)
+                            .OrderByDescending(entity => IsPreferredVariantFamilyCandidate(entity.Candidate.Tag, preferredVariantFamilyKey))
+                            .ThenByDescending(entity => IsPlainVersionTagCandidate(entity.Candidate.Tag))
+                            .ThenByDescending(entity => entity.Candidate.PublishedAtUtc)
                             .ThenByDescending(entity => entity.Version)
                             .Select(entity => entity.Candidate.Tag)
                             .FirstOrDefault();
@@ -126,17 +132,22 @@ public static class VersionTagResolutionHelper
     /// <param name="tag">Tag to display</param>
     /// <param name="digest">Digest to display</param>
     /// <param name="candidates">Available candidates</param>
+    /// <param name="preferredVariantFamilySourceTag">Optional concrete tag whose variant family is preferred among digest-matching candidates</param>
     /// <returns>Displayable semantic version tag or null</returns>
     public static string? ResolveDisplayVersionTag(string tag,
                                                    string? digest,
-                                                   IEnumerable<VersionTagCandidateData> candidates)
+                                                   IEnumerable<VersionTagCandidateData> candidates,
+                                                   string? preferredVariantFamilySourceTag = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(tag);
         ArgumentNullException.ThrowIfNull(candidates);
 
         return IsDisplayableSpecificVersionTag(tag)
                    ? tag
-                   : ResolveAliasVersionTag(tag, digest, candidates);
+                   : ResolveAliasVersionTag(tag,
+                                            digest,
+                                            candidates,
+                                            preferredVariantFamilySourceTag);
     }
 
     /// <summary>
@@ -418,6 +429,48 @@ public static class VersionTagResolutionHelper
         variantFamilyKey = NormalizeVariantFamilyKey(match.Groups[SuffixGroupName].Value);
 
         return true;
+    }
+
+    /// <summary>
+    /// Resolve the preferred variant-family key from an optional concrete source tag
+    /// </summary>
+    /// <param name="preferredVariantFamilySourceTag">Optional concrete source tag</param>
+    /// <returns>Preferred variant-family key or null when no concrete source tag is available</returns>
+    private static string? ResolvePreferredVariantFamilyKey(string? preferredVariantFamilySourceTag)
+    {
+        if (string.IsNullOrWhiteSpace(preferredVariantFamilySourceTag)
+            || TryParseVersionTagComponents(preferredVariantFamilySourceTag, out _, out var variantFamilyKey) == false)
+        {
+            return null;
+        }
+
+        return variantFamilyKey;
+    }
+
+    /// <summary>
+    /// Determine whether a candidate tag is a plain version tag without a variant suffix
+    /// </summary>
+    /// <param name="candidateTag">Candidate tag value</param>
+    /// <returns>True when the candidate carries no variant family</returns>
+    private static bool IsPlainVersionTagCandidate(string candidateTag)
+    {
+        return TryParseVersionTagComponents(candidateTag, out _, out var variantFamilyKey)
+               && string.IsNullOrEmpty(variantFamilyKey);
+    }
+
+    /// <summary>
+    /// Determine whether a candidate tag belongs to the preferred variant family
+    /// </summary>
+    /// <param name="candidateTag">Candidate tag value</param>
+    /// <param name="preferredVariantFamilyKey">Preferred variant-family key</param>
+    /// <returns>True when the candidate matches the preferred variant family</returns>
+    private static bool IsPreferredVariantFamilyCandidate(string candidateTag, string? preferredVariantFamilyKey)
+    {
+        return preferredVariantFamilyKey is not null
+               && TryParseVersionTagComponents(candidateTag, out _, out var candidateVariantFamilyKey)
+               && string.Equals(candidateVariantFamilyKey,
+                                preferredVariantFamilyKey,
+                                StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
