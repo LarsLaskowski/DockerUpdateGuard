@@ -1001,6 +1001,122 @@ public class RuntimeContainerScanOrchestratorTests
     }
 
     /// <summary>
+    /// Verify digest-only updates display the update version from the running variant family
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task RuntimeContainerScanOrchestratorScanAllAsyncPrefersRunningVariantFamilyForUpdateDisplayAsync()
+    {
+        using (var database = new SqliteTestDatabase())
+        {
+            var dbContext = database.CreateDbContext();
+
+            await using (dbContext.ConfigureAwait(false))
+            {
+                var optionsMonitor = new TestOptionsMonitor<DockerUpdateGuardOptions>(new DockerUpdateGuardOptions
+                                                                                      {
+                                                                                          DockerInstances = [
+                                                                                                                new DockerInstanceOptions
+                                                                                                                {
+                                                                                                                    Name = "Production",
+                                                                                                                    BaseUrl = "https://docker.example.test",
+                                                                                                                    Enabled = true,
+                                                                                                                },
+                                                                                                            ],
+                                                                                      });
+                var dockerInstanceClient = Substitute.For<IDockerInstanceClient>();
+                var derivedBaseRuntimeDetector = Substitute.For<IDerivedBaseRuntimeDetector>();
+                var dotNetReleaseMetadataService = Substitute.For<IDotNetReleaseMetadataService>();
+                var nginxReleaseMetadataService = Substitute.For<INginxReleaseMetadataService>();
+                var registryMetadataService = Substitute.For<IRegistryMetadataService>();
+                var imageCatalogRepository = new ImageCatalogRepository(dbContext);
+                var logger = new TestLogger<RuntimeContainerScanOrchestrator>();
+                var instanceDiscoveryService = new InstanceDiscoveryService(dbContext,
+                                                                            new TestLogger<InstanceDiscoveryService>(),
+                                                                            optionsMonitor);
+
+                dockerInstanceClient.DiscoverContainersAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<CancellationToken>())
+                                    .Returns(ExternalOperationResult<IReadOnlyList<RuntimeContainerDescriptor>>.Succeeded([
+                                                                                                                              new RuntimeContainerDescriptor
+                                                                                                                              {
+                                                                                                                                  ContainerId = "container-1",
+                                                                                                                                  Name = "heimdall",
+                                                                                                                                  ImageReference = "docker.io/linuxserver/heimdall:latest@sha256:old",
+                                                                                                                                  RuntimeStatus = ContainerRuntimeStatus.Running,
+                                                                                                                                  IsRunning = true,
+                                                                                                                              },
+                                                                                                                          ]));
+                dockerInstanceClient.InspectImageAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+                                    .Returns(ExternalOperationResult<DockerImageInspectData>.NotFound("The local image inspect payload is not available"));
+                dockerInstanceClient.GetImageHistoryAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+                                    .Returns(ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>.NotFound("The local image history payload is not available"));
+                registryMetadataService.GetTagsAsync("docker.io",
+                                                     "linuxserver/heimdall",
+                                                     Arg.Any<CancellationToken>(),
+                                                     Arg.Any<string?>(),
+                                                     Arg.Any<string?>(),
+                                                     Arg.Any<RegistryTagQueryOptions?>())
+                                       .Returns(ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Succeeded([
+                                                                                                                       new DockerHubTagData
+                                                                                                                       {
+                                                                                                                           Tag = "2.7.6",
+                                                                                                                           Digest = "sha256:new",
+                                                                                                                           PublishedAtUtc = new DateTimeOffset(2026, 07, 03, 12, 00, 10, TimeSpan.Zero),
+                                                                                                                       },
+                                                                                                                       new DockerHubTagData
+                                                                                                                       {
+                                                                                                                           Tag = "v2.7.6-ls352",
+                                                                                                                           Digest = "sha256:new",
+                                                                                                                           PublishedAtUtc = new DateTimeOffset(2026, 07, 03, 12, 00, 05, TimeSpan.Zero),
+                                                                                                                       },
+                                                                                                                       new DockerHubTagData
+                                                                                                                       {
+                                                                                                                           Tag = "v2.7.6-ls350",
+                                                                                                                           Digest = "sha256:old",
+                                                                                                                           PublishedAtUtc = new DateTimeOffset(2026, 06, 12, 12, 00, 00, TimeSpan.Zero),
+                                                                                                                       },
+                                                                                                                   ]));
+                registryMetadataService.GetTagAsync(Arg.Is<ImageReference>(entity => entity.Repository == "linuxserver/heimdall"
+                                                                                     && entity.Tag == "latest"),
+                                                    Arg.Any<CancellationToken>())
+                                       .Returns(ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
+                                                                                                    {
+                                                                                                        Tag = "latest",
+                                                                                                        Digest = "sha256:new",
+                                                                                                        PublishedAtUtc = new DateTimeOffset(2026, 07, 03, 12, 00, 00, TimeSpan.Zero),
+                                                                                                    }));
+
+                var orchestrator = new RuntimeContainerScanOrchestrator(new ApplicationTelemetry(),
+                                                                        dbContext,
+                                                                        dockerInstanceClient,
+                                                                        derivedBaseRuntimeDetector,
+                                                                        dotNetReleaseMetadataService,
+                                                                        nginxReleaseMetadataService,
+                                                                        imageCatalogRepository,
+                                                                        new ImageReferenceParser(),
+                                                                        instanceDiscoveryService,
+                                                                        logger,
+                                                                        optionsMonitor,
+                                                                        registryMetadataService,
+                                                                        new UpdateDetectionService());
+
+                await orchestrator.ScanAllAsync(ScanTriggerSource.Scheduled, CancellationToken.None)
+                                  .ConfigureAwait(false);
+
+                var snapshot = await dbContext.ContainerSnapshots.SingleAsync(TestContext.CancellationToken)
+                                                                 .ConfigureAwait(false);
+
+                Assert.AreEqual("v2.7.6-ls350",
+                                snapshot.ResolvedVersionTag,
+                                "The running digest must resolve to its build-specific version tag");
+                Assert.AreEqual("v2.7.6-ls352",
+                                snapshot.AvailableUpdateVersionTag,
+                                "The available update must display the tag from the running variant family instead of the later-published plain alias");
+            }
+        }
+    }
+
+    /// <summary>
     /// Verify runtime scans use the reported local image digest when the image reference does not include one
     /// </summary>
     /// <returns>Task</returns>

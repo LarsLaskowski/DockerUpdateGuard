@@ -91,6 +91,70 @@ public class VersionTagResolutionHelperTests
     }
 
     /// <summary>
+    /// Verify alias resolution prefers digest-matching tags from the running variant family
+    /// </summary>
+    [TestMethod]
+    public void VersionTagResolutionHelperResolveAliasVersionTagPrefersPreferredVariantFamilyCandidate()
+    {
+        var resolvedTag = VersionTagResolutionHelper.ResolveAliasVersionTag("latest",
+                                                                            "sha256:update",
+                                                                            [
+                                                                                new VersionTagCandidateData
+                                                                                {
+                                                                                    Tag = "latest",
+                                                                                    Digest = "sha256:update",
+                                                                                    PublishedAtUtc = new DateTimeOffset(2026, 07, 03, 12, 00, 20, TimeSpan.Zero),
+                                                                                },
+                                                                                new VersionTagCandidateData
+                                                                                {
+                                                                                    Tag = "v2.7.6-ls352",
+                                                                                    Digest = "sha256:update",
+                                                                                    PublishedAtUtc = new DateTimeOffset(2026, 07, 03, 12, 00, 00, TimeSpan.Zero),
+                                                                                },
+                                                                                new VersionTagCandidateData
+                                                                                {
+                                                                                    Tag = "2.7.6",
+                                                                                    Digest = "sha256:update",
+                                                                                    PublishedAtUtc = new DateTimeOffset(2026, 07, 03, 12, 00, 10, TimeSpan.Zero),
+                                                                                },
+                                                                            ],
+                                                                            "v2.7.6-ls350");
+
+        Assert.AreEqual("v2.7.6-ls352",
+                        resolvedTag,
+                        "Alias resolution must prefer the digest-matching tag from the running variant family over a later-published plain alias");
+    }
+
+    /// <summary>
+    /// Verify alias resolution falls back to publication order when no candidate matches the preferred variant family
+    /// </summary>
+    [TestMethod]
+    public void VersionTagResolutionHelperResolveAliasVersionTagFallsBackWhenPreferredVariantFamilyMissing()
+    {
+        var resolvedTag = VersionTagResolutionHelper.ResolveAliasVersionTag("latest",
+                                                                            "sha256:update",
+                                                                            [
+                                                                                new VersionTagCandidateData
+                                                                                {
+                                                                                    Tag = "2.7.5",
+                                                                                    Digest = "sha256:update",
+                                                                                    PublishedAtUtc = new DateTimeOffset(2026, 07, 03, 12, 00, 00, TimeSpan.Zero),
+                                                                                },
+                                                                                new VersionTagCandidateData
+                                                                                {
+                                                                                    Tag = "2.7.6",
+                                                                                    Digest = "sha256:update",
+                                                                                    PublishedAtUtc = new DateTimeOffset(2026, 07, 03, 12, 00, 10, TimeSpan.Zero),
+                                                                                },
+                                                                            ],
+                                                                            "v2.7.6-ls350");
+
+        Assert.AreEqual("2.7.6",
+                        resolvedTag,
+                        "Alias resolution must fall back to the latest published version tag when no candidate matches the preferred variant family");
+    }
+
+    /// <summary>
     /// Verify pre-release increments order numerically instead of comparing equal
     /// </summary>
     [TestMethod]

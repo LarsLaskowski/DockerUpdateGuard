@@ -222,7 +222,8 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
                                              && string.IsNullOrWhiteSpace(evaluation.RecommendedTag) == false
                                                  ? VersionTagResolutionHelper.ResolveDisplayVersionTag(evaluation.RecommendedTag,
                                                                                                        evaluation.RecommendedDigest,
-                                                                                                       versionCandidates)
+                                                                                                       versionCandidates,
+                                                                                                       snapshot.ResolvedVersionTag ?? currentImage.Tag)
                                                  : null;
     }
 
