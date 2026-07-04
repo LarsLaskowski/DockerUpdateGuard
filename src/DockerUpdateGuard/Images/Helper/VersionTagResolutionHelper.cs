@@ -119,6 +119,7 @@ public static class VersionTagResolutionHelper
                                                   Version = ParseVersionTag(entity.Tag),
                                               })
                             .OrderByDescending(entity => IsPreferredVariantFamilyCandidate(entity.Candidate.Tag, preferredVariantFamilyKey))
+                            .ThenByDescending(entity => IsPlainVersionTagCandidate(entity.Candidate.Tag))
                             .ThenByDescending(entity => entity.Candidate.PublishedAtUtc)
                             .ThenByDescending(entity => entity.Version)
                             .Select(entity => entity.Candidate.Tag)
@@ -444,6 +445,17 @@ public static class VersionTagResolutionHelper
         }
 
         return variantFamilyKey;
+    }
+
+    /// <summary>
+    /// Determine whether a candidate tag is a plain version tag without a variant suffix
+    /// </summary>
+    /// <param name="candidateTag">Candidate tag value</param>
+    /// <returns>True when the candidate carries no variant family</returns>
+    private static bool IsPlainVersionTagCandidate(string candidateTag)
+    {
+        return TryParseVersionTagComponents(candidateTag, out _, out var variantFamilyKey)
+               && string.IsNullOrEmpty(variantFamilyKey);
     }
 
     /// <summary>

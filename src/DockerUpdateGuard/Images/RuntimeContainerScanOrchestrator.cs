@@ -196,10 +196,12 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
     /// <param name="currentImage">Current image reference</param>
     /// <param name="evaluation">Update evaluation</param>
     /// <param name="availableTags">Available tags</param>
+    /// <param name="carriedResolvedVersionTag">Resolved version tag carried over from an earlier snapshot of the same image version</param>
     private static void PopulateResolvedVersionTags(ContainerSnapshot snapshot,
                                                     ImageReference currentImage,
                                                     UpdateEvaluationResult evaluation,
-                                                    IReadOnlyList<DockerHubTagData> availableTags)
+                                                    IReadOnlyList<DockerHubTagData> availableTags,
+                                                    string? carriedResolvedVersionTag)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         ArgumentNullException.ThrowIfNull(currentImage);
@@ -217,7 +219,8 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
 
         snapshot.ResolvedVersionTag = VersionTagResolutionHelper.ResolveAliasVersionTag(currentImage.Tag,
                                                                                         currentImage.Digest,
-                                                                                        versionCandidates);
+                                                                                        versionCandidates)
+                                          ?? carriedResolvedVersionTag;
         snapshot.AvailableUpdateVersionTag = evaluation.Status == UpdateEvaluationStatus.UpdateAvailable
                                              && string.IsNullOrWhiteSpace(evaluation.RecommendedTag) == false
                                                  ? VersionTagResolutionHelper.ResolveDisplayVersionTag(evaluation.RecommendedTag,
@@ -627,9 +630,18 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
                             }
 
                             var evaluation = _updateDetectionService.Evaluate(parsedReference, availableTags);
+                            var carriedResolvedVersionTag = await GetPreviousResolvedVersionTagAsync(dockerInstance.Id,
+                                                                                                     container.ContainerId,
+                                                                                                     imageVersion.Id,
+                                                                                                     parsedReference.Digest,
+                                                                                                     cancellationToken).ConfigureAwait(false);
 
                             ApplyUpdateAssessment(snapshot, evaluation);
-                            PopulateResolvedVersionTags(snapshot, parsedReference, evaluation, availableTags);
+                            PopulateResolvedVersionTags(snapshot,
+                                                        parsedReference,
+                                                        evaluation,
+                                                        availableTags,
+                                                        carriedResolvedVersionTag);
 
                             if (evaluation.Status == UpdateEvaluationStatus.UpdateAvailable
                                 || evaluation.Status == UpdateEvaluationStatus.NeedsReview)
@@ -999,6 +1011,44 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
         return inspectResult.Status == ExternalOperationStatus.Succeeded
                    ? inspectResult.Data
                    : null;
+    }
+
+    /// <summary>
+    /// Load the resolved version tag of the latest earlier snapshot with the same image version
+    /// </summary>
+    /// <param name="dockerInstanceId">Docker instance identifier</param>
+    /// <param name="containerId">Container identifier</param>
+    /// <param name="imageVersionId">Image version identifier</param>
+    /// <param name="currentDigest">Current running digest</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Previously resolved version tag or null</returns>
+    private async Task<string?> GetPreviousResolvedVersionTagAsync(Guid dockerInstanceId,
+                                                                   string containerId,
+                                                                   Guid imageVersionId,
+                                                                   string? currentDigest,
+                                                                   CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(currentDigest))
+        {
+            return null;
+        }
+
+        var previousSnapshots = await _dbContext.ContainerSnapshots.Where(entity => entity.DockerInstanceId == dockerInstanceId
+                                                                                    && entity.ContainerId == containerId
+                                                                                    && entity.ImageVersionId == imageVersionId
+                                                                                    && entity.ResolvedVersionTag != null
+                                                                                    && entity.ResolvedVersionTag != string.Empty)
+                                                                   .Select(entity => new
+                                                                                     {
+                                                                                         entity.RecordedAtUtc,
+                                                                                         entity.ResolvedVersionTag,
+                                                                                     })
+                                                                   .ToListAsync(cancellationToken)
+                                                                   .ConfigureAwait(false);
+
+        return previousSnapshots.OrderByDescending(entity => entity.RecordedAtUtc)
+                                .Select(entity => entity.ResolvedVersionTag)
+                                .FirstOrDefault();
     }
 
     /// <summary>

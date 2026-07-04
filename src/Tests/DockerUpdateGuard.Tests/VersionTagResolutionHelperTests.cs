@@ -126,6 +126,40 @@ public class VersionTagResolutionHelperTests
     }
 
     /// <summary>
+    /// Verify alias resolution prefers the plain version tag over later-published variant tags
+    /// </summary>
+    [TestMethod]
+    public void VersionTagResolutionHelperResolveAliasVersionTagPrefersPlainVersionTagCandidate()
+    {
+        var resolvedTag = VersionTagResolutionHelper.ResolveAliasVersionTag("latest",
+                                                                            "sha256:update",
+                                                                            [
+                                                                                new VersionTagCandidateData
+                                                                                {
+                                                                                    Tag = "5.2.3",
+                                                                                    Digest = "sha256:update",
+                                                                                    PublishedAtUtc = new DateTimeOffset(2026, 07, 04, 10, 40, 54, TimeSpan.Zero),
+                                                                                },
+                                                                                new VersionTagCandidateData
+                                                                                {
+                                                                                    Tag = "5.2.3-apache",
+                                                                                    Digest = "sha256:update",
+                                                                                    PublishedAtUtc = new DateTimeOffset(2026, 07, 04, 10, 40, 57, TimeSpan.Zero),
+                                                                                },
+                                                                                new VersionTagCandidateData
+                                                                                {
+                                                                                    Tag = "latest",
+                                                                                    Digest = "sha256:update",
+                                                                                    PublishedAtUtc = new DateTimeOffset(2026, 07, 04, 10, 41, 14, TimeSpan.Zero),
+                                                                                },
+                                                                            ]);
+
+        Assert.AreEqual("5.2.3",
+                        resolvedTag,
+                        "Alias resolution must prefer the plain version tag over a later-published variant tag with the same digest");
+    }
+
+    /// <summary>
     /// Verify alias resolution falls back to publication order when no candidate matches the preferred variant family
     /// </summary>
     [TestMethod]

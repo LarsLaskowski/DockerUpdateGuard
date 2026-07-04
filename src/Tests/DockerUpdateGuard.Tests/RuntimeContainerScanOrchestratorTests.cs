@@ -1117,6 +1117,146 @@ public class RuntimeContainerScanOrchestratorTests
     }
 
     /// <summary>
+    /// Verify the resolved version survives registry tag rotation and updates display the plain version tag
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task RuntimeContainerScanOrchestratorScanAllAsyncKeepsResolvedVersionAfterRegistryTagRotationAsync()
+    {
+        using (var database = new SqliteTestDatabase())
+        {
+            var dbContext = database.CreateDbContext();
+
+            await using (dbContext.ConfigureAwait(false))
+            {
+                var optionsMonitor = new TestOptionsMonitor<DockerUpdateGuardOptions>(new DockerUpdateGuardOptions
+                                                                                      {
+                                                                                          DockerInstances = [
+                                                                                                                new DockerInstanceOptions
+                                                                                                                {
+                                                                                                                    Name = "Production",
+                                                                                                                    BaseUrl = "https://docker.example.test",
+                                                                                                                    Enabled = true,
+                                                                                                                },
+                                                                                                            ],
+                                                                                      });
+                var dockerInstanceClient = Substitute.For<IDockerInstanceClient>();
+                var derivedBaseRuntimeDetector = Substitute.For<IDerivedBaseRuntimeDetector>();
+                var dotNetReleaseMetadataService = Substitute.For<IDotNetReleaseMetadataService>();
+                var nginxReleaseMetadataService = Substitute.For<INginxReleaseMetadataService>();
+                var registryMetadataService = Substitute.For<IRegistryMetadataService>();
+                var imageCatalogRepository = new ImageCatalogRepository(dbContext);
+                var logger = new TestLogger<RuntimeContainerScanOrchestrator>();
+                var instanceDiscoveryService = new InstanceDiscoveryService(dbContext,
+                                                                            new TestLogger<InstanceDiscoveryService>(),
+                                                                            optionsMonitor);
+
+                dockerInstanceClient.DiscoverContainersAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<CancellationToken>())
+                                    .Returns(ExternalOperationResult<IReadOnlyList<RuntimeContainerDescriptor>>.Succeeded([
+                                                                                                                              new RuntimeContainerDescriptor
+                                                                                                                              {
+                                                                                                                                  ContainerId = "container-1",
+                                                                                                                                  Name = "mariadbadmin",
+                                                                                                                                  ImageReference = "docker.io/library/phpmyadmin:latest@sha256:old",
+                                                                                                                                  RuntimeStatus = ContainerRuntimeStatus.Running,
+                                                                                                                                  IsRunning = true,
+                                                                                                                              },
+                                                                                                                          ]));
+                dockerInstanceClient.InspectImageAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+                                    .Returns(ExternalOperationResult<DockerImageInspectData>.NotFound("The local image inspect payload is not available"));
+                dockerInstanceClient.GetImageHistoryAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+                                    .Returns(ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>.NotFound("The local image history payload is not available"));
+                registryMetadataService.GetTagsAsync("docker.io",
+                                                     "library/phpmyadmin",
+                                                     Arg.Any<CancellationToken>(),
+                                                     Arg.Any<string?>(),
+                                                     Arg.Any<string?>(),
+                                                     Arg.Any<RegistryTagQueryOptions?>())
+                                       .Returns(ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Succeeded([
+                                                                                                                       new DockerHubTagData
+                                                                                                                       {
+                                                                                                                           Tag = "5.2.3",
+                                                                                                                           Digest = "sha256:old",
+                                                                                                                           PublishedAtUtc = new DateTimeOffset(2026, 07, 03, 10, 00, 05, TimeSpan.Zero),
+                                                                                                                       },
+                                                                                                                       new DockerHubTagData
+                                                                                                                       {
+                                                                                                                           Tag = "5.2.3-apache",
+                                                                                                                           Digest = "sha256:old",
+                                                                                                                           PublishedAtUtc = new DateTimeOffset(2026, 07, 03, 10, 00, 08, TimeSpan.Zero),
+                                                                                                                       },
+                                                                                                                   ]),
+                                                ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Succeeded([
+                                                                                                                       new DockerHubTagData
+                                                                                                                       {
+                                                                                                                           Tag = "5.2.3",
+                                                                                                                           Digest = "sha256:new",
+                                                                                                                           PublishedAtUtc = new DateTimeOffset(2026, 07, 04, 12, 00, 05, TimeSpan.Zero),
+                                                                                                                       },
+                                                                                                                       new DockerHubTagData
+                                                                                                                       {
+                                                                                                                           Tag = "5.2.3-apache",
+                                                                                                                           Digest = "sha256:new",
+                                                                                                                           PublishedAtUtc = new DateTimeOffset(2026, 07, 04, 12, 00, 08, TimeSpan.Zero),
+                                                                                                                       },
+                                                                                                                   ]));
+                registryMetadataService.GetTagAsync(Arg.Is<ImageReference>(entity => entity.Repository == "library/phpmyadmin"
+                                                                                     && entity.Tag == "latest"),
+                                                    Arg.Any<CancellationToken>())
+                                       .Returns(ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
+                                                                                                    {
+                                                                                                        Tag = "latest",
+                                                                                                        Digest = "sha256:old",
+                                                                                                        PublishedAtUtc = new DateTimeOffset(2026, 07, 03, 10, 00, 00, TimeSpan.Zero),
+                                                                                                    }),
+                                                ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
+                                                                                                    {
+                                                                                                        Tag = "latest",
+                                                                                                        Digest = "sha256:new",
+                                                                                                        PublishedAtUtc = new DateTimeOffset(2026, 07, 04, 12, 00, 00, TimeSpan.Zero),
+                                                                                                    }));
+
+                var orchestrator = new RuntimeContainerScanOrchestrator(new ApplicationTelemetry(),
+                                                                        dbContext,
+                                                                        dockerInstanceClient,
+                                                                        derivedBaseRuntimeDetector,
+                                                                        dotNetReleaseMetadataService,
+                                                                        nginxReleaseMetadataService,
+                                                                        imageCatalogRepository,
+                                                                        new ImageReferenceParser(),
+                                                                        instanceDiscoveryService,
+                                                                        logger,
+                                                                        optionsMonitor,
+                                                                        registryMetadataService,
+                                                                        new UpdateDetectionService());
+
+                await orchestrator.ScanAllAsync(ScanTriggerSource.Scheduled, CancellationToken.None)
+                                  .ConfigureAwait(false);
+                await orchestrator.ScanAllAsync(ScanTriggerSource.Scheduled, CancellationToken.None)
+                                  .ConfigureAwait(false);
+
+                var snapshots = await dbContext.ContainerSnapshots.ToListAsync(TestContext.CancellationToken)
+                                                                  .ConfigureAwait(false);
+
+                Assert.HasCount(2, snapshots, "Each scan run must record its own container snapshot");
+
+                var upToDateSnapshot = snapshots.Single(entity => entity.UpdateAssessmentStatus == UpdateAssessmentStatus.UpToDate);
+                var updateSnapshot = snapshots.Single(entity => entity.UpdateAssessmentStatus == UpdateAssessmentStatus.UpdateAvailable);
+
+                Assert.AreEqual("5.2.3",
+                                upToDateSnapshot.ResolvedVersionTag,
+                                "The running latest digest must resolve to the plain version tag instead of the later-published variant tag");
+                Assert.AreEqual("5.2.3",
+                                updateSnapshot.ResolvedVersionTag,
+                                "The resolved version must be carried over from the earlier snapshot after the registry tags moved to a new digest");
+                Assert.AreEqual("5.2.3",
+                                updateSnapshot.AvailableUpdateVersionTag,
+                                "The available update must display the plain version tag instead of the later-published variant tag");
+            }
+        }
+    }
+
+    /// <summary>
     /// Verify runtime scans use the reported local image digest when the image reference does not include one
     /// </summary>
     /// <returns>Task</returns>
