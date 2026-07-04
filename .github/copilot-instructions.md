@@ -16,6 +16,12 @@ Copilot and other AI assistants must follow these guidelines when working in thi
 - Read-only Git commands are fine.
 - Keep commit subjects to a single line under 80 characters and do not end them with a period.
 
+## Pull requests
+
+- Write the PR title and description in English, regardless of the language used in the conversation.
+- Do not mention Claude, Anthropic, Copilot, or any AI assistant in the PR title or description.
+- Do not include AI session links, "Co-Authored-By" trailers for AI assistants, "Generated with ..." notices, or any other reference indicating the PR was created with AI assistance.
+
 ## Build, test, and lint
 
 Use the solution file at the repository root:
