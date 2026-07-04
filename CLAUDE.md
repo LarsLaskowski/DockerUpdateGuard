@@ -21,6 +21,12 @@ null handling, suppressed analyzer rules) are imported below and are
 - Do not write in the first person.
 - Keep the body to a maximum of 3–5 sentences, depending on the number of changes.
 
+## Pull requests
+
+- Write the PR title and description in English, regardless of the language used in the conversation.
+- Do not mention Claude, Anthropic, or any AI assistant in the PR title or description.
+- Do not include Claude session links, "Co-Authored-By: Claude" trailers, "Generated with Claude" notices, or any other reference indicating the PR was created with AI assistance.
+
 ## Build, test, and format
 
 Use the solution file at the repository root (`DockerUpdateGuard.slnx`):

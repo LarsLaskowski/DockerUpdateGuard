@@ -365,8 +365,10 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
     /// Resolve the available update version tag for display
     /// </summary>
     /// <param name="candidates">Tag candidates</param>
+    /// <param name="preferredVariantFamilySourceTag">Optional concrete tag whose variant family is preferred among digest-matching candidates</param>
     /// <returns>Displayable version tag or null</returns>
-    private static string? ResolveAvailableUpdateVersionTag(IEnumerable<TagCandidateViewData> candidates)
+    private static string? ResolveAvailableUpdateVersionTag(IEnumerable<TagCandidateViewData> candidates,
+                                                            string? preferredVariantFamilySourceTag = null)
     {
         var candidateList = candidates.Where(entity => string.IsNullOrWhiteSpace(entity.Tag) == false)
                                       .ToList();
@@ -384,7 +386,8 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                                                                                                       Tag = entity.Tag,
                                                                                                       Digest = entity.Digest,
                                                                                                       PublishedAtUtc = entity.PublishedAtUtc,
-                                                                                                  }));
+                                                                                                  }),
+                                                                   preferredVariantFamilySourceTag);
     }
 
     /// <summary>
@@ -893,7 +896,8 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                                                                                                          availableTagCandidates);
                                                 var availableUpdateVersionTag = string.IsNullOrWhiteSpace(latestSnapshot.AvailableUpdateVersionTag) == false
                                                                                     ? latestSnapshot.AvailableUpdateVersionTag
-                                                                                    : ResolveAvailableUpdateVersionTag(availableTagCandidates);
+                                                                                    : ResolveAvailableUpdateVersionTag(availableTagCandidates,
+                                                                                                                       resolvedVersionTag ?? latestSnapshot.ImageVersion.Tag);
 
                                                 var registryRepository = latestSnapshot.ImageVersion.RegistryRepository;
 
@@ -1183,7 +1187,8 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                                                                               ? entity.AvailableUpdateVersionTag
                                                                               : tagCandidates is null
                                                                                     ? null
-                                                                                    : ResolveAvailableUpdateVersionTag(tagCandidates);
+                                                                                    : ResolveAvailableUpdateVersionTag(tagCandidates,
+                                                                                                                       resolvedVersionTag ?? imageVersion.Tag);
 
                                           return new RuntimeContainerListItemData
                                                  {
