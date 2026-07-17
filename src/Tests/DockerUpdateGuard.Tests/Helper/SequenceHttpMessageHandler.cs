@@ -39,6 +39,9 @@ internal sealed class SequenceHttpMessageHandler : HttpMessageHandler
                           RequestUri = request.RequestUri.AbsoluteUri,
                           AuthorizationScheme = request.Headers.Authorization?.Scheme,
                           AuthorizationParameter = request.Headers.Authorization?.Parameter,
+                          ApiKeyHeader = request.Headers.TryGetValues("X-API-Key", out var apiKeyValues)
+                                             ? apiKeyValues.FirstOrDefault()
+                                             : null,
                       });
 
         if (_responses.TryGetValue(request.RequestUri.AbsoluteUri, out var queue)
