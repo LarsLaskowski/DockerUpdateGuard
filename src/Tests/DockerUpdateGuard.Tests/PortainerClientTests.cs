@@ -50,6 +50,41 @@ public class PortainerClientTests
     /// </summary>
     private const string RestartActionUrl = "https://portainer.example.test/api/endpoints/7/docker/containers/container-abc/restart";
 
+    /// <summary>
+    /// Portainer container listing response containing a single matching container
+    /// </summary>
+    private const string ContainerFoundJson = """[{"Id":"container-abc","Names":["/my-container"]}]""";
+
+    /// <summary>
+    /// Docker instance display name used by the tests
+    /// </summary>
+    private const string InstanceName = "Production";
+
+    /// <summary>
+    /// Container name used as the Portainer action resource
+    /// </summary>
+    private const string ContainerName = "my-container";
+
+    /// <summary>
+    /// Allow-listed Portainer action name used by the tests
+    /// </summary>
+    private const string RestartAction = "restart";
+
+    /// <summary>
+    /// Portainer endpoint identifier used by the tests
+    /// </summary>
+    private const string EndpointId = "7";
+
+    /// <summary>
+    /// Portainer API token (PAT) used by the tests
+    /// </summary>
+    private const string PatToken = "pat-token";
+
+    /// <summary>
+    /// Portainer username used by the tests
+    /// </summary>
+    private const string AdminUsername = "admin";
+
     #endregion // Constants
 
     #region Methods
@@ -68,17 +103,17 @@ public class PortainerClientTests
         try
         {
             var client = new PortainerClient(CreateHttpClientFactory(httpClient), logger);
-            var instanceOptions = CreateInstanceOptions("Production", options => options.Enabled = false);
+            var instanceOptions = CreateInstanceOptions(InstanceName, options => options.Enabled = false);
 
             var result = await client.GetCapabilityAsync(instanceOptions, CancellationToken.None)
                                      .ConfigureAwait(false);
 
             Assert.IsFalse(result.IsConfigured, "A disabled Portainer integration must be reported as not configured");
             Assert.IsFalse(result.SupportsActions, "A disabled Portainer integration must not support actions");
-            Assert.AreEqual(0, handler.Requests.Count, "A disabled Portainer integration must not contact Portainer");
+            Assert.IsEmpty(handler.Requests, "A disabled Portainer integration must not contact Portainer");
             Assert.Contains(entry => entry.EventId.Id == 3300
                                      && entry.LogLevel == LogLevel.Information
-                                     && entry.Message.Contains("Production", StringComparison.Ordinal),
+                                     && entry.Message.Contains(InstanceName, StringComparison.Ordinal),
                             logger.Entries,
                             "Disabled Portainer integrations must log the skip decision with the configured instance name");
         }
@@ -103,7 +138,7 @@ public class PortainerClientTests
         try
         {
             var client = new PortainerClient(CreateHttpClientFactory(httpClient), logger);
-            var instanceOptions = CreateInstanceOptions("Production",
+            var instanceOptions = CreateInstanceOptions(InstanceName,
                                                         options =>
                                                         {
                                                             options.Enabled = true;
@@ -117,7 +152,7 @@ public class PortainerClientTests
             Assert.AreEqual("Portainer base URL is not configured",
                             result.Message,
                             "A missing Portainer base URL must produce a clear capability message");
-            Assert.AreEqual(0, handler.Requests.Count, "A missing Portainer base URL must not contact Portainer");
+            Assert.IsEmpty(handler.Requests, "A missing Portainer base URL must not contact Portainer");
         }
         finally
         {
@@ -142,11 +177,11 @@ public class PortainerClientTests
             handler.AddResponse(StatusUrl, new HttpResponseMessage(HttpStatusCode.InternalServerError));
 
             var client = new PortainerClient(CreateHttpClientFactory(httpClient), logger);
-            var instanceOptions = CreateInstanceOptions("Production",
+            var instanceOptions = CreateInstanceOptions(InstanceName,
                                                         options =>
                                                         {
-                                                            options.ApiToken = "pat-token";
-                                                            options.EndpointId = "7";
+                                                            options.ApiToken = PatToken;
+                                                            options.EndpointId = EndpointId;
                                                         });
 
             var result = await client.GetCapabilityAsync(instanceOptions, CancellationToken.None)
@@ -159,7 +194,7 @@ public class PortainerClientTests
                                   "A failing status check must surface the returned HTTP status code");
             Assert.Contains(entry => entry.EventId.Id == 3305
                                      && entry.LogLevel == LogLevel.Warning
-                                     && entry.Message.Contains("Production", StringComparison.Ordinal),
+                                     && entry.Message.Contains(InstanceName, StringComparison.Ordinal),
                             logger.Entries,
                             "A failing status check must log a warning naming the Docker instance");
         }
@@ -187,7 +222,7 @@ public class PortainerClientTests
             handler.AddJsonResponse(EndpointsUrl, """[{"Id":7,"Name":"local"}]""");
 
             var client = new PortainerClient(CreateHttpClientFactory(httpClient), logger);
-            var instanceOptions = CreateInstanceOptions("Production", options => options.ApiToken = "pat-token");
+            var instanceOptions = CreateInstanceOptions(InstanceName, options => options.ApiToken = PatToken);
 
             var result = await client.GetCapabilityAsync(instanceOptions, CancellationToken.None)
                                      .ConfigureAwait(false);
@@ -199,7 +234,7 @@ public class PortainerClientTests
                                   "The automatically resolved endpoint identifier must be reported in the capability message");
             Assert.Contains(entry => entry.EventId.Id == 3304
                                      && entry.LogLevel == LogLevel.Information
-                                     && entry.Message.Contains("7", StringComparison.Ordinal),
+                                     && entry.Message.Contains(EndpointId, StringComparison.Ordinal),
                             logger.Entries,
                             "Automatic endpoint resolution must log the resolved endpoint identifier");
         }
@@ -227,7 +262,7 @@ public class PortainerClientTests
             handler.AddJsonResponse(EndpointsUrl, "[]");
 
             var client = new PortainerClient(CreateHttpClientFactory(httpClient), logger);
-            var instanceOptions = CreateInstanceOptions("Production", options => options.ApiToken = "pat-token");
+            var instanceOptions = CreateInstanceOptions(InstanceName, options => options.ApiToken = PatToken);
 
             var result = await client.GetCapabilityAsync(instanceOptions, CancellationToken.None)
                                      .ConfigureAwait(false);
@@ -261,12 +296,12 @@ public class PortainerClientTests
             handler.AddResponse(AuthUrl, new HttpResponseMessage(HttpStatusCode.Unauthorized));
 
             var client = new PortainerClient(CreateHttpClientFactory(httpClient), logger);
-            var instanceOptions = CreateInstanceOptions("Production",
+            var instanceOptions = CreateInstanceOptions(InstanceName,
                                                         options =>
                                                         {
-                                                            options.Username = "admin";
+                                                            options.Username = AdminUsername;
                                                             options.Password = "wrong-password";
-                                                            options.EndpointId = "7";
+                                                            options.EndpointId = EndpointId;
                                                         });
 
             var result = await client.GetCapabilityAsync(instanceOptions, CancellationToken.None)
@@ -303,11 +338,11 @@ public class PortainerClientTests
         try
         {
             var client = new PortainerClient(CreateHttpClientFactory(httpClient), logger);
-            var instanceOptions = CreateInstanceOptions("Production", options => options.Enabled = false);
+            var instanceOptions = CreateInstanceOptions(InstanceName, options => options.Enabled = false);
             var actionRequest = new PortainerActionRequest
                                 {
-                                    ActionName = "restart",
-                                    ResourceName = "my-container",
+                                    ActionName = RestartAction,
+                                    ResourceName = ContainerName,
                                 };
 
             var result = await client.ExecuteActionAsync(instanceOptions, actionRequest, CancellationToken.None)
@@ -317,7 +352,7 @@ public class PortainerClientTests
             Assert.AreEqual("Portainer is not configured",
                             result.Message,
                             "A disabled Portainer integration must produce a clear action-result message");
-            Assert.AreEqual(0, handler.Requests.Count, "A disabled Portainer integration must not contact Portainer");
+            Assert.IsEmpty(handler.Requests, "A disabled Portainer integration must not contact Portainer");
         }
         finally
         {
@@ -340,11 +375,11 @@ public class PortainerClientTests
         try
         {
             var client = new PortainerClient(CreateHttpClientFactory(httpClient), logger);
-            var instanceOptions = CreateInstanceOptions("Production", options => options.ApiToken = "pat-token");
+            var instanceOptions = CreateInstanceOptions(InstanceName, options => options.ApiToken = PatToken);
             var actionRequest = new PortainerActionRequest
                                 {
                                     ActionName = "remove",
-                                    ResourceName = "my-container",
+                                    ResourceName = ContainerName,
                                 };
 
             var result = await client.ExecuteActionAsync(instanceOptions, actionRequest, CancellationToken.None)
@@ -355,9 +390,9 @@ public class PortainerClientTests
                                   "is not supported",
                                   "A rejected action must explain that it is not supported");
             StringAssert.Contains(result.Message,
-                                  "restart",
+                                  RestartAction,
                                   "A rejected action must list the allowed actions");
-            Assert.AreEqual(0, handler.Requests.Count, "Actions outside the allow-list must not contact Portainer");
+            Assert.IsEmpty(handler.Requests, "Actions outside the allow-list must not contact Portainer");
         }
         finally
         {
@@ -379,31 +414,31 @@ public class PortainerClientTests
 
         try
         {
-            handler.AddJsonResponse(ContainersUrl,
-                                    """[{"Id":"container-abc","Names":["/my-container"]}]""");
+            handler.AddJsonResponse(ContainersUrl, ContainerFoundJson);
             handler.AddResponse(RestartActionUrl, new HttpResponseMessage(HttpStatusCode.NoContent));
 
             var client = new PortainerClient(CreateHttpClientFactory(httpClient), logger);
-            var instanceOptions = CreateInstanceOptions("Production",
+            var instanceOptions = CreateInstanceOptions(InstanceName,
                                                         options =>
                                                         {
-                                                            options.ApiToken = "pat-token";
-                                                            options.EndpointId = "7";
+                                                            options.ApiToken = PatToken;
+                                                            options.EndpointId = EndpointId;
                                                         });
             var actionRequest = new PortainerActionRequest
                                 {
-                                    ActionName = "restart",
-                                    ResourceName = "my-container",
+                                    ActionName = RestartAction,
+                                    ResourceName = ContainerName,
                                 };
 
             var result = await client.ExecuteActionAsync(instanceOptions, actionRequest, CancellationToken.None)
                                      .ConfigureAwait(false);
 
             Assert.IsTrue(result.Succeeded, "A configured API token must allow the action to succeed");
-            Assert.IsFalse(handler.Requests.Any(request => request.RequestUri == AuthUrl),
-                           "A configured API token must skip the username/password login");
+            Assert.DoesNotContain(request => request.RequestUri == AuthUrl,
+                                  handler.Requests,
+                                  "A configured API token must skip the username/password login");
             Assert.Contains(request => request.RequestUri == ContainersUrl
-                                       && request.ApiKeyHeader == "pat-token",
+                                       && request.ApiKeyHeader == PatToken,
                             handler.Requests,
                             "The configured API token must be sent as the X-API-Key header");
         }
@@ -428,22 +463,21 @@ public class PortainerClientTests
         try
         {
             handler.AddJsonResponse(AuthUrl, """{"jwt":"jwt-token-xyz"}""");
-            handler.AddJsonResponse(ContainersUrl,
-                                    """[{"Id":"container-abc","Names":["/my-container"]}]""");
+            handler.AddJsonResponse(ContainersUrl, ContainerFoundJson);
             handler.AddResponse(RestartActionUrl, new HttpResponseMessage(HttpStatusCode.NoContent));
 
             var client = new PortainerClient(CreateHttpClientFactory(httpClient), logger);
-            var instanceOptions = CreateInstanceOptions("Production",
+            var instanceOptions = CreateInstanceOptions(InstanceName,
                                                         options =>
                                                         {
-                                                            options.Username = "admin";
+                                                            options.Username = AdminUsername;
                                                             options.Password = "correct-password";
-                                                            options.EndpointId = "7";
+                                                            options.EndpointId = EndpointId;
                                                         });
             var actionRequest = new PortainerActionRequest
                                 {
-                                    ActionName = "restart",
-                                    ResourceName = "my-container",
+                                    ActionName = RestartAction,
+                                    ResourceName = ContainerName,
                                 };
 
             var result = await client.ExecuteActionAsync(instanceOptions, actionRequest, CancellationToken.None)
@@ -479,17 +513,17 @@ public class PortainerClientTests
             handler.AddJsonResponse(AuthUrl, "{}");
 
             var client = new PortainerClient(CreateHttpClientFactory(httpClient), logger);
-            var instanceOptions = CreateInstanceOptions("Production",
+            var instanceOptions = CreateInstanceOptions(InstanceName,
                                                         options =>
                                                         {
-                                                            options.Username = "admin";
+                                                            options.Username = AdminUsername;
                                                             options.Password = "correct-password";
-                                                            options.EndpointId = "7";
+                                                            options.EndpointId = EndpointId;
                                                         });
             var actionRequest = new PortainerActionRequest
                                 {
-                                    ActionName = "restart",
-                                    ResourceName = "my-container",
+                                    ActionName = RestartAction,
+                                    ResourceName = ContainerName,
                                 };
 
             var result = await client.ExecuteActionAsync(instanceOptions, actionRequest, CancellationToken.None)
@@ -528,17 +562,17 @@ public class PortainerClientTests
             handler.AddResponse(AuthUrl, new HttpResponseMessage(HttpStatusCode.Unauthorized));
 
             var client = new PortainerClient(CreateHttpClientFactory(httpClient), logger);
-            var instanceOptions = CreateInstanceOptions("Production",
+            var instanceOptions = CreateInstanceOptions(InstanceName,
                                                         options =>
                                                         {
-                                                            options.Username = "admin";
+                                                            options.Username = AdminUsername;
                                                             options.Password = "wrong-password";
-                                                            options.EndpointId = "7";
+                                                            options.EndpointId = EndpointId;
                                                         });
             var actionRequest = new PortainerActionRequest
                                 {
-                                    ActionName = "restart",
-                                    ResourceName = "my-container",
+                                    ActionName = RestartAction,
+                                    ResourceName = ContainerName,
                                 };
 
             var result = await client.ExecuteActionAsync(instanceOptions, actionRequest, CancellationToken.None)
@@ -576,11 +610,11 @@ public class PortainerClientTests
             handler.AddJsonResponse(EndpointsUrl, "[]");
 
             var client = new PortainerClient(CreateHttpClientFactory(httpClient), logger);
-            var instanceOptions = CreateInstanceOptions("Production", options => options.ApiToken = "pat-token");
+            var instanceOptions = CreateInstanceOptions(InstanceName, options => options.ApiToken = PatToken);
             var actionRequest = new PortainerActionRequest
                                 {
-                                    ActionName = "restart",
-                                    ResourceName = "my-container",
+                                    ActionName = RestartAction,
+                                    ResourceName = ContainerName,
                                 };
 
             var result = await client.ExecuteActionAsync(instanceOptions, actionRequest, CancellationToken.None)
@@ -614,16 +648,16 @@ public class PortainerClientTests
             handler.AddJsonResponse(ContainersUrl, "[]");
 
             var client = new PortainerClient(CreateHttpClientFactory(httpClient), logger);
-            var instanceOptions = CreateInstanceOptions("Production",
+            var instanceOptions = CreateInstanceOptions(InstanceName,
                                                         options =>
                                                         {
-                                                            options.ApiToken = "pat-token";
-                                                            options.EndpointId = "7";
+                                                            options.ApiToken = PatToken;
+                                                            options.EndpointId = EndpointId;
                                                         });
             var actionRequest = new PortainerActionRequest
                                 {
-                                    ActionName = "restart",
-                                    ResourceName = "my-container",
+                                    ActionName = RestartAction,
+                                    ResourceName = ContainerName,
                                 };
 
             var result = await client.ExecuteActionAsync(instanceOptions, actionRequest, CancellationToken.None)
@@ -635,8 +669,8 @@ public class PortainerClientTests
                                   "A missing container must produce a clear action-result message");
             Assert.Contains(entry => entry.EventId.Id == 3307
                                      && entry.LogLevel == LogLevel.Warning
-                                     && entry.Message.Contains("my-container", StringComparison.Ordinal)
-                                     && entry.Message.Contains("Production", StringComparison.Ordinal),
+                                     && entry.Message.Contains(ContainerName, StringComparison.Ordinal)
+                                     && entry.Message.Contains(InstanceName, StringComparison.Ordinal),
                             logger.Entries,
                             "A missing container must log a warning naming the container and Docker instance");
         }
@@ -660,21 +694,20 @@ public class PortainerClientTests
 
         try
         {
-            handler.AddJsonResponse(ContainersUrl,
-                                    """[{"Id":"container-abc","Names":["/my-container"]}]""");
+            handler.AddJsonResponse(ContainersUrl, ContainerFoundJson);
             handler.AddResponse(RestartActionUrl, new HttpResponseMessage(HttpStatusCode.InternalServerError));
 
             var client = new PortainerClient(CreateHttpClientFactory(httpClient), logger);
-            var instanceOptions = CreateInstanceOptions("Production",
+            var instanceOptions = CreateInstanceOptions(InstanceName,
                                                         options =>
                                                         {
-                                                            options.ApiToken = "pat-token";
-                                                            options.EndpointId = "7";
+                                                            options.ApiToken = PatToken;
+                                                            options.EndpointId = EndpointId;
                                                         });
             var actionRequest = new PortainerActionRequest
                                 {
-                                    ActionName = "restart",
-                                    ResourceName = "my-container",
+                                    ActionName = RestartAction,
+                                    ResourceName = ContainerName,
                                 };
 
             var result = await client.ExecuteActionAsync(instanceOptions, actionRequest, CancellationToken.None)
@@ -686,8 +719,8 @@ public class PortainerClientTests
                                   "A failing Portainer action request must surface the returned HTTP status code");
             Assert.Contains(entry => entry.EventId.Id == 3309
                                      && entry.LogLevel == LogLevel.Warning
-                                     && entry.Message.Contains("restart", StringComparison.Ordinal)
-                                     && entry.Message.Contains("my-container", StringComparison.Ordinal),
+                                     && entry.Message.Contains(RestartAction, StringComparison.Ordinal)
+                                     && entry.Message.Contains(ContainerName, StringComparison.Ordinal),
                             logger.Entries,
                             "A failing Portainer action request must log a warning naming the action and container");
         }
@@ -711,21 +744,20 @@ public class PortainerClientTests
 
         try
         {
-            handler.AddJsonResponse(ContainersUrl,
-                                    """[{"Id":"container-abc","Names":["/my-container"]}]""");
+            handler.AddJsonResponse(ContainersUrl, ContainerFoundJson);
             handler.AddResponse(RestartActionUrl, new HttpResponseMessage(HttpStatusCode.NoContent));
 
             var client = new PortainerClient(CreateHttpClientFactory(httpClient), logger);
-            var instanceOptions = CreateInstanceOptions("Production",
+            var instanceOptions = CreateInstanceOptions(InstanceName,
                                                         options =>
                                                         {
-                                                            options.ApiToken = "pat-token";
-                                                            options.EndpointId = "7";
+                                                            options.ApiToken = PatToken;
+                                                            options.EndpointId = EndpointId;
                                                         });
             var actionRequest = new PortainerActionRequest
                                 {
-                                    ActionName = "restart",
-                                    ResourceName = "my-container",
+                                    ActionName = RestartAction,
+                                    ResourceName = ContainerName,
                                 };
 
             var result = await client.ExecuteActionAsync(instanceOptions, actionRequest, CancellationToken.None)
@@ -734,9 +766,9 @@ public class PortainerClientTests
             Assert.IsTrue(result.Succeeded, "A successful Portainer action must report success");
             Assert.Contains(entry => entry.EventId.Id == 3308
                                      && entry.LogLevel == LogLevel.Information
-                                     && entry.Message.Contains("restart", StringComparison.Ordinal)
-                                     && entry.Message.Contains("my-container", StringComparison.Ordinal)
-                                     && entry.Message.Contains("Production", StringComparison.Ordinal),
+                                     && entry.Message.Contains(RestartAction, StringComparison.Ordinal)
+                                     && entry.Message.Contains(ContainerName, StringComparison.Ordinal)
+                                     && entry.Message.Contains(InstanceName, StringComparison.Ordinal),
                             logger.Entries,
                             "A successful Portainer action must log the action, resource and Docker instance");
         }
