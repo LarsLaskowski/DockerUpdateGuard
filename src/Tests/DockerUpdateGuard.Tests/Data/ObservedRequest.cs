@@ -18,6 +18,11 @@ internal sealed class ObservedRequest
     public string? AuthorizationScheme { get; init; }
 
     /// <summary>
+    /// X-API-Key header value
+    /// </summary>
+    public string? ApiKeyHeader { get; init; }
+
+    /// <summary>
     /// HTTP method
     /// </summary>
     public string Method { get; init; } = string.Empty;
