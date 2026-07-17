@@ -189,9 +189,9 @@ public class PortainerClientTests
 
             Assert.IsTrue(result.IsConfigured, "A configured Portainer integration with a failing status check must still be reported as configured");
             Assert.IsFalse(result.SupportsActions, "A failing status check must not support actions");
-            StringAssert.Contains(result.Message,
-                                  "HTTP 500",
-                                  "A failing status check must surface the returned HTTP status code");
+            Assert.Contains("HTTP 500",
+                            result.Message,
+                            "A failing status check must surface the returned HTTP status code");
             Assert.Contains(entry => entry.EventId.Id == 3305
                                      && entry.LogLevel == LogLevel.Warning
                                      && entry.Message.Contains(InstanceName, StringComparison.Ordinal),
@@ -229,9 +229,9 @@ public class PortainerClientTests
 
             Assert.IsTrue(result.IsConfigured, "A reachable Portainer integration must be reported as configured");
             Assert.IsTrue(result.SupportsActions, "A resolved endpoint must support actions");
-            StringAssert.Contains(result.Message,
-                                  "endpoint 7",
-                                  "The automatically resolved endpoint identifier must be reported in the capability message");
+            Assert.Contains("endpoint 7",
+                            result.Message,
+                            "The automatically resolved endpoint identifier must be reported in the capability message");
             Assert.Contains(entry => entry.EventId.Id == 3304
                                      && entry.LogLevel == LogLevel.Information
                                      && entry.Message.Contains(EndpointId, StringComparison.Ordinal),
@@ -309,9 +309,9 @@ public class PortainerClientTests
 
             Assert.IsTrue(result.IsConfigured, "A capability check that fails during login must still be reported as configured");
             Assert.IsFalse(result.SupportsActions, "A failed login must not support actions");
-            StringAssert.Contains(result.Message,
-                                  "Portainer connection error",
-                                  "A failed login during capability checks must surface a connection-error message");
+            Assert.Contains("Portainer connection error",
+                            result.Message,
+                            "A failed login during capability checks must surface a connection-error message");
             Assert.Contains(entry => entry.EventId.Id == 3306
                                      && entry.LogLevel == LogLevel.Error,
                             logger.Entries,
@@ -386,12 +386,12 @@ public class PortainerClientTests
                                      .ConfigureAwait(false);
 
             Assert.IsFalse(result.Succeeded, "Actions outside the allow-list must be rejected");
-            StringAssert.Contains(result.Message,
-                                  "is not supported",
-                                  "A rejected action must explain that it is not supported");
-            StringAssert.Contains(result.Message,
-                                  RestartAction,
-                                  "A rejected action must list the allowed actions");
+            Assert.Contains("is not supported",
+                            result.Message,
+                            "A rejected action must explain that it is not supported");
+            Assert.Contains(RestartAction,
+                            result.Message,
+                            "A rejected action must list the allowed actions");
             Assert.IsEmpty(handler.Requests, "Actions outside the allow-list must not contact Portainer");
         }
         finally
@@ -530,9 +530,9 @@ public class PortainerClientTests
                                      .ConfigureAwait(false);
 
             Assert.IsFalse(result.Succeeded, "A login response without a JWT must fail the action");
-            StringAssert.Contains(result.Message,
-                                  "returned no JWT token",
-                                  "A missing JWT must produce a clear failure message");
+            Assert.Contains("returned no JWT token",
+                            result.Message,
+                            "A missing JWT must produce a clear failure message");
             Assert.Contains(entry => entry.EventId.Id == 3303
                                      && entry.LogLevel == LogLevel.Warning
                                      && entry.Message.Contains(BaseUrl, StringComparison.Ordinal),
@@ -579,9 +579,9 @@ public class PortainerClientTests
                                      .ConfigureAwait(false);
 
             Assert.IsFalse(result.Succeeded, "A failing login request must fail the action");
-            StringAssert.Contains(result.Message,
-                                  "HTTP 401",
-                                  "A failing login request must surface the returned HTTP status code");
+            Assert.Contains("HTTP 401",
+                            result.Message,
+                            "A failing login request must surface the returned HTTP status code");
             Assert.Contains(entry => entry.EventId.Id == 3303
                                      && entry.LogLevel == LogLevel.Warning,
                             logger.Entries,
@@ -664,9 +664,9 @@ public class PortainerClientTests
                                      .ConfigureAwait(false);
 
             Assert.IsFalse(result.Succeeded, "Action execution must fail when the target container cannot be found");
-            StringAssert.Contains(result.Message,
-                                  "not found",
-                                  "A missing container must produce a clear action-result message");
+            Assert.Contains("not found",
+                            result.Message,
+                            "A missing container must produce a clear action-result message");
             Assert.Contains(entry => entry.EventId.Id == 3307
                                      && entry.LogLevel == LogLevel.Warning
                                      && entry.Message.Contains(ContainerName, StringComparison.Ordinal)
@@ -714,9 +714,9 @@ public class PortainerClientTests
                                      .ConfigureAwait(false);
 
             Assert.IsFalse(result.Succeeded, "A failing Portainer action request must fail the result");
-            StringAssert.Contains(result.Message,
-                                  "HTTP 500",
-                                  "A failing Portainer action request must surface the returned HTTP status code");
+            Assert.Contains("HTTP 500",
+                            result.Message,
+                            "A failing Portainer action request must surface the returned HTTP status code");
             Assert.Contains(entry => entry.EventId.Id == 3309
                                      && entry.LogLevel == LogLevel.Warning
                                      && entry.Message.Contains(RestartAction, StringComparison.Ordinal)
