@@ -92,7 +92,10 @@ public abstract class ScheduledBackgroundService : BackgroundService
     {
         var backgroundServiceName = GetType().Name;
 
-        _logger.BackgroundServiceStarted(backgroundServiceName, GetInterval().TotalMinutes);
+        if (_logger.IsEnabled(LogLevel.Information))
+        {
+            _logger.BackgroundServiceStarted(backgroundServiceName, GetInterval().TotalMinutes);
+        }
 
         if (ShouldExecuteImmediately())
         {

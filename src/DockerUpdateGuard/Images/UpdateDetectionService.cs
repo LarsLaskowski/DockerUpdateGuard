@@ -61,17 +61,18 @@ public class UpdateDetectionService : IUpdateDetectionService
                                                                                                          int currentYear,
                                                                                                          DateTimeOffset? currentPublishedAtUtc)
     {
-        return orderedTags.Where(tag => TryParseYearPrefixedVersion(tag.Tag, out var tagYear, out _)
-                                        && tagYear == currentYear
-                                        && VersionTagResolutionHelper.CompareYearPrefixedTags(tag.Tag, currentTag) > 0
-                                        && IsCandidatePublishedAfterBaseline(tag.PublishedAtUtc, currentPublishedAtUtc))
-                          .Select(tag =>
+        return orderedTags.Select(tag =>
                                   {
-                                      TryParseYearPrefixedVersion(tag.Tag, out var tagYear, out var suffix);
+                                      var isYearPrefixedVersion = TryParseYearPrefixedVersion(tag.Tag, out var tagYear, out var suffix);
 
-                                      return (Tag: tag, Year: tagYear, Suffix: suffix);
+                                      return (Tag: tag, IsYearPrefixedVersion: isYearPrefixedVersion, Year: tagYear, Suffix: suffix);
                                   })
-                          .OrderByDescending(entity => entity.Tag.Tag, Comparer<string>.Create((left, right) => VersionTagResolutionHelper.CompareYearPrefixedTags(left, right)))
+                          .Where(candidate => candidate.IsYearPrefixedVersion
+                                              && candidate.Year == currentYear
+                                              && VersionTagResolutionHelper.CompareYearPrefixedTags(candidate.Tag.Tag, currentTag) > 0
+                                              && IsCandidatePublishedAfterBaseline(candidate.Tag.PublishedAtUtc, currentPublishedAtUtc))
+                          .Select(candidate => (candidate.Tag, candidate.Year, candidate.Suffix))
+                          .OrderByDescending(entity => entity.Tag.Tag, Comparer<string>.Create(VersionTagResolutionHelper.CompareYearPrefixedTags))
                           .ThenByDescending(entity => entity.Tag.PublishedAtUtc)
                           .ToList();
     }
