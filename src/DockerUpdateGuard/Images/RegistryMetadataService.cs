@@ -34,6 +34,33 @@ public partial class RegistryMetadataService : IRegistryMetadataService
 
     #region Methods
 
+    /// <summary>
+    /// Create an unsupported registry message
+    /// </summary>
+    /// <param name="registry">Registry host</param>
+    /// <returns>Unsupported registry message</returns>
+    private static string CreateUnsupportedMessage(string registry)
+    {
+        return $"Registry '{registry}' is not supported by the current registry adapters";
+    }
+
+    /// <summary>
+    /// Resolve the matching client for a registry
+    /// </summary>
+    /// <param name="registry">Registry host</param>
+    /// <param name="client">Resolved client</param>
+    /// <returns>True when a client was found</returns>
+    private bool TryGetClient(string registry, out IRegistryMetadataClient client)
+    {
+        client = _clients.FirstOrDefault(entity => entity.CanHandle(registry)) ?? NullRegistryMetadataClient.Instance;
+
+        return ReferenceEquals(client, NullRegistryMetadataClient.Instance) == false;
+    }
+
+    #endregion // Methods
+
+    #region IRegistryMetadataService
+
     /// <inheritdoc/>
     public Task<ExternalOperationResult<DockerHubTagData>> GetTagAsync(ImageReference imageReference,
                                                                        CancellationToken cancellationToken = default,
@@ -95,28 +122,5 @@ public partial class RegistryMetadataService : IRegistryMetadataService
         return client.GetImageConfigurationAsync(imageReference, cancellationToken);
     }
 
-    /// <summary>
-    /// Create an unsupported registry message
-    /// </summary>
-    /// <param name="registry">Registry host</param>
-    /// <returns>Unsupported registry message</returns>
-    private static string CreateUnsupportedMessage(string registry)
-    {
-        return $"Registry '{registry}' is not supported by the current registry adapters";
-    }
-
-    /// <summary>
-    /// Resolve the matching client for a registry
-    /// </summary>
-    /// <param name="registry">Registry host</param>
-    /// <param name="client">Resolved client</param>
-    /// <returns>True when a client was found</returns>
-    private bool TryGetClient(string registry, out IRegistryMetadataClient client)
-    {
-        client = _clients.FirstOrDefault(entity => entity.CanHandle(registry)) ?? NullRegistryMetadataClient.Instance;
-
-        return ReferenceEquals(client, NullRegistryMetadataClient.Instance) == false;
-    }
-
-    #endregion // Methods
+    #endregion // IRegistryMetadataService
 }

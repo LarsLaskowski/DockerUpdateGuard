@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
@@ -37,6 +38,21 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
     /// OCI base-image digest label
     /// </summary>
     private const string OciBaseImageDigestLabel = "org.opencontainers.image.base.digest";
+
+    /// <summary>
+    /// Name of the digest property in registry payloads
+    /// </summary>
+    private const string DigestPropertyName = "digest";
+
+    /// <summary>
+    /// Name of the config property in registry payloads
+    /// </summary>
+    private const string ConfigPropertyName = "config";
+
+    /// <summary>
+    /// Authorization scheme used for registry requests
+    /// </summary>
+    private const string BearerScheme = "Bearer";
 
     #endregion // Constants
 
@@ -112,17 +128,19 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
     {
         ArgumentNullException.ThrowIfNull(options);
 
+        var apiBaseUri = new Uri(options.ApiBaseUrl);
+
         if (Uri.TryCreate(options.Registry, UriKind.Absolute, out var absoluteUri))
         {
-            if (TryNormalizeDockerHubBaseUri(absoluteUri, out var normalizedDockerHubUri))
+            if (IsSupportedDockerHubHost(absoluteUri.Host))
             {
-                return normalizedDockerHubUri;
+                return apiBaseUri;
             }
 
             return absoluteUri;
         }
 
-        return new Uri("https://hub.docker.com/");
+        return apiBaseUri;
     }
 
     /// <summary>
@@ -237,7 +255,7 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
     /// <returns>Resolved digest</returns>
     private static string? ResolveDockerHubDigest(JsonElement element)
     {
-        return TryGetString(element, "digest");
+        return TryGetString(element, DigestPropertyName);
     }
 
     /// <summary>
@@ -252,7 +270,7 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
 
         foreach (var manifest in manifestsElement.EnumerateArray())
         {
-            var digest = TryGetString(manifest, "digest");
+            var digest = TryGetString(manifest, DigestPropertyName);
 
             if (string.IsNullOrWhiteSpace(digest))
             {
@@ -329,21 +347,6 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
     }
 
     /// <summary>
-    /// Normalize known Docker Hub URLs to the API host
-    /// </summary>
-    /// <param name="registryUri">Configured registry URI</param>
-    /// <param name="normalizedUri">Normalized Docker Hub base URI</param>
-    /// <returns>True when the URI points to Docker Hub</returns>
-    private static bool TryNormalizeDockerHubBaseUri(Uri registryUri, out Uri normalizedUri)
-    {
-        ArgumentNullException.ThrowIfNull(registryUri);
-
-        normalizedUri = new Uri("https://hub.docker.com/");
-
-        return IsSupportedDockerHubHost(registryUri.Host);
-    }
-
-    /// <summary>
     /// Determine whether a host name belongs to Docker Hub
     /// </summary>
     /// <param name="host">Host or registry value</param>
@@ -414,7 +417,7 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
     {
         var rawValue = TryGetString(element, propertyName);
 
-        if (DateTimeOffset.TryParse(rawValue, out var timestamp))
+        if (DateTimeOffset.TryParse(rawValue, CultureInfo.InvariantCulture, out var timestamp))
         {
             return timestamp;
         }
@@ -422,15 +425,594 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
         return null;
     }
 
+    /// <summary>
+    /// Append the tags of a Docker Hub tag listing page to the collected results
+    /// </summary>
+    /// <param name="rootElement">Root element of the tag listing page</param>
+    /// <param name="queryOptions">Tag query options</param>
+    /// <param name="results">Collected tag metadata</param>
+    /// <param name="resolvedCurrentVersionTag">True when a concrete version tag of the current digest has been seen</param>
+    /// <returns>True when further pages should be requested</returns>
+    private static bool AppendTagPage(JsonElement rootElement,
+                                      RegistryTagQueryOptions? queryOptions,
+                                      List<DockerHubTagData> results,
+                                      ref bool resolvedCurrentVersionTag)
+    {
+        if (rootElement.TryGetProperty("results", out var resultsElement) == false
+            || resultsElement.ValueKind != JsonValueKind.Array)
+        {
+            return true;
+        }
+
+        foreach (var resultElement in resultsElement.EnumerateArray())
+        {
+            var tagData = ParseTag(resultElement);
+
+            if (string.IsNullOrWhiteSpace(queryOptions?.CurrentDigest) == false
+                && string.Equals(tagData.Digest,
+                                 queryOptions.CurrentDigest,
+                                 StringComparison.OrdinalIgnoreCase)
+                && VersionTagResolutionHelper.IsDisplayableSpecificVersionTag(tagData.Tag))
+            {
+                resolvedCurrentVersionTag = true;
+            }
+
+            if (RegistryTagQueryHelper.ShouldKeepTag(tagData, queryOptions))
+            {
+                results.Add(tagData);
+
+                if (queryOptions is not null && results.Count >= queryOptions.MaximumTags)
+                {
+                    return false;
+                }
+            }
+
+            if (RegistryTagQueryHelper.CanStopDockerHubScan(tagData,
+                                                            queryOptions,
+                                                            resolvedCurrentVersionTag))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     #endregion // Static methods
 
     #region Methods
 
-    /// <inheritdoc/>
-    public bool CanHandle(string registry)
+    /// <summary>
+    /// Recursively resolve the base image chain for a given image reference
+    /// </summary>
+    /// <param name="imageReference">Image reference to resolve</param>
+    /// <param name="results">Accumulated base image descriptors</param>
+    /// <param name="depth">Current chain depth</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Task</returns>
+    private async Task ResolveBaseImageChainAsync(ImageReference imageReference,
+                                                  List<BaseImageDescriptor> results,
+                                                  int depth,
+                                                  CancellationToken cancellationToken)
     {
-        return SupportsRegistry(registry);
+        if (depth > MaxBaseImageDepth)
+        {
+            return;
+        }
+
+        var registryToken = await GetRegistryTokenAsync(imageReference, cancellationToken).ConfigureAwait(false);
+
+        if (registryToken is null)
+        {
+            return;
+        }
+
+        var configDigest = await GetImageConfigDigestAsync(imageReference, registryToken, cancellationToken).ConfigureAwait(false);
+
+        if (configDigest is null)
+        {
+            return;
+        }
+
+        var baseImageRef = await ExtractBaseImageFromConfigAsync(imageReference, configDigest, registryToken, cancellationToken).ConfigureAwait(false);
+
+        if (baseImageRef is null)
+        {
+            return;
+        }
+
+        results.Add(new BaseImageDescriptor
+                    {
+                        Registry = baseImageRef.Registry,
+                        Repository = baseImageRef.Repository,
+                        Tag = baseImageRef.Tag,
+                        Digest = baseImageRef.Digest,
+                        Depth = depth,
+                        SourceReference = imageReference.FullReference,
+                    });
+
+        await ResolveBaseImageChainAsync(baseImageRef, results, depth + 1, cancellationToken).ConfigureAwait(false);
     }
+
+    /// <summary>
+    /// Request a pull token from the Docker Registry authentication service
+    /// </summary>
+    /// <param name="imageReference">Image reference to request scope for</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Registry bearer token or null when the request fails</returns>
+    private async Task<string?> GetRegistryTokenAsync(ImageReference imageReference, CancellationToken cancellationToken)
+    {
+        var (namespaceName, repositoryName) = SplitRepository(imageReference.Repository);
+
+        var scope = $"repository:{Uri.EscapeDataString(namespaceName)}/{EscapeRepository(repositoryName)}:pull";
+        var tokenUri = new Uri($"https://auth.docker.io/token?service=registry.docker.io&scope={scope}");
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, tokenUri);
+
+        var options = _optionsMonitor.CurrentValue.DockerHub;
+
+        if (string.IsNullOrWhiteSpace(options.UserName) == false
+            && string.IsNullOrWhiteSpace(options.Pat) == false)
+        {
+            var credentials = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{options.UserName.Trim()}:{options.Pat.Trim()}"));
+
+            request.Headers.Authorization = new AuthenticationHeaderValue("Basic", credentials);
+        }
+
+        using var response = await SendThrottledAsync(request, cancellationToken).ConfigureAwait(false);
+
+        if (response.IsSuccessStatusCode == false)
+        {
+            _logger.DockerHubRegistryTokenFailed(imageReference.FullReference, (int)response.StatusCode);
+
+            return null;
+        }
+
+        var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+
+        await using (responseStream.ConfigureAwait(false))
+        {
+            using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: cancellationToken).ConfigureAwait(false);
+
+            return TryGetString(jsonDocument.RootElement, "token")
+                       ?? TryGetString(jsonDocument.RootElement, "access_token");
+        }
+    }
+
+    /// <summary>
+    /// Fetch the image manifest and return the config blob digest
+    /// </summary>
+    /// <param name="imageReference">Image reference</param>
+    /// <param name="registryToken">Registry bearer token</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Config digest or null when the manifest cannot be resolved</returns>
+    private async Task<string?> GetImageConfigDigestAsync(ImageReference imageReference,
+                                                          string registryToken,
+                                                          CancellationToken cancellationToken)
+    {
+        var (namespaceName, repositoryName) = SplitRepository(imageReference.Repository);
+
+        var reference = string.IsNullOrWhiteSpace(imageReference.Digest) ? imageReference.Tag : imageReference.Digest;
+        var manifestUri = new Uri($"https://registry-1.docker.io/v2/{Uri.EscapeDataString(namespaceName)}/{EscapeRepository(repositoryName)}/manifests/{Uri.EscapeDataString(reference)}");
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, manifestUri);
+
+        request.Headers.Authorization = new AuthenticationHeaderValue(BearerScheme, registryToken);
+        request.Headers.Accept.ParseAdd("application/vnd.docker.distribution.manifest.list.v2+json");
+        request.Headers.Accept.ParseAdd("application/vnd.oci.image.index.v1+json");
+        request.Headers.Accept.ParseAdd("application/vnd.docker.distribution.manifest.v2+json");
+        request.Headers.Accept.ParseAdd("application/vnd.oci.image.manifest.v1+json");
+
+        using var response = await SendThrottledAsync(request, cancellationToken).ConfigureAwait(false);
+
+        if (response.IsSuccessStatusCode == false)
+        {
+            _logger.DockerHubManifestFetchFailed(imageReference.FullReference, (int)response.StatusCode);
+
+            return null;
+        }
+
+        var contentType = response.Content.Headers.ContentType?.MediaType ?? string.Empty;
+        var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+
+        await using (responseStream.ConfigureAwait(false))
+        {
+            using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: cancellationToken).ConfigureAwait(false);
+
+            if (string.Equals(contentType, "application/vnd.docker.distribution.manifest.list.v2+json", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(contentType, "application/vnd.oci.image.index.v1+json", StringComparison.OrdinalIgnoreCase))
+            {
+                return await GetConfigDigestFromManifestListAsync(imageReference, jsonDocument.RootElement, registryToken, cancellationToken).ConfigureAwait(false);
+            }
+
+            if (jsonDocument.RootElement.TryGetProperty(ConfigPropertyName, out var configElement))
+            {
+                return TryGetString(configElement, DigestPropertyName);
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Resolve a platform-specific manifest from a multi-arch manifest list and return its config digest
+    /// </summary>
+    /// <param name="imageReference">Image reference</param>
+    /// <param name="manifestListElement">Manifest list root element</param>
+    /// <param name="registryToken">Registry bearer token</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Config digest or null when no suitable platform manifest is found</returns>
+    private async Task<string?> GetConfigDigestFromManifestListAsync(ImageReference imageReference,
+                                                                     JsonElement manifestListElement,
+                                                                     string registryToken,
+                                                                     CancellationToken cancellationToken)
+    {
+        if (manifestListElement.TryGetProperty("manifests", out var manifestsElement) == false
+            || manifestsElement.ValueKind != JsonValueKind.Array)
+        {
+            return null;
+        }
+
+        var targetDigest = SelectManifestDigest(manifestsElement);
+
+        if (string.IsNullOrWhiteSpace(targetDigest))
+        {
+            return null;
+        }
+
+        var (namespaceName, repositoryName) = SplitRepository(imageReference.Repository);
+
+        var singleManifestUri = new Uri($"https://registry-1.docker.io/v2/{Uri.EscapeDataString(namespaceName)}/{EscapeRepository(repositoryName)}/manifests/{Uri.EscapeDataString(targetDigest)}");
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, singleManifestUri);
+
+        request.Headers.Authorization = new AuthenticationHeaderValue(BearerScheme, registryToken);
+        request.Headers.Accept.ParseAdd("application/vnd.docker.distribution.manifest.v2+json");
+        request.Headers.Accept.ParseAdd("application/vnd.oci.image.manifest.v1+json");
+
+        using var response = await SendThrottledAsync(request, cancellationToken).ConfigureAwait(false);
+
+        if (response.IsSuccessStatusCode == false)
+        {
+            _logger.DockerHubManifestFetchFailed(imageReference.FullReference, (int)response.StatusCode);
+
+            return null;
+        }
+
+        var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+
+        await using (responseStream.ConfigureAwait(false))
+        {
+            using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: cancellationToken).ConfigureAwait(false);
+
+            if (jsonDocument.RootElement.TryGetProperty(ConfigPropertyName, out var configElement))
+            {
+                return TryGetString(configElement, DigestPropertyName);
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Fetch the image config blob and extract the OCI base image reference
+    /// </summary>
+    /// <param name="imageReference">Image reference to fetch the blob for</param>
+    /// <param name="configDigest">Config blob digest</param>
+    /// <param name="registryToken">Registry bearer token</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Parsed base image reference or null when no OCI base image label is present</returns>
+    private async Task<ImageReference?> ExtractBaseImageFromConfigAsync(ImageReference imageReference,
+                                                                        string configDigest,
+                                                                        string registryToken,
+                                                                        CancellationToken cancellationToken)
+    {
+        var (namespaceName, repositoryName) = SplitRepository(imageReference.Repository);
+
+        var blobUri = new Uri($"https://registry-1.docker.io/v2/{Uri.EscapeDataString(namespaceName)}/{EscapeRepository(repositoryName)}/blobs/{Uri.EscapeDataString(configDigest)}");
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, blobUri);
+
+        request.Headers.Authorization = new AuthenticationHeaderValue(BearerScheme, registryToken);
+
+        using var response = await SendThrottledAsync(request, cancellationToken).ConfigureAwait(false);
+
+        if (response.IsSuccessStatusCode == false)
+        {
+            return null;
+        }
+
+        var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+
+        await using (responseStream.ConfigureAwait(false))
+        {
+            using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: cancellationToken).ConfigureAwait(false);
+
+            if (jsonDocument.RootElement.TryGetProperty(ConfigPropertyName, out var configElement) == false
+                || configElement.TryGetProperty("Labels", out var labelsElement) == false
+                || labelsElement.ValueKind != JsonValueKind.Object)
+            {
+                return null;
+            }
+
+            var baseImageName = TryGetString(labelsElement, OciBaseImageNameLabel);
+
+            if (string.IsNullOrWhiteSpace(baseImageName))
+            {
+                return null;
+            }
+
+            var baseImageDigest = TryGetString(labelsElement, OciBaseImageDigestLabel);
+            var parser = new ImageReferenceParser();
+            var parsedRef = parser.Parse(baseImageName);
+
+            if (string.IsNullOrWhiteSpace(parsedRef.Digest)
+                && string.IsNullOrWhiteSpace(baseImageDigest) == false)
+            {
+                parsedRef.Digest = ImageReferenceParser.NormalizeDigest(baseImageDigest);
+            }
+
+            return parsedRef;
+        }
+    }
+
+    /// <summary>
+    /// Fetch the image config blob and extract reduced configuration metadata
+    /// </summary>
+    /// <param name="imageReference">Image reference to fetch the blob for</param>
+    /// <param name="configDigest">Config blob digest</param>
+    /// <param name="registryToken">Registry bearer token</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Configuration metadata or null when the blob could not be parsed</returns>
+    private async Task<RegistryImageConfigurationData?> ExtractImageConfigurationAsync(ImageReference imageReference,
+                                                                                       string configDigest,
+                                                                                       string registryToken,
+                                                                                       CancellationToken cancellationToken)
+    {
+        var (namespaceName, repositoryName) = SplitRepository(imageReference.Repository);
+
+        var blobUri = new Uri($"https://registry-1.docker.io/v2/{Uri.EscapeDataString(namespaceName)}/{EscapeRepository(repositoryName)}/blobs/{Uri.EscapeDataString(configDigest)}");
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, blobUri);
+
+        request.Headers.Authorization = new AuthenticationHeaderValue(BearerScheme, registryToken);
+
+        using var response = await SendThrottledAsync(request, cancellationToken).ConfigureAwait(false);
+
+        if (response.IsSuccessStatusCode == false)
+        {
+            return null;
+        }
+
+        var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+
+        await using (responseStream.ConfigureAwait(false))
+        {
+            using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: cancellationToken).ConfigureAwait(false);
+            var rootElement = jsonDocument.RootElement;
+            var environmentVariables = rootElement.TryGetProperty(ConfigPropertyName, out var configElement)
+                                       && configElement.ValueKind == JsonValueKind.Object
+                                       && configElement.TryGetProperty("Env", out var envElement)
+                                       && envElement.ValueKind == JsonValueKind.Array
+                                           ? envElement.EnumerateArray()
+                                                       .Select(element => element.GetString())
+                                                       .Where(value => string.IsNullOrWhiteSpace(value) == false)
+                                                       .Cast<string>()
+                                                       .ToArray()
+                                           : [];
+            var labels = rootElement.TryGetProperty(ConfigPropertyName, out configElement)
+                         && configElement.ValueKind == JsonValueKind.Object
+                         && configElement.TryGetProperty("Labels", out var labelsElement)
+                         && labelsElement.ValueKind == JsonValueKind.Object
+                             ? labelsElement.EnumerateObject()
+                                            .Where(property => property.Value.ValueKind == JsonValueKind.String)
+                                            .ToDictionary(property => property.Name,
+                                                          property => property.Value.GetString() ?? string.Empty,
+                                                          StringComparer.OrdinalIgnoreCase)
+                             : new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+            return new RegistryImageConfigurationData
+                   {
+                       EnvironmentVariables = environmentVariables,
+                       Labels = labels,
+                       CreatedAtUtc = DateTimeOffset.TryParse(TryGetString(rootElement, "created"), CultureInfo.InvariantCulture, out var createdAtUtc) ? createdAtUtc : null,
+                       OperatingSystem = TryGetString(rootElement, "os"),
+                       Architecture = TryGetString(rootElement, "architecture"),
+                   };
+        }
+    }
+
+    /// <summary>
+    /// Send a GET request to Docker Hub
+    /// </summary>
+    /// <param name="relativeUri">Relative request URI</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>HTTP response</returns>
+    private async Task<HttpResponseMessage> SendGetAsync(string relativeUri, CancellationToken cancellationToken)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Get, relativeUri);
+        var authenticationResult = await ApplyAuthenticationAsync(request, cancellationToken).ConfigureAwait(false);
+
+        if (authenticationResult.Status == ExternalOperationStatus.Failed)
+        {
+            return CreateAuthenticationFailureResponse(authenticationResult.Message);
+        }
+
+        return await SendThrottledAsync(request, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Send an HTTP request while honoring the configured Docker Hub request parallelism limit
+    /// </summary>
+    /// <param name="request">Outbound HTTP request</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>HTTP response</returns>
+    private async Task<HttpResponseMessage> SendThrottledAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        await _requestThrottle.WaitAsync(cancellationToken).ConfigureAwait(false);
+
+        try
+        {
+            return await _httpClient.SendAsync(request,
+                                               HttpCompletionOption.ResponseHeadersRead,
+                                               cancellationToken)
+                                    .ConfigureAwait(false);
+        }
+        finally
+        {
+            _requestThrottle.Release();
+        }
+    }
+
+    /// <summary>
+    /// Apply Docker Hub authentication to an outbound request when configured
+    /// </summary>
+    /// <param name="request">Outbound request</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Authentication result</returns>
+    private async Task<ExternalOperationResult<bool>> ApplyAuthenticationAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var options = _optionsMonitor.CurrentValue.DockerHub;
+
+        if (string.IsNullOrWhiteSpace(options.Pat))
+        {
+            return ExternalOperationResult<bool>.Succeeded(true);
+        }
+
+        if (string.IsNullOrWhiteSpace(options.UserName))
+        {
+            _logger.DockerHubAuthenticationUserNameMissing();
+
+            return ExternalOperationResult<bool>.Failed("Docker Hub authentication requires 'DockerUpdateGuard:DockerHub:UserName' when a PAT is configured");
+        }
+
+        var accessTokenResult = await GetAccessTokenAsync(options.UserName.Trim(),
+                                                          options.Pat.Trim(),
+                                                          cancellationToken).ConfigureAwait(false);
+
+        if (accessTokenResult.Status != ExternalOperationStatus.Succeeded
+            || string.IsNullOrWhiteSpace(accessTokenResult.Data))
+        {
+            return ExternalOperationResult<bool>.Failed(accessTokenResult.Message ?? "Docker Hub authentication token request failed");
+        }
+
+        request.Headers.Authorization = new AuthenticationHeaderValue(BearerScheme, accessTokenResult.Data);
+
+        return ExternalOperationResult<bool>.Succeeded(true);
+    }
+
+    /// <summary>
+    /// Get a cached Docker Hub access token or request a new one
+    /// </summary>
+    /// <param name="userName">Docker Hub user name</param>
+    /// <param name="personalAccessToken">Docker Hub PAT</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Access token result</returns>
+    private async Task<ExternalOperationResult<string>> GetAccessTokenAsync(string userName,
+                                                                            string personalAccessToken,
+                                                                            CancellationToken cancellationToken)
+    {
+        if (HasValidAccessToken())
+        {
+            return ExternalOperationResult<string>.Succeeded(_accessToken!);
+        }
+
+        await _tokenRefreshLock.WaitAsync(cancellationToken)
+                               .ConfigureAwait(false);
+
+        try
+        {
+            if (HasValidAccessToken())
+            {
+                return ExternalOperationResult<string>.Succeeded(_accessToken!);
+            }
+
+            var tokenResult = await RequestAccessTokenAsync(userName,
+                                                            personalAccessToken,
+                                                            cancellationToken).ConfigureAwait(false);
+
+            if (tokenResult.Status != ExternalOperationStatus.Succeeded
+                || string.IsNullOrWhiteSpace(tokenResult.Data))
+            {
+                return tokenResult;
+            }
+
+            _accessToken = tokenResult.Data;
+            _accessTokenExpiresAtUtc = ResolveTokenExpiry(tokenResult.Data);
+
+            return ExternalOperationResult<string>.Succeeded(tokenResult.Data);
+        }
+        finally
+        {
+            _tokenRefreshLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Request a short-lived Docker Hub access token
+    /// </summary>
+    /// <param name="userName">Docker Hub user name</param>
+    /// <param name="personalAccessToken">Docker Hub PAT</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Access token result</returns>
+    private async Task<ExternalOperationResult<string>> RequestAccessTokenAsync(string userName,
+                                                                                string personalAccessToken,
+                                                                                CancellationToken cancellationToken)
+    {
+        var payload = JsonSerializer.Serialize(new
+                                               {
+                                                   username = userName,
+                                                   password = personalAccessToken,
+                                               });
+        using var request = new HttpRequestMessage(HttpMethod.Post, "v2/users/login")
+                            {
+                                Content = new StringContent(payload,
+                                                            Encoding.UTF8,
+                                                            "application/json"),
+                            };
+        using var response = await SendThrottledAsync(request, cancellationToken).ConfigureAwait(false);
+
+        if (response.IsSuccessStatusCode == false)
+        {
+            _logger.DockerHubRequestFailed(nameof(RequestAccessTokenAsync),
+                                           userName,
+                                           (int)response.StatusCode);
+
+            return await CreateFailureResultAsync<string>(response,
+                                                          $"Docker Hub authentication token request failed for '{userName}'",
+                                                          cancellationToken).ConfigureAwait(false);
+        }
+
+        var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken)
+                                                   .ConfigureAwait(false);
+
+        await using (responseStream.ConfigureAwait(false))
+        {
+            using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: cancellationToken)
+                                                       .ConfigureAwait(false);
+            var token = TryGetString(jsonDocument.RootElement, "token");
+
+            return string.IsNullOrWhiteSpace(token)
+                       ? ExternalOperationResult<string>.Failed("Docker Hub authentication token response did not contain a token")
+                       : ExternalOperationResult<string>.Succeeded(token);
+        }
+    }
+
+    /// <summary>
+    /// Determine whether the client currently holds a valid cached access token
+    /// </summary>
+    /// <returns>True when a cached token can be reused</returns>
+    private bool HasValidAccessToken()
+    {
+        return string.IsNullOrWhiteSpace(_accessToken) == false
+               && _accessTokenExpiresAtUtc > DateTimeOffset.UtcNow.AddMinutes(1);
+    }
+
+    #endregion // Methods
+
+    #region IDockerHubClient
 
     /// <inheritdoc/>
     public async Task<ExternalOperationResult<DockerHubAuthenticatedUserData>> GetCurrentUserAsync(CancellationToken cancellationToken = default)
@@ -700,49 +1282,12 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
                 using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: cancellationToken)
                                                            .ConfigureAwait(false);
 
-                if (jsonDocument.RootElement.TryGetProperty("results", out var resultsElement)
-                    && resultsElement.ValueKind == JsonValueKind.Array)
-                {
-                    foreach (var resultElement in resultsElement.EnumerateArray())
-                    {
-                        var tagData = ParseTag(resultElement);
-
-                        if (string.IsNullOrWhiteSpace(queryOptions?.CurrentDigest) == false
-                            && string.Equals(tagData.Digest,
-                                             queryOptions.CurrentDigest,
-                                             StringComparison.OrdinalIgnoreCase)
-                            && VersionTagResolutionHelper.IsDisplayableSpecificVersionTag(tagData.Tag))
-                        {
-                            resolvedCurrentVersionTag = true;
-                        }
-
-                        if (RegistryTagQueryHelper.ShouldKeepTag(tagData, queryOptions))
-                        {
-                            results.Add(tagData);
-
-                            if (queryOptions is not null && results.Count >= queryOptions.MaximumTags)
-                            {
-                                requestUri = null;
-
-                                break;
-                            }
-                        }
-
-                        if (RegistryTagQueryHelper.CanStopDockerHubScan(tagData,
-                                                                        queryOptions,
-                                                                        resolvedCurrentVersionTag))
-                        {
-                            requestUri = null;
-
-                            break;
-                        }
-                    }
-                }
-
-                if (string.IsNullOrWhiteSpace(requestUri) == false)
-                {
-                    requestUri = TryGetString(jsonDocument.RootElement, "next");
-                }
+                requestUri = AppendTagPage(jsonDocument.RootElement,
+                                           queryOptions,
+                                           results,
+                                           ref resolvedCurrentVersionTag)
+                                 ? TryGetString(jsonDocument.RootElement, "next")
+                                 : null;
             }
         }
 
@@ -779,6 +1324,16 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
         _logger.DockerHubBaseImageChainResolved(imageReference.FullReference, results.Count);
 
         return ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>.Succeeded(results);
+    }
+
+    #endregion // IDockerHubClient
+
+    #region IRegistryMetadataClient
+
+    /// <inheritdoc/>
+    public bool CanHandle(string registry)
+    {
+        return SupportsRegistry(registry);
     }
 
     /// <inheritdoc/>
@@ -824,535 +1379,7 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
         }
     }
 
-    /// <summary>
-    /// Recursively resolve the base image chain for a given image reference
-    /// </summary>
-    /// <param name="imageReference">Image reference to resolve</param>
-    /// <param name="results">Accumulated base image descriptors</param>
-    /// <param name="depth">Current chain depth</param>
-    /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>Task</returns>
-    private async Task ResolveBaseImageChainAsync(ImageReference imageReference,
-                                                  List<BaseImageDescriptor> results,
-                                                  int depth,
-                                                  CancellationToken cancellationToken)
-    {
-        if (depth > MaxBaseImageDepth)
-        {
-            return;
-        }
-
-        var registryToken = await GetRegistryTokenAsync(imageReference, cancellationToken).ConfigureAwait(false);
-
-        if (registryToken is null)
-        {
-            return;
-        }
-
-        var configDigest = await GetImageConfigDigestAsync(imageReference, registryToken, cancellationToken).ConfigureAwait(false);
-
-        if (configDigest is null)
-        {
-            return;
-        }
-
-        var baseImageRef = await ExtractBaseImageFromConfigAsync(imageReference, configDigest, registryToken, cancellationToken).ConfigureAwait(false);
-
-        if (baseImageRef is null)
-        {
-            return;
-        }
-
-        results.Add(new BaseImageDescriptor
-                    {
-                        Registry = baseImageRef.Registry,
-                        Repository = baseImageRef.Repository,
-                        Tag = baseImageRef.Tag,
-                        Digest = baseImageRef.Digest,
-                        Depth = depth,
-                        SourceReference = imageReference.FullReference,
-                    });
-
-        await ResolveBaseImageChainAsync(baseImageRef, results, depth + 1, cancellationToken).ConfigureAwait(false);
-    }
-
-    /// <summary>
-    /// Request a pull token from the Docker Registry authentication service
-    /// </summary>
-    /// <param name="imageReference">Image reference to request scope for</param>
-    /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>Registry bearer token or null when the request fails</returns>
-    private async Task<string?> GetRegistryTokenAsync(ImageReference imageReference, CancellationToken cancellationToken)
-    {
-        var (namespaceName, repositoryName) = SplitRepository(imageReference.Repository);
-
-        var scope = $"repository:{Uri.EscapeDataString(namespaceName)}/{EscapeRepository(repositoryName)}:pull";
-        var tokenUri = new Uri($"https://auth.docker.io/token?service=registry.docker.io&scope={scope}");
-
-        using var request = new HttpRequestMessage(HttpMethod.Get, tokenUri);
-
-        var options = _optionsMonitor.CurrentValue.DockerHub;
-
-        if (string.IsNullOrWhiteSpace(options.UserName) == false
-            && string.IsNullOrWhiteSpace(options.Pat) == false)
-        {
-            var credentials = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{options.UserName.Trim()}:{options.Pat.Trim()}"));
-
-            request.Headers.Authorization = new AuthenticationHeaderValue("Basic", credentials);
-        }
-
-        using var response = await SendThrottledAsync(request, cancellationToken).ConfigureAwait(false);
-
-        if (response.IsSuccessStatusCode == false)
-        {
-            _logger.DockerHubRegistryTokenFailed(imageReference.FullReference, (int)response.StatusCode);
-
-            return null;
-        }
-
-        var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-
-        await using (responseStream.ConfigureAwait(false))
-        {
-            using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: cancellationToken).ConfigureAwait(false);
-
-            return TryGetString(jsonDocument.RootElement, "token")
-                       ?? TryGetString(jsonDocument.RootElement, "access_token");
-        }
-    }
-
-    /// <summary>
-    /// Fetch the image manifest and return the config blob digest
-    /// </summary>
-    /// <param name="imageReference">Image reference</param>
-    /// <param name="registryToken">Registry bearer token</param>
-    /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>Config digest or null when the manifest cannot be resolved</returns>
-    private async Task<string?> GetImageConfigDigestAsync(ImageReference imageReference,
-                                                          string registryToken,
-                                                          CancellationToken cancellationToken)
-    {
-        var (namespaceName, repositoryName) = SplitRepository(imageReference.Repository);
-
-        var reference = string.IsNullOrWhiteSpace(imageReference.Digest) ? imageReference.Tag : imageReference.Digest;
-        var manifestUri = new Uri($"https://registry-1.docker.io/v2/{Uri.EscapeDataString(namespaceName)}/{EscapeRepository(repositoryName)}/manifests/{Uri.EscapeDataString(reference)}");
-
-        using var request = new HttpRequestMessage(HttpMethod.Get, manifestUri);
-
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", registryToken);
-        request.Headers.Accept.ParseAdd("application/vnd.docker.distribution.manifest.list.v2+json");
-        request.Headers.Accept.ParseAdd("application/vnd.oci.image.index.v1+json");
-        request.Headers.Accept.ParseAdd("application/vnd.docker.distribution.manifest.v2+json");
-        request.Headers.Accept.ParseAdd("application/vnd.oci.image.manifest.v1+json");
-
-        using var response = await SendThrottledAsync(request, cancellationToken).ConfigureAwait(false);
-
-        if (response.IsSuccessStatusCode == false)
-        {
-            _logger.DockerHubManifestFetchFailed(imageReference.FullReference, (int)response.StatusCode);
-
-            return null;
-        }
-
-        var contentType = response.Content.Headers.ContentType?.MediaType ?? string.Empty;
-        var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-
-        await using (responseStream.ConfigureAwait(false))
-        {
-            using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: cancellationToken).ConfigureAwait(false);
-
-            if (string.Equals(contentType, "application/vnd.docker.distribution.manifest.list.v2+json", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(contentType, "application/vnd.oci.image.index.v1+json", StringComparison.OrdinalIgnoreCase))
-            {
-                return await GetConfigDigestFromManifestListAsync(imageReference, jsonDocument.RootElement, registryToken, cancellationToken).ConfigureAwait(false);
-            }
-
-            if (jsonDocument.RootElement.TryGetProperty("config", out var configElement))
-            {
-                return TryGetString(configElement, "digest");
-            }
-        }
-
-        return null;
-    }
-
-    /// <summary>
-    /// Resolve a platform-specific manifest from a multi-arch manifest list and return its config digest
-    /// </summary>
-    /// <param name="imageReference">Image reference</param>
-    /// <param name="manifestListElement">Manifest list root element</param>
-    /// <param name="registryToken">Registry bearer token</param>
-    /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>Config digest or null when no suitable platform manifest is found</returns>
-    private async Task<string?> GetConfigDigestFromManifestListAsync(ImageReference imageReference,
-                                                                     JsonElement manifestListElement,
-                                                                     string registryToken,
-                                                                     CancellationToken cancellationToken)
-    {
-        if (manifestListElement.TryGetProperty("manifests", out var manifestsElement) == false
-            || manifestsElement.ValueKind != JsonValueKind.Array)
-        {
-            return null;
-        }
-
-        var targetDigest = SelectManifestDigest(manifestsElement);
-
-        if (string.IsNullOrWhiteSpace(targetDigest))
-        {
-            return null;
-        }
-
-        var (namespaceName, repositoryName) = SplitRepository(imageReference.Repository);
-
-        var singleManifestUri = new Uri($"https://registry-1.docker.io/v2/{Uri.EscapeDataString(namespaceName)}/{EscapeRepository(repositoryName)}/manifests/{Uri.EscapeDataString(targetDigest)}");
-
-        using var request = new HttpRequestMessage(HttpMethod.Get, singleManifestUri);
-
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", registryToken);
-        request.Headers.Accept.ParseAdd("application/vnd.docker.distribution.manifest.v2+json");
-        request.Headers.Accept.ParseAdd("application/vnd.oci.image.manifest.v1+json");
-
-        using var response = await SendThrottledAsync(request, cancellationToken).ConfigureAwait(false);
-
-        if (response.IsSuccessStatusCode == false)
-        {
-            _logger.DockerHubManifestFetchFailed(imageReference.FullReference, (int)response.StatusCode);
-
-            return null;
-        }
-
-        var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-
-        await using (responseStream.ConfigureAwait(false))
-        {
-            using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: cancellationToken).ConfigureAwait(false);
-
-            if (jsonDocument.RootElement.TryGetProperty("config", out var configElement))
-            {
-                return TryGetString(configElement, "digest");
-            }
-        }
-
-        return null;
-    }
-
-    /// <summary>
-    /// Fetch the image config blob and extract the OCI base image reference
-    /// </summary>
-    /// <param name="imageReference">Image reference to fetch the blob for</param>
-    /// <param name="configDigest">Config blob digest</param>
-    /// <param name="registryToken">Registry bearer token</param>
-    /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>Parsed base image reference or null when no OCI base image label is present</returns>
-    private async Task<ImageReference?> ExtractBaseImageFromConfigAsync(ImageReference imageReference,
-                                                                        string configDigest,
-                                                                        string registryToken,
-                                                                        CancellationToken cancellationToken)
-    {
-        var (namespaceName, repositoryName) = SplitRepository(imageReference.Repository);
-
-        var blobUri = new Uri($"https://registry-1.docker.io/v2/{Uri.EscapeDataString(namespaceName)}/{EscapeRepository(repositoryName)}/blobs/{Uri.EscapeDataString(configDigest)}");
-
-        using var request = new HttpRequestMessage(HttpMethod.Get, blobUri);
-
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", registryToken);
-
-        using var response = await SendThrottledAsync(request, cancellationToken).ConfigureAwait(false);
-
-        if (response.IsSuccessStatusCode == false)
-        {
-            return null;
-        }
-
-        var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-
-        await using (responseStream.ConfigureAwait(false))
-        {
-            using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: cancellationToken).ConfigureAwait(false);
-
-            if (jsonDocument.RootElement.TryGetProperty("config", out var configElement) == false
-                || configElement.TryGetProperty("Labels", out var labelsElement) == false
-                || labelsElement.ValueKind != JsonValueKind.Object)
-            {
-                return null;
-            }
-
-            var baseImageName = TryGetString(labelsElement, OciBaseImageNameLabel);
-
-            if (string.IsNullOrWhiteSpace(baseImageName))
-            {
-                return null;
-            }
-
-            var baseImageDigest = TryGetString(labelsElement, OciBaseImageDigestLabel);
-            var parser = new ImageReferenceParser();
-            var parsedRef = parser.Parse(baseImageName);
-
-            if (string.IsNullOrWhiteSpace(parsedRef.Digest)
-                && string.IsNullOrWhiteSpace(baseImageDigest) == false)
-            {
-                parsedRef.Digest = ImageReferenceParser.NormalizeDigest(baseImageDigest);
-            }
-
-            return parsedRef;
-        }
-    }
-
-    /// <summary>
-    /// Fetch the image config blob and extract reduced configuration metadata
-    /// </summary>
-    /// <param name="imageReference">Image reference to fetch the blob for</param>
-    /// <param name="configDigest">Config blob digest</param>
-    /// <param name="registryToken">Registry bearer token</param>
-    /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>Configuration metadata or null when the blob could not be parsed</returns>
-    private async Task<RegistryImageConfigurationData?> ExtractImageConfigurationAsync(ImageReference imageReference,
-                                                                                       string configDigest,
-                                                                                       string registryToken,
-                                                                                       CancellationToken cancellationToken)
-    {
-        var (namespaceName, repositoryName) = SplitRepository(imageReference.Repository);
-
-        var blobUri = new Uri($"https://registry-1.docker.io/v2/{Uri.EscapeDataString(namespaceName)}/{EscapeRepository(repositoryName)}/blobs/{Uri.EscapeDataString(configDigest)}");
-
-        using var request = new HttpRequestMessage(HttpMethod.Get, blobUri);
-
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", registryToken);
-
-        using var response = await SendThrottledAsync(request, cancellationToken).ConfigureAwait(false);
-
-        if (response.IsSuccessStatusCode == false)
-        {
-            return null;
-        }
-
-        var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-
-        await using (responseStream.ConfigureAwait(false))
-        {
-            using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: cancellationToken).ConfigureAwait(false);
-            var rootElement = jsonDocument.RootElement;
-            var environmentVariables = rootElement.TryGetProperty("config", out var configElement)
-                                       && configElement.ValueKind == JsonValueKind.Object
-                                       && configElement.TryGetProperty("Env", out var envElement)
-                                       && envElement.ValueKind == JsonValueKind.Array
-                                           ? envElement.EnumerateArray()
-                                                       .Select(element => element.GetString())
-                                                       .Where(value => string.IsNullOrWhiteSpace(value) == false)
-                                                       .Cast<string>()
-                                                       .ToArray()
-                                           : [];
-            var labels = rootElement.TryGetProperty("config", out configElement)
-                         && configElement.ValueKind == JsonValueKind.Object
-                         && configElement.TryGetProperty("Labels", out var labelsElement)
-                         && labelsElement.ValueKind == JsonValueKind.Object
-                             ? labelsElement.EnumerateObject()
-                                            .Where(property => property.Value.ValueKind == JsonValueKind.String)
-                                            .ToDictionary(property => property.Name,
-                                                          property => property.Value.GetString() ?? string.Empty,
-                                                          StringComparer.OrdinalIgnoreCase)
-                             : new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-
-            return new RegistryImageConfigurationData
-                   {
-                       EnvironmentVariables = environmentVariables,
-                       Labels = labels,
-                       CreatedAtUtc = DateTimeOffset.TryParse(TryGetString(rootElement, "created"), out var createdAtUtc) ? createdAtUtc : null,
-                       OperatingSystem = TryGetString(rootElement, "os"),
-                       Architecture = TryGetString(rootElement, "architecture"),
-                   };
-        }
-    }
-
-    /// <summary>
-    /// Send a GET request to Docker Hub
-    /// </summary>
-    /// <param name="relativeUri">Relative request URI</param>
-    /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>HTTP response</returns>
-    private async Task<HttpResponseMessage> SendGetAsync(string relativeUri, CancellationToken cancellationToken)
-    {
-        var request = new HttpRequestMessage(HttpMethod.Get, relativeUri);
-        var authenticationResult = await ApplyAuthenticationAsync(request, cancellationToken).ConfigureAwait(false);
-
-        if (authenticationResult.Status == ExternalOperationStatus.Failed)
-        {
-            return CreateAuthenticationFailureResponse(authenticationResult.Message);
-        }
-
-        return await SendThrottledAsync(request, cancellationToken).ConfigureAwait(false);
-    }
-
-    /// <summary>
-    /// Send an HTTP request while honoring the configured Docker Hub request parallelism limit
-    /// </summary>
-    /// <param name="request">Outbound HTTP request</param>
-    /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>HTTP response</returns>
-    private async Task<HttpResponseMessage> SendThrottledAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-    {
-        await _requestThrottle.WaitAsync(cancellationToken).ConfigureAwait(false);
-
-        try
-        {
-            return await _httpClient.SendAsync(request,
-                                               HttpCompletionOption.ResponseHeadersRead,
-                                               cancellationToken)
-                                    .ConfigureAwait(false);
-        }
-        finally
-        {
-            _requestThrottle.Release();
-        }
-    }
-
-    /// <summary>
-    /// Apply Docker Hub authentication to an outbound request when configured
-    /// </summary>
-    /// <param name="request">Outbound request</param>
-    /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>Authentication result</returns>
-    private async Task<ExternalOperationResult<bool>> ApplyAuthenticationAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(request);
-
-        var options = _optionsMonitor.CurrentValue.DockerHub;
-
-        if (string.IsNullOrWhiteSpace(options.Pat))
-        {
-            return ExternalOperationResult<bool>.Succeeded(true);
-        }
-
-        if (string.IsNullOrWhiteSpace(options.UserName))
-        {
-            _logger.DockerHubAuthenticationUserNameMissing();
-
-            return ExternalOperationResult<bool>.Failed("Docker Hub authentication requires 'DockerUpdateGuard:DockerHub:UserName' when a PAT is configured");
-        }
-
-        var accessTokenResult = await GetAccessTokenAsync(options.UserName.Trim(),
-                                                          options.Pat.Trim(),
-                                                          cancellationToken).ConfigureAwait(false);
-
-        if (accessTokenResult.Status != ExternalOperationStatus.Succeeded
-            || string.IsNullOrWhiteSpace(accessTokenResult.Data))
-        {
-            return ExternalOperationResult<bool>.Failed(accessTokenResult.Message ?? "Docker Hub authentication token request failed");
-        }
-
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessTokenResult.Data);
-
-        return ExternalOperationResult<bool>.Succeeded(true);
-    }
-
-    /// <summary>
-    /// Get a cached Docker Hub access token or request a new one
-    /// </summary>
-    /// <param name="userName">Docker Hub user name</param>
-    /// <param name="personalAccessToken">Docker Hub PAT</param>
-    /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>Access token result</returns>
-    private async Task<ExternalOperationResult<string>> GetAccessTokenAsync(string userName,
-                                                                            string personalAccessToken,
-                                                                            CancellationToken cancellationToken)
-    {
-        if (HasValidAccessToken())
-        {
-            return ExternalOperationResult<string>.Succeeded(_accessToken!);
-        }
-
-        await _tokenRefreshLock.WaitAsync(cancellationToken)
-                               .ConfigureAwait(false);
-
-        try
-        {
-            if (HasValidAccessToken())
-            {
-                return ExternalOperationResult<string>.Succeeded(_accessToken!);
-            }
-
-            var tokenResult = await RequestAccessTokenAsync(userName,
-                                                            personalAccessToken,
-                                                            cancellationToken).ConfigureAwait(false);
-
-            if (tokenResult.Status != ExternalOperationStatus.Succeeded
-                || string.IsNullOrWhiteSpace(tokenResult.Data))
-            {
-                return tokenResult;
-            }
-
-            _accessToken = tokenResult.Data;
-            _accessTokenExpiresAtUtc = ResolveTokenExpiry(tokenResult.Data);
-
-            return ExternalOperationResult<string>.Succeeded(tokenResult.Data);
-        }
-        finally
-        {
-            _tokenRefreshLock.Release();
-        }
-    }
-
-    /// <summary>
-    /// Request a short-lived Docker Hub access token
-    /// </summary>
-    /// <param name="userName">Docker Hub user name</param>
-    /// <param name="personalAccessToken">Docker Hub PAT</param>
-    /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>Access token result</returns>
-    private async Task<ExternalOperationResult<string>> RequestAccessTokenAsync(string userName,
-                                                                                string personalAccessToken,
-                                                                                CancellationToken cancellationToken)
-    {
-        var payload = JsonSerializer.Serialize(new
-                                               {
-                                                   username = userName,
-                                                   password = personalAccessToken,
-                                               });
-        using var request = new HttpRequestMessage(HttpMethod.Post, "v2/users/login")
-                            {
-                                Content = new StringContent(payload,
-                                                            Encoding.UTF8,
-                                                            "application/json"),
-                            };
-        using var response = await SendThrottledAsync(request, cancellationToken).ConfigureAwait(false);
-
-        if (response.IsSuccessStatusCode == false)
-        {
-            _logger.DockerHubRequestFailed(nameof(RequestAccessTokenAsync),
-                                           userName,
-                                           (int)response.StatusCode);
-
-            return await CreateFailureResultAsync<string>(response,
-                                                          $"Docker Hub authentication token request failed for '{userName}'",
-                                                          cancellationToken).ConfigureAwait(false);
-        }
-
-        var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken)
-                                                   .ConfigureAwait(false);
-
-        await using (responseStream.ConfigureAwait(false))
-        {
-            using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: cancellationToken)
-                                                       .ConfigureAwait(false);
-            var token = TryGetString(jsonDocument.RootElement, "token");
-
-            return string.IsNullOrWhiteSpace(token)
-                       ? ExternalOperationResult<string>.Failed("Docker Hub authentication token response did not contain a token")
-                       : ExternalOperationResult<string>.Succeeded(token);
-        }
-    }
-
-    /// <summary>
-    /// Determine whether the client currently holds a valid cached access token
-    /// </summary>
-    /// <returns>True when a cached token can be reused</returns>
-    private bool HasValidAccessToken()
-    {
-        return string.IsNullOrWhiteSpace(_accessToken) == false
-               && _accessTokenExpiresAtUtc > DateTimeOffset.UtcNow.AddMinutes(1);
-    }
-
-    #endregion // Methods
+    #endregion // IRegistryMetadataClient
 
     #region IDisposable
 

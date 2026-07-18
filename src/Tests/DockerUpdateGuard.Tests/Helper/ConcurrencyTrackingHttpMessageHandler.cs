@@ -56,6 +56,31 @@ internal sealed class ConcurrencyTrackingHttpMessageHandler : HttpMessageHandler
 
     #endregion // Properties
 
+    #region Methods
+
+    /// <summary>
+    /// Raise the observed peak concurrency to the supplied value when it is higher
+    /// </summary>
+    /// <param name="candidate">Candidate concurrency value</param>
+    private void UpdateMaxConcurrency(int candidate)
+    {
+        var observedMax = Volatile.Read(ref _maxConcurrency);
+
+        while (candidate > observedMax)
+        {
+            var previousMax = Interlocked.CompareExchange(ref _maxConcurrency, candidate, observedMax);
+
+            if (previousMax == observedMax)
+            {
+                break;
+            }
+
+            observedMax = previousMax;
+        }
+    }
+
+    #endregion // Methods
+
     #region HttpMessageHandler
 
     /// <inheritdoc/>
@@ -85,29 +110,4 @@ internal sealed class ConcurrencyTrackingHttpMessageHandler : HttpMessageHandler
     }
 
     #endregion // HttpMessageHandler
-
-    #region Methods
-
-    /// <summary>
-    /// Raise the observed peak concurrency to the supplied value when it is higher
-    /// </summary>
-    /// <param name="candidate">Candidate concurrency value</param>
-    private void UpdateMaxConcurrency(int candidate)
-    {
-        var observedMax = Volatile.Read(ref _maxConcurrency);
-
-        while (candidate > observedMax)
-        {
-            var previousMax = Interlocked.CompareExchange(ref _maxConcurrency, candidate, observedMax);
-
-            if (previousMax == observedMax)
-            {
-                break;
-            }
-
-            observedMax = previousMax;
-        }
-    }
-
-    #endregion // Methods
 }

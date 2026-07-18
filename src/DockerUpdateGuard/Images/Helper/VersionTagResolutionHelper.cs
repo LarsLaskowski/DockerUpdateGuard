@@ -20,19 +20,22 @@ public static class VersionTagResolutionHelper
     /// Strict numeric version-tag pattern
     /// </summary>
     private static readonly Regex _numericVersionTagExpression = new("^[vV]?(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)(?<suffix>-.+)?$",
-                                                                     RegexOptions.Compiled | RegexOptions.CultureInvariant);
+                                                                     RegexOptions.Compiled | RegexOptions.CultureInvariant,
+                                                                     TimeSpan.FromMilliseconds(100));
 
     /// <summary>
     /// Numeric version-line tag pattern
     /// </summary>
     private static readonly Regex _numericVersionLineTagExpression = new("^[vV]?(?<major>\\d+)\\.(?<minor>\\d+)(?<suffix>-.+)?$",
-                                                                         RegexOptions.Compiled | RegexOptions.CultureInvariant);
+                                                                         RegexOptions.Compiled | RegexOptions.CultureInvariant,
+                                                                         TimeSpan.FromMilliseconds(100));
 
     /// <summary>
     /// Year-prefixed version-tag pattern
     /// </summary>
     private static readonly Regex _yearPrefixedTagExpression = new("^(?<year>\\d{4})-(?<suffix>.+)$",
-                                                                   RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+                                                                   RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase,
+                                                                   TimeSpan.FromMilliseconds(100));
 
     /// <summary>
     /// Known pre-release identifiers that order below their general-availability release
@@ -646,68 +649,103 @@ public static class VersionTagResolutionHelper
 
         while (leftIndex < left.Length && rightIndex < right.Length)
         {
-            if (char.IsDigit(left[leftIndex]) && char.IsDigit(right[rightIndex]))
+            var segmentComparison = char.IsDigit(left[leftIndex]) && char.IsDigit(right[rightIndex])
+                                        ? CompareNumberSegments(left, right, ref leftIndex, ref rightIndex)
+                                        : CompareTextSegments(left, right, ref leftIndex, ref rightIndex);
+
+            if (segmentComparison != 0)
             {
-                var leftNumberStart = leftIndex;
-                var rightNumberStart = rightIndex;
-
-                while (leftIndex < left.Length && char.IsDigit(left[leftIndex]))
-                {
-                    leftIndex++;
-                }
-
-                while (rightIndex < right.Length && char.IsDigit(right[rightIndex]))
-                {
-                    rightIndex++;
-                }
-
-                var leftNumber = left[leftNumberStart..leftIndex].TrimStart('0');
-                var rightNumber = right[rightNumberStart..rightIndex].TrimStart('0');
-
-                leftNumber = string.IsNullOrWhiteSpace(leftNumber) ? "0" : leftNumber;
-                rightNumber = string.IsNullOrWhiteSpace(rightNumber) ? "0" : rightNumber;
-
-                var lengthComparison = leftNumber.Length.CompareTo(rightNumber.Length);
-
-                if (lengthComparison != 0)
-                {
-                    return lengthComparison;
-                }
-
-                var numberComparison = string.Compare(leftNumber, rightNumber, StringComparison.Ordinal);
-
-                if (numberComparison != 0)
-                {
-                    return numberComparison;
-                }
-
-                continue;
-            }
-
-            var leftTextStart = leftIndex;
-            var rightTextStart = rightIndex;
-
-            while (leftIndex < left.Length && char.IsDigit(left[leftIndex]) == false)
-            {
-                leftIndex++;
-            }
-
-            while (rightIndex < right.Length && char.IsDigit(right[rightIndex]) == false)
-            {
-                rightIndex++;
-            }
-
-            var textComparison = string.Compare(left[leftTextStart..leftIndex],
-                                                right[rightTextStart..rightIndex],
-                                                StringComparison.OrdinalIgnoreCase);
-
-            if (textComparison != 0)
-            {
-                return textComparison;
+                return segmentComparison;
             }
         }
 
         return left.Length.CompareTo(right.Length);
+    }
+
+    /// <summary>
+    /// Compare the numeric segments starting at the current positions and advance both positions
+    /// </summary>
+    /// <param name="left">Left value</param>
+    /// <param name="right">Right value</param>
+    /// <param name="leftIndex">Current position within the left value</param>
+    /// <param name="rightIndex">Current position within the right value</param>
+    /// <returns>Comparison result</returns>
+    private static int CompareNumberSegments(string left, string right, ref int leftIndex, ref int rightIndex)
+    {
+        var leftNumber = NormalizeNumberSegment(ReadNumberSegment(left, ref leftIndex));
+        var rightNumber = NormalizeNumberSegment(ReadNumberSegment(right, ref rightIndex));
+        var lengthComparison = leftNumber.Length.CompareTo(rightNumber.Length);
+
+        if (lengthComparison != 0)
+        {
+            return lengthComparison;
+        }
+
+        return string.Compare(leftNumber, rightNumber, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Compare the non-numeric segments starting at the current positions and advance both positions
+    /// </summary>
+    /// <param name="left">Left value</param>
+    /// <param name="right">Right value</param>
+    /// <param name="leftIndex">Current position within the left value</param>
+    /// <param name="rightIndex">Current position within the right value</param>
+    /// <returns>Comparison result</returns>
+    private static int CompareTextSegments(string left, string right, ref int leftIndex, ref int rightIndex)
+    {
+        var leftText = ReadTextSegment(left, ref leftIndex);
+        var rightText = ReadTextSegment(right, ref rightIndex);
+
+        return string.Compare(leftText, rightText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Read the digit sequence starting at the current position and advance the position
+    /// </summary>
+    /// <param name="value">Value to read from</param>
+    /// <param name="index">Current position within the value</param>
+    /// <returns>Digit sequence</returns>
+    private static string ReadNumberSegment(string value, ref int index)
+    {
+        var start = index;
+
+        while (index < value.Length && char.IsDigit(value[index]))
+        {
+            index++;
+        }
+
+        return value[start..index];
+    }
+
+    /// <summary>
+    /// Read the non-digit sequence starting at the current position and advance the position
+    /// </summary>
+    /// <param name="value">Value to read from</param>
+    /// <param name="index">Current position within the value</param>
+    /// <returns>Non-digit sequence</returns>
+    private static string ReadTextSegment(string value, ref int index)
+    {
+        var start = index;
+
+        while (index < value.Length && char.IsDigit(value[index]) == false)
+        {
+            index++;
+        }
+
+        return value[start..index];
+    }
+
+    /// <summary>
+    /// Normalize a numeric segment by removing its leading zeros
+    /// </summary>
+    /// <param name="value">Numeric segment</param>
+    /// <returns>Normalized numeric segment</returns>
+    private static string NormalizeNumberSegment(string value)
+    {
+        var trimmedValue = value.TrimStart('0');
+
+        return string.IsNullOrWhiteSpace(trimmedValue) ? "0" : trimmedValue;
     }
 
     #endregion // Methods

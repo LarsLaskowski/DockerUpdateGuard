@@ -10,7 +10,7 @@ namespace DockerUpdateGuard.Data.Configurations;
 /// </summary>
 public class ContainerSnapshotConfiguration : IEntityTypeConfiguration<ContainerSnapshot>
 {
-    #region Methods
+    #region IEntityTypeConfiguration
 
     /// <inheritdoc/>
     public void Configure(EntityTypeBuilder<ContainerSnapshot> builder)
@@ -79,5 +79,5 @@ public class ContainerSnapshotConfiguration : IEntityTypeConfiguration<Container
                .OnDelete(DeleteBehavior.SetNull);
     }
 
-    #endregion // Methods
+    #endregion // IEntityTypeConfiguration
 }

@@ -93,14 +93,14 @@ public partial class ScanCleanupBackgroundServiceTests
                                                              .ToListAsync(CancellationToken.None)
                                                              .ConfigureAwait(false);
 
-                Assert.AreEqual(20,
-                                remainingCorrelationIds.Count,
+                Assert.HasCount(20,
+                                remainingCorrelationIds,
                                 "Cleanup must keep only the latest 20 unreferenced scan runs");
-                CollectionAssert.AreEqual(Enumerable.Range(0, 20)
-                                                    .Select(index => $"scan-{index:D2}")
-                                                    .ToList(),
-                                          remainingCorrelationIds,
-                                          "Cleanup must retain the newest 20 scan runs and delete older history entries");
+                Assert.AreSequenceEqual(Enumerable.Range(0, 20)
+                                                  .Select(index => $"scan-{index:D2}")
+                                                  .ToList(),
+                                        remainingCorrelationIds,
+                                        "Cleanup must retain the newest 20 scan runs and delete older history entries");
             }
         }
     }
@@ -192,9 +192,7 @@ public partial class ScanCleanupBackgroundServiceTests
                 Assert.HasCount(21,
                                 remainingCorrelationIds,
                                 "Cleanup must preserve running scan runs in addition to retained completed history");
-                CollectionAssert.Contains(remainingCorrelationIds,
-                                          "running-scan",
-                                          "Cleanup must not delete a running scan run that has not produced related entities yet");
+                Assert.Contains("running-scan", remainingCorrelationIds, "Cleanup must not delete a running scan run that has not produced related entities yet");
             }
         }
     }

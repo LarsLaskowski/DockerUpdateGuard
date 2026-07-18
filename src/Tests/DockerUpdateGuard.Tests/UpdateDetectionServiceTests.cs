@@ -93,10 +93,10 @@ public class UpdateDetectionServiceTests
         Assert.AreEqual("latest",
                         evaluation.RecommendedTag,
                         "The current alias tag must remain the recommendation for digest-only updates");
-        CollectionAssert.AreEqual(new[] { "latest", "2.4.1" },
-                                  evaluation.Candidates.Select(candidate => candidate.Tag)
-                                                       .ToArray(),
-                                  "Digest-only updates must keep the current alias tag and expose the matching semantic version tag");
+        Assert.AreSequenceEqual(["latest", "2.4.1"],
+                                evaluation.Candidates.Select(candidate => candidate.Tag)
+                                                     .ToArray(),
+                                "Digest-only updates must keep the current alias tag and expose the matching semantic version tag");
     }
 
     /// <summary>
@@ -226,10 +226,10 @@ public class UpdateDetectionServiceTests
         Assert.AreEqual("2019-CU33-GDR1-ubuntu-20.04",
                         evaluation.RecommendedTag,
                         "Year-based CU tags must ignore higher tags from a different year line");
-        CollectionAssert.AreEqual(new[] { "2019-CU33-GDR1-ubuntu-20.04" },
-                                  evaluation.Candidates.Select(candidate => candidate.Tag)
-                                                       .ToArray(),
-                                  "Only candidates from the same year line must be considered for year-based CU tags");
+        Assert.AreSequenceEqual(["2019-CU33-GDR1-ubuntu-20.04"],
+                                evaluation.Candidates.Select(candidate => candidate.Tag)
+                                                     .ToArray(),
+                                "Only candidates from the same year line must be considered for year-based CU tags");
     }
 
     /// <summary>
@@ -317,10 +317,10 @@ public class UpdateDetectionServiceTests
         Assert.AreEqual("10.0.8-alpine3.24",
                         evaluation.RecommendedTag,
                         "MCR channel tags must recommend the newer exact tag from the same variant family");
-        CollectionAssert.AreEqual(new[] { "10.0.8-alpine3.24", "10.0.7-alpine3.23" },
-                                  evaluation.Candidates.Select(candidate => candidate.Tag)
-                                                       .ToArray(),
-                                  "MCR channel tag candidates must stay in the same variant family and include the resolved current exact tag");
+        Assert.AreSequenceEqual(["10.0.8-alpine3.24", "10.0.7-alpine3.23"],
+                                evaluation.Candidates.Select(candidate => candidate.Tag)
+                                                     .ToArray(),
+                                "MCR channel tag candidates must stay in the same variant family and include the resolved current exact tag");
     }
 
     /// <summary>
@@ -362,10 +362,10 @@ public class UpdateDetectionServiceTests
                         evaluation.Status,
                         "Non-semantic tags must produce a review result when alternative tags exist");
         Assert.IsNull(evaluation.RecommendedTag, "Non-semantic tags must not auto-select a recommendation");
-        CollectionAssert.AreEqual(new[] { "preview", "canary" },
-                                  evaluation.Candidates.Select(candidate => candidate.Tag)
-                                                       .ToArray(),
-                                  "Manual review candidates must exclude the current tag and keep the newest alternatives");
+        Assert.AreSequenceEqual(["preview", "canary"],
+                                evaluation.Candidates.Select(candidate => candidate.Tag)
+                                                     .ToArray(),
+                                "Manual review candidates must exclude the current tag and keep the newest alternatives");
     }
 
     /// <summary>
@@ -555,7 +555,6 @@ public class UpdateDetectionServiceTests
                                                            Digest = $"sha256:{index}",
                                                            PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero).AddMinutes(index),
                                                        })
-                                      .Cast<DockerHubTagData>()
                                       .ToList();
 
         availableTags.Add(new DockerHubTagData

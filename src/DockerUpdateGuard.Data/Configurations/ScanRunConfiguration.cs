@@ -10,7 +10,7 @@ namespace DockerUpdateGuard.Data.Configurations;
 /// </summary>
 public class ScanRunConfiguration : IEntityTypeConfiguration<ScanRun>
 {
-    #region Methods
+    #region IEntityTypeConfiguration
 
     /// <inheritdoc/>
     public void Configure(EntityTypeBuilder<ScanRun> builder)
@@ -60,5 +60,5 @@ public class ScanRunConfiguration : IEntityTypeConfiguration<ScanRun>
                .OnDelete(DeleteBehavior.SetNull);
     }
 
-    #endregion // Methods
+    #endregion // IEntityTypeConfiguration
 }

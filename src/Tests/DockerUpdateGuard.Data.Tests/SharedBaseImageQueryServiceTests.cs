@@ -126,9 +126,10 @@ public class SharedBaseImageQueryServiceTests
                                 sharedBaseImages[0].ObservedImageCount,
                                 "The shared base image must be used by two observed images");
 
-                CollectionAssert.AreEquivalent(new[] { "App A", "App B" },
-                                               observedImages.Select(entity => entity.ObservedImageName).ToArray(),
-                                               "The query must return both observed images that share the base image");
+                Assert.AreSequenceEqual(["App A", "App B"],
+                                        observedImages.Select(entity => entity.ObservedImageName).ToArray(),
+                                        SequenceOrder.InAnyOrder,
+                                        "The query must return both observed images that share the base image");
             }
         }
     }
@@ -214,16 +215,16 @@ public class SharedBaseImageQueryServiceTests
 
                 var baseImages = await queryService.GetBaseImagesAsync(TestContext.CancellationToken).ConfigureAwait(false);
 
-                Assert.AreEqual(2,
-                                baseImages.Count,
+                Assert.HasCount(2,
+                                baseImages,
                                 "Unresolved base images with the same name must remain separable by source reference");
-                CollectionAssert.AreEquivalent(new[]
-                                               {
-                                                   "docker.io/company/api-a:1.0.0@sha256:parent-a",
-                                                   "docker.io/company/api-b:2.0.0@sha256:parent-b"
-                                               },
-                                               baseImages.SelectMany(entity => entity.SourceReferences).ToArray(),
-                                               "Each unresolved base image entry must keep the source reference that disambiguates it");
+                Assert.AreSequenceEqual([
+                                            "docker.io/company/api-a:1.0.0@sha256:parent-a",
+                                            "docker.io/company/api-b:2.0.0@sha256:parent-b"
+                                        ],
+                                        baseImages.SelectMany(entity => entity.SourceReferences).ToArray(),
+                                        SequenceOrder.InAnyOrder,
+                                        "Each unresolved base image entry must keep the source reference that disambiguates it");
             }
         }
     }

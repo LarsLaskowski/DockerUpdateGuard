@@ -40,6 +40,16 @@ public partial class OciRegistryClient : IRegistryMetadataClient
     private const string OciBaseImageDigestLabel = "org.opencontainers.image.base.digest";
 
     /// <summary>
+    /// Name of the digest property in registry payloads
+    /// </summary>
+    private const string DigestPropertyName = "digest";
+
+    /// <summary>
+    /// Name of the config property in registry payloads
+    /// </summary>
+    private const string ConfigPropertyName = "config";
+
+    /// <summary>
     /// Assumed bearer token lifetime when the token response omits "expires_in"
     /// </summary>
     private static readonly TimeSpan _defaultTokenLifetime = TimeSpan.FromSeconds(60);
@@ -219,20 +229,51 @@ public partial class OciRegistryClient : IRegistryMetadataClient
     {
         var preferredOperatingSystem = NormalizePlatformValue(operatingSystem);
         var preferredArchitecture = NormalizePlatformValue(architecture);
-        var fallbackDigest = default(string);
+        var exactPlatformDigest = SelectExactPlatformManifestDigest(manifestsElement,
+                                                                    preferredOperatingSystem,
+                                                                    preferredArchitecture);
+
+        if (exactPlatformDigest is not null)
+        {
+            return exactPlatformDigest;
+        }
+
+        if (string.IsNullOrWhiteSpace(preferredArchitecture) == false)
+        {
+            var architectureDigest = SelectArchitectureManifestDigest(manifestsElement, preferredArchitecture);
+
+            if (architectureDigest is not null)
+            {
+                return architectureDigest;
+            }
+        }
+
+        return SelectFirstManifestDigest(manifestsElement);
+    }
+
+    /// <summary>
+    /// Select the manifest digest matching both the preferred operating system and architecture
+    /// </summary>
+    /// <param name="manifestsElement">Manifest list element</param>
+    /// <param name="preferredOperatingSystem">Normalized preferred operating system</param>
+    /// <param name="preferredArchitecture">Normalized preferred architecture</param>
+    /// <returns>Matching manifest digest or null</returns>
+    private static string? SelectExactPlatformManifestDigest(JsonElement manifestsElement,
+                                                             string? preferredOperatingSystem,
+                                                             string? preferredArchitecture)
+    {
+        if (string.IsNullOrWhiteSpace(preferredOperatingSystem)
+            || string.IsNullOrWhiteSpace(preferredArchitecture))
+        {
+            return null;
+        }
 
         foreach (var manifestElement in manifestsElement.EnumerateArray())
         {
-            var digest = TryGetString(manifestElement, "digest");
+            var digest = TryGetString(manifestElement, DigestPropertyName);
 
-            if (string.IsNullOrWhiteSpace(digest))
-            {
-                continue;
-            }
-
-            fallbackDigest ??= digest;
-
-            if (manifestElement.TryGetProperty("platform", out var platformElement) == false)
+            if (string.IsNullOrWhiteSpace(digest)
+                || manifestElement.TryGetProperty("platform", out var platformElement) == false)
             {
                 continue;
             }
@@ -240,36 +281,62 @@ public partial class OciRegistryClient : IRegistryMetadataClient
             var manifestOperatingSystem = NormalizePlatformValue(TryGetString(platformElement, "os"));
             var manifestArchitecture = NormalizePlatformValue(TryGetString(platformElement, "architecture"));
 
-            if (string.IsNullOrWhiteSpace(preferredOperatingSystem) == false
-                && string.IsNullOrWhiteSpace(preferredArchitecture) == false
-                && string.Equals(manifestOperatingSystem, preferredOperatingSystem, StringComparison.OrdinalIgnoreCase)
+            if (string.Equals(manifestOperatingSystem, preferredOperatingSystem, StringComparison.OrdinalIgnoreCase)
                 && string.Equals(manifestArchitecture, preferredArchitecture, StringComparison.OrdinalIgnoreCase))
             {
                 return digest;
             }
         }
 
-        if (string.IsNullOrWhiteSpace(preferredArchitecture) == false)
+        return null;
+    }
+
+    /// <summary>
+    /// Select the manifest digest matching the preferred architecture regardless of the operating system
+    /// </summary>
+    /// <param name="manifestsElement">Manifest list element</param>
+    /// <param name="preferredArchitecture">Normalized preferred architecture</param>
+    /// <returns>Matching manifest digest or null</returns>
+    private static string? SelectArchitectureManifestDigest(JsonElement manifestsElement, string preferredArchitecture)
+    {
+        foreach (var manifestElement in manifestsElement.EnumerateArray())
         {
-            foreach (var manifestElement in manifestsElement.EnumerateArray())
+            if (manifestElement.TryGetProperty("platform", out var platformElement) == false)
             {
-                if (manifestElement.TryGetProperty("platform", out var platformElement) == false)
-                {
-                    continue;
-                }
+                continue;
+            }
 
-                var digest = TryGetString(manifestElement, "digest");
-                var manifestArchitecture = NormalizePlatformValue(TryGetString(platformElement, "architecture"));
+            var digest = TryGetString(manifestElement, DigestPropertyName);
+            var manifestArchitecture = NormalizePlatformValue(TryGetString(platformElement, "architecture"));
 
-                if (string.IsNullOrWhiteSpace(digest) == false
-                    && string.Equals(manifestArchitecture, preferredArchitecture, StringComparison.OrdinalIgnoreCase))
-                {
-                    return digest;
-                }
+            if (string.IsNullOrWhiteSpace(digest) == false
+                && string.Equals(manifestArchitecture, preferredArchitecture, StringComparison.OrdinalIgnoreCase))
+            {
+                return digest;
             }
         }
 
-        return fallbackDigest;
+        return null;
+    }
+
+    /// <summary>
+    /// Select the first manifest digest of a manifest list
+    /// </summary>
+    /// <param name="manifestsElement">Manifest list element</param>
+    /// <returns>First manifest digest or null</returns>
+    private static string? SelectFirstManifestDigest(JsonElement manifestsElement)
+    {
+        foreach (var manifestElement in manifestsElement.EnumerateArray())
+        {
+            var digest = TryGetString(manifestElement, DigestPropertyName);
+
+            if (string.IsNullOrWhiteSpace(digest) == false)
+            {
+                return digest;
+            }
+        }
+
+        return null;
     }
 
     /// <summary>
@@ -499,7 +566,7 @@ public partial class OciRegistryClient : IRegistryMetadataClient
     /// <returns>Environment variables</returns>
     private static IReadOnlyList<string> TryReadEnvironmentVariables(JsonElement rootElement)
     {
-        if (rootElement.TryGetProperty("config", out var configElement) == false
+        if (rootElement.TryGetProperty(ConfigPropertyName, out var configElement) == false
             || configElement.ValueKind != JsonValueKind.Object
             || configElement.TryGetProperty("Env", out var envElement) == false
             || envElement.ValueKind != JsonValueKind.Array)
@@ -521,7 +588,7 @@ public partial class OciRegistryClient : IRegistryMetadataClient
     /// <returns>Labels</returns>
     private static IReadOnlyDictionary<string, string> TryReadLabels(JsonElement rootElement)
     {
-        if (rootElement.TryGetProperty("config", out var configElement) == false
+        if (rootElement.TryGetProperty(ConfigPropertyName, out var configElement) == false
             || configElement.ValueKind != JsonValueKind.Object
             || configElement.TryGetProperty("Labels", out var labelsElement) == false
             || labelsElement.ValueKind != JsonValueKind.Object)
@@ -562,7 +629,7 @@ public partial class OciRegistryClient : IRegistryMetadataClient
     {
         var createdValue = TryGetString(element, "created");
 
-        return DateTimeOffset.TryParse(createdValue, out var createdAtUtc) ? createdAtUtc : null;
+        return DateTimeOffset.TryParse(createdValue, CultureInfo.InvariantCulture, out var createdAtUtc) ? createdAtUtc : null;
     }
 
     /// <summary>
@@ -570,13 +637,8 @@ public partial class OciRegistryClient : IRegistryMetadataClient
     /// </summary>
     /// <param name="response">Current response</param>
     /// <param name="registry">Registry host</param>
-    /// <param name="repository">Repository path</param>
-    /// <param name="tags">Accumulated tags</param>
     /// <returns>Next page URI or null</returns>
-    private static Uri? GetNextTagsUri(HttpResponseMessage response,
-                                       string registry,
-                                       string repository,
-                                       IReadOnlyList<DockerHubTagData> tags)
+    private static Uri? GetNextTagsUri(HttpResponseMessage response, string registry)
     {
         if (response.Headers.TryGetValues("Link", out var linkValues))
         {
@@ -639,252 +701,72 @@ public partial class OciRegistryClient : IRegistryMetadataClient
                };
     }
 
-    #endregion // Static methods
-
-    #region Methods
-
-    /// <inheritdoc/>
-    public bool CanHandle(string registry)
+    /// <summary>
+    /// Read the tag names of a registry tag listing response
+    /// </summary>
+    /// <param name="response">Registry response</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Tag names reported by the registry</returns>
+    private static async Task<IReadOnlyList<string>> ReadTagNamesAsync(HttpResponseMessage response, CancellationToken cancellationToken)
     {
-        return string.IsNullOrWhiteSpace(registry) == false
-               && DockerHubClient.SupportsRegistry(registry) == false;
-    }
-
-    /// <inheritdoc/>
-    public async Task<ExternalOperationResult<DockerHubTagData>> GetTagAsync(ImageReference imageReference,
-                                                                             CancellationToken cancellationToken = default,
-                                                                             string? operatingSystem = null,
-                                                                             string? architecture = null)
-    {
-        ArgumentNullException.ThrowIfNull(imageReference);
-
-        if (CanHandle(imageReference.Registry) == false)
-        {
-            return ExternalOperationResult<DockerHubTagData>.Unsupported($"Registry '{imageReference.Registry}' is not supported by the OCI registry adapter");
-        }
-
-        var manifestResult = await GetManifestMetadataAsync(imageReference,
-                                                            imageReference.Tag,
-                                                            cancellationToken,
-                                                            operatingSystem,
-                                                            architecture).ConfigureAwait(false);
-
-        if (manifestResult.Status != ExternalOperationStatus.Succeeded || manifestResult.Data is null)
-        {
-            return manifestResult.Status switch
-                   {
-                       ExternalOperationStatus.Unsupported => ExternalOperationResult<DockerHubTagData>.Unsupported(manifestResult.Message ?? "Registry lookup is unsupported"),
-                       ExternalOperationStatus.NotFound => ExternalOperationResult<DockerHubTagData>.NotFound(manifestResult.Message ?? "Registry tag was not found"),
-                       ExternalOperationStatus.NotConfigured => ExternalOperationResult<DockerHubTagData>.NotConfigured(manifestResult.Message ?? "Registry lookup is not configured"),
-                       ExternalOperationStatus.Unknown => ExternalOperationResult<DockerHubTagData>.Unknown(manifestResult.Message ?? "Registry lookup status is unknown"),
-                       _ => ExternalOperationResult<DockerHubTagData>.Failed(manifestResult.Message ?? "Registry tag lookup failed"),
-                   };
-        }
-
-        return ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
-                                                                   {
-                                                                       Tag = imageReference.Tag,
-                                                                       Digest = manifestResult.Data.Digest,
-                                                                       PublishedAtUtc = manifestResult.Data.PublishedAtUtc,
-                                                                   });
-    }
-
-    /// <inheritdoc/>
-    public async Task<ExternalOperationResult<IReadOnlyList<DockerHubTagData>>> GetTagsAsync(string registry,
-                                                                                             string repository,
-                                                                                             CancellationToken cancellationToken = default,
-                                                                                             string? operatingSystem = null,
-                                                                                             string? architecture = null,
-                                                                                             RegistryTagQueryOptions? queryOptions = null)
-    {
-        if (CanHandle(registry) == false)
-        {
-            return ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Unsupported($"Registry '{registry}' is not supported by the OCI registry adapter");
-        }
-
-        var normalizedRegistry = NormalizeRegistry(registry);
-        var requestUri = CreateTagsUri(normalizedRegistry, repository, lastTag: null);
-        var tags = new List<DockerHubTagData>();
-        var inspectedTagCount = 0;
-
-        while (requestUri is not null)
-        {
-            using var response = await SendRegistryRequestAsync(requestUri,
-                                                                repository,
-                                                                HttpMethod.Get,
-                                                                configureRequest: null,
-                                                                cancellationToken).ConfigureAwait(false);
-
-            if (response.StatusCode == HttpStatusCode.NotFound)
-            {
-                return ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.NotFound($"Repository '{repository}' was not found in registry '{normalizedRegistry}'");
-            }
-
-            if (response.IsSuccessStatusCode == false)
-            {
-                return await CreateFailureResultAsync<IReadOnlyList<DockerHubTagData>>(response,
-                                                                                       $"Tag lookup failed for '{normalizedRegistry}/{repository}'",
-                                                                                       cancellationToken).ConfigureAwait(false);
-            }
-
-            var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-
-            await using (responseStream.ConfigureAwait(false))
-            {
-                using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: cancellationToken).ConfigureAwait(false);
-
-                if (jsonDocument.RootElement.TryGetProperty("tags", out var tagsElement)
-                    && tagsElement.ValueKind == JsonValueKind.Array)
-                {
-                    foreach (var tagElement in tagsElement.EnumerateArray())
-                    {
-                        var tagName = tagElement.GetString();
-
-                        if (string.IsNullOrWhiteSpace(tagName))
-                        {
-                            continue;
-                        }
-
-                        if (RegistryTagQueryHelper.ShouldInspectTagName(tagName, queryOptions) == false)
-                        {
-                            continue;
-                        }
-
-                        if (queryOptions is not null && inspectedTagCount >= queryOptions.MaximumTags)
-                        {
-                            requestUri = null;
-
-                            break;
-                        }
-
-                        var tagReference = new ImageReference
-                                           {
-                                               Registry = normalizedRegistry,
-                                               Repository = repository,
-                                               Tag = tagName,
-                                           };
-                        var tagResult = await GetTagAsync(tagReference,
-                                                          cancellationToken,
-                                                          operatingSystem,
-                                                          architecture).ConfigureAwait(false);
-
-                        inspectedTagCount++;
-
-                        if (tagResult.Status == ExternalOperationStatus.Succeeded && tagResult.Data is not null)
-                        {
-                            if (RegistryTagQueryHelper.ShouldKeepTag(tagResult.Data, queryOptions))
-                            {
-                                tags.Add(tagResult.Data);
-                            }
-                        }
-                        else
-                        {
-                            tags.Add(new DockerHubTagData
-                                     {
-                                         Tag = tagName,
-                                     });
-                        }
-                    }
-                }
-            }
-
-            if (requestUri is not null)
-            {
-                requestUri = GetNextTagsUri(response, normalizedRegistry, repository, tags);
-            }
-        }
-
-        return ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Succeeded(tags);
-    }
-
-    /// <inheritdoc/>
-    public async Task<ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>> ResolveBaseImagesAsync(ImageReference imageReference, CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(imageReference);
-
-        if (CanHandle(imageReference.Registry) == false)
-        {
-            return ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>.Unsupported($"Registry '{imageReference.Registry}' is not supported by the OCI registry adapter");
-        }
-
-        var results = new List<BaseImageDescriptor>();
-
-        try
-        {
-            await ResolveBaseImageChainAsync(imageReference, results, depth: 1, cancellationToken).ConfigureAwait(false);
-        }
-        catch (Exception exception) when (exception is not OperationCanceledException)
-        {
-            _logger.LogWarning(exception,
-                               "OCI base image chain resolution failed for {ImageReference}",
-                               imageReference.FullReference);
-
-            return ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>.Failed($"Base image chain resolution failed for '{imageReference.FullReference}': {exception.Message}");
-        }
-
-        return ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>.Succeeded(results);
-    }
-
-    /// <inheritdoc/>
-    public async Task<ExternalOperationResult<RegistryImageConfigurationData>> GetImageConfigurationAsync(ImageReference imageReference, CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(imageReference);
-
-        if (CanHandle(imageReference.Registry) == false)
-        {
-            return ExternalOperationResult<RegistryImageConfigurationData>.Unsupported($"Registry '{imageReference.Registry}' is not supported by the OCI registry adapter");
-        }
-
-        var manifestResult = await GetManifestMetadataAsync(imageReference,
-                                                            string.IsNullOrWhiteSpace(imageReference.Digest) ? imageReference.Tag : imageReference.Digest,
-                                                            cancellationToken).ConfigureAwait(false);
-
-        if (manifestResult.Status != ExternalOperationStatus.Succeeded || manifestResult.Data is null)
-        {
-            return manifestResult.Status switch
-                   {
-                       ExternalOperationStatus.Unsupported => ExternalOperationResult<RegistryImageConfigurationData>.Unsupported(manifestResult.Message ?? "Registry lookup is unsupported"),
-                       ExternalOperationStatus.NotFound => ExternalOperationResult<RegistryImageConfigurationData>.NotFound(manifestResult.Message ?? "Registry image was not found"),
-                       ExternalOperationStatus.NotConfigured => ExternalOperationResult<RegistryImageConfigurationData>.NotConfigured(manifestResult.Message ?? "Registry lookup is not configured"),
-                       ExternalOperationStatus.Unknown => ExternalOperationResult<RegistryImageConfigurationData>.Unknown(manifestResult.Message ?? "Registry lookup status is unknown"),
-                       _ => ExternalOperationResult<RegistryImageConfigurationData>.Failed(manifestResult.Message ?? "Registry image configuration lookup failed"),
-                   };
-        }
-
-        if (string.IsNullOrWhiteSpace(manifestResult.Data.ConfigDigest))
-        {
-            return ExternalOperationResult<RegistryImageConfigurationData>.NotFound($"Registry image '{imageReference.FullReference}' did not expose a config digest");
-        }
-
-        var blobUri = CreateBlobUri(imageReference.Registry, imageReference.Repository, manifestResult.Data.ConfigDigest);
-
-        using var response = await SendRegistryRequestAsync(blobUri,
-                                                            imageReference.Repository,
-                                                            HttpMethod.Get,
-                                                            configureRequest: null,
-                                                            cancellationToken).ConfigureAwait(false);
-
-        if (response.StatusCode == HttpStatusCode.NotFound)
-        {
-            return ExternalOperationResult<RegistryImageConfigurationData>.NotFound($"Config blob '{manifestResult.Data.ConfigDigest}' was not found for '{imageReference.FullReference}'");
-        }
-
-        if (response.IsSuccessStatusCode == false)
-        {
-            return await CreateFailureResultAsync<RegistryImageConfigurationData>(response,
-                                                                                  $"Registry image configuration lookup failed for '{imageReference.FullReference}'",
-                                                                                  cancellationToken).ConfigureAwait(false);
-        }
-
+        var tagNames = new List<string>();
         var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
 
         await using (responseStream.ConfigureAwait(false))
         {
             using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: cancellationToken).ConfigureAwait(false);
 
-            return ExternalOperationResult<RegistryImageConfigurationData>.Succeeded(ParseImageConfiguration(jsonDocument.RootElement));
+            if (jsonDocument.RootElement.TryGetProperty("tags", out var tagsElement) == false
+                || tagsElement.ValueKind != JsonValueKind.Array)
+            {
+                return tagNames;
+            }
+
+            foreach (var tagElement in tagsElement.EnumerateArray())
+            {
+                var tagName = tagElement.GetString();
+
+                if (string.IsNullOrWhiteSpace(tagName) == false)
+                {
+                    tagNames.Add(tagName);
+                }
+            }
         }
+
+        return tagNames;
     }
+
+    /// <summary>
+    /// Append the result of a single tag inspection to the collected tag metadata
+    /// </summary>
+    /// <param name="tagName">Inspected tag name</param>
+    /// <param name="tagResult">Tag lookup result</param>
+    /// <param name="queryOptions">Tag query options</param>
+    /// <param name="tags">Collected tag metadata</param>
+    private static void AppendTagResult(string tagName,
+                                        ExternalOperationResult<DockerHubTagData> tagResult,
+                                        RegistryTagQueryOptions? queryOptions,
+                                        List<DockerHubTagData> tags)
+    {
+        if (tagResult.Status == ExternalOperationStatus.Succeeded && tagResult.Data is not null)
+        {
+            if (RegistryTagQueryHelper.ShouldKeepTag(tagResult.Data, queryOptions))
+            {
+                tags.Add(tagResult.Data);
+            }
+
+            return;
+        }
+
+        tags.Add(new DockerHubTagData
+                 {
+                     Tag = tagName,
+                 });
+    }
+
+    #endregion // Static methods
+
+    #region Methods
 
     /// <summary>
     /// Resolve the base image chain recursively
@@ -990,8 +872,8 @@ public partial class OciRegistryClient : IRegistryMetadataClient
             return ExternalOperationResult<ManifestMetadata>.Succeeded(new ManifestMetadata
                                                                        {
                                                                            Digest = digest,
-                                                                           ConfigDigest = jsonDocument.RootElement.TryGetProperty("config", out var configElement)
-                                                                                              ? TryGetString(configElement, "digest")
+                                                                           ConfigDigest = jsonDocument.RootElement.TryGetProperty(ConfigPropertyName, out var configElement)
+                                                                                              ? TryGetString(configElement, DigestPropertyName)
                                                                                               : null,
                                                                            PublishedAtUtc = TryReadCreatedAtUtc(jsonDocument.RootElement),
                                                                        });
@@ -1072,7 +954,7 @@ public partial class OciRegistryClient : IRegistryMetadataClient
         {
             using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: cancellationToken).ConfigureAwait(false);
 
-            if (jsonDocument.RootElement.TryGetProperty("config", out var configElement) == false
+            if (jsonDocument.RootElement.TryGetProperty(ConfigPropertyName, out var configElement) == false
                 || configElement.TryGetProperty("Labels", out var labelsElement) == false
                 || labelsElement.ValueKind != JsonValueKind.Object)
             {
@@ -1265,5 +1147,255 @@ public partial class OciRegistryClient : IRegistryMetadataClient
         }
     }
 
+    /// <summary>
+    /// Append the tag metadata of a tag listing page until the configured inspection limit is reached
+    /// </summary>
+    /// <param name="tagNames">Tag names of the current page</param>
+    /// <param name="lookupContext">Shared registry tag lookup parameters</param>
+    /// <param name="tags">Collected tag metadata</param>
+    /// <param name="inspectedTagCount">Number of tags inspected so far</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Number of tags inspected after the current page</returns>
+    private async Task<int> AppendInspectedTagsAsync(IReadOnlyList<string> tagNames,
+                                                     RegistryTagLookupContext lookupContext,
+                                                     List<DockerHubTagData> tags,
+                                                     int inspectedTagCount,
+                                                     CancellationToken cancellationToken)
+    {
+        foreach (var tagName in tagNames)
+        {
+            if (RegistryTagQueryHelper.ShouldInspectTagName(tagName, lookupContext.QueryOptions) == false)
+            {
+                continue;
+            }
+
+            if (lookupContext.QueryOptions is not null && inspectedTagCount >= lookupContext.QueryOptions.MaximumTags)
+            {
+                break;
+            }
+
+            var tagReference = new ImageReference
+                               {
+                                   Registry = lookupContext.Registry,
+                                   Repository = lookupContext.Repository,
+                                   Tag = tagName,
+                               };
+            var tagResult = await GetTagAsync(tagReference,
+                                              cancellationToken,
+                                              lookupContext.OperatingSystem,
+                                              lookupContext.Architecture).ConfigureAwait(false);
+
+            inspectedTagCount++;
+
+            AppendTagResult(tagName, tagResult, lookupContext.QueryOptions, tags);
+        }
+
+        return inspectedTagCount;
+    }
+
     #endregion // Methods
+
+    #region IRegistryMetadataClient
+
+    /// <inheritdoc/>
+    public bool CanHandle(string registry)
+    {
+        return string.IsNullOrWhiteSpace(registry) == false
+               && DockerHubClient.SupportsRegistry(registry) == false;
+    }
+
+    /// <inheritdoc/>
+    public async Task<ExternalOperationResult<DockerHubTagData>> GetTagAsync(ImageReference imageReference,
+                                                                             CancellationToken cancellationToken = default,
+                                                                             string? operatingSystem = null,
+                                                                             string? architecture = null)
+    {
+        ArgumentNullException.ThrowIfNull(imageReference);
+
+        if (CanHandle(imageReference.Registry) == false)
+        {
+            return ExternalOperationResult<DockerHubTagData>.Unsupported($"Registry '{imageReference.Registry}' is not supported by the OCI registry adapter");
+        }
+
+        var manifestResult = await GetManifestMetadataAsync(imageReference,
+                                                            imageReference.Tag,
+                                                            cancellationToken,
+                                                            operatingSystem,
+                                                            architecture).ConfigureAwait(false);
+
+        if (manifestResult.Status != ExternalOperationStatus.Succeeded || manifestResult.Data is null)
+        {
+            return manifestResult.Status switch
+                   {
+                       ExternalOperationStatus.Unsupported => ExternalOperationResult<DockerHubTagData>.Unsupported(manifestResult.Message ?? "Registry lookup is unsupported"),
+                       ExternalOperationStatus.NotFound => ExternalOperationResult<DockerHubTagData>.NotFound(manifestResult.Message ?? "Registry tag was not found"),
+                       ExternalOperationStatus.NotConfigured => ExternalOperationResult<DockerHubTagData>.NotConfigured(manifestResult.Message ?? "Registry lookup is not configured"),
+                       ExternalOperationStatus.Unknown => ExternalOperationResult<DockerHubTagData>.Unknown(manifestResult.Message ?? "Registry lookup status is unknown"),
+                       _ => ExternalOperationResult<DockerHubTagData>.Failed(manifestResult.Message ?? "Registry tag lookup failed"),
+                   };
+        }
+
+        return ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
+                                                                   {
+                                                                       Tag = imageReference.Tag,
+                                                                       Digest = manifestResult.Data.Digest,
+                                                                       PublishedAtUtc = manifestResult.Data.PublishedAtUtc,
+                                                                   });
+    }
+
+    /// <inheritdoc/>
+    public async Task<ExternalOperationResult<IReadOnlyList<DockerHubTagData>>> GetTagsAsync(string registry,
+                                                                                             string repository,
+                                                                                             CancellationToken cancellationToken = default,
+                                                                                             string? operatingSystem = null,
+                                                                                             string? architecture = null,
+                                                                                             RegistryTagQueryOptions? queryOptions = null)
+    {
+        if (CanHandle(registry) == false)
+        {
+            return ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Unsupported($"Registry '{registry}' is not supported by the OCI registry adapter");
+        }
+
+        var normalizedRegistry = NormalizeRegistry(registry);
+        var requestUri = CreateTagsUri(normalizedRegistry, repository, lastTag: null);
+        var tags = new List<DockerHubTagData>();
+        var inspectedTagCount = 0;
+        var lookupContext = new RegistryTagLookupContext
+                            {
+                                Registry = normalizedRegistry,
+                                Repository = repository,
+                                OperatingSystem = operatingSystem,
+                                Architecture = architecture,
+                                QueryOptions = queryOptions,
+                            };
+
+        while (requestUri is not null)
+        {
+            using var response = await SendRegistryRequestAsync(requestUri,
+                                                                repository,
+                                                                HttpMethod.Get,
+                                                                configureRequest: null,
+                                                                cancellationToken).ConfigureAwait(false);
+
+            if (response.StatusCode == HttpStatusCode.NotFound)
+            {
+                return ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.NotFound($"Repository '{repository}' was not found in registry '{normalizedRegistry}'");
+            }
+
+            if (response.IsSuccessStatusCode == false)
+            {
+                return await CreateFailureResultAsync<IReadOnlyList<DockerHubTagData>>(response,
+                                                                                       $"Tag lookup failed for '{normalizedRegistry}/{repository}'",
+                                                                                       cancellationToken).ConfigureAwait(false);
+            }
+
+            var tagNames = await ReadTagNamesAsync(response, cancellationToken).ConfigureAwait(false);
+
+            inspectedTagCount = await AppendInspectedTagsAsync(tagNames,
+                                                               lookupContext,
+                                                               tags,
+                                                               inspectedTagCount,
+                                                               cancellationToken).ConfigureAwait(false);
+
+            if (queryOptions is not null && inspectedTagCount >= queryOptions.MaximumTags)
+            {
+                break;
+            }
+
+            requestUri = GetNextTagsUri(response, normalizedRegistry);
+        }
+
+        return ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Succeeded(tags);
+    }
+
+    /// <inheritdoc/>
+    public async Task<ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>> ResolveBaseImagesAsync(ImageReference imageReference, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(imageReference);
+
+        if (CanHandle(imageReference.Registry) == false)
+        {
+            return ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>.Unsupported($"Registry '{imageReference.Registry}' is not supported by the OCI registry adapter");
+        }
+
+        var results = new List<BaseImageDescriptor>();
+
+        try
+        {
+            await ResolveBaseImageChainAsync(imageReference, results, depth: 1, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            _logger.LogWarning(exception,
+                               "OCI base image chain resolution failed for {ImageReference}",
+                               imageReference.FullReference);
+
+            return ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>.Failed($"Base image chain resolution failed for '{imageReference.FullReference}': {exception.Message}");
+        }
+
+        return ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>.Succeeded(results);
+    }
+
+    /// <inheritdoc/>
+    public async Task<ExternalOperationResult<RegistryImageConfigurationData>> GetImageConfigurationAsync(ImageReference imageReference, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(imageReference);
+
+        if (CanHandle(imageReference.Registry) == false)
+        {
+            return ExternalOperationResult<RegistryImageConfigurationData>.Unsupported($"Registry '{imageReference.Registry}' is not supported by the OCI registry adapter");
+        }
+
+        var manifestResult = await GetManifestMetadataAsync(imageReference,
+                                                            string.IsNullOrWhiteSpace(imageReference.Digest) ? imageReference.Tag : imageReference.Digest,
+                                                            cancellationToken).ConfigureAwait(false);
+
+        if (manifestResult.Status != ExternalOperationStatus.Succeeded || manifestResult.Data is null)
+        {
+            return manifestResult.Status switch
+                   {
+                       ExternalOperationStatus.Unsupported => ExternalOperationResult<RegistryImageConfigurationData>.Unsupported(manifestResult.Message ?? "Registry lookup is unsupported"),
+                       ExternalOperationStatus.NotFound => ExternalOperationResult<RegistryImageConfigurationData>.NotFound(manifestResult.Message ?? "Registry image was not found"),
+                       ExternalOperationStatus.NotConfigured => ExternalOperationResult<RegistryImageConfigurationData>.NotConfigured(manifestResult.Message ?? "Registry lookup is not configured"),
+                       ExternalOperationStatus.Unknown => ExternalOperationResult<RegistryImageConfigurationData>.Unknown(manifestResult.Message ?? "Registry lookup status is unknown"),
+                       _ => ExternalOperationResult<RegistryImageConfigurationData>.Failed(manifestResult.Message ?? "Registry image configuration lookup failed"),
+                   };
+        }
+
+        if (string.IsNullOrWhiteSpace(manifestResult.Data.ConfigDigest))
+        {
+            return ExternalOperationResult<RegistryImageConfigurationData>.NotFound($"Registry image '{imageReference.FullReference}' did not expose a config digest");
+        }
+
+        var blobUri = CreateBlobUri(imageReference.Registry, imageReference.Repository, manifestResult.Data.ConfigDigest);
+
+        using var response = await SendRegistryRequestAsync(blobUri,
+                                                            imageReference.Repository,
+                                                            HttpMethod.Get,
+                                                            configureRequest: null,
+                                                            cancellationToken).ConfigureAwait(false);
+
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            return ExternalOperationResult<RegistryImageConfigurationData>.NotFound($"Config blob '{manifestResult.Data.ConfigDigest}' was not found for '{imageReference.FullReference}'");
+        }
+
+        if (response.IsSuccessStatusCode == false)
+        {
+            return await CreateFailureResultAsync<RegistryImageConfigurationData>(response,
+                                                                                  $"Registry image configuration lookup failed for '{imageReference.FullReference}'",
+                                                                                  cancellationToken).ConfigureAwait(false);
+        }
+
+        var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+
+        await using (responseStream.ConfigureAwait(false))
+        {
+            using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: cancellationToken).ConfigureAwait(false);
+
+            return ExternalOperationResult<RegistryImageConfigurationData>.Succeeded(ParseImageConfiguration(jsonDocument.RootElement));
+        }
+    }
+
+    #endregion // IRegistryMetadataClient
 }

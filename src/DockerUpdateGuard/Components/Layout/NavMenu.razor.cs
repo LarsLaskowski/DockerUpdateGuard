@@ -69,18 +69,6 @@ public partial class NavMenu
 
     #endregion // Static methods
 
-    #region ComponentBase
-
-    /// <inheritdoc/>
-    protected override async Task OnInitializedAsync()
-    {
-        _displayVersion = ResolveDisplayVersion();
-        _showMyImages = IsDockerHubAccountConfigured();
-        _showBaseImages = await ViewService.HasBaseImagesAsync().ConfigureAwait(false);
-    }
-
-    #endregion // ComponentBase
-
     #region Methods
 
     /// <summary>
@@ -138,4 +126,16 @@ public partial class NavMenu
     }
 
     #endregion // Methods
+
+    #region ComponentBase
+
+    /// <inheritdoc/>
+    protected override async Task OnInitializedAsync()
+    {
+        _displayVersion = ResolveDisplayVersion();
+        _showMyImages = IsDockerHubAccountConfigured();
+        _showBaseImages = await ViewService.HasBaseImagesAsync().ConfigureAwait(false);
+    }
+
+    #endregion // ComponentBase
 }

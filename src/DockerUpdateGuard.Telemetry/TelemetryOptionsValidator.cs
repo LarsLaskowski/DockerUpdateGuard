@@ -42,6 +42,10 @@ public class TelemetryOptionsValidator : IValidateOptions<TelemetryOptions>
         return true;
     }
 
+    #endregion // Methods
+
+    #region IValidateOptions
+
     /// <inheritdoc/>
     public ValidateOptionsResult Validate(string? name, TelemetryOptions options)
     {
@@ -75,5 +79,5 @@ public class TelemetryOptionsValidator : IValidateOptions<TelemetryOptions>
                    : ValidateOptionsResult.Fail(failures);
     }
 
-    #endregion // Methods
+    #endregion // IValidateOptions
 }

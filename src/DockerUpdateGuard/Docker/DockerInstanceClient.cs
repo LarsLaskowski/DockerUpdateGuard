@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO.Pipes;
 using System.Net.Sockets;
 using System.Security.Cryptography.X509Certificates;
@@ -268,13 +269,13 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
         if (Uri.TryCreate(instanceOptions.BaseUrl, UriKind.Absolute, out var parsedUri)
             && parsedUri.Scheme == "unix")
         {
-            return CreateUnixSocketHttpClient(parsedUri.AbsolutePath, instanceOptions);
+            return CreateUnixSocketHttpClient(parsedUri.AbsolutePath);
         }
 
         if (Uri.TryCreate(instanceOptions.BaseUrl, UriKind.Absolute, out parsedUri)
             && parsedUri.Scheme == "npipe")
         {
-            return CreateNamedPipeHttpClient(parsedUri, instanceOptions);
+            return CreateNamedPipeHttpClient(parsedUri);
         }
 
         var handler = new SocketsHttpHandler
@@ -313,9 +314,8 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
     /// Build an HTTP client backed by a Unix domain socket
     /// </summary>
     /// <param name="socketPath">Unix socket path</param>
-    /// <param name="instanceOptions">Docker instance options</param>
     /// <returns>HTTP client</returns>
-    private static HttpClient CreateUnixSocketHttpClient(string socketPath, DockerInstanceOptions instanceOptions)
+    private static HttpClient CreateUnixSocketHttpClient(string socketPath)
     {
         var endpoint = new UnixDomainSocketEndPoint(socketPath);
         var handler = new SocketsHttpHandler
@@ -351,9 +351,8 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
     /// Build an HTTP client backed by a Windows named pipe
     /// </summary>
     /// <param name="pipeUri">Named-pipe URI</param>
-    /// <param name="instanceOptions">Docker instance options</param>
     /// <returns>HTTP client</returns>
-    private static HttpClient CreateNamedPipeHttpClient(Uri pipeUri, DockerInstanceOptions instanceOptions)
+    private static HttpClient CreateNamedPipeHttpClient(Uri pipeUri)
     {
         var serverName = string.IsNullOrWhiteSpace(pipeUri.Host) || pipeUri.Host == "."
                              ? "."
@@ -766,7 +765,7 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
     /// <returns>Parsed timestamp</returns>
     private static DateTimeOffset? TryParseTimestamp(string? value)
     {
-        return DateTimeOffset.TryParse(value, out var timestamp) ? timestamp : null;
+        return DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture, out var timestamp) ? timestamp : null;
     }
 
     /// <summary>
@@ -965,7 +964,7 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
 
     #endregion // Static methods
 
-    #region Methods
+    #region IDockerInstanceClient
 
     /// <inheritdoc/>
     public async Task<ExternalOperationResult<IReadOnlyList<RuntimeContainerDescriptor>>> DiscoverContainersAsync(DockerInstanceOptions instanceOptions, CancellationToken cancellationToken = default)
@@ -1273,19 +1272,16 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
     private HttpClient GetOrCreateHttpClient(DockerInstanceOptions instanceOptions, Uri engineUri)
     {
         var cacheKey = BuildHttpClientCacheKey(instanceOptions, engineUri);
-        var pooledClient = _httpClients.GetOrAdd(cacheKey,
-                                                 _ => new Lazy<HttpClient>(() => _httpClientFactory(instanceOptions, engineUri)));
+        var pooledClient = _httpClients.GetOrAdd(cacheKey, _ => new Lazy<HttpClient>(() => _httpClientFactory(instanceOptions, engineUri)));
 
         return pooledClient.Value;
     }
 
-    #endregion // Methods
+    #endregion // IDockerInstanceClient
 
     #region IDisposable
 
-    /// <summary>
-    /// Releases the resources used by the current instance of the class
-    /// </summary>
+    /// <inheritdoc/>
     public void Dispose()
     {
         foreach (var pooledClient in _httpClients.Values)

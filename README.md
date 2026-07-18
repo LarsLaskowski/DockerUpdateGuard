@@ -103,10 +103,21 @@ For example:
 | Key | Default | Required | Description |
 | --- | --- | --- | --- |
 | `Registry` | `docker.io` | Yes | Registry host handled by the Docker Hub integration |
+| `ApiBaseUrl` | `https://hub.docker.com/` | No | Docker Hub API base address used for registries served by Docker Hub |
 | `UserName` | none | No | Docker Hub username for authenticated API requests |
 | `Pat` | none | No | Docker Hub personal access token |
 | `RequestTimeoutSeconds` | `30` | No | Timeout for outbound Docker Hub and OCI registry requests |
 | `MaxParallelRequests` | `4` | No | Maximum logical request parallelism for registry operations |
+
+### `DockerUpdateGuard:ReleaseMetadata`
+
+Base addresses of the upstream feeds used to resolve .NET and nginx release
+versions. Override them to route the lookups through an internal mirror or proxy.
+
+| Key | Default | Required | Description |
+| --- | --- | --- | --- |
+| `DotNetBaseUrl` | `https://dotnetcli.blob.core.windows.net/dotnet/release-metadata/` | No | Base address of the .NET release metadata feed |
+| `NginxBaseUrl` | `https://nginx.org/` | No | Base address of the nginx release feed |
 
 ### `DockerUpdateGuard:Vulnerabilities`
 
@@ -115,6 +126,8 @@ For example:
 | `Enabled` | `false` | No | Enables vulnerability refresh |
 | `Provider` | `None` | Required when enabled | Supported values: `None`, `DockerScout`, `Trivy` |
 | `TrivyBaseUrl` | none | Required for `Trivy` | Base URL of the Trivy server |
+| `DockerScoutLoginUrl` | `https://hub.docker.com/v2/users/login` | No | Docker Hub login endpoint used by the `DockerScout` provider |
+| `DockerScoutBaseUrl` | `https://api.scout.docker.com` | No | Base address of the Docker Scout API |
 | `RequestTimeoutSeconds` | `30` | No | Timeout for vulnerability provider requests |
 
 ### `DockerUpdateGuard:Scanning`

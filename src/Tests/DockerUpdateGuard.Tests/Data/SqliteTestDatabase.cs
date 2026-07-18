@@ -63,6 +63,10 @@ internal sealed class SqliteTestDatabase : IDisposable
         return dbContext;
     }
 
+    #endregion // Methods
+
+    #region IDisposable
+
     /// <summary>
     /// Release resources
     /// </summary>
@@ -71,5 +75,5 @@ internal sealed class SqliteTestDatabase : IDisposable
         _connection.Dispose();
     }
 
-    #endregion // Methods
+    #endregion // IDisposable
 }

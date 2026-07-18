@@ -85,6 +85,25 @@ public partial class DockerHubClientTests
     }
 
     /// <summary>
+    /// Verify a configured Docker Hub API base address overrides the built-in default
+    /// </summary>
+    [TestMethod]
+    public void DockerHubClientGetBaseUriConfiguredApiBaseUrlReturnsConfiguredUri()
+    {
+        var options = new DockerHubOptions
+                      {
+                          Registry = "docker.io",
+                          ApiBaseUrl = "https://hub.mirror.example.test/",
+                      };
+
+        var baseUri = DockerHubClient.GetBaseUri(options);
+
+        Assert.AreEqual(new Uri("https://hub.mirror.example.test/"),
+                        baseUri,
+                        "A configured Docker Hub API base address must replace the built-in default");
+    }
+
+    /// <summary>
     /// Verify Docker Hub repository listing follows pagination links
     /// </summary>
     /// <returns>Task</returns>
@@ -212,10 +231,10 @@ public partial class DockerHubClientTests
                             result.Status,
                             "Tag listing must succeed when Docker Hub returns paged tag payloads");
             Assert.IsNotNull(result.Data, "Tag listing must return tag metadata");
-            CollectionAssert.AreEqual(new[] { "latest", "2.4.1" },
-                                      result.Data.Select(entity => entity.Tag)
-                                                 .ToArray(),
-                                      "Tag listing must include tags from every result page");
+            Assert.AreSequenceEqual(["latest", "2.4.1"],
+                                    result.Data.Select(entity => entity.Tag)
+                                               .ToArray(),
+                                    "Tag listing must include tags from every result page");
         }
         finally
         {
@@ -289,10 +308,10 @@ public partial class DockerHubClientTests
                             result.Status,
                             "Bounded Docker Hub tag listing must still succeed");
             Assert.IsNotNull(result.Data, "Bounded Docker Hub tag listing must return tag data");
-            CollectionAssert.AreEqual(new[] { "3.0.0", "2.4.1" },
-                                      result.Data.Select(entity => entity.Tag)
-                                                 .ToArray(),
-                                      "Bounded Docker Hub tag listing must skip lower versions and stop before older pages");
+            Assert.AreSequenceEqual(["3.0.0", "2.4.1"],
+                                    result.Data.Select(entity => entity.Tag)
+                                               .ToArray(),
+                                    "Bounded Docker Hub tag listing must skip lower versions and stop before older pages");
             Assert.DoesNotContain(request => request.RequestUri == "https://hub.docker.com/v2/namespaces/acme/repositories/api/tags?page=2&page_size=100",
                                   handler.Requests,
                                   "Bounded Docker Hub tag listing must not request later pages after the publish-time cutoff");

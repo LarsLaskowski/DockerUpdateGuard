@@ -127,6 +127,38 @@ public class DockerUpdateGuardOptionsValidatorTests
     }
 
     /// <summary>
+    /// Verify invalid upstream feed base addresses are reported
+    /// </summary>
+    [TestMethod]
+    public void DockerUpdateGuardOptionsValidatorInvalidFeedBaseUrlsReturnRelevantFailures()
+    {
+        var configuration = CreateConfiguration(new Dictionary<string, string?>
+                                                {
+                                                    ["ConnectionStrings:DockerUpdateGuard"] = "Host=database;Database=dug",
+                                                });
+        var validator = new DockerUpdateGuardOptionsValidator(configuration);
+        var options = CreateValidOptions();
+
+        options.DockerHub.ApiBaseUrl = "not-a-valid-uri";
+        options.ReleaseMetadata.DotNetBaseUrl = "ftp://dotnetcli.example.test/";
+        options.ReleaseMetadata.NginxBaseUrl = string.Empty;
+
+        var validationResult = validator.Validate(Options.DefaultName, options);
+        var failures = validationResult.Failures?.ToArray() ?? [];
+
+        Assert.IsTrue(validationResult.Failed, "Invalid upstream feed base addresses must fail validation");
+        Assert.Contains(message => message.Contains("DockerHub:ApiBaseUrl' must be an absolute http or https URI", StringComparison.Ordinal),
+                        failures,
+                        "A malformed Docker Hub API base address must be reported");
+        Assert.Contains(message => message.Contains("ReleaseMetadata:DotNetBaseUrl' must be an absolute http or https URI", StringComparison.Ordinal),
+                        failures,
+                        "A non-http .NET release metadata base address must be reported");
+        Assert.Contains(message => message.Contains("ReleaseMetadata:NginxBaseUrl' must be configured", StringComparison.Ordinal),
+                        failures,
+                        "A missing nginx release feed base address must be reported");
+    }
+
+    /// <summary>
     /// Verify out-of-range upper bound values are reported individually
     /// </summary>
     [TestMethod]
@@ -286,9 +318,7 @@ public class DockerUpdateGuardOptionsValidatorTests
         var supportedDockerHubRegistries = new[] { "docker.io", "https://hub.docker.com" };
 
         Assert.IsFalse(string.IsNullOrWhiteSpace(dockerHubRegistry), "The development configuration sample must include the Docker Hub registry");
-        CollectionAssert.Contains(supportedDockerHubRegistries,
-                                  dockerHubRegistry,
-                                  "The development configuration sample must include a supported Docker Hub registry value");
+        Assert.Contains(dockerHubRegistry, supportedDockerHubRegistries, "The development configuration sample must include a supported Docker Hub registry value");
         Assert.IsFalse(string.IsNullOrWhiteSpace(applicationSection["DockerHub:UserName"]), "The development configuration sample must include the Docker Hub user name value or placeholder");
         Assert.IsFalse(string.IsNullOrWhiteSpace(applicationSection["DockerHub:Pat"]), "The development configuration sample must include the Docker Hub PAT value or placeholder");
         Assert.AreEqual("30",

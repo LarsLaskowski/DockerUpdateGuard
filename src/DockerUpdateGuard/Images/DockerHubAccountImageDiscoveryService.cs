@@ -159,6 +159,89 @@ public class DockerHubAccountImageDiscoveryService : IDockerHubAccountImageDisco
 
     #region Methods
 
+    /// <summary>
+    /// Create or update the observed image of a discovered Docker Hub repository
+    /// </summary>
+    /// <param name="repository">Discovered Docker Hub repository</param>
+    /// <param name="existingObservedImages">Observed images, extended when a new image is created</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>True when the repository was synchronized, false when it was skipped</returns>
+    private async Task<bool> SynchronizeRepositoryAsync(DockerHubRepositoryData repository,
+                                                        List<ObservedImage> existingObservedImages,
+                                                        CancellationToken cancellationToken)
+    {
+        var tagsResult = await _dockerHubClient.GetTagsAsync(repository.Registry,
+                                                             repository.Repository,
+                                                             cancellationToken)
+                                               .ConfigureAwait(false);
+
+        if (tagsResult.Status != ExternalOperationStatus.Succeeded
+            || tagsResult.Data is null)
+        {
+            _logger.DockerHubAccountSynchronizationRepositorySkipped(repository.Repository,
+                                                                     tagsResult.Status,
+                                                                     tagsResult.Message);
+
+            return false;
+        }
+
+        var selectedTag = SelectTrackedTag(tagsResult.Data);
+
+        if (selectedTag is null)
+        {
+            _logger.DockerHubAccountSynchronizationRepositorySkipped(repository.Repository,
+                                                                     ExternalOperationStatus.Unknown,
+                                                                     "No non-empty repository tags were returned");
+
+            return false;
+        }
+
+        var imageVersionTask = _imageCatalogRepository.GetOrCreateImageVersionAsync(repository.Registry,
+                                                                                    repository.Repository,
+                                                                                    selectedTag.Tag,
+                                                                                    selectedTag.Digest,
+                                                                                    selectedTag.PublishedAtUtc,
+                                                                                    JsonSerializer.Serialize(selectedTag),
+                                                                                    cancellationToken);
+        var imageVersion = await imageVersionTask.ConfigureAwait(false);
+        var existingObservedImage = existingObservedImages.SingleOrDefault(entity => MatchesRepository(entity,
+                                                                                                       repository.Registry,
+                                                                                                       repository.Repository));
+
+        imageVersion.Source = ImageVersionSource.ObservedImage;
+
+        if (existingObservedImage is null)
+        {
+            existingObservedImage = new ObservedImage
+                                    {
+                                        Name = repository.Repository,
+                                        Description = NormalizeDescription(repository.Description),
+                                        CurrentImageVersionId = imageVersion.Id,
+                                        IsEnabled = true,
+                                        Source = RegistrationSource.Discovery,
+                                    };
+
+            existingObservedImages.Add(existingObservedImage);
+
+            _dbContext.ObservedImages.Add(existingObservedImage);
+
+            return true;
+        }
+
+        existingObservedImage.Name = repository.Repository;
+        existingObservedImage.Description = NormalizeDescription(repository.Description);
+        existingObservedImage.CurrentImageVersionId = imageVersion.Id;
+        existingObservedImage.IsEnabled = true;
+        existingObservedImage.Source = RegistrationSource.Discovery;
+        existingObservedImage.UpdatedAtUtc = DateTimeOffset.UtcNow;
+
+        return true;
+    }
+
+    #endregion // Methods
+
+    #region IDockerHubAccountImageDiscoveryService
+
     /// <inheritdoc/>
     public async Task SynchronizeAccountImagesAsync(CancellationToken cancellationToken = default)
     {
@@ -207,92 +290,32 @@ public class DockerHubAccountImageDiscoveryService : IDockerHubAccountImageDisco
                                                      .ToListAsync(cancellationToken)
                                                      .ConfigureAwait(false);
 
+        var obsoleteObservedImages = existingObservedImages.Where(entity => MatchesRepository(entity, discoveredRepositories) == false)
+                                                           .ToList();
+        var disabledImageCount = obsoleteObservedImages.Count(entity => entity.IsEnabled);
         var synchronizedImageCount = 0;
-        var disabledImageCount = 0;
         var skippedRepositoryCount = 0;
 
-        foreach (var existingObservedImage in existingObservedImages.Where(entity => MatchesRepository(entity, discoveredRepositories) == false))
+        foreach (var obsoleteObservedImage in obsoleteObservedImages)
         {
-            if (existingObservedImage.IsEnabled)
-            {
-                disabledImageCount++;
-            }
-
-            existingObservedImage.IsEnabled = false;
-            existingObservedImage.UpdatedAtUtc = DateTimeOffset.UtcNow;
+            obsoleteObservedImage.IsEnabled = false;
+            obsoleteObservedImage.UpdatedAtUtc = DateTimeOffset.UtcNow;
         }
 
         foreach (var repository in repositories)
         {
-            var tagsResult = await _dockerHubClient.GetTagsAsync(repository.Registry,
-                                                                 repository.Repository,
-                                                                 cancellationToken)
-                                                   .ConfigureAwait(false);
+            var synchronized = await SynchronizeRepositoryAsync(repository,
+                                                                existingObservedImages,
+                                                                cancellationToken).ConfigureAwait(false);
 
-            if (tagsResult.Status != ExternalOperationStatus.Succeeded
-                || tagsResult.Data is null)
+            if (synchronized)
             {
-                skippedRepositoryCount++;
-
-                _logger.DockerHubAccountSynchronizationRepositorySkipped(repository.Repository,
-                                                                         tagsResult.Status,
-                                                                         tagsResult.Message);
-
-                continue;
-            }
-
-            var selectedTag = SelectTrackedTag(tagsResult.Data);
-
-            if (selectedTag is null)
-            {
-                skippedRepositoryCount++;
-                _logger.DockerHubAccountSynchronizationRepositorySkipped(repository.Repository,
-                                                                         ExternalOperationStatus.Unknown,
-                                                                         "No non-empty repository tags were returned");
-
-                continue;
-            }
-
-            var imageVersionTask = _imageCatalogRepository.GetOrCreateImageVersionAsync(repository.Registry,
-                                                                                        repository.Repository,
-                                                                                        selectedTag.Tag,
-                                                                                        selectedTag.Digest,
-                                                                                        selectedTag.PublishedAtUtc,
-                                                                                        JsonSerializer.Serialize(selectedTag),
-                                                                                        cancellationToken);
-            var imageVersion = await imageVersionTask.ConfigureAwait(false);
-            var existingObservedImage = existingObservedImages.SingleOrDefault(entity => MatchesRepository(entity,
-                                                                                                           repository.Registry,
-                                                                                                           repository.Repository));
-
-            imageVersion.Source = ImageVersionSource.ObservedImage;
-
-            if (existingObservedImage is null)
-            {
-                existingObservedImage = new ObservedImage
-                                        {
-                                            Name = repository.Repository,
-                                            Description = NormalizeDescription(repository.Description),
-                                            CurrentImageVersionId = imageVersion.Id,
-                                            IsEnabled = true,
-                                            Source = RegistrationSource.Discovery,
-                                        };
-
-                existingObservedImages.Add(existingObservedImage);
-
-                _dbContext.ObservedImages.Add(existingObservedImage);
+                synchronizedImageCount++;
             }
             else
             {
-                existingObservedImage.Name = repository.Repository;
-                existingObservedImage.Description = NormalizeDescription(repository.Description);
-                existingObservedImage.CurrentImageVersionId = imageVersion.Id;
-                existingObservedImage.IsEnabled = true;
-                existingObservedImage.Source = RegistrationSource.Discovery;
-                existingObservedImage.UpdatedAtUtc = DateTimeOffset.UtcNow;
+                skippedRepositoryCount++;
             }
-
-            synchronizedImageCount++;
         }
 
         await _dbContext.SaveChangesAsync(cancellationToken)
@@ -305,5 +328,5 @@ public class DockerHubAccountImageDiscoveryService : IDockerHubAccountImageDisco
                                                          skippedRepositoryCount);
     }
 
-    #endregion // Methods
+    #endregion // IDockerHubAccountImageDiscoveryService
 }

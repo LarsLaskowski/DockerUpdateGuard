@@ -84,6 +84,29 @@ public static class DatabaseMigrator
     }
 
     /// <summary>
+    /// Determine whether the exception represents a transient database connectivity failure
+    /// </summary>
+    /// <param name="exception">Exception to inspect</param>
+    /// <returns>True when the failure is transient</returns>
+    internal static bool IsTransientConnectionFailure(Exception exception)
+    {
+        ArgumentNullException.ThrowIfNull(exception);
+
+        if (exception is DbException databaseException && databaseException.IsTransient)
+        {
+            return true;
+        }
+
+        if (exception is SocketException or TimeoutException)
+        {
+            return true;
+        }
+
+        return exception.InnerException is not null
+               && IsTransientConnectionFailure(exception.InnerException);
+    }
+
+    /// <summary>
     /// Open the database connection, retrying transient failures until the configured startup timeout elapses
     /// </summary>
     /// <param name="dbContext">Database context</param>
@@ -143,9 +166,9 @@ public static class DatabaseMigrator
                                                 ILogger logger,
                                                 CancellationToken cancellationToken)
     {
-        // Open the connection explicitly so the advisory lock and the migration share one session;
-        // Entity Framework Core reuses an explicitly opened connection and leaves it open until it
-        // is closed again below
+        // Open the connection explicitly so that the advisory lock and the migration share one
+        // session. Entity Framework Core reuses an explicitly opened connection and leaves it
+        // open until it is closed again below.
         await dbContext.Database.OpenConnectionAsync(cancellationToken)
                                 .ConfigureAwait(false);
 
@@ -199,29 +222,6 @@ public static class DatabaseMigrator
             // See above: the unlock is best-effort and is backstopped by the connection close
             logger.ApplicationDatabaseAdvisoryLockReleaseFailed(exception);
         }
-    }
-
-    /// <summary>
-    /// Determine whether the exception represents a transient database connectivity failure
-    /// </summary>
-    /// <param name="exception">Exception to inspect</param>
-    /// <returns>True when the failure is transient</returns>
-    internal static bool IsTransientConnectionFailure(Exception exception)
-    {
-        ArgumentNullException.ThrowIfNull(exception);
-
-        if (exception is DbException databaseException && databaseException.IsTransient)
-        {
-            return true;
-        }
-
-        if (exception is SocketException or TimeoutException)
-        {
-            return true;
-        }
-
-        return exception.InnerException is not null
-               && IsTransientConnectionFailure(exception.InnerException);
     }
 
     #endregion // Static methods

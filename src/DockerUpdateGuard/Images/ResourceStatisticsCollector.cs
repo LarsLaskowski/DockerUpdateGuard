@@ -109,32 +109,6 @@ public class ResourceStatisticsCollector : IResourceStatisticsCollector
 
     #region Methods
 
-    /// <inheritdoc/>
-    public async Task CollectAsync(CancellationToken cancellationToken = default)
-    {
-        await _instanceDiscoveryService.SynchronizeConfiguredInstancesAsync(cancellationToken)
-                                       .ConfigureAwait(false);
-
-        var optionsByName = _optionsMonitor.CurrentValue.DockerInstances.ToDictionary(entity => entity.Name, StringComparer.OrdinalIgnoreCase);
-        var dockerInstances = await _dbContext.DockerInstances.Where(entity => entity.IsEnabled)
-                                                              .ToListAsync(cancellationToken)
-                                                              .ConfigureAwait(false);
-
-        foreach (var dockerInstance in dockerInstances)
-        {
-            if (optionsByName.TryGetValue(dockerInstance.Name, out var configuredInstance) == false
-                || configuredInstance.Enabled == false)
-            {
-                continue;
-            }
-
-            await CollectForInstanceAsync(dockerInstance, configuredInstance, cancellationToken).ConfigureAwait(false);
-        }
-
-        await _dbContext.SaveChangesAsync(cancellationToken)
-                        .ConfigureAwait(false);
-    }
-
     /// <summary>
     /// Collect resource statistics for a single Docker instance
     /// </summary>
@@ -240,4 +214,34 @@ public class ResourceStatisticsCollector : IResourceStatisticsCollector
     }
 
     #endregion // Methods
+
+    #region IResourceStatisticsCollector
+
+    /// <inheritdoc/>
+    public async Task CollectAsync(CancellationToken cancellationToken = default)
+    {
+        await _instanceDiscoveryService.SynchronizeConfiguredInstancesAsync(cancellationToken)
+                                       .ConfigureAwait(false);
+
+        var optionsByName = _optionsMonitor.CurrentValue.DockerInstances.ToDictionary(entity => entity.Name, StringComparer.OrdinalIgnoreCase);
+        var dockerInstances = await _dbContext.DockerInstances.Where(entity => entity.IsEnabled)
+                                                              .ToListAsync(cancellationToken)
+                                                              .ConfigureAwait(false);
+
+        foreach (var dockerInstance in dockerInstances)
+        {
+            if (optionsByName.TryGetValue(dockerInstance.Name, out var configuredInstance) == false
+                || configuredInstance.Enabled == false)
+            {
+                continue;
+            }
+
+            await CollectForInstanceAsync(dockerInstance, configuredInstance, cancellationToken).ConfigureAwait(false);
+        }
+
+        await _dbContext.SaveChangesAsync(cancellationToken)
+                        .ConfigureAwait(false);
+    }
+
+    #endregion // IResourceStatisticsCollector
 }

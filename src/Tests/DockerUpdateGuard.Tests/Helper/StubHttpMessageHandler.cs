@@ -41,39 +41,6 @@ internal sealed class StubHttpMessageHandler : HttpMessageHandler
 
     #endregion // Properties
 
-    #region HttpMessageHandler
-
-    /// <inheritdoc/>
-    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(request.RequestUri);
-
-        RequestUri = request.RequestUri.ToString();
-        RequestBody = request.Content is null
-                          ? string.Empty
-                          : request.Content.ReadAsStringAsync(cancellationToken).GetAwaiter().GetResult();
-
-        _requests.Add(new ObservedRequest
-                      {
-                          Method = request.Method.Method,
-                          RequestUri = request.RequestUri.ToString(),
-                          AuthorizationScheme = request.Headers.Authorization?.Scheme,
-                          AuthorizationParameter = request.Headers.Authorization?.Parameter,
-                      });
-
-        if (_responses.TryGetValue(request.RequestUri.ToString(), out var response))
-        {
-            return Task.FromResult(CloneResponse(response));
-        }
-
-        var fallbackResponse = CloneResponse(Response);
-        fallbackResponse.RequestMessage = request;
-
-        return Task.FromResult(fallbackResponse);
-    }
-
-    #endregion // HttpMessageHandler
-
     #region Methods
 
     /// <summary>
@@ -122,4 +89,37 @@ internal sealed class StubHttpMessageHandler : HttpMessageHandler
     }
 
     #endregion // Methods
+
+    #region HttpMessageHandler
+
+    /// <inheritdoc/>
+    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request.RequestUri);
+
+        RequestUri = request.RequestUri.ToString();
+        RequestBody = request.Content is null
+                          ? string.Empty
+                          : request.Content.ReadAsStringAsync(cancellationToken).GetAwaiter().GetResult();
+
+        _requests.Add(new ObservedRequest
+                      {
+                          Method = request.Method.Method,
+                          RequestUri = request.RequestUri.ToString(),
+                          AuthorizationScheme = request.Headers.Authorization?.Scheme,
+                          AuthorizationParameter = request.Headers.Authorization?.Parameter,
+                      });
+
+        if (_responses.TryGetValue(request.RequestUri.ToString(), out var response))
+        {
+            return Task.FromResult(CloneResponse(response));
+        }
+
+        var fallbackResponse = CloneResponse(Response);
+        fallbackResponse.RequestMessage = request;
+
+        return Task.FromResult(fallbackResponse);
+    }
+
+    #endregion // HttpMessageHandler
 }

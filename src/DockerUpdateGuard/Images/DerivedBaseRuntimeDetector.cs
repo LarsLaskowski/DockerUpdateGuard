@@ -14,34 +14,6 @@ public partial class DerivedBaseRuntimeDetector : IDerivedBaseRuntimeDetector
 {
     #region Methods
 
-    /// <inheritdoc/>
-    public DerivedBaseRuntimeDescriptor? Detect(DockerImageInspectData? inspectData, IReadOnlyList<DockerImageHistoryEntryData>? historyEntries)
-    {
-        var candidates = new List<RuntimeCandidate>();
-
-        CollectInspectCandidates(inspectData, candidates);
-        CollectHistoryCandidates(historyEntries, candidates);
-
-        var bestCandidate = candidates.OrderBy(candidate => candidate.HasExactVersion == false)
-                                      .ThenBy(candidate => candidate.SourcePriority)
-                                      .ThenBy(candidate => candidate.Order)
-                                      .FirstOrDefault();
-
-        if (bestCandidate is null)
-        {
-            return null;
-        }
-
-        return new DerivedBaseRuntimeDescriptor
-               {
-                   Kind = bestCandidate.Kind,
-                   RuntimeVersion = bestCandidate.Version,
-                   ChannelVersion = bestCandidate.ChannelVersion,
-                   Source = bestCandidate.Source,
-                   Evidence = bestCandidate.Evidence,
-               };
-    }
-
     /// <summary>
     /// Collect detection candidates from image inspect metadata
     /// </summary>
@@ -244,7 +216,7 @@ public partial class DerivedBaseRuntimeDetector : IDerivedBaseRuntimeDetector
         }
 
         var pattern = $@"{Regex.Escape(variableName)}[=\s:]+(?<version>\d+\.\d+\.\d+)";
-        var match = Regex.Match(value, pattern, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        var match = Regex.Match(value, pattern, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
 
         if (match.Success == false)
         {
@@ -280,7 +252,7 @@ public partial class DerivedBaseRuntimeDetector : IDerivedBaseRuntimeDetector
 
         var versionText = match.Value;
 
-        if (Version.TryParse(versionText, out var parsedVersion) == false || parsedVersion is null)
+        if (Version.TryParse(versionText, out var parsedVersion) == false)
         {
             return false;
         }
@@ -305,4 +277,36 @@ public partial class DerivedBaseRuntimeDetector : IDerivedBaseRuntimeDetector
     private static partial Regex HistoryRepositoryVersionRegex();
 
     #endregion // Methods
+
+    #region IDerivedBaseRuntimeDetector
+
+    /// <inheritdoc/>
+    public DerivedBaseRuntimeDescriptor? Detect(DockerImageInspectData? inspectData, IReadOnlyList<DockerImageHistoryEntryData>? historyEntries)
+    {
+        var candidates = new List<RuntimeCandidate>();
+
+        CollectInspectCandidates(inspectData, candidates);
+        CollectHistoryCandidates(historyEntries, candidates);
+
+        var bestCandidate = candidates.OrderBy(candidate => candidate.HasExactVersion == false)
+                                      .ThenBy(candidate => candidate.SourcePriority)
+                                      .ThenBy(candidate => candidate.Order)
+                                      .FirstOrDefault();
+
+        if (bestCandidate is null)
+        {
+            return null;
+        }
+
+        return new DerivedBaseRuntimeDescriptor
+               {
+                   Kind = bestCandidate.Kind,
+                   RuntimeVersion = bestCandidate.Version,
+                   ChannelVersion = bestCandidate.ChannelVersion,
+                   Source = bestCandidate.Source,
+                   Evidence = bestCandidate.Evidence,
+               };
+    }
+
+    #endregion // IDerivedBaseRuntimeDetector
 }

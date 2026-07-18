@@ -73,29 +73,7 @@ public sealed partial class MainLayout : LayoutComponentBase, IDisposable
 
     #endregion // Properties
 
-    #region ComponentBase
-
-    /// <inheritdoc/>
-    protected override async Task OnInitializedAsync()
-    {
-        NavigationManager.LocationChanged += OnLocationChanged;
-        DashboardRefreshState.Changed += OnDashboardRefreshRequested;
-
-        await LoadSummaryAsync().ConfigureAwait(false);
-    }
-
-    #endregion // ComponentBase
-
     #region Methods
-
-    /// <summary>
-    /// Dispose the component subscriptions
-    /// </summary>
-    public void Dispose()
-    {
-        NavigationManager.LocationChanged -= OnLocationChanged;
-        DashboardRefreshState.Changed -= OnDashboardRefreshRequested;
-    }
 
     /// <summary>
     /// Load the current dashboard summary
@@ -172,4 +150,28 @@ public sealed partial class MainLayout : LayoutComponentBase, IDisposable
     }
 
     #endregion // Methods
+
+    #region ComponentBase
+
+    /// <inheritdoc/>
+    protected override async Task OnInitializedAsync()
+    {
+        NavigationManager.LocationChanged += OnLocationChanged;
+        DashboardRefreshState.Changed += OnDashboardRefreshRequested;
+
+        await LoadSummaryAsync().ConfigureAwait(false);
+    }
+
+    #endregion // ComponentBase
+
+    #region IDisposable
+
+    /// <inheritdoc/>
+    public void Dispose()
+    {
+        NavigationManager.LocationChanged -= OnLocationChanged;
+        DashboardRefreshState.Changed -= OnDashboardRefreshRequested;
+    }
+
+    #endregion // IDisposable
 }

@@ -45,12 +45,12 @@ public class RuntimeContainersTests
         var path = InvokeBuildSparklinePath([10d, 20d, 15d, 30d]);
 
         Assert.IsFalse(string.IsNullOrWhiteSpace(path), "A sparkline with multiple samples must produce SVG path data");
-        StringAssert.StartsWith(path,
-                                "M ",
-                                "A sparkline path must start with an SVG move command");
-        StringAssert.Contains(path,
-                              " C ",
-                              "A sparkline with multiple samples must use cubic Bezier segments for smoothing");
+        Assert.StartsWith("M ",
+                          path,
+                          "A sparkline path must start with an SVG move command");
+        Assert.Contains(" C ",
+                        path,
+                        "A sparkline with multiple samples must use cubic Bezier segments for smoothing");
     }
 
     /// <summary>

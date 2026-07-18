@@ -10,7 +10,7 @@ namespace DockerUpdateGuard.Data.Configurations;
 /// </summary>
 public class ObservedImageConfiguration : IEntityTypeConfiguration<ObservedImage>
 {
-    #region Methods
+    #region IEntityTypeConfiguration
 
     /// <inheritdoc/>
     public void Configure(EntityTypeBuilder<ObservedImage> builder)
@@ -45,5 +45,5 @@ public class ObservedImageConfiguration : IEntityTypeConfiguration<ObservedImage
                .OnDelete(DeleteBehavior.Restrict);
     }
 
-    #endregion // Methods
+    #endregion // IEntityTypeConfiguration
 }

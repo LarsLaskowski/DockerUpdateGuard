@@ -13,22 +13,27 @@ public static class DockerUpdateGuardTelemetry
     /// <summary>
     /// Default service name for telemetry resources
     /// </summary>
-    public const string DefaultServiceName = "DockerUpdateGuard";
+    public const string DefaultServiceName = ProductName;
 
     /// <summary>
     /// Activity source name for custom traces
     /// </summary>
-    public const string ActivitySourceName = "DockerUpdateGuard";
+    public const string ActivitySourceName = ProductName;
 
     /// <summary>
     /// Meter name for custom metrics
     /// </summary>
-    public const string MeterName = "DockerUpdateGuard";
+    public const string MeterName = ProductName;
 
     /// <summary>
     /// Logger category prefix for shared telemetry logging
     /// </summary>
-    public const string LoggerCategoryName = "DockerUpdateGuard";
+    public const string LoggerCategoryName = ProductName;
+
+    /// <summary>
+    /// Product name the telemetry identifiers are derived from
+    /// </summary>
+    private const string ProductName = "DockerUpdateGuard";
 
     #endregion // Const fields
 

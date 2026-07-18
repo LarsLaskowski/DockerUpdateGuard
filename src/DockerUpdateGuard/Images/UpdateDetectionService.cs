@@ -22,172 +22,15 @@ public class UpdateDetectionService : IUpdateDetectionService
 
     #region Methods
 
-    /// <inheritdoc/>
-    public UpdateEvaluationResult Evaluate(ImageReference currentImage, IReadOnlyList<DockerHubTagData> availableTags)
-    {
-        ArgumentNullException.ThrowIfNull(currentImage);
-        ArgumentNullException.ThrowIfNull(availableTags);
-
-        if (availableTags.Count == 0)
-        {
-            return new UpdateEvaluationResult
-                   {
-                       Status = UpdateEvaluationStatus.Unknown,
-                       Summary = "No registry tag information is available",
-                   };
-        }
-
-        var orderedTags = availableTags.Where(tag => string.IsNullOrWhiteSpace(tag.Tag) == false)
-                                       .GroupBy(tag => tag.Tag, StringComparer.OrdinalIgnoreCase)
-                                       .Select(group => group.OrderByDescending(item => item.PublishedAtUtc)
-                                                             .First())
-                                       .OrderByDescending(tag => tag.PublishedAtUtc)
-                                       .ToList();
-        var currentTagData = orderedTags.FirstOrDefault(tag => string.Equals(tag.Tag,
-                                                                             currentImage.Tag,
-                                                                             StringComparison.OrdinalIgnoreCase));
-
-        if (string.Equals(currentImage.Tag, "latest", StringComparison.OrdinalIgnoreCase)
-            && CurrentDigestMatches(currentImage.Digest, currentTagData?.Digest))
-        {
-            return new UpdateEvaluationResult
-                   {
-                       Status = UpdateEvaluationStatus.UpToDate,
-                       Summary = "The running image already matches the current 'latest' tag",
-                   };
-        }
-
-        if (TryParseVersion(currentImage.Tag, out var currentVersion))
-        {
-            var versionCandidates = GetHigherVersionCandidates(orderedTags,
-                                                               currentImage.Tag,
-                                                               currentVersion,
-                                                               currentTagData?.PublishedAtUtc);
-
-            if (versionCandidates.Count > 0)
-            {
-                return CreateSemanticVersionUpdateResult(versionCandidates);
-            }
-
-            if (TryCreateDigestUpdateResult(currentImage,
-                                            currentTagData,
-                                            orderedTags,
-                                            out var digestUpdateResult))
-            {
-                return digestUpdateResult;
-            }
-
-            return new UpdateEvaluationResult
-                   {
-                       Status = UpdateEvaluationStatus.UpToDate,
-                       Summary = "No newer semantic version was found",
-                   };
-        }
-
-        if (TryParseYearPrefixedVersion(currentImage.Tag, out var currentYear, out _))
-        {
-            var versionCandidates = GetHigherYearPrefixedCandidates(orderedTags,
-                                                                    currentImage.Tag,
-                                                                    currentYear,
-                                                                    currentTagData?.PublishedAtUtc);
-
-            if (versionCandidates.Count > 0)
-            {
-                return CreateYearPrefixedUpdateResult(versionCandidates);
-            }
-
-            if (TryCreateDigestUpdateResult(currentImage,
-                                            currentTagData,
-                                            orderedTags,
-                                            out var digestUpdateResult))
-            {
-                return digestUpdateResult;
-            }
-
-            return new UpdateEvaluationResult
-                   {
-                       Status = UpdateEvaluationStatus.UpToDate,
-                       Summary = "No newer year-based version was found",
-                   };
-        }
-
-        if (TryCreateDigestUpdateResult(currentImage,
-                                        currentTagData,
-                                        orderedTags,
-                                        out var currentTagDigestUpdate))
-        {
-            return currentTagDigestUpdate;
-        }
-
-        if (TryResolveCurrentVersionFromDigest(currentImage,
-                                               orderedTags,
-                                               out var resolvedVersionTagData,
-                                               out var resolvedVersion))
-        {
-            var versionCandidates = GetHigherVersionCandidates(orderedTags,
-                                                               resolvedVersionTagData!.Tag,
-                                                               resolvedVersion,
-                                                               resolvedVersionTagData?.PublishedAtUtc ?? currentTagData?.PublishedAtUtc);
-
-            if (versionCandidates.Count > 0)
-            {
-                return CreateSemanticVersionUpdateResult(versionCandidates,
-                                                         CreateResolvedCurrentVersionCandidate(resolvedVersionTagData));
-            }
-
-            return new UpdateEvaluationResult
-                   {
-                       Status = UpdateEvaluationStatus.UpToDate,
-                       Summary = $"The running digest matches version tag '{resolvedVersionTagData!.Tag}'",
-                       Details = "No newer semantic version was found",
-                   };
-        }
-
-        var reviewCandidates = orderedTags.Where(tag => string.Equals(tag.Tag,
-                                                                      currentImage.Tag,
-                                                                      StringComparison.OrdinalIgnoreCase) == false
-                                                        && string.IsNullOrWhiteSpace(tag.Digest) == false
-                                                        && IsCandidatePublishedAfterBaseline(tag.PublishedAtUtc, currentTagData?.PublishedAtUtc))
-                                          .Take(MaxCandidateCount)
-                                          .Select(tag => new UpdateCandidateData
-                                                         {
-                                                             Tag = tag.Tag,
-                                                             Digest = tag.Digest,
-                                                             PublishedAtUtc = tag.PublishedAtUtc,
-                                                         })
-                                          .ToList();
-
-        if (reviewCandidates.Count > 0)
-        {
-            return new UpdateEvaluationResult
-                   {
-                       Status = UpdateEvaluationStatus.NeedsReview,
-                       Summary = "Alternative tags are available and require manual review",
-                       Details = currentTagData?.PublishedAtUtc is null
-                                     ? "The current tag is not semantic, so an automatic successor cannot be selected reliably"
-                                     : $"The current tag was last published at {currentTagData.PublishedAtUtc:O}",
-                       Candidates = reviewCandidates,
-                   };
-        }
-
-        return new UpdateEvaluationResult
-               {
-                   Status = UpdateEvaluationStatus.UpToDate,
-                   Summary = "No newer tags were identified",
-               };
-    }
-
     /// <summary>
     /// Get higher semantic version candidates than the current version
     /// </summary>
     /// <param name="orderedTags">Ordered available tags</param>
     /// <param name="currentTag">Current semantic tag or resolved exact tag</param>
-    /// <param name="currentVersion">Current semantic version</param>
     /// <param name="currentPublishedAtUtc">Current tag publication timestamp</param>
     /// <returns>Higher semantic version candidates</returns>
     private static List<(DockerHubTagData Tag, Version Version)> GetHigherVersionCandidates(IReadOnlyList<DockerHubTagData> orderedTags,
                                                                                             string currentTag,
-                                                                                            Version currentVersion,
                                                                                             DateTimeOffset? currentPublishedAtUtc)
     {
         var currentIsPreRelease = VersionTagResolutionHelper.IsPreReleaseVersionTag(currentTag);
@@ -374,6 +217,43 @@ public class UpdateDetectionService : IUpdateDetectionService
     }
 
     /// <summary>
+    /// Evaluate an update for a tag whose running digest matches a concrete version tag
+    /// </summary>
+    /// <param name="currentImage">Current image reference</param>
+    /// <param name="currentTagData">Tag metadata of the current tag</param>
+    /// <param name="orderedTags">Available tags ordered by publication date</param>
+    /// <returns>Evaluation result, or null when the running digest cannot be mapped to a version tag</returns>
+    private static UpdateEvaluationResult? EvaluateResolvedDigestUpdate(ImageReference currentImage,
+                                                                        DockerHubTagData? currentTagData,
+                                                                        IReadOnlyList<DockerHubTagData> orderedTags)
+    {
+        if (TryResolveCurrentVersionFromDigest(currentImage,
+                                               orderedTags,
+                                               out var resolvedVersionTagData,
+                                               out _) == false)
+        {
+            return null;
+        }
+
+        var versionCandidates = GetHigherVersionCandidates(orderedTags,
+                                                           resolvedVersionTagData!.Tag,
+                                                           resolvedVersionTagData.PublishedAtUtc ?? currentTagData?.PublishedAtUtc);
+
+        if (versionCandidates.Count > 0)
+        {
+            return CreateSemanticVersionUpdateResult(versionCandidates,
+                                                     CreateResolvedCurrentVersionCandidate(resolvedVersionTagData));
+        }
+
+        return new UpdateEvaluationResult
+               {
+                   Status = UpdateEvaluationStatus.UpToDate,
+                   Summary = $"The running digest matches version tag '{resolvedVersionTagData!.Tag}'",
+                   Details = "No newer semantic version was found",
+               };
+    }
+
+    /// <summary>
     /// Resolve the current semantic version from the running digest
     /// </summary>
     /// <param name="currentImage">Current image reference</param>
@@ -494,5 +374,188 @@ public class UpdateDetectionService : IUpdateDetectionService
                || candidatePublishedAtUtc > baselinePublishedAtUtc;
     }
 
+    /// <summary>
+    /// Evaluate an update for a semantic version tag
+    /// </summary>
+    /// <param name="currentImage">Current image reference</param>
+    /// <param name="currentTagData">Tag metadata of the current tag</param>
+    /// <param name="orderedTags">Available tags ordered by publication date</param>
+    /// <returns>Evaluation result, or null when the current tag is not a semantic version</returns>
+    private static UpdateEvaluationResult? EvaluateSemanticVersionUpdate(ImageReference currentImage,
+                                                                         DockerHubTagData? currentTagData,
+                                                                         IReadOnlyList<DockerHubTagData> orderedTags)
+    {
+        if (TryParseVersion(currentImage.Tag, out _) == false)
+        {
+            return null;
+        }
+
+        var versionCandidates = GetHigherVersionCandidates(orderedTags,
+                                                           currentImage.Tag,
+                                                           currentTagData?.PublishedAtUtc);
+
+        if (versionCandidates.Count > 0)
+        {
+            return CreateSemanticVersionUpdateResult(versionCandidates);
+        }
+
+        if (TryCreateDigestUpdateResult(currentImage,
+                                        currentTagData,
+                                        orderedTags,
+                                        out var digestUpdateResult))
+        {
+            return digestUpdateResult;
+        }
+
+        return new UpdateEvaluationResult
+               {
+                   Status = UpdateEvaluationStatus.UpToDate,
+                   Summary = "No newer semantic version was found",
+               };
+    }
+
+    /// <summary>
+    /// Evaluate an update for a year-prefixed version tag
+    /// </summary>
+    /// <param name="currentImage">Current image reference</param>
+    /// <param name="currentTagData">Tag metadata of the current tag</param>
+    /// <param name="orderedTags">Available tags ordered by publication date</param>
+    /// <returns>Evaluation result, or null when the current tag is not a year-prefixed version</returns>
+    private static UpdateEvaluationResult? EvaluateYearPrefixedUpdate(ImageReference currentImage,
+                                                                      DockerHubTagData? currentTagData,
+                                                                      IReadOnlyList<DockerHubTagData> orderedTags)
+    {
+        if (TryParseYearPrefixedVersion(currentImage.Tag, out var currentYear, out _) == false)
+        {
+            return null;
+        }
+
+        var versionCandidates = GetHigherYearPrefixedCandidates(orderedTags,
+                                                                currentImage.Tag,
+                                                                currentYear,
+                                                                currentTagData?.PublishedAtUtc);
+
+        if (versionCandidates.Count > 0)
+        {
+            return CreateYearPrefixedUpdateResult(versionCandidates);
+        }
+
+        if (TryCreateDigestUpdateResult(currentImage,
+                                        currentTagData,
+                                        orderedTags,
+                                        out var digestUpdateResult))
+        {
+            return digestUpdateResult;
+        }
+
+        return new UpdateEvaluationResult
+               {
+                   Status = UpdateEvaluationStatus.UpToDate,
+                   Summary = "No newer year-based version was found",
+               };
+    }
+
     #endregion // Methods
+
+    #region IUpdateDetectionService
+
+    /// <inheritdoc/>
+    public UpdateEvaluationResult Evaluate(ImageReference currentImage, IReadOnlyList<DockerHubTagData> availableTags)
+    {
+        ArgumentNullException.ThrowIfNull(currentImage);
+        ArgumentNullException.ThrowIfNull(availableTags);
+
+        if (availableTags.Count == 0)
+        {
+            return new UpdateEvaluationResult
+                   {
+                       Status = UpdateEvaluationStatus.Unknown,
+                       Summary = "No registry tag information is available",
+                   };
+        }
+
+        var orderedTags = availableTags.Where(tag => string.IsNullOrWhiteSpace(tag.Tag) == false)
+                                       .GroupBy(tag => tag.Tag, StringComparer.OrdinalIgnoreCase)
+                                       .Select(group => group.OrderByDescending(item => item.PublishedAtUtc)
+                                                             .First())
+                                       .OrderByDescending(tag => tag.PublishedAtUtc)
+                                       .ToList();
+        var currentTagData = orderedTags.FirstOrDefault(tag => string.Equals(tag.Tag,
+                                                                             currentImage.Tag,
+                                                                             StringComparison.OrdinalIgnoreCase));
+
+        if (string.Equals(currentImage.Tag, "latest", StringComparison.OrdinalIgnoreCase)
+            && CurrentDigestMatches(currentImage.Digest, currentTagData?.Digest))
+        {
+            return new UpdateEvaluationResult
+                   {
+                       Status = UpdateEvaluationStatus.UpToDate,
+                       Summary = "The running image already matches the current 'latest' tag",
+                   };
+        }
+
+        var semanticVersionResult = EvaluateSemanticVersionUpdate(currentImage, currentTagData, orderedTags);
+
+        if (semanticVersionResult is not null)
+        {
+            return semanticVersionResult;
+        }
+
+        var yearPrefixedResult = EvaluateYearPrefixedUpdate(currentImage, currentTagData, orderedTags);
+
+        if (yearPrefixedResult is not null)
+        {
+            return yearPrefixedResult;
+        }
+
+        if (TryCreateDigestUpdateResult(currentImage,
+                                        currentTagData,
+                                        orderedTags,
+                                        out var currentTagDigestUpdate))
+        {
+            return currentTagDigestUpdate;
+        }
+
+        var resolvedDigestResult = EvaluateResolvedDigestUpdate(currentImage, currentTagData, orderedTags);
+
+        if (resolvedDigestResult is not null)
+        {
+            return resolvedDigestResult;
+        }
+
+        var reviewCandidates = orderedTags.Where(tag => string.Equals(tag.Tag,
+                                                                      currentImage.Tag,
+                                                                      StringComparison.OrdinalIgnoreCase) == false
+                                                        && string.IsNullOrWhiteSpace(tag.Digest) == false
+                                                        && IsCandidatePublishedAfterBaseline(tag.PublishedAtUtc, currentTagData?.PublishedAtUtc))
+                                          .Take(MaxCandidateCount)
+                                          .Select(tag => new UpdateCandidateData
+                                                         {
+                                                             Tag = tag.Tag,
+                                                             Digest = tag.Digest,
+                                                             PublishedAtUtc = tag.PublishedAtUtc,
+                                                         })
+                                          .ToList();
+
+        if (reviewCandidates.Count > 0)
+        {
+            return new UpdateEvaluationResult
+                   {
+                       Status = UpdateEvaluationStatus.NeedsReview,
+                       Summary = "Alternative tags are available and require manual review",
+                       Details = currentTagData?.PublishedAtUtc is null
+                                     ? "The current tag is not semantic, so an automatic successor cannot be selected reliably"
+                                     : $"The current tag was last published at {currentTagData.PublishedAtUtc:O}",
+                       Candidates = reviewCandidates,
+                   };
+        }
+
+        return new UpdateEvaluationResult
+               {
+                   Status = UpdateEvaluationStatus.UpToDate,
+                   Summary = "No newer tags were identified",
+               };
+    }
+
+    #endregion // IUpdateDetectionService
 }

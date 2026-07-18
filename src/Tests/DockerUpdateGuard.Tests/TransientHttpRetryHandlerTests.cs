@@ -266,9 +266,7 @@ public partial class TransientHttpRetryHandlerTests
 
         using var response = await SendThroughRetryHandlerAsync(2, probe, capturedDelays).ConfigureAwait(false);
 
-        CollectionAssert.AreEqual(new[] { TimeSpan.FromMilliseconds(500), TimeSpan.FromMilliseconds(1000) },
-                                  capturedDelays,
-                                  "The retry handler must double the backoff delay before each retry");
+        Assert.AreSequenceEqual([TimeSpan.FromMilliseconds(500), TimeSpan.FromMilliseconds(1000)], capturedDelays, "The retry handler must double the backoff delay before each retry");
     }
 
     /// <summary>
@@ -358,9 +356,7 @@ public partial class TransientHttpRetryHandlerTests
 
         using var response = await SendThroughRetryHandlerAsync(1, probe, capturedDelays).ConfigureAwait(false);
 
-        CollectionAssert.AreEqual(new[] { TimeSpan.FromMilliseconds(500) },
-                                  capturedDelays,
-                                  "The retry handler must fall back to exponential backoff for a past Retry-After date");
+        Assert.AreSequenceEqual([TimeSpan.FromMilliseconds(500)], capturedDelays, "The retry handler must fall back to exponential backoff for a past Retry-After date");
     }
 
     /// <summary>
@@ -398,9 +394,7 @@ public partial class TransientHttpRetryHandlerTests
 
         using var response = await SendThroughRetryHandlerAsync(1, probe, capturedDelays, nextJitterMilliseconds: _ => 50).ConfigureAwait(false);
 
-        CollectionAssert.AreEqual(new[] { TimeSpan.FromMilliseconds(550) },
-                                  capturedDelays,
-                                  "The retry handler must add the jitter value on top of the exponential backoff");
+        Assert.AreSequenceEqual([TimeSpan.FromMilliseconds(550)], capturedDelays, "The retry handler must add the jitter value on top of the exponential backoff");
     }
 
     /// <summary>

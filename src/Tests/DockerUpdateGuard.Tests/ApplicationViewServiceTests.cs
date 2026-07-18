@@ -340,9 +340,7 @@ public class ApplicationViewServiceTests
             Assert.AreEqual(2,
                             baseImages[0].ObservedImageCount,
                             "The base image must report the number of observed images that depend on it");
-            CollectionAssert.AreEquivalent(new[] { "docker.io/company/app-a:1.0.0@sha256:app-a", "docker.io/company/app-b:2.0.0@sha256:app-b" },
-                                           baseImages[0].ParentImageReferences.ToArray(),
-                                           "The base image must list the parent images that use it");
+            Assert.AreSequenceEqual(new[] { "docker.io/company/app-a:1.0.0@sha256:app-a", "docker.io/company/app-b:2.0.0@sha256:app-b" }, baseImages[0].ParentImageReferences.ToArray(), Microsoft.VisualStudio.TestTools.UnitTesting.SequenceOrder.InAnyOrder, "The base image must list the parent images that use it");
         }
     }
 
@@ -750,10 +748,10 @@ public class ApplicationViewServiceTests
                                              .ConfigureAwait(false);
 
             Assert.AreEqual(ownObservedImage.Id,
-                            observedImages.First().Id,
+                            observedImages[0].Id,
                             "Own images must be prioritized ahead of manual images in the observed image list");
             Assert.AreEqual(1,
-                            observedImages.First().LinkedRuntimeContainerCount,
+                            observedImages[0].LinkedRuntimeContainerCount,
                             "Own images must show the number of linked runtime containers by repository");
             Assert.IsNotNull(observedDetail, "The own observed image detail must be returned");
             Assert.HasCount(1,

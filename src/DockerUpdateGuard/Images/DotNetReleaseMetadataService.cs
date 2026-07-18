@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
@@ -86,7 +87,7 @@ public partial class DotNetReleaseMetadataService : IDotNetReleaseMetadataServic
     /// <returns>Parsed timestamp</returns>
     private static DateTimeOffset? TryParseTimestamp(string? value)
     {
-        return DateTimeOffset.TryParse(value, out var timestamp) ? timestamp : null;
+        return DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture, out var timestamp) ? timestamp : null;
     }
 
     /// <summary>
@@ -111,7 +112,7 @@ public partial class DotNetReleaseMetadataService : IDotNetReleaseMetadataServic
             return false;
         }
 
-        if (Version.TryParse(match.Value, out var parsedVersion) == false || parsedVersion is null)
+        if (Version.TryParse(match.Value, out var parsedVersion) == false)
         {
             return false;
         }
@@ -131,35 +132,6 @@ public partial class DotNetReleaseMetadataService : IDotNetReleaseMetadataServic
     #endregion // Static methods
 
     #region Methods
-
-    /// <inheritdoc/>
-    public async Task<ExternalOperationResult<DotNetChannelReleaseData>> GetChannelReleaseAsync(string channelVersion, CancellationToken cancellationToken = default)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(channelVersion);
-
-        if (_channelCache.TryGetValue(channelVersion, out var cachedChannelData))
-        {
-            return ExternalOperationResult<DotNetChannelReleaseData>.Succeeded(cachedChannelData);
-        }
-
-        var indexResult = await LoadIndexAsync(cancellationToken).ConfigureAwait(false);
-
-        if (indexResult.Status != ExternalOperationStatus.Succeeded)
-        {
-            return indexResult.Status switch
-                   {
-                       ExternalOperationStatus.NotConfigured => ExternalOperationResult<DotNetChannelReleaseData>.NotConfigured(indexResult.Message ?? "The .NET release metadata source is not configured"),
-                       ExternalOperationStatus.Unsupported => ExternalOperationResult<DotNetChannelReleaseData>.Unsupported(indexResult.Message ?? "The .NET release metadata source is unsupported"),
-                       ExternalOperationStatus.NotFound => ExternalOperationResult<DotNetChannelReleaseData>.NotFound(indexResult.Message ?? "The .NET release metadata source could not be found"),
-                       ExternalOperationStatus.Unknown => ExternalOperationResult<DotNetChannelReleaseData>.Unknown(indexResult.Message ?? "The .NET release metadata source returned an unknown result"),
-                       _ => ExternalOperationResult<DotNetChannelReleaseData>.Failed(indexResult.Message ?? "Loading .NET release metadata failed"),
-                   };
-        }
-
-        return _channelCache.TryGetValue(channelVersion, out var channelData)
-                   ? ExternalOperationResult<DotNetChannelReleaseData>.Succeeded(channelData)
-                   : ExternalOperationResult<DotNetChannelReleaseData>.NotFound($"No .NET release metadata is available for channel '{channelVersion}'");
-    }
 
     /// <summary>
     /// Load the releases index into the channel cache
@@ -238,4 +210,37 @@ public partial class DotNetReleaseMetadataService : IDotNetReleaseMetadataServic
     }
 
     #endregion // Methods
+
+    #region IDotNetReleaseMetadataService
+
+    /// <inheritdoc/>
+    public async Task<ExternalOperationResult<DotNetChannelReleaseData>> GetChannelReleaseAsync(string channelVersion, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(channelVersion);
+
+        if (_channelCache.TryGetValue(channelVersion, out var cachedChannelData))
+        {
+            return ExternalOperationResult<DotNetChannelReleaseData>.Succeeded(cachedChannelData);
+        }
+
+        var indexResult = await LoadIndexAsync(cancellationToken).ConfigureAwait(false);
+
+        if (indexResult.Status != ExternalOperationStatus.Succeeded)
+        {
+            return indexResult.Status switch
+                   {
+                       ExternalOperationStatus.NotConfigured => ExternalOperationResult<DotNetChannelReleaseData>.NotConfigured(indexResult.Message ?? "The .NET release metadata source is not configured"),
+                       ExternalOperationStatus.Unsupported => ExternalOperationResult<DotNetChannelReleaseData>.Unsupported(indexResult.Message ?? "The .NET release metadata source is unsupported"),
+                       ExternalOperationStatus.NotFound => ExternalOperationResult<DotNetChannelReleaseData>.NotFound(indexResult.Message ?? "The .NET release metadata source could not be found"),
+                       ExternalOperationStatus.Unknown => ExternalOperationResult<DotNetChannelReleaseData>.Unknown(indexResult.Message ?? "The .NET release metadata source returned an unknown result"),
+                       _ => ExternalOperationResult<DotNetChannelReleaseData>.Failed(indexResult.Message ?? "Loading .NET release metadata failed"),
+                   };
+        }
+
+        return _channelCache.TryGetValue(channelVersion, out var channelData)
+                   ? ExternalOperationResult<DotNetChannelReleaseData>.Succeeded(channelData)
+                   : ExternalOperationResult<DotNetChannelReleaseData>.NotFound($"No .NET release metadata is available for channel '{channelVersion}'");
+    }
+
+    #endregion // IDotNetReleaseMetadataService
 }

@@ -53,6 +53,36 @@ public abstract class ScheduledBackgroundService : BackgroundService
     /// <returns>Task</returns>
     protected abstract Task ExecuteCoreAsync(CancellationToken stoppingToken);
 
+    /// <summary>
+    /// Execute the background operation with exception logging
+    /// </summary>
+    /// <param name="stoppingToken">Cancellation token</param>
+    /// <returns>Task</returns>
+    private async Task ExecuteSafelyAsync(CancellationToken stoppingToken)
+    {
+        var backgroundServiceName = GetType().Name;
+        var stopwatch = Stopwatch.StartNew();
+
+        _logger.BackgroundServiceExecutionStarted(backgroundServiceName);
+
+        try
+        {
+            await ExecuteCoreAsync(stoppingToken).ConfigureAwait(false);
+
+            _logger.BackgroundServiceExecutionCompleted(backgroundServiceName, stopwatch.ElapsedMilliseconds);
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            // Expected during host shutdown, the run is neither completed nor failed
+        }
+        catch (Exception exception)
+        {
+            _logger.BackgroundServiceExecutionFailed(exception,
+                                                     backgroundServiceName,
+                                                     stopwatch.ElapsedMilliseconds);
+        }
+    }
+
     #endregion // Methods
 
     #region BackgroundService
@@ -90,37 +120,4 @@ public abstract class ScheduledBackgroundService : BackgroundService
     }
 
     #endregion // BackgroundService
-
-    #region Methods
-
-    /// <summary>
-    /// Execute the background operation with exception logging
-    /// </summary>
-    /// <param name="stoppingToken">Cancellation token</param>
-    /// <returns>Task</returns>
-    private async Task ExecuteSafelyAsync(CancellationToken stoppingToken)
-    {
-        var backgroundServiceName = GetType().Name;
-        var stopwatch = Stopwatch.StartNew();
-
-        _logger.BackgroundServiceExecutionStarted(backgroundServiceName);
-
-        try
-        {
-            await ExecuteCoreAsync(stoppingToken).ConfigureAwait(false);
-
-            _logger.BackgroundServiceExecutionCompleted(backgroundServiceName, stopwatch.ElapsedMilliseconds);
-        }
-        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-        {
-        }
-        catch (Exception exception)
-        {
-            _logger.BackgroundServiceExecutionFailed(exception,
-                                                     backgroundServiceName,
-                                                     stopwatch.ElapsedMilliseconds);
-        }
-    }
-
-    #endregion // Methods
 }

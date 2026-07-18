@@ -32,7 +32,7 @@ public class DockerHubBaseImageResolver : IBaseImageResolver
 
     #endregion // Constructors
 
-    #region Methods
+    #region IBaseImageResolver
 
     /// <inheritdoc/>
     public Task<ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>> ResolveAsync(ImageReference imageReference, CancellationToken cancellationToken = default)
@@ -40,5 +40,5 @@ public class DockerHubBaseImageResolver : IBaseImageResolver
         return _dockerHubClient.ResolveBaseImagesAsync(imageReference, cancellationToken);
     }
 
-    #endregion // Methods
+    #endregion // IBaseImageResolver
 }

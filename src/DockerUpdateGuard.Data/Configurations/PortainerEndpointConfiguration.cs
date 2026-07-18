@@ -10,7 +10,7 @@ namespace DockerUpdateGuard.Data.Configurations;
 /// </summary>
 public class PortainerEndpointConfiguration : IEntityTypeConfiguration<PortainerEndpoint>
 {
-    #region Methods
+    #region IEntityTypeConfiguration
 
     /// <inheritdoc/>
     public void Configure(EntityTypeBuilder<PortainerEndpoint> builder)
@@ -47,5 +47,5 @@ public class PortainerEndpointConfiguration : IEntityTypeConfiguration<Portainer
                .OnDelete(DeleteBehavior.Cascade);
     }
 
-    #endregion // Methods
+    #endregion // IEntityTypeConfiguration
 }

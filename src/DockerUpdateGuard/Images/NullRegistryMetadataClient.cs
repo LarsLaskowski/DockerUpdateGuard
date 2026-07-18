@@ -10,16 +10,16 @@ namespace DockerUpdateGuard.Images;
 /// </summary>
 internal sealed class NullRegistryMetadataClient : IRegistryMetadataClient
 {
-    #region Properties
+    #region Fields
 
     /// <summary>
     /// Singleton instance
     /// </summary>
     internal static readonly NullRegistryMetadataClient Instance = new();
 
-    #endregion // Properties
+    #endregion // Fields
 
-    #region Methods
+    #region IRegistryMetadataClient
 
     /// <inheritdoc/>
     public bool CanHandle(string registry)
@@ -59,5 +59,5 @@ internal sealed class NullRegistryMetadataClient : IRegistryMetadataClient
         throw new NotSupportedException();
     }
 
-    #endregion // Methods
+    #endregion // IRegistryMetadataClient
 }

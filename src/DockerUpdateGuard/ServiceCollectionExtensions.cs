@@ -22,6 +22,15 @@ namespace DockerUpdateGuard;
 /// </summary>
 public static class ServiceCollectionExtensions
 {
+    #region Const fields
+
+    /// <summary>
+    /// User agent sent with all outbound registry and metadata requests
+    /// </summary>
+    private const string OutboundUserAgent = "DockerUpdateGuard/1.0";
+
+    #endregion // Const fields
+
     #region Methods
 
     /// <summary>
@@ -64,27 +73,27 @@ public static class ServiceCollectionExtensions
                                                 {
                                                     client.BaseAddress = DockerHubClient.GetBaseUri(applicationOptions.DockerHub);
                                                     client.Timeout = TimeSpan.FromSeconds(applicationOptions.DockerHub.RequestTimeoutSeconds);
-                                                    client.DefaultRequestHeaders.UserAgent.ParseAdd("DockerUpdateGuard/1.0");
+                                                    client.DefaultRequestHeaders.UserAgent.ParseAdd(OutboundUserAgent);
                                                 })
                 .AddHttpMessageHandler<TransientHttpRetryHandler>();
         services.AddHttpClient<OciRegistryClient>(client =>
                                                   {
                                                       client.Timeout = TimeSpan.FromSeconds(applicationOptions.DockerHub.RequestTimeoutSeconds);
-                                                      client.DefaultRequestHeaders.UserAgent.ParseAdd("DockerUpdateGuard/1.0");
+                                                      client.DefaultRequestHeaders.UserAgent.ParseAdd(OutboundUserAgent);
                                                   })
                 .AddHttpMessageHandler<TransientHttpRetryHandler>();
         services.AddHttpClient<DotNetReleaseMetadataService>(client =>
                                                              {
-                                                                 client.BaseAddress = new Uri("https://dotnetcli.blob.core.windows.net/dotnet/release-metadata/");
+                                                                 client.BaseAddress = new Uri(applicationOptions.ReleaseMetadata.DotNetBaseUrl);
                                                                  client.Timeout = TimeSpan.FromSeconds(applicationOptions.DockerHub.RequestTimeoutSeconds);
-                                                                 client.DefaultRequestHeaders.UserAgent.ParseAdd("DockerUpdateGuard/1.0");
+                                                                 client.DefaultRequestHeaders.UserAgent.ParseAdd(OutboundUserAgent);
                                                              })
                 .AddHttpMessageHandler<TransientHttpRetryHandler>();
         services.AddHttpClient<NginxReleaseMetadataService>(client =>
                                                             {
-                                                                client.BaseAddress = new Uri("https://nginx.org/");
+                                                                client.BaseAddress = new Uri(applicationOptions.ReleaseMetadata.NginxBaseUrl);
                                                                 client.Timeout = TimeSpan.FromSeconds(applicationOptions.DockerHub.RequestTimeoutSeconds);
-                                                                client.DefaultRequestHeaders.UserAgent.ParseAdd("DockerUpdateGuard/1.0");
+                                                                client.DefaultRequestHeaders.UserAgent.ParseAdd(OutboundUserAgent);
                                                             })
                 .AddHttpMessageHandler<TransientHttpRetryHandler>();
         services.AddHttpClient(PortainerClient.HttpClientName)

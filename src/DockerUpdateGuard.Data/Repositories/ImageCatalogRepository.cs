@@ -33,6 +33,64 @@ public class ImageCatalogRepository : IImageCatalogRepository
 
     #region Methods
 
+    /// <summary>
+    /// Validate registry and repository values
+    /// </summary>
+    /// <param name="registry">Registry name</param>
+    /// <param name="repository">Repository path</param>
+    private static void ValidateRegistryRepository(string registry, string repository)
+    {
+        if (string.IsNullOrWhiteSpace(registry))
+        {
+            throw new ArgumentException("Registry must be provided", nameof(registry));
+        }
+
+        if (string.IsNullOrWhiteSpace(repository))
+        {
+            throw new ArgumentException("Repository must be provided", nameof(repository));
+        }
+    }
+
+    /// <summary>
+    /// Validate tag value
+    /// </summary>
+    /// <param name="tag">Tag</param>
+    private static void ValidateTag(string tag)
+    {
+        if (string.IsNullOrWhiteSpace(tag))
+        {
+            throw new ArgumentException("Tag must be provided", nameof(tag));
+        }
+    }
+
+    /// <summary>
+    /// Normalize an optional digest for persistence and unique lookups
+    /// </summary>
+    /// <param name="digest">Raw digest</param>
+    /// <returns>Normalized digest</returns>
+    private static string NormalizeDigest(string? digest)
+    {
+        if (string.IsNullOrWhiteSpace(digest))
+        {
+            return string.Empty;
+        }
+
+        var normalizedDigest = digest.Trim();
+        var digestSeparatorIndex = normalizedDigest.LastIndexOf('@');
+
+        if (digestSeparatorIndex >= 0
+            && digestSeparatorIndex < (normalizedDigest.Length - 1))
+        {
+            normalizedDigest = normalizedDigest[(digestSeparatorIndex + 1)..];
+        }
+
+        return normalizedDigest;
+    }
+
+    #endregion // Methods
+
+    #region IImageCatalogRepository
+
     /// <inheritdoc/>
     public async Task<ImageVersion?> FindImageVersionAsync(string registry,
                                                            string repository,
@@ -186,59 +244,5 @@ public class ImageCatalogRepository : IImageCatalogRepository
         return await _dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    /// <summary>
-    /// Validate registry and repository values
-    /// </summary>
-    /// <param name="registry">Registry name</param>
-    /// <param name="repository">Repository path</param>
-    private static void ValidateRegistryRepository(string registry, string repository)
-    {
-        if (string.IsNullOrWhiteSpace(registry))
-        {
-            throw new ArgumentException("Registry must be provided", nameof(registry));
-        }
-
-        if (string.IsNullOrWhiteSpace(repository))
-        {
-            throw new ArgumentException("Repository must be provided", nameof(repository));
-        }
-    }
-
-    /// <summary>
-    /// Validate tag value
-    /// </summary>
-    /// <param name="tag">Tag</param>
-    private static void ValidateTag(string tag)
-    {
-        if (string.IsNullOrWhiteSpace(tag))
-        {
-            throw new ArgumentException("Tag must be provided", nameof(tag));
-        }
-    }
-
-    /// <summary>
-    /// Normalize an optional digest for persistence and unique lookups
-    /// </summary>
-    /// <param name="digest">Raw digest</param>
-    /// <returns>Normalized digest</returns>
-    private static string NormalizeDigest(string? digest)
-    {
-        if (string.IsNullOrWhiteSpace(digest))
-        {
-            return string.Empty;
-        }
-
-        var normalizedDigest = digest.Trim();
-        var digestSeparatorIndex = normalizedDigest.LastIndexOf('@');
-
-        if (digestSeparatorIndex >= 0
-            && digestSeparatorIndex < (normalizedDigest.Length - 1))
-        {
-            normalizedDigest = normalizedDigest[(digestSeparatorIndex + 1)..];
-        }
-
-        return normalizedDigest;
-    }
-
-    #endregion // Methods
+    #endregion // IImageCatalogRepository
 }
