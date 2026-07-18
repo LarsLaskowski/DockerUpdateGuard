@@ -163,10 +163,10 @@ public partial class OciRegistryClientTests
                             result.Status,
                             "Bounded OCI tag listing must still succeed");
             Assert.IsNotNull(result.Data, "Bounded OCI tag listing must return tag data");
-            CollectionAssert.AreEqual(new[] { "2.4.1", "2.5.0" },
-                                      result.Data.Select(entity => entity.Tag)
-                                                 .ToArray(),
-                                      "Bounded OCI tag listing must skip lower version tags before metadata lookups");
+            Assert.AreSequenceEqual(["2.4.1", "2.5.0"],
+                                    result.Data.Select(entity => entity.Tag)
+                                               .ToArray(),
+                                    "Bounded OCI tag listing must skip lower version tags before metadata lookups");
             Assert.DoesNotContain(request => request.RequestUri == "https://mcr.microsoft.com/v2/mssql/server/manifests/2.4.0",
                                   handler.Requests,
                                   "Bounded OCI tag listing must avoid manifest requests for lower version tags");

@@ -58,23 +58,6 @@ public partial class ObservedImageDetail
     }
 
     /// <summary>
-    /// Resolve the chip color for a vulnerability severity
-    /// </summary>
-    /// <param name="severity">Severity label</param>
-    /// <returns>Chip color</returns>
-    private static Color GetVulnerabilitySeverityColor(string severity)
-    {
-        return severity.ToUpperInvariant() switch
-               {
-                   "CRITICAL" => Color.Error,
-                   "HIGH" => Color.Warning,
-                   "MEDIUM" => Color.Info,
-                   "LOW" => Color.Success,
-                   _ => Color.Default,
-               };
-    }
-
-    /// <summary>
     /// Resolve the chip color for a vulnerability assessment status
     /// </summary>
     /// <param name="status">Status label</param>

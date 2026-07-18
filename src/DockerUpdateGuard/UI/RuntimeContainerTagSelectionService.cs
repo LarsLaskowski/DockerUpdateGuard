@@ -32,7 +32,7 @@ public class RuntimeContainerTagSelectionService : IRuntimeContainerTagSelection
 
     #endregion // Constructors
 
-    #region Methods
+    #region IRuntimeContainerTagSelectionService
 
     /// <inheritdoc/>
     public async Task SaveSelectionAsync(Guid dockerInstanceId,
@@ -104,5 +104,5 @@ public class RuntimeContainerTagSelectionService : IRuntimeContainerTagSelection
                         .ConfigureAwait(false);
     }
 
-    #endregion // Methods
+    #endregion // IRuntimeContainerTagSelectionService
 }

@@ -10,7 +10,7 @@ namespace DockerUpdateGuard.Data.Configurations;
 /// </summary>
 public class DockerInstanceConfiguration : IEntityTypeConfiguration<DockerInstance>
 {
-    #region Methods
+    #region IEntityTypeConfiguration
 
     /// <inheritdoc/>
     public void Configure(EntityTypeBuilder<DockerInstance> builder)
@@ -45,5 +45,5 @@ public class DockerInstanceConfiguration : IEntityTypeConfiguration<DockerInstan
                .IsUnique();
     }
 
-    #endregion // Methods
+    #endregion // IEntityTypeConfiguration
 }

@@ -10,7 +10,7 @@ namespace DockerUpdateGuard.Data.Configurations;
 /// </summary>
 public class RegistryRepositoryConfiguration : IEntityTypeConfiguration<RegistryRepository>
 {
-    #region Methods
+    #region IEntityTypeConfiguration
 
     /// <inheritdoc/>
     public void Configure(EntityTypeBuilder<RegistryRepository> builder)
@@ -43,5 +43,5 @@ public class RegistryRepositoryConfiguration : IEntityTypeConfiguration<Registry
                .IsUnique();
     }
 
-    #endregion // Methods
+    #endregion // IEntityTypeConfiguration
 }

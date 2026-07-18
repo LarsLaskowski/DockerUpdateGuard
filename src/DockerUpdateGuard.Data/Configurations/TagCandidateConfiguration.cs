@@ -11,7 +11,7 @@ namespace DockerUpdateGuard.Data.Configurations;
 /// </summary>
 public class TagCandidateConfiguration : IEntityTypeConfiguration<TagCandidate>
 {
-    #region Methods
+    #region IEntityTypeConfiguration
 
     /// <inheritdoc/>
     public void Configure(EntityTypeBuilder<TagCandidate> builder)
@@ -50,5 +50,5 @@ public class TagCandidateConfiguration : IEntityTypeConfiguration<TagCandidate>
                .OnDelete(DeleteBehavior.Cascade);
     }
 
-    #endregion // Methods
+    #endregion // IEntityTypeConfiguration
 }

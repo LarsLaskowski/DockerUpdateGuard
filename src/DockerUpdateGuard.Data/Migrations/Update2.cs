@@ -65,11 +65,11 @@ public partial class Update2 : Migration
 
         migrationBuilder.CreateIndex(name: "IX_DockerInstanceResourceSamples_DockerInstanceId_RecordedAtUtc",
                                      table: "DockerInstanceResourceSamples",
-                                     columns: new[] { "DockerInstanceId", "RecordedAtUtc" });
+                                     columns: ["DockerInstanceId", "RecordedAtUtc"]);
 
         migrationBuilder.CreateIndex(name: "IX_RuntimeContainerResourceSamples_DockerInstanceId_ContainerI~",
                                      table: "RuntimeContainerResourceSamples",
-                                     columns: new[] { "DockerInstanceId", "ContainerId", "RecordedAtUtc" });
+                                     columns: ["DockerInstanceId", "ContainerId", "RecordedAtUtc"]);
     }
 
     /// <inheritdoc />

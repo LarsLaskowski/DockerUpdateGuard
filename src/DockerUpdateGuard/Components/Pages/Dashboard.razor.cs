@@ -99,29 +99,7 @@ public sealed partial class Dashboard : IDisposable
 
     #endregion // Static methods
 
-    #region ComponentBase
-
-    /// <inheritdoc/>
-    protected override async Task OnInitializedAsync()
-    {
-        _showMyImages = IsDockerHubAccountConfigured(AppOptions.Value.DockerHub);
-
-        DashboardRefreshState.Changed += OnDashboardRefreshRequested;
-
-        await LoadAsync().ConfigureAwait(false);
-    }
-
-    #endregion // ComponentBase
-
     #region Methods
-
-    /// <summary>
-    /// Dispose component subscriptions
-    /// </summary>
-    public void Dispose()
-    {
-        DashboardRefreshState.Changed -= OnDashboardRefreshRequested;
-    }
 
     /// <summary>
     /// Load the dashboard view model
@@ -149,4 +127,28 @@ public sealed partial class Dashboard : IDisposable
     }
 
     #endregion // Methods
+
+    #region ComponentBase
+
+    /// <inheritdoc/>
+    protected override async Task OnInitializedAsync()
+    {
+        _showMyImages = IsDockerHubAccountConfigured(AppOptions.Value.DockerHub);
+
+        DashboardRefreshState.Changed += OnDashboardRefreshRequested;
+
+        await LoadAsync().ConfigureAwait(false);
+    }
+
+    #endregion // ComponentBase
+
+    #region IDisposable
+
+    /// <inheritdoc/>
+    public void Dispose()
+    {
+        DashboardRefreshState.Changed -= OnDashboardRefreshRequested;
+    }
+
+    #endregion // IDisposable
 }

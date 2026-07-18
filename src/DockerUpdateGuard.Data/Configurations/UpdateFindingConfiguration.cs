@@ -10,7 +10,7 @@ namespace DockerUpdateGuard.Data.Configurations;
 /// </summary>
 public class UpdateFindingConfiguration : IEntityTypeConfiguration<UpdateFinding>
 {
-    #region Methods
+    #region IEntityTypeConfiguration
 
     /// <inheritdoc/>
     public void Configure(EntityTypeBuilder<UpdateFinding> builder)
@@ -78,5 +78,5 @@ public class UpdateFindingConfiguration : IEntityTypeConfiguration<UpdateFinding
                .OnDelete(DeleteBehavior.SetNull);
     }
 
-    #endregion // Methods
+    #endregion // IEntityTypeConfiguration
 }

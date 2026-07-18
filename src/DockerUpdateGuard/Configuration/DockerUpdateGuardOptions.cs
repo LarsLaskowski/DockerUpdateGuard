@@ -37,6 +37,11 @@ public class DockerUpdateGuardOptions
     public DockerHubOptions DockerHub { get; set; } = new();
 
     /// <summary>
+    /// Upstream release metadata feed configuration
+    /// </summary>
+    public ReleaseMetadataOptions ReleaseMetadata { get; set; } = new();
+
+    /// <summary>
     /// Vulnerability provider configuration
     /// </summary>
     public VulnerabilityOptions Vulnerabilities { get; set; } = new();

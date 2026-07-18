@@ -80,6 +80,48 @@ public class DockerUpdateGuardOptionsValidator : IValidateOptions<DockerUpdateGu
         {
             failures.Add($"'{DockerUpdateGuardOptions.SectionName}:DockerHub:MaxParallelRequests' must be between 1 and 32");
         }
+
+        ValidateAbsoluteHttpUri(options.ApiBaseUrl,
+                                $"{DockerUpdateGuardOptions.SectionName}:DockerHub:ApiBaseUrl",
+                                failures);
+    }
+
+    /// <summary>
+    /// Validate release metadata options
+    /// </summary>
+    /// <param name="options">Release metadata options</param>
+    /// <param name="failures">Failure list</param>
+    private static void ValidateReleaseMetadataOptions(ReleaseMetadataOptions options, ICollection<string> failures)
+    {
+        ValidateAbsoluteHttpUri(options.DotNetBaseUrl,
+                                $"{DockerUpdateGuardOptions.SectionName}:ReleaseMetadata:DotNetBaseUrl",
+                                failures);
+        ValidateAbsoluteHttpUri(options.NginxBaseUrl,
+                                $"{DockerUpdateGuardOptions.SectionName}:ReleaseMetadata:NginxBaseUrl",
+                                failures);
+    }
+
+    /// <summary>
+    /// Validate that a value is an absolute http or https URI
+    /// </summary>
+    /// <param name="value">Value to validate</param>
+    /// <param name="propertyPath">Fully qualified configuration path</param>
+    /// <param name="failures">Failure list</param>
+    private static void ValidateAbsoluteHttpUri(string value, string propertyPath, ICollection<string> failures)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            failures.Add($"'{propertyPath}' must be configured");
+
+            return;
+        }
+
+        if (Uri.TryCreate(value, UriKind.Absolute, out var uri) == false
+            || (uri.Scheme != Uri.UriSchemeHttp
+                && uri.Scheme != Uri.UriSchemeHttps))
+        {
+            failures.Add($"'{propertyPath}' must be an absolute http or https URI");
+        }
     }
 
     /// <summary>
@@ -103,6 +145,13 @@ public class DockerUpdateGuardOptionsValidator : IValidateOptions<DockerUpdateGu
         {
             failures.Add($"'{DockerUpdateGuardOptions.SectionName}:Vulnerabilities:RequestTimeoutSeconds' must be between 1 and 300");
         }
+
+        ValidateAbsoluteHttpUri(options.DockerScoutLoginUrl,
+                                $"{DockerUpdateGuardOptions.SectionName}:Vulnerabilities:DockerScoutLoginUrl",
+                                failures);
+        ValidateAbsoluteHttpUri(options.DockerScoutBaseUrl,
+                                $"{DockerUpdateGuardOptions.SectionName}:Vulnerabilities:DockerScoutBaseUrl",
+                                failures);
     }
 
     /// <summary>
@@ -309,7 +358,7 @@ public class DockerUpdateGuardOptionsValidator : IValidateOptions<DockerUpdateGu
 
     #endregion // Static methods
 
-    #region Methods
+    #region IValidateOptions
 
     /// <inheritdoc/>
     public ValidateOptionsResult Validate(string? name, DockerUpdateGuardOptions options)
@@ -326,6 +375,7 @@ public class DockerUpdateGuardOptionsValidator : IValidateOptions<DockerUpdateGu
 
         ValidateDatabaseOptions(options.Database, failures);
         ValidateDockerHubOptions(options.DockerHub, failures);
+        ValidateReleaseMetadataOptions(options.ReleaseMetadata, failures);
         ValidateVulnerabilityOptions(options.Vulnerabilities, failures);
         ValidateScanningOptions(options.Scanning, failures);
         ValidateDockerInstances(options.DockerInstances, failures);
@@ -333,5 +383,5 @@ public class DockerUpdateGuardOptionsValidator : IValidateOptions<DockerUpdateGu
         return failures.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(failures);
     }
 
-    #endregion // Methods
+    #endregion // IValidateOptions
 }

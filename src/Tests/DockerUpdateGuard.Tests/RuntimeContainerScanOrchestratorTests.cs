@@ -872,9 +872,7 @@ public class RuntimeContainerScanOrchestratorTests
                 Assert.HasCount(3,
                                 snapshots,
                                 "The runtime scan must preserve the failed container snapshot and continue with the remaining containers");
-                CollectionAssert.AreEqual(new[] { "broken", "web-1", "web-3" },
-                                          snapshots.Select(entity => entity.Name).ToArray(),
-                                          "The runtime scan must keep processing containers after an invalid image reference");
+                Assert.AreSequenceEqual(["broken", "web-1", "web-3"], snapshots.Select(entity => entity.Name).ToArray(), "The runtime scan must keep processing containers after an invalid image reference");
                 Assert.AreEqual(UpdateAssessmentStatus.Failed,
                                 snapshots.Single(entity => entity.Name == "broken").UpdateAssessmentStatus,
                                 "The invalid container must be marked as failed instead of aborting the complete scan");
@@ -950,7 +948,8 @@ public class RuntimeContainerScanOrchestratorTests
                                                                                                                            PublishedAtUtc = new DateTimeOffset(2025, 06, 02, 12, 00, 00, TimeSpan.Zero),
                                                                                                                        },
                                                                                                                    ]));
-                registryMetadataService.GetTagAsync(Arg.Is<ImageReference>(entity => entity.Repository == "networlddev/f1-telemetry"
+                registryMetadataService.GetTagAsync(Arg.Is<ImageReference>(entity => entity != null
+                                                                                     && entity.Repository == "networlddev/f1-telemetry"
                                                                                      && entity.Tag == "latest"),
                                                     Arg.Any<CancellationToken>())
                                        .Returns(ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
@@ -988,11 +987,11 @@ public class RuntimeContainerScanOrchestratorTests
                 Assert.AreEqual("latest",
                                 recommendedImage.Tag,
                                 "Digest-only updates must keep the current alias tag as the persisted recommendation");
-                CollectionAssert.AreEqual(new[] { "latest", "2.4.1" },
-                                          finding.TagCandidates.OrderBy(entity => entity.Rank)
-                                                               .Select(entity => entity.Tag)
-                                                               .ToArray(),
-                                          "The current alias tag must be merged into the persisted tag candidates");
+                Assert.AreSequenceEqual(["latest", "2.4.1"],
+                                        finding.TagCandidates.OrderBy(entity => entity.Rank)
+                                                             .Select(entity => entity.Tag)
+                                                             .ToArray(),
+                                        "The current alias tag must be merged into the persisted tag candidates");
                 Assert.AreEqual("2.4.1",
                                 snapshot.AvailableUpdateVersionTag,
                                 "Digest-only runtime updates must persist the semantic version tag behind the recommended latest digest");
@@ -1076,7 +1075,8 @@ public class RuntimeContainerScanOrchestratorTests
                                                                                                                            PublishedAtUtc = new DateTimeOffset(2026, 06, 12, 12, 00, 00, TimeSpan.Zero),
                                                                                                                        },
                                                                                                                    ]));
-                registryMetadataService.GetTagAsync(Arg.Is<ImageReference>(entity => entity.Repository == "linuxserver/heimdall"
+                registryMetadataService.GetTagAsync(Arg.Is<ImageReference>(entity => entity != null
+                                                                                     && entity.Repository == "linuxserver/heimdall"
                                                                                      && entity.Tag == "latest"),
                                                     Arg.Any<CancellationToken>())
                                        .Returns(ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
@@ -1200,7 +1200,8 @@ public class RuntimeContainerScanOrchestratorTests
                                                                                                                            PublishedAtUtc = new DateTimeOffset(2026, 07, 04, 12, 00, 08, TimeSpan.Zero),
                                                                                                                        },
                                                                                                                    ]));
-                registryMetadataService.GetTagAsync(Arg.Is<ImageReference>(entity => entity.Repository == "library/phpmyadmin"
+                registryMetadataService.GetTagAsync(Arg.Is<ImageReference>(entity => entity != null
+                                                                                     && entity.Repository == "library/phpmyadmin"
                                                                                      && entity.Tag == "latest"),
                                                     Arg.Any<CancellationToken>())
                                        .Returns(ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
@@ -1333,7 +1334,8 @@ public class RuntimeContainerScanOrchestratorTests
                                                                                                                            PublishedAtUtc = new DateTimeOffset(2025, 06, 03, 12, 00, 00, TimeSpan.Zero),
                                                                                                                        },
                                                                                                                    ]));
-                registryMetadataService.GetTagAsync(Arg.Is<ImageReference>(entity => entity.Repository == "networlddev/f1-telemetry"
+                registryMetadataService.GetTagAsync(Arg.Is<ImageReference>(entity => entity != null
+                                                                                     && entity.Repository == "networlddev/f1-telemetry"
                                                                                      && entity.Tag == "latest"),
                                                     Arg.Any<CancellationToken>())
                                        .Returns(ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
@@ -1462,7 +1464,8 @@ public class RuntimeContainerScanOrchestratorTests
                                                                                                                            PublishedAtUtc = new DateTimeOffset(2025, 06, 03, 12, 00, 00, TimeSpan.Zero),
                                                                                                                        },
                                                                                                                    ]));
-                registryMetadataService.GetTagAsync(Arg.Is<ImageReference>(entity => entity.Repository == "networlddev/f1-telemetry"
+                registryMetadataService.GetTagAsync(Arg.Is<ImageReference>(entity => entity != null
+                                                                                     && entity.Repository == "networlddev/f1-telemetry"
                                                                                      && entity.Tag == "latest"),
                                                     Arg.Any<CancellationToken>(),
                                                     "linux",
@@ -1509,7 +1512,8 @@ public class RuntimeContainerScanOrchestratorTests
                                                            Arg.Any<CancellationToken>(),
                                                            "linux",
                                                            "arm64",
-                                                           Arg.Is<RegistryTagQueryOptions>(options => options.CurrentDigest == "sha256:arm-current"
+                                                           Arg.Is<RegistryTagQueryOptions>(options => options != null
+                                                                                                      && options.CurrentDigest == "sha256:arm-current"
                                                                                                       && options.CurrentTag == "latest"
                                                                                                       && options.MaximumTags == 250
                                                                                                       && options.PublishedSinceUtc == new DateTimeOffset(2025, 06, 03, 12, 00, 00, TimeSpan.Zero)))
@@ -1607,7 +1611,8 @@ public class RuntimeContainerScanOrchestratorTests
                                                                                                                            PublishedAtUtc = new DateTimeOffset(2025, 06, 04, 12, 00, 00, TimeSpan.Zero),
                                                                                                                        },
                                                                                                                    ]));
-                registryMetadataService.GetTagAsync(Arg.Is<ImageReference>(entity => entity.Repository == "dotnet/runtime"
+                registryMetadataService.GetTagAsync(Arg.Is<ImageReference>(entity => entity != null
+                                                                                     && entity.Repository == "dotnet/runtime"
                                                                                      && entity.Tag == "10.0-alpine"),
                                                     Arg.Any<CancellationToken>())
                                        .Returns(ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData

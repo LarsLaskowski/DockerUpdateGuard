@@ -35,7 +35,7 @@ internal sealed partial class TestLogger<TCategoryName> : ILogger<TCategoryName>
 
     #endregion // Properties
 
-    #region Methods
+    #region ILogger
 
     /// <inheritdoc/>
     public IDisposable BeginScope<TState>(TState state)
@@ -68,5 +68,5 @@ internal sealed partial class TestLogger<TCategoryName> : ILogger<TCategoryName>
                      });
     }
 
-    #endregion // Methods
+    #endregion // ILogger
 }

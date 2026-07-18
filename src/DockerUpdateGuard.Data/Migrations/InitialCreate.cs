@@ -357,15 +357,15 @@ public partial class InitialCreate : Migration
 
         migrationBuilder.CreateIndex(name: "IX_ContainerActionRuns_DockerInstanceId_RequestedAtUtc",
                                      table: "ContainerActionRuns",
-                                     columns: new[] { "DockerInstanceId", "RequestedAtUtc" });
+                                     columns: ["DockerInstanceId", "RequestedAtUtc"]);
 
         migrationBuilder.CreateIndex(name: "IX_ContainerActionRuns_PortainerEndpointId_RequestedAtUtc",
                                      table: "ContainerActionRuns",
-                                     columns: new[] { "PortainerEndpointId", "RequestedAtUtc" });
+                                     columns: ["PortainerEndpointId", "RequestedAtUtc"]);
 
         migrationBuilder.CreateIndex(name: "IX_ContainerSnapshots_DockerInstanceId_ContainerId_RecordedAtU~",
                                      table: "ContainerSnapshots",
-                                     columns: new[] { "DockerInstanceId", "ContainerId", "RecordedAtUtc" });
+                                     columns: ["DockerInstanceId", "ContainerId", "RecordedAtUtc"]);
 
         migrationBuilder.CreateIndex(name: "IX_ContainerSnapshots_ImageVersionId",
                                      table: "ContainerSnapshots",
@@ -390,7 +390,7 @@ public partial class InitialCreate : Migration
 
         migrationBuilder.CreateIndex(name: "IX_ImageRelationships_ChildImageVersionId_BaseImageVersionId_D~",
                                      table: "ImageRelationships",
-                                     columns: new[] { "ChildImageVersionId", "BaseImageVersionId", "Depth", "RelationshipType" },
+                                     columns: ["ChildImageVersionId", "BaseImageVersionId", "Depth", "RelationshipType"],
                                      unique: true);
 
         migrationBuilder.CreateIndex(name: "IX_ImageRelationships_ScanRunId",
@@ -399,7 +399,7 @@ public partial class InitialCreate : Migration
 
         migrationBuilder.CreateIndex(name: "IX_ImageVersions_RegistryRepositoryId_Tag_Digest",
                                      table: "ImageVersions",
-                                     columns: new[] { "RegistryRepositoryId", "Tag", "Digest" },
+                                     columns: ["RegistryRepositoryId", "Tag", "Digest"],
                                      unique: true);
 
         migrationBuilder.CreateIndex(name: "IX_ObservedImages_CurrentImageVersionId",
@@ -413,7 +413,7 @@ public partial class InitialCreate : Migration
 
         migrationBuilder.CreateIndex(name: "IX_RegistryRepositories_Registry_Repository",
                                      table: "RegistryRepositories",
-                                     columns: new[] { "Registry", "Repository" },
+                                     columns: ["Registry", "Repository"],
                                      unique: true);
 
         migrationBuilder.CreateIndex(name: "IX_ScanRuns_DockerInstanceId",
@@ -426,20 +426,20 @@ public partial class InitialCreate : Migration
 
         migrationBuilder.CreateIndex(name: "IX_ScanRuns_Type_Status_StartedAtUtc",
                                      table: "ScanRuns",
-                                     columns: new[] { "Type", "Status", "StartedAtUtc" });
+                                     columns: ["Type", "Status", "StartedAtUtc"]);
 
         migrationBuilder.CreateIndex(name: "IX_TagCandidates_UpdateFindingId_Tag_Digest",
                                      table: "TagCandidates",
-                                     columns: new[] { "UpdateFindingId", "Tag", "Digest" },
+                                     columns: ["UpdateFindingId", "Tag", "Digest"],
                                      unique: true);
 
         migrationBuilder.CreateIndex(name: "IX_UpdateFindings_ContainerSnapshotId_IsActive",
                                      table: "UpdateFindings",
-                                     columns: new[] { "ContainerSnapshotId", "IsActive" });
+                                     columns: ["ContainerSnapshotId", "IsActive"]);
 
         migrationBuilder.CreateIndex(name: "IX_UpdateFindings_ObservedImageId_IsActive",
                                      table: "UpdateFindings",
-                                     columns: new[] { "ObservedImageId", "IsActive" });
+                                     columns: ["ObservedImageId", "IsActive"]);
 
         migrationBuilder.CreateIndex(name: "IX_UpdateFindings_RecommendedImageVersionId",
                                      table: "UpdateFindings",
@@ -451,16 +451,16 @@ public partial class InitialCreate : Migration
 
         migrationBuilder.CreateIndex(name: "IX_UpdateFindings_SubjectImageVersionId_IsActive",
                                      table: "UpdateFindings",
-                                     columns: new[] { "SubjectImageVersionId", "IsActive" });
+                                     columns: ["SubjectImageVersionId", "IsActive"]);
 
         migrationBuilder.CreateIndex(name: "IX_VulnerabilityFindings_ImageVersionId_AdvisoryId_AffectedPac~",
                                      table: "VulnerabilityFindings",
-                                     columns: new[] { "ImageVersionId", "AdvisoryId", "AffectedPackage", "FixedVersion" },
+                                     columns: ["ImageVersionId", "AdvisoryId", "AffectedPackage", "FixedVersion"],
                                      unique: true);
 
         migrationBuilder.CreateIndex(name: "IX_VulnerabilityFindings_ImageVersionId_Severity_IsActive",
                                      table: "VulnerabilityFindings",
-                                     columns: new[] { "ImageVersionId", "Severity", "IsActive" });
+                                     columns: ["ImageVersionId", "Severity", "IsActive"]);
 
         migrationBuilder.CreateIndex(name: "IX_VulnerabilityFindings_ScanRunId",
                                      table: "VulnerabilityFindings",

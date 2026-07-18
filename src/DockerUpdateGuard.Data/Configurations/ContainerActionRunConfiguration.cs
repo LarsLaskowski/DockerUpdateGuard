@@ -10,7 +10,7 @@ namespace DockerUpdateGuard.Data.Configurations;
 /// </summary>
 public class ContainerActionRunConfiguration : IEntityTypeConfiguration<ContainerActionRun>
 {
-    #region Methods
+    #region IEntityTypeConfiguration
 
     /// <inheritdoc/>
     public void Configure(EntityTypeBuilder<ContainerActionRun> builder)
@@ -74,5 +74,5 @@ public class ContainerActionRunConfiguration : IEntityTypeConfiguration<Containe
                .OnDelete(DeleteBehavior.SetNull);
     }
 
-    #endregion // Methods
+    #endregion // IEntityTypeConfiguration
 }

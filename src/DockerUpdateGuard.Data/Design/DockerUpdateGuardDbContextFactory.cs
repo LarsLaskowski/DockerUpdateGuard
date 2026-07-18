@@ -24,7 +24,7 @@ public class DockerUpdateGuardDbContextFactory : IDesignTimeDbContextFactory<Doc
 
     #endregion // Constants
 
-    #region Methods
+    #region IDesignTimeDbContextFactory
 
     /// <inheritdoc/>
     public DockerUpdateGuardDbContext CreateDbContext(string[] args)
@@ -43,5 +43,5 @@ public class DockerUpdateGuardDbContextFactory : IDesignTimeDbContextFactory<Doc
         return new DockerUpdateGuardDbContext(optionsBuilder.Options);
     }
 
-    #endregion // Methods
+    #endregion // IDesignTimeDbContextFactory
 }

@@ -10,7 +10,7 @@ namespace DockerUpdateGuard.Data.Configurations;
 /// </summary>
 public class DockerInstanceResourceSampleConfiguration : IEntityTypeConfiguration<DockerInstanceResourceSample>
 {
-    #region Methods
+    #region IEntityTypeConfiguration
 
     /// <inheritdoc/>
     public void Configure(EntityTypeBuilder<DockerInstanceResourceSample> builder)
@@ -48,5 +48,5 @@ public class DockerInstanceResourceSampleConfiguration : IEntityTypeConfiguratio
                .OnDelete(DeleteBehavior.Cascade);
     }
 
-    #endregion // Methods
+    #endregion // IEntityTypeConfiguration
 }

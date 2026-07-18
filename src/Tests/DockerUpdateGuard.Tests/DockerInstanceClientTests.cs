@@ -145,8 +145,9 @@ public partial class DockerInstanceClientTests
                                  && entry.Message.Contains("Docker Desktop", StringComparison.Ordinal),
                         logger.Entries,
                         "Timed-out Docker discovery must log the dedicated timeout warning");
-        Assert.IsFalse(logger.Entries.Any(entry => entry.EventId.Id == 3104),
-                       "Timed-out Docker discovery must avoid the generic exception-based discovery log");
+        Assert.DoesNotContain(entry => entry.EventId.Id == 3104,
+                              logger.Entries,
+                              "Timed-out Docker discovery must avoid the generic exception-based discovery log");
     }
 
     /// <summary>
@@ -265,8 +266,8 @@ public partial class DockerInstanceClientTests
                             result.Status,
                             "Named-pipe Docker endpoints must be supported for container discovery");
             Assert.IsNotNull(result.Data, "Named-pipe Docker endpoints must return discovered containers");
-            Assert.AreEqual(1,
-                            result.Data.Count,
+            Assert.HasCount(1,
+                            result.Data,
                             "Named-pipe Docker endpoints must allow Docker engine container queries");
         }
         finally
@@ -396,12 +397,8 @@ public partial class DockerInstanceClientTests
                             result.Status,
                             "Image inspect must succeed when the Docker engine returns an inspect payload");
             Assert.IsNotNull(result.Data, "Image inspect must expose the parsed inspect payload");
-            CollectionAssert.AreEqual(new[] { "DOTNET_VERSION=9.0.13", "ASPNET_VERSION=9.0.13" },
-                                      result.Data.EnvironmentVariables.ToArray(),
-                                      "Image inspect must expose environment variables from the Docker image config");
-            CollectionAssert.AreEqual(new[] { "sha256:layer-1", "sha256:layer-2" },
-                                      result.Data.RootFsLayers.ToArray(),
-                                      "Image inspect must expose the rootfs layer chain");
+            Assert.AreSequenceEqual(new[] { "DOTNET_VERSION=9.0.13", "ASPNET_VERSION=9.0.13" }, result.Data.EnvironmentVariables.ToArray(), "Image inspect must expose environment variables from the Docker image config");
+            Assert.AreSequenceEqual(new[] { "sha256:layer-1", "sha256:layer-2" }, result.Data.RootFsLayers.ToArray(), "Image inspect must expose the rootfs layer chain");
         }
         finally
         {
@@ -458,9 +455,7 @@ public partial class DockerInstanceClientTests
             Assert.AreEqual("/bin/sh -c #(nop)  ENV DOTNET_VERSION=9.0.13",
                             result.Data.Single().CreatedBy,
                             "Image history must expose the created-by command text");
-            CollectionAssert.AreEqual(new[] { "docker.io/company/api:1.0.0" },
-                                      result.Data.Single().Tags.ToArray(),
-                                      "Image history must expose tags when the Docker engine returns them");
+            Assert.AreSequenceEqual(new[] { "docker.io/company/api:1.0.0" }, result.Data.Single().Tags.ToArray(), "Image history must expose tags when the Docker engine returns them");
         }
         finally
         {
@@ -676,11 +671,11 @@ public partial class DockerInstanceClientTests
 
         Assert.IsNotNull(firstHttpClient, "The Docker HTTP-client factory must return an HTTP client for TLS endpoints");
         Assert.IsNotNull(secondHttpClient, "The Docker HTTP-client factory must return an HTTP client on repeated calls for TLS endpoints");
-        Assert.AreEqual(1,
-                        logger.Entries.Count(entry => entry.EventId.Id == 3106
-                                                      && entry.LogLevel == LogLevel.Warning
-                                                      && entry.Message.Contains(instanceName, StringComparison.Ordinal)),
-                        "Disabling server certificate validation must emit the auditable warning exactly once per instance to avoid flooding the log under active polling");
+        Assert.ContainsSingle(entry => entry.EventId.Id == 3106
+                                       && entry.LogLevel == LogLevel.Warning
+                                       && entry.Message.Contains(instanceName, StringComparison.Ordinal),
+                              logger.Entries,
+                              "Disabling server certificate validation must emit the auditable warning exactly once per instance to avoid flooding the log under active polling");
     }
 
     /// <summary>

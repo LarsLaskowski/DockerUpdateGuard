@@ -28,6 +28,8 @@ internal sealed partial class TestOptionsMonitor<TOptions> : IOptionsMonitor<TOp
 
     #endregion // Constructors
 
+    #region IOptionsMonitor
+
     #region Properties
 
     /// <inheritdoc/>
@@ -52,4 +54,6 @@ internal sealed partial class TestOptionsMonitor<TOptions> : IOptionsMonitor<TOp
     }
 
     #endregion // Methods
+
+    #endregion // IOptionsMonitor
 }

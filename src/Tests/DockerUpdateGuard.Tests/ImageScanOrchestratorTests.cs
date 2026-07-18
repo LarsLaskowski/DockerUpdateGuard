@@ -178,7 +178,8 @@ public class ImageScanOrchestratorTests
                                 "Observed image scans must log the final summary outcome");
 
                 _ = registryMetadataService.Received(1)
-                                           .GetTagAsync(Arg.Is<ImageReference>(entity => entity.Registry == "docker.io"
+                                           .GetTagAsync(Arg.Is<ImageReference>(entity => entity != null
+                                                                                         && entity.Registry == "docker.io"
                                                                                          && entity.Repository == "library/debian"
                                                                                          && entity.Tag == "12.0.0"
                                                                                          && entity.Digest == "sha256:base-old"),
@@ -271,7 +272,8 @@ public class ImageScanOrchestratorTests
                                                      Arg.Any<CancellationToken>(),
                                                      Arg.Any<string?>(),
                                                      Arg.Any<string?>(),
-                                                     Arg.Is<RegistryTagQueryOptions>(options => options.CurrentDigest == "sha256:base-current"
+                                                     Arg.Is<RegistryTagQueryOptions>(options => options != null
+                                                                                                && options.CurrentDigest == "sha256:base-current"
                                                                                                 && options.CurrentTag == "10.0-alpine"
                                                                                                 && options.MaximumTags == 150
                                                                                                 && options.VersionLineTag == "10.0-alpine"
@@ -447,6 +449,88 @@ public class ImageScanOrchestratorTests
                                                          Arg.Any<CancellationToken>(),
                                                          Arg.Any<string?>(),
                                                          Arg.Any<string?>());
+            }
+        }
+    }
+
+    /// <summary>
+    /// Verify a failed observed image scan is not downgraded to partial by a later base image failure
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task ImageScanOrchestratorScanAsyncKeepsFailedStatusWhenBaseImageMetadataAlsoFailsAsync()
+    {
+        using (var database = new SqliteTestDatabase())
+        {
+            var dbContext = database.CreateDbContext();
+
+            await using (dbContext.ConfigureAwait(false))
+            {
+                var imageCatalogRepository = new ImageCatalogRepository(dbContext);
+                var currentImageVersion = await imageCatalogRepository.GetOrCreateImageVersionAsync("docker.io",
+                                                                                                    "company/app",
+                                                                                                    "1.0.0",
+                                                                                                    "sha256:app",
+                                                                                                    cancellationToken: CancellationToken.None)
+                                                                      .ConfigureAwait(false);
+                var observedImage = new ObservedImage
+                                    {
+                                        Name = "Company App",
+                                        CurrentImageVersionId = currentImageVersion.Id,
+                                    };
+                var baseImageResolver = Substitute.For<IBaseImageResolver>();
+                var derivedBaseRuntimeDetector = Substitute.For<IDerivedBaseRuntimeDetector>();
+                var dotNetReleaseMetadataService = Substitute.For<IDotNetReleaseMetadataService>();
+                var nginxReleaseMetadataService = Substitute.For<INginxReleaseMetadataService>();
+                var registryMetadataService = Substitute.For<IRegistryMetadataService>();
+
+                dbContext.ObservedImages.Add(observedImage);
+
+                await dbContext.SaveChangesAsync(TestContext.CancellationToken)
+                               .ConfigureAwait(false);
+
+                baseImageResolver.ResolveAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
+                                 .Returns(ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>.Succeeded([
+                                                                                                                    new BaseImageDescriptor
+                                                                                                                    {
+                                                                                                                        Registry = "docker.io",
+                                                                                                                        Repository = "library/debian",
+                                                                                                                        Tag = "12.0.0",
+                                                                                                                        Digest = "sha256:base-old",
+                                                                                                                        Depth = 1,
+                                                                                                                        SourceReference = "FROM debian:12.0.0",
+                                                                                                                    },
+                                                                                                                ]));
+
+                registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
+                                       .Returns(ExternalOperationResult<DockerHubTagData>.Failed("The registry is unavailable"));
+
+                registryMetadataService.GetImageConfigurationAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
+                                       .Returns(ExternalOperationResult<RegistryImageConfigurationData>.NotFound("No registry config"));
+
+                var orchestrator = new ImageScanOrchestrator(new ApplicationTelemetry(),
+                                                             baseImageResolver,
+                                                             dbContext,
+                                                             derivedBaseRuntimeDetector,
+                                                             dotNetReleaseMetadataService,
+                                                             nginxReleaseMetadataService,
+                                                             imageCatalogRepository,
+                                                             new ImageReferenceParser(),
+                                                             new TestLogger<ImageScanOrchestrator>(),
+                                                             registryMetadataService);
+
+                await orchestrator.ScanAsync(observedImage.Id,
+                                             ScanTriggerSource.Manual,
+                                             CancellationToken.None)
+                                  .ConfigureAwait(false);
+
+                dbContext.ChangeTracker.Clear();
+
+                var scanRun = await dbContext.ScanRuns.SingleAsync(TestContext.CancellationToken).ConfigureAwait(false);
+
+                Assert.AreEqual(ScanRunStatus.Failed,
+                                scanRun.Status,
+                                "A failed current-image metadata refresh must not be downgraded to partial by a later base image failure");
             }
         }
     }

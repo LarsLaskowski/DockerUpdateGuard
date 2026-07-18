@@ -1,5 +1,10 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <RuleSet Name="Style - Rules - Debug" ToolsVersion="18.0">
+  <Rules AnalyzerId="MSTest.Analyzers" RuleNamespace="MSTest.Analyzers">
+    <Rule Id="MSTEST0037" Action="Warning" />
+    <Rule Id="MSTEST0046" Action="Warning" />
+    <Rule Id="MSTEST0068" Action="Warning" />
+  </Rules>
   <Rules AnalyzerId="Microsoft.Analyzers.ManagedCodeAnalysis" RuleNamespace="Microsoft.Rules.Managed">
     <Rule Id="CA1001" Action="Warning" />
     <Rule Id="CA1009" Action="Warning" />
@@ -82,8 +87,15 @@
   <Rules AnalyzerId="Reihitsu.Analyzer" RuleNamespace="Reihitsu.Analyzer">
     <Rule Id="RH0396" Action="None" />
     <Rule Id="RH0428" Action="None" />
+    <Rule Id="RH4119" Action="None" />
     <Rule Id="RH5515" Action="None" />
     <Rule Id="RH7004" Action="None" />
     <Rule Id="RH8027" Action="None" />
+    <Rule Id="RH8306" Action="None" />
+  </Rules>
+  <Rules AnalyzerId="SonarAnalyzer.CSharp" RuleNamespace="SonarAnalyzer.CSharp">
+    <Rule Id="S107" Action="Warning" />
+    <Rule Id="S1192" Action="Warning" />
+    <Rule Id="S3776" Action="Warning" />
   </Rules>
 </RuleSet>

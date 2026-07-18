@@ -319,16 +319,6 @@ public partial class RuntimeContainers
 
     #endregion // Static methods
 
-    #region ComponentBase
-
-    /// <inheritdoc/>
-    protected override async Task OnInitializedAsync()
-    {
-        await LoadAsync().ConfigureAwait(false);
-    }
-
-    #endregion // ComponentBase
-
     #region Methods
 
     /// <summary>
@@ -386,4 +376,14 @@ public partial class RuntimeContainers
     }
 
     #endregion // Methods
+
+    #region ComponentBase
+
+    /// <inheritdoc/>
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync().ConfigureAwait(false);
+    }
+
+    #endregion // ComponentBase
 }

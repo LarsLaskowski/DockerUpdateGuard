@@ -64,6 +64,7 @@ stays in `.Data`; observability stays in `.Telemetry`.
 - Runtime projects disable generated assembly info and link `SharedAssemblyInfo.cs` from the repository root.
 - Runtime and test projects use per-configuration rulesets from `rules\DockerUpdateGuard.Debug.ruleset` and `rules\DockerUpdateGuard.Release.ruleset`.
 - `Reihitsu.Analyzer` is part of the standard project setup.
+- `SonarAnalyzer.CSharp` is referenced from `Directory.Build.props` and therefore applies to every project, so SonarCloud findings surface at build time. Rules that the package disables by default (for example `S3776`) are enabled in the rulesets under `rules\`.
 - Tests live under `src\Tests`, not a top-level `tests` folder. Keep new test projects there.
 - The test stack is MSTest with `coverlet.collector`.
 - Prefer MSTest's `Assert` and `CollectionAssert` APIs directly instead of FluentAssertions.

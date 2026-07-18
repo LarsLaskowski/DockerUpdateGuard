@@ -107,32 +107,6 @@ public class RegistryBaseImageResolver : IBaseImageResolver
 
     #region Methods
 
-    /// <inheritdoc/>
-    public async Task<ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>> ResolveAsync(ImageReference imageReference, CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(imageReference);
-
-        var imageConfigurationResult = await _registryMetadataService.GetImageConfigurationAsync(imageReference, cancellationToken)
-                                                                     .ConfigureAwait(false);
-
-        if (imageConfigurationResult.Status != ExternalOperationStatus.Succeeded || imageConfigurationResult.Data is null)
-        {
-            return MapConfigurationFailure(imageReference,
-                                           imageConfigurationResult.Status,
-                                           imageConfigurationResult.Message);
-        }
-
-        var results = new List<BaseImageDescriptor>();
-
-        await AppendBaseImagesAsync(imageReference,
-                                    imageConfigurationResult.Data,
-                                    results,
-                                    depth: 1,
-                                    cancellationToken).ConfigureAwait(false);
-
-        return ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>.Succeeded(results);
-    }
-
     /// <summary>
     /// Append discovered base images recursively using registry-aware configuration lookup
     /// </summary>
@@ -192,4 +166,34 @@ public class RegistryBaseImageResolver : IBaseImageResolver
     }
 
     #endregion // Methods
+
+    #region IBaseImageResolver
+
+    /// <inheritdoc/>
+    public async Task<ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>> ResolveAsync(ImageReference imageReference, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(imageReference);
+
+        var imageConfigurationResult = await _registryMetadataService.GetImageConfigurationAsync(imageReference, cancellationToken)
+                                                                     .ConfigureAwait(false);
+
+        if (imageConfigurationResult.Status != ExternalOperationStatus.Succeeded || imageConfigurationResult.Data is null)
+        {
+            return MapConfigurationFailure(imageReference,
+                                           imageConfigurationResult.Status,
+                                           imageConfigurationResult.Message);
+        }
+
+        var results = new List<BaseImageDescriptor>();
+
+        await AppendBaseImagesAsync(imageReference,
+                                    imageConfigurationResult.Data,
+                                    results,
+                                    depth: 1,
+                                    cancellationToken).ConfigureAwait(false);
+
+        return ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>.Succeeded(results);
+    }
+
+    #endregion // IBaseImageResolver
 }

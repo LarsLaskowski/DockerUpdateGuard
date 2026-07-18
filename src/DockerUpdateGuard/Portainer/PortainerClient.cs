@@ -114,14 +114,79 @@ public partial class PortainerClient : IPortainerClient
 
         var containers = await response.Content.ReadFromJsonAsync<DockerContainerItem[]>(cancellationToken: cancellationToken).ConfigureAwait(false);
 
-        return containers?.FirstOrDefault(c =>
-        c.Names?.Any(n => string.Equals(n, $"/{containerName}", StringComparison.OrdinalIgnoreCase)
-                          || string.Equals(n, containerName, StringComparison.OrdinalIgnoreCase)) == true)?.Id;
+        return containers?.FirstOrDefault(c => c.Names?.Any(n => string.Equals(n, $"/{containerName}", StringComparison.OrdinalIgnoreCase)
+                                                                 || string.Equals(n, containerName, StringComparison.OrdinalIgnoreCase)) == true)?.Id;
     }
 
     #endregion // Static methods
 
     #region Methods
+
+    /// <summary>
+    /// Create an authenticated HTTP client for the given Portainer options.
+    /// PAT takes precedence; falls back to username/password JWT login
+    /// </summary>
+    /// <param name="options">Portainer options</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Authenticated HTTP client</returns>
+    private async Task<HttpClient> CreateAuthenticatedClientAsync(PortainerOptions options, CancellationToken cancellationToken)
+    {
+        var client = _httpClientFactory.CreateClient(HttpClientName);
+
+        try
+        {
+            client.BaseAddress = new Uri(options.BaseUrl!);
+            client.Timeout = TimeSpan.FromSeconds(options.RequestTimeoutSeconds);
+
+            if (string.IsNullOrWhiteSpace(options.ApiToken) == false)
+            {
+                client.DefaultRequestHeaders.Add("X-API-Key", options.ApiToken);
+
+                return client;
+            }
+
+            if (string.IsNullOrWhiteSpace(options.Username) == false
+                && string.IsNullOrWhiteSpace(options.Password) == false)
+            {
+                var loginBody = new PortainerLoginRequest(options.Username!, options.Password!);
+                using var loginResponse = await client.PostAsJsonAsync("/api/auth", loginBody, cancellationToken).ConfigureAwait(false);
+
+                if (loginResponse.IsSuccessStatusCode)
+                {
+                    var authResponse = await loginResponse.Content.ReadFromJsonAsync<PortainerAuthResponse>(cancellationToken: cancellationToken).ConfigureAwait(false);
+
+                    if (authResponse?.Jwt is not null)
+                    {
+                        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", authResponse.Jwt);
+                    }
+                    else
+                    {
+                        _logger.PortainerAuthFailed(options.BaseUrl ?? string.Empty);
+
+                        throw new InvalidOperationException($"Portainer authentication succeeded but returned no JWT token for '{options.BaseUrl}'");
+                    }
+                }
+                else
+                {
+                    _logger.PortainerAuthFailed(options.BaseUrl ?? string.Empty);
+
+                    throw new InvalidOperationException($"Portainer authentication failed with HTTP {(int)loginResponse.StatusCode} for '{options.BaseUrl}'");
+                }
+            }
+
+            return client;
+        }
+        catch
+        {
+            client.Dispose();
+
+            throw;
+        }
+    }
+
+    #endregion // Methods
+
+    #region IPortainerClient
 
     /// <inheritdoc/>
     public async Task<PortainerCapabilityData> GetCapabilityAsync(DockerInstanceOptions instanceOptions, CancellationToken cancellationToken = default)
@@ -299,67 +364,5 @@ public partial class PortainerClient : IPortainerClient
         }
     }
 
-    /// <summary>
-    /// Create an authenticated HTTP client for the given Portainer options.
-    /// PAT takes precedence; falls back to username/password JWT login
-    /// </summary>
-    /// <param name="options">Portainer options</param>
-    /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>Authenticated HTTP client</returns>
-    private async Task<HttpClient> CreateAuthenticatedClientAsync(PortainerOptions options, CancellationToken cancellationToken)
-    {
-        var client = _httpClientFactory.CreateClient(HttpClientName);
-
-        try
-        {
-            client.BaseAddress = new Uri(options.BaseUrl!);
-            client.Timeout = TimeSpan.FromSeconds(options.RequestTimeoutSeconds);
-
-            if (string.IsNullOrWhiteSpace(options.ApiToken) == false)
-            {
-                client.DefaultRequestHeaders.Add("X-API-Key", options.ApiToken);
-
-                return client;
-            }
-
-            if (string.IsNullOrWhiteSpace(options.Username) == false
-                && string.IsNullOrWhiteSpace(options.Password) == false)
-            {
-                var loginBody = new PortainerLoginRequest(options.Username!, options.Password!);
-                using var loginResponse = await client.PostAsJsonAsync("/api/auth", loginBody, cancellationToken).ConfigureAwait(false);
-
-                if (loginResponse.IsSuccessStatusCode)
-                {
-                    var authResponse = await loginResponse.Content.ReadFromJsonAsync<PortainerAuthResponse>(cancellationToken: cancellationToken).ConfigureAwait(false);
-
-                    if (authResponse?.Jwt is not null)
-                    {
-                        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", authResponse.Jwt);
-                    }
-                    else
-                    {
-                        _logger.PortainerAuthFailed(options.BaseUrl ?? string.Empty);
-
-                        throw new InvalidOperationException($"Portainer authentication succeeded but returned no JWT token for '{options.BaseUrl}'");
-                    }
-                }
-                else
-                {
-                    _logger.PortainerAuthFailed(options.BaseUrl ?? string.Empty);
-
-                    throw new InvalidOperationException($"Portainer authentication failed with HTTP {(int)loginResponse.StatusCode} for '{options.BaseUrl}'");
-                }
-            }
-
-            return client;
-        }
-        catch
-        {
-            client.Dispose();
-
-            throw;
-        }
-    }
-
-    #endregion // Methods
+    #endregion // IPortainerClient
 }

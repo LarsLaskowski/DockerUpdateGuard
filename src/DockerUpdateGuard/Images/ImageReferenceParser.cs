@@ -11,73 +11,6 @@ public class ImageReferenceParser : IImageReferenceParser
 {
     #region Methods
 
-    /// <inheritdoc/>
-    public ImageReference Parse(string value)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(value);
-
-        var trimmedValue = value.Trim();
-        var digest = default(string);
-        var digestSeparatorIndex = trimmedValue.IndexOf('@');
-
-        if (digestSeparatorIndex >= 0)
-        {
-            digest = trimmedValue[(digestSeparatorIndex + 1)..].Trim();
-            trimmedValue = trimmedValue[..digestSeparatorIndex];
-        }
-
-        var lastSlashIndex = trimmedValue.LastIndexOf('/');
-        var lastColonIndex = trimmedValue.LastIndexOf(':');
-        var tag = lastColonIndex > lastSlashIndex ? trimmedValue[(lastColonIndex + 1)..].Trim() : "latest";
-        var namePart = lastColonIndex > lastSlashIndex ? trimmedValue[..lastColonIndex] : trimmedValue;
-        var segments = namePart.Split('/', StringSplitOptions.RemoveEmptyEntries);
-
-        if (segments.Length == 0)
-        {
-            throw new ArgumentException("The image reference does not contain a repository name", nameof(value));
-        }
-
-        string registry;
-        string repository;
-
-        if (segments.Length == 1)
-        {
-            registry = "docker.io";
-            repository = $"library/{segments[0].ToLowerInvariant()}";
-        }
-        else if (LooksLikeRegistry(segments[0]))
-        {
-            registry = segments[0].ToLowerInvariant();
-            repository = string.Join('/', segments.Skip(1)).ToLowerInvariant();
-        }
-        else
-        {
-            registry = "docker.io";
-            repository = string.Join('/', segments).ToLowerInvariant();
-        }
-
-        NormalizeWrappedRegistry(ref registry, ref repository);
-
-        return new ImageReference
-               {
-                   Registry = registry,
-                   Repository = repository,
-                   Tag = string.IsNullOrWhiteSpace(tag) ? "latest" : tag,
-                   Digest = NormalizeDigest(digest),
-               };
-    }
-
-    /// <inheritdoc/>
-    public string Format(ImageVersion imageVersion)
-    {
-        ArgumentNullException.ThrowIfNull(imageVersion);
-        ArgumentNullException.ThrowIfNull(imageVersion.RegistryRepository);
-
-        return string.IsNullOrWhiteSpace(imageVersion.Digest)
-                   ? $"{imageVersion.RegistryRepository.Registry}/{imageVersion.RegistryRepository.Repository}:{imageVersion.Tag}"
-                   : $"{imageVersion.RegistryRepository.Registry}/{imageVersion.RegistryRepository.Repository}:{imageVersion.Tag}@{imageVersion.Digest}";
-    }
-
     /// <summary>
     /// Normalize a digest value that may contain a full image reference
     /// </summary>
@@ -162,4 +95,75 @@ public class ImageReferenceParser : IImageReferenceParser
     }
 
     #endregion // Methods
+
+    #region IImageReferenceParser
+
+    /// <inheritdoc/>
+    public ImageReference Parse(string value)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(value);
+
+        var trimmedValue = value.Trim();
+        var digest = default(string);
+        var digestSeparatorIndex = trimmedValue.IndexOf('@');
+
+        if (digestSeparatorIndex >= 0)
+        {
+            digest = trimmedValue[(digestSeparatorIndex + 1)..].Trim();
+            trimmedValue = trimmedValue[..digestSeparatorIndex];
+        }
+
+        var lastSlashIndex = trimmedValue.LastIndexOf('/');
+        var lastColonIndex = trimmedValue.LastIndexOf(':');
+        var tag = lastColonIndex > lastSlashIndex ? trimmedValue[(lastColonIndex + 1)..].Trim() : "latest";
+        var namePart = lastColonIndex > lastSlashIndex ? trimmedValue[..lastColonIndex] : trimmedValue;
+        var segments = namePart.Split('/', StringSplitOptions.RemoveEmptyEntries);
+
+        if (segments.Length == 0)
+        {
+            throw new ArgumentException("The image reference does not contain a repository name", nameof(value));
+        }
+
+        string registry;
+        string repository;
+
+        if (segments.Length == 1)
+        {
+            registry = "docker.io";
+            repository = $"library/{segments[0].ToLowerInvariant()}";
+        }
+        else if (LooksLikeRegistry(segments[0]))
+        {
+            registry = segments[0].ToLowerInvariant();
+            repository = string.Join('/', segments.Skip(1)).ToLowerInvariant();
+        }
+        else
+        {
+            registry = "docker.io";
+            repository = string.Join('/', segments).ToLowerInvariant();
+        }
+
+        NormalizeWrappedRegistry(ref registry, ref repository);
+
+        return new ImageReference
+               {
+                   Registry = registry,
+                   Repository = repository,
+                   Tag = string.IsNullOrWhiteSpace(tag) ? "latest" : tag,
+                   Digest = NormalizeDigest(digest),
+               };
+    }
+
+    /// <inheritdoc/>
+    public string Format(ImageVersion imageVersion)
+    {
+        ArgumentNullException.ThrowIfNull(imageVersion);
+        ArgumentNullException.ThrowIfNull(imageVersion.RegistryRepository);
+
+        return string.IsNullOrWhiteSpace(imageVersion.Digest)
+                   ? $"{imageVersion.RegistryRepository.Registry}/{imageVersion.RegistryRepository.Repository}:{imageVersion.Tag}"
+                   : $"{imageVersion.RegistryRepository.Registry}/{imageVersion.RegistryRepository.Repository}:{imageVersion.Tag}@{imageVersion.Digest}";
+    }
+
+    #endregion // IImageReferenceParser
 }

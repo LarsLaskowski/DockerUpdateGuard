@@ -13,6 +13,11 @@ public class DockerHubOptions
     public string Registry { get; set; } = "docker.io";
 
     /// <summary>
+    /// Base address of the Docker Hub API used for registries served by Docker Hub
+    /// </summary>
+    public string ApiBaseUrl { get; set; } = "https://hub.docker.com/";
+
+    /// <summary>
     /// Docker Hub user name used for authenticated API requests
     /// </summary>
     public string? UserName { get; set; }

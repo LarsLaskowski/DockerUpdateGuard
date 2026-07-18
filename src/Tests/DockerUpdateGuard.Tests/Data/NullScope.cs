@@ -14,7 +14,7 @@ internal sealed class NullScope : IDisposable
 
     #endregion // Properties
 
-    #region Methods
+    #region IDisposable
 
     /// <summary>
     /// Release resources
@@ -23,5 +23,5 @@ internal sealed class NullScope : IDisposable
     {
     }
 
-    #endregion // Methods
+    #endregion // IDisposable
 }

@@ -96,7 +96,4 @@ public partial class NginxReleaseMetadataServiceTests
     }
 
     #endregion // Methods
-    #region Helper types
-
-    #endregion // Helper types
 }

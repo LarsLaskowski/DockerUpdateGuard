@@ -27,7 +27,7 @@ internal sealed class TestImageCatalogRepository : IImageCatalogRepository
 
     #endregion // Constructors
 
-    #region Methods
+    #region IImageCatalogRepository
 
     /// <inheritdoc/>
     public Task<ImageVersion?> FindImageVersionAsync(string registry,
@@ -73,5 +73,5 @@ internal sealed class TestImageCatalogRepository : IImageCatalogRepository
         return Task.FromResult(0);
     }
 
-    #endregion // Methods
+    #endregion // IImageCatalogRepository
 }

@@ -1,12 +1,13 @@
-using DockerUpdateGuard;
 using DockerUpdateGuard.Components;
 
 using MudBlazor.Services;
 
+namespace DockerUpdateGuard;
+
 /// <summary>
 /// Configures and runs the DockerUpdateGuard web application, which provides a user interface for monitoring and managing Docker updates. The application is built using ASP.NET Core and Razor Components, and it includes features such as error handling, status code pages, HTTPS redirection, antiforgery protection, and static asset mapping. The main entry point of the application initializes the necessary services and middleware before starting the web server to listen for incoming requests
 /// </summary>
-public partial class Program
+public static partial class Program
 {
     #region Main entry point
 
@@ -42,7 +43,7 @@ public partial class Program
         await app.InitializeDockerUpdateGuardAsync()
                  .ConfigureAwait(false);
 
-        app.Run();
+        await app.RunAsync().ConfigureAwait(false);
     }
 
     #endregion // Main entry point

@@ -51,7 +51,7 @@ public class ImageRegistrationService : IImageRegistrationService
 
     #endregion // Constructors
 
-    #region Methods
+    #region IImageRegistrationService
 
     /// <inheritdoc/>
     public async Task<ObservedImage> RegisterAsync(ObservedImageRegistrationRequest request, CancellationToken cancellationToken = default)
@@ -96,5 +96,5 @@ public class ImageRegistrationService : IImageRegistrationService
         return existingImage;
     }
 
-    #endregion // Methods
+    #endregion // IImageRegistrationService
 }

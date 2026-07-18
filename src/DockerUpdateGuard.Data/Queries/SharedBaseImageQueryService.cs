@@ -33,6 +33,33 @@ public class SharedBaseImageQueryService : ISharedBaseImageQueryService
 
     #region Methods
 
+    /// <summary>
+    /// Build a grouping key for the base-image overview
+    /// </summary>
+    /// <param name="registry">Registry name</param>
+    /// <param name="repository">Repository path</param>
+    /// <param name="tag">Tag value</param>
+    /// <param name="digest">Digest value</param>
+    /// <param name="sourceReference">Source-reference value</param>
+    /// <returns>Grouping key</returns>
+    private static string BuildGroupingKey(string registry,
+                                           string repository,
+                                           string tag,
+                                           string? digest,
+                                           string? sourceReference)
+    {
+        if (string.IsNullOrWhiteSpace(digest) == false)
+        {
+            return $"{registry}/{repository}@{digest}";
+        }
+
+        return $"{registry}/{repository}:{tag}|{sourceReference ?? string.Empty}";
+    }
+
+    #endregion // Methods
+
+    #region ISharedBaseImageQueryService
+
     /// <inheritdoc/>
     public async Task<IReadOnlyList<SharedBaseImageUsageData>> GetBaseImagesAsync(CancellationToken cancellationToken = default)
     {
@@ -171,28 +198,5 @@ public class SharedBaseImageQueryService : ISharedBaseImageQueryService
                           .ToList();
     }
 
-    /// <summary>
-    /// Build a grouping key for the base-image overview
-    /// </summary>
-    /// <param name="registry">Registry name</param>
-    /// <param name="repository">Repository path</param>
-    /// <param name="tag">Tag value</param>
-    /// <param name="digest">Digest value</param>
-    /// <param name="sourceReference">Source-reference value</param>
-    /// <returns>Grouping key</returns>
-    private static string BuildGroupingKey(string registry,
-                                           string repository,
-                                           string tag,
-                                           string? digest,
-                                           string? sourceReference)
-    {
-        if (string.IsNullOrWhiteSpace(digest) == false)
-        {
-            return $"{registry}/{repository}@{digest}";
-        }
-
-        return $"{registry}/{repository}:{tag}|{sourceReference ?? string.Empty}";
-    }
-
-    #endregion // Methods
+    #endregion // ISharedBaseImageQueryService
 }

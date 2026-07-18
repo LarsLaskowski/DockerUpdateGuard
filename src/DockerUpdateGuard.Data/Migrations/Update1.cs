@@ -75,7 +75,7 @@ public partial class Update1 : Migration
 
         migrationBuilder.CreateIndex(name: "IX_RuntimeContainerTagSelections_DockerInstanceId_ContainerId",
                                      table: "RuntimeContainerTagSelections",
-                                     columns: new[] { "DockerInstanceId", "ContainerId" },
+                                     columns: ["DockerInstanceId", "ContainerId"],
                                      unique: true);
 
         migrationBuilder.CreateIndex(name: "IX_RuntimeContainerTagSelections_RegistryRepositoryId",

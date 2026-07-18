@@ -10,7 +10,7 @@ namespace DockerUpdateGuard.Data.Configurations;
 /// </summary>
 public class ImageRelationshipConfiguration : IEntityTypeConfiguration<ImageRelationship>
 {
-    #region Methods
+    #region IEntityTypeConfiguration
 
     /// <inheritdoc/>
     public void Configure(EntityTypeBuilder<ImageRelationship> builder)
@@ -64,5 +64,5 @@ public class ImageRelationshipConfiguration : IEntityTypeConfiguration<ImageRela
                .OnDelete(DeleteBehavior.SetNull);
     }
 
-    #endregion // Methods
+    #endregion // IEntityTypeConfiguration
 }

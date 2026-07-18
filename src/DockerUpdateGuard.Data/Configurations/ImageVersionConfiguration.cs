@@ -11,7 +11,7 @@ namespace DockerUpdateGuard.Data.Configurations;
 /// </summary>
 public class ImageVersionConfiguration : IEntityTypeConfiguration<ImageVersion>
 {
-    #region Methods
+    #region IEntityTypeConfiguration
 
     /// <inheritdoc/>
     public void Configure(EntityTypeBuilder<ImageVersion> builder)
@@ -68,5 +68,5 @@ public class ImageVersionConfiguration : IEntityTypeConfiguration<ImageVersion>
                .OnDelete(DeleteBehavior.Cascade);
     }
 
-    #endregion // Methods
+    #endregion // IEntityTypeConfiguration
 }
