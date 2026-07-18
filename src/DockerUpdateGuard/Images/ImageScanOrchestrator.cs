@@ -210,6 +210,51 @@ public class ImageScanOrchestrator : IImageScanOrchestrator
     }
 
     /// <summary>
+    /// Build derived base-runtime finding details for an observed image
+    /// </summary>
+    /// <param name="observedImage">Observed image</param>
+    /// <param name="runtimeDescriptor">Runtime descriptor</param>
+    /// <param name="channelRelease">Channel release metadata</param>
+    /// <returns>Details text</returns>
+    private static string BuildDotNetDerivedBaseRuntimeDetails(ObservedImage observedImage,
+                                                               DerivedBaseRuntimeDescriptor runtimeDescriptor,
+                                                               DotNetChannelReleaseData channelRelease)
+    {
+        ArgumentNullException.ThrowIfNull(runtimeDescriptor.RuntimeVersion);
+
+        var message = $"Observed image '{observedImage.Name}' appears to use .NET {FormatVersion(runtimeDescriptor.RuntimeVersion)}. Latest .NET {channelRelease.ChannelVersion} runtime is {FormatVersion(channelRelease.LatestRuntimeVersion)}.";
+
+        if (channelRelease.IsSecurityRelease)
+        {
+            message = $"{message} The latest channel release includes security fixes.";
+        }
+
+        return observedImage.Source == RegistrationSource.Discovery
+                   ? $"{message} Rebuild and republish the image so new deployments use the updated .NET base runtime."
+                   : $"{message} The upstream image publisher must rebuild the image before the newer .NET base runtime can be consumed.";
+    }
+
+    /// <summary>
+    /// Build NGINX derived base-runtime finding details for an observed image
+    /// </summary>
+    /// <param name="observedImage">Observed image</param>
+    /// <param name="runtimeDescriptor">Runtime descriptor</param>
+    /// <param name="channelRelease">Channel release metadata</param>
+    /// <returns>Details text</returns>
+    private static string BuildNginxDerivedBaseRuntimeDetails(ObservedImage observedImage,
+                                                              DerivedBaseRuntimeDescriptor runtimeDescriptor,
+                                                              NginxChannelReleaseData channelRelease)
+    {
+        ArgumentNullException.ThrowIfNull(runtimeDescriptor.RuntimeVersion);
+
+        var message = $"Observed image '{observedImage.Name}' appears to use NGINX {FormatVersion(runtimeDescriptor.RuntimeVersion)}. Latest NGINX {channelRelease.ChannelVersion} release is {FormatVersion(channelRelease.LatestVersion)}.";
+
+        return observedImage.Source == RegistrationSource.Discovery
+                   ? $"{message} Rebuild and republish the image so new deployments use the updated NGINX base runtime."
+                   : $"{message} The upstream image publisher must rebuild the image before the newer NGINX base runtime can be consumed.";
+    }
+
+    /// <summary>
     /// Resolve the stored base-image tag for display and persistence
     /// </summary>
     /// <param name="baseImageReference">Base image reference</param>
@@ -444,51 +489,6 @@ public class ImageScanOrchestrator : IImageScanOrchestrator
                                                                                         runtimeDescriptor,
                                                                                         channelReleaseResult.Data),
                                       });
-    }
-
-    /// <summary>
-    /// Build derived base-runtime finding details for an observed image
-    /// </summary>
-    /// <param name="observedImage">Observed image</param>
-    /// <param name="runtimeDescriptor">Runtime descriptor</param>
-    /// <param name="channelRelease">Channel release metadata</param>
-    /// <returns>Details text</returns>
-    private string BuildDotNetDerivedBaseRuntimeDetails(ObservedImage observedImage,
-                                                        DerivedBaseRuntimeDescriptor runtimeDescriptor,
-                                                        DotNetChannelReleaseData channelRelease)
-    {
-        ArgumentNullException.ThrowIfNull(runtimeDescriptor.RuntimeVersion);
-
-        var message = $"Observed image '{observedImage.Name}' appears to use .NET {FormatVersion(runtimeDescriptor.RuntimeVersion)}. Latest .NET {channelRelease.ChannelVersion} runtime is {FormatVersion(channelRelease.LatestRuntimeVersion)}.";
-
-        if (channelRelease.IsSecurityRelease)
-        {
-            message = $"{message} The latest channel release includes security fixes.";
-        }
-
-        return observedImage.Source == RegistrationSource.Discovery
-                   ? $"{message} Rebuild and republish the image so new deployments use the updated .NET base runtime."
-                   : $"{message} The upstream image publisher must rebuild the image before the newer .NET base runtime can be consumed.";
-    }
-
-    /// <summary>
-    /// Build NGINX derived base-runtime finding details for an observed image
-    /// </summary>
-    /// <param name="observedImage">Observed image</param>
-    /// <param name="runtimeDescriptor">Runtime descriptor</param>
-    /// <param name="channelRelease">Channel release metadata</param>
-    /// <returns>Details text</returns>
-    private string BuildNginxDerivedBaseRuntimeDetails(ObservedImage observedImage,
-                                                       DerivedBaseRuntimeDescriptor runtimeDescriptor,
-                                                       NginxChannelReleaseData channelRelease)
-    {
-        ArgumentNullException.ThrowIfNull(runtimeDescriptor.RuntimeVersion);
-
-        var message = $"Observed image '{observedImage.Name}' appears to use NGINX {FormatVersion(runtimeDescriptor.RuntimeVersion)}. Latest NGINX {channelRelease.ChannelVersion} release is {FormatVersion(channelRelease.LatestVersion)}.";
-
-        return observedImage.Source == RegistrationSource.Discovery
-                   ? $"{message} Rebuild and republish the image so new deployments use the updated NGINX base runtime."
-                   : $"{message} The upstream image publisher must rebuild the image before the newer NGINX base runtime can be consumed.";
     }
 
     /// <summary>
