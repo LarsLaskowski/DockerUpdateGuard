@@ -397,8 +397,8 @@ public partial class DockerInstanceClientTests
                             result.Status,
                             "Image inspect must succeed when the Docker engine returns an inspect payload");
             Assert.IsNotNull(result.Data, "Image inspect must expose the parsed inspect payload");
-            Assert.AreSequenceEqual(new[] { "DOTNET_VERSION=9.0.13", "ASPNET_VERSION=9.0.13" }, result.Data.EnvironmentVariables.ToArray(), "Image inspect must expose environment variables from the Docker image config");
-            Assert.AreSequenceEqual(new[] { "sha256:layer-1", "sha256:layer-2" }, result.Data.RootFsLayers.ToArray(), "Image inspect must expose the rootfs layer chain");
+            Assert.AreSequenceEqual(["DOTNET_VERSION=9.0.13", "ASPNET_VERSION=9.0.13"], result.Data.EnvironmentVariables.ToArray(), "Image inspect must expose environment variables from the Docker image config");
+            Assert.AreSequenceEqual(["sha256:layer-1", "sha256:layer-2"], result.Data.RootFsLayers.ToArray(), "Image inspect must expose the rootfs layer chain");
         }
         finally
         {
@@ -455,7 +455,7 @@ public partial class DockerInstanceClientTests
             Assert.AreEqual("/bin/sh -c #(nop)  ENV DOTNET_VERSION=9.0.13",
                             result.Data.Single().CreatedBy,
                             "Image history must expose the created-by command text");
-            Assert.AreSequenceEqual(new[] { "docker.io/company/api:1.0.0" }, result.Data.Single().Tags.ToArray(), "Image history must expose tags when the Docker engine returns them");
+            Assert.AreSequenceEqual(["docker.io/company/api:1.0.0"], result.Data.Single().Tags.ToArray(), "Image history must expose tags when the Docker engine returns them");
         }
         finally
         {

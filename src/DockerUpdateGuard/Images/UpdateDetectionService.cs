@@ -217,6 +217,43 @@ public class UpdateDetectionService : IUpdateDetectionService
     }
 
     /// <summary>
+    /// Evaluate an update for a tag whose running digest matches a concrete version tag
+    /// </summary>
+    /// <param name="currentImage">Current image reference</param>
+    /// <param name="currentTagData">Tag metadata of the current tag</param>
+    /// <param name="orderedTags">Available tags ordered by publication date</param>
+    /// <returns>Evaluation result, or null when the running digest cannot be mapped to a version tag</returns>
+    private static UpdateEvaluationResult? EvaluateResolvedDigestUpdate(ImageReference currentImage,
+                                                                        DockerHubTagData? currentTagData,
+                                                                        IReadOnlyList<DockerHubTagData> orderedTags)
+    {
+        if (TryResolveCurrentVersionFromDigest(currentImage,
+                                               orderedTags,
+                                               out var resolvedVersionTagData,
+                                               out _) == false)
+        {
+            return null;
+        }
+
+        var versionCandidates = GetHigherVersionCandidates(orderedTags,
+                                                           resolvedVersionTagData!.Tag,
+                                                           resolvedVersionTagData.PublishedAtUtc ?? currentTagData?.PublishedAtUtc);
+
+        if (versionCandidates.Count > 0)
+        {
+            return CreateSemanticVersionUpdateResult(versionCandidates,
+                                                     CreateResolvedCurrentVersionCandidate(resolvedVersionTagData));
+        }
+
+        return new UpdateEvaluationResult
+               {
+                   Status = UpdateEvaluationStatus.UpToDate,
+                   Summary = $"The running digest matches version tag '{resolvedVersionTagData!.Tag}'",
+                   Details = "No newer semantic version was found",
+               };
+    }
+
+    /// <summary>
     /// Resolve the current semantic version from the running digest
     /// </summary>
     /// <param name="currentImage">Current image reference</param>
@@ -344,9 +381,9 @@ public class UpdateDetectionService : IUpdateDetectionService
     /// <param name="currentTagData">Tag metadata of the current tag</param>
     /// <param name="orderedTags">Available tags ordered by publication date</param>
     /// <returns>Evaluation result, or null when the current tag is not a semantic version</returns>
-    private UpdateEvaluationResult? EvaluateSemanticVersionUpdate(ImageReference currentImage,
-                                                                  DockerHubTagData? currentTagData,
-                                                                  IReadOnlyList<DockerHubTagData> orderedTags)
+    private static UpdateEvaluationResult? EvaluateSemanticVersionUpdate(ImageReference currentImage,
+                                                                         DockerHubTagData? currentTagData,
+                                                                         IReadOnlyList<DockerHubTagData> orderedTags)
     {
         if (TryParseVersion(currentImage.Tag, out _) == false)
         {
@@ -384,9 +421,9 @@ public class UpdateDetectionService : IUpdateDetectionService
     /// <param name="currentTagData">Tag metadata of the current tag</param>
     /// <param name="orderedTags">Available tags ordered by publication date</param>
     /// <returns>Evaluation result, or null when the current tag is not a year-prefixed version</returns>
-    private UpdateEvaluationResult? EvaluateYearPrefixedUpdate(ImageReference currentImage,
-                                                               DockerHubTagData? currentTagData,
-                                                               IReadOnlyList<DockerHubTagData> orderedTags)
+    private static UpdateEvaluationResult? EvaluateYearPrefixedUpdate(ImageReference currentImage,
+                                                                      DockerHubTagData? currentTagData,
+                                                                      IReadOnlyList<DockerHubTagData> orderedTags)
     {
         if (TryParseYearPrefixedVersion(currentImage.Tag, out var currentYear, out _) == false)
         {
@@ -415,43 +452,6 @@ public class UpdateDetectionService : IUpdateDetectionService
                {
                    Status = UpdateEvaluationStatus.UpToDate,
                    Summary = "No newer year-based version was found",
-               };
-    }
-
-    /// <summary>
-    /// Evaluate an update for a tag whose running digest matches a concrete version tag
-    /// </summary>
-    /// <param name="currentImage">Current image reference</param>
-    /// <param name="currentTagData">Tag metadata of the current tag</param>
-    /// <param name="orderedTags">Available tags ordered by publication date</param>
-    /// <returns>Evaluation result, or null when the running digest cannot be mapped to a version tag</returns>
-    private UpdateEvaluationResult? EvaluateResolvedDigestUpdate(ImageReference currentImage,
-                                                                 DockerHubTagData? currentTagData,
-                                                                 IReadOnlyList<DockerHubTagData> orderedTags)
-    {
-        if (TryResolveCurrentVersionFromDigest(currentImage,
-                                               orderedTags,
-                                               out var resolvedVersionTagData,
-                                               out _) == false)
-        {
-            return null;
-        }
-
-        var versionCandidates = GetHigherVersionCandidates(orderedTags,
-                                                           resolvedVersionTagData!.Tag,
-                                                           resolvedVersionTagData.PublishedAtUtc ?? currentTagData?.PublishedAtUtc);
-
-        if (versionCandidates.Count > 0)
-        {
-            return CreateSemanticVersionUpdateResult(versionCandidates,
-                                                     CreateResolvedCurrentVersionCandidate(resolvedVersionTagData));
-        }
-
-        return new UpdateEvaluationResult
-               {
-                   Status = UpdateEvaluationStatus.UpToDate,
-                   Summary = $"The running digest matches version tag '{resolvedVersionTagData!.Tag}'",
-                   Details = "No newer semantic version was found",
                };
     }
 
