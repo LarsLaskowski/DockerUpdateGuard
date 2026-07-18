@@ -3,16 +3,16 @@ using System.Text.Json.Serialization;
 namespace DockerUpdateGuard.Vulnerabilities.Data;
 
 /// <summary>
-/// Trivy scan response payload
+/// Trivy JSON report payload produced by the Trivy CLI
 /// </summary>
-internal sealed record TrivyScanResponse
+internal sealed record TrivyReport
 {
     #region Properties
 
     /// <summary>
     /// Scan results
     /// </summary>
-    [JsonPropertyName("results")]
+    [JsonPropertyName("Results")]
     public List<TrivyResult>? Results { get; init; }
 
     #endregion // Properties

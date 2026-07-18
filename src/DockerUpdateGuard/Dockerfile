@@ -1,7 +1,13 @@
 ARG BASE_SDK="mcr.microsoft.com/dotnet/sdk:10.0-alpine"
 ARG BASE_RUNTIME="mcr.microsoft.com/dotnet/aspnet:10.0-alpine"
 ARG BASE_RUNTIME_DIGEST
+ARG TRIVY_IMAGE="aquasec/trivy:0.58.1"
 ARG APP_VERSION=1.0.0
+
+# ---------------------------
+# Trivy CLI Stage
+# ---------------------------
+FROM ${TRIVY_IMAGE} AS trivy
 
 # ---------------------------
 # Build Stage
@@ -41,6 +47,11 @@ ENV DockerUpdateGuard__DisplayVersion=$APP_VERSION
 # apt-get is not available in Alpine, so we use apk to install ca-certificates
 #RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
 RUN apk add --no-cache ca-certificates
+
+# Trivy CLI for client-mode vulnerability scans against a remote Trivy server.
+# The cache directory lives under /tmp so any runtime UID can write it.
+COPY --from=trivy /usr/local/bin/trivy /usr/local/bin/trivy
+ENV TRIVY_CACHE_DIR=/tmp/trivy
 
 COPY --from=build /app/publish .
 

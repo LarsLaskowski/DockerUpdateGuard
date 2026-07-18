@@ -12,7 +12,7 @@ internal sealed record TrivyResult
     /// <summary>
     /// Vulnerabilities
     /// </summary>
-    [JsonPropertyName("vulnerabilities")]
+    [JsonPropertyName("Vulnerabilities")]
     public List<TrivyVulnerability>? Vulnerabilities { get; init; }
 
     #endregion // Properties

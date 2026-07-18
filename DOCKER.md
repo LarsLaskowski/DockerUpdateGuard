@@ -6,6 +6,8 @@ The image runs the DockerUpdateGuard web UI and background workers. It connects 
 - one or more Docker Engine endpoints for runtime discovery and resource sampling
 - optional Docker Hub, Portainer, Trivy, and OTLP endpoints
 
+The image bundles the Trivy CLI. When `Provider=Trivy` is configured, image scans run through `trivy image --server <TrivyBaseUrl>` in client mode: the CLI pulls and analyzes the image locally and uses the configured Trivy server as the vulnerability database backend. The Trivy cache is written to `/tmp/trivy` (configurable via the `TRIVY_CACHE_DIR` environment variable).
+
 The container listens on port `8080`.
 
 ## Required configuration
@@ -77,7 +79,8 @@ Common JSON paths:
 | `DockerUpdateGuard:DockerHub:Pat` | Optional Docker Hub personal access token |
 | `DockerUpdateGuard:Vulnerabilities:Enabled` | Enables vulnerability refresh |
 | `DockerUpdateGuard:Vulnerabilities:Provider` | `None`, `DockerScout`, or `Trivy` |
-| `DockerUpdateGuard:Vulnerabilities:TrivyBaseUrl` | Required when `Provider=Trivy` |
+| `DockerUpdateGuard:Vulnerabilities:TrivyBaseUrl` | Required when `Provider=Trivy`; base URL of the Trivy server used by the bundled Trivy CLI in client mode |
+| `DockerUpdateGuard:Vulnerabilities:TrivyExecutablePath` | Optional path to the Trivy executable; defaults to `trivy` (bundled in the image) |
 | `Telemetry:OtlpEndpoint` | Optional OTLP collector endpoint |
 | `DockerUpdateGuard:DisplayVersion` | Version label shown in the UI; set by the image build argument |
 
