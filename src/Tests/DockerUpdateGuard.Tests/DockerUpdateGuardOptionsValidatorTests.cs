@@ -159,6 +159,80 @@ public class DockerUpdateGuardOptionsValidatorTests
     }
 
     /// <summary>
+    /// Verify a malformed Trivy base URL is reported when the Trivy provider is selected
+    /// </summary>
+    [TestMethod]
+    public void DockerUpdateGuardOptionsValidatorInvalidTrivyBaseUrlReturnsFailure()
+    {
+        var configuration = CreateConfiguration(new Dictionary<string, string?>
+                                                {
+                                                    ["ConnectionStrings:DockerUpdateGuard"] = "Host=database;Database=dug",
+                                                });
+        var validator = new DockerUpdateGuardOptionsValidator(configuration);
+        var options = CreateValidOptions();
+
+        options.Vulnerabilities.Enabled = true;
+        options.Vulnerabilities.Provider = VulnerabilityProviderKind.Trivy;
+        options.Vulnerabilities.TrivyBaseUrl = "not-a-valid-uri";
+
+        var validationResult = validator.Validate(Options.DefaultName, options);
+        var failures = validationResult.Failures?.ToArray() ?? [];
+
+        Assert.IsTrue(validationResult.Failed, "A malformed Trivy base URL must fail validation");
+        Assert.Contains(message => message.Contains("Vulnerabilities:TrivyBaseUrl' must be an absolute http or https URI", StringComparison.Ordinal),
+                        failures,
+                        "A malformed Trivy base URL must be reported");
+    }
+
+    /// <summary>
+    /// Verify a missing Trivy base URL is reported when the Trivy provider is selected
+    /// </summary>
+    [TestMethod]
+    public void DockerUpdateGuardOptionsValidatorMissingTrivyBaseUrlReturnsFailure()
+    {
+        var configuration = CreateConfiguration(new Dictionary<string, string?>
+                                                {
+                                                    ["ConnectionStrings:DockerUpdateGuard"] = "Host=database;Database=dug",
+                                                });
+        var validator = new DockerUpdateGuardOptionsValidator(configuration);
+        var options = CreateValidOptions();
+
+        options.Vulnerabilities.Enabled = true;
+        options.Vulnerabilities.Provider = VulnerabilityProviderKind.Trivy;
+        options.Vulnerabilities.TrivyBaseUrl = null;
+
+        var validationResult = validator.Validate(Options.DefaultName, options);
+        var failures = validationResult.Failures?.ToArray() ?? [];
+
+        Assert.IsTrue(validationResult.Failed, "A missing Trivy base URL must fail validation");
+        Assert.Contains(message => message.Contains("Vulnerabilities:TrivyBaseUrl' must be configured", StringComparison.Ordinal),
+                        failures,
+                        "A missing Trivy base URL must be reported");
+    }
+
+    /// <summary>
+    /// Verify a valid Trivy base URL passes validation when the Trivy provider is selected
+    /// </summary>
+    [TestMethod]
+    public void DockerUpdateGuardOptionsValidatorValidTrivyBaseUrlReturnsSuccess()
+    {
+        var configuration = CreateConfiguration(new Dictionary<string, string?>
+                                                {
+                                                    ["ConnectionStrings:DockerUpdateGuard"] = "Host=database;Database=dug",
+                                                });
+        var validator = new DockerUpdateGuardOptionsValidator(configuration);
+        var options = CreateValidOptions();
+
+        options.Vulnerabilities.Enabled = true;
+        options.Vulnerabilities.Provider = VulnerabilityProviderKind.Trivy;
+        options.Vulnerabilities.TrivyBaseUrl = "http://trivy.local:4954";
+
+        var validationResult = validator.Validate(Options.DefaultName, options);
+
+        Assert.IsFalse(validationResult.Failed, "A valid Trivy base URL must pass validation");
+    }
+
+    /// <summary>
     /// Verify out-of-range upper bound values are reported individually
     /// </summary>
     [TestMethod]
