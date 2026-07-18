@@ -136,9 +136,11 @@ public class DockerUpdateGuardOptionsValidator : IValidateOptions<DockerUpdateGu
             failures.Add($"'{DockerUpdateGuardOptions.SectionName}:Vulnerabilities:Provider' must be configured when vulnerability refresh is enabled");
         }
 
-        if (options.Enabled && options.Provider == VulnerabilityProviderKind.Trivy && string.IsNullOrWhiteSpace(options.TrivyBaseUrl))
+        if (options.Enabled && options.Provider == VulnerabilityProviderKind.Trivy)
         {
-            failures.Add($"'{DockerUpdateGuardOptions.SectionName}:Vulnerabilities:TrivyBaseUrl' must be configured when the Trivy provider is selected");
+            ValidateAbsoluteHttpUri(options.TrivyBaseUrl ?? string.Empty,
+                                    $"{DockerUpdateGuardOptions.SectionName}:Vulnerabilities:TrivyBaseUrl",
+                                    failures);
         }
 
         if (options.RequestTimeoutSeconds is <= 0 or > 300)

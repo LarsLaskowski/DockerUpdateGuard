@@ -32,7 +32,7 @@ DockerUpdateGuard expects:
 - Optional Docker Hub credentials for authenticated registry access
 - Optional Portainer access per Docker instance
 - Optional OTLP endpoint for telemetry export
-- Optional Trivy server when Trivy-based vulnerability scanning is enabled
+- Optional Trivy server when Trivy-based vulnerability scanning is enabled; scans run through the Trivy CLI in client mode, so the `trivy` binary must be available (bundled in the published container image)
 
 The application applies EF Core migrations automatically on startup.
 
@@ -125,7 +125,8 @@ versions. Override them to route the lookups through an internal mirror or proxy
 | --- | --- | --- | --- |
 | `Enabled` | `false` | No | Enables vulnerability refresh |
 | `Provider` | `None` | Required when enabled | Supported values: `None`, `DockerScout`, `Trivy` |
-| `TrivyBaseUrl` | none | Required for `Trivy` | Base URL of the Trivy server |
+| `TrivyBaseUrl` | none | Required for `Trivy` | Base URL of the Trivy server used by the Trivy CLI in client mode |
+| `TrivyExecutablePath` | `trivy` | No | Path to the Trivy executable (resolved through `PATH` by default; bundled in the published container image) |
 | `DockerScoutLoginUrl` | `https://hub.docker.com/v2/users/login` | No | Docker Hub login endpoint used by the `DockerScout` provider |
 | `DockerScoutBaseUrl` | `https://api.scout.docker.com` | No | Base address of the Docker Scout API |
 | `RequestTimeoutSeconds` | `30` | No | Timeout for vulnerability provider requests |

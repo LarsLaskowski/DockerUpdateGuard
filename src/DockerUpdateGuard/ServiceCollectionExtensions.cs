@@ -114,6 +114,7 @@ public static class ServiceCollectionExtensions
 
                 case VulnerabilityProviderKind.Trivy:
                     {
+                        services.TryAddSingleton<IProcessRunner, ProcessRunner>();
                         services.AddSingleton<IVulnerabilityProvider, TrivyVulnerabilityProvider>();
                     }
                     break;
