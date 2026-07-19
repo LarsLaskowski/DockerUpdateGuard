@@ -37,7 +37,7 @@ public class MainLayoutTests
         var layout = new MainLayout();
 
         _dashboardSummaryField.SetValue(layout,
-                                        new DashboardViewData
+                                        new DashboardSummaryViewData
                                         {
                                             ObservedImageCount = 3,
                                             MyImageCount = 2,
