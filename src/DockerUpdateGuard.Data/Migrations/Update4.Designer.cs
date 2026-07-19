@@ -3,6 +3,7 @@ using System;
 using DockerUpdateGuard.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace DockerUpdateGuard.Data.Migrations
 {
     [DbContext(typeof(DockerUpdateGuardDbContext))]
-    partial class DockerUpdateGuardDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260719120909_Update4")]
+    partial class Update4
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

@@ -26,7 +26,7 @@ public class ObservedImageConfiguration : IEntityTypeConfiguration<ObservedImage
                .IsRequired();
 
         builder.Property(entity => entity.Description)
-               .HasMaxLength(1000);
+               .HasColumnType("text");
 
         builder.Property(entity => entity.Source)
                .IsRequired();
