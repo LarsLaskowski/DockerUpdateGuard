@@ -62,7 +62,10 @@ public class TelemetryServiceCollectionExtensionsTests
                                            .Value;
         var logger = loggerFactory.CreateLogger(DockerUpdateGuardTelemetry.LoggerCategoryName);
 
-        logger.LogInformation("Telemetry logging pipeline test {TestValue}", 42);
+        if (logger.IsEnabled(LogLevel.Information))
+        {
+            logger.LogInformation("Telemetry logging pipeline test {TestValue}", 42);
+        }
 
         Assert.IsNotNull(loggerFactory, "The telemetry registration must register an ILoggerFactory instance");
         Assert.Contains(provider => provider.GetType().FullName?.Contains("OpenTelemetry", StringComparison.Ordinal) == true, loggerProviders, "The telemetry registration must register an OpenTelemetry logger provider");

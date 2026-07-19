@@ -172,7 +172,7 @@ public class DockerHubAccountImageDiscoveryService : IDockerHubAccountImageDisco
     {
         var tagsResult = await _dockerHubClient.GetTagsAsync(repository.Registry,
                                                              repository.Repository,
-                                                             cancellationToken)
+                                                             cancellationToken: cancellationToken)
                                                .ConfigureAwait(false);
 
         if (tagsResult.Status != ExternalOperationStatus.Succeeded

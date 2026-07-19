@@ -224,7 +224,7 @@ public partial class DockerHubClientTests
 
             var client = CreateClient(httpClient);
 
-            var result = await client.GetTagsAsync("docker.io", "acme/api", CancellationToken.None)
+            var result = await client.GetTagsAsync("docker.io", "acme/api", cancellationToken: CancellationToken.None)
                                      .ConfigureAwait(false);
 
             Assert.AreEqual(ExternalOperationStatus.Succeeded,
@@ -294,14 +294,14 @@ public partial class DockerHubClientTests
             var client = CreateClient(httpClient);
             var result = await client.GetTagsAsync("docker.io",
                                                    "acme/api",
-                                                   CancellationToken.None,
                                                    queryOptions: new RegistryTagQueryOptions
                                                                  {
                                                                      CurrentTag = "2.4.1",
                                                                      MaximumTags = 50,
                                                                      MinimumVersionTag = "2.4.1",
                                                                      PublishedSinceUtc = new DateTimeOffset(2025, 04, 02, 10, 00, 00, TimeSpan.Zero),
-                                                                 })
+                                                                 },
+                                                   cancellationToken: CancellationToken.None)
                                      .ConfigureAwait(false);
 
             Assert.AreEqual(ExternalOperationStatus.Succeeded,
@@ -370,9 +370,9 @@ public partial class DockerHubClientTests
                                                       Repository = "acme/api",
                                                       Tag = "latest",
                                                   },
-                                                  CancellationToken.None,
                                                   "linux",
-                                                  "arm64")
+                                                  "arm64",
+                                                  CancellationToken.None)
                                      .ConfigureAwait(false);
 
             Assert.AreEqual(ExternalOperationStatus.Succeeded,

@@ -123,7 +123,7 @@ public class DockerHubAccountImageDiscoveryServiceTests
                                                                                                                   ]));
                 dockerHubClient.GetTagsAsync("docker.io",
                                              "acme/api",
-                                             CancellationToken.None)
+                                             cancellationToken: CancellationToken.None)
                                .Returns(ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Succeeded([
                                                                                                                new DockerHubTagData
                                                                                                                {
@@ -134,7 +134,7 @@ public class DockerHubAccountImageDiscoveryServiceTests
                                                                                                            ]));
                 dockerHubClient.GetTagsAsync("docker.io",
                                              "acme/web",
-                                             CancellationToken.None)
+                                             cancellationToken: CancellationToken.None)
                                .Returns(ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Succeeded([
                                                                                                                new DockerHubTagData
                                                                                                                {

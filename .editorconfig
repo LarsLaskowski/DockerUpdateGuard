@@ -3,6 +3,7 @@
 # IDE0290: Use primary constructor
 dotnet_diagnostic.IDE0290.severity = silent
 insert_final_newline = false
+dotnet_diagnostic.IDE0063.severity = none
 
 # EF Core migrations are scaffolded and must stay in the generated shape
 [**/Migrations/*.cs]

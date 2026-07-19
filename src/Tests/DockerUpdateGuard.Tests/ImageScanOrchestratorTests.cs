@@ -86,7 +86,7 @@ public class ImageScanOrchestratorTests
                                                                                                                         SourceReference = "FROM debian:12.0.0",
                                                                                                                     },
                                                                                                                 ]));
-                registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
+                registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), cancellationToken: Arg.Any<CancellationToken>())
                                        .Returns(callInfo =>
                                                 {
                                                     var imageReference = callInfo.ArgAt<ImageReference>(0);
@@ -183,14 +183,14 @@ public class ImageScanOrchestratorTests
                                                                                          && entity.Repository == "library/debian"
                                                                                          && entity.Tag == "12.0.0"
                                                                                          && entity.Digest == "sha256:base-old"),
-                                                        Arg.Any<CancellationToken>());
+                                                        cancellationToken: Arg.Any<CancellationToken>());
 
                 _ = registryMetadataService.DidNotReceive()
                                            .GetTagsAsync("docker.io",
                                                          "library/debian",
-                                                         Arg.Any<CancellationToken>(),
                                                          Arg.Any<string?>(),
-                                                         Arg.Any<string?>());
+                                                         Arg.Any<string?>(),
+                                                         cancellationToken: Arg.Any<CancellationToken>());
             }
         }
     }
@@ -243,7 +243,7 @@ public class ImageScanOrchestratorTests
                                                                                                                         SourceReference = "FROM mcr.microsoft.com/dotnet/runtime:10.0-alpine",
                                                                                                                     },
                                                                                                                 ]));
-                registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
+                registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), cancellationToken: Arg.Any<CancellationToken>())
                                        .Returns(callInfo =>
                                                 {
                                                     var imageReference = callInfo.ArgAt<ImageReference>(0);
@@ -269,7 +269,6 @@ public class ImageScanOrchestratorTests
                                        .Returns(ExternalOperationResult<RegistryImageConfigurationData>.NotFound("No registry config"));
                 registryMetadataService.GetTagsAsync("mcr.microsoft.com",
                                                      "dotnet/runtime",
-                                                     Arg.Any<CancellationToken>(),
                                                      Arg.Any<string?>(),
                                                      Arg.Any<string?>(),
                                                      Arg.Is<RegistryTagQueryOptions>(options => options != null
@@ -277,7 +276,8 @@ public class ImageScanOrchestratorTests
                                                                                                 && options.CurrentTag == "10.0-alpine"
                                                                                                 && options.MaximumTags == 150
                                                                                                 && options.VersionLineTag == "10.0-alpine"
-                                                                                                && options.PublishedSinceUtc == new DateTimeOffset(2025, 06, 02, 12, 00, 00, TimeSpan.Zero)))
+                                                                                                && options.PublishedSinceUtc == new DateTimeOffset(2025, 06, 02, 12, 00, 00, TimeSpan.Zero)),
+                                                     Arg.Any<CancellationToken>())
                                        .Returns(ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Succeeded([
                                                                                                                        new DockerHubTagData
                                                                                                                        {
@@ -333,10 +333,10 @@ public class ImageScanOrchestratorTests
                 _ = registryMetadataService.Received(1)
                                            .GetTagsAsync("mcr.microsoft.com",
                                                          "dotnet/runtime",
-                                                         Arg.Any<CancellationToken>(),
                                                          Arg.Any<string?>(),
                                                          Arg.Any<string?>(),
-                                                         Arg.Any<RegistryTagQueryOptions?>());
+                                                         Arg.Any<RegistryTagQueryOptions?>(),
+                                                         Arg.Any<CancellationToken>());
             }
         }
     }
@@ -390,7 +390,7 @@ public class ImageScanOrchestratorTests
                                                                                                                     },
                                                                                                                 ]));
 
-                registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
+                registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), cancellationToken: Arg.Any<CancellationToken>())
                                        .Returns(callInfo =>
                                                 {
                                                     var imageReference = callInfo.ArgAt<ImageReference>(0);
@@ -446,9 +446,9 @@ public class ImageScanOrchestratorTests
                 _ = registryMetadataService.DidNotReceive()
                                            .GetTagsAsync("docker.io",
                                                          "library/debian",
-                                                         Arg.Any<CancellationToken>(),
                                                          Arg.Any<string?>(),
-                                                         Arg.Any<string?>());
+                                                         Arg.Any<string?>(),
+                                                         cancellationToken: Arg.Any<CancellationToken>());
             }
         }
     }
@@ -502,7 +502,7 @@ public class ImageScanOrchestratorTests
                                                                                                                     },
                                                                                                                 ]));
 
-                registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
+                registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), cancellationToken: Arg.Any<CancellationToken>())
                                        .Returns(ExternalOperationResult<DockerHubTagData>.Failed("The registry is unavailable"));
 
                 registryMetadataService.GetImageConfigurationAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
@@ -574,7 +574,7 @@ public class ImageScanOrchestratorTests
                 baseImageResolver.ResolveAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
                                  .Returns(ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>.Succeeded([]));
 
-                registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
+                registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), cancellationToken: Arg.Any<CancellationToken>())
                                        .Returns(ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
                                                                                                     {
                                                                                                         Tag = "1.0.0",
@@ -851,7 +851,7 @@ public class ImageScanOrchestratorTests
 
                 baseImageResolver.ResolveAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
                                  .Returns(ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>.Succeeded([]));
-                registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
+                registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), cancellationToken: Arg.Any<CancellationToken>())
                                        .Returns(ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
                                                                                                     {
                                                                                                         Tag = "1.0.0",
@@ -955,7 +955,7 @@ public class ImageScanOrchestratorTests
 
                 baseImageResolver.ResolveAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
                                  .Returns(ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>.Succeeded([]));
-                registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
+                registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), cancellationToken: Arg.Any<CancellationToken>())
                                        .Returns(ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
                                                                                                     {
                                                                                                         Tag = "1.0.0",
@@ -1053,7 +1053,7 @@ public class ImageScanOrchestratorTests
 
                 baseImageResolver.ResolveAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
                                  .Returns(ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>.Succeeded([]));
-                registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
+                registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), cancellationToken: Arg.Any<CancellationToken>())
                                        .Returns(ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
                                                                                                     {
                                                                                                         Tag = "1.0.0",
@@ -1192,7 +1192,7 @@ public class ImageScanOrchestratorTests
 
                                               return baseImageDescriptors;
                                           });
-                registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
+                registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), cancellationToken: Arg.Any<CancellationToken>())
                                        .Returns(callInfo =>
                                                 {
                                                     var imageReference = callInfo.ArgAt<ImageReference>(0);
@@ -1299,7 +1299,7 @@ public class ImageScanOrchestratorTests
 
                 baseImageResolver.ResolveAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
                                  .Returns(ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>.Succeeded([]));
-                registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
+                registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), cancellationToken: Arg.Any<CancellationToken>())
                                        .Returns(ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
                                                                                                     {
                                                                                                         Tag = "1.0.0",

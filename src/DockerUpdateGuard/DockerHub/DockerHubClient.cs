@@ -1182,9 +1182,9 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
 
     /// <inheritdoc/>
     public async Task<ExternalOperationResult<DockerHubTagData>> GetTagAsync(ImageReference imageReference,
-                                                                             CancellationToken cancellationToken = default,
                                                                              string? operatingSystem = null,
-                                                                             string? architecture = null)
+                                                                             string? architecture = null,
+                                                                             CancellationToken cancellationToken = default)
     {
         if (IsSupportedRegistry(imageReference.Registry) == false)
         {
@@ -1234,10 +1234,10 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
     /// <inheritdoc/>
     public async Task<ExternalOperationResult<IReadOnlyList<DockerHubTagData>>> GetTagsAsync(string registry,
                                                                                              string repository,
-                                                                                             CancellationToken cancellationToken = default,
                                                                                              string? operatingSystem = null,
                                                                                              string? architecture = null,
-                                                                                             RegistryTagQueryOptions? queryOptions = null)
+                                                                                             RegistryTagQueryOptions? queryOptions = null,
+                                                                                             CancellationToken cancellationToken = default)
     {
         if (IsSupportedRegistry(registry) == false)
         {

@@ -274,6 +274,17 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
     }
 
     /// <summary>
+    /// Return the count stored for a key or zero when the key is absent
+    /// </summary>
+    /// <param name="counts">Count lookup keyed by identifier</param>
+    /// <param name="key">Identifier to resolve</param>
+    /// <returns>Stored count or zero</returns>
+    private static int GetCountOrZero(Dictionary<Guid, int> counts, Guid key)
+    {
+        return counts.TryGetValue(key, out var count) ? count : 0;
+    }
+
+    /// <summary>
     /// Create a stable identity for a tag candidate
     /// </summary>
     /// <param name="tag">Tag name</param>
@@ -607,6 +618,11 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                                                                                                      })
                                                                                 .ToList());
 
+        var runtimeImageVersionIds = latestSnapshots.Select(entity => entity.ImageVersionId)
+                                                    .Distinct()
+                                                    .ToList();
+        var activeVulnerabilityFindingLookup = await LoadActiveVulnerabilityFindingCountsAsync(runtimeImageVersionIds, cancellationToken).ConfigureAwait(false);
+
         return latestSnapshots.Select(entity =>
                                       {
                                           var dockerInstance = entity.DockerInstance;
@@ -649,7 +665,7 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                                                      UpdateSummary = entity.UpdateAssessmentMessage,
                                                      AvailableUpdateVersionTag = availableUpdateVersionTag,
                                                      PortainerAvailable = dockerInstance.PortainerEndpoint is not null && dockerInstance.PortainerEndpoint.IsEnabled,
-                                                     ActiveVulnerabilityFindingCount = _dbContext.VulnerabilityFindings.Count(finding => finding.ImageVersionId == entity.ImageVersionId && finding.IsActive),
+                                                     ActiveVulnerabilityFindingCount = GetCountOrZero(activeVulnerabilityFindingLookup, entity.ImageVersionId),
                                                      VulnerabilityStatus = FormatVulnerabilityAssessmentStatus(imageVersion.VulnerabilityAssessmentStatus),
                                                      VulnerabilitySummary = imageVersion.VulnerabilityAssessmentMessage,
                                                      ActiveBaseImageVulnerabilityFindingCount = baseImageVulnerabilitySummary.ActiveFindingCount,
@@ -936,6 +952,61 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                                                                                                                                                                                     : 0),
                                                                                                                     })
                                                                                                   .ToList());
+    }
+
+    /// <summary>
+    /// Load active vulnerability finding counts for a set of image versions
+    /// </summary>
+    /// <param name="imageVersionIds">Image version identifiers</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Active vulnerability finding count by image version identifier</returns>
+    private async Task<Dictionary<Guid, int>> LoadActiveVulnerabilityFindingCountsAsync(List<Guid> imageVersionIds, CancellationToken cancellationToken)
+    {
+        if (imageVersionIds.Count == 0)
+        {
+            return [];
+        }
+
+        var activeFindingCounts = await _dbContext.VulnerabilityFindings.Where(entity => entity.IsActive
+                                                                                         && imageVersionIds.Contains(entity.ImageVersionId))
+                                                                        .GroupBy(entity => entity.ImageVersionId)
+                                                                        .Select(group => new
+                                                                                         {
+                                                                                             ImageVersionId = group.Key,
+                                                                                             ActiveFindingCount = group.Count(),
+                                                                                         })
+                                                                        .ToListAsync(cancellationToken)
+                                                                        .ConfigureAwait(false);
+
+        return activeFindingCounts.ToDictionary(entity => entity.ImageVersionId, entity => entity.ActiveFindingCount);
+    }
+
+    /// <summary>
+    /// Load active update finding counts for a set of observed images
+    /// </summary>
+    /// <param name="observedImageIds">Observed image identifiers</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Active update finding count by observed image identifier</returns>
+    private async Task<Dictionary<Guid, int>> LoadActiveUpdateFindingCountsByObservedImageAsync(List<Guid> observedImageIds, CancellationToken cancellationToken)
+    {
+        if (observedImageIds.Count == 0)
+        {
+            return [];
+        }
+
+        var activeFindingCounts = await _dbContext.UpdateFindings.Where(entity => entity.IsActive
+                                                                                  && entity.ObservedImageId != null
+                                                                                  && observedImageIds.Contains(entity.ObservedImageId.Value))
+                                                                 .GroupBy(entity => entity.ObservedImageId!.Value)
+                                                                 .Select(group => new
+                                                                                  {
+                                                                                      ObservedImageId = group.Key,
+                                                                                      ActiveFindingCount = group.Count(),
+                                                                                  })
+                                                                 .ToListAsync(cancellationToken)
+                                                                 .ConfigureAwait(false);
+
+        return activeFindingCounts.ToDictionary(entity => entity.ObservedImageId, entity => entity.ActiveFindingCount);
     }
 
     /// <summary>
@@ -1262,6 +1333,11 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                                                                                                                                                              .Distinct()
                                                                                                                                                              .ToList(),
                                                                                                                                                cancellationToken).ConfigureAwait(false);
+                                                var observedImageVersionIds = observedImages.Select(entity => entity.CurrentImageVersionId)
+                                                                                            .Distinct()
+                                                                                            .ToList();
+                                                var activeVulnerabilityFindingLookup = await LoadActiveVulnerabilityFindingCountsAsync(observedImageVersionIds, cancellationToken).ConfigureAwait(false);
+                                                var activeUpdateFindingLookup = await LoadActiveUpdateFindingCountsByObservedImageAsync(observedImageIds, cancellationToken).ConfigureAwait(false);
 
                                                 return observedImages.Select(entity =>
                                                                              {
@@ -1284,8 +1360,8 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                                                                                             ImageReference = _imageReferenceParser.Format(entity.CurrentImageVersion),
                                                                                             LatestScanStatus = GetLatestObservedScanStatus(entity.Id),
                                                                                             LatestScanMessage = GetLatestObservedScanMessage(entity.Id),
-                                                                                            ActiveUpdateFindingCount = _dbContext.UpdateFindings.Count(finding => finding.ObservedImageId == entity.Id && finding.IsActive),
-                                                                                            ActiveVulnerabilityFindingCount = _dbContext.VulnerabilityFindings.Count(finding => finding.ImageVersionId == entity.CurrentImageVersionId && finding.IsActive),
+                                                                                            ActiveUpdateFindingCount = GetCountOrZero(activeUpdateFindingLookup, entity.Id),
+                                                                                            ActiveVulnerabilityFindingCount = GetCountOrZero(activeVulnerabilityFindingLookup, entity.CurrentImageVersionId),
                                                                                             VulnerabilityStatus = FormatVulnerabilityAssessmentStatus(entity.CurrentImageVersion.VulnerabilityAssessmentStatus),
                                                                                             VulnerabilityMessage = entity.CurrentImageVersion.VulnerabilityAssessmentMessage,
                                                                                             ActiveBaseImageVulnerabilityFindingCount = baseImageVulnerabilitySummary.ActiveFindingCount,
@@ -1348,6 +1424,27 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                                                            OwnImageBaseRuntimeWarningCount = ownImageBaseRuntimeWarningCount,
                                                            ActiveVulnerabilityFindingCount = activeVulnerabilityFindingCount,
                                                            RecentScans = recentScans,
+                                                       };
+                                            },
+                                            cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc/>
+    public async Task<DashboardSummaryViewData> GetDashboardSummaryAsync(CancellationToken cancellationToken = default)
+    {
+        return await ExecuteSerializedAsync(async () =>
+                                            {
+                                                var recentScans = await GetScanHistoryCoreAsync(1, cancellationToken).ConfigureAwait(false);
+                                                var observedImageCount = await _dbContext.ObservedImages.CountAsync(entity => entity.Source == RegistrationSource.Manual, cancellationToken).ConfigureAwait(false);
+                                                var myImageCount = await _dbContext.ObservedImages.CountAsync(entity => entity.Source == RegistrationSource.Discovery, cancellationToken).ConfigureAwait(false);
+                                                var latestSnapshots = await GetLatestContainerSnapshotsAsync(cancellationToken).ConfigureAwait(false);
+
+                                                return new DashboardSummaryViewData
+                                                       {
+                                                           ObservedImageCount = observedImageCount,
+                                                           MyImageCount = myImageCount,
+                                                           RuntimeContainerCount = latestSnapshots.Count,
+                                                           LatestScan = recentScans.Count > 0 ? recentScans[0] : null,
                                                        };
                                             },
                                             cancellationToken).ConfigureAwait(false);

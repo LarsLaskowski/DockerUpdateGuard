@@ -2,6 +2,8 @@ using DockerUpdateGuard.DockerHub;
 using DockerUpdateGuard.Images.Data;
 using DockerUpdateGuard.Infrastructure;
 
+using MudBlazor;
+
 namespace DockerUpdateGuard.Images.Interfaces;
 
 /// <summary>
@@ -22,31 +24,31 @@ public interface IRegistryMetadataClient
     /// Read a concrete tag metadata document
     /// </summary>
     /// <param name="imageReference">Image reference</param>
-    /// <param name="cancellationToken">Cancellation token</param>
     /// <param name="operatingSystem">Preferred operating system</param>
     /// <param name="architecture">Preferred architecture</param>
+    /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Tag metadata result</returns>
     Task<ExternalOperationResult<DockerHubTagData>> GetTagAsync(ImageReference imageReference,
-                                                                CancellationToken cancellationToken = default,
                                                                 string? operatingSystem = null,
-                                                                string? architecture = null);
+                                                                string? architecture = null,
+                                                                CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Read tags for a repository
     /// </summary>
     /// <param name="registry">Registry name</param>
     /// <param name="repository">Repository path</param>
-    /// <param name="cancellationToken">Cancellation token</param>
     /// <param name="operatingSystem">Preferred operating system</param>
     /// <param name="architecture">Preferred architecture</param>
     /// <param name="queryOptions">Bounded tag-query options</param>
+    /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Tag list result</returns>
     Task<ExternalOperationResult<IReadOnlyList<DockerHubTagData>>> GetTagsAsync(string registry,
                                                                                 string repository,
-                                                                                CancellationToken cancellationToken = default,
                                                                                 string? operatingSystem = null,
                                                                                 string? architecture = null,
-                                                                                RegistryTagQueryOptions? queryOptions = null);
+                                                                                RegistryTagQueryOptions? queryOptions = null,
+                                                                                CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Attempt to resolve base images for an observed image

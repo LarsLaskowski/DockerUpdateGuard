@@ -35,7 +35,7 @@ public class ImageScanOrchestrator : IImageScanOrchestrator
     /// <summary>
     /// Synchronization root guarding per-observed-image scan lock bookkeeping
     /// </summary>
-    private static readonly object _observedImageScanLockRegistrySync = new();
+    private static readonly Lock _observedImageScanLockRegistrySync = new();
 
     /// <summary>
     /// Per-observed-image scan locks shared across orchestrator scopes, retained only while referenced
@@ -287,8 +287,8 @@ public class ImageScanOrchestrator : IImageScanOrchestrator
                            };
         var baseTagsResult = await _registryMetadataService.GetTagsAsync(baseImageReference.Registry,
                                                                          baseImageReference.Repository,
-                                                                         cancellationToken,
-                                                                         queryOptions: queryOptions)
+                                                                         queryOptions: queryOptions,
+                                                                         cancellationToken: cancellationToken)
                                                            .ConfigureAwait(false);
 
         if (baseTagsResult.Status != ExternalOperationStatus.Succeeded || baseTagsResult.Data is null)
@@ -581,7 +581,7 @@ public class ImageScanOrchestrator : IImageScanOrchestrator
                                  };
 
         var baseTagResult = await _registryMetadataService.GetTagAsync(baseImageReference,
-                                                                       cancellationToken)
+                                                                       cancellationToken: cancellationToken)
                                                           .ConfigureAwait(false);
         var storedBaseImageTag = await ResolveStoredBaseImageTagAsync(baseImageReference,
                                                                       baseTagResult.Data,
@@ -718,7 +718,7 @@ public class ImageScanOrchestrator : IImageScanOrchestrator
             try
             {
                 var imageReference = _imageReferenceParser.Parse(_imageReferenceParser.Format(observedImage.CurrentImageVersion));
-                var tagResult = await _registryMetadataService.GetTagAsync(imageReference, cancellationToken)
+                var tagResult = await _registryMetadataService.GetTagAsync(imageReference, cancellationToken: cancellationToken)
                                                               .ConfigureAwait(false);
 
                 if (tagResult.Status == ExternalOperationStatus.Succeeded && tagResult.Data is not null)

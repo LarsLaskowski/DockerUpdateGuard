@@ -15,6 +15,13 @@ public interface IApplicationViewService
     Task<DashboardViewData> GetDashboardAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Read the lightweight dashboard summary for the application top bar
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Dashboard summary view data</returns>
+    Task<DashboardSummaryViewData> GetDashboardSummaryAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Read all observed images for the overview page
     /// </summary>
     /// <param name="cancellationToken">Cancellation token</param>

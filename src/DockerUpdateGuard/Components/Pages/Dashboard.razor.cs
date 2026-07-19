@@ -13,7 +13,21 @@ namespace DockerUpdateGuard.Components.Pages;
 /// </summary>
 public sealed partial class Dashboard : IDisposable
 {
+    #region Constants
+
+    /// <summary>
+    /// Persistent-state key for the prerendered dashboard data
+    /// </summary>
+    private const string DashboardStateKey = "Dashboard.State";
+
+    #endregion // Constants
+
     #region Fields
+
+    /// <summary>
+    /// Persisting-state subscription used to hand the prerendered data to the interactive render
+    /// </summary>
+    private PersistingComponentStateSubscription _persistingSubscription;
 
     /// <summary>
     /// Dashboard view data
@@ -46,6 +60,12 @@ public sealed partial class Dashboard : IDisposable
     /// </summary>
     [Inject]
     public IOptions<DockerUpdateGuardOptions> AppOptions { get; set; } = null!;
+
+    /// <summary>
+    /// Persistent component state used to reuse the prerendered data on the interactive render
+    /// </summary>
+    [Inject]
+    public PersistentComponentState PersistentState { get; set; } = null!;
 
     #endregion // Properties
 
@@ -126,6 +146,20 @@ public sealed partial class Dashboard : IDisposable
         _ = InvokeAsync(LoadAsync);
     }
 
+    /// <summary>
+    /// Persist the current dashboard data so the interactive render can reuse the prerendered data
+    /// </summary>
+    /// <returns>Task</returns>
+    private Task PersistDashboard()
+    {
+        if (_dashboard is not null)
+        {
+            PersistentState.PersistAsJson(DashboardStateKey, _dashboard);
+        }
+
+        return Task.CompletedTask;
+    }
+
     #endregion // Methods
 
     #region ComponentBase
@@ -136,6 +170,15 @@ public sealed partial class Dashboard : IDisposable
         _showMyImages = IsDockerHubAccountConfigured(AppOptions.Value.DockerHub);
 
         DashboardRefreshState.Changed += OnDashboardRefreshRequested;
+        _persistingSubscription = PersistentState.RegisterOnPersisting(PersistDashboard);
+
+        if (PersistentState.TryTakeFromJson<DashboardViewData>(DashboardStateKey, out var restoredDashboard)
+            && restoredDashboard is not null)
+        {
+            _dashboard = restoredDashboard;
+
+            return;
+        }
 
         await LoadAsync().ConfigureAwait(false);
     }
@@ -148,6 +191,7 @@ public sealed partial class Dashboard : IDisposable
     public void Dispose()
     {
         DashboardRefreshState.Changed -= OnDashboardRefreshRequested;
+        _persistingSubscription.Dispose();
     }
 
     #endregion // IDisposable

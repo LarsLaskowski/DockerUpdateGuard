@@ -90,10 +90,10 @@ public class RuntimeContainerScanOrchestratorTests
                                     .Returns(ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>.NotFound("The local image history payload is not available"));
                 registryMetadataService.GetTagsAsync("docker.io",
                                                      "library/nginx",
-                                                     Arg.Any<CancellationToken>(),
                                                      Arg.Any<string?>(),
                                                      Arg.Any<string?>(),
-                                                     Arg.Any<RegistryTagQueryOptions?>())
+                                                     Arg.Any<RegistryTagQueryOptions?>(),
+                                                     Arg.Any<CancellationToken>())
                                        .Returns(ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Succeeded([
                                                                                                                        new DockerHubTagData
                                                                                                                        {
@@ -108,7 +108,7 @@ public class RuntimeContainerScanOrchestratorTests
                                                                                                                            PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
                                                                                                                        },
                                                                                                                    ]));
-                registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
+                registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), cancellationToken: Arg.Any<CancellationToken>())
                                        .Returns(ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
                                                                                                     {
                                                                                                         Tag = "1.0.0",
@@ -247,10 +247,10 @@ public class RuntimeContainerScanOrchestratorTests
 
                 registryMetadataService.GetTagsAsync("docker.io",
                                                      "library/nginx",
-                                                     Arg.Any<CancellationToken>(),
                                                      Arg.Any<string?>(),
                                                      Arg.Any<string?>(),
-                                                     Arg.Any<RegistryTagQueryOptions?>())
+                                                     Arg.Any<RegistryTagQueryOptions?>(),
+                                                     Arg.Any<CancellationToken>())
                                        .Returns(ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Succeeded([
                                                                                                                        new DockerHubTagData
                                                                                                                        {
@@ -265,7 +265,7 @@ public class RuntimeContainerScanOrchestratorTests
                                                                                                                        },
                                                                                                                    ]));
 
-                registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
+                registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), cancellationToken: Arg.Any<CancellationToken>())
                                        .Returns(ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
                                                                                                     {
                                                                                                         Tag = "1.0.0",
@@ -360,10 +360,10 @@ public class RuntimeContainerScanOrchestratorTests
                                     .Returns(ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>.NotFound("The local image history payload is not available"));
                 registryMetadataService.GetTagsAsync("docker.io",
                                                      "library/nginx",
-                                                     Arg.Any<CancellationToken>(),
                                                      Arg.Any<string?>(),
                                                      Arg.Any<string?>(),
-                                                     Arg.Any<RegistryTagQueryOptions?>())
+                                                     Arg.Any<RegistryTagQueryOptions?>(),
+                                                     Arg.Any<CancellationToken>())
                                        .Returns(ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Succeeded([
                                                                                                                        new DockerHubTagData
                                                                                                                        {
@@ -386,7 +386,7 @@ public class RuntimeContainerScanOrchestratorTests
                                                                                                                            PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
                                                                                                                        },
                                                                                                                    ]));
-                registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
+                registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), cancellationToken: Arg.Any<CancellationToken>())
                                        .Returns(ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
                                                                                                     {
                                                                                                         Tag = "1.0.0",
@@ -485,10 +485,10 @@ public class RuntimeContainerScanOrchestratorTests
                                     .Returns(ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>.NotFound("The local image history payload is not available"));
                 registryMetadataService.GetTagsAsync("docker.io",
                                                      "library/nginx",
-                                                     Arg.Any<CancellationToken>(),
                                                      Arg.Any<string?>(),
                                                      Arg.Any<string?>(),
-                                                     Arg.Any<RegistryTagQueryOptions?>())
+                                                     Arg.Any<RegistryTagQueryOptions?>(),
+                                                     Arg.Any<CancellationToken>())
                                        .Returns(ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Succeeded([
                                                                                                                        new DockerHubTagData
                                                                                                                        {
@@ -503,7 +503,7 @@ public class RuntimeContainerScanOrchestratorTests
                                                                                                                            PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
                                                                                                                        },
                                                                                                                    ]));
-                registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
+                registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), cancellationToken: Arg.Any<CancellationToken>())
                                        .Returns(ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
                                                                                                     {
                                                                                                         Tag = "1.0.0",
@@ -597,10 +597,10 @@ public class RuntimeContainerScanOrchestratorTests
                                     .Returns(ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>.NotFound("The local image history payload is not available"));
                 registryMetadataService.GetTagsAsync("docker.io",
                                                      "library/nginx",
-                                                     Arg.Any<CancellationToken>(),
                                                      Arg.Any<string?>(),
                                                      Arg.Any<string?>(),
-                                                     Arg.Any<RegistryTagQueryOptions?>())
+                                                     Arg.Any<RegistryTagQueryOptions?>(),
+                                                     Arg.Any<CancellationToken>())
                                        .Returns(ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Succeeded([
                                                                                                                        new DockerHubTagData
                                                                                                                        {
@@ -616,7 +616,7 @@ public class RuntimeContainerScanOrchestratorTests
                                                                                                                        },
                                                                                                                    ]),
                                                 ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Failed("The registry is temporarily unavailable"));
-                registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
+                registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), cancellationToken: Arg.Any<CancellationToken>())
                                        .Returns(ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
                                                                                                     {
                                                                                                         Tag = "1.0.0",
@@ -711,12 +711,12 @@ public class RuntimeContainerScanOrchestratorTests
                                     .Returns(ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>.NotFound("The local image history payload is not available"));
                 registryMetadataService.GetTagsAsync("docker.io",
                                                      "library/nginx",
-                                                     Arg.Any<CancellationToken>(),
                                                      Arg.Any<string?>(),
                                                      Arg.Any<string?>(),
-                                                     Arg.Any<RegistryTagQueryOptions?>())
+                                                     Arg.Any<RegistryTagQueryOptions?>(),
+                                                     Arg.Any<CancellationToken>())
                                        .Returns(ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Unsupported("Registry adapters cannot evaluate this registry"));
-                registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
+                registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), cancellationToken: Arg.Any<CancellationToken>())
                                        .Returns(ExternalOperationResult<DockerHubTagData>.NotFound("No exact tag metadata is available"));
 
                 var orchestrator = new RuntimeContainerScanOrchestrator(new ApplicationTelemetry(),
@@ -821,7 +821,7 @@ public class RuntimeContainerScanOrchestratorTests
                                     .Returns(ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>.NotFound("The local image history payload is not available"));
                 registryMetadataService.GetTagsAsync("docker.io",
                                                      "library/nginx",
-                                                     Arg.Any<CancellationToken>())
+                                                     cancellationToken: Arg.Any<CancellationToken>())
                                        .Returns(ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Succeeded([
                                                                                                                        new DockerHubTagData
                                                                                                                        {
@@ -836,7 +836,7 @@ public class RuntimeContainerScanOrchestratorTests
                                                                                                                            PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
                                                                                                                        },
                                                                                                                    ]));
-                registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
+                registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), cancellationToken: Arg.Any<CancellationToken>())
                                        .Returns(ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
                                                                                                     {
                                                                                                         Tag = "1.0.0",
@@ -936,10 +936,10 @@ public class RuntimeContainerScanOrchestratorTests
                                     .Returns(ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>.NotFound("The local image history payload is not available"));
                 registryMetadataService.GetTagsAsync("docker.io",
                                                      "networlddev/f1-telemetry",
-                                                     Arg.Any<CancellationToken>(),
                                                      Arg.Any<string?>(),
                                                      Arg.Any<string?>(),
-                                                     Arg.Any<RegistryTagQueryOptions?>())
+                                                     Arg.Any<RegistryTagQueryOptions?>(),
+                                                     Arg.Any<CancellationToken>())
                                        .Returns(ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Succeeded([
                                                                                                                        new DockerHubTagData
                                                                                                                        {
@@ -951,7 +951,7 @@ public class RuntimeContainerScanOrchestratorTests
                 registryMetadataService.GetTagAsync(Arg.Is<ImageReference>(entity => entity != null
                                                                                      && entity.Repository == "networlddev/f1-telemetry"
                                                                                      && entity.Tag == "latest"),
-                                                    Arg.Any<CancellationToken>())
+                                                    cancellationToken: Arg.Any<CancellationToken>())
                                        .Returns(ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
                                                                                                     {
                                                                                                         Tag = "latest",
@@ -1051,10 +1051,10 @@ public class RuntimeContainerScanOrchestratorTests
                                     .Returns(ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>.NotFound("The local image history payload is not available"));
                 registryMetadataService.GetTagsAsync("docker.io",
                                                      "linuxserver/heimdall",
-                                                     Arg.Any<CancellationToken>(),
                                                      Arg.Any<string?>(),
                                                      Arg.Any<string?>(),
-                                                     Arg.Any<RegistryTagQueryOptions?>())
+                                                     Arg.Any<RegistryTagQueryOptions?>(),
+                                                     Arg.Any<CancellationToken>())
                                        .Returns(ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Succeeded([
                                                                                                                        new DockerHubTagData
                                                                                                                        {
@@ -1078,7 +1078,7 @@ public class RuntimeContainerScanOrchestratorTests
                 registryMetadataService.GetTagAsync(Arg.Is<ImageReference>(entity => entity != null
                                                                                      && entity.Repository == "linuxserver/heimdall"
                                                                                      && entity.Tag == "latest"),
-                                                    Arg.Any<CancellationToken>())
+                                                    cancellationToken: Arg.Any<CancellationToken>())
                                        .Returns(ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
                                                                                                     {
                                                                                                         Tag = "latest",
@@ -1168,10 +1168,10 @@ public class RuntimeContainerScanOrchestratorTests
                                     .Returns(ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>.NotFound("The local image history payload is not available"));
                 registryMetadataService.GetTagsAsync("docker.io",
                                                      "library/phpmyadmin",
-                                                     Arg.Any<CancellationToken>(),
                                                      Arg.Any<string?>(),
                                                      Arg.Any<string?>(),
-                                                     Arg.Any<RegistryTagQueryOptions?>())
+                                                     Arg.Any<RegistryTagQueryOptions?>(),
+                                                     Arg.Any<CancellationToken>())
                                        .Returns(ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Succeeded([
                                                                                                                        new DockerHubTagData
                                                                                                                        {
@@ -1203,7 +1203,7 @@ public class RuntimeContainerScanOrchestratorTests
                 registryMetadataService.GetTagAsync(Arg.Is<ImageReference>(entity => entity != null
                                                                                      && entity.Repository == "library/phpmyadmin"
                                                                                      && entity.Tag == "latest"),
-                                                    Arg.Any<CancellationToken>())
+                                                    cancellationToken: Arg.Any<CancellationToken>())
                                        .Returns(ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
                                                                                                     {
                                                                                                         Tag = "latest",
@@ -1310,10 +1310,10 @@ public class RuntimeContainerScanOrchestratorTests
                                     .Returns(ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>.NotFound("The local image history payload is not available"));
                 registryMetadataService.GetTagsAsync("docker.io",
                                                      "networlddev/f1-telemetry",
-                                                     Arg.Any<CancellationToken>(),
                                                      Arg.Any<string?>(),
                                                      Arg.Any<string?>(),
-                                                     Arg.Any<RegistryTagQueryOptions?>())
+                                                     Arg.Any<RegistryTagQueryOptions?>(),
+                                                     Arg.Any<CancellationToken>())
                                        .Returns(ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Succeeded([
                                                                                                                        new DockerHubTagData
                                                                                                                        {
@@ -1337,7 +1337,7 @@ public class RuntimeContainerScanOrchestratorTests
                 registryMetadataService.GetTagAsync(Arg.Is<ImageReference>(entity => entity != null
                                                                                      && entity.Repository == "networlddev/f1-telemetry"
                                                                                      && entity.Tag == "latest"),
-                                                    Arg.Any<CancellationToken>())
+                                                    cancellationToken: Arg.Any<CancellationToken>())
                                        .Returns(ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
                                                                                                     {
                                                                                                         Tag = "latest",
@@ -1440,10 +1440,10 @@ public class RuntimeContainerScanOrchestratorTests
                                     .Returns(ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>.Succeeded([]));
                 registryMetadataService.GetTagsAsync("docker.io",
                                                      "networlddev/f1-telemetry",
-                                                     Arg.Any<CancellationToken>(),
                                                      "linux",
                                                      "arm64",
-                                                     Arg.Any<RegistryTagQueryOptions?>())
+                                                     Arg.Any<RegistryTagQueryOptions?>(),
+                                                     Arg.Any<CancellationToken>())
                                        .Returns(ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Succeeded([
                                                                                                                        new DockerHubTagData
                                                                                                                        {
@@ -1467,9 +1467,9 @@ public class RuntimeContainerScanOrchestratorTests
                 registryMetadataService.GetTagAsync(Arg.Is<ImageReference>(entity => entity != null
                                                                                      && entity.Repository == "networlddev/f1-telemetry"
                                                                                      && entity.Tag == "latest"),
-                                                    Arg.Any<CancellationToken>(),
                                                     "linux",
-                                                    "arm64")
+                                                    "arm64",
+                                                    Arg.Any<CancellationToken>())
                                        .Returns(ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
                                                                                                     {
                                                                                                         Tag = "latest",
@@ -1509,20 +1509,20 @@ public class RuntimeContainerScanOrchestratorTests
                 await registryMetadataService.Received(1)
                                              .GetTagsAsync("docker.io",
                                                            "networlddev/f1-telemetry",
-                                                           Arg.Any<CancellationToken>(),
                                                            "linux",
                                                            "arm64",
                                                            Arg.Is<RegistryTagQueryOptions>(options => options != null
                                                                                                       && options.CurrentDigest == "sha256:arm-current"
                                                                                                       && options.CurrentTag == "latest"
                                                                                                       && options.MaximumTags == 250
-                                                                                                      && options.PublishedSinceUtc == new DateTimeOffset(2025, 06, 03, 12, 00, 00, TimeSpan.Zero)))
+                                                                                                      && options.PublishedSinceUtc == new DateTimeOffset(2025, 06, 03, 12, 00, 00, TimeSpan.Zero)),
+                                                           Arg.Any<CancellationToken>())
                                              .ConfigureAwait(false);
                 await registryMetadataService.Received(1)
                                              .GetTagAsync(Arg.Any<ImageReference>(),
-                                                          Arg.Any<CancellationToken>(),
                                                           "linux",
-                                                          "arm64")
+                                                          "arm64",
+                                                          Arg.Any<CancellationToken>())
                                              .ConfigureAwait(false);
             }
         }
@@ -1581,10 +1581,10 @@ public class RuntimeContainerScanOrchestratorTests
                                     .Returns(ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>.NotFound("The local image history payload is not available"));
                 registryMetadataService.GetTagsAsync("mcr.microsoft.com",
                                                      "dotnet/runtime",
-                                                     Arg.Any<CancellationToken>(),
                                                      Arg.Any<string?>(),
                                                      Arg.Any<string?>(),
-                                                     Arg.Any<RegistryTagQueryOptions?>())
+                                                     Arg.Any<RegistryTagQueryOptions?>(),
+                                                     Arg.Any<CancellationToken>())
                                        .Returns(ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Succeeded([
                                                                                                                        new DockerHubTagData
                                                                                                                        {
@@ -1614,7 +1614,7 @@ public class RuntimeContainerScanOrchestratorTests
                 registryMetadataService.GetTagAsync(Arg.Is<ImageReference>(entity => entity != null
                                                                                      && entity.Repository == "dotnet/runtime"
                                                                                      && entity.Tag == "10.0-alpine"),
-                                                    Arg.Any<CancellationToken>())
+                                                    cancellationToken: Arg.Any<CancellationToken>())
                                        .Returns(ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
                                                                                                     {
                                                                                                         Tag = "10.0-alpine",
@@ -1731,10 +1731,10 @@ public class RuntimeContainerScanOrchestratorTests
                                                                                                                  }));
                 registryMetadataService.GetTagsAsync("docker.io",
                                                      "company/api",
-                                                     Arg.Any<CancellationToken>(),
                                                      Arg.Any<string?>(),
                                                      Arg.Any<string?>(),
-                                                     Arg.Any<RegistryTagQueryOptions?>())
+                                                     Arg.Any<RegistryTagQueryOptions?>(),
+                                                     Arg.Any<CancellationToken>())
                                        .Returns(ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Succeeded([
                                                                                                                        new DockerHubTagData
                                                                                                                        {
@@ -1743,7 +1743,7 @@ public class RuntimeContainerScanOrchestratorTests
                                                                                                                            PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
                                                                                                                        },
                                                                                                                    ]));
-                registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
+                registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), cancellationToken: Arg.Any<CancellationToken>())
                                        .Returns(ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
                                                                                                     {
                                                                                                         Tag = "1.0.0",
@@ -1862,10 +1862,10 @@ public class RuntimeContainerScanOrchestratorTests
                                                                                                                }));
                 registryMetadataService.GetTagsAsync("docker.io",
                                                      "company/web",
-                                                     Arg.Any<CancellationToken>(),
                                                      Arg.Any<string?>(),
                                                      Arg.Any<string?>(),
-                                                     Arg.Any<RegistryTagQueryOptions?>())
+                                                     Arg.Any<RegistryTagQueryOptions?>(),
+                                                     Arg.Any<CancellationToken>())
                                        .Returns(ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Succeeded([
                                                                                                                        new DockerHubTagData
                                                                                                                        {
@@ -1874,7 +1874,7 @@ public class RuntimeContainerScanOrchestratorTests
                                                                                                                            PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
                                                                                                                        },
                                                                                                                    ]));
-                registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
+                registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), cancellationToken: Arg.Any<CancellationToken>())
                                        .Returns(ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
                                                                                                     {
                                                                                                         Tag = "1.0.0",

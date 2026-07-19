@@ -30,7 +30,6 @@ public static class ApplicationInitializationExtensions
         await using (scope.ConfigureAwait(false))
         {
             var dbContext = scope.ServiceProvider.GetRequiredService<DockerUpdateGuard.Data.DockerUpdateGuardDbContext>();
-            var dockerHubAccountDiscoveryService = scope.ServiceProvider.GetRequiredService<IDockerHubAccountImageDiscoveryService>();
             var instanceDiscoveryService = scope.ServiceProvider.GetRequiredService<IInstanceDiscoveryService>();
             var applicationTelemetry = scope.ServiceProvider.GetRequiredService<ApplicationTelemetry>();
             var applicationOptions = scope.ServiceProvider.GetRequiredService<IOptions<DockerUpdateGuardOptions>>().Value;
@@ -39,10 +38,14 @@ public static class ApplicationInitializationExtensions
             await DatabaseMigrator.MigrateAsync(dbContext, applicationOptions.Database, logger, applicationLifetime.ApplicationStopping)
                                   .ConfigureAwait(false);
             logger.ApplicationDatabaseMigrated();
+
+            // Only fast, local database work runs on the blocking startup path so the web server starts
+            // accepting requests immediately. Docker Hub account discovery is intentionally not awaited here:
+            // it performs sequential network calls per repository and is already executed right after startup
+            // by DockerHubAccountImageDiscoveryBackgroundService, which runs it in the background without
+            // blocking the host from serving requests.
             await instanceDiscoveryService.SynchronizeConfiguredInstancesAsync(CancellationToken.None)
                                           .ConfigureAwait(false);
-            await dockerHubAccountDiscoveryService.SynchronizeAccountImagesAsync(CancellationToken.None)
-                                                  .ConfigureAwait(false);
             await applicationTelemetry.RefreshInventoryMetricsAsync(dbContext, CancellationToken.None)
                                       .ConfigureAwait(false);
         }

@@ -12,6 +12,15 @@ namespace DockerUpdateGuard.Components.Layout;
 /// </summary>
 public sealed partial class MainLayout : LayoutComponentBase, IDisposable
 {
+    #region Constants
+
+    /// <summary>
+    /// Persistent-state key for the prerendered dashboard summary
+    /// </summary>
+    private const string DashboardSummaryStateKey = "MainLayout.DashboardSummary";
+
+    #endregion // Constants
+
     #region Fields
 
     /// <summary>
@@ -40,9 +49,14 @@ public sealed partial class MainLayout : LayoutComponentBase, IDisposable
                                        };
 
     /// <summary>
+    /// Persisting-state subscription used to hand the prerendered summary to the interactive render
+    /// </summary>
+    private PersistingComponentStateSubscription _persistingSubscription;
+
+    /// <summary>
     /// Dashboard summary
     /// </summary>
-    private DashboardViewData? _dashboardSummary;
+    private DashboardSummaryViewData? _dashboardSummary;
 
     /// <summary>
     /// Navigation-drawer state
@@ -71,6 +85,12 @@ public sealed partial class MainLayout : LayoutComponentBase, IDisposable
     [Inject]
     public DashboardRefreshState DashboardRefreshState { get; set; } = null!;
 
+    /// <summary>
+    /// Persistent component state used to reuse the prerendered summary on the interactive render
+    /// </summary>
+    [Inject]
+    public PersistentComponentState PersistentState { get; set; } = null!;
+
     #endregion // Properties
 
     #region Methods
@@ -81,7 +101,7 @@ public sealed partial class MainLayout : LayoutComponentBase, IDisposable
     /// <returns>Task</returns>
     private async Task LoadSummaryAsync()
     {
-        var dashboardSummary = await ViewService.GetDashboardAsync()
+        var dashboardSummary = await ViewService.GetDashboardSummaryAsync()
                                                 .ConfigureAwait(false);
 
         await InvokeAsync(() =>
@@ -108,6 +128,20 @@ public sealed partial class MainLayout : LayoutComponentBase, IDisposable
     private void OnDashboardRefreshRequested()
     {
         _ = InvokeAsync(LoadSummaryAsync);
+    }
+
+    /// <summary>
+    /// Persist the current dashboard summary so the interactive render can reuse the prerendered data
+    /// </summary>
+    /// <returns>Task</returns>
+    private Task PersistSummary()
+    {
+        if (_dashboardSummary is not null)
+        {
+            PersistentState.PersistAsJson(DashboardSummaryStateKey, _dashboardSummary);
+        }
+
+        return Task.CompletedTask;
     }
 
     /// <summary>
@@ -138,15 +172,15 @@ public sealed partial class MainLayout : LayoutComponentBase, IDisposable
     /// <returns>Formatted scan label</returns>
     private string GetLatestScanLabel()
     {
-        if (_dashboardSummary is null || _dashboardSummary.RecentScans.Count == 0)
+        if (_dashboardSummary is null || _dashboardSummary.LatestScan is null)
         {
             return "No scans yet";
         }
 
-        return _dashboardSummary.RecentScans[0]
-        .StartedAtUtc
-        .ToLocalTime()
-        .ToString("g");
+        return _dashboardSummary.LatestScan
+                                .StartedAtUtc
+                                .ToLocalTime()
+                                .ToString("g");
     }
 
     #endregion // Methods
@@ -158,6 +192,15 @@ public sealed partial class MainLayout : LayoutComponentBase, IDisposable
     {
         NavigationManager.LocationChanged += OnLocationChanged;
         DashboardRefreshState.Changed += OnDashboardRefreshRequested;
+        _persistingSubscription = PersistentState.RegisterOnPersisting(PersistSummary);
+
+        if (PersistentState.TryTakeFromJson<DashboardSummaryViewData>(DashboardSummaryStateKey, out var restoredSummary)
+            && restoredSummary is not null)
+        {
+            _dashboardSummary = restoredSummary;
+
+            return;
+        }
 
         await LoadSummaryAsync().ConfigureAwait(false);
     }
@@ -171,6 +214,7 @@ public sealed partial class MainLayout : LayoutComponentBase, IDisposable
     {
         NavigationManager.LocationChanged -= OnLocationChanged;
         DashboardRefreshState.Changed -= OnDashboardRefreshRequested;
+        _persistingSubscription.Dispose();
     }
 
     #endregion // IDisposable
