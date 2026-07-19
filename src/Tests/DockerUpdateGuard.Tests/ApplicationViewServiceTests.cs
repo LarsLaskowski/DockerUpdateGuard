@@ -1581,5 +1581,330 @@ public class ApplicationViewServiceTests
         }
     }
 
+    /// <summary>
+    /// Verify the vulnerability overview groups findings sharing an advisory across image versions
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task ApplicationViewServiceVulnerabilityOverviewGroupsFindingsByAdvisoryAcrossImageVersionsAsync()
+    {
+        var options = new DbContextOptionsBuilder<DockerUpdateGuardDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString())
+                                                                               .Options;
+
+        var dbContext = new DockerUpdateGuardDbContext(options);
+
+        await using (dbContext.ConfigureAwait(false))
+        {
+            var imageCatalogRepository = new ImageCatalogRepository(dbContext);
+            var apiImageVersion = await imageCatalogRepository.GetOrCreateImageVersionAsync("docker.io",
+                                                                                            "company/api",
+                                                                                            "1.0.0",
+                                                                                            "sha256:api",
+                                                                                            cancellationToken: CancellationToken.None)
+                                                              .ConfigureAwait(false);
+            var workerImageVersion = await imageCatalogRepository.GetOrCreateImageVersionAsync("docker.io",
+                                                                                               "company/worker",
+                                                                                               "2.0.0",
+                                                                                               "sha256:worker",
+                                                                                               cancellationToken: CancellationToken.None)
+                                                                 .ConfigureAwait(false);
+
+            var apiObservedImage = new ObservedImage
+                                   {
+                                       Name = "Company API",
+                                       CurrentImageVersionId = apiImageVersion.Id,
+                                       Source = RegistrationSource.Discovery,
+                                   };
+            var workerObservedImage = new ObservedImage
+                                      {
+                                          Name = "Company Worker",
+                                          CurrentImageVersionId = workerImageVersion.Id,
+                                          Source = RegistrationSource.Manual,
+                                      };
+
+            dbContext.ObservedImages.AddRange(apiObservedImage, workerObservedImage);
+            dbContext.VulnerabilityFindings.Add(new VulnerabilityFinding
+                                                {
+                                                    ImageVersionId = apiImageVersion.Id,
+                                                    AdvisoryId = "CVE-2026-3001",
+                                                    Title = "Shared advisory",
+                                                    Severity = VulnerabilitySeverity.High,
+                                                    Source = VulnerabilitySource.Trivy,
+                                                    AffectedPackage = "openssl",
+                                                    FixedVersion = "3.0.1",
+                                                    CvssScore = 7.5m,
+                                                    IsActive = true,
+                                                });
+            dbContext.VulnerabilityFindings.Add(new VulnerabilityFinding
+                                                {
+                                                    ImageVersionId = workerImageVersion.Id,
+                                                    AdvisoryId = "cve-2026-3001",
+                                                    Title = "Shared advisory",
+                                                    Severity = VulnerabilitySeverity.High,
+                                                    Source = VulnerabilitySource.Trivy,
+                                                    AffectedPackage = "openssl",
+                                                    FixedVersion = "3.0.1",
+                                                    CvssScore = 7.5m,
+                                                    IsActive = true,
+                                                });
+
+            await dbContext.SaveChangesAsync(CancellationToken.None)
+                           .ConfigureAwait(false);
+
+            var service = new ApplicationViewService(dbContext,
+                                                     new ImageReferenceParser(),
+                                                     new SharedBaseImageQueryService(dbContext));
+
+            var overview = await service.GetVulnerabilityOverviewAsync(CancellationToken.None)
+                                        .ConfigureAwait(false);
+
+            Assert.HasCount(1,
+                            overview,
+                            "Findings that share an advisory id case-insensitively must be grouped into a single overview item");
+
+            var item = overview.Single();
+
+            Assert.HasCount(2,
+                            item.AffectedImages,
+                            "The grouped advisory must list both affected image versions");
+            Assert.Contains(entity => entity.ObservedImageId == apiObservedImage.Id && entity.IsOwnImage,
+                            item.AffectedImages,
+                            "The affected images must link back to the discovery-owned observed image");
+            Assert.Contains(entity => entity.ObservedImageId == workerObservedImage.Id && entity.IsOwnImage == false,
+                            item.AffectedImages,
+                            "The affected images must link back to the manually-registered observed image");
+        }
+    }
+
+    /// <summary>
+    /// Verify the vulnerability overview excludes resolved findings
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task ApplicationViewServiceVulnerabilityOverviewExcludesInactiveFindingsAsync()
+    {
+        var options = new DbContextOptionsBuilder<DockerUpdateGuardDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString())
+                                                                               .Options;
+
+        var dbContext = new DockerUpdateGuardDbContext(options);
+
+        await using (dbContext.ConfigureAwait(false))
+        {
+            var imageCatalogRepository = new ImageCatalogRepository(dbContext);
+            var imageVersion = await imageCatalogRepository.GetOrCreateImageVersionAsync("docker.io",
+                                                                                         "company/api",
+                                                                                         "1.0.0",
+                                                                                         "sha256:api",
+                                                                                         cancellationToken: CancellationToken.None)
+                                                           .ConfigureAwait(false);
+
+            dbContext.VulnerabilityFindings.Add(new VulnerabilityFinding
+                                                {
+                                                    ImageVersionId = imageVersion.Id,
+                                                    AdvisoryId = "CVE-2026-4001",
+                                                    Title = "Active advisory",
+                                                    Severity = VulnerabilitySeverity.Medium,
+                                                    Source = VulnerabilitySource.Trivy,
+                                                    IsActive = true,
+                                                });
+            dbContext.VulnerabilityFindings.Add(new VulnerabilityFinding
+                                                {
+                                                    ImageVersionId = imageVersion.Id,
+                                                    AdvisoryId = "CVE-2026-4002",
+                                                    Title = "Resolved advisory",
+                                                    Severity = VulnerabilitySeverity.Critical,
+                                                    Source = VulnerabilitySource.Trivy,
+                                                    IsActive = false,
+                                                    ResolvedAtUtc = DateTimeOffset.UtcNow,
+                                                });
+
+            await dbContext.SaveChangesAsync(CancellationToken.None)
+                           .ConfigureAwait(false);
+
+            var service = new ApplicationViewService(dbContext,
+                                                     new ImageReferenceParser(),
+                                                     new SharedBaseImageQueryService(dbContext));
+
+            var overview = await service.GetVulnerabilityOverviewAsync(CancellationToken.None)
+                                        .ConfigureAwait(false);
+
+            Assert.HasCount(1,
+                            overview,
+                            "The vulnerability overview must only include active findings");
+            Assert.AreEqual("CVE-2026-4001",
+                            overview.Single().AdvisoryId,
+                            "The resolved advisory must not appear in the vulnerability overview");
+        }
+    }
+
+    /// <summary>
+    /// Verify the vulnerability overview is sorted by severity, then CVSS score, then affected image count
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task ApplicationViewServiceVulnerabilityOverviewSortsBySeverityThenCvssThenAffectedImageCountAsync()
+    {
+        var options = new DbContextOptionsBuilder<DockerUpdateGuardDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString())
+                                                                               .Options;
+
+        var dbContext = new DockerUpdateGuardDbContext(options);
+
+        await using (dbContext.ConfigureAwait(false))
+        {
+            var imageCatalogRepository = new ImageCatalogRepository(dbContext);
+            var apiImageVersion = await imageCatalogRepository.GetOrCreateImageVersionAsync("docker.io",
+                                                                                            "company/api",
+                                                                                            "1.0.0",
+                                                                                            "sha256:api",
+                                                                                            cancellationToken: CancellationToken.None)
+                                                              .ConfigureAwait(false);
+            var workerImageVersion = await imageCatalogRepository.GetOrCreateImageVersionAsync("docker.io",
+                                                                                               "company/worker",
+                                                                                               "2.0.0",
+                                                                                               "sha256:worker",
+                                                                                               cancellationToken: CancellationToken.None)
+                                                                 .ConfigureAwait(false);
+
+            dbContext.VulnerabilityFindings.Add(new VulnerabilityFinding
+                                                {
+                                                    ImageVersionId = apiImageVersion.Id,
+                                                    AdvisoryId = "CVE-2026-5000",
+                                                    Title = "Critical advisory",
+                                                    Severity = VulnerabilitySeverity.Critical,
+                                                    Source = VulnerabilitySource.Trivy,
+                                                    CvssScore = 9.0m,
+                                                    IsActive = true,
+                                                });
+            dbContext.VulnerabilityFindings.Add(new VulnerabilityFinding
+                                                {
+                                                    ImageVersionId = apiImageVersion.Id,
+                                                    AdvisoryId = "CVE-2026-5001",
+                                                    Title = "High advisory affecting a single image",
+                                                    Severity = VulnerabilitySeverity.High,
+                                                    Source = VulnerabilitySource.Trivy,
+                                                    CvssScore = 8.5m,
+                                                    IsActive = true,
+                                                });
+            dbContext.VulnerabilityFindings.Add(new VulnerabilityFinding
+                                                {
+                                                    ImageVersionId = apiImageVersion.Id,
+                                                    AdvisoryId = "CVE-2026-5002",
+                                                    Title = "High advisory affecting two images",
+                                                    Severity = VulnerabilitySeverity.High,
+                                                    Source = VulnerabilitySource.Trivy,
+                                                    CvssScore = 8.5m,
+                                                    IsActive = true,
+                                                });
+            dbContext.VulnerabilityFindings.Add(new VulnerabilityFinding
+                                                {
+                                                    ImageVersionId = workerImageVersion.Id,
+                                                    AdvisoryId = "CVE-2026-5002",
+                                                    Title = "High advisory affecting two images",
+                                                    Severity = VulnerabilitySeverity.High,
+                                                    Source = VulnerabilitySource.Trivy,
+                                                    CvssScore = 8.5m,
+                                                    IsActive = true,
+                                                });
+
+            await dbContext.SaveChangesAsync(CancellationToken.None)
+                           .ConfigureAwait(false);
+
+            var service = new ApplicationViewService(dbContext,
+                                                     new ImageReferenceParser(),
+                                                     new SharedBaseImageQueryService(dbContext));
+
+            var overview = await service.GetVulnerabilityOverviewAsync(CancellationToken.None)
+                                        .ConfigureAwait(false);
+
+            Assert.HasCount(3,
+                            overview,
+                            "All three distinct advisories must be present in the overview");
+            Assert.AreSequenceEqual(new[] { "CVE-2026-5000", "CVE-2026-5002", "CVE-2026-5001" },
+                                    overview.Select(entity => entity.AdvisoryId).ToList(),
+                                    "The overview must be sorted by severity descending, then CVSS descending, then affected image count descending");
+        }
+    }
+
+    /// <summary>
+    /// Verify the vulnerability overview counts the running containers affected by an advisory
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task ApplicationViewServiceVulnerabilityOverviewCountsAffectedRunningContainersAsync()
+    {
+        var options = new DbContextOptionsBuilder<DockerUpdateGuardDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString())
+                                                                               .Options;
+
+        var dbContext = new DockerUpdateGuardDbContext(options);
+
+        await using (dbContext.ConfigureAwait(false))
+        {
+            var imageCatalogRepository = new ImageCatalogRepository(dbContext);
+            var imageVersion = await imageCatalogRepository.GetOrCreateImageVersionAsync("docker.io",
+                                                                                         "company/api",
+                                                                                         "1.0.0",
+                                                                                         "sha256:api",
+                                                                                         cancellationToken: CancellationToken.None)
+                                                           .ConfigureAwait(false);
+            var unrelatedImageVersion = await imageCatalogRepository.GetOrCreateImageVersionAsync("docker.io",
+                                                                                                  "company/worker",
+                                                                                                  "2.0.0",
+                                                                                                  "sha256:worker",
+                                                                                                  cancellationToken: CancellationToken.None)
+                                                                    .ConfigureAwait(false);
+            var dockerInstance = new DockerInstance
+                                 {
+                                     Name = "Production",
+                                     EndpointUri = "https://docker.example.test",
+                                     ConnectionKind = DockerConnectionKind.Https,
+                                 };
+
+            dbContext.ContainerSnapshots.Add(new ContainerSnapshot
+                                             {
+                                                 DockerInstance = dockerInstance,
+                                                 ImageVersionId = imageVersion.Id,
+                                                 ContainerId = "container-1",
+                                                 Name = "api-1",
+                                             });
+            dbContext.ContainerSnapshots.Add(new ContainerSnapshot
+                                             {
+                                                 DockerInstance = dockerInstance,
+                                                 ImageVersionId = imageVersion.Id,
+                                                 ContainerId = "container-2",
+                                                 Name = "api-2",
+                                             });
+            dbContext.ContainerSnapshots.Add(new ContainerSnapshot
+                                             {
+                                                 DockerInstance = dockerInstance,
+                                                 ImageVersionId = unrelatedImageVersion.Id,
+                                                 ContainerId = "container-3",
+                                                 Name = "worker-1",
+                                             });
+            dbContext.VulnerabilityFindings.Add(new VulnerabilityFinding
+                                                {
+                                                    ImageVersionId = imageVersion.Id,
+                                                    AdvisoryId = "CVE-2026-6001",
+                                                    Title = "Running container advisory",
+                                                    Severity = VulnerabilitySeverity.High,
+                                                    Source = VulnerabilitySource.Trivy,
+                                                    IsActive = true,
+                                                });
+
+            await dbContext.SaveChangesAsync(CancellationToken.None)
+                           .ConfigureAwait(false);
+
+            var service = new ApplicationViewService(dbContext,
+                                                     new ImageReferenceParser(),
+                                                     new SharedBaseImageQueryService(dbContext));
+
+            var overview = await service.GetVulnerabilityOverviewAsync(CancellationToken.None)
+                                        .ConfigureAwait(false);
+
+            Assert.AreEqual(2,
+                            overview.Single().AffectedContainerCount,
+                            "Only the two running containers using the affected image version must be counted");
+        }
+    }
+
     #endregion // Methods
 }

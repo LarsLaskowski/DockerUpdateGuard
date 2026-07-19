@@ -103,5 +103,12 @@ public interface IApplicationViewService
     /// <returns>Scan history entries</returns>
     Task<IReadOnlyList<ScanHistoryItemData>> GetScanHistoryAsync(int take = 20, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Read the fleet-wide vulnerability overview grouped by advisory
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Vulnerability overview items sorted by severity, CVSS score, and affected image count</returns>
+    Task<IReadOnlyList<VulnerabilityOverviewItemData>> GetVulnerabilityOverviewAsync(CancellationToken cancellationToken = default);
+
     #endregion // Methods
 }
