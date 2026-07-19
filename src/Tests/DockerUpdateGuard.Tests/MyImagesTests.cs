@@ -128,7 +128,7 @@ public class MyImagesTests
     [DataRow("anything-else", Color.Info)]
     public void MyImagesGetVulnerabilityStatusColorKnownStatusReturnsExpectedColor(string status, Color expectedColor)
     {
-        var color = (Color)_getVulnerabilityStatusColorMethod.Invoke(null, [status])!;
+        var color = (Color)_getVulnerabilityStatusColorMethod.Invoke(null, [status, null])!;
 
         Assert.AreEqual(expectedColor,
                         color,
@@ -145,7 +145,7 @@ public class MyImagesTests
     [DataRow("   ")]
     public void MyImagesGetVulnerabilityStatusColorNullOrBlankReturnsDefault(string? status)
     {
-        var color = (Color)_getVulnerabilityStatusColorMethod.Invoke(null, [status])!;
+        var color = (Color)_getVulnerabilityStatusColorMethod.Invoke(null, [status, null])!;
 
         Assert.AreEqual(Color.Default,
                         color,

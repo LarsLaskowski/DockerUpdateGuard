@@ -106,7 +106,8 @@
                 <MudItem xs="12" md="6">
                     <MudPaper Class="summary-card" Elevation="0">
                         <span class="summary-label">Vulnerability assessment</span>
-                        <MudChip T="string" Size="Size.Small" Color="@GetVulnerabilityStatusColor(_detail.VulnerabilityAssessment.Status)">@_detail.VulnerabilityAssessment.Status</MudChip>
+                        <MudChip T="string" Size="Size.Small" Color="@GetVulnerabilityStatusColor(_detail.VulnerabilityAssessment.Status, _detail.VulnerabilityAssessment.SeveritySummary)">@_detail.VulnerabilityAssessment.Status</MudChip>
+                        <VulnerabilitySeverityChips Summary="_detail.VulnerabilityAssessment.SeveritySummary" />
                         <span class="table-secondary">@($"{_detail.VulnerabilityAssessment.Source} · {_detail.VulnerabilityAssessment.ActiveFindingCount} active")</span>
                         @if (_detail.VulnerabilityAssessment.CheckedAtUtc is DateTimeOffset checkedAtUtc)
                         {
@@ -156,7 +157,8 @@
                         <MudTd DataLabel="Base Image">@ImageReferenceFormatter.GetReference(context.ImageReference)</MudTd>
                         <MudTd DataLabel="Source">@ImageReferenceFormatter.GetReference(context.SourceReference ?? string.Empty)</MudTd>
                         <MudTd DataLabel="Vulnerabilities">
-                            <MudChip T="string" Size="Size.Small" Color="@GetVulnerabilityStatusColor(context.VulnerabilityAssessment.Status)">@context.VulnerabilityAssessment.Status</MudChip>
+                            <MudChip T="string" Size="Size.Small" Color="@GetVulnerabilityStatusColor(context.VulnerabilityAssessment.Status, context.VulnerabilityAssessment.SeveritySummary)">@context.VulnerabilityAssessment.Status</MudChip>
+                            <VulnerabilitySeverityChips Summary="context.VulnerabilityAssessment.SeveritySummary" />
                             <span class="table-secondary">@($"{context.VulnerabilityAssessment.ActiveFindingCount} active · {context.VulnerabilityAssessment.Source}")</span>
                         </MudTd>
                     </RowTemplate>
@@ -386,35 +388,7 @@
                 <MudText Class="section-description">Current security findings for the runtime image.</MudText>
             </div>
 
-            @if (_detail.VulnerabilityFindings.Count == 0)
-            {
-                <MudPaper Class="empty-state-panel" Elevation="0">
-                    <MudText>No vulnerability findings are currently stored for this runtime image.</MudText>
-                </MudPaper>
-            }
-            else
-            {
-                <MudTable Items="_detail.VulnerabilityFindings" Hover="true" Dense="false" Breakpoint="Breakpoint.Md" Class="section-table">
-                    <HeaderContent>
-                        <MudTh>Advisory</MudTh>
-                        <MudTh>Severity</MudTh>
-                        <MudTh>Source</MudTh>
-                        <MudTh>Package</MudTh>
-                        <MudTh>Fixed version</MudTh>
-                        <MudTh>Title</MudTh>
-                    </HeaderContent>
-                    <RowTemplate>
-                        <MudTd DataLabel="Advisory">@context.AdvisoryId</MudTd>
-                        <MudTd DataLabel="Severity">
-                            <MudChip T="string" Size="Size.Small" Color="@GetSeverityColor(context.Severity)">@context.Severity</MudChip>
-                        </MudTd>
-                        <MudTd DataLabel="Source">@context.Source</MudTd>
-                        <MudTd DataLabel="Package">@context.AffectedPackage</MudTd>
-                        <MudTd DataLabel="Fixed version">@context.FixedVersion</MudTd>
-                        <MudTd DataLabel="Title">@context.Title</MudTd>
-                    </RowTemplate>
-                </MudTable>
-            }
+            <VulnerabilityFindingsTable Findings="_detail.VulnerabilityFindings" />
         </MudPaper>
 
         <MudPaper Class="section-paper" Elevation="0">

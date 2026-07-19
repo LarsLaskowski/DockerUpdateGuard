@@ -48,6 +48,11 @@ public class DashboardViewData
     public int ActiveVulnerabilityFindingCount { get; set; }
 
     /// <summary>
+    /// Active vulnerability finding counts per severity
+    /// </summary>
+    public VulnerabilitySeveritySummaryViewData VulnerabilitySeveritySummary { get; set; } = new();
+
+    /// <summary>
     /// Recent scan list
     /// </summary>
     public IReadOnlyList<ScanHistoryItemData> RecentScans { get; set; } = [];

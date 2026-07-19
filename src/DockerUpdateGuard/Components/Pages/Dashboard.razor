@@ -90,6 +90,7 @@ else
                 <MudPaper Class="metric-card metric-card--danger" Elevation="0">
                     <span class="metric-label">Vulnerabilities</span>
                     <span class="metric-value">@_dashboard.ActiveVulnerabilityFindingCount</span>
+                    <VulnerabilitySeverityChips Summary="_dashboard.VulnerabilitySeveritySummary" />
                 </MudPaper>
             </MudItem>
         </MudGrid>
@@ -109,6 +110,7 @@ else
                         <MudPaper Class="summary-card" Elevation="0">
                             <span class="summary-label">Active vulnerability findings</span>
                             <span class="summary-value">@_dashboard.ActiveVulnerabilityFindingCount</span>
+                            <VulnerabilitySeverityChips Summary="_dashboard.VulnerabilitySeveritySummary" />
                         </MudPaper>
                         <MudPaper Class="summary-card" Elevation="0">
                             <span class="summary-label">Own base runtime warnings</span>

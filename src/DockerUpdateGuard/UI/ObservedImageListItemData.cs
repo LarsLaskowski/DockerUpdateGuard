@@ -48,6 +48,11 @@ public class ObservedImageListItemData
     public int ActiveVulnerabilityFindingCount { get; set; }
 
     /// <summary>
+    /// Active vulnerability finding counts per severity
+    /// </summary>
+    public VulnerabilitySeveritySummaryViewData VulnerabilitySeveritySummary { get; set; } = new();
+
+    /// <summary>
     /// Vulnerability status
     /// </summary>
     public string VulnerabilityStatus { get; set; } = "Not scanned";

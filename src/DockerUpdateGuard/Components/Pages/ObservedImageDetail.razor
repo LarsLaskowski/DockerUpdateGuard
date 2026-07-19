@@ -54,7 +54,8 @@
                 <MudItem xs="12" md="6">
                     <MudPaper Class="summary-card" Elevation="0">
                         <span class="summary-label">Vulnerability assessment</span>
-                        <MudChip T="string" Size="Size.Small" Color="@GetVulnerabilityAssessmentColor(_detail.VulnerabilityAssessment.Status)">@_detail.VulnerabilityAssessment.Status</MudChip>
+                        <MudChip T="string" Size="Size.Small" Color="@GetVulnerabilityAssessmentColor(_detail.VulnerabilityAssessment.Status, _detail.VulnerabilityAssessment.SeveritySummary)">@_detail.VulnerabilityAssessment.Status</MudChip>
+                        <VulnerabilitySeverityChips Summary="_detail.VulnerabilityAssessment.SeveritySummary" />
                         <span class="table-secondary">@($"{_detail.VulnerabilityAssessment.Source} · {_detail.VulnerabilityAssessment.ActiveFindingCount} active")</span>
                         @if (string.IsNullOrWhiteSpace(_detail.VulnerabilityAssessment.Message) == false)
                         {
@@ -152,12 +153,21 @@
                         <MudTd DataLabel="Base Image">@ImageReferenceFormatter.GetReference(context.ImageReference)</MudTd>
                         <MudTd DataLabel="Source">@ImageReferenceFormatter.GetReference(context.SourceReference ?? string.Empty)</MudTd>
                         <MudTd DataLabel="Vulnerabilities">
-                            <MudChip T="string" Size="Size.Small" Color="@GetVulnerabilityAssessmentColor(context.VulnerabilityAssessment.Status)">@context.VulnerabilityAssessment.Status</MudChip>
+                            <MudChip T="string" Size="Size.Small" Color="@GetVulnerabilityAssessmentColor(context.VulnerabilityAssessment.Status, context.VulnerabilityAssessment.SeveritySummary)">@context.VulnerabilityAssessment.Status</MudChip>
+                            <VulnerabilitySeverityChips Summary="context.VulnerabilityAssessment.SeveritySummary" />
                             <span class="table-secondary">@($"{context.VulnerabilityAssessment.ActiveFindingCount} active · {context.VulnerabilityAssessment.Source}")</span>
                         </MudTd>
                     </RowTemplate>
                 </MudTable>
             }
+        </MudPaper>
+
+        <MudPaper Class="section-paper" Elevation="0">
+            <div class="section-header">
+                <MudText Typo="Typo.h5">Vulnerability findings</MudText>
+                <MudText Class="section-description">Active and historical vulnerability findings for the current image version.</MudText>
+            </div>
+            <VulnerabilityFindingsTable Findings="_detail.VulnerabilityFindings" />
         </MudPaper>
 
         <MudPaper Class="section-paper" Elevation="0">

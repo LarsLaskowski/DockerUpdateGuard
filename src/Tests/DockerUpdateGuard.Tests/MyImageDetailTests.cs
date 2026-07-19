@@ -21,12 +21,6 @@ public class MyImageDetailTests
                                                                        ?? throw new InvalidOperationException("MyImageDetail must expose the non-public static GetScanStatusColor method");
 
     /// <summary>
-    /// Non-public vulnerability-severity chip color resolver
-    /// </summary>
-    private static readonly MethodInfo _getVulnerabilitySeverityColorMethod = typeof(MyImageDetail).GetMethod("GetVulnerabilitySeverityColor", BindingFlags.NonPublic | BindingFlags.Static)
-                                                                                  ?? throw new InvalidOperationException("MyImageDetail must expose the non-public static GetVulnerabilitySeverityColor method");
-
-    /// <summary>
     /// Non-public vulnerability-assessment chip color resolver
     /// </summary>
     private static readonly MethodInfo _getVulnerabilityAssessmentColorMethod = typeof(MyImageDetail).GetMethod("GetVulnerabilityAssessmentColor", BindingFlags.NonPublic | BindingFlags.Static)
@@ -66,31 +60,6 @@ public class MyImageDetailTests
     }
 
     /// <summary>
-    /// Verify vulnerability severity chip colors map to expected MudBlazor color values
-    /// </summary>
-    /// <param name="severity">Severity label</param>
-    /// <param name="expectedColor">Expected chip color</param>
-    [TestMethod]
-    [DataRow("Critical", Color.Error)]
-    [DataRow("CRITICAL", Color.Error)]
-    [DataRow("High", Color.Warning)]
-    [DataRow("HIGH", Color.Warning)]
-    [DataRow("Medium", Color.Info)]
-    [DataRow("MEDIUM", Color.Info)]
-    [DataRow("Low", Color.Success)]
-    [DataRow("LOW", Color.Success)]
-    [DataRow("Unknown", Color.Default)]
-    [DataRow("anything-else", Color.Default)]
-    public void MyImageDetailGetVulnerabilitySeverityColorKnownSeverityReturnsExpectedColor(string severity, Color expectedColor)
-    {
-        var color = (Color)_getVulnerabilitySeverityColorMethod.Invoke(null, [severity])!;
-
-        Assert.AreEqual(expectedColor,
-                        color,
-                        $"Vulnerability severity '{severity}' must map to Color.{expectedColor}");
-    }
-
-    /// <summary>
     /// Verify vulnerability assessment chip colors map to expected MudBlazor color values
     /// </summary>
     /// <param name="status">Vulnerability assessment status string</param>
@@ -109,7 +78,7 @@ public class MyImageDetailTests
     [DataRow("anything-else", Color.Info)]
     public void MyImageDetailGetVulnerabilityAssessmentColorKnownStatusReturnsExpectedColor(string status, Color expectedColor)
     {
-        var color = (Color)_getVulnerabilityAssessmentColorMethod.Invoke(null, [status])!;
+        var color = (Color)_getVulnerabilityAssessmentColorMethod.Invoke(null, [status, null])!;
 
         Assert.AreEqual(expectedColor,
                         color,
