@@ -34,7 +34,7 @@ public class ScanRunConfiguration : IEntityTypeConfiguration<ScanRun>
                .HasMaxLength(100);
 
         builder.Property(entity => entity.ErrorMessage)
-               .HasMaxLength(1000);
+               .HasColumnType("text");
 
         builder.Property(entity => entity.DiagnosticJson)
                .HasMaxLength(4000);

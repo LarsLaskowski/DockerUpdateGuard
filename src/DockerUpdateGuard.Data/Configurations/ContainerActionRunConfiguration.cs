@@ -41,7 +41,7 @@ public class ContainerActionRunConfiguration : IEntityTypeConfiguration<Containe
                .HasMaxLength(100);
 
         builder.Property(entity => entity.ErrorMessage)
-               .HasMaxLength(1000);
+               .HasColumnType("text");
 
         builder.Property(entity => entity.RequestedAtUtc)
                .IsRequired();
