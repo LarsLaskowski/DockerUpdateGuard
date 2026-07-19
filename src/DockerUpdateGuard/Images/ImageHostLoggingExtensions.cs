@@ -249,6 +249,16 @@ internal static partial class ImageHostLoggingExtensions
                                                              long elapsedMilliseconds);
 
     /// <summary>
+    /// Log a vulnerability save failure
+    /// </summary>
+    /// <param name="logger">Logger</param>
+    /// <param name="exception">Exception</param>
+    [LoggerMessage(EventId = 2053,
+                   Level = LogLevel.Error,
+                   Message = "Failed to save vulnerability data")]
+    public static partial void VulnerabilitySaveFailed(this ILogger logger, Exception exception);
+
+    /// <summary>
     /// Log that observed image batch scanning has started
     /// </summary>
     /// <param name="logger">Logger</param>
