@@ -2,6 +2,8 @@ using DockerUpdateGuard.UI;
 
 using Microsoft.AspNetCore.Components;
 
+using MudBlazor;
+
 namespace DockerUpdateGuard.Components.Pages;
 
 /// <summary>
@@ -27,6 +29,26 @@ public partial class SharedBaseImages
     public IApplicationViewService ViewService { get; set; } = null!;
 
     #endregion // Properties
+
+    #region Static methods
+
+    /// <summary>
+    /// Resolve the chip color for a vulnerability assessment status
+    /// </summary>
+    /// <param name="status">Vulnerability assessment status</param>
+    /// <param name="severitySummary">Severity summary of the active findings</param>
+    /// <returns>Chip color</returns>
+    private static Color GetVulnerabilityStatusColor(string? status, VulnerabilitySeveritySummaryViewData? severitySummary)
+    {
+        if (string.IsNullOrWhiteSpace(status))
+        {
+            return Color.Default;
+        }
+
+        return VulnerabilityDisplayFormatter.GetStatusColor(status, severitySummary);
+    }
+
+    #endregion // Static methods
 
     #region ComponentBase
 

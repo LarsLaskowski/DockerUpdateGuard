@@ -87,40 +87,16 @@ public partial class RuntimeContainerDetail
     /// Resolve the chip color for a vulnerability status
     /// </summary>
     /// <param name="status">Vulnerability status</param>
+    /// <param name="severitySummary">Severity summary of the active findings</param>
     /// <returns>Chip color</returns>
-    private static Color GetVulnerabilityStatusColor(string? status)
+    private static Color GetVulnerabilityStatusColor(string? status, VulnerabilitySeveritySummaryViewData? severitySummary)
     {
         if (string.IsNullOrWhiteSpace(status))
         {
             return Color.Default;
         }
 
-        return status.ToUpperInvariant() switch
-               {
-                   "FINDINGS DETECTED" => Color.Warning,
-                   "NO FINDINGS" => Color.Success,
-                   "FAILED" => Color.Error,
-                   "NOT CONFIGURED" => Color.Default,
-                   "UNSUPPORTED" => Color.Default,
-                   _ => Color.Info,
-               };
-    }
-
-    /// <summary>
-    /// Resolve the chip color for a vulnerability severity
-    /// </summary>
-    /// <param name="severity">Severity label</param>
-    /// <returns>Chip color</returns>
-    private static Color GetSeverityColor(string severity)
-    {
-        return severity.ToUpperInvariant() switch
-               {
-                   "CRITICAL" => Color.Error,
-                   "HIGH" => Color.Warning,
-                   "MEDIUM" => Color.Info,
-                   "LOW" => Color.Success,
-                   _ => Color.Default,
-               };
+        return VulnerabilityDisplayFormatter.GetStatusColor(status, severitySummary);
     }
 
     /// <summary>

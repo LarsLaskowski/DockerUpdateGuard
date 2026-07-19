@@ -127,7 +127,8 @@
                             }
                             @if (context.ActiveVulnerabilityFindingCount > 0)
                             {
-                                <MudChip T="string" Size="Size.Small" Color="@GetVulnerabilityStatusColor(context.VulnerabilityStatus)">Runtime vulnerabilities</MudChip>
+                                <MudChip T="string" Size="Size.Small" Color="@GetVulnerabilityStatusColor(context.VulnerabilityStatus, context.VulnerabilitySeveritySummary)">Runtime vulnerabilities</MudChip>
+                                <VulnerabilitySeverityChips Summary="context.VulnerabilitySeveritySummary" />
                                 <span class="table-secondary">@($"{context.ActiveVulnerabilityFindingCount} active · {context.VulnerabilitySummary}")</span>
                             }
                             @if (context.ActiveBaseImageVulnerabilityFindingCount > 0)

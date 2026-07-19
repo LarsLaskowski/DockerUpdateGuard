@@ -73,7 +73,8 @@
                     </MudTd>
                     <MudTd DataLabel="Observed Images">@context.ObservedImageCount</MudTd>
                     <MudTd DataLabel="Vulnerabilities">
-                        <MudChip T="string" Size="Size.Small" Color="@(context.VulnerabilityAssessment.ActiveFindingCount > 0 ? Color.Warning : Color.Success)">@context.VulnerabilityAssessment.Status</MudChip>
+                        <MudChip T="string" Size="Size.Small" Color="@GetVulnerabilityStatusColor(context.VulnerabilityAssessment.Status, context.VulnerabilityAssessment.SeveritySummary)">@context.VulnerabilityAssessment.Status</MudChip>
+                        <VulnerabilitySeverityChips Summary="context.VulnerabilityAssessment.SeveritySummary" />
                         <span class="table-secondary">@($"{context.VulnerabilityAssessment.ActiveFindingCount} active · {context.VulnerabilityAssessment.Source}")</span>
                         @if (string.IsNullOrWhiteSpace(context.VulnerabilityAssessment.Message) == false)
                         {

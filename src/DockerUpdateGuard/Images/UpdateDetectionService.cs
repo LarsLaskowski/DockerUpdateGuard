@@ -343,8 +343,8 @@ public class UpdateDetectionService : IUpdateDetectionService
     /// <param name="orderedTags">Ordered repository tags</param>
     /// <returns>Candidate list</returns>
     private static List<UpdateCandidateData> CreateDigestCandidates(string currentTag,
-                                                                             string digest,
-                                                                             IReadOnlyList<DockerHubTagData> orderedTags)
+                                                                    string digest,
+                                                                    IReadOnlyList<DockerHubTagData> orderedTags)
     {
         return orderedTags.Where(tag => string.Equals(tag.Digest, digest, StringComparison.OrdinalIgnoreCase))
                           .OrderBy(tag => string.Equals(tag.Tag, currentTag, StringComparison.OrdinalIgnoreCase) ? 0 : 1)

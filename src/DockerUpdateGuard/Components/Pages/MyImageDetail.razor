@@ -51,7 +51,8 @@
                 <MudItem xs="12" md="6">
                     <MudPaper Class="summary-card" Elevation="0">
                         <span class="summary-label">Vulnerability assessment</span>
-                        <MudChip T="string" Size="Size.Small" Color="@GetVulnerabilityAssessmentColor(_detail.VulnerabilityAssessment.Status)">@_detail.VulnerabilityAssessment.Status</MudChip>
+                        <MudChip T="string" Size="Size.Small" Color="@GetVulnerabilityAssessmentColor(_detail.VulnerabilityAssessment.Status, _detail.VulnerabilityAssessment.SeveritySummary)">@_detail.VulnerabilityAssessment.Status</MudChip>
+                        <VulnerabilitySeverityChips Summary="_detail.VulnerabilityAssessment.SeveritySummary" />
                         <span class="table-secondary">@($"{_detail.VulnerabilityAssessment.Source} · {_detail.VulnerabilityAssessment.ActiveFindingCount} active")</span>
                         @if (string.IsNullOrWhiteSpace(_detail.VulnerabilityAssessment.Message) == false)
                         {
@@ -144,7 +145,8 @@
                         <MudTd DataLabel="Base Image">@ImageReferenceFormatter.GetReference(context.ImageReference)</MudTd>
                         <MudTd DataLabel="Source">@ImageReferenceFormatter.GetReference(context.SourceReference ?? string.Empty)</MudTd>
                         <MudTd DataLabel="Vulnerabilities">
-                            <MudChip T="string" Size="Size.Small" Color="@GetVulnerabilityAssessmentColor(context.VulnerabilityAssessment.Status)">@context.VulnerabilityAssessment.Status</MudChip>
+                            <MudChip T="string" Size="Size.Small" Color="@GetVulnerabilityAssessmentColor(context.VulnerabilityAssessment.Status, context.VulnerabilityAssessment.SeveritySummary)">@context.VulnerabilityAssessment.Status</MudChip>
+                            <VulnerabilitySeverityChips Summary="context.VulnerabilityAssessment.SeveritySummary" />
                             <span class="table-secondary">@($"{context.VulnerabilityAssessment.ActiveFindingCount} active · {context.VulnerabilityAssessment.Source}")</span>
                         </MudTd>
                     </RowTemplate>
@@ -210,45 +212,7 @@
                     <MudText Typo="Typo.h5">Vulnerability findings</MudText>
                     <MudText Class="section-description">Active and historical vulnerability findings for the current image version.</MudText>
                 </div>
-                <MudTable Items="_detail.VulnerabilityFindings" Hover="true" Dense="false" Breakpoint="Breakpoint.Md" Class="section-table">
-                    <HeaderContent>
-                        <MudTh>Advisory</MudTh>
-                        <MudTh>Severity</MudTh>
-                        <MudTh>Package</MudTh>
-                        <MudTh>Fixed version</MudTh>
-                        <MudTh>Status</MudTh>
-                    </HeaderContent>
-                    <RowTemplate>
-                        <MudTd DataLabel="Advisory">
-                            @if (string.IsNullOrWhiteSpace(context.ReferenceUrl) == false)
-                            {
-                                <MudLink Href="@context.ReferenceUrl" Target="_blank" rel="noopener noreferrer" Class="table-link">@context.AdvisoryId</MudLink>
-                            }
-                            else
-                            {
-                                <span>@context.AdvisoryId</span>
-                            }
-                            @if (string.IsNullOrWhiteSpace(context.Title) == false)
-                            {
-                                <span class="table-secondary">@context.Title</span>
-                            }
-                        </MudTd>
-                        <MudTd DataLabel="Severity">
-                            <MudChip T="string" Size="Size.Small" Color="@GetVulnerabilitySeverityColor(context.Severity)">@context.Severity</MudChip>
-                            @if (context.CvssScore.HasValue)
-                            {
-                                <span class="table-secondary">CVSS @context.CvssScore.Value.ToString("F1")</span>
-                            }
-                        </MudTd>
-                        <MudTd DataLabel="Package">@context.AffectedPackage</MudTd>
-                        <MudTd DataLabel="Fixed version">@(context.FixedVersion ?? "—")</MudTd>
-                        <MudTd DataLabel="Status">
-                            <MudChip T="string" Size="Size.Small" Color="@(context.IsActive ? Color.Warning : Color.Default)">
-                                @(context.IsActive ? "Active" : "Resolved")
-                            </MudChip>
-                        </MudTd>
-                    </RowTemplate>
-                </MudTable>
+                <VulnerabilityFindingsTable Findings="_detail.VulnerabilityFindings" />
             </MudPaper>
         }
 

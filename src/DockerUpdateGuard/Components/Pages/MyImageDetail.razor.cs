@@ -58,38 +58,14 @@ public partial class MyImageDetail
     }
 
     /// <summary>
-    /// Resolve the chip color for a vulnerability severity label
-    /// </summary>
-    /// <param name="severity">Severity label</param>
-    /// <returns>Chip color</returns>
-    internal static Color GetVulnerabilitySeverityColor(string severity)
-    {
-        return severity.ToUpperInvariant() switch
-               {
-                   "CRITICAL" => Color.Error,
-                   "HIGH" => Color.Warning,
-                   "MEDIUM" => Color.Info,
-                   "LOW" => Color.Success,
-                   _ => Color.Default,
-               };
-    }
-
-    /// <summary>
     /// Resolve the chip color for a vulnerability assessment status
     /// </summary>
     /// <param name="status">Status label</param>
+    /// <param name="severitySummary">Severity summary of the active findings</param>
     /// <returns>Chip color</returns>
-    internal static Color GetVulnerabilityAssessmentColor(string status)
+    internal static Color GetVulnerabilityAssessmentColor(string status, VulnerabilitySeveritySummaryViewData? severitySummary)
     {
-        return status.ToUpperInvariant() switch
-               {
-                   "FINDINGS DETECTED" => Color.Warning,
-                   "NO FINDINGS" => Color.Success,
-                   "FAILED" => Color.Error,
-                   "NOT CONFIGURED" => Color.Default,
-                   "UNSUPPORTED" => Color.Default,
-                   _ => Color.Info,
-               };
+        return VulnerabilityDisplayFormatter.GetStatusColor(status, severitySummary);
     }
 
     #endregion // Static methods

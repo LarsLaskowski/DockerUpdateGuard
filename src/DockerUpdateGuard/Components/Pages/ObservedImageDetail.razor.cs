@@ -61,18 +61,11 @@ public partial class ObservedImageDetail
     /// Resolve the chip color for a vulnerability assessment status
     /// </summary>
     /// <param name="status">Status label</param>
+    /// <param name="severitySummary">Severity summary of the active findings</param>
     /// <returns>Chip color</returns>
-    private static Color GetVulnerabilityAssessmentColor(string status)
+    private static Color GetVulnerabilityAssessmentColor(string status, VulnerabilitySeveritySummaryViewData? severitySummary)
     {
-        return status.ToUpperInvariant() switch
-               {
-                   "FINDINGS DETECTED" => Color.Warning,
-                   "NO FINDINGS" => Color.Success,
-                   "FAILED" => Color.Error,
-                   "NOT CONFIGURED" => Color.Default,
-                   "UNSUPPORTED" => Color.Default,
-                   _ => Color.Info,
-               };
+        return VulnerabilityDisplayFormatter.GetStatusColor(status, severitySummary);
     }
 
     /// <summary>

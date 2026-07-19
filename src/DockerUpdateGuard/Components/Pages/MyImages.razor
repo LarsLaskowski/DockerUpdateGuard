@@ -69,7 +69,8 @@
                         }
                     </MudTd>
                     <MudTd DataLabel="Vulnerabilities">
-                        <MudChip T="string" Size="Size.Small" Color="@GetVulnerabilityStatusColor(context.VulnerabilityStatus)">@context.VulnerabilityStatus</MudChip>
+                        <MudChip T="string" Size="Size.Small" Color="@GetVulnerabilityStatusColor(context.VulnerabilityStatus, context.VulnerabilitySeveritySummary)">@context.VulnerabilityStatus</MudChip>
+                        <VulnerabilitySeverityChips Summary="context.VulnerabilitySeveritySummary" />
                         <span class="table-secondary">@($"{context.ActiveVulnerabilityFindingCount} active · {context.VulnerabilityMessage}")</span>
                         @if (context.ActiveBaseImageVulnerabilityFindingCount > 0)
                         {

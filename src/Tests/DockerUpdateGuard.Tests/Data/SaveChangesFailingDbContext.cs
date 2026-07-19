@@ -30,9 +30,19 @@ internal sealed class SaveChangesFailingDbContext : DockerUpdateGuardDbContext
     public bool FailOnSaveChanges { get; set; }
 
     /// <summary>
+    /// Number of persistence attempts that succeed before subsequent attempts throw
+    /// </summary>
+    public int? FailAfterSaveCount { get; set; }
+
+    /// <summary>
     /// Exception thrown when persistence is forced to fail
     /// </summary>
     public Exception? SaveChangesException { get; set; }
+
+    /// <summary>
+    /// Number of persistence attempts that have been made
+    /// </summary>
+    public int SaveChangesAttemptCount { get; private set; }
 
     #endregion // Properties
 
@@ -41,7 +51,9 @@ internal sealed class SaveChangesFailingDbContext : DockerUpdateGuardDbContext
     /// <inheritdoc/>
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
-        if (FailOnSaveChanges)
+        SaveChangesAttemptCount++;
+
+        if (FailOnSaveChanges || (FailAfterSaveCount.HasValue && SaveChangesAttemptCount > FailAfterSaveCount.Value))
         {
             throw SaveChangesException ?? new InvalidOperationException("Simulated persistence failure");
         }

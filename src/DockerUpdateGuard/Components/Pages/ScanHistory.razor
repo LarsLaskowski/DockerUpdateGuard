@@ -9,7 +9,32 @@
             <MudText Typo="Typo.h3">Scan History</MudText>
             <MudText Class="page-description">Operational history for discovery, image refresh, vulnerability, and cleanup runs.</MudText>
         </div>
+        @if (VulnerabilitiesEnabled)
+        {
+            <MudButton Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       Disabled="@_isRefreshingVulnerabilities"
+                       OnClick="TriggerVulnerabilityRefreshAsync">
+                @if (_isRefreshingVulnerabilities)
+                {
+                    <MudProgressCircular Class="me-2"
+                                         Size="Size.Small"
+                                         Indeterminate="true"
+                                         Color="Color.Inherit" />
+                    <span>Refreshing vulnerabilities...</span>
+                }
+                else
+                {
+                    <span>Refresh vulnerabilities</span>
+                }
+            </MudButton>
+        }
     </div>
+
+    @if (string.IsNullOrWhiteSpace(_errorMessage) == false)
+    {
+        <MudAlert Severity="Severity.Error" Dense="true">@_errorMessage</MudAlert>
+    }
 
     @if (_scans is null)
     {
