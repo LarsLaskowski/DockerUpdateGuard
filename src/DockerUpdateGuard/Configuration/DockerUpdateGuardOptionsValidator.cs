@@ -64,7 +64,7 @@ public class DockerUpdateGuardOptionsValidator : IValidateOptions<DockerUpdateGu
     /// </summary>
     /// <param name="options">Docker Hub options</param>
     /// <param name="failures">Failure list</param>
-    private static void ValidateDockerHubOptions(DockerHubOptions options, ICollection<string> failures)
+    private static void ValidateDockerHubOptions(DockerHubOptions options, List<string> failures)
     {
         if (string.IsNullOrWhiteSpace(options.Registry))
         {
@@ -91,7 +91,7 @@ public class DockerUpdateGuardOptionsValidator : IValidateOptions<DockerUpdateGu
     /// </summary>
     /// <param name="options">Release metadata options</param>
     /// <param name="failures">Failure list</param>
-    private static void ValidateReleaseMetadataOptions(ReleaseMetadataOptions options, ICollection<string> failures)
+    private static void ValidateReleaseMetadataOptions(ReleaseMetadataOptions options, List<string> failures)
     {
         ValidateAbsoluteHttpUri(options.DotNetBaseUrl,
                                 $"{DockerUpdateGuardOptions.SectionName}:ReleaseMetadata:DotNetBaseUrl",
@@ -107,7 +107,7 @@ public class DockerUpdateGuardOptionsValidator : IValidateOptions<DockerUpdateGu
     /// <param name="value">Value to validate</param>
     /// <param name="propertyPath">Fully qualified configuration path</param>
     /// <param name="failures">Failure list</param>
-    private static void ValidateAbsoluteHttpUri(string value, string propertyPath, ICollection<string> failures)
+    private static void ValidateAbsoluteHttpUri(string value, string propertyPath, List<string> failures)
     {
         if (string.IsNullOrWhiteSpace(value))
         {
@@ -129,7 +129,7 @@ public class DockerUpdateGuardOptionsValidator : IValidateOptions<DockerUpdateGu
     /// </summary>
     /// <param name="options">Vulnerability options</param>
     /// <param name="failures">Failure list</param>
-    private static void ValidateVulnerabilityOptions(VulnerabilityOptions options, ICollection<string> failures)
+    private static void ValidateVulnerabilityOptions(VulnerabilityOptions options, List<string> failures)
     {
         if (options.Enabled && options.Provider == VulnerabilityProviderKind.None)
         {
@@ -161,7 +161,7 @@ public class DockerUpdateGuardOptionsValidator : IValidateOptions<DockerUpdateGu
     /// </summary>
     /// <param name="options">Scanning options</param>
     /// <param name="failures">Failure list</param>
-    private static void ValidateScanningOptions(ScanningOptions options, ICollection<string> failures)
+    private static void ValidateScanningOptions(ScanningOptions options, List<string> failures)
     {
         ValidateRange(options.DiscoveryIntervalMinutes,
                       1,
@@ -239,7 +239,7 @@ public class DockerUpdateGuardOptionsValidator : IValidateOptions<DockerUpdateGu
     /// <param name="maximum">Inclusive maximum</param>
     /// <param name="propertyPath">Fully qualified configuration path</param>
     /// <param name="failures">Failure list</param>
-    private static void ValidateRange(int value, int minimum, int maximum, string propertyPath, ICollection<string> failures)
+    private static void ValidateRange(int value, int minimum, int maximum, string propertyPath, List<string> failures)
     {
         if (value < minimum || value > maximum)
         {
@@ -252,7 +252,7 @@ public class DockerUpdateGuardOptionsValidator : IValidateOptions<DockerUpdateGu
     /// </summary>
     /// <param name="instances">Configured instances</param>
     /// <param name="failures">Failure list</param>
-    private static void ValidateDockerInstances(IEnumerable<DockerInstanceOptions> instances, ICollection<string> failures)
+    private static void ValidateDockerInstances(IEnumerable<DockerInstanceOptions> instances, List<string> failures)
     {
         var knownNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -279,7 +279,7 @@ public class DockerUpdateGuardOptionsValidator : IValidateOptions<DockerUpdateGu
     /// </summary>
     /// <param name="instance">Docker instance</param>
     /// <param name="failures">Failure list</param>
-    private static void ValidateDockerInstance(DockerInstanceOptions instance, ICollection<string> failures)
+    private static void ValidateDockerInstance(DockerInstanceOptions instance, List<string> failures)
     {
         if (string.IsNullOrWhiteSpace(instance.BaseUrl))
         {
@@ -307,7 +307,7 @@ public class DockerUpdateGuardOptionsValidator : IValidateOptions<DockerUpdateGu
     /// <param name="instanceName">Owning Docker instance name</param>
     /// <param name="portainer">Portainer options</param>
     /// <param name="failures">Failure list</param>
-    private static void ValidatePortainerOptions(string instanceName, PortainerOptions portainer, ICollection<string> failures)
+    private static void ValidatePortainerOptions(string instanceName, PortainerOptions portainer, List<string> failures)
     {
         if (string.IsNullOrWhiteSpace(portainer.BaseUrl))
         {

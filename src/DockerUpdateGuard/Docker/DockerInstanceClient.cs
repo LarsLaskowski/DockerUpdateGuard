@@ -26,7 +26,7 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
     /// <summary>
     /// Image reference parser
     /// </summary>
-    private static readonly IImageReferenceParser _imageReferenceParser = new ImageReferenceParser();
+    private static readonly ImageReferenceParser _imageReferenceParser = new ImageReferenceParser();
 
     /// <summary>
     /// Tracks Docker instance names for which the disabled-certificate-validation warning has already been emitted
@@ -835,7 +835,7 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
     /// <param name="element">JSON element</param>
     /// <param name="propertyName">Property name</param>
     /// <returns>String values</returns>
-    private static IReadOnlyList<string> ReadStringArray(JsonElement element, string propertyName)
+    private static string[] ReadStringArray(JsonElement element, string propertyName)
     {
         if (element.TryGetProperty(propertyName, out var property) == false
             || property.ValueKind != JsonValueKind.Array)

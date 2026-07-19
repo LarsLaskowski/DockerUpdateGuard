@@ -7,7 +7,7 @@ namespace DockerUpdateGuard.Images.Helper;
 /// <summary>
 /// Helper for resolving semantic version tags behind alias tags
 /// </summary>
-public static class VersionTagResolutionHelper
+public static partial class VersionTagResolutionHelper
 {
     #region Const fields
 
@@ -15,27 +15,6 @@ public static class VersionTagResolutionHelper
     /// Regular-expression group name for the variant suffix
     /// </summary>
     private const string SuffixGroupName = "suffix";
-
-    /// <summary>
-    /// Strict numeric version-tag pattern
-    /// </summary>
-    private static readonly Regex _numericVersionTagExpression = new("^[vV]?(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)(?<suffix>-.+)?$",
-                                                                     RegexOptions.Compiled | RegexOptions.CultureInvariant,
-                                                                     TimeSpan.FromMilliseconds(100));
-
-    /// <summary>
-    /// Numeric version-line tag pattern
-    /// </summary>
-    private static readonly Regex _numericVersionLineTagExpression = new("^[vV]?(?<major>\\d+)\\.(?<minor>\\d+)(?<suffix>-.+)?$",
-                                                                         RegexOptions.Compiled | RegexOptions.CultureInvariant,
-                                                                         TimeSpan.FromMilliseconds(100));
-
-    /// <summary>
-    /// Year-prefixed version-tag pattern
-    /// </summary>
-    private static readonly Regex _yearPrefixedTagExpression = new("^(?<year>\\d{4})-(?<suffix>.+)$",
-                                                                   RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase,
-                                                                   TimeSpan.FromMilliseconds(100));
 
     /// <summary>
     /// Known pre-release identifiers that order below their general-availability release
@@ -56,6 +35,37 @@ public static class VersionTagResolutionHelper
                                                                      };
 
     #endregion // Const fields
+
+    #region Regular expressions
+
+    /// <summary>
+    /// Strict numeric version-tag pattern
+    /// </summary>
+    /// <returns>Compiled regular expression</returns>
+    [GeneratedRegex("^[vV]?(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)(?<suffix>-.+)?$",
+                    RegexOptions.CultureInvariant,
+                    100)]
+    private static partial Regex NumericVersionTagExpression();
+
+    /// <summary>
+    /// Numeric version-line tag pattern
+    /// </summary>
+    /// <returns>Compiled regular expression</returns>
+    [GeneratedRegex("^[vV]?(?<major>\\d+)\\.(?<minor>\\d+)(?<suffix>-.+)?$",
+                    RegexOptions.CultureInvariant,
+                    100)]
+    private static partial Regex NumericVersionLineTagExpression();
+
+    /// <summary>
+    /// Year-prefixed version-tag pattern
+    /// </summary>
+    /// <returns>Compiled regular expression</returns>
+    [GeneratedRegex("^(?<year>\\d{4})-(?<suffix>.+)$",
+                    RegexOptions.CultureInvariant | RegexOptions.IgnoreCase,
+                    100)]
+    private static partial Regex YearPrefixedTagExpression();
+
+    #endregion // Regular expressions
 
     #region Methods
 
@@ -173,7 +183,7 @@ public static class VersionTagResolutionHelper
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(value);
 
-        var match = _numericVersionTagExpression.Match(value.Trim());
+        var match = NumericVersionTagExpression().Match(value.Trim());
 
         if (match.Success == false)
         {
@@ -322,7 +332,7 @@ public static class VersionTagResolutionHelper
 
         ArgumentException.ThrowIfNullOrWhiteSpace(value);
 
-        var match = _yearPrefixedTagExpression.Match(value.Trim());
+        var match = YearPrefixedTagExpression().Match(value.Trim());
 
         if (match.Success == false)
         {
@@ -378,7 +388,7 @@ public static class VersionTagResolutionHelper
 
         ArgumentException.ThrowIfNullOrWhiteSpace(value);
 
-        var match = _numericVersionLineTagExpression.Match(value.Trim());
+        var match = NumericVersionLineTagExpression().Match(value.Trim());
 
         if (match.Success == false)
         {
@@ -414,7 +424,7 @@ public static class VersionTagResolutionHelper
 
         ArgumentException.ThrowIfNullOrWhiteSpace(value);
 
-        var match = _numericVersionTagExpression.Match(value.Trim());
+        var match = NumericVersionTagExpression().Match(value.Trim());
 
         if (match.Success == false)
         {
@@ -629,7 +639,7 @@ public static class VersionTagResolutionHelper
     /// <returns>Raw suffix including its leading dash or an empty string</returns>
     private static string GetVersionTagSuffix(string value)
     {
-        var match = _numericVersionTagExpression.Match(value.Trim());
+        var match = NumericVersionTagExpression().Match(value.Trim());
 
         return match.Success
                    ? match.Groups[SuffixGroupName].Value

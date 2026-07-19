@@ -340,7 +340,7 @@ public class ApplicationViewServiceTests
             Assert.AreEqual(2,
                             baseImages[0].ObservedImageCount,
                             "The base image must report the number of observed images that depend on it");
-            Assert.AreSequenceEqual(new[] { "docker.io/company/app-a:1.0.0@sha256:app-a", "docker.io/company/app-b:2.0.0@sha256:app-b" }, baseImages[0].ParentImageReferences.ToArray(), Microsoft.VisualStudio.TestTools.UnitTesting.SequenceOrder.InAnyOrder, "The base image must list the parent images that use it");
+            Assert.AreSequenceEqual(["docker.io/company/app-a:1.0.0@sha256:app-a", "docker.io/company/app-b:2.0.0@sha256:app-b"], baseImages[0].ParentImageReferences.ToArray(), Microsoft.VisualStudio.TestTools.UnitTesting.SequenceOrder.InAnyOrder, "The base image must list the parent images that use it");
         }
     }
 

@@ -564,7 +564,7 @@ public partial class OciRegistryClient : IRegistryMetadataClient
     /// </summary>
     /// <param name="rootElement">Config blob root element</param>
     /// <returns>Environment variables</returns>
-    private static IReadOnlyList<string> TryReadEnvironmentVariables(JsonElement rootElement)
+    private static string[] TryReadEnvironmentVariables(JsonElement rootElement)
     {
         if (rootElement.TryGetProperty(ConfigPropertyName, out var configElement) == false
             || configElement.ValueKind != JsonValueKind.Object
@@ -586,7 +586,7 @@ public partial class OciRegistryClient : IRegistryMetadataClient
     /// </summary>
     /// <param name="rootElement">Config blob root element</param>
     /// <returns>Labels</returns>
-    private static IReadOnlyDictionary<string, string> TryReadLabels(JsonElement rootElement)
+    private static Dictionary<string, string> TryReadLabels(JsonElement rootElement)
     {
         if (rootElement.TryGetProperty(ConfigPropertyName, out var configElement) == false
             || configElement.ValueKind != JsonValueKind.Object

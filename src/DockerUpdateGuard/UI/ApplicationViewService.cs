@@ -881,7 +881,7 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
     /// <param name="childImageVersionIds">Child image version identifiers</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Base-image relationships by child image version</returns>
-    private async Task<Dictionary<Guid, IReadOnlyList<BaseImageRelationshipData>>> LoadBaseImageRelationshipsByChildVersionAsync(IReadOnlyCollection<Guid> childImageVersionIds,
+    private async Task<Dictionary<Guid, IReadOnlyList<BaseImageRelationshipData>>> LoadBaseImageRelationshipsByChildVersionAsync(List<Guid> childImageVersionIds,
                                                                                                                                  CancellationToken cancellationToken)
     {
         if (childImageVersionIds.Count == 0)
@@ -1113,7 +1113,7 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
     /// <param name="manualSelection">Manual selection of container tag</param>
     /// <returns>Update finding view data</returns>
     private UpdateFindingViewData MapUpdateFinding(UpdateFinding entity,
-                                                   IReadOnlyDictionary<Guid, ImageVersion> recommendedImageVersions,
+                                                   Dictionary<Guid, ImageVersion> recommendedImageVersions,
                                                    RuntimeContainerTagSelection? manualSelection)
     {
         ImageVersion? recommendedImageVersion = null;
