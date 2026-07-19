@@ -12,6 +12,15 @@ public partial class Update4 : Migration
     /// <inheritdoc />
     protected override void Up(MigrationBuilder migrationBuilder)
     {
+        migrationBuilder.AlterColumn<string>(name: "Summary",
+                                             table: "VulnerabilityFindings",
+                                             type: "text",
+                                             nullable: true,
+                                             oldClrType: typeof(string),
+                                             oldType: "character varying(2000)",
+                                             oldMaxLength: 2000,
+                                             oldNullable: true);
+
         migrationBuilder.AlterColumn<string>(name: "ReferenceUrl",
                                              table: "VulnerabilityFindings",
                                              type: "text",
@@ -52,6 +61,15 @@ public partial class Update4 : Migration
     /// <inheritdoc />
     protected override void Down(MigrationBuilder migrationBuilder)
     {
+        migrationBuilder.AlterColumn<string>(name: "Summary",
+                                             table: "VulnerabilityFindings",
+                                             type: "character varying(2000)",
+                                             maxLength: 2000,
+                                             nullable: true,
+                                             oldClrType: typeof(string),
+                                             oldType: "text",
+                                             oldNullable: true);
+
         migrationBuilder.AlterColumn<string>(name: "ReferenceUrl",
                                              table: "VulnerabilityFindings",
                                              type: "character varying(1000)",

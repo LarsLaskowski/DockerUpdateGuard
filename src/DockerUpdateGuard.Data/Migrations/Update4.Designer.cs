@@ -12,7 +12,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace DockerUpdateGuard.Data.Migrations
 {
     [DbContext(typeof(DockerUpdateGuardDbContext))]
-    [Migration("20260719115154_Update4")]
+    [Migration("20260719120909_Update4")]
     partial class Update4
     {
         /// <inheritdoc />
@@ -741,8 +741,7 @@ namespace DockerUpdateGuard.Data.Migrations
                         .HasColumnType("integer");
 
                     b.Property<string>("Summary")
-                        .HasMaxLength(2000)
-                        .HasColumnType("character varying(2000)");
+                        .HasColumnType("text");
 
                     b.Property<string>("Title")
                         .IsRequired()
