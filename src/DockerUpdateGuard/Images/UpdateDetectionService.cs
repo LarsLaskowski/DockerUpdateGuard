@@ -83,7 +83,7 @@ public class UpdateDetectionService : IUpdateDetectionService
     /// <param name="versionCandidates">Higher semantic version candidates</param>
     /// <param name="resolvedCurrentVersionCandidate">Optional current resolved version candidate</param>
     /// <returns>Update evaluation result</returns>
-    private static UpdateEvaluationResult CreateSemanticVersionUpdateResult(IReadOnlyList<(DockerHubTagData Tag, Version Version)> versionCandidates,
+    private static UpdateEvaluationResult CreateSemanticVersionUpdateResult(List<(DockerHubTagData Tag, Version Version)> versionCandidates,
                                                                             UpdateCandidateData? resolvedCurrentVersionCandidate = null)
     {
         var recommended = versionCandidates[0].Tag;
@@ -119,7 +119,7 @@ public class UpdateDetectionService : IUpdateDetectionService
     /// </summary>
     /// <param name="versionCandidates">Higher year-based candidates</param>
     /// <returns>Update evaluation result</returns>
-    private static UpdateEvaluationResult CreateYearPrefixedUpdateResult(IReadOnlyList<(DockerHubTagData Tag, int Year, string Suffix)> versionCandidates)
+    private static UpdateEvaluationResult CreateYearPrefixedUpdateResult(List<(DockerHubTagData Tag, int Year, string Suffix)> versionCandidates)
     {
         var recommended = versionCandidates[0].Tag;
 
@@ -342,7 +342,7 @@ public class UpdateDetectionService : IUpdateDetectionService
     /// <param name="digest">Updated digest</param>
     /// <param name="orderedTags">Ordered repository tags</param>
     /// <returns>Candidate list</returns>
-    private static IReadOnlyList<UpdateCandidateData> CreateDigestCandidates(string currentTag,
+    private static List<UpdateCandidateData> CreateDigestCandidates(string currentTag,
                                                                              string digest,
                                                                              IReadOnlyList<DockerHubTagData> orderedTags)
     {

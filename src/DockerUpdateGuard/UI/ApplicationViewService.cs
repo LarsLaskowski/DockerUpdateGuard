@@ -264,6 +264,16 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
     }
 
     /// <summary>
+    /// Return the most recent resource usage point or null when the history is empty
+    /// </summary>
+    /// <param name="history">Ordered resource usage history</param>
+    /// <returns>Most recent resource usage point or null</returns>
+    private static ResourceUsagePointViewData? GetCurrentResourceUsage(IReadOnlyList<ResourceUsagePointViewData>? history)
+    {
+        return history is { Count: > 0 } ? history[0] : null;
+    }
+
+    /// <summary>
     /// Create a stable identity for a tag candidate
     /// </summary>
     /// <param name="tag">Tag name</param>
@@ -611,7 +621,7 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                                           tagCandidatesBySnapshot.TryGetValue(entity.Id, out var tagCandidates);
                                           baseImageRelationshipsByChildVersion.TryGetValue(entity.ImageVersionId, out var baseImageRelationships);
 
-                                          var currentResourceUsage = resourceUsageHistory?.FirstOrDefault();
+                                          var currentResourceUsage = GetCurrentResourceUsage(resourceUsageHistory);
                                           var baseImageVulnerabilitySummary = SummarizeBaseImageVulnerabilities(baseImageRelationships);
                                           var availableTagCandidates = tagCandidates ?? [];
 
@@ -881,7 +891,7 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
     /// <param name="childImageVersionIds">Child image version identifiers</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Base-image relationships by child image version</returns>
-    private async Task<Dictionary<Guid, IReadOnlyList<BaseImageRelationshipData>>> LoadBaseImageRelationshipsByChildVersionAsync(IReadOnlyCollection<Guid> childImageVersionIds,
+    private async Task<Dictionary<Guid, IReadOnlyList<BaseImageRelationshipData>>> LoadBaseImageRelationshipsByChildVersionAsync(List<Guid> childImageVersionIds,
                                                                                                                                  CancellationToken cancellationToken)
     {
         if (childImageVersionIds.Count == 0)
@@ -1113,7 +1123,7 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
     /// <param name="manualSelection">Manual selection of container tag</param>
     /// <returns>Update finding view data</returns>
     private UpdateFindingViewData MapUpdateFinding(UpdateFinding entity,
-                                                   IReadOnlyDictionary<Guid, ImageVersion> recommendedImageVersions,
+                                                   Dictionary<Guid, ImageVersion> recommendedImageVersions,
                                                    RuntimeContainerTagSelection? manualSelection)
     {
         ImageVersion? recommendedImageVersion = null;
@@ -1592,7 +1602,7 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                                                                                                                    vulnerabilityFindings.Count(entity => entity.IsActive)),
                                                            VulnerabilityFindings = vulnerabilityFindings.Select(MapVulnerabilityFinding)
                                                                                                         .ToList(),
-                                                           CurrentResourceUsage = resourceUsageHistory.FirstOrDefault(),
+                                                           CurrentResourceUsage = GetCurrentResourceUsage(resourceUsageHistory),
                                                            ResourceUsageHistory = resourceUsageHistory,
                                                            ScanHistory = await GetRuntimeContainerScanHistoryAsync(dockerInstanceId, containerId, cancellationToken).ConfigureAwait(false),
                                                        };
@@ -1674,7 +1684,7 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                                                            LatestScanStatus = GetLatestRuntimeScanStatus(dockerInstanceId),
                                                            LatestScanCompletedAtUtc = latestScanCompletedAtUtc,
                                                            RuntimeContainerCount = runtimeContainers.Count(entity => entity.DockerInstanceId == dockerInstanceId),
-                                                           CurrentResourceUsage = resourceHistory.FirstOrDefault(),
+                                                           CurrentResourceUsage = GetCurrentResourceUsage(resourceHistory),
                                                            ResourceUsageHistory = resourceHistory,
                                                            RuntimeContainers = runtimeContainers.Where(entity => entity.DockerInstanceId == dockerInstanceId)
                                                                                                 .ToList(),

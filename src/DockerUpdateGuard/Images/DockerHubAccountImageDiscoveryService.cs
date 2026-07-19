@@ -80,7 +80,7 @@ public class DockerHubAccountImageDiscoveryService : IDockerHubAccountImageDisco
     /// <param name="observedImage">Observed image</param>
     /// <param name="repositories">Discovered repository paths</param>
     /// <returns>True when the observed image belongs to a discovered repository</returns>
-    private static bool MatchesRepository(ObservedImage observedImage, ISet<string> repositories)
+    private static bool MatchesRepository(ObservedImage observedImage, HashSet<string> repositories)
     {
         ArgumentNullException.ThrowIfNull(observedImage);
         ArgumentNullException.ThrowIfNull(repositories);

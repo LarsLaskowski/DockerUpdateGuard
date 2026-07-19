@@ -25,7 +25,9 @@ COPY src/DockerUpdateGuard.Telemetry/DockerUpdateGuard.Telemetry.csproj src/Dock
 RUN dotnet restore src/DockerUpdateGuard/DockerUpdateGuard.csproj
 
 COPY . .
-RUN dotnet publish src/DockerUpdateGuard/DockerUpdateGuard.csproj -c Release -o /app/publish -p:Version=$APP_VERSION -p:InformationalVersion=$APP_VERSION
+RUN dotnet publish src/DockerUpdateGuard/DockerUpdateGuard.csproj -c Release -o /app/publish \
+    -p:Version="$APP_VERSION" \
+    -p:InformationalVersion="$APP_VERSION"
 
 # ---------------------------
 # Runtime Stage
@@ -41,7 +43,7 @@ LABEL org.opencontainers.image.base.digest="${BASE_RUNTIME_DIGEST}"
 WORKDIR /app
 EXPOSE 8080
 ENV ASPNETCORE_URLS=http://+:8080
-ENV DockerUpdateGuard__DisplayVersion=$APP_VERSION
+ENV DockerUpdateGuard__DisplayVersion="$APP_VERSION"
 
 # Install CA certificates to enable secure outbound connections (e.g., for telemetry)
 # apt-get is not available in Alpine, so we use apk to install ca-certificates

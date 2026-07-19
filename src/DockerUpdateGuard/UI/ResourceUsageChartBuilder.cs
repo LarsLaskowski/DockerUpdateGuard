@@ -117,7 +117,7 @@ internal static class ResourceUsageChartBuilder
     /// </summary>
     /// <param name="history">Resource history</param>
     /// <returns>Chronological history</returns>
-    private static IReadOnlyList<ResourceUsagePointViewData> GetChronologicalHistory(IReadOnlyList<ResourceUsagePointViewData> history)
+    private static List<ResourceUsagePointViewData> GetChronologicalHistory(IReadOnlyList<ResourceUsagePointViewData> history)
     {
         return history.OrderBy(point => point.RecordedAtUtc)
                       .ToList();

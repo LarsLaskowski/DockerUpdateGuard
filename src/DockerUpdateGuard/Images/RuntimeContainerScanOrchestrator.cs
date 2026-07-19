@@ -305,9 +305,9 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
     /// <param name="currentTagData">Current tag metadata</param>
     /// <param name="availableTags">Available tags</param>
     /// <returns>Filtered tag set</returns>
-    private static IReadOnlyList<DockerHubTagData> FilterAvailableTags(ImageReference currentImage,
-                                                                       DockerHubTagData? currentTagData,
-                                                                       IReadOnlyList<DockerHubTagData> availableTags)
+    private static List<DockerHubTagData> FilterAvailableTags(ImageReference currentImage,
+                                                              DockerHubTagData? currentTagData,
+                                                              IReadOnlyList<DockerHubTagData> availableTags)
     {
         ArgumentNullException.ThrowIfNull(currentImage);
         ArgumentNullException.ThrowIfNull(availableTags);
