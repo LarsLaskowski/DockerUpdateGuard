@@ -29,9 +29,9 @@ internal sealed class NullRegistryMetadataClient : IRegistryMetadataClient
 
     /// <inheritdoc/>
     public Task<ExternalOperationResult<DockerHubTagData>> GetTagAsync(ImageReference imageReference,
-                                                                       CancellationToken cancellationToken = default,
                                                                        string? operatingSystem = null,
-                                                                       string? architecture = null)
+                                                                       string? architecture = null,
+                                                                       CancellationToken cancellationToken = default)
     {
         throw new NotSupportedException();
     }
@@ -39,10 +39,10 @@ internal sealed class NullRegistryMetadataClient : IRegistryMetadataClient
     /// <inheritdoc/>
     public Task<ExternalOperationResult<IReadOnlyList<DockerHubTagData>>> GetTagsAsync(string registry,
                                                                                        string repository,
-                                                                                       CancellationToken cancellationToken = default,
                                                                                        string? operatingSystem = null,
                                                                                        string? architecture = null,
-                                                                                       RegistryTagQueryOptions? queryOptions = null)
+                                                                                       RegistryTagQueryOptions? queryOptions = null,
+                                                                                       CancellationToken cancellationToken = default)
     {
         throw new NotSupportedException();
     }

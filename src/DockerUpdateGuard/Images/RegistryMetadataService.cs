@@ -63,9 +63,9 @@ public partial class RegistryMetadataService : IRegistryMetadataService
 
     /// <inheritdoc/>
     public Task<ExternalOperationResult<DockerHubTagData>> GetTagAsync(ImageReference imageReference,
-                                                                       CancellationToken cancellationToken = default,
                                                                        string? operatingSystem = null,
-                                                                       string? architecture = null)
+                                                                       string? architecture = null,
+                                                                       CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(imageReference);
 
@@ -74,16 +74,16 @@ public partial class RegistryMetadataService : IRegistryMetadataService
             return Task.FromResult(ExternalOperationResult<DockerHubTagData>.Unsupported(CreateUnsupportedMessage(imageReference.Registry)));
         }
 
-        return client.GetTagAsync(imageReference, cancellationToken, operatingSystem, architecture);
+        return client.GetTagAsync(imageReference, operatingSystem, architecture, cancellationToken);
     }
 
     /// <inheritdoc/>
     public Task<ExternalOperationResult<IReadOnlyList<DockerHubTagData>>> GetTagsAsync(string registry,
                                                                                        string repository,
-                                                                                       CancellationToken cancellationToken = default,
                                                                                        string? operatingSystem = null,
                                                                                        string? architecture = null,
-                                                                                       RegistryTagQueryOptions? queryOptions = null)
+                                                                                       RegistryTagQueryOptions? queryOptions = null,
+                                                                                       CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(registry);
         ArgumentException.ThrowIfNullOrWhiteSpace(repository);
@@ -93,7 +93,7 @@ public partial class RegistryMetadataService : IRegistryMetadataService
             return Task.FromResult(ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Unsupported(CreateUnsupportedMessage(registry)));
         }
 
-        return client.GetTagsAsync(registry, repository, cancellationToken, operatingSystem, architecture, queryOptions);
+        return client.GetTagsAsync(registry, repository, operatingSystem, architecture, queryOptions, cancellationToken);
     }
 
     /// <inheritdoc/>

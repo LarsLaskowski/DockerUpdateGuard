@@ -1,7 +1,7 @@
 using DockerUpdateGuard.Configuration;
 using DockerUpdateGuard.Portainer.Data;
 
-namespace DockerUpdateGuard.Portainer;
+namespace DockerUpdateGuard.Portainer.Interfaces;
 
 /// <summary>
 /// Portainer adapter contract

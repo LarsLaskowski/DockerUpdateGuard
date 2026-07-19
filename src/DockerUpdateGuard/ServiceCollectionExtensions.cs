@@ -6,6 +6,7 @@ using DockerUpdateGuard.Images;
 using DockerUpdateGuard.Images.Interfaces;
 using DockerUpdateGuard.Infrastructure;
 using DockerUpdateGuard.Portainer;
+using DockerUpdateGuard.Portainer.Interfaces;
 using DockerUpdateGuard.Telemetry;
 using DockerUpdateGuard.UI;
 using DockerUpdateGuard.Vulnerabilities;

@@ -1181,9 +1181,9 @@ public partial class OciRegistryClient : IRegistryMetadataClient
                                    Tag = tagName,
                                };
             var tagResult = await GetTagAsync(tagReference,
-                                              cancellationToken,
                                               lookupContext.OperatingSystem,
-                                              lookupContext.Architecture).ConfigureAwait(false);
+                                              lookupContext.Architecture,
+                                              cancellationToken).ConfigureAwait(false);
 
             inspectedTagCount++;
 
@@ -1206,9 +1206,9 @@ public partial class OciRegistryClient : IRegistryMetadataClient
 
     /// <inheritdoc/>
     public async Task<ExternalOperationResult<DockerHubTagData>> GetTagAsync(ImageReference imageReference,
-                                                                             CancellationToken cancellationToken = default,
                                                                              string? operatingSystem = null,
-                                                                             string? architecture = null)
+                                                                             string? architecture = null,
+                                                                             CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(imageReference);
 
@@ -1246,10 +1246,10 @@ public partial class OciRegistryClient : IRegistryMetadataClient
     /// <inheritdoc/>
     public async Task<ExternalOperationResult<IReadOnlyList<DockerHubTagData>>> GetTagsAsync(string registry,
                                                                                              string repository,
-                                                                                             CancellationToken cancellationToken = default,
                                                                                              string? operatingSystem = null,
                                                                                              string? architecture = null,
-                                                                                             RegistryTagQueryOptions? queryOptions = null)
+                                                                                             RegistryTagQueryOptions? queryOptions = null,
+                                                                                             CancellationToken cancellationToken = default)
     {
         if (CanHandle(registry) == false)
         {

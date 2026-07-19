@@ -3,6 +3,7 @@ using System.Text.Json;
 
 using DockerUpdateGuard.Configuration;
 using DockerUpdateGuard.Portainer.Data;
+using DockerUpdateGuard.Portainer.Interfaces;
 
 namespace DockerUpdateGuard.Portainer;
 

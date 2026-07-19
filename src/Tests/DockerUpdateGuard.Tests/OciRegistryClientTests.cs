@@ -64,7 +64,7 @@ public partial class OciRegistryClientTests
 
             var result = await client.GetTagsAsync("mcr.microsoft.com",
                                                    "mssql/server",
-                                                   CancellationToken.None)
+                                                   cancellationToken: CancellationToken.None)
                                      .ConfigureAwait(false);
 
             Assert.AreEqual(ExternalOperationStatus.Succeeded,
@@ -150,13 +150,13 @@ public partial class OciRegistryClientTests
             var client = new OciRegistryClient(httpClient, new TestLogger<OciRegistryClient>());
             var result = await client.GetTagsAsync("mcr.microsoft.com",
                                                    "mssql/server",
-                                                   CancellationToken.None,
                                                    queryOptions: new RegistryTagQueryOptions
                                                                  {
                                                                      CurrentTag = "2.4.1",
                                                                      MaximumTags = 10,
                                                                      MinimumVersionTag = "2.4.1",
-                                                                 })
+                                                                 },
+                                                   cancellationToken: CancellationToken.None)
                                      .ConfigureAwait(false);
 
             Assert.AreEqual(ExternalOperationStatus.Succeeded,
@@ -241,9 +241,9 @@ public partial class OciRegistryClientTests
                                                       Repository = "mssql/server",
                                                       Tag = "latest",
                                                   },
-                                                  CancellationToken.None,
                                                   "linux",
-                                                  "arm64")
+                                                  "arm64",
+                                                  CancellationToken.None)
                                      .ConfigureAwait(false);
 
             Assert.AreEqual(ExternalOperationStatus.Succeeded,
@@ -322,7 +322,7 @@ public partial class OciRegistryClientTests
 
             var result = await client.GetTagsAsync("mcr.microsoft.com",
                                                    "mssql/server",
-                                                   CancellationToken.None)
+                                                   cancellationToken: CancellationToken.None)
                                      .ConfigureAwait(false);
 
             Assert.AreEqual(ExternalOperationStatus.Succeeded,

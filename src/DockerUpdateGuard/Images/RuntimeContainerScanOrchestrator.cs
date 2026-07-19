@@ -600,19 +600,19 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
             _dbContext.ContainerSnapshots.Add(snapshot);
 
             var currentTagResult = await _registryMetadataService.GetTagAsync(parsedReference,
-                                                                              cancellationToken,
                                                                               inspectData?.OperatingSystem,
-                                                                              inspectData?.Architecture)
+                                                                              inspectData?.Architecture,
+                                                                              cancellationToken)
                                                                  .ConfigureAwait(false);
             var currentTagData = currentTagResult.Status == ExternalOperationStatus.Succeeded
                                      ? currentTagResult.Data
                                      : null;
             var tagsResult = await _registryMetadataService.GetTagsAsync(parsedReference.Registry,
                                                                          parsedReference.Repository,
-                                                                         cancellationToken,
                                                                          inspectData?.OperatingSystem,
                                                                          inspectData?.Architecture,
-                                                                         CreateTagQueryOptions(parsedReference, currentTagData))
+                                                                         CreateTagQueryOptions(parsedReference, currentTagData),
+                                                                         cancellationToken)
                                                            .ConfigureAwait(false);
             var repositoryTags = tagsResult.Status == ExternalOperationStatus.Succeeded
                                      ? tagsResult.Data

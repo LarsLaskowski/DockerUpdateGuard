@@ -279,7 +279,7 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
     /// <param name="counts">Count lookup keyed by identifier</param>
     /// <param name="key">Identifier to resolve</param>
     /// <returns>Stored count or zero</returns>
-    private static int GetCountOrZero(IReadOnlyDictionary<Guid, int> counts, Guid key)
+    private static int GetCountOrZero(Dictionary<Guid, int> counts, Guid key)
     {
         return counts.TryGetValue(key, out var count) ? count : 0;
     }
@@ -960,7 +960,7 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
     /// <param name="imageVersionIds">Image version identifiers</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Active vulnerability finding count by image version identifier</returns>
-    private async Task<Dictionary<Guid, int>> LoadActiveVulnerabilityFindingCountsAsync(IReadOnlyList<Guid> imageVersionIds, CancellationToken cancellationToken)
+    private async Task<Dictionary<Guid, int>> LoadActiveVulnerabilityFindingCountsAsync(List<Guid> imageVersionIds, CancellationToken cancellationToken)
     {
         if (imageVersionIds.Count == 0)
         {
@@ -987,7 +987,7 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
     /// <param name="observedImageIds">Observed image identifiers</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Active update finding count by observed image identifier</returns>
-    private async Task<Dictionary<Guid, int>> LoadActiveUpdateFindingCountsByObservedImageAsync(IReadOnlyList<Guid> observedImageIds, CancellationToken cancellationToken)
+    private async Task<Dictionary<Guid, int>> LoadActiveUpdateFindingCountsByObservedImageAsync(List<Guid> observedImageIds, CancellationToken cancellationToken)
     {
         if (observedImageIds.Count == 0)
         {

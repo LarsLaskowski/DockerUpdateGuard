@@ -56,7 +56,7 @@ public class ServiceCollectionExtensionsTests
         Assert.IsNotNull(serviceProvider.GetService<IImageScanOrchestrator>(), "The observed image scan orchestrator must be registered");
         Assert.IsNotNull(serviceProvider.GetService<IRuntimeContainerScanOrchestrator>(), "The runtime container scan orchestrator must be registered");
         Assert.IsNotNull(serviceProvider.GetService<IVulnerabilityEnrichmentService>(), "The vulnerability enrichment service must be registered");
-        Assert.IsInstanceOfType(baseImageResolver, typeof(RegistryBaseImageResolver), "Base-image resolution must use the registry-aware resolver");
+        Assert.IsInstanceOfType<RegistryBaseImageResolver>(baseImageResolver, "Base-image resolution must use the registry-aware resolver");
         Assert.IsTrue(hostedServiceTypes.Contains(typeof(DockerInstanceDiscoveryBackgroundService)), "The Docker instance discovery background service must be registered");
         Assert.IsTrue(hostedServiceTypes.Contains(typeof(DockerHubAccountImageDiscoveryBackgroundService)), "The Docker Hub account discovery background service must be registered");
         Assert.IsTrue(hostedServiceTypes.Contains(typeof(OwnImageBaseRefreshBackgroundService)), "The observed image refresh background service must be registered");
