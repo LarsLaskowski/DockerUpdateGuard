@@ -11,6 +11,18 @@ This skill is **read-only**. Its job is to understand the PR and give the user f
 
 Write all output in **English**: your summary to the user, your recommendations, and — only if the user asks for it — any review comment posted to GitHub. This holds regardless of the language the user wrote in.
 
+## Scope
+
+Branch protection on this repository blocks a PR from merging on its own — a review is always required first. That is just how merging works here; it is background context for why this skill exists, not a finding to restate in your output.
+
+Keep the review itself narrow. Only evaluate:
+
+1. The code changes in the diff.
+2. Whether the PR description matches what the diff actually does.
+3. The SonarQube Cloud check status — at most.
+
+Anything else about the PR (other CI checks such as build/test/CodeQL runs, labels, assignees, comment history, unrelated discussion) is out of scope and should not be reported on.
+
 ## Workflow
 
 ### 1. Load the pull request
@@ -18,13 +30,14 @@ Write all output in **English**: your summary to the user, your recommendations,
 - Confirm the PR number from the user's request. If none was given, stop and ask for one.
 - Fetch metadata with `mcp__github__pull_request_read` (`method: get`, `owner: LarsLaskowski`, `repo: DockerUpdateGuard`, `pullNumber: <number>`).
 - Fetch the diff with `method: get_diff`, and the changed files with `method: get_files` if you need per-file granularity.
-- Check CI status with `method: get_check_runs` (or `get_status`) so the review reflects whether builds/tests currently pass.
+- Fetch check runs with `method: get_check_runs` and read only the SonarQube Cloud check's conclusion (pass, fail, or warnings). Ignore every other check.
 - If the PR is already merged or closed, say so and ask whether the user still wants a review before continuing.
 
-### 2. Understand the intent
+### 2. Check the description against the diff
 
-- Read the PR title and body to understand what the change is supposed to do.
+- Read the PR title and body to understand what the change claims to do.
 - If the PR references an issue (e.g. `Closes #N`), read that issue with `mcp__github__issue_read` (`method: get`) so you can judge whether the change actually solves the stated problem.
+- Compare the description to the actual diff. If the description is inaccurate, incomplete, or overstates/understates the change, raise it as a finding (see step 4).
 
 ### 3. Review the diff
 
@@ -49,6 +62,9 @@ Present the review to the user in this structure:
 
 ### Summary
 <1–3 sentences on what the PR does and whether it achieves its goal.>
+
+**Description match:** <Does the PR description accurately reflect the diff? Yes/No and why.>
+**SonarQube Cloud:** <Pass / Fail / Warnings / Not run — no other checks.>
 
 ### Findings
 - **[Blocking|Suggestion|Nit] <file:line>** — <what and why, with a recommended action.>
@@ -76,3 +92,4 @@ Present the review to the user in this structure:
 - Prefer non-interactive commands only.
 - Do not post any comment or review to GitHub unless the user explicitly requests it.
 - Base your verdict on evidence from the diff and code; if something is uncertain, say so instead of guessing.
+- Stay inside the scope defined above: the diff, the description-vs-diff match, and the SonarQube Cloud check. Do not comment on other checks, labels, or metadata.
