@@ -109,6 +109,10 @@
                         <MudChip T="string" Size="Size.Small" Color="@GetVulnerabilityStatusColor(_detail.VulnerabilityAssessment.Status, _detail.VulnerabilityAssessment.SeveritySummary)">@_detail.VulnerabilityAssessment.Status</MudChip>
                         <VulnerabilitySeverityChips Summary="_detail.VulnerabilityAssessment.SeveritySummary" />
                         <span class="table-secondary">@($"{_detail.VulnerabilityAssessment.Source} · {_detail.VulnerabilityAssessment.ActiveFindingCount} active")</span>
+                        @if (_detail.VulnerabilityAssessment.ActiveFindingCount > 0)
+                        {
+                            <span class="table-secondary">@($"{_detail.VulnerabilityAssessment.FixableFindingCount} of {_detail.VulnerabilityAssessment.ActiveFindingCount} active findings have a fix available")</span>
+                        }
                         @if (_detail.VulnerabilityAssessment.CheckedAtUtc is DateTimeOffset checkedAtUtc)
                         {
                             <span class="table-secondary">Checked @checkedAtUtc.ToLocalTime().ToString("g")</span>
@@ -271,6 +275,10 @@
                 <MudText Typo="Typo.h5">Available tag candidates</MudText>
                 <MudText Class="section-description">Choose one of the persisted scan candidates as the manual preference.</MudText>
             </div>
+            @if (_detail.UpdateFindings.Any(finding => finding.IsActive) && _detail.VulnerabilityAssessment.FixableFindingCount > 0)
+            {
+                <MudChip T="string" Size="Size.Small" Color="Color.Info">@($"Updating may resolve up to {_detail.VulnerabilityAssessment.FixableFindingCount} of {_detail.VulnerabilityAssessment.ActiveFindingCount} active findings")</MudChip>
+            }
 
             @if (_detail.AvailableTagCandidates.Count == 0)
             {
