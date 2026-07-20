@@ -15,6 +15,15 @@ namespace DockerUpdateGuard.Tests;
 [TestClass]
 public class ApplicationViewServiceTests
 {
+    #region Fields
+
+    /// <summary>
+    /// Expected advisory order for the vulnerability overview sorting test
+    /// </summary>
+    private static readonly string[] _expectedSortedAdvisoryIds = ["CVE-2026-5000", "CVE-2026-5002", "CVE-2026-5001"];
+
+    #endregion // Fields
+
     #region Properties
 
     /// <summary>
@@ -1819,7 +1828,7 @@ public class ApplicationViewServiceTests
             Assert.HasCount(3,
                             overview,
                             "All three distinct advisories must be present in the overview");
-            Assert.AreSequenceEqual(new[] { "CVE-2026-5000", "CVE-2026-5002", "CVE-2026-5001" },
+            Assert.AreSequenceEqual(_expectedSortedAdvisoryIds,
                                     overview.Select(entity => entity.AdvisoryId).ToList(),
                                     "The overview must be sorted by severity descending, then CVSS descending, then affected image count descending");
         }
