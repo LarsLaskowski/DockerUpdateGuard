@@ -102,6 +102,7 @@ public sealed partial class Dashboard : IDisposable
                    "Docker Instances" => "/docker-instances",
                    "Runtime Containers" => "/runtime-containers",
                    "Base Images" => "/base-images",
+                   "Vulnerabilities" => "/vulnerabilities",
                    _ => throw new ArgumentOutOfRangeException(nameof(metricLabel), metricLabel, "Dashboard metric cards must map to known overview routes"),
                };
     }

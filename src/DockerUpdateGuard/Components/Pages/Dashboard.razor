@@ -87,11 +87,13 @@ else
                 </MudPaper>
             </MudItem>
             <MudItem xs="12" sm="6" lg="4">
-                <MudPaper Class="metric-card metric-card--danger" Elevation="0">
-                    <span class="metric-label">Vulnerabilities</span>
-                    <span class="metric-value">@_dashboard.ActiveVulnerabilityFindingCount</span>
-                    <VulnerabilitySeverityChips Summary="_dashboard.VulnerabilitySeveritySummary" />
-                </MudPaper>
+                <MudLink Href='@GetMetricNavigationTarget("Vulnerabilities")' Underline="Underline.None" Class="metric-card-link">
+                    <MudPaper Class="metric-card metric-card--danger" Elevation="0">
+                        <span class="metric-label">Vulnerabilities</span>
+                        <span class="metric-value">@_dashboard.ActiveVulnerabilityFindingCount</span>
+                        <VulnerabilitySeverityChips Summary="_dashboard.VulnerabilitySeveritySummary" />
+                    </MudPaper>
+                </MudLink>
             </MudItem>
         </MudGrid>
 

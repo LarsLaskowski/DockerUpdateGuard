@@ -1,0 +1,126 @@
+@page "/vulnerabilities"
+
+<PageTitle>Vulnerabilities</PageTitle>
+
+<MudStack Spacing="3" Class="page-shell">
+    <div class="page-header">
+        <div>
+            <MudText Typo="Typo.overline" Class="page-eyebrow">Fleet-wide security posture</MudText>
+            <MudText Typo="Typo.h3">Vulnerabilities</MudText>
+            <MudText Class="page-description">Active advisories across the fleet, grouped by CVE, with the images and running containers each one affects.</MudText>
+        </div>
+    </div>
+
+    @if (_items is null)
+    {
+        <MudPaper Class="empty-state-panel" Elevation="0">
+            <MudText>Loading vulnerability data...</MudText>
+        </MudPaper>
+    }
+    else if (_items.Count == 0)
+    {
+        <MudPaper Class="empty-state-panel" Elevation="0">
+            <MudText>No active vulnerability findings have been recorded yet.</MudText>
+        </MudPaper>
+    }
+    else
+    {
+        var filteredItems = GetFilteredItems();
+
+        <MudPaper Class="section-paper" Elevation="0">
+            <div class="section-header">
+                <MudText Typo="Typo.h5">Active advisories</MudText>
+                <MudText Class="section-description">One row per CVE, sorted by severity, CVSS score, and the number of affected images.</MudText>
+            </div>
+            <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center" Class="mb-2">
+                <MudTextField T="string"
+                              @bind-Value="_searchText"
+                              Immediate="true"
+                              Placeholder="Filter by advisory, package, or title"
+                              Adornment="Adornment.Start"
+                              AdornmentIcon="@Icons.Material.Filled.Search"
+                              Clearable="true" />
+                <MudSelect T="string" @bind-Value="_severityFilter" Label="Severity">
+                    @foreach (var severity in SeverityFilterOptions)
+                    {
+                        <MudSelectItem Value="@severity">@severity</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudStack>
+            <MudTable Items="filteredItems" Hover="true" Dense="false" Breakpoint="Breakpoint.Md" Class="section-table" RowsPerPage="25">
+                <HeaderContent>
+                    <MudTh />
+                    <MudTh>Advisory</MudTh>
+                    <MudTh>Severity</MudTh>
+                    <MudTh>Package</MudTh>
+                    <MudTh>Fixed version</MudTh>
+                    <MudTh>Affected images</MudTh>
+                    <MudTh>Running containers</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>
+                        <MudIconButton Icon="@(IsExpanded(context) ? Icons.Material.Filled.KeyboardArrowUp : Icons.Material.Filled.KeyboardArrowDown)"
+                                       Size="Size.Small"
+                                       OnClick="@(() => ToggleExpanded(context))" />
+                    </MudTd>
+                    <MudTd DataLabel="Advisory">
+                        @if (string.IsNullOrWhiteSpace(context.ReferenceUrl) == false)
+                        {
+                            <MudLink Href="@context.ReferenceUrl" Target="_blank" rel="noopener noreferrer" Class="table-link">@context.AdvisoryId</MudLink>
+                        }
+                        else
+                        {
+                            <span>@context.AdvisoryId</span>
+                        }
+                        @if (string.IsNullOrWhiteSpace(context.Title) == false)
+                        {
+                            <span class="table-secondary">@context.Title</span>
+                        }
+                    </MudTd>
+                    <MudTd DataLabel="Severity">
+                        <MudChip T="string" Size="Size.Small" Color="@GetSeverityColor(context.Severity)">@context.Severity</MudChip>
+                        @if (context.CvssScore.HasValue)
+                        {
+                            <span class="table-secondary">CVSS @context.CvssScore.Value.ToString("F1")</span>
+                        }
+                    </MudTd>
+                    <MudTd DataLabel="Package">@(context.AffectedPackages.Count == 0 ? "—" : string.Join(", ", context.AffectedPackages))</MudTd>
+                    <MudTd DataLabel="Fixed version">@(context.FixedVersions.Count == 0 ? "—" : string.Join(", ", context.FixedVersions))</MudTd>
+                    <MudTd DataLabel="Affected images">@context.AffectedImages.Count</MudTd>
+                    <MudTd DataLabel="Running containers">@context.AffectedContainerCount</MudTd>
+                </RowTemplate>
+                <ChildRowContent>
+                    @if (IsExpanded(context))
+                    {
+                        <MudTr>
+                            <MudTd colspan="7">
+                                <MudStack Spacing="1">
+                                    @foreach (var affectedImage in context.AffectedImages)
+                                    {
+                                        @if (affectedImage.ObservedImageId.HasValue)
+                                        {
+                                            <MudLink Href="@GetImageDetailHref(affectedImage)" Class="table-link">@ImageReferenceFormatter.GetReference(affectedImage.ImageReference)</MudLink>
+                                        }
+                                        else
+                                        {
+                                            <span>@ImageReferenceFormatter.GetReference(affectedImage.ImageReference)</span>
+                                        }
+                                    }
+                                </MudStack>
+                            </MudTd>
+                        </MudTr>
+                    }
+                </ChildRowContent>
+                <NoRecordsContent>
+                    <MudText>No advisories match the current filter.</MudText>
+                </NoRecordsContent>
+                <PagerContent>
+                    @if (filteredItems.Count > 25)
+                    {
+                        <MudTablePager PageSizeOptions="_pageSizeOptions" />
+                    }
+                </PagerContent>
+            </MudTable>
+        </MudPaper>
+    }
+</MudStack>

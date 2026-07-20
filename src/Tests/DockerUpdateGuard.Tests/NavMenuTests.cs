@@ -1,7 +1,17 @@
 using System.Reflection;
 
+using Bunit;
+
 using DockerUpdateGuard.Components.Layout;
 using DockerUpdateGuard.Configuration;
+using DockerUpdateGuard.Tests.Helper;
+using DockerUpdateGuard.UI;
+
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
+
+using NSubstitute;
 
 namespace DockerUpdateGuard.Tests;
 
@@ -100,6 +110,34 @@ public class NavMenuTests
         var result = (bool)_isDockerHubAccountConfiguredMethod.Invoke(null, [options])!;
 
         Assert.IsFalse(result, "My Images navigation must be hidden when neither UserName nor Pat is configured");
+    }
+
+    /// <summary>
+    /// Verify the Vulnerabilities navigation entry is always rendered
+    /// </summary>
+    [TestMethod]
+    public void NavMenuRendersVulnerabilitiesNavigationEntry()
+    {
+        var testContext = BlazorTestContextFactory.Create();
+
+        using (testContext)
+        {
+            var viewService = Substitute.For<IApplicationViewService>();
+
+            viewService.HasBaseImagesAsync(Arg.Any<CancellationToken>())
+                       .Returns(false);
+
+            testContext.Services.AddSingleton(viewService);
+            testContext.Services.AddSingleton<IConfiguration>(new ConfigurationBuilder().Build());
+            testContext.Services.AddSingleton<IOptions<DockerUpdateGuardOptions>>(Options.Create(new DockerUpdateGuardOptions()));
+
+            var component = testContext.RenderComponent<NavMenu>();
+            var vulnerabilitiesLink = component.FindAll("a").SingleOrDefault(link => link.TextContent.Trim() == "Vulnerabilities");
+
+            Assert.IsNotNull(vulnerabilitiesLink, "The Vulnerabilities navigation entry must always be rendered");
+            Assert.IsTrue(vulnerabilitiesLink!.GetAttribute("href")?.Contains("vulnerabilities", StringComparison.OrdinalIgnoreCase),
+                          "The Vulnerabilities navigation entry must link to the vulnerabilities page");
+        }
     }
 
     #endregion // Methods

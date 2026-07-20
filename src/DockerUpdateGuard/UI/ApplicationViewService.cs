@@ -1459,6 +1459,99 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                                             cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Read the fleet-wide vulnerability overview without re-entering the service gate
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Vulnerability overview items grouped by advisory</returns>
+    private async Task<IReadOnlyList<VulnerabilityOverviewItemData>> GetVulnerabilityOverviewCoreAsync(CancellationToken cancellationToken)
+    {
+        var activeFindings = await _dbContext.VulnerabilityFindings.Include(entity => entity.ImageVersion)
+                                                                   .ThenInclude(entity => entity.RegistryRepository)
+                                                                   .Include(entity => entity.ImageVersion)
+                                                                   .ThenInclude(entity => entity.ObservedImages)
+                                                                   .Where(entity => entity.IsActive)
+                                                                   .AsNoTracking()
+                                                                   .ToListAsync(cancellationToken)
+                                                                   .ConfigureAwait(false);
+
+        if (activeFindings.Count == 0)
+        {
+            return [];
+        }
+
+        var latestSnapshots = await GetLatestContainerSnapshotsAsync(cancellationToken).ConfigureAwait(false);
+        var containerCountsByImageVersion = latestSnapshots.GroupBy(entity => entity.ImageVersionId)
+                                                           .ToDictionary(group => group.Key, group => group.Count());
+
+        return activeFindings.GroupBy(entity => entity.AdvisoryId, StringComparer.OrdinalIgnoreCase)
+                             .OrderByDescending(group => group.Max(entity => entity.Severity))
+                             .ThenByDescending(group => group.Max(entity => entity.CvssScore) ?? decimal.MinValue)
+                             .ThenByDescending(group => group.Select(entity => entity.ImageVersionId).Distinct().Count())
+                             .Select(group => CreateVulnerabilityOverviewItem(group, containerCountsByImageVersion))
+                             .ToList();
+    }
+
+    /// <summary>
+    /// Create a vulnerability overview item for an advisory group
+    /// </summary>
+    /// <param name="advisoryGroup">Active findings sharing the same advisory identifier</param>
+    /// <param name="containerCountsByImageVersion">Running container counts by image version identifier</param>
+    /// <returns>Vulnerability overview item</returns>
+    private VulnerabilityOverviewItemData CreateVulnerabilityOverviewItem(IGrouping<string, VulnerabilityFinding> advisoryGroup,
+                                                                          Dictionary<Guid, int> containerCountsByImageVersion)
+    {
+        var representativeFinding = advisoryGroup.OrderByDescending(entity => entity.Severity)
+                                                 .ThenByDescending(entity => entity.CvssScore ?? decimal.MinValue)
+                                                 .First();
+        var affectedImages = advisoryGroup.GroupBy(entity => entity.ImageVersionId)
+                                          .Select(imageGroup => CreateAffectedImage(imageGroup.First().ImageVersion))
+                                          .OrderBy(entity => entity.ImageReference, StringComparer.OrdinalIgnoreCase)
+                                          .ToList();
+
+        return new VulnerabilityOverviewItemData
+               {
+                   AdvisoryId = representativeFinding.AdvisoryId,
+                   Title = representativeFinding.Title,
+                   Severity = advisoryGroup.Max(entity => entity.Severity).ToString(),
+                   CvssScore = advisoryGroup.Max(entity => entity.CvssScore),
+                   ReferenceUrl = SanitizeHttpUrl(representativeFinding.ReferenceUrl),
+                   AffectedPackages = advisoryGroup.Select(entity => entity.AffectedPackage)
+                                                   .Where(package => string.IsNullOrWhiteSpace(package) == false)
+                                                   .Select(package => package!)
+                                                   .Distinct(StringComparer.OrdinalIgnoreCase)
+                                                   .OrderBy(package => package, StringComparer.OrdinalIgnoreCase)
+                                                   .ToList(),
+                   FixedVersions = advisoryGroup.Select(entity => entity.FixedVersion)
+                                                .Where(fixedVersion => string.IsNullOrWhiteSpace(fixedVersion) == false)
+                                                .Select(fixedVersion => fixedVersion!)
+                                                .Distinct(StringComparer.OrdinalIgnoreCase)
+                                                .OrderBy(fixedVersion => fixedVersion, StringComparer.OrdinalIgnoreCase)
+                                                .ToList(),
+                   AffectedImages = affectedImages,
+                   AffectedContainerCount = affectedImages.Sum(entity => GetCountOrZero(containerCountsByImageVersion, entity.ImageVersionId)),
+               };
+    }
+
+    /// <summary>
+    /// Create an affected-image entry for a vulnerability overview item
+    /// </summary>
+    /// <param name="imageVersion">Image version entity</param>
+    /// <returns>Affected image view data</returns>
+    private VulnerabilityOverviewAffectedImageData CreateAffectedImage(ImageVersion imageVersion)
+    {
+        var observedImage = imageVersion.ObservedImages.OrderBy(entity => entity.Name, StringComparer.OrdinalIgnoreCase)
+                                                       .FirstOrDefault();
+
+        return new VulnerabilityOverviewAffectedImageData
+               {
+                   ImageVersionId = imageVersion.Id,
+                   ImageReference = _imageReferenceParser.Format(imageVersion),
+                   ObservedImageId = observedImage?.Id,
+                   IsOwnImage = observedImage?.Source == RegistrationSource.Discovery,
+               };
+    }
+
     #endregion // Methods
 
     #region IApplicationViewService
@@ -1896,6 +1989,12 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
     public async Task<IReadOnlyList<ScanHistoryItemData>> GetScanHistoryAsync(int take = 20, CancellationToken cancellationToken = default)
     {
         return await ExecuteSerializedAsync(() => GetScanHistoryCoreAsync(take, cancellationToken), cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc/>
+    public async Task<IReadOnlyList<VulnerabilityOverviewItemData>> GetVulnerabilityOverviewAsync(CancellationToken cancellationToken = default)
+    {
+        return await ExecuteSerializedAsync(() => GetVulnerabilityOverviewCoreAsync(cancellationToken), cancellationToken).ConfigureAwait(false);
     }
 
     #endregion // IApplicationViewService
