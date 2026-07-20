@@ -28,6 +28,11 @@ public partial class Vulnerabilities
     private static readonly string[] _severityFilterOptions = [AllSeveritiesFilterValue, "Critical", "High", "Medium", "Low"];
 
     /// <summary>
+    /// Available table page sizes
+    /// </summary>
+    private static readonly int[] _pageSizeOptions = [25, 50, 100];
+
+    /// <summary>
     /// Advisory identifiers whose affected-images row is currently expanded
     /// </summary>
     private readonly HashSet<string> _expandedAdvisoryIds = new(StringComparer.OrdinalIgnoreCase);

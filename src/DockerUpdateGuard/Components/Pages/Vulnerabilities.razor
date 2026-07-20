@@ -117,7 +117,7 @@
                 <PagerContent>
                     @if (filteredItems.Count > 25)
                     {
-                        <MudTablePager PageSizeOptions="new[] { 25, 50, 100 }" />
+                        <MudTablePager PageSizeOptions="_pageSizeOptions" />
                     }
                 </PagerContent>
             </MudTable>
