@@ -129,7 +129,7 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
     /// <param name="findings">Vulnerability findings for the image version</param>
     /// <param name="lastCheckedAtUtc">Timestamp of the most recent vulnerability assessment check</param>
     /// <returns>New finding count, resolved finding count, and whether the deltas were suppressed as a first scan</returns>
-    private static (int NewFindingCount, int ResolvedFindingCount, bool IsFirstScan) ComputeVulnerabilityScanDelta(IReadOnlyCollection<VulnerabilityFinding> findings,
+    private static (int NewFindingCount, int ResolvedFindingCount, bool IsFirstScan) ComputeVulnerabilityScanDelta(List<VulnerabilityFinding> findings,
                                                                                                                    DateTimeOffset? lastCheckedAtUtc)
     {
         if (findings.Count == 0 || lastCheckedAtUtc is null)
