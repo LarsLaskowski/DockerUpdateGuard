@@ -108,6 +108,14 @@
                         <span class="summary-label">Vulnerability assessment</span>
                         <MudChip T="string" Size="Size.Small" Color="@GetVulnerabilityStatusColor(_detail.VulnerabilityAssessment.Status, _detail.VulnerabilityAssessment.SeveritySummary)">@_detail.VulnerabilityAssessment.Status</MudChip>
                         <VulnerabilitySeverityChips Summary="_detail.VulnerabilityAssessment.SeveritySummary" />
+                        @if (_detail.VulnerabilityAssessment.NewFindingCount > 0)
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="Color.Error">@($"+{_detail.VulnerabilityAssessment.NewFindingCount} new")</MudChip>
+                        }
+                        @if (_detail.VulnerabilityAssessment.ResolvedFindingCount > 0)
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="Color.Success">@($"−{_detail.VulnerabilityAssessment.ResolvedFindingCount} resolved")</MudChip>
+                        }
                         <span class="table-secondary">@($"{_detail.VulnerabilityAssessment.Source} · {_detail.VulnerabilityAssessment.ActiveFindingCount} active")</span>
                         @if (_detail.VulnerabilityAssessment.ActiveFindingCount > 0)
                         {

@@ -32,6 +32,11 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
     private static readonly TimeSpan _resourceHistoryWindow = TimeSpan.FromHours(24);
 
     /// <summary>
+    /// Tolerance applied when matching finding timestamps to the most recent vulnerability scan window
+    /// </summary>
+    private static readonly TimeSpan _lastScanWindowTolerance = TimeSpan.FromMinutes(5);
+
+    /// <summary>
     /// Database-access gate
     /// </summary>
     private readonly SemaphoreSlim _dbContextLock = new(1, 1);
@@ -78,8 +83,9 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
     /// Map a vulnerability finding to view data
     /// </summary>
     /// <param name="entity">Vulnerability finding entity</param>
+    /// <param name="isNewSinceLastScan">Whether the finding was newly detected in the most recent completed vulnerability scan</param>
     /// <returns>Vulnerability finding view data</returns>
-    private static VulnerabilityFindingViewData MapVulnerabilityFinding(VulnerabilityFinding entity)
+    private static VulnerabilityFindingViewData MapVulnerabilityFinding(VulnerabilityFinding entity, bool isNewSinceLastScan)
     {
         return new VulnerabilityFindingViewData
                {
@@ -96,7 +102,79 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                    IsActive = entity.IsActive,
                    DetectedAtUtc = entity.DetectedAtUtc,
                    ResolvedAtUtc = entity.ResolvedAtUtc,
+                   IsNewSinceLastScan = isNewSinceLastScan,
                };
+    }
+
+    /// <summary>
+    /// Determine whether a timestamp falls within the most recent completed vulnerability scan window
+    /// </summary>
+    /// <param name="timestamp">Timestamp to test</param>
+    /// <param name="lastCheckedAtUtc">Timestamp of the most recent vulnerability assessment check</param>
+    /// <returns><c>true</c> when the timestamp falls within the last scan window; otherwise <c>false</c></returns>
+    private static bool IsWithinLastScanWindow(DateTimeOffset? timestamp, DateTimeOffset? lastCheckedAtUtc)
+    {
+        if (timestamp is null || lastCheckedAtUtc is null)
+        {
+            return false;
+        }
+
+        return timestamp.Value >= lastCheckedAtUtc.Value - _lastScanWindowTolerance;
+    }
+
+    /// <summary>
+    /// Compute the new/resolved finding deltas for the most recent completed vulnerability scan window,
+    /// suppressing the deltas when every finding still originates from the image's first recorded scan
+    /// </summary>
+    /// <param name="findings">Vulnerability findings for the image version</param>
+    /// <param name="lastCheckedAtUtc">Timestamp of the most recent vulnerability assessment check</param>
+    /// <returns>New finding count, resolved finding count, and whether the deltas were suppressed as a first scan</returns>
+    private static (int NewFindingCount, int ResolvedFindingCount, bool IsFirstScan) ComputeVulnerabilityScanDelta(IReadOnlyCollection<VulnerabilityFinding> findings,
+                                                                                                                   DateTimeOffset? lastCheckedAtUtc)
+    {
+        if (findings.Count == 0 || lastCheckedAtUtc is null)
+        {
+            return (0, 0, true);
+        }
+
+        var oldestDetectedAtUtc = findings.Min(entity => entity.DetectedAtUtc);
+
+        if (IsWithinLastScanWindow(oldestDetectedAtUtc, lastCheckedAtUtc))
+        {
+            return (0, 0, true);
+        }
+
+        var newFindingCount = findings.Count(entity => entity.IsActive && IsWithinLastScanWindow(entity.DetectedAtUtc, lastCheckedAtUtc));
+        var resolvedFindingCount = findings.Count(entity => IsWithinLastScanWindow(entity.ResolvedAtUtc, lastCheckedAtUtc));
+
+        return (newFindingCount, resolvedFindingCount, false);
+    }
+
+    /// <summary>
+    /// Build the vulnerability assessment and mapped finding list for an image version, including the
+    /// new/resolved deltas of the most recent completed vulnerability scan
+    /// </summary>
+    /// <param name="imageVersion">Image version entity</param>
+    /// <param name="vulnerabilityFindings">Vulnerability findings for the image version, sorted for display</param>
+    /// <returns>Vulnerability assessment view data and mapped finding view data list</returns>
+    private static (VulnerabilityAssessmentViewData Assessment, List<VulnerabilityFindingViewData> Findings) BuildVulnerabilityAssessmentDetail(ImageVersion imageVersion,
+                                                                                                                                                List<VulnerabilityFinding> vulnerabilityFindings)
+    {
+        var vulnerabilityAssessment = CreateVulnerabilityAssessment(imageVersion, CreateSeveritySummaryFromFindings(vulnerabilityFindings));
+        var lastCheckedAtUtc = imageVersion.VulnerabilityAssessmentCheckedAtUtc;
+        var scanDelta = ComputeVulnerabilityScanDelta(vulnerabilityFindings, lastCheckedAtUtc);
+
+        vulnerabilityAssessment.FixableFindingCount = CountFixableActiveFindings(vulnerabilityFindings);
+        vulnerabilityAssessment.NewFindingCount = scanDelta.NewFindingCount;
+        vulnerabilityAssessment.ResolvedFindingCount = scanDelta.ResolvedFindingCount;
+
+        var mappedFindings = vulnerabilityFindings.Select(entity => MapVulnerabilityFinding(entity,
+                                                                                            scanDelta.IsFirstScan == false
+                                                                                            && entity.IsActive
+                                                                                            && IsWithinLastScanWindow(entity.DetectedAtUtc, lastCheckedAtUtc)))
+                                                  .ToList();
+
+        return (vulnerabilityAssessment, mappedFindings);
     }
 
     /// <summary>
@@ -1718,10 +1796,7 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                                                 baseImageRelationshipsByChildVersion.TryGetValue(observedImage.CurrentImageVersionId, out var baseImages);
 
                                                 var baseImageVulnerabilitySummary = SummarizeBaseImageVulnerabilities(baseImages);
-                                                var vulnerabilityAssessment = CreateVulnerabilityAssessment(observedImage.CurrentImageVersion,
-                                                                                                            CreateSeveritySummaryFromFindings(vulnerabilityFindings));
-
-                                                vulnerabilityAssessment.FixableFindingCount = CountFixableActiveFindings(vulnerabilityFindings);
+                                                var vulnerabilityAssessmentDetail = BuildVulnerabilityAssessmentDetail(observedImage.CurrentImageVersion, vulnerabilityFindings);
 
                                                 return new ObservedImageDetailViewData
                                                        {
@@ -1739,9 +1814,8 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                                                                                                   .ToList(),
                                                            BaseRuntimeAlertSummary = baseRuntimeAlert?.Summary,
                                                            BaseRuntimeAlertDetails = baseRuntimeAlert?.Details,
-                                                           VulnerabilityAssessment = vulnerabilityAssessment,
-                                                           VulnerabilityFindings = vulnerabilityFindings.Select(MapVulnerabilityFinding)
-                                                                                                        .ToList(),
+                                                           VulnerabilityAssessment = vulnerabilityAssessmentDetail.Assessment,
+                                                           VulnerabilityFindings = vulnerabilityAssessmentDetail.Findings,
                                                            LinkedRuntimeContainers = observedImage.Source == RegistrationSource.Discovery
                                                                                          ? linkedSnapshots.Select(MapLinkedRuntimeContainer)
                                                                                                           .ToList()
@@ -1851,10 +1925,7 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                                                 baseImageRelationshipsByChildVersion.TryGetValue(latestSnapshot.ImageVersionId, out var baseImages);
 
                                                 var baseImageVulnerabilitySummary = SummarizeBaseImageVulnerabilities(baseImages);
-                                                var vulnerabilityAssessment = CreateVulnerabilityAssessment(latestSnapshot.ImageVersion,
-                                                                                                            CreateSeveritySummaryFromFindings(vulnerabilityFindings));
-
-                                                vulnerabilityAssessment.FixableFindingCount = CountFixableActiveFindings(vulnerabilityFindings);
+                                                var vulnerabilityAssessmentDetail = BuildVulnerabilityAssessmentDetail(latestSnapshot.ImageVersion, vulnerabilityFindings);
 
                                                 return new RuntimeContainerDetailViewData
                                                        {
@@ -1889,9 +1960,8 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                                                            UpdateFindings = mappedUpdateFindings,
                                                            BaseRuntimeAlertSummary = baseRuntimeAlert?.Summary,
                                                            BaseRuntimeAlertDetails = baseRuntimeAlert?.Details,
-                                                           VulnerabilityAssessment = vulnerabilityAssessment,
-                                                           VulnerabilityFindings = vulnerabilityFindings.Select(MapVulnerabilityFinding)
-                                                                                                        .ToList(),
+                                                           VulnerabilityAssessment = vulnerabilityAssessmentDetail.Assessment,
+                                                           VulnerabilityFindings = vulnerabilityAssessmentDetail.Findings,
                                                            CurrentResourceUsage = GetCurrentResourceUsage(resourceUsageHistory),
                                                            ResourceUsageHistory = resourceUsageHistory,
                                                            ScanHistory = await GetRuntimeContainerScanHistoryAsync(dockerInstanceId, containerId, cancellationToken).ConfigureAwait(false),
