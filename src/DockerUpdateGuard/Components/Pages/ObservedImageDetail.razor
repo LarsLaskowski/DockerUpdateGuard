@@ -57,6 +57,10 @@
                         <MudChip T="string" Size="Size.Small" Color="@GetVulnerabilityAssessmentColor(_detail.VulnerabilityAssessment.Status, _detail.VulnerabilityAssessment.SeveritySummary)">@_detail.VulnerabilityAssessment.Status</MudChip>
                         <VulnerabilitySeverityChips Summary="_detail.VulnerabilityAssessment.SeveritySummary" />
                         <span class="table-secondary">@($"{_detail.VulnerabilityAssessment.Source} · {_detail.VulnerabilityAssessment.ActiveFindingCount} active")</span>
+                        @if (_detail.VulnerabilityAssessment.ActiveFindingCount > 0)
+                        {
+                            <span class="table-secondary">@($"{_detail.VulnerabilityAssessment.FixableFindingCount} of {_detail.VulnerabilityAssessment.ActiveFindingCount} active findings have a fix available")</span>
+                        }
                         @if (string.IsNullOrWhiteSpace(_detail.VulnerabilityAssessment.Message) == false)
                         {
                             <span class="table-secondary">@_detail.VulnerabilityAssessment.Message</span>
@@ -175,6 +179,10 @@
                 <MudText Typo="Typo.h5">Update findings</MudText>
                 <MudText Class="section-description">Recommended upgrades and alternative tags for manual review.</MudText>
             </div>
+            @if (_detail.UpdateFindings.Any(finding => finding.IsActive) && _detail.VulnerabilityAssessment.FixableFindingCount > 0)
+            {
+                <MudChip T="string" Size="Size.Small" Color="Color.Info">@($"Updating may resolve up to {_detail.VulnerabilityAssessment.FixableFindingCount} of {_detail.VulnerabilityAssessment.ActiveFindingCount} active findings")</MudChip>
+            }
             @if (_detail.UpdateFindings.Count == 0)
             {
                 <MudPaper Class="empty-state-panel" Elevation="0">

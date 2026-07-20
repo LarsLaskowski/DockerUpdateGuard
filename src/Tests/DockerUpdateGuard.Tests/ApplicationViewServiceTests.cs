@@ -495,6 +495,30 @@ public class ApplicationViewServiceTests
                                                     FixedVersion = "3.0.1",
                                                     IsActive = true,
                                                 });
+            dbContext.VulnerabilityFindings.Add(new VulnerabilityFinding
+                                                {
+                                                    ImageVersionId = imageVersion.Id,
+                                                    ScanRun = scanRun,
+                                                    AdvisoryId = "CVE-2026-1001",
+                                                    Title = "Denial of service",
+                                                    Severity = VulnerabilitySeverity.High,
+                                                    Source = VulnerabilitySource.Trivy,
+                                                    AffectedPackage = "libcurl",
+                                                    IsActive = true,
+                                                });
+            dbContext.VulnerabilityFindings.Add(new VulnerabilityFinding
+                                                {
+                                                    ImageVersionId = imageVersion.Id,
+                                                    ScanRun = scanRun,
+                                                    AdvisoryId = "CVE-2026-1002",
+                                                    Title = "Resolved information disclosure",
+                                                    Severity = VulnerabilitySeverity.Medium,
+                                                    Source = VulnerabilitySource.Trivy,
+                                                    AffectedPackage = "zlib",
+                                                    FixedVersion = "1.3.1",
+                                                    IsActive = false,
+                                                    ResolvedAtUtc = DateTimeOffset.UtcNow,
+                                                });
 
             await dbContext.SaveChangesAsync(CancellationToken.None)
                            .ConfigureAwait(false);
@@ -516,6 +540,9 @@ public class ApplicationViewServiceTests
             Assert.AreEqual("Trivy",
                             detail.VulnerabilityAssessment.Source,
                             "The runtime detail must expose the provider that produced the vulnerability assessment");
+            Assert.AreEqual(1,
+                            detail.VulnerabilityAssessment.FixableFindingCount,
+                            "Only the active finding with a non-empty fixed version must count as fixable");
             Assert.AreEqual("ghcr.io/acme/api:1.0.5@sha256:manual",
                             detail.ManualSelectionImage,
                             "The runtime detail must show the persisted manual tag preference");
@@ -603,6 +630,89 @@ public class ApplicationViewServiceTests
                             "A valid absolute https reference URL must be preserved for rendering");
             Assert.IsNull(maliciousFinding.ReferenceUrl,
                           "A javascript: reference URL must be dropped so it can never be rendered as an href");
+        }
+    }
+
+    /// <summary>
+    /// Verify observed image detail counts only active findings with a non-empty fixed version as fixable
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task ApplicationViewServiceObservedImageDetailComputesFixableFindingCountAsync()
+    {
+        var options = new DbContextOptionsBuilder<DockerUpdateGuardDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString())
+                                                                               .Options;
+
+        var dbContext = new DockerUpdateGuardDbContext(options);
+
+        await using (dbContext.ConfigureAwait(false))
+        {
+            var imageCatalogRepository = new ImageCatalogRepository(dbContext);
+            var imageVersion = await imageCatalogRepository.GetOrCreateImageVersionAsync("docker.io",
+                                                                                         "company/api",
+                                                                                         "1.0.0",
+                                                                                         "sha256:api",
+                                                                                         cancellationToken: CancellationToken.None)
+                                                           .ConfigureAwait(false);
+
+            var observedImage = new ObservedImage
+                                {
+                                    Name = "Company API",
+                                    CurrentImageVersionId = imageVersion.Id,
+                                };
+
+            dbContext.ObservedImages.Add(observedImage);
+            dbContext.VulnerabilityFindings.Add(new VulnerabilityFinding
+                                                {
+                                                    ImageVersionId = imageVersion.Id,
+                                                    AdvisoryId = "CVE-2026-3001",
+                                                    Title = "Active finding with a fix available",
+                                                    Severity = VulnerabilitySeverity.High,
+                                                    Source = VulnerabilitySource.Trivy,
+                                                    AffectedPackage = "openssl",
+                                                    FixedVersion = "3.0.1",
+                                                    IsActive = true,
+                                                });
+            dbContext.VulnerabilityFindings.Add(new VulnerabilityFinding
+                                                {
+                                                    ImageVersionId = imageVersion.Id,
+                                                    AdvisoryId = "CVE-2026-3002",
+                                                    Title = "Active finding without a fix",
+                                                    Severity = VulnerabilitySeverity.Medium,
+                                                    Source = VulnerabilitySource.Trivy,
+                                                    AffectedPackage = "musl",
+                                                    IsActive = true,
+                                                });
+            dbContext.VulnerabilityFindings.Add(new VulnerabilityFinding
+                                                {
+                                                    ImageVersionId = imageVersion.Id,
+                                                    AdvisoryId = "CVE-2026-3003",
+                                                    Title = "Resolved finding with a fix",
+                                                    Severity = VulnerabilitySeverity.Low,
+                                                    Source = VulnerabilitySource.Trivy,
+                                                    AffectedPackage = "zlib",
+                                                    FixedVersion = "1.3.1",
+                                                    IsActive = false,
+                                                    ResolvedAtUtc = DateTimeOffset.UtcNow,
+                                                });
+
+            await dbContext.SaveChangesAsync(CancellationToken.None)
+                           .ConfigureAwait(false);
+
+            var service = new ApplicationViewService(dbContext,
+                                                     new ImageReferenceParser(),
+                                                     new SharedBaseImageQueryService(dbContext));
+
+            var detail = await service.GetObservedImageDetailAsync(observedImage.Id, CancellationToken.None)
+                                      .ConfigureAwait(false);
+
+            Assert.IsNotNull(detail, "The observed image detail must be returned");
+            Assert.AreEqual(2,
+                            detail.VulnerabilityAssessment.ActiveFindingCount,
+                            "Both active findings must count toward the active finding total");
+            Assert.AreEqual(1,
+                            detail.VulnerabilityAssessment.FixableFindingCount,
+                            "Only the active finding with a non-empty fixed version must count as fixable");
         }
     }
 

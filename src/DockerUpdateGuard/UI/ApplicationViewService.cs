@@ -175,6 +175,16 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
     }
 
     /// <summary>
+    /// Count active findings that have a fixed version available
+    /// </summary>
+    /// <param name="findings">Vulnerability findings</param>
+    /// <returns>Number of active findings with a non-empty fixed version</returns>
+    private static int CountFixableActiveFindings(IEnumerable<VulnerabilityFinding> findings)
+    {
+        return findings.Count(entity => entity.IsActive && string.IsNullOrWhiteSpace(entity.FixedVersion) == false);
+    }
+
+    /// <summary>
     /// Resolve a severity summary from a lookup or return an empty summary
     /// </summary>
     /// <param name="summaries">Severity summaries by image version identifier</param>
@@ -1708,6 +1718,10 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                                                 baseImageRelationshipsByChildVersion.TryGetValue(observedImage.CurrentImageVersionId, out var baseImages);
 
                                                 var baseImageVulnerabilitySummary = SummarizeBaseImageVulnerabilities(baseImages);
+                                                var vulnerabilityAssessment = CreateVulnerabilityAssessment(observedImage.CurrentImageVersion,
+                                                                                                            CreateSeveritySummaryFromFindings(vulnerabilityFindings));
+
+                                                vulnerabilityAssessment.FixableFindingCount = CountFixableActiveFindings(vulnerabilityFindings);
 
                                                 return new ObservedImageDetailViewData
                                                        {
@@ -1725,8 +1739,7 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                                                                                                   .ToList(),
                                                            BaseRuntimeAlertSummary = baseRuntimeAlert?.Summary,
                                                            BaseRuntimeAlertDetails = baseRuntimeAlert?.Details,
-                                                           VulnerabilityAssessment = CreateVulnerabilityAssessment(observedImage.CurrentImageVersion,
-                                                                                                                   CreateSeveritySummaryFromFindings(vulnerabilityFindings)),
+                                                           VulnerabilityAssessment = vulnerabilityAssessment,
                                                            VulnerabilityFindings = vulnerabilityFindings.Select(MapVulnerabilityFinding)
                                                                                                         .ToList(),
                                                            LinkedRuntimeContainers = observedImage.Source == RegistrationSource.Discovery
@@ -1838,6 +1851,10 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                                                 baseImageRelationshipsByChildVersion.TryGetValue(latestSnapshot.ImageVersionId, out var baseImages);
 
                                                 var baseImageVulnerabilitySummary = SummarizeBaseImageVulnerabilities(baseImages);
+                                                var vulnerabilityAssessment = CreateVulnerabilityAssessment(latestSnapshot.ImageVersion,
+                                                                                                            CreateSeveritySummaryFromFindings(vulnerabilityFindings));
+
+                                                vulnerabilityAssessment.FixableFindingCount = CountFixableActiveFindings(vulnerabilityFindings);
 
                                                 return new RuntimeContainerDetailViewData
                                                        {
@@ -1872,8 +1889,7 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                                                            UpdateFindings = mappedUpdateFindings,
                                                            BaseRuntimeAlertSummary = baseRuntimeAlert?.Summary,
                                                            BaseRuntimeAlertDetails = baseRuntimeAlert?.Details,
-                                                           VulnerabilityAssessment = CreateVulnerabilityAssessment(latestSnapshot.ImageVersion,
-                                                                                                                   CreateSeveritySummaryFromFindings(vulnerabilityFindings)),
+                                                           VulnerabilityAssessment = vulnerabilityAssessment,
                                                            VulnerabilityFindings = vulnerabilityFindings.Select(MapVulnerabilityFinding)
                                                                                                         .ToList(),
                                                            CurrentResourceUsage = GetCurrentResourceUsage(resourceUsageHistory),
