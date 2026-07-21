@@ -7,9 +7,9 @@ container image (`networlddev/dockerupdateguard`) documented in
 
 | Tier | Compose file | Contains |
 | --- | --- | --- |
-| Minimal | `docker-compose.minimal.yml` | DockerUpdateGuard + PostgreSQL |
-| Minimal + Trivy | `docker-compose.trivy.yml` | Minimal setup + Trivy server for vulnerability scanning |
-| Maximal | `docker-compose.full.yml` | Trivy setup + full OpenTelemetry stack (Grafana, Loki, Tempo, Prometheus) |
+| Minimal | `docs/docker-compose.minimal.yml` | DockerUpdateGuard + PostgreSQL |
+| Minimal + Trivy | `docs/docker-compose.trivy.yml` | Minimal setup + Trivy server for vulnerability scanning |
+| Maximal | `docs/docker-compose.full.yml` | Trivy setup + full OpenTelemetry stack (Grafana, Loki, Tempo, Prometheus) |
 
 Pick the tier that matches your needs; each file is fully self-contained, so
 you only ever need to download one of them.
@@ -35,27 +35,27 @@ Pick **one** of the three tiers below.
 
 ```bash
 curl -fsSL -o docker-compose.yml \
-  https://raw.githubusercontent.com/LarsLaskowski/DockerUpdateGuard/main/docker-compose.minimal.yml
+  https://raw.githubusercontent.com/LarsLaskowski/DockerUpdateGuard/main/docs/docker-compose.minimal.yml
 curl -fsSL -o .env \
-  https://raw.githubusercontent.com/LarsLaskowski/DockerUpdateGuard/main/.env.example
+  https://raw.githubusercontent.com/LarsLaskowski/DockerUpdateGuard/main/docs/.env.example
 ```
 
 ### Minimal + Trivy
 
 ```bash
 curl -fsSL -o docker-compose.yml \
-  https://raw.githubusercontent.com/LarsLaskowski/DockerUpdateGuard/main/docker-compose.trivy.yml
+  https://raw.githubusercontent.com/LarsLaskowski/DockerUpdateGuard/main/docs/docker-compose.trivy.yml
 curl -fsSL -o .env \
-  https://raw.githubusercontent.com/LarsLaskowski/DockerUpdateGuard/main/.env.example
+  https://raw.githubusercontent.com/LarsLaskowski/DockerUpdateGuard/main/docs/.env.example
 ```
 
 ### Maximal (Trivy + Telemetry)
 
 ```bash
 curl -fsSL -o docker-compose.yml \
-  https://raw.githubusercontent.com/LarsLaskowski/DockerUpdateGuard/main/docker-compose.full.yml
+  https://raw.githubusercontent.com/LarsLaskowski/DockerUpdateGuard/main/docs/docker-compose.full.yml
 curl -fsSL -o .env \
-  https://raw.githubusercontent.com/LarsLaskowski/DockerUpdateGuard/main/.env.example
+  https://raw.githubusercontent.com/LarsLaskowski/DockerUpdateGuard/main/docs/.env.example
 ```
 
 The compose file is saved as `docker-compose.yml` so the plain `docker
