@@ -72,31 +72,37 @@
                         <MudItem xs="12" lg="6">
                             <MudPaper Class="summary-card" Elevation="0">
                                 <span class="summary-label">CPU history</span>
-                                <MudChart ChartType="ChartType.Line"
-                                          ChartSeries="@ResourceUsageChartBuilder.GetCpuSeries(_singleInstanceDetail.ResourceUsageHistory)"
-                                          ChartLabels="@ResourceUsageChartBuilder.GetChartLabels(_singleInstanceDetail.ResourceUsageHistory, 5)"
-                                          Height="280px"
-                                          Width="100%" />
+                                <div class="dug-chart">
+                                    <MudChart ChartType="ChartType.Line"
+                                              ChartSeries="@ResourceUsageChartBuilder.GetCpuSeries(_singleInstanceDetail.ResourceUsageHistory)"
+                                              ChartLabels="@ResourceUsageChartBuilder.GetChartLabels(_singleInstanceDetail.ResourceUsageHistory, 5)"
+                                              Height="100%"
+                                              Width="100%" />
+                                </div>
                             </MudPaper>
                         </MudItem>
                         <MudItem xs="12" lg="6">
                             <MudPaper Class="summary-card" Elevation="0">
                                 <span class="summary-label">Memory history</span>
-                                <MudChart ChartType="ChartType.Line"
-                                          ChartSeries="@ResourceUsageChartBuilder.GetMemorySeries(_singleInstanceDetail.ResourceUsageHistory)"
-                                          ChartLabels="@ResourceUsageChartBuilder.GetChartLabels(_singleInstanceDetail.ResourceUsageHistory, 5)"
-                                          Height="280px"
-                                          Width="100%" />
+                                <div class="dug-chart">
+                                    <MudChart ChartType="ChartType.Line"
+                                              ChartSeries="@ResourceUsageChartBuilder.GetMemorySeries(_singleInstanceDetail.ResourceUsageHistory)"
+                                              ChartLabels="@ResourceUsageChartBuilder.GetChartLabels(_singleInstanceDetail.ResourceUsageHistory, 5)"
+                                              Height="100%"
+                                              Width="100%" />
+                                </div>
                             </MudPaper>
                         </MudItem>
                         <MudItem xs="12">
                             <MudPaper Class="summary-card" Elevation="0">
                                 <span class="summary-label">Network history</span>
-                                <MudChart ChartType="ChartType.Line"
-                                          ChartSeries="@ResourceUsageChartBuilder.GetNetworkSeries(_singleInstanceDetail.ResourceUsageHistory)"
-                                          ChartLabels="@ResourceUsageChartBuilder.GetChartLabels(_singleInstanceDetail.ResourceUsageHistory, 8)"
-                                          Height="280px"
-                                          Width="100%" />
+                                <div class="dug-chart">
+                                    <MudChart ChartType="ChartType.Line"
+                                              ChartSeries="@ResourceUsageChartBuilder.GetNetworkSeries(_singleInstanceDetail.ResourceUsageHistory)"
+                                              ChartLabels="@ResourceUsageChartBuilder.GetChartLabels(_singleInstanceDetail.ResourceUsageHistory, 8)"
+                                              Height="100%"
+                                              Width="100%" />
+                                </div>
                             </MudPaper>
                         </MudItem>
                     </MudGrid>
