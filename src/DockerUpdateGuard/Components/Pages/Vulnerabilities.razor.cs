@@ -98,6 +98,23 @@ public sealed partial class Vulnerabilities : IDisposable
     }
 
     /// <summary>
+    /// Resolve the severity-rail CSS class for a vulnerability severity label
+    /// </summary>
+    /// <param name="severity">Severity label</param>
+    /// <returns>Severity-rail CSS class</returns>
+    private static string GetSeverityRailClass(string severity)
+    {
+        return severity.ToUpperInvariant() switch
+               {
+                   "CRITICAL" => "dug-rail-critical",
+                   "HIGH" => "dug-rail-high",
+                   "MEDIUM" => "dug-rail-medium",
+                   "LOW" => "dug-rail-low",
+                   _ => string.Empty,
+               };
+    }
+
+    /// <summary>
     /// Resolve the detail page link for an affected image
     /// </summary>
     /// <param name="affectedImage">Affected image</param>

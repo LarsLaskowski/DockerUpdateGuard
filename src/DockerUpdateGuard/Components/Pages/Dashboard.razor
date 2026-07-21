@@ -30,6 +30,9 @@ else
                 <MudItem xs="6" sm="6" lg="4">
                     <MudLink Href='@GetMetricNavigationTarget("My Images")' Underline="Underline.None" Class="metric-card-link">
                         <MudPaper Class="metric-card" Elevation="0">
+                            <div class="metric-card__icon">
+                                <MudIcon Icon="@Icons.Material.Filled.Layers" />
+                            </div>
                             <span class="metric-label">My Images</span>
                             <span class="metric-value">@_dashboard.MyImageCount</span>
                         </MudPaper>
@@ -39,6 +42,9 @@ else
             <MudItem xs="6" sm="6" lg="4">
                 <MudLink Href='@GetMetricNavigationTarget("Observed Images")' Underline="Underline.None" Class="metric-card-link">
                     <MudPaper Class="metric-card" Elevation="0">
+                        <div class="metric-card__icon">
+                            <MudIcon Icon="@Icons.Material.Filled.Visibility" />
+                        </div>
                         <span class="metric-label">Observed Images</span>
                         <span class="metric-value">@_dashboard.ObservedImageCount</span>
                     </MudPaper>
@@ -47,6 +53,9 @@ else
             <MudItem xs="6" sm="6" lg="4">
                 <MudLink Href='@GetMetricNavigationTarget("Docker Instances")' Underline="Underline.None" Class="metric-card-link">
                     <MudPaper Class="metric-card" Elevation="0">
+                        <div class="metric-card__icon">
+                            <MudIcon Icon="@Icons.Material.Filled.Dns" />
+                        </div>
                         <span class="metric-label">Docker Instances</span>
                         <span class="metric-value">@_dashboard.DockerInstanceCount</span>
                     </MudPaper>
@@ -55,6 +64,9 @@ else
             <MudItem xs="6" sm="6" lg="4">
                 <MudLink Href='@GetMetricNavigationTarget("Runtime Containers")' Underline="Underline.None" Class="metric-card-link">
                     <MudPaper Class="metric-card" Elevation="0">
+                        <div class="metric-card__icon">
+                            <MudIcon Icon="@Icons.Material.Filled.ViewInAr" />
+                        </div>
                         <span class="metric-label">Runtime Containers</span>
                         <span class="metric-value">@_dashboard.RuntimeContainerCount</span>
                     </MudPaper>
@@ -65,6 +77,9 @@ else
                 <MudItem xs="6" sm="6" lg="4">
                     <MudLink Href='@GetMetricNavigationTarget("Base Images")' Underline="Underline.None" Class="metric-card-link">
                         <MudPaper Class="metric-card" Elevation="0">
+                            <div class="metric-card__icon">
+                                <MudIcon Icon="@Icons.Material.Filled.AccountTree" />
+                            </div>
                             <span class="metric-label">Base Images</span>
                             <span class="metric-value">@_dashboard.BaseImageCount</span>
                         </MudPaper>
@@ -73,12 +88,18 @@ else
             }
             <MudItem xs="6" sm="6" lg="4">
                 <MudPaper Class="metric-card metric-card--warning" Elevation="0">
+                    <div class="metric-card__icon">
+                        <MudIcon Icon="@Icons.Material.Filled.Update" />
+                    </div>
                     <span class="metric-label">Update Findings</span>
                     <span class="metric-value">@_dashboard.ActiveUpdateFindingCount</span>
                 </MudPaper>
             </MudItem>
             <MudItem xs="6" sm="6" lg="4">
                 <MudPaper Class="metric-card metric-card--warning" Elevation="0">
+                    <div class="metric-card__icon">
+                        <MudIcon Icon="@Icons.Material.Filled.WarningAmber" />
+                    </div>
                     <span class="metric-label">Own Base Runtime Warnings</span>
                     <span class="metric-value">@_dashboard.OwnImageBaseRuntimeWarningCount</span>
                 </MudPaper>
@@ -86,6 +107,9 @@ else
             <MudItem xs="12" sm="6" lg="4">
                 <MudLink Href='@GetMetricNavigationTarget("Vulnerabilities")' Underline="Underline.None" Class="metric-card-link">
                     <MudPaper Class="metric-card metric-card--danger" Elevation="0">
+                        <div class="metric-card__icon">
+                            <MudIcon Icon="@Icons.Material.Filled.Security" />
+                        </div>
                         <span class="metric-label">Vulnerabilities</span>
                         <span class="metric-value">@_dashboard.ActiveVulnerabilityFindingCount</span>
                         <VulnerabilitySeverityChips Summary="_dashboard.VulnerabilitySeveritySummary" />

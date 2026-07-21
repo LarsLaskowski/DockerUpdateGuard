@@ -1,11 +1,11 @@
 @inherits LayoutComponentBase
 
-<MudThemeProvider Theme="_theme" />
+<MudThemeProvider @ref="_themeProvider" Theme="_theme" IsDarkMode="_isDarkMode" />
 <MudPopoverProvider />
 <MudDialogProvider />
 <MudSnackbarProvider />
 
-<MudLayout Class="app-layout">
+<MudLayout Class="@GetLayoutClass()">
     <MudDrawer @bind-Open="_drawerOpen"
                Breakpoint="Breakpoint.Lg"
                ClipMode="DrawerClipMode.Never"
@@ -29,6 +29,12 @@
                     <img src="@Assets["logo-dg-shield.svg"]" alt="DockerUpdateGuard logo" class="app-brand__logo app-topbar__logo" />
                     <MudText Typo="Typo.h5" Class="app-brand__title app-topbar__title">DockerUpdateGuard</MudText>
                 </div>
+
+                <MudIconButton Icon="@(_isDarkMode ? Icons.Material.Filled.LightMode : Icons.Material.Filled.DarkMode)"
+                               Color="Color.Inherit"
+                               OnClick="ToggleDarkModeAsync"
+                               Class="app-topbar__theme-toggle"
+                               aria-label="Toggle dark mode" />
 
                 @if (_dashboardSummary is null)
                 {
