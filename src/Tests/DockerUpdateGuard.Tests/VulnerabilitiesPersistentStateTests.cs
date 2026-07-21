@@ -88,7 +88,8 @@ public class VulnerabilitiesPersistentStateTests
             testContext.Services.AddSingleton(viewService);
 
             var persistentState = testContext.GetPersistentComponentState();
-            var component = testContext.RenderComponent<VulnerabilitiesPage>();
+
+            testContext.RenderComponent<VulnerabilitiesPage>();
 
             persistentState.TriggerOnPersisting();
 

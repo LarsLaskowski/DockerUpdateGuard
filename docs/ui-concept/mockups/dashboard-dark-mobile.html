@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DockerUpdateGuard — Dashboard (dark mode concept)</title>
+<style>
+:root {
+    --dug-primary: #3b82f6;
+    --dug-primary-strong: #2563eb;
+    --dug-secondary: #22d3ee;
+    --dug-bg-page: #0b1220;
+    --dug-surface: rgba(17, 26, 46, 0.82);
+    --dug-surface-solid: #111a2e;
+    --dug-border: rgba(148, 163, 184, 0.16);
+    --dug-text: #e2e8f0;
+    --dug-text-muted: #94a3b8;
+    --dug-text-faint: #64748b;
+    --dug-success: #4ade80;
+    --dug-warning: #fbbf24;
+    --dug-danger: #f87171;
+    --dug-sev-critical: #f87171;
+    --dug-sev-high: #fb923c;
+    --dug-sev-medium: #38bdf8;
+    --dug-sev-low: #4ade80;
+    --dug-radius-lg: 1.5rem;
+    --dug-radius-md: 1rem;
+    --dug-shadow-card: 0 20px 45px rgba(0, 0, 0, 0.35);
+    --dug-blur: blur(12px);
+}
+* { box-sizing: border-box; margin: 0; }
+body {
+    font-family: Inter, "Segoe UI", system-ui, Arial, sans-serif;
+    background:
+        radial-gradient(circle at 12% -10%, rgba(59, 130, 246, 0.18), transparent 45%),
+        radial-gradient(circle at 95% 5%, rgba(34, 211, 238, 0.10), transparent 40%),
+        var(--dug-bg-page);
+    color: var(--dug-text);
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+}
+svg { display: block; }
+.topbar {
+    position: sticky; top: 0; z-index: 10;
+    display: flex; align-items: center; gap: 0.6rem;
+    height: 60px; padding: 0 0.75rem;
+    background: rgba(15, 23, 42, 0.82);
+    backdrop-filter: var(--dug-blur);
+    border-bottom: 1px solid var(--dug-border);
+}
+.topbar__menu { width: 42px; height: 42px; border: 0; border-radius: 0.75rem; background: transparent; color: var(--dug-text-muted); display: grid; place-items: center; }
+.topbar__logo { width: 2rem; height: 2rem; border-radius: 0.6rem; background: linear-gradient(135deg, var(--dug-primary), var(--dug-secondary)); display: grid; place-items: center; color: #0b1220; }
+.topbar__title { font-size: 1.05rem; font-weight: 700; }
+.topbar__toggle { margin-left: auto; width: 40px; height: 40px; border: 1px solid var(--dug-border); border-radius: 0.7rem; background: var(--dug-surface-solid); color: var(--dug-warning); display: grid; place-items: center; }
+.topbar__pill {
+    display: inline-flex; align-items: center; gap: 0.4rem;
+    padding: 0.35rem 0.7rem; border-radius: 999px;
+    background: color-mix(in srgb, var(--dug-primary) 18%, transparent);
+    color: #bfdbfe; font-size: 0.85rem; font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    border: 1px solid color-mix(in srgb, var(--dug-primary) 30%, transparent);
+}
+.page { padding: 1rem 0.75rem 2rem; display: grid; gap: 0.9rem; }
+.hero {
+    position: relative; overflow: hidden;
+    background: var(--dug-surface); backdrop-filter: var(--dug-blur);
+    border: 1px solid var(--dug-border); border-radius: var(--dug-radius-lg);
+    box-shadow: var(--dug-shadow-card); padding: 1.1rem 1.15rem 1.2rem;
+}
+.hero::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 3px; background: linear-gradient(90deg, var(--dug-primary), var(--dug-secondary)); }
+.eyebrow { font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.14em; color: var(--dug-secondary); }
+.hero h1 { font-size: 1.6rem; letter-spacing: -0.02em; margin-top: 0.15rem; }
+.hero p { color: var(--dug-text-muted); font-size: 0.9rem; margin-top: 0.35rem; line-height: 1.45; }
+.metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 0.7rem; }
+.tile {
+    display: flex; flex-direction: column; gap: 0.55rem;
+    background: var(--dug-surface-solid); border: 1px solid var(--dug-border);
+    border-radius: var(--dug-radius-md); box-shadow: var(--dug-shadow-card);
+    padding: 0.85rem 0.9rem;
+}
+.tile__head { display: flex; align-items: center; gap: 0.55rem; }
+.tile__icon {
+    width: 2.2rem; height: 2.2rem; border-radius: 0.7rem; display: grid; place-items: center; flex: none;
+    background: color-mix(in srgb, var(--dug-primary) 20%, transparent); color: #93c5fd;
+}
+.tile--warning .tile__icon { background: color-mix(in srgb, var(--dug-warning) 20%, transparent); color: var(--dug-warning); }
+.tile--danger .tile__icon { background: color-mix(in srgb, var(--dug-danger) 20%, transparent); color: var(--dug-danger); }
+.tile__label { font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--dug-text-faint); line-height: 1.25; }
+.tile__value { font-size: 1.85rem; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.tile--wide { grid-column: 1 / -1; }
+.chips { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.chip { font-size: 0.7rem; font-weight: 700; padding: 0.18rem 0.55rem; border-radius: 999px; color: #0b1220; }
+.chip--critical { background: var(--dug-sev-critical); }
+.chip--high { background: var(--dug-sev-high); }
+.chip--medium { background: var(--dug-sev-medium); }
+.chip--low { background: var(--dug-sev-low); }
+.section {
+    background: var(--dug-surface); backdrop-filter: var(--dug-blur);
+    border: 1px solid var(--dug-border); border-radius: var(--dug-radius-lg);
+    box-shadow: var(--dug-shadow-card); padding: 1.05rem 1rem 1.1rem;
+}
+.section h2 { font-size: 1.05rem; letter-spacing: -0.01em; }
+.section > p { color: var(--dug-text-muted); font-size: 0.82rem; margin: 0.2rem 0 0.85rem; }
+.scan-card {
+    background: var(--dug-surface-solid); border: 1px solid var(--dug-border);
+    border-radius: var(--dug-radius-md); padding: 0.8rem 0.9rem;
+    display: grid; gap: 0.45rem;
+}
+.scan-card + .scan-card { margin-top: 0.7rem; }
+.scan-card__row { display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; }
+.field-label { font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: var(--dug-text-faint); }
+.field-value { font-size: 0.85rem; font-weight: 500; text-align: right; overflow-wrap: anywhere; }
+.status { font-size: 0.72rem; font-weight: 700; padding: 0.2rem 0.6rem; border-radius: 999px; }
+.status--ok { background: color-mix(in srgb, var(--dug-success) 22%, transparent); color: var(--dug-success); }
+.status--fail { background: color-mix(in srgb, var(--dug-danger) 20%, transparent); color: var(--dug-danger); }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+    <button class="topbar__menu" aria-label="Toggle navigation">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+    </button>
+    <span class="topbar__logo">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5l-8-3z"/></svg>
+    </span>
+    <span class="topbar__title">DockerUpdateGuard</span>
+    <button class="topbar__toggle" aria-label="Toggle dark mode">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3a9 9 0 1 0 9 9c0-.46-.04-.92-.1-1.36a5.39 5.39 0 0 1-7.54-7.54c-.44-.06-.9-.1-1.36-.1z"/></svg>
+    </button>
+</header>
+
+<main class="page">
+    <section class="hero">
+        <span class="eyebrow">Operations cockpit</span>
+        <h1>Dashboard</h1>
+        <p>Track image freshness, runtime drift, and vulnerability posture from one place.</p>
+    </section>
+
+    <div class="metrics">
+        <div class="tile">
+            <div class="tile__head">
+                <span class="tile__icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3 3 8l9 5 9-5-9-5zM3 12l9 5 9-5M3 16l9 5 9-5"/></svg></span>
+                <span class="tile__label">Observed<br>Images</span>
+            </div>
+            <span class="tile__value">18</span>
+        </div>
+        <div class="tile">
+            <div class="tile__head">
+                <span class="tile__icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/></svg></span>
+                <span class="tile__label">Docker<br>Instances</span>
+            </div>
+            <span class="tile__value">3</span>
+        </div>
+        <div class="tile">
+            <div class="tile__head">
+                <span class="tile__icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M9 9h6v6H9z"/></svg></span>
+                <span class="tile__label">Runtime<br>Containers</span>
+            </div>
+            <span class="tile__value">24</span>
+        </div>
+        <div class="tile tile--warning">
+            <div class="tile__head">
+                <span class="tile__icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg></span>
+                <span class="tile__label">Update<br>Findings</span>
+            </div>
+            <span class="tile__value">5</span>
+        </div>
+        <div class="tile tile--danger tile--wide">
+            <div class="tile__head">
+                <span class="tile__icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 7V5a4 4 0 0 1 8 0v2M3 13h3m12 0h3M5 20l2-2m10 2-2-2"/><rect x="7" y="7" width="10" height="12" rx="5"/></svg></span>
+                <span class="tile__label">Vulnerabilities</span>
+            </div>
+            <span class="tile__value">31</span>
+            <div class="chips">
+                <span class="chip chip--critical">2 critical</span>
+                <span class="chip chip--high">7 high</span>
+                <span class="chip chip--medium">14 medium</span>
+                <span class="chip chip--low">8 low</span>
+            </div>
+        </div>
+    </div>
+
+    <section class="section">
+        <h2>Recent scans</h2>
+        <p>Latest activity across discovery, refresh, and cleanup jobs.</p>
+        <article class="scan-card">
+            <div class="scan-card__row"><span class="field-label">Type</span><span class="field-value">Runtime refresh</span></div>
+            <div class="scan-card__row"><span class="field-label">Status</span><span class="status status--ok">Succeeded</span></div>
+            <div class="scan-card__row"><span class="field-label">Target</span><span class="field-value">prod-swarm-01</span></div>
+            <div class="scan-card__row"><span class="field-label">Started</span><span class="field-value">20.07.2026 09:41</span></div>
+        </article>
+        <article class="scan-card">
+            <div class="scan-card__row"><span class="field-label">Type</span><span class="field-value">Discovery</span></div>
+            <div class="scan-card__row"><span class="field-label">Status</span><span class="status status--fail">Failed</span></div>
+            <div class="scan-card__row"><span class="field-label">Target</span><span class="field-value">edge-node-03</span></div>
+            <div class="scan-card__row"><span class="field-label">Started</span><span class="field-value">20.07.2026 07:02</span></div>
+        </article>
+    </section>
+</main>
+
+</body>
+</html>
