@@ -1,0 +1,83 @@
+# DockerUpdateGuard - maximal setup: Trivy + OpenTelemetry
+#
+# Everything from docker-compose.trivy.yml, plus an all-in-one Grafana
+# OTel-LGTM stack (OpenTelemetry Collector + Grafana + Loki + Tempo +
+# Prometheus/Mimir) so DockerUpdateGuard's logs, metrics, and traces can be
+# explored right away.
+#
+# Grafana is exposed on http://localhost:3000 (default login: admin/admin).
+#
+# See INSTALL.md for setup instructions.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: dockerupdateguard-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-dockerupdateguard}
+      POSTGRES_USER: ${POSTGRES_USER:-dockerupdateguard}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - dockerupdateguard-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-dockerupdateguard} -d ${POSTGRES_DB:-dockerupdateguard}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  trivy:
+    image: aquasec/trivy:0.58.1
+    container_name: dockerupdateguard-trivy
+    restart: unless-stopped
+    command: ["server", "--listen", "0.0.0.0:4954"]
+    volumes:
+      - dockerupdateguard-trivy-cache:/root/.cache
+
+  otel-lgtm:
+    image: grafana/otel-lgtm:latest
+    container_name: dockerupdateguard-otel-lgtm
+    restart: unless-stopped
+    ports:
+      - "3000:3000"   # Grafana UI
+    volumes:
+      - dockerupdateguard-otel-lgtm-data:/data
+
+  dockerupdateguard:
+    image: networlddev/dockerupdateguard:latest
+    container_name: dockerupdateguard
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      trivy:
+        condition: service_started
+      otel-lgtm:
+        condition: service_started
+    ports:
+      - "8080:8080"
+    group_add:
+      - "${DOCKER_GID:-0}"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      ConnectionStrings__DockerUpdateGuard: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-dockerupdateguard};Username=${POSTGRES_USER:-dockerupdateguard};Password=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}"
+      DockerUpdateGuard__DockerInstances__0__Name: "Local Docker"
+      DockerUpdateGuard__DockerInstances__0__BaseUrl: "unix:///var/run/docker.sock"
+      DockerUpdateGuard__DockerInstances__0__Enabled: "true"
+      DockerUpdateGuard__DockerHub__UserName: "${DOCKERHUB_USERNAME:-}"
+      DockerUpdateGuard__DockerHub__Pat: "${DOCKERHUB_PAT:-}"
+      DockerUpdateGuard__Vulnerabilities__Enabled: "true"
+      DockerUpdateGuard__Vulnerabilities__Provider: "Trivy"
+      DockerUpdateGuard__Vulnerabilities__TrivyBaseUrl: "http://trivy:4954"
+      Telemetry__ServiceName: "DockerUpdateGuard"
+      Telemetry__Instance: "Production"
+      Telemetry__OtlpEndpoint: "http://otel-lgtm:4317"
+      Telemetry__EnableLogging: "true"
+      Telemetry__EnableMetrics: "true"
+      Telemetry__EnableTracing: "true"
+
+volumes:
+  dockerupdateguard-postgres-data:
+  dockerupdateguard-trivy-cache:
+  dockerupdateguard-otel-lgtm-data:

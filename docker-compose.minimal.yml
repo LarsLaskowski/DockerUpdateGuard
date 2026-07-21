@@ -1,0 +1,49 @@
+# DockerUpdateGuard - minimal setup
+#
+# Contains only what the application requires to run:
+#   - PostgreSQL for persistent state
+#   - DockerUpdateGuard itself, watching the local Docker Engine via the
+#     bind-mounted Unix socket
+#
+# See INSTALL.md for setup instructions.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: dockerupdateguard-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-dockerupdateguard}
+      POSTGRES_USER: ${POSTGRES_USER:-dockerupdateguard}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - dockerupdateguard-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-dockerupdateguard} -d ${POSTGRES_DB:-dockerupdateguard}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  dockerupdateguard:
+    image: networlddev/dockerupdateguard:latest
+    container_name: dockerupdateguard
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    group_add:
+      - "${DOCKER_GID:-0}"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      ConnectionStrings__DockerUpdateGuard: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-dockerupdateguard};Username=${POSTGRES_USER:-dockerupdateguard};Password=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}"
+      DockerUpdateGuard__DockerInstances__0__Name: "Local Docker"
+      DockerUpdateGuard__DockerInstances__0__BaseUrl: "unix:///var/run/docker.sock"
+      DockerUpdateGuard__DockerInstances__0__Enabled: "true"
+      DockerUpdateGuard__DockerHub__UserName: "${DOCKERHUB_USERNAME:-}"
+      DockerUpdateGuard__DockerHub__Pat: "${DOCKERHUB_PAT:-}"
+
+volumes:
+  dockerupdateguard-postgres-data:
