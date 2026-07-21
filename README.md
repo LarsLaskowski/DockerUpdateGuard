@@ -51,6 +51,8 @@ dotnet test src\Tests\**\*.csproj -c Release --no-build --logger trx --collect:"
 
 ### Docker image
 
+For a full Docker Compose walkthrough (minimal setup, optional Trivy scanning, optional telemetry), see [INSTALL.md](INSTALL.md).
+
 The container image listens on port `8080` by default.
 
 Example for Linux with a local Docker socket:
