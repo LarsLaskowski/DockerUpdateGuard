@@ -13,9 +13,23 @@ namespace DockerUpdateGuard.Components.Pages;
 /// <summary>
 /// Scan history page
 /// </summary>
-public partial class ScanHistory
+public sealed partial class ScanHistory : IDisposable
 {
+    #region Constants
+
+    /// <summary>
+    /// Persistent-state key for the prerendered scan-history list
+    /// </summary>
+    private const string ScanHistoryStateKey = "ScanHistory.List";
+
+    #endregion // Constants
+
     #region Fields
+
+    /// <summary>
+    /// Persisting-state subscription used to hand the prerendered data to the interactive render
+    /// </summary>
+    private PersistingComponentStateSubscription _persistingSubscription;
 
     /// <summary>
     /// Scan-history items
@@ -59,6 +73,12 @@ public partial class ScanHistory
     /// </summary>
     [Inject]
     public DashboardRefreshState DashboardRefreshState { get; set; } = null!;
+
+    /// <summary>
+    /// Persistent component state used to reuse the prerendered data on the interactive render
+    /// </summary>
+    [Inject]
+    public PersistentComponentState PersistentState { get; set; } = null!;
 
     /// <summary>
     /// Indicates whether vulnerability refresh is enabled
@@ -105,6 +125,20 @@ public partial class ScanHistory
 
                               StateHasChanged();
                           }).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Persist the current scan-history data so the interactive render can reuse the prerendered data
+    /// </summary>
+    /// <returns>Task</returns>
+    private Task PersistScanHistory()
+    {
+        if (_scans is not null)
+        {
+            PersistentState.PersistAsJson(ScanHistoryStateKey, _scans);
+        }
+
+        return Task.CompletedTask;
     }
 
     /// <summary>
@@ -160,8 +194,28 @@ public partial class ScanHistory
     /// <inheritdoc/>
     protected override async Task OnInitializedAsync()
     {
+        _persistingSubscription = PersistentState.RegisterOnPersisting(PersistScanHistory);
+
+        if (PersistentState.TryTakeFromJson<IReadOnlyList<ScanHistoryItemData>>(ScanHistoryStateKey, out var restoredScans)
+            && restoredScans is not null)
+        {
+            _scans = restoredScans;
+
+            return;
+        }
+
         await LoadAsync().ConfigureAwait(false);
     }
 
     #endregion // ComponentBase
+
+    #region IDisposable
+
+    /// <inheritdoc/>
+    public void Dispose()
+    {
+        _persistingSubscription.Dispose();
+    }
+
+    #endregion // IDisposable
 }

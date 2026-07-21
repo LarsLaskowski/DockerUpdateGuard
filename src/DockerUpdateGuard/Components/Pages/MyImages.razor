@@ -13,9 +13,7 @@
 
     @if (_images is null)
     {
-        <MudPaper Class="empty-state-panel" Elevation="0">
-            <MudText>Loading own images...</MudText>
-        </MudPaper>
+        <TableSkeleton Title="Images from Docker account" />
     }
     else if (_images.Count == 0)
     {

@@ -18,9 +18,7 @@
 
     @if (_detail is null)
     {
-        <MudPaper Class="empty-state-panel" Elevation="0">
-            <MudText>Loading runtime container detail...</MudText>
-        </MudPaper>
+        <TableSkeleton Rows="6" />
     }
     else
     {

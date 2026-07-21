@@ -13,9 +13,7 @@
 
     @if (_items is null)
     {
-        <MudPaper Class="empty-state-panel" Elevation="0">
-            <MudText>Loading base image data...</MudText>
-        </MudPaper>
+        <TableSkeleton Title="Base image overview" />
     }
     else if (_items.Count == 0)
     {

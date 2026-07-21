@@ -7,9 +7,28 @@ namespace DockerUpdateGuard.Components.Pages;
 /// <summary>
 /// Docker instances page
 /// </summary>
-public partial class DockerInstances
+public sealed partial class DockerInstances : IDisposable
 {
+    #region Constants
+
+    /// <summary>
+    /// Persistent-state key for the prerendered Docker-instance list
+    /// </summary>
+    private const string DockerInstancesStateKey = "DockerInstances.List";
+
+    /// <summary>
+    /// Persistent-state key for the prerendered single Docker-instance detail
+    /// </summary>
+    private const string SingleInstanceDetailStateKey = "DockerInstances.SingleDetail";
+
+    #endregion // Constants
+
     #region Fields
+
+    /// <summary>
+    /// Persisting-state subscription used to hand the prerendered data to the interactive render
+    /// </summary>
+    private PersistingComponentStateSubscription _persistingSubscription;
 
     /// <summary>
     /// Docker-instance list
@@ -30,6 +49,12 @@ public partial class DockerInstances
     /// </summary>
     [Inject]
     public IApplicationViewService ViewService { get; set; } = null!;
+
+    /// <summary>
+    /// Persistent component state used to reuse the prerendered data on the interactive render
+    /// </summary>
+    [Inject]
+    public PersistentComponentState PersistentState { get; set; } = null!;
 
     #endregion // Properties
 
@@ -69,10 +94,13 @@ public partial class DockerInstances
 
     #endregion // Static methods
 
-    #region ComponentBase
+    #region Methods
 
-    /// <inheritdoc/>
-    protected override async Task OnInitializedAsync()
+    /// <summary>
+    /// Load the Docker-instance list and, for a single configured instance, its detail
+    /// </summary>
+    /// <returns>Task</returns>
+    private async Task LoadAsync()
     {
         var instances = await ViewService.GetDockerInstancesAsync()
                                          .ConfigureAwait(false);
@@ -88,5 +116,60 @@ public partial class DockerInstances
                           }).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Persist the current instance data so the interactive render can reuse the prerendered data
+    /// </summary>
+    /// <returns>Task</returns>
+    private Task PersistInstances()
+    {
+        if (_instances is not null)
+        {
+            PersistentState.PersistAsJson(DockerInstancesStateKey, _instances);
+        }
+
+        if (_singleInstanceDetail is not null)
+        {
+            PersistentState.PersistAsJson(SingleInstanceDetailStateKey, _singleInstanceDetail);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    #endregion // Methods
+
+    #region ComponentBase
+
+    /// <inheritdoc/>
+    protected override async Task OnInitializedAsync()
+    {
+        _persistingSubscription = PersistentState.RegisterOnPersisting(PersistInstances);
+
+        if (PersistentState.TryTakeFromJson<IReadOnlyList<DockerInstanceListItemData>>(DockerInstancesStateKey, out var restoredInstances)
+            && restoredInstances is not null)
+        {
+            _instances = restoredInstances;
+
+            if (PersistentState.TryTakeFromJson<DockerInstanceDetailViewData>(SingleInstanceDetailStateKey, out var restoredDetail)
+                && restoredDetail is not null)
+            {
+                _singleInstanceDetail = restoredDetail;
+            }
+
+            return;
+        }
+
+        await LoadAsync().ConfigureAwait(false);
+    }
+
     #endregion // ComponentBase
+
+    #region IDisposable
+
+    /// <inheritdoc/>
+    public void Dispose()
+    {
+        _persistingSubscription.Dispose();
+    }
+
+    #endregion // IDisposable
 }

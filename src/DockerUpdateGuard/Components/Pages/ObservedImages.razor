@@ -73,9 +73,7 @@
 
         @if (_images is null)
         {
-            <MudPaper Class="empty-state-panel" Elevation="0">
-                <MudText>Loading manual images...</MudText>
-            </MudPaper>
+            <TableSkeleton Embedded="true" />
         }
         else if (_images.Count == 0)
         {

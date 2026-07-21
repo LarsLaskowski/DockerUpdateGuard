@@ -13,9 +13,7 @@
 
     @if (_instances is null)
     {
-        <MudPaper Class="empty-state-panel" Elevation="0">
-            <MudText>Loading docker instances...</MudText>
-        </MudPaper>
+        <TableSkeleton Title="Configured instances" />
     }
     else if (_instances.Count == 0)
     {

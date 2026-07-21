@@ -13,9 +13,7 @@
 
     @if (_detail is null)
     {
-        <MudPaper Class="empty-state-panel" Elevation="0">
-            <MudText>Loading docker instance detail...</MudText>
-        </MudPaper>
+        <TableSkeleton Title="Runtime containers" Rows="6" />
     }
     else
     {

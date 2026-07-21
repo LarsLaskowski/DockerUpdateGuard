@@ -11,9 +11,23 @@ namespace DockerUpdateGuard.Components.Pages;
 /// <summary>
 /// My images page — discovery-owned images from the configured Docker Hub account
 /// </summary>
-public partial class MyImages
+public sealed partial class MyImages : IDisposable
 {
+    #region Constants
+
+    /// <summary>
+    /// Persistent-state key for the prerendered discovery-owned image list
+    /// </summary>
+    private const string MyImagesStateKey = "MyImages.List";
+
+    #endregion // Constants
+
     #region Fields
+
+    /// <summary>
+    /// Persisting-state subscription used to hand the prerendered data to the interactive render
+    /// </summary>
+    private PersistingComponentStateSubscription _persistingSubscription;
 
     /// <summary>
     /// Discovery-owned observed-image list
@@ -40,6 +54,12 @@ public partial class MyImages
     /// </summary>
     [Inject]
     public IOptions<DockerUpdateGuardOptions> AppOptions { get; set; } = null!;
+
+    /// <summary>
+    /// Persistent component state used to reuse the prerendered data on the interactive render
+    /// </summary>
+    [Inject]
+    public PersistentComponentState PersistentState { get; set; } = null!;
 
     #endregion // Properties
 
@@ -100,12 +120,39 @@ public partial class MyImages
 
     #endregion // Static methods
 
+    #region Methods
+
+    /// <summary>
+    /// Persist the current image list so the interactive render can reuse the prerendered data
+    /// </summary>
+    /// <returns>Task</returns>
+    private Task PersistImages()
+    {
+        if (_images is not null)
+        {
+            PersistentState.PersistAsJson(MyImagesStateKey, _images);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    #endregion // Methods
+
     #region ComponentBase
 
     /// <inheritdoc/>
     protected override async Task OnInitializedAsync()
     {
         _dockerHubUserName = AppOptions.Value.DockerHub.UserName;
+        _persistingSubscription = PersistentState.RegisterOnPersisting(PersistImages);
+
+        if (PersistentState.TryTakeFromJson<IReadOnlyList<ObservedImageListItemData>>(MyImagesStateKey, out var restoredImages)
+            && restoredImages is not null)
+        {
+            _images = restoredImages;
+
+            return;
+        }
 
         var images = await ViewService.GetDiscoveryObservedImagesAsync()
                                       .ConfigureAwait(false);
@@ -117,4 +164,14 @@ public partial class MyImages
     }
 
     #endregion // ComponentBase
+
+    #region IDisposable
+
+    /// <inheritdoc/>
+    public void Dispose()
+    {
+        _persistingSubscription.Dispose();
+    }
+
+    #endregion // IDisposable
 }

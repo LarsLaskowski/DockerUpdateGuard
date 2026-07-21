@@ -1,0 +1,8 @@
+<MudGrid Spacing="2">
+    @for (var index = 0; index < Cards; index++)
+    {
+        <MudItem xs="6" sm="6" lg="4">
+            <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="110px" Class="dug-skeleton-card" />
+        </MudItem>
+    }
+</MudGrid>
