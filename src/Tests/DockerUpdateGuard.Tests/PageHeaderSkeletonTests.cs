@@ -11,25 +11,10 @@ namespace DockerUpdateGuard.Tests;
 [TestClass]
 public class PageHeaderSkeletonTests
 {
-    #region Static methods
-
-    /// <summary>
-    /// Count non-overlapping occurrences of a token within a text
-    /// </summary>
-    /// <param name="text">Text to search</param>
-    /// <param name="token">Token to count</param>
-    /// <returns>Number of occurrences</returns>
-    private static int CountOccurrences(string text, string token)
-    {
-        return text.Split(token).Length - 1;
-    }
-
-    #endregion // Static methods
-
     #region Methods
 
     /// <summary>
-    /// Verify the header skeleton renders a hero panel with three animated placeholder bars
+    /// Verify the header skeleton renders a hero panel with three placeholder bars
     /// </summary>
     [TestMethod]
     public void PageHeaderSkeletonRendersHeroPanelWithThreeBars()
@@ -42,7 +27,7 @@ public class PageHeaderSkeletonTests
             var markup = component.Markup;
 
             Assert.Contains("hero-panel", markup, "The header skeleton must render inside the hero panel");
-            Assert.AreEqual(3, CountOccurrences(markup, "mud-skeleton-wave"), "The header skeleton must render three animated placeholder bars");
+            Assert.AreEqual(3, MarkupTestHelper.CountSkeletons(markup), "The header skeleton must render three placeholder bars");
         }
     }
 

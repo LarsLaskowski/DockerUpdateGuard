@@ -73,10 +73,7 @@
 
         @if (_images is null)
         {
-            @for (var index = 0; index < 5; index++)
-            {
-                <MudSkeleton Height="48px" Animation="Animation.Wave" Class="mb-2" />
-            }
+            <TableSkeleton Embedded="true" />
         }
         else if (_images.Count == 0)
         {

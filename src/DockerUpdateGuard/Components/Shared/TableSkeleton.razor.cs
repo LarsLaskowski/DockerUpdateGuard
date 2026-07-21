@@ -21,5 +21,11 @@ public sealed partial class TableSkeleton
     [Parameter]
     public string? Title { get; set; }
 
+    /// <summary>
+    /// When true, the placeholder rows are rendered without the surrounding section paper, for embedding inside an existing panel
+    /// </summary>
+    [Parameter]
+    public bool Embedded { get; set; }
+
     #endregion // Properties
 }

@@ -24,9 +24,22 @@ internal static class BlazorTestContextFactory
 
         testContext.Services.AddMudServices();
         testContext.JSInterop.Mode = JSRuntimeMode.Loose;
-        testContext.AddFakePersistentComponentState();
+
+        var persistentState = testContext.AddFakePersistentComponentState();
+
+        testContext.Services.AddSingleton(persistentState);
 
         return testContext;
+    }
+
+    /// <summary>
+    /// Resolve the fake persistent component state registered on the test context
+    /// </summary>
+    /// <param name="testContext">Test context</param>
+    /// <returns>Fake persistent component state</returns>
+    public static FakePersistentComponentState GetPersistentComponentState(this Bunit.TestContext testContext)
+    {
+        return testContext.Services.GetRequiredService<FakePersistentComponentState>();
     }
 
     #endregion // Methods

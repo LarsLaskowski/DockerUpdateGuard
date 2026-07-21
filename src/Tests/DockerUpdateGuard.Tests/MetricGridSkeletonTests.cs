@@ -11,21 +11,6 @@ namespace DockerUpdateGuard.Tests;
 [TestClass]
 public class MetricGridSkeletonTests
 {
-    #region Static methods
-
-    /// <summary>
-    /// Count non-overlapping occurrences of a token within a text
-    /// </summary>
-    /// <param name="text">Text to search</param>
-    /// <param name="token">Token to count</param>
-    /// <returns>Number of occurrences</returns>
-    private static int CountOccurrences(string text, string token)
-    {
-        return text.Split(token).Length - 1;
-    }
-
-    #endregion // Static methods
-
     #region Methods
 
     /// <summary>
@@ -40,7 +25,7 @@ public class MetricGridSkeletonTests
         {
             var component = testContext.RenderComponent<MetricGridSkeleton>(parameters => parameters.Add(skeleton => skeleton.Cards, 4));
 
-            Assert.AreEqual(4, CountOccurrences(component.Markup, "dug-skeleton-card"), "The metric grid skeleton must render one card placeholder per requested card");
+            Assert.AreEqual(4, MarkupTestHelper.CountOccurrences(component.Markup, "dug-skeleton-card"), "The metric grid skeleton must render one card placeholder per requested card");
         }
     }
 
@@ -56,7 +41,7 @@ public class MetricGridSkeletonTests
         {
             var component = testContext.RenderComponent<MetricGridSkeleton>();
 
-            Assert.AreEqual(6, CountOccurrences(component.Markup, "dug-skeleton-card"), "The metric grid skeleton must render six card placeholders by default");
+            Assert.AreEqual(6, MarkupTestHelper.CountOccurrences(component.Markup, "dug-skeleton-card"), "The metric grid skeleton must render six card placeholders by default");
         }
     }
 
