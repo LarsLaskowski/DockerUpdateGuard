@@ -32,11 +32,11 @@
 
                 @if (_dashboardSummary is null)
                 {
-                    <MudText Class="muted-text app-topbar__status">Loading dashboard summary...</MudText>
+                    <MudSkeleton Width="140px" Height="32px" Class="app-topbar__status-skeleton" />
                 }
                 else
                 {
-                    <div class="app-topbar__meta">
+                    <div class="app-topbar__meta app-topbar__meta--full">
                         <MudPaper Class="hero-meta-card app-topbar__meta-card" Elevation="0">
                             <MudText Typo="Typo.caption" Class="muted-text">Protected assets</MudText>
                             <MudText Typo="Typo.h6">@GetProtectedAssetCount()</MudText>
@@ -45,6 +45,30 @@
                             <MudText Typo="Typo.caption" Class="muted-text">Last activity</MudText>
                             <MudText Typo="Typo.h6">@GetLatestScanLabel()</MudText>
                         </MudPaper>
+                    </div>
+
+                    <div class="app-topbar__meta--compact">
+                        <MudMenu AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
+                            <ActivatorContent>
+                                <MudChip T="string"
+                                         Icon="@Icons.Material.Filled.Shield"
+                                         Color="Color.Primary"
+                                         Class="app-topbar__pill"
+                                         aria-label="Show protected asset metrics">@GetProtectedAssetCount()</MudChip>
+                            </ActivatorContent>
+                            <ChildContent>
+                                <div class="app-topbar__meta-popover">
+                                    <div class="app-topbar__meta-popover-item">
+                                        <MudText Typo="Typo.caption" Class="muted-text">Protected assets</MudText>
+                                        <MudText Typo="Typo.h6">@GetProtectedAssetCount()</MudText>
+                                    </div>
+                                    <div class="app-topbar__meta-popover-item">
+                                        <MudText Typo="Typo.caption" Class="muted-text">Last activity</MudText>
+                                        <MudText Typo="Typo.h6">@GetLatestScanLabel()</MudText>
+                                    </div>
+                                </div>
+                            </ChildContent>
+                        </MudMenu>
                     </div>
                 }
             </div>

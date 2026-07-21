@@ -221,12 +221,29 @@ a {
 }
 
 .app-topbar__meta-card {
-    min-width: 11rem;
+    min-width: 9rem;
+    flex: 0 1 auto;
     background: rgba(255, 255, 255, 0.78);
 }
 
 .app-topbar__status {
     white-space: nowrap;
+}
+
+.app-topbar__meta--compact {
+    display: none;
+}
+
+.app-topbar__pill {
+    font-weight: 700;
+}
+
+.app-topbar__meta-popover {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    padding: 0.85rem 1rem;
+    min-width: 12rem;
 }
 
 .page-container {
@@ -340,7 +357,8 @@ a {
 .metric-value {
     display: block;
     margin-top: 0.5rem;
-    font-size: 1.95rem;
+    font-size: clamp(1.5rem, 5vw, 1.95rem);
+    font-variant-numeric: tabular-nums;
     font-weight: 750;
     letter-spacing: -0.03em;
 }
@@ -379,6 +397,17 @@ a {
     display: block;
     margin-top: 0.45rem;
     font-weight: 700;
+    overflow-wrap: anywhere;
+}
+
+.dug-chart {
+    min-height: 200px;
+    height: 280px;
+}
+
+.dug-chart .mud-chart {
+    width: 100%;
+    height: 100%;
 }
 
 .empty-state-panel {
@@ -443,7 +472,7 @@ a {
 }
 
 .runtime-containers-table .runtime-containers-table__update-state {
-    min-width: 18rem;
+    min-width: 0;
     white-space: normal;
 }
 
@@ -472,7 +501,8 @@ a {
 }
 
 .runtime-containers-table .runtime-containers-table__sparkline {
-    width: 9rem;
+    width: 100%;
+    max-width: 9rem;
     height: 1.9rem;
     margin-top: 0.35rem;
 }
@@ -529,16 +559,6 @@ a {
         margin-inline: 1rem;
     }
 
-    .app-topbar__content {
-        align-items: flex-start;
-        flex-direction: column;
-    }
-
-    .app-topbar__meta {
-        width: 100%;
-        justify-content: flex-start;
-    }
-
     .page-container {
         padding-inline: 1rem;
     }
@@ -548,7 +568,63 @@ a {
     }
 }
 
-@media (max-width: 600px) {
+@media (min-width: 1280px) {
+    .runtime-containers-table .runtime-containers-table__update-state {
+        min-width: 18rem;
+    }
+}
+
+@media (max-width: 959.98px) {
+    .section-table .mud-table-head {
+        display: none;
+    }
+
+    .section-table .mud-table-body .mud-table-row {
+        display: block;
+        margin-bottom: 0.75rem;
+        padding: 0.9rem 1rem;
+        background: var(--dug-surface-solid);
+        border: 1px solid var(--dug-border);
+        border-radius: var(--dug-radius-md);
+        box-shadow: var(--dug-shadow-card);
+    }
+
+    .section-table .mud-table-body .mud-table-cell {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 0.4rem 0;
+        border-bottom: none;
+    }
+
+    .section-table .mud-table-body .mud-table-cell::before {
+        color: var(--dug-text-faint);
+        font-size: 0.75rem;
+        font-weight: 600;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+    }
+
+    .section-table .mud-table-body .mud-table-cell:empty {
+        display: none;
+    }
+
+    .runtime-containers-table .runtime-containers-table__sparkline {
+        max-width: 100%;
+        height: 2.25rem;
+    }
+
+    .dug-chart {
+        height: 240px;
+    }
+
+    .dug-hide-md {
+        display: none !important;
+    }
+}
+
+@media (max-width: 599.98px) {
     .page-header {
         flex-direction: column;
         align-items: flex-start;
@@ -556,24 +632,28 @@ a {
 
     .app-topbar {
         margin: 1rem 0.75rem 0.5rem;
-        padding-inline: 1rem;
+        padding: 0.5rem 0.75rem;
     }
 
     .app-topbar__brand {
         gap: 0.75rem;
     }
 
+    .app-topbar__logo {
+        width: 2rem;
+        height: 2rem;
+    }
+
     .app-topbar__title {
-        font-size: 1.2rem;
+        font-size: 1.05rem;
     }
 
-    .app-topbar__meta {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+    .app-topbar__meta--full {
+        display: none;
     }
 
-    .app-topbar__meta-card {
-        min-width: 0;
+    .app-topbar__meta--compact {
+        display: block;
     }
 
     .page-container {
@@ -584,6 +664,20 @@ a {
     .empty-state-panel,
     .hero-panel {
         padding: 1.2rem;
+    }
+
+    .dug-chart {
+        height: 200px;
+    }
+
+    .dug-hide-sm {
+        display: none !important;
+    }
+}
+
+@media (max-width: 399.98px) {
+    .app-topbar__title {
+        display: none;
     }
 }
 

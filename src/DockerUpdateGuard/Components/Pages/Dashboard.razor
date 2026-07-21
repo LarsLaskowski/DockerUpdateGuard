@@ -30,7 +30,7 @@ else
         <MudGrid Spacing="2">
             @if (_showMyImages)
             {
-                <MudItem xs="12" sm="6" lg="4">
+                <MudItem xs="6" sm="6" lg="4">
                     <MudLink Href='@GetMetricNavigationTarget("My Images")' Underline="Underline.None" Class="metric-card-link">
                         <MudPaper Class="metric-card" Elevation="0">
                             <span class="metric-label">My Images</span>
@@ -39,7 +39,7 @@ else
                     </MudLink>
                 </MudItem>
             }
-            <MudItem xs="12" sm="6" lg="4">
+            <MudItem xs="6" sm="6" lg="4">
                 <MudLink Href='@GetMetricNavigationTarget("Observed Images")' Underline="Underline.None" Class="metric-card-link">
                     <MudPaper Class="metric-card" Elevation="0">
                         <span class="metric-label">Observed Images</span>
@@ -47,7 +47,7 @@ else
                     </MudPaper>
                 </MudLink>
             </MudItem>
-            <MudItem xs="12" sm="6" lg="4">
+            <MudItem xs="6" sm="6" lg="4">
                 <MudLink Href='@GetMetricNavigationTarget("Docker Instances")' Underline="Underline.None" Class="metric-card-link">
                     <MudPaper Class="metric-card" Elevation="0">
                         <span class="metric-label">Docker Instances</span>
@@ -55,7 +55,7 @@ else
                     </MudPaper>
                 </MudLink>
             </MudItem>
-            <MudItem xs="12" sm="6" lg="4">
+            <MudItem xs="6" sm="6" lg="4">
                 <MudLink Href='@GetMetricNavigationTarget("Runtime Containers")' Underline="Underline.None" Class="metric-card-link">
                     <MudPaper Class="metric-card" Elevation="0">
                         <span class="metric-label">Runtime Containers</span>
@@ -65,7 +65,7 @@ else
             </MudItem>
             @if (_dashboard.BaseImageCount > 0)
             {
-                <MudItem xs="12" sm="6" lg="4">
+                <MudItem xs="6" sm="6" lg="4">
                     <MudLink Href='@GetMetricNavigationTarget("Base Images")' Underline="Underline.None" Class="metric-card-link">
                         <MudPaper Class="metric-card" Elevation="0">
                             <span class="metric-label">Base Images</span>
@@ -74,13 +74,13 @@ else
                     </MudLink>
                 </MudItem>
             }
-            <MudItem xs="12" sm="6" lg="4">
+            <MudItem xs="6" sm="6" lg="4">
                 <MudPaper Class="metric-card metric-card--warning" Elevation="0">
                     <span class="metric-label">Update Findings</span>
                     <span class="metric-value">@_dashboard.ActiveUpdateFindingCount</span>
                 </MudPaper>
             </MudItem>
-            <MudItem xs="12" sm="6" lg="4">
+            <MudItem xs="6" sm="6" lg="4">
                 <MudPaper Class="metric-card metric-card--warning" Elevation="0">
                     <span class="metric-label">Own Base Runtime Warnings</span>
                     <span class="metric-value">@_dashboard.OwnImageBaseRuntimeWarningCount</span>
