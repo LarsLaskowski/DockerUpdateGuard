@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+
 using DockerUpdateGuard.UI;
 
 using Microsoft.AspNetCore.Components;
@@ -223,7 +225,7 @@ public sealed partial class MainLayout : LayoutComponentBase, IDisposable
 
             return result.Success ? result.Value : null;
         }
-        catch (InvalidOperationException)
+        catch (Exception ex) when (ex is InvalidOperationException or CryptographicException)
         {
             return null;
         }
@@ -309,10 +311,14 @@ public sealed partial class MainLayout : LayoutComponentBase, IDisposable
         }
 
         var storedPreference = await GetStoredDarkModePreferenceAsync().ConfigureAwait(false);
+        var isDarkMode = storedPreference ?? await _themeProvider.GetSystemDarkModeAsync().ConfigureAwait(false);
 
-        _isDarkMode = storedPreference ?? await _themeProvider.GetSystemDarkModeAsync().ConfigureAwait(false);
+        await InvokeAsync(() =>
+                          {
+                              _isDarkMode = isDarkMode;
 
-        StateHasChanged();
+                              StateHasChanged();
+                          }).ConfigureAwait(false);
     }
 
     #endregion // ComponentBase

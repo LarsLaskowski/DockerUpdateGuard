@@ -46,6 +46,7 @@
     --dug-text-muted: #94a3b8;
     --dug-text-faint: #64748b;
     --dug-shadow-card: 0 20px 45px rgba(0, 0, 0, 0.35);
+    --dug-shadow-hover: 0 24px 48px rgba(0, 0, 0, 0.45);
     --dug-bg-gradient:
         radial-gradient(circle at top left, rgba(59, 130, 246, 0.16), transparent 24rem),
         radial-gradient(circle at top right, rgba(14, 165, 233, 0.14), transparent 22rem),
