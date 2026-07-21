@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DockerUpdateGuard — Dashboard (desktop concept)</title>
+<style>
+:root {
+    --dug-primary: #2563eb;
+    --dug-primary-strong: #1d4ed8;
+    --dug-secondary: #0891b2;
+    --dug-bg-page: #f3f6fb;
+    --dug-surface: rgba(255, 255, 255, 0.82);
+    --dug-surface-solid: #ffffff;
+    --dug-border: rgba(148, 163, 184, 0.2);
+    --dug-text: #0f172a;
+    --dug-text-muted: #475569;
+    --dug-text-faint: #64748b;
+    --dug-success: #15803d;
+    --dug-warning: #b45309;
+    --dug-danger: #b91c1c;
+    --dug-sev-critical: #dc2626;
+    --dug-sev-high: #ea580c;
+    --dug-sev-medium: #0284c7;
+    --dug-sev-low: #15803d;
+    --dug-radius-lg: 1.5rem;
+    --dug-radius-md: 1rem;
+    --dug-shadow-card: 0 20px 45px rgba(15, 23, 42, 0.08);
+    --dug-shadow-hover: 0 24px 48px rgba(15, 23, 42, 0.14);
+    --dug-blur: blur(12px);
+}
+* { box-sizing: border-box; margin: 0; }
+body {
+    font-family: Inter, "Segoe UI", system-ui, Arial, sans-serif;
+    background:
+        radial-gradient(circle at 8% -5%, rgba(37, 99, 235, 0.12), transparent 38%),
+        radial-gradient(circle at 98% 0%, rgba(8, 145, 178, 0.10), transparent 35%),
+        var(--dug-bg-page);
+    color: var(--dug-text);
+    min-height: 100vh;
+    display: flex;
+    -webkit-font-smoothing: antialiased;
+}
+svg { display: block; }
+
+/* Drawer */
+.drawer {
+    width: 268px; flex: none; align-self: stretch;
+    background: linear-gradient(180deg, #0f172a, #172554);
+    color: #e2e8f0; padding: 1.5rem 1rem;
+    display: flex; flex-direction: column; gap: 0.35rem;
+}
+.drawer__brand { display: flex; align-items: center; gap: 0.6rem; padding: 0 0.5rem 1.25rem; }
+.drawer__logo { width: 2.2rem; height: 2.2rem; border-radius: 0.6rem; background: linear-gradient(135deg, var(--dug-primary), var(--dug-secondary)); display: grid; place-items: center; color: #fff; }
+.drawer__brand span { font-weight: 700; font-size: 1.05rem; }
+.drawer__eyebrow { font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.16em; color: #64748b; padding: 0.5rem 0.75rem 0.25rem; }
+.nav { display: flex; align-items: center; gap: 0.7rem; padding: 0.6rem 0.75rem; border-radius: 0.7rem; color: #cbd5e1; font-size: 0.9rem; }
+.nav svg { opacity: 0.85; }
+.nav--active { background: rgba(37, 99, 235, 0.22); color: #fff; font-weight: 600; }
+.drawer__footer { margin-top: auto; font-size: 0.72rem; color: #64748b; padding: 0.75rem; }
+
+/* Main */
+.main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.topbar {
+    position: sticky; top: 0; z-index: 10;
+    display: flex; align-items: center; gap: 1rem;
+    padding: 0.9rem 1.75rem;
+    background: rgba(255, 255, 255, 0.72);
+    backdrop-filter: var(--dug-blur);
+    border-bottom: 1px solid var(--dug-border);
+}
+.topbar__title { font-weight: 700; font-size: 1.15rem; }
+.topbar__meta { margin-left: auto; display: flex; gap: 0.75rem; }
+.meta-card {
+    min-width: 9rem; padding: 0.6rem 0.9rem;
+    background: var(--dug-surface-solid); border: 1px solid var(--dug-border);
+    border-radius: var(--dug-radius-md); box-shadow: var(--dug-shadow-card);
+}
+.meta-card span { display: block; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--dug-text-faint); }
+.meta-card strong { font-size: 1.15rem; font-variant-numeric: tabular-nums; }
+
+.content { padding: 1.75rem; max-width: 1600px; width: 100%; margin: 0 auto; display: grid; gap: 1.25rem; }
+.hero {
+    position: relative; overflow: hidden;
+    background: var(--dug-surface); backdrop-filter: var(--dug-blur);
+    border: 1px solid var(--dug-border); border-radius: var(--dug-radius-lg);
+    box-shadow: var(--dug-shadow-card); padding: 1.75rem 2rem;
+}
+.hero::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 3px; background: linear-gradient(90deg, var(--dug-primary), var(--dug-secondary)); }
+.eyebrow { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.14em; color: var(--dug-primary); }
+.hero h1 { font-size: 2.1rem; letter-spacing: -0.02em; margin-top: 0.2rem; }
+.hero p { color: var(--dug-text-muted); font-size: 1rem; margin-top: 0.4rem; }
+
+/* Metric tiles: 3-up on desktop */
+.metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
+.tile {
+    display: flex; flex-direction: column; gap: 0.7rem;
+    background: var(--dug-surface-solid); border: 1px solid var(--dug-border);
+    border-radius: var(--dug-radius-md); box-shadow: var(--dug-shadow-card);
+    padding: 1.1rem 1.2rem;
+    transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+.tile:hover { transform: translateY(-2px); box-shadow: var(--dug-shadow-hover); }
+.tile__head { display: flex; align-items: center; gap: 0.7rem; }
+.tile__icon {
+    width: 2.5rem; height: 2.5rem; border-radius: 0.75rem; display: grid; place-items: center; flex: none;
+    background: color-mix(in srgb, var(--dug-primary) 12%, transparent); color: var(--dug-primary);
+}
+.tile--warning .tile__icon { background: color-mix(in srgb, var(--dug-warning) 14%, transparent); color: var(--dug-warning); }
+.tile--danger .tile__icon { background: color-mix(in srgb, var(--dug-danger) 12%, transparent); color: var(--dug-danger); }
+.tile__label { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--dug-text-faint); }
+.tile__value { font-size: 2rem; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.chips { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.chip { font-size: 0.7rem; font-weight: 700; padding: 0.18rem 0.55rem; border-radius: 999px; color: #fff; }
+.chip--critical { background: var(--dug-sev-critical); }
+.chip--high { background: var(--dug-sev-high); }
+.chip--medium { background: var(--dug-sev-medium); }
+.chip--low { background: var(--dug-sev-low); }
+
+.section {
+    background: var(--dug-surface); backdrop-filter: var(--dug-blur);
+    border: 1px solid var(--dug-border); border-radius: var(--dug-radius-lg);
+    box-shadow: var(--dug-shadow-card); padding: 1.4rem 1.6rem;
+}
+.section h2 { font-size: 1.2rem; }
+.section > p { color: var(--dug-text-muted); font-size: 0.88rem; margin: 0.25rem 0 1rem; }
+table { width: 100%; border-collapse: collapse; }
+th { text-align: left; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--dug-text-faint); padding: 0.6rem 0.75rem; border-bottom: 1px solid var(--dug-border); }
+td { padding: 0.75rem; font-size: 0.9rem; border-bottom: 1px solid var(--dug-border); }
+tr:last-child td { border-bottom: none; }
+.status { font-size: 0.72rem; font-weight: 700; padding: 0.2rem 0.6rem; border-radius: 999px; }
+.status--ok { background: color-mix(in srgb, var(--dug-success) 14%, transparent); color: var(--dug-success); }
+.status--fail { background: color-mix(in srgb, var(--dug-danger) 12%, transparent); color: var(--dug-danger); }
+</style>
+</head>
+<body>
+
+<aside class="drawer">
+    <div class="drawer__brand">
+        <span class="drawer__logo"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5l-8-3z"/></svg></span>
+        <span>DockerUpdateGuard</span>
+    </div>
+    <div class="drawer__eyebrow">Workspace</div>
+    <div class="nav nav--active"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg> Dashboard</div>
+    <div class="nav"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/></svg> Observed Images</div>
+    <div class="nav"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M9 9h6v6H9z"/></svg> Runtime Containers</div>
+    <div class="nav"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/></svg> Docker Instances</div>
+    <div class="nav"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 7V5a4 4 0 0 1 8 0v2M3 13h3m12 0h3"/><rect x="7" y="7" width="10" height="12" rx="5"/></svg> Vulnerabilities</div>
+    <div class="nav"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg> Scan History</div>
+    <div class="drawer__footer">Version 1.4.0</div>
+</aside>
+
+<div class="main">
+    <header class="topbar">
+        <span class="topbar__title">Dashboard</span>
+        <div class="topbar__meta">
+            <div class="meta-card"><span>Protected assets</span><strong>42</strong></div>
+            <div class="meta-card"><span>Last activity</span><strong>09:41</strong></div>
+        </div>
+    </header>
+
+    <main class="content">
+        <section class="hero">
+            <span class="eyebrow">Operations cockpit</span>
+            <h1>Dashboard</h1>
+            <p>Track image freshness, runtime drift, and vulnerability posture from one place.</p>
+        </section>
+
+        <div class="metrics">
+            <div class="tile">
+                <div class="tile__head">
+                    <span class="tile__icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3 3 8l9 5 9-5-9-5zM3 12l9 5 9-5M3 16l9 5 9-5"/></svg></span>
+                    <span class="tile__label">Observed Images</span>
+                </div>
+                <span class="tile__value">18</span>
+            </div>
+            <div class="tile">
+                <div class="tile__head">
+                    <span class="tile__icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/></svg></span>
+                    <span class="tile__label">Docker Instances</span>
+                </div>
+                <span class="tile__value">3</span>
+            </div>
+            <div class="tile">
+                <div class="tile__head">
+                    <span class="tile__icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M9 9h6v6H9z"/></svg></span>
+                    <span class="tile__label">Runtime Containers</span>
+                </div>
+                <span class="tile__value">24</span>
+            </div>
+            <div class="tile tile--warning">
+                <div class="tile__head">
+                    <span class="tile__icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg></span>
+                    <span class="tile__label">Update Findings</span>
+                </div>
+                <span class="tile__value">5</span>
+            </div>
+            <div class="tile tile--warning">
+                <div class="tile__head">
+                    <span class="tile__icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 8v4l3 2M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v5h-5"/></svg></span>
+                    <span class="tile__label">Own Base Runtime Warnings</span>
+                </div>
+                <span class="tile__value">2</span>
+            </div>
+            <div class="tile tile--danger">
+                <div class="tile__head">
+                    <span class="tile__icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 7V5a4 4 0 0 1 8 0v2M3 13h3m12 0h3M5 20l2-2m10 2-2-2"/><rect x="7" y="7" width="10" height="12" rx="5"/></svg></span>
+                    <span class="tile__label">Vulnerabilities</span>
+                </div>
+                <span class="tile__value">31</span>
+                <div class="chips">
+                    <span class="chip chip--critical">2 critical</span>
+                    <span class="chip chip--high">7 high</span>
+                    <span class="chip chip--medium">14 medium</span>
+                    <span class="chip chip--low">8 low</span>
+                </div>
+            </div>
+        </div>
+
+        <section class="section">
+            <h2>Recent scans</h2>
+            <p>Latest activity across discovery, refresh, and cleanup jobs.</p>
+            <table>
+                <thead><tr><th>Type</th><th>Status</th><th>Target</th><th>Started</th><th>Error</th></tr></thead>
+                <tbody>
+                    <tr><td>Runtime refresh</td><td><span class="status status--ok">Succeeded</span></td><td>prod-swarm-01</td><td>20.07.2026 09:41</td><td></td></tr>
+                    <tr><td>Vulnerability refresh</td><td><span class="status status--ok">Succeeded</span></td><td>nginx:1.27</td><td>20.07.2026 08:15</td><td></td></tr>
+                    <tr><td>Discovery</td><td><span class="status status--fail">Failed</span></td><td>edge-node-03</td><td>20.07.2026 07:02</td><td>Connection refused</td></tr>
+                    <tr><td>Cleanup</td><td><span class="status status--ok">Succeeded</span></td><td>—</td><td>20.07.2026 00:00</td><td></td></tr>
+                </tbody>
+            </table>
+        </section>
+    </main>
+</div>
+
+</body>
+</html>
