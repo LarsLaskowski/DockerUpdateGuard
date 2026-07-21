@@ -7,11 +7,25 @@ using MudBlazor;
 namespace DockerUpdateGuard.Components.Pages;
 
 /// <summary>
-    /// Base images page
+/// Base images page
 /// </summary>
-public partial class SharedBaseImages
+public sealed partial class SharedBaseImages : IDisposable
 {
+    #region Constants
+
+    /// <summary>
+    /// Persistent-state key for the prerendered base-image list
+    /// </summary>
+    private const string BaseImagesStateKey = "BaseImages.List";
+
+    #endregion // Constants
+
     #region Fields
+
+    /// <summary>
+    /// Persisting-state subscription used to hand the prerendered data to the interactive render
+    /// </summary>
+    private PersistingComponentStateSubscription _persistingSubscription;
 
     /// <summary>
     /// Base-image items
@@ -27,6 +41,12 @@ public partial class SharedBaseImages
     /// </summary>
     [Inject]
     public IApplicationViewService ViewService { get; set; } = null!;
+
+    /// <summary>
+    /// Persistent component state used to reuse the prerendered data on the interactive render
+    /// </summary>
+    [Inject]
+    public PersistentComponentState PersistentState { get; set; } = null!;
 
     #endregion // Properties
 
@@ -50,11 +70,39 @@ public partial class SharedBaseImages
 
     #endregion // Static methods
 
+    #region Methods
+
+    /// <summary>
+    /// Persist the current base-image list so the interactive render can reuse the prerendered data
+    /// </summary>
+    /// <returns>Task</returns>
+    private Task PersistItems()
+    {
+        if (_items is not null)
+        {
+            PersistentState.PersistAsJson(BaseImagesStateKey, _items);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    #endregion // Methods
+
     #region ComponentBase
 
     /// <inheritdoc/>
     protected override async Task OnInitializedAsync()
     {
+        _persistingSubscription = PersistentState.RegisterOnPersisting(PersistItems);
+
+        if (PersistentState.TryTakeFromJson<IReadOnlyList<SharedBaseImageListItemData>>(BaseImagesStateKey, out var restoredItems)
+            && restoredItems is not null)
+        {
+            _items = restoredItems;
+
+            return;
+        }
+
         var items = await ViewService.GetBaseImagesAsync()
                                      .ConfigureAwait(false);
 
@@ -65,4 +113,14 @@ public partial class SharedBaseImages
     }
 
     #endregion // ComponentBase
+
+    #region IDisposable
+
+    /// <inheritdoc/>
+    public void Dispose()
+    {
+        _persistingSubscription.Dispose();
+    }
+
+    #endregion // IDisposable
 }

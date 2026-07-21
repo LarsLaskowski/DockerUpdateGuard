@@ -14,9 +14,14 @@ namespace DockerUpdateGuard.Components.Pages;
 /// <summary>
 /// Runtime containers page
 /// </summary>
-public partial class RuntimeContainers
+public sealed partial class RuntimeContainers : IDisposable
 {
     #region Const fields
+
+    /// <summary>
+    /// Persistent-state key for the prerendered runtime-container list
+    /// </summary>
+    private const string RuntimeContainersStateKey = "RuntimeContainers.List";
 
     /// <summary>
     /// Sparkline width
@@ -36,6 +41,11 @@ public partial class RuntimeContainers
     #endregion // Const fields
 
     #region Fields
+
+    /// <summary>
+    /// Persisting-state subscription used to hand the prerendered data to the interactive render
+    /// </summary>
+    private PersistingComponentStateSubscription _persistingSubscription;
 
     /// <summary>
     /// Runtime-container list
@@ -73,6 +83,12 @@ public partial class RuntimeContainers
     /// </summary>
     [Inject]
     public DashboardRefreshState DashboardRefreshState { get; set; } = null!;
+
+    /// <summary>
+    /// Persistent component state used to reuse the prerendered data on the interactive render
+    /// </summary>
+    [Inject]
+    public PersistentComponentState PersistentState { get; set; } = null!;
 
     #endregion // Properties
 
@@ -332,6 +348,20 @@ public partial class RuntimeContainers
     }
 
     /// <summary>
+    /// Persist the current runtime-container list so the interactive render can reuse the prerendered data
+    /// </summary>
+    /// <returns>Task</returns>
+    private Task PersistContainers()
+    {
+        if (_containers is not null)
+        {
+            PersistentState.PersistAsJson(RuntimeContainersStateKey, _containers);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
     /// Trigger a manual update check for the currently used runtime images
     /// </summary>
     /// <returns>Task</returns>
@@ -375,8 +405,28 @@ public partial class RuntimeContainers
     /// <inheritdoc/>
     protected override async Task OnInitializedAsync()
     {
+        _persistingSubscription = PersistentState.RegisterOnPersisting(PersistContainers);
+
+        if (PersistentState.TryTakeFromJson<IReadOnlyList<RuntimeContainerListItemData>>(RuntimeContainersStateKey, out var restoredContainers)
+            && restoredContainers is not null)
+        {
+            _containers = restoredContainers;
+
+            return;
+        }
+
         await LoadAsync().ConfigureAwait(false);
     }
 
     #endregion // ComponentBase
+
+    #region IDisposable
+
+    /// <inheritdoc/>
+    public void Dispose()
+    {
+        _persistingSubscription.Dispose();
+    }
+
+    #endregion // IDisposable
 }

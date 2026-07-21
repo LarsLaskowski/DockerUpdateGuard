@@ -1,0 +1,10 @@
+<MudPaper Class="section-paper" Elevation="0">
+    @if (Title is not null)
+    {
+        <MudSkeleton Width="30%" Height="28px" Class="mb-3" />
+    }
+    @for (var index = 0; index < Rows; index++)
+    {
+        <MudSkeleton Height="48px" Animation="Animation.Wave" Class="mb-2" />
+    }
+</MudPaper>

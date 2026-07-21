@@ -38,9 +38,7 @@
 
     @if (_scans is null)
     {
-        <MudPaper Class="empty-state-panel" Elevation="0">
-            <MudText>Loading scan history...</MudText>
-        </MudPaper>
+        <TableSkeleton Title="Recent and historical scans" />
     }
     else if (_scans.Count == 0)
     {

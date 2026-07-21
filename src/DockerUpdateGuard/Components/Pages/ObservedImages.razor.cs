@@ -12,14 +12,28 @@ namespace DockerUpdateGuard.Components.Pages;
 /// <summary>
 /// Observed images page
 /// </summary>
-public partial class ObservedImages
+public sealed partial class ObservedImages : IDisposable
 {
+    #region Constants
+
+    /// <summary>
+    /// Persistent-state key for the prerendered manual observed-image list
+    /// </summary>
+    private const string ObservedImagesStateKey = "ObservedImages.List";
+
+    #endregion // Constants
+
     #region Fields
 
     /// <summary>
     /// Observed-image registration request
     /// </summary>
     private readonly ObservedImageRegistrationRequest _request = new();
+
+    /// <summary>
+    /// Persisting-state subscription used to hand the prerendered data to the interactive render
+    /// </summary>
+    private PersistingComponentStateSubscription _persistingSubscription;
 
     /// <summary>
     /// Current error message
@@ -69,6 +83,12 @@ public partial class ObservedImages
     /// </summary>
     [Inject]
     public DashboardRefreshState DashboardRefreshState { get; set; } = null!;
+
+    /// <summary>
+    /// Persistent component state used to reuse the prerendered data on the interactive render
+    /// </summary>
+    [Inject]
+    public PersistentComponentState PersistentState { get; set; } = null!;
 
     #endregion // Properties
 
@@ -132,6 +152,20 @@ public partial class ObservedImages
     }
 
     /// <summary>
+    /// Persist the current image list so the interactive render can reuse the prerendered data
+    /// </summary>
+    /// <returns>Task</returns>
+    private Task PersistImages()
+    {
+        if (_images is not null)
+        {
+            PersistentState.PersistAsJson(ObservedImagesStateKey, _images);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
     /// Register a new observed image and start a scan
     /// </summary>
     /// <returns>Task</returns>
@@ -180,8 +214,28 @@ public partial class ObservedImages
     /// <inheritdoc/>
     protected override async Task OnInitializedAsync()
     {
+        _persistingSubscription = PersistentState.RegisterOnPersisting(PersistImages);
+
+        if (PersistentState.TryTakeFromJson<IReadOnlyList<ObservedImageListItemData>>(ObservedImagesStateKey, out var restoredImages)
+            && restoredImages is not null)
+        {
+            _images = restoredImages;
+
+            return;
+        }
+
         await LoadAsync().ConfigureAwait(false);
     }
 
     #endregion // ComponentBase
+
+    #region IDisposable
+
+    /// <inheritdoc/>
+    public void Dispose()
+    {
+        _persistingSubscription.Dispose();
+    }
+
+    #endregion // IDisposable
 }

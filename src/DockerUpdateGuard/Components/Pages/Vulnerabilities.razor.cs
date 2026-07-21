@@ -9,7 +9,7 @@ namespace DockerUpdateGuard.Components.Pages;
 /// <summary>
 /// Fleet-wide vulnerability overview page
 /// </summary>
-public partial class Vulnerabilities
+public sealed partial class Vulnerabilities : IDisposable
 {
     #region Constants
 
@@ -17,6 +17,11 @@ public partial class Vulnerabilities
     /// Severity filter value that matches every severity
     /// </summary>
     private const string AllSeveritiesFilterValue = "All";
+
+    /// <summary>
+    /// Persistent-state key for the prerendered vulnerability overview
+    /// </summary>
+    private const string VulnerabilityStateKey = "Vulnerabilities.Overview";
 
     #endregion // Constants
 
@@ -36,6 +41,11 @@ public partial class Vulnerabilities
     /// Advisory identifiers whose affected-images row is currently expanded
     /// </summary>
     private readonly HashSet<string> _expandedAdvisoryIds = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Persisting-state subscription used to hand the prerendered data to the interactive render
+    /// </summary>
+    private PersistingComponentStateSubscription _persistingSubscription;
 
     /// <summary>
     /// Vulnerability overview items
@@ -61,6 +71,12 @@ public partial class Vulnerabilities
     /// </summary>
     [Inject]
     public IApplicationViewService ViewService { get; set; } = null!;
+
+    /// <summary>
+    /// Persistent component state used to reuse the prerendered data on the interactive render
+    /// </summary>
+    [Inject]
+    public PersistentComponentState PersistentState { get; set; } = null!;
 
     /// <summary>
     /// Available severity filter values
@@ -152,6 +168,20 @@ public partial class Vulnerabilities
         }
     }
 
+    /// <summary>
+    /// Persist the current vulnerability overview so the interactive render can reuse the prerendered data
+    /// </summary>
+    /// <returns>Task</returns>
+    private Task PersistItems()
+    {
+        if (_items is not null)
+        {
+            PersistentState.PersistAsJson(VulnerabilityStateKey, _items);
+        }
+
+        return Task.CompletedTask;
+    }
+
     #endregion // Methods
 
     #region ComponentBase
@@ -159,6 +189,16 @@ public partial class Vulnerabilities
     /// <inheritdoc/>
     protected override async Task OnInitializedAsync()
     {
+        _persistingSubscription = PersistentState.RegisterOnPersisting(PersistItems);
+
+        if (PersistentState.TryTakeFromJson<IReadOnlyList<VulnerabilityOverviewItemData>>(VulnerabilityStateKey, out var restoredItems)
+            && restoredItems is not null)
+        {
+            _items = restoredItems;
+
+            return;
+        }
+
         var items = await ViewService.GetVulnerabilityOverviewAsync()
                                      .ConfigureAwait(false);
 
@@ -169,4 +209,14 @@ public partial class Vulnerabilities
     }
 
     #endregion // ComponentBase
+
+    #region IDisposable
+
+    /// <inheritdoc/>
+    public void Dispose()
+    {
+        _persistingSubscription.Dispose();
+    }
+
+    #endregion // IDisposable
 }

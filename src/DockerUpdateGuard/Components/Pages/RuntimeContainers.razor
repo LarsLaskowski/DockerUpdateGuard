@@ -35,9 +35,7 @@
 
     @if (_containers is null)
     {
-        <MudPaper Class="empty-state-panel" Elevation="0">
-            <MudText>Loading runtime containers...</MudText>
-        </MudPaper>
+        <TableSkeleton Title="Container inventory" />
     }
     else if (_containers.Count == 0)
     {

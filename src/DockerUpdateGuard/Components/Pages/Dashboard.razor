@@ -4,13 +4,10 @@
 
 @if (_dashboard is null)
 {
-    <MudPaper Class="hero-panel">
-        <MudStack Spacing="1">
-            <MudText Typo="Typo.overline" Class="section-eyebrow">Operations cockpit</MudText>
-            <MudText Typo="Typo.h3">Dashboard</MudText>
-            <MudText Class="hero-description">Loading dashboard data...</MudText>
-        </MudStack>
-    </MudPaper>
+    <MudStack Spacing="3" Class="page-shell">
+        <PageHeaderSkeleton />
+        <MetricGridSkeleton />
+    </MudStack>
 }
 else
 {

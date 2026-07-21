@@ -73,9 +73,10 @@
 
         @if (_images is null)
         {
-            <MudPaper Class="empty-state-panel" Elevation="0">
-                <MudText>Loading manual images...</MudText>
-            </MudPaper>
+            @for (var index = 0; index < 5; index++)
+            {
+                <MudSkeleton Height="48px" Animation="Animation.Wave" Class="mb-2" />
+            }
         }
         else if (_images.Count == 0)
         {
