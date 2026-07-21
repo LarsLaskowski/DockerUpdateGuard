@@ -72,6 +72,26 @@ public class MainLayoutRenderTests
     }
 
     /// <summary>
+    /// Verify toggling the dark-mode button applies the dark layout class
+    /// </summary>
+    [TestMethod]
+    public void MainLayoutTogglingDarkModeButtonAppliesDarkLayoutClass()
+    {
+        var testContext = CreateContext(dashboardSummary: null);
+
+        using (testContext)
+        {
+            var component = testContext.RenderComponent<MainLayout>(parameters => parameters.Add(layout => layout.Body, string.Empty));
+
+            Assert.DoesNotContain("dug-dark", component.Markup, "The layout must start in light mode when no preference is stored and the system reports light mode");
+
+            component.Find(".app-topbar__theme-toggle").Click();
+
+            Assert.Contains("dug-dark", component.Markup, "Toggling the dark-mode button must apply the dark layout class");
+        }
+    }
+
+    /// <summary>
     /// Create a bUnit test context wired up with the services required to render the layout
     /// </summary>
     /// <param name="dashboardSummary">Dashboard summary returned by the view service, or null to keep the loading state</param>

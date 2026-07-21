@@ -131,5 +131,36 @@ public class VulnerabilitiesTests
         }
     }
 
+    /// <summary>
+    /// Verify a critical advisory row carries the severity-rail CSS class
+    /// </summary>
+    [TestMethod]
+    public void VulnerabilitiesCriticalAdvisoryRendersSeverityRailClass()
+    {
+        var testContext = BlazorTestContextFactory.Create();
+
+        using (testContext)
+        {
+            var viewService = Substitute.For<IApplicationViewService>();
+
+            viewService.GetVulnerabilityOverviewAsync(Arg.Any<CancellationToken>())
+                       .Returns(new List<VulnerabilityOverviewItemData>
+                                {
+                                    new()
+                                    {
+                                        AdvisoryId = "CVE-2026-7004",
+                                        Title = "Critical rail advisory",
+                                        Severity = "Critical",
+                                    }
+                                });
+
+            testContext.Services.AddSingleton(viewService);
+
+            var component = testContext.RenderComponent<VulnerabilitiesPage>();
+
+            Assert.Contains("dug-rail-critical", component.Markup, "A critical advisory row must carry the severity-rail CSS class");
+        }
+    }
+
     #endregion // Methods
 }

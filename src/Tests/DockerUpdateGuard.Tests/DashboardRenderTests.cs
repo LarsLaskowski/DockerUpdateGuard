@@ -68,6 +68,7 @@ public class DashboardRenderTests
             Assert.Contains("Base Images", markup, "The Base Images tile must render when base images exist");
             Assert.Contains("Observed Images", markup, "The Observed Images metric tile must render");
             Assert.Contains("metric-value", markup, "The number metric tiles must render their values");
+            Assert.Contains("metric-card__icon", markup, "The metric tiles must render an icon badge");
         }
     }
 

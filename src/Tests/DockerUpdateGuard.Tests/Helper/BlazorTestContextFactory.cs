@@ -1,6 +1,8 @@
 using Bunit;
 using Bunit.TestDoubles;
 
+using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.DependencyInjection;
 
 using MudBlazor.Services;
@@ -28,6 +30,8 @@ internal static class BlazorTestContextFactory
         var persistentState = testContext.AddFakePersistentComponentState();
 
         testContext.Services.AddSingleton(persistentState);
+        testContext.Services.AddSingleton<IDataProtectionProvider>(new EphemeralDataProtectionProvider());
+        testContext.Services.AddScoped<ProtectedLocalStorage>();
 
         return testContext;
     }

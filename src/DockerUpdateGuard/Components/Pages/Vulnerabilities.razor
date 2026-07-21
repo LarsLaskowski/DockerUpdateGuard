@@ -30,22 +30,32 @@
                 <MudText Typo="Typo.h5">Active advisories</MudText>
                 <MudText Class="section-description">One row per CVE, sorted by severity, CVSS score, and the number of affected images.</MudText>
             </div>
-            <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center" Class="mb-2">
-                <MudTextField T="string"
-                              @bind-Value="_searchText"
-                              Immediate="true"
-                              Placeholder="Filter by advisory, package, or title"
-                              Adornment="Adornment.Start"
-                              AdornmentIcon="@Icons.Material.Filled.Search"
-                              Clearable="true" />
-                <MudSelect T="string" @bind-Value="_severityFilter" Label="Severity">
-                    @foreach (var severity in SeverityFilterOptions)
-                    {
-                        <MudSelectItem Value="@severity">@severity</MudSelectItem>
-                    }
-                </MudSelect>
-            </MudStack>
-            <MudTable Items="filteredItems" Hover="true" Dense="false" Breakpoint="Breakpoint.Md" Class="section-table" RowsPerPage="25">
+            <MudGrid Spacing="2" Class="mb-2">
+                <MudItem xs="12" sm="6" md="4">
+                    <MudTextField T="string"
+                                  @bind-Value="_searchText"
+                                  Immediate="true"
+                                  Placeholder="Filter by advisory, package, or title"
+                                  Adornment="Adornment.Start"
+                                  AdornmentIcon="@Icons.Material.Filled.Search"
+                                  Clearable="true" />
+                </MudItem>
+                <MudItem xs="12" sm="6" md="4">
+                    <MudSelect T="string" @bind-Value="_severityFilter" Label="Severity">
+                        @foreach (var severity in SeverityFilterOptions)
+                        {
+                            <MudSelectItem Value="@severity">@severity</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+            </MudGrid>
+            <MudTable Items="filteredItems"
+                      Hover="true"
+                      Dense="false"
+                      Breakpoint="Breakpoint.Md"
+                      Class="section-table"
+                      RowsPerPage="25"
+                      RowClassFunc="@((item, index) => GetSeverityRailClass(item.Severity))">
                 <HeaderContent>
                     <MudTh />
                     <MudTh>Advisory</MudTh>
