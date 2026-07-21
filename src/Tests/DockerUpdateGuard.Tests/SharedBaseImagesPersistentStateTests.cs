@@ -86,7 +86,8 @@ public class SharedBaseImagesPersistentStateTests
             testContext.Services.AddSingleton(viewService);
 
             var persistentState = testContext.GetPersistentComponentState();
-            var component = testContext.RenderComponent<SharedBaseImages>();
+
+            testContext.RenderComponent<SharedBaseImages>();
 
             persistentState.TriggerOnPersisting();
 

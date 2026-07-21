@@ -107,8 +107,9 @@ public class RuntimeContainerDetailPersistentStateTests
             RegisterServices(testContext, viewService);
 
             var persistentState = testContext.GetPersistentComponentState();
-            var component = testContext.RenderComponent<RuntimeContainerDetail>(parameters => parameters.Add(page => page.DockerInstanceId, dockerInstanceId)
-                                                                                                        .Add(page => page.ContainerId, ContainerId));
+
+            testContext.RenderComponent<RuntimeContainerDetail>(parameters => parameters.Add(page => page.DockerInstanceId, dockerInstanceId)
+                                                                                        .Add(page => page.ContainerId, ContainerId));
 
             persistentState.TriggerOnPersisting();
 

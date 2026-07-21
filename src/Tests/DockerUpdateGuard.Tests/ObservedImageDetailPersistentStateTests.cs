@@ -96,7 +96,8 @@ public class ObservedImageDetailPersistentStateTests
             testContext.Services.AddSingleton(viewService);
 
             var persistentState = testContext.GetPersistentComponentState();
-            var component = testContext.RenderComponent<ObservedImageDetail>(parameters => parameters.Add(page => page.ObservedImageId, observedImageId));
+
+            testContext.RenderComponent<ObservedImageDetail>(parameters => parameters.Add(page => page.ObservedImageId, observedImageId));
 
             persistentState.TriggerOnPersisting();
 

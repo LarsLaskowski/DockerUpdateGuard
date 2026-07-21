@@ -83,7 +83,8 @@ public class DockerInstanceDetailPersistentStateTests
             testContext.Services.AddSingleton(viewService);
 
             var persistentState = testContext.GetPersistentComponentState();
-            var component = testContext.RenderComponent<DockerInstanceDetail>(parameters => parameters.Add(page => page.DockerInstanceId, instanceId));
+
+            testContext.RenderComponent<DockerInstanceDetail>(parameters => parameters.Add(page => page.DockerInstanceId, instanceId));
 
             persistentState.TriggerOnPersisting();
 

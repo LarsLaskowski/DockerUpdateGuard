@@ -94,7 +94,8 @@ public class ScanHistoryPersistentStateTests
             RegisterServices(testContext, viewService);
 
             var persistentState = testContext.GetPersistentComponentState();
-            var component = testContext.RenderComponent<ScanHistory>();
+
+            testContext.RenderComponent<ScanHistory>();
 
             persistentState.TriggerOnPersisting();
 

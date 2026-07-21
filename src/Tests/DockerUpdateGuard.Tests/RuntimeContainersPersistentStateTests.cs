@@ -92,7 +92,8 @@ public class RuntimeContainersPersistentStateTests
             RegisterServices(testContext, viewService);
 
             var persistentState = testContext.GetPersistentComponentState();
-            var component = testContext.RenderComponent<RuntimeContainers>();
+
+            testContext.RenderComponent<RuntimeContainers>();
 
             persistentState.TriggerOnPersisting();
 

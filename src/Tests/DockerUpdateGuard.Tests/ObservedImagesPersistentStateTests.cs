@@ -88,7 +88,8 @@ public class ObservedImagesPersistentStateTests
             RegisterServices(testContext, viewService);
 
             var persistentState = testContext.GetPersistentComponentState();
-            var component = testContext.RenderComponent<ObservedImages>();
+
+            testContext.RenderComponent<ObservedImages>();
 
             persistentState.TriggerOnPersisting();
 
