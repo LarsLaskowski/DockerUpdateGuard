@@ -75,7 +75,8 @@
                                               ChartSeries="@ResourceUsageChartBuilder.GetCpuSeries(_singleInstanceDetail.ResourceUsageHistory)"
                                               ChartLabels="@ResourceUsageChartBuilder.GetChartLabels(_singleInstanceDetail.ResourceUsageHistory, 5)"
                                               Height="100%"
-                                              Width="100%" />
+                                              Width="100%"
+                                              MatchBoundsToSize="true" />
                                 </div>
                             </MudPaper>
                         </MudItem>
@@ -87,7 +88,8 @@
                                               ChartSeries="@ResourceUsageChartBuilder.GetMemorySeries(_singleInstanceDetail.ResourceUsageHistory)"
                                               ChartLabels="@ResourceUsageChartBuilder.GetChartLabels(_singleInstanceDetail.ResourceUsageHistory, 5)"
                                               Height="100%"
-                                              Width="100%" />
+                                              Width="100%"
+                                              MatchBoundsToSize="true" />
                                 </div>
                             </MudPaper>
                         </MudItem>
@@ -99,7 +101,8 @@
                                               ChartSeries="@ResourceUsageChartBuilder.GetNetworkSeries(_singleInstanceDetail.ResourceUsageHistory)"
                                               ChartLabels="@ResourceUsageChartBuilder.GetChartLabels(_singleInstanceDetail.ResourceUsageHistory, 8)"
                                               Height="100%"
-                                              Width="100%" />
+                                              Width="100%"
+                                              MatchBoundsToSize="true" />
                                 </div>
                             </MudPaper>
                         </MudItem>
