@@ -151,5 +151,115 @@ public class LiveImageInventoryQueryServiceTests
         }
     }
 
+    /// <summary>
+    /// Verify snapshots without a runtime scan run fall back to the latest snapshot per container
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task LiveImageInventoryQueryServiceFallsBackToLatestSnapshotPerContainerWithoutRuntimeScanAsync()
+    {
+        using (var database = new SqliteTestDatabase())
+        {
+            var dbContext = database.CreateDbContext();
+
+            await using (dbContext.ConfigureAwait(false))
+            {
+                var repository = new RegistryRepository
+                                 {
+                                     Registry = "docker.io",
+                                     Repository = "company/worker"
+                                 };
+                var olderVersion = new ImageVersion
+                                   {
+                                       RegistryRepository = repository,
+                                       Tag = "latest",
+                                       Digest = "sha256:older"
+                                   };
+                var newerVersion = new ImageVersion
+                                   {
+                                       RegistryRepository = repository,
+                                       Tag = "latest",
+                                       Digest = "sha256:newer"
+                                   };
+                var dockerInstance = new DockerInstance
+                                     {
+                                         Name = "Production",
+                                         EndpointUri = "https://docker.example.test",
+                                         ConnectionKind = DockerConnectionKind.Https
+                                     };
+                var olderSnapshot = new ContainerSnapshot
+                                    {
+                                        DockerInstance = dockerInstance,
+                                        ImageVersion = olderVersion,
+                                        ContainerId = "container-1",
+                                        Name = "worker",
+                                        RecordedAtUtc = DateTimeOffset.UtcNow.AddHours(-1)
+                                    };
+                var newerSnapshot = new ContainerSnapshot
+                                    {
+                                        DockerInstance = dockerInstance,
+                                        ImageVersion = newerVersion,
+                                        ContainerId = "container-1",
+                                        Name = "worker",
+                                        RecordedAtUtc = DateTimeOffset.UtcNow
+                                    };
+
+                dbContext.AddRange(olderVersion,
+                                   newerVersion,
+                                   dockerInstance,
+                                   olderSnapshot,
+                                   newerSnapshot);
+
+                await dbContext.SaveChangesAsync(TestContext.CancellationToken).ConfigureAwait(false);
+
+                var queryService = new LiveImageInventoryQueryService(dbContext);
+
+                var liveImageVersionIds = await queryService.GetLiveImageVersionIdsAsync(TestContext.CancellationToken).ConfigureAwait(false);
+
+                Assert.Contains(id => id == newerVersion.Id, liveImageVersionIds, "Without a runtime scan run the newest snapshot per container must be live");
+                Assert.DoesNotContain(id => id == olderVersion.Id, liveImageVersionIds, "An older snapshot of the same container must not be live");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Verify the live inventory is empty when no image versions are observed or running
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task LiveImageInventoryQueryServiceReturnsEmptyWhenNothingObservedOrRunningAsync()
+    {
+        using (var database = new SqliteTestDatabase())
+        {
+            var dbContext = database.CreateDbContext();
+
+            await using (dbContext.ConfigureAwait(false))
+            {
+                var orphanRepository = new RegistryRepository
+                                       {
+                                           Registry = "docker.io",
+                                           Repository = "company/orphan"
+                                       };
+                var orphanVersion = new ImageVersion
+                                    {
+                                        RegistryRepository = orphanRepository,
+                                        Tag = "latest",
+                                        Digest = "sha256:orphan"
+                                    };
+
+                dbContext.Add(orphanVersion);
+
+                await dbContext.SaveChangesAsync(TestContext.CancellationToken).ConfigureAwait(false);
+
+                var queryService = new LiveImageInventoryQueryService(dbContext);
+
+                var liveImageVersionIds = await queryService.GetLiveImageVersionIdsAsync(TestContext.CancellationToken).ConfigureAwait(false);
+
+                Assert.IsEmpty(liveImageVersionIds,
+                               "An image version that is neither observed, running, nor a base image must not appear in the live inventory");
+            }
+        }
+    }
+
     #endregion // Methods
 }

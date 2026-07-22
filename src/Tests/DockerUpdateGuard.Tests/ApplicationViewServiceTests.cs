@@ -2357,5 +2357,85 @@ public class ApplicationViewServiceTests
         }
     }
 
+    /// <summary>
+    /// Verify collapsing duplicate affected images prefers the discovery-owned image as the representative
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task ApplicationViewServiceVulnerabilityOverviewPrefersOwnImageWhenCollapsingDuplicatesAsync()
+    {
+        var options = new DbContextOptionsBuilder<DockerUpdateGuardDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString())
+                                                                               .Options;
+
+        var dbContext = new DockerUpdateGuardDbContext(options);
+
+        await using (dbContext.ConfigureAwait(false))
+        {
+            var imageCatalogRepository = new ImageCatalogRepository(dbContext);
+            var manualVersion = await imageCatalogRepository.GetOrCreateImageVersionAsync("docker.io",
+                                                                                          "networlddev/dockerupdateguard",
+                                                                                          "latest",
+                                                                                          "sha256:manual",
+                                                                                          cancellationToken: CancellationToken.None)
+                                                            .ConfigureAwait(false);
+            var ownVersion = await imageCatalogRepository.GetOrCreateImageVersionAsync("docker.io",
+                                                                                       "networlddev/dockerupdateguard",
+                                                                                       "latest",
+                                                                                       "sha256:own",
+                                                                                       cancellationToken: CancellationToken.None)
+                                                         .ConfigureAwait(false);
+            var manualObservedImage = new ObservedImage
+                                      {
+                                          Name = "Manual Docker Update Guard",
+                                          CurrentImageVersionId = manualVersion.Id,
+                                          Source = RegistrationSource.Manual,
+                                      };
+            var ownObservedImage = new ObservedImage
+                                   {
+                                       Name = "Own Docker Update Guard",
+                                       CurrentImageVersionId = ownVersion.Id,
+                                       Source = RegistrationSource.Discovery,
+                                   };
+
+            dbContext.ObservedImages.AddRange(manualObservedImage, ownObservedImage);
+            dbContext.VulnerabilityFindings.Add(new VulnerabilityFinding
+                                                {
+                                                    ImageVersionId = manualVersion.Id,
+                                                    AdvisoryId = "CVE-2025-68121",
+                                                    Title = "stdlib advisory",
+                                                    Severity = VulnerabilitySeverity.High,
+                                                    Source = VulnerabilitySource.Trivy,
+                                                    AffectedPackage = "stdlib",
+                                                    IsActive = true,
+                                                });
+            dbContext.VulnerabilityFindings.Add(new VulnerabilityFinding
+                                                {
+                                                    ImageVersionId = ownVersion.Id,
+                                                    AdvisoryId = "CVE-2025-68121",
+                                                    Title = "stdlib advisory",
+                                                    Severity = VulnerabilitySeverity.High,
+                                                    Source = VulnerabilitySource.Trivy,
+                                                    AffectedPackage = "stdlib",
+                                                    IsActive = true,
+                                                });
+
+            await dbContext.SaveChangesAsync(CancellationToken.None)
+                           .ConfigureAwait(false);
+
+            var service = new ApplicationViewService(dbContext,
+                                                     new ImageReferenceParser(),
+                                                     new SharedBaseImageQueryService(dbContext));
+
+            var overview = await service.GetVulnerabilityOverviewAsync(CancellationToken.None)
+                                        .ConfigureAwait(false);
+            var affectedImage = overview.Single().AffectedImages.Single();
+
+            Assert.IsTrue(affectedImage.IsOwnImage, "The collapsed affected image must prefer the discovery-owned image as its representative");
+            Assert.AreEqual(ownObservedImage.Id,
+                            affectedImage.ObservedImageId,
+                            "The representative affected image must link back to the discovery-owned observed image");
+        }
+    }
+
     #endregion // Methods
 }
