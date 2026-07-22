@@ -1026,37 +1026,61 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
     /// <returns>Latest snapshots</returns>
     private async Task<IReadOnlyList<ContainerSnapshot>> GetLatestContainerSnapshotsAsync(CancellationToken cancellationToken)
     {
-        var snapshots = await _dbContext.ContainerSnapshots.Include(entity => entity.DockerInstance)
-                                                           .ThenInclude(entity => entity.PortainerEndpoint)
-                                                           .Include(entity => entity.ImageVersion)
-                                                           .ThenInclude(entity => entity.RegistryRepository)
-                                                           .Include(entity => entity.ScanRun)
-                                                           .AsNoTracking()
-                                                           .OrderByDescending(entity => entity.RecordedAtUtc)
-                                                           .ToListAsync(cancellationToken)
-                                                           .ConfigureAwait(false);
+        var runtimeScanReferences = await _dbContext.ContainerSnapshots.Where(entity => entity.ScanRunId != null
+                                                                                        && entity.ScanRun!.Type == ScanRunType.RuntimeContainer)
+                                                                       .Select(entity => new
+                                                                                         {
+                                                                                             entity.DockerInstanceId,
+                                                                                             entity.ScanRunId,
+                                                                                             entity.ScanRun!.StartedAtUtc,
+                                                                                         })
+                                                                       .Distinct()
+                                                                       .ToListAsync(cancellationToken)
+                                                                       .ConfigureAwait(false);
+
+        var targetScanRunByInstance = runtimeScanReferences.GroupBy(reference => reference.DockerInstanceId)
+                                                           .ToDictionary(group => group.Key,
+                                                                         group => group.OrderByDescending(reference => reference.StartedAtUtc)
+                                                                                       .First()
+                                                                                       .ScanRunId);
 
         var currentSnapshots = new List<ContainerSnapshot>();
 
-        foreach (var instanceGroup in snapshots.GroupBy(entity => entity.DockerInstanceId))
+        if (targetScanRunByInstance.Count > 0)
         {
-            var latestRuntimeScanSnapshots = instanceGroup.Where(entity => entity.ScanRun?.Type == ScanRunType.RuntimeContainer)
-                                                          .GroupBy(entity => entity.ScanRunId)
-                                                          .OrderByDescending(group => group.Max(item => item.ScanRun?.StartedAtUtc ?? item.RecordedAtUtc))
-                                                          .Select(group => group.OrderByDescending(item => item.RecordedAtUtc)
-                                                                                .ToList())
-                                                          .FirstOrDefault();
+            var targetScanRunIds = targetScanRunByInstance.Values.ToList();
+            var runtimeSnapshots = await _dbContext.ContainerSnapshots.Include(entity => entity.DockerInstance)
+                                                                      .ThenInclude(entity => entity.PortainerEndpoint)
+                                                                      .Include(entity => entity.ImageVersion)
+                                                                      .ThenInclude(entity => entity.RegistryRepository)
+                                                                      .Include(entity => entity.ScanRun)
+                                                                      .Where(entity => targetScanRunIds.Contains(entity.ScanRunId))
+                                                                      .AsNoTracking()
+                                                                      .OrderByDescending(entity => entity.RecordedAtUtc)
+                                                                      .ToListAsync(cancellationToken)
+                                                                      .ConfigureAwait(false);
 
-            if (latestRuntimeScanSnapshots is not null)
-            {
-                currentSnapshots.AddRange(latestRuntimeScanSnapshots);
-
-                continue;
-            }
-
-            currentSnapshots.AddRange(instanceGroup.GroupBy(entity => CreateContainerKey(entity.DockerInstanceId, entity.ContainerId))
-                                                   .Select(group => group.First()));
+            currentSnapshots.AddRange(runtimeSnapshots.Where(entity => targetScanRunByInstance.TryGetValue(entity.DockerInstanceId, out var scanRunId)
+                                                                       && scanRunId == entity.ScanRunId));
         }
+
+        var runtimeInstanceIds = targetScanRunByInstance.Keys.ToList();
+        var fallbackSnapshots = await _dbContext.ContainerSnapshots.Include(entity => entity.DockerInstance)
+                                                                   .ThenInclude(entity => entity.PortainerEndpoint)
+                                                                   .Include(entity => entity.ImageVersion)
+                                                                   .ThenInclude(entity => entity.RegistryRepository)
+                                                                   .Include(entity => entity.ScanRun)
+                                                                   .Where(entity => runtimeInstanceIds.Contains(entity.DockerInstanceId) == false
+                                                                                    && _dbContext.ContainerSnapshots.Any(other => other.DockerInstanceId == entity.DockerInstanceId
+                                                                                                                                  && other.ContainerId == entity.ContainerId
+                                                                                                                                  && other.RecordedAtUtc > entity.RecordedAtUtc) == false)
+                                                                   .AsNoTracking()
+                                                                   .OrderByDescending(entity => entity.RecordedAtUtc)
+                                                                   .ToListAsync(cancellationToken)
+                                                                   .ConfigureAwait(false);
+
+        currentSnapshots.AddRange(fallbackSnapshots.GroupBy(entity => CreateContainerKey(entity.DockerInstanceId, entity.ContainerId))
+                                                   .Select(group => group.First()));
 
         return currentSnapshots;
     }

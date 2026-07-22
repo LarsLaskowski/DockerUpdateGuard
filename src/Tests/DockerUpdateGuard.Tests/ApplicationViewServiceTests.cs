@@ -2437,5 +2437,67 @@ public class ApplicationViewServiceTests
         }
     }
 
+    /// <summary>
+    /// Verify runtime container projections collapse historical snapshots without a runtime scan to the latest per container
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task ApplicationViewServiceRuntimeContainersCollapseHistoricalSnapshotsToLatestAsync()
+    {
+        var options = new DbContextOptionsBuilder<DockerUpdateGuardDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString())
+                                                                               .Options;
+
+        var dbContext = new DockerUpdateGuardDbContext(options);
+
+        await using (dbContext.ConfigureAwait(false))
+        {
+            var imageCatalogRepository = new ImageCatalogRepository(dbContext);
+            var imageVersion = await imageCatalogRepository.GetOrCreateImageVersionAsync("docker.io",
+                                                                                         "company/api",
+                                                                                         "1.0.0",
+                                                                                         "sha256:api",
+                                                                                         cancellationToken: CancellationToken.None)
+                                                           .ConfigureAwait(false);
+            var dockerInstance = new DockerInstance
+                                 {
+                                     Name = "Production",
+                                     EndpointUri = "https://docker.example.test",
+                                     ConnectionKind = DockerConnectionKind.Https,
+                                 };
+
+            var recordedAt = DateTimeOffset.UtcNow.AddHours(-3);
+
+            for (var index = 0; index < 5; index++)
+            {
+                dbContext.ContainerSnapshots.Add(new ContainerSnapshot
+                                                 {
+                                                     DockerInstance = dockerInstance,
+                                                     ImageVersionId = imageVersion.Id,
+                                                     ContainerId = "container-history",
+                                                     Name = $"api-{index}",
+                                                     Status = ContainerRuntimeStatus.Running,
+                                                     IsRunning = true,
+                                                     RecordedAtUtc = recordedAt.AddMinutes(index * 10),
+                                                 });
+            }
+
+            await dbContext.SaveChangesAsync(CancellationToken.None)
+                           .ConfigureAwait(false);
+
+            var service = new ApplicationViewService(dbContext,
+                                                     new ImageReferenceParser(),
+                                                     new SharedBaseImageQueryService(dbContext));
+            var runtimeContainers = await service.GetRuntimeContainersAsync(CancellationToken.None)
+                                                 .ConfigureAwait(false);
+
+            Assert.HasCount(1,
+                            runtimeContainers,
+                            "Historical snapshots without a runtime scan must collapse to a single latest projection per container");
+            Assert.AreEqual("api-4",
+                            runtimeContainers.Single().ContainerName,
+                            "The collapsed runtime container projection must expose the most recently recorded snapshot");
+        }
+    }
+
     #endregion // Methods
 }
