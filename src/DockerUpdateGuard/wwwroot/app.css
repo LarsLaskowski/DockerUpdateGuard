@@ -766,6 +766,16 @@ a {
         display: none;
     }
 
+    .runtime-containers-table .runtime-containers-table__update-state {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.35rem;
+    }
+
+    .runtime-containers-table .runtime-containers-table__update-state .table-secondary {
+        max-width: 100%;
+    }
+
     .runtime-containers-table .runtime-containers-table__sparkline {
         max-width: 100%;
         height: 2.25rem;
