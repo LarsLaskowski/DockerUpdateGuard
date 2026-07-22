@@ -25,12 +25,13 @@ public class DashboardRenderTests
     /// <summary>
     /// Verify the number metric tiles render for the phone two-up grid, including the optional My Images and Base Images tiles
     /// </summary>
+    /// <returns>Task</returns>
     [TestMethod]
-    public void DashboardWithConfiguredAccountRendersMetricTiles()
+    public async Task DashboardWithConfiguredAccountRendersMetricTiles()
     {
         var testContext = BlazorTestContextFactory.Create();
 
-        using (testContext)
+        await using (testContext)
         {
             var viewService = Substitute.For<IApplicationViewService>();
 
@@ -59,9 +60,9 @@ public class DashboardRenderTests
             testContext.Services.AddSingleton(viewService);
             testContext.Services.AddSingleton(new DashboardRefreshState());
             testContext.Services.AddSingleton<IOptions<DockerUpdateGuardOptions>>(options);
-            testContext.AddFakePersistentComponentState();
+            testContext.AddBunitPersistentComponentState();
 
-            var component = testContext.RenderComponent<DashboardPage>();
+            var component = testContext.Render<DashboardPage>();
             var markup = component.Markup;
 
             Assert.Contains("My Images", markup, "The My Images tile must render when a Docker Hub account is configured");

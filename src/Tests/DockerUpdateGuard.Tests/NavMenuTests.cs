@@ -115,12 +115,13 @@ public class NavMenuTests
     /// <summary>
     /// Verify the Vulnerabilities navigation entry is always rendered
     /// </summary>
+    /// <returns>Task</returns>
     [TestMethod]
-    public void NavMenuRendersVulnerabilitiesNavigationEntry()
+    public async Task NavMenuRendersVulnerabilitiesNavigationEntry()
     {
         var testContext = BlazorTestContextFactory.Create();
 
-        using (testContext)
+        await using (testContext)
         {
             var viewService = Substitute.For<IApplicationViewService>();
 
@@ -131,7 +132,7 @@ public class NavMenuTests
             testContext.Services.AddSingleton<IConfiguration>(new ConfigurationBuilder().Build());
             testContext.Services.AddSingleton<IOptions<DockerUpdateGuardOptions>>(Options.Create(new DockerUpdateGuardOptions()));
 
-            var component = testContext.RenderComponent<NavMenu>();
+            var component = testContext.Render<NavMenu>();
             var vulnerabilitiesLink = component.FindAll("a").SingleOrDefault(link => link.TextContent.Trim() == "Vulnerabilities");
 
             Assert.IsNotNull(vulnerabilitiesLink, "The Vulnerabilities navigation entry must always be rendered");

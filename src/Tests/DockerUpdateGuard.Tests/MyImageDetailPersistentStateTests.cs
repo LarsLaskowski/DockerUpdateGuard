@@ -54,12 +54,13 @@ public class MyImageDetailPersistentStateTests
     /// <summary>
     /// Verify the page reuses the prerendered detail without reloading from the view service
     /// </summary>
+    /// <returns>Task</returns>
     [TestMethod]
-    public void MyImageDetailRestoresFromPersistentState()
+    public async Task MyImageDetailRestoresFromPersistentState()
     {
         var testContext = BlazorTestContextFactory.Create();
 
-        using (testContext)
+        await using (testContext)
         {
             var viewService = Substitute.For<IApplicationViewService>();
             var observedImageId = Guid.NewGuid();
@@ -70,22 +71,23 @@ public class MyImageDetailPersistentStateTests
 
             persistentState.Persist(StateKey, CreateDetail(observedImageId, "restored-image"));
 
-            var component = testContext.RenderComponent<MyImageDetail>(parameters => parameters.Add(page => page.ObservedImageId, observedImageId));
+            var component = testContext.Render<MyImageDetail>(parameters => parameters.Add(page => page.ObservedImageId, observedImageId));
 
             Assert.Contains("restored-image", component.Markup, "The page must render the detail restored from persistent state");
-            viewService.DidNotReceive().GetObservedImageDetailAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>());
+            await viewService.DidNotReceive().GetObservedImageDetailAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>()).ConfigureAwait(false);
         }
     }
 
     /// <summary>
     /// Verify the page persists the loaded detail for the interactive render
     /// </summary>
+    /// <returns>Task</returns>
     [TestMethod]
-    public void MyImageDetailPersistsLoadedStateForPrerender()
+    public async Task MyImageDetailPersistsLoadedStateForPrerender()
     {
         var testContext = BlazorTestContextFactory.Create();
 
-        using (testContext)
+        await using (testContext)
         {
             var viewService = Substitute.For<IApplicationViewService>();
             var observedImageId = Guid.NewGuid();
@@ -97,7 +99,7 @@ public class MyImageDetailPersistentStateTests
 
             var persistentState = testContext.GetPersistentComponentState();
 
-            testContext.RenderComponent<MyImageDetail>(parameters => parameters.Add(page => page.ObservedImageId, observedImageId));
+            testContext.Render<MyImageDetail>(parameters => parameters.Add(page => page.ObservedImageId, observedImageId));
 
             persistentState.TriggerOnPersisting();
 

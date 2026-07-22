@@ -1,3 +1,5 @@
+using System.Globalization;
+
 using Bunit;
 using Bunit.TestDoubles;
 
@@ -20,14 +22,17 @@ internal static class BlazorTestContextFactory
     /// Create a bUnit test context with MudBlazor services, loose JS interop, and fake persistent component state
     /// </summary>
     /// <returns>Configured test context</returns>
-    public static Bunit.TestContext Create()
+    public static Bunit.BunitContext Create()
     {
-        var testContext = new Bunit.TestContext();
+        CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
+        CultureInfo.DefaultThreadCurrentCulture = CultureInfo.InvariantCulture;
+
+        var testContext = new Bunit.BunitContext();
 
         testContext.Services.AddMudServices();
         testContext.JSInterop.Mode = JSRuntimeMode.Loose;
 
-        var persistentState = testContext.AddFakePersistentComponentState();
+        var persistentState = testContext.AddBunitPersistentComponentState();
 
         testContext.Services.AddSingleton(persistentState);
         testContext.Services.AddSingleton<IDataProtectionProvider>(new EphemeralDataProtectionProvider());
@@ -41,9 +46,9 @@ internal static class BlazorTestContextFactory
     /// </summary>
     /// <param name="testContext">Test context</param>
     /// <returns>Fake persistent component state</returns>
-    public static FakePersistentComponentState GetPersistentComponentState(this Bunit.TestContext testContext)
+    public static BunitPersistentComponentState GetPersistentComponentState(this Bunit.BunitContext testContext)
     {
-        return testContext.Services.GetRequiredService<FakePersistentComponentState>();
+        return testContext.Services.GetRequiredService<BunitPersistentComponentState>();
     }
 
     #endregion // Methods

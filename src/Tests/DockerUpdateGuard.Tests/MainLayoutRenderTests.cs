@@ -28,8 +28,9 @@ public class MainLayoutRenderTests
     /// <summary>
     /// Verify the compact status pill and the full meta cards are rendered once the dashboard summary is available
     /// </summary>
+    /// <returns>Task</returns>
     [TestMethod]
-    public void MainLayoutWithDashboardSummaryRendersCompactPillAndFullMeta()
+    public async Task MainLayoutWithDashboardSummaryRendersCompactPillAndFullMeta()
     {
         var testContext = CreateContext(new DashboardSummaryViewData
                                         {
@@ -38,9 +39,9 @@ public class MainLayoutRenderTests
                                             RuntimeContainerCount = 4,
                                         });
 
-        using (testContext)
+        await using (testContext)
         {
-            var component = testContext.RenderComponent<MainLayout>(parameters => parameters.Add(layout => layout.Body, string.Empty));
+            var component = testContext.Render<MainLayout>(parameters => parameters.Add(layout => layout.Body, string.Empty));
             var markup = component.Markup;
 
             Assert.Contains("app-topbar__meta--full", markup, "The full meta cards must render when the dashboard summary is available");
@@ -49,7 +50,7 @@ public class MainLayoutRenderTests
 
             var menu = component.FindComponent<MudMenu>();
 
-            component.InvokeAsync(() => menu.Instance.OpenMenuAsync(EventArgs.Empty));
+            await component.InvokeAsync(() => menu.Instance.OpenMenuAsync(EventArgs.Empty)).ConfigureAwait(false);
 
             Assert.Contains("app-topbar__meta-popover", component.Markup, "Opening the compact pill must reveal the popover exposing both metrics");
         }
@@ -58,14 +59,15 @@ public class MainLayoutRenderTests
     /// <summary>
     /// Verify a fixed-size skeleton is rendered while the dashboard summary is still loading
     /// </summary>
+    /// <returns>Task</returns>
     [TestMethod]
-    public void MainLayoutWithoutDashboardSummaryRendersLoadingSkeleton()
+    public async Task MainLayoutWithoutDashboardSummaryRendersLoadingSkeleton()
     {
         var testContext = CreateContext(dashboardSummary: null);
 
-        using (testContext)
+        await using (testContext)
         {
-            var component = testContext.RenderComponent<MainLayout>(parameters => parameters.Add(layout => layout.Body, string.Empty));
+            var component = testContext.Render<MainLayout>(parameters => parameters.Add(layout => layout.Body, string.Empty));
 
             Assert.Contains("app-topbar__status-skeleton", component.Markup, "A skeleton must render while the dashboard summary is loading to avoid a top-bar height jump");
         }
@@ -74,18 +76,19 @@ public class MainLayoutRenderTests
     /// <summary>
     /// Verify toggling the dark-mode button applies the dark layout class
     /// </summary>
+    /// <returns>Task</returns>
     [TestMethod]
-    public void MainLayoutTogglingDarkModeButtonAppliesDarkLayoutClass()
+    public async Task MainLayoutTogglingDarkModeButtonAppliesDarkLayoutClass()
     {
         var testContext = CreateContext(dashboardSummary: null);
 
-        using (testContext)
+        await using (testContext)
         {
-            var component = testContext.RenderComponent<MainLayout>(parameters => parameters.Add(layout => layout.Body, string.Empty));
+            var component = testContext.Render<MainLayout>(parameters => parameters.Add(layout => layout.Body, string.Empty));
 
             Assert.DoesNotContain("dug-dark", component.Markup, "The layout must start in light mode when no preference is stored and the system reports light mode");
 
-            component.Find(".app-topbar__theme-toggle").Click();
+            await component.Find(".app-topbar__theme-toggle").ClickAsync().ConfigureAwait(false);
 
             Assert.Contains("dug-dark", component.Markup, "Toggling the dark-mode button must apply the dark layout class");
         }
@@ -96,7 +99,7 @@ public class MainLayoutRenderTests
     /// </summary>
     /// <param name="dashboardSummary">Dashboard summary returned by the view service, or null to keep the loading state</param>
     /// <returns>Configured test context</returns>
-    private static Bunit.TestContext CreateContext(DashboardSummaryViewData? dashboardSummary)
+    private static Bunit.BunitContext CreateContext(DashboardSummaryViewData? dashboardSummary)
     {
         var testContext = BlazorTestContextFactory.Create();
         var viewService = Substitute.For<IApplicationViewService>();
@@ -111,7 +114,7 @@ public class MainLayoutRenderTests
         testContext.Services.AddSingleton<IConfiguration>(new ConfigurationBuilder().Build());
         testContext.Services.AddSingleton<IOptions<DockerUpdateGuardOptions>>(Options.Create(new DockerUpdateGuardOptions()));
         testContext.Services.AddSingleton(new ResourceAssetCollection([]));
-        testContext.AddFakePersistentComponentState();
+        testContext.AddBunitPersistentComponentState();
 
         return testContext;
     }

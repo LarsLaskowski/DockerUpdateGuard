@@ -31,12 +31,13 @@ public class VulnerabilitiesPersistentStateTests
     /// <summary>
     /// Verify the page reuses the prerendered overview without reloading from the view service
     /// </summary>
+    /// <returns>Task</returns>
     [TestMethod]
-    public void VulnerabilitiesRestoresFromPersistentState()
+    public async Task VulnerabilitiesRestoresFromPersistentState()
     {
         var testContext = BlazorTestContextFactory.Create();
 
-        using (testContext)
+        await using (testContext)
         {
             var viewService = Substitute.For<IApplicationViewService>();
 
@@ -55,22 +56,23 @@ public class VulnerabilitiesPersistentStateTests
                                                                                       }
                                                                                   });
 
-            var component = testContext.RenderComponent<VulnerabilitiesPage>();
+            var component = testContext.Render<VulnerabilitiesPage>();
 
             Assert.Contains("CVE-RESTORE-1", component.Markup, "The page must render the overview restored from persistent state");
-            viewService.DidNotReceive().GetVulnerabilityOverviewAsync(Arg.Any<CancellationToken>());
+            await viewService.DidNotReceive().GetVulnerabilityOverviewAsync(Arg.Any<CancellationToken>()).ConfigureAwait(false);
         }
     }
 
     /// <summary>
     /// Verify the page persists the loaded overview for the interactive render
     /// </summary>
+    /// <returns>Task</returns>
     [TestMethod]
-    public void VulnerabilitiesPersistsLoadedStateForPrerender()
+    public async Task VulnerabilitiesPersistsLoadedStateForPrerender()
     {
         var testContext = BlazorTestContextFactory.Create();
 
-        using (testContext)
+        await using (testContext)
         {
             var viewService = Substitute.For<IApplicationViewService>();
 
@@ -89,7 +91,7 @@ public class VulnerabilitiesPersistentStateTests
 
             var persistentState = testContext.GetPersistentComponentState();
 
-            testContext.RenderComponent<VulnerabilitiesPage>();
+            testContext.Render<VulnerabilitiesPage>();
 
             persistentState.TriggerOnPersisting();
 

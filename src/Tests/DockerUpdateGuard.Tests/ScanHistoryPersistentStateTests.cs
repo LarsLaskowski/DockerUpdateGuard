@@ -33,12 +33,13 @@ public class ScanHistoryPersistentStateTests
     /// <summary>
     /// Verify the page reuses prerendered scan history without reloading from the view service
     /// </summary>
+    /// <returns>Task</returns>
     [TestMethod]
-    public void ScanHistoryRestoresFromPersistentState()
+    public async Task ScanHistoryRestoresFromPersistentState()
     {
         var testContext = BlazorTestContextFactory.Create();
 
-        using (testContext)
+        await using (testContext)
         {
             var viewService = Substitute.For<IApplicationViewService>();
 
@@ -59,22 +60,23 @@ public class ScanHistoryPersistentStateTests
                                                                             }
                                                                         });
 
-            var component = testContext.RenderComponent<ScanHistory>();
+            var component = testContext.Render<ScanHistory>();
 
             Assert.Contains("restored-subject", component.Markup, "The page must render the scan history restored from persistent state");
-            viewService.DidNotReceive().GetScanHistoryAsync(Arg.Any<int>(), Arg.Any<CancellationToken>());
+            await viewService.DidNotReceive().GetScanHistoryAsync(Arg.Any<int>(), Arg.Any<CancellationToken>()).ConfigureAwait(false);
         }
     }
 
     /// <summary>
     /// Verify the page persists the loaded scan history for the interactive render
     /// </summary>
+    /// <returns>Task</returns>
     [TestMethod]
-    public void ScanHistoryPersistsLoadedStateForPrerender()
+    public async Task ScanHistoryPersistsLoadedStateForPrerender()
     {
         var testContext = BlazorTestContextFactory.Create();
 
-        using (testContext)
+        await using (testContext)
         {
             var viewService = Substitute.For<IApplicationViewService>();
 
@@ -95,7 +97,7 @@ public class ScanHistoryPersistentStateTests
 
             var persistentState = testContext.GetPersistentComponentState();
 
-            testContext.RenderComponent<ScanHistory>();
+            testContext.Render<ScanHistory>();
 
             persistentState.TriggerOnPersisting();
 
@@ -109,7 +111,7 @@ public class ScanHistoryPersistentStateTests
     /// </summary>
     /// <param name="testContext">Test context</param>
     /// <param name="viewService">Application view service substitute</param>
-    private static void RegisterServices(Bunit.TestContext testContext, IApplicationViewService viewService)
+    private static void RegisterServices(Bunit.BunitContext testContext, IApplicationViewService viewService)
     {
         testContext.Services.AddSingleton(viewService);
         testContext.Services.AddSingleton(new DashboardRefreshState());

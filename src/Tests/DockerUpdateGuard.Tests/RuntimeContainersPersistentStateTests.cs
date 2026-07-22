@@ -31,12 +31,13 @@ public class RuntimeContainersPersistentStateTests
     /// <summary>
     /// Verify the page reuses the prerendered container list without reloading from the view service
     /// </summary>
+    /// <returns>Task</returns>
     [TestMethod]
-    public void RuntimeContainersRestoresFromPersistentState()
+    public async Task RuntimeContainersRestoresFromPersistentState()
     {
         var testContext = BlazorTestContextFactory.Create();
 
-        using (testContext)
+        await using (testContext)
         {
             var viewService = Substitute.For<IApplicationViewService>();
 
@@ -57,22 +58,23 @@ public class RuntimeContainersPersistentStateTests
                                                                                      }
                                                                                  });
 
-            var component = testContext.RenderComponent<RuntimeContainers>();
+            var component = testContext.Render<RuntimeContainers>();
 
             Assert.Contains("restored-container", component.Markup, "The page must render the container list restored from persistent state");
-            viewService.DidNotReceive().GetRuntimeContainersAsync(Arg.Any<CancellationToken>());
+            await viewService.DidNotReceive().GetRuntimeContainersAsync(Arg.Any<CancellationToken>()).ConfigureAwait(false);
         }
     }
 
     /// <summary>
     /// Verify the page persists the loaded container list for the interactive render
     /// </summary>
+    /// <returns>Task</returns>
     [TestMethod]
-    public void RuntimeContainersPersistsLoadedStateForPrerender()
+    public async Task RuntimeContainersPersistsLoadedStateForPrerender()
     {
         var testContext = BlazorTestContextFactory.Create();
 
-        using (testContext)
+        await using (testContext)
         {
             var viewService = Substitute.For<IApplicationViewService>();
 
@@ -93,7 +95,7 @@ public class RuntimeContainersPersistentStateTests
 
             var persistentState = testContext.GetPersistentComponentState();
 
-            testContext.RenderComponent<RuntimeContainers>();
+            testContext.Render<RuntimeContainers>();
 
             persistentState.TriggerOnPersisting();
 
@@ -107,7 +109,7 @@ public class RuntimeContainersPersistentStateTests
     /// </summary>
     /// <param name="testContext">Test context</param>
     /// <param name="viewService">Application view service substitute</param>
-    private static void RegisterServices(Bunit.TestContext testContext, IApplicationViewService viewService)
+    private static void RegisterServices(Bunit.BunitContext testContext, IApplicationViewService viewService)
     {
         testContext.Services.AddSingleton(viewService);
         testContext.Services.AddSingleton(Substitute.For<IRuntimeContainerScanOrchestrator>());

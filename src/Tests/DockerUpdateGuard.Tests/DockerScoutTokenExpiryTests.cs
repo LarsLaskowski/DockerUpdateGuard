@@ -101,7 +101,18 @@ public class DockerScoutTokenExpiryTests
     {
         var provider = CreateProvider(new TestLogger<DockerScoutVulnerabilityProvider>());
 
-        provider.Dispose();
+        Exception? exception = null;
+
+        try
+        {
+            provider.Dispose();
+        }
+        catch (Exception ex)
+        {
+            exception = ex;
+        }
+
+        Assert.IsNull(exception, "Disposing the provider must release its resources without throwing");
     }
 
     /// <summary>

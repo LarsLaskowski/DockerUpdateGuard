@@ -16,14 +16,15 @@ public class MetricGridSkeletonTests
     /// <summary>
     /// Verify the metric grid skeleton renders the requested number of card placeholders
     /// </summary>
+    /// <returns>Task</returns>
     [TestMethod]
-    public void MetricGridSkeletonRendersRequestedCardCount()
+    public async Task MetricGridSkeletonRendersRequestedCardCount()
     {
         var testContext = BlazorTestContextFactory.Create();
 
-        using (testContext)
+        await using (testContext)
         {
-            var component = testContext.RenderComponent<MetricGridSkeleton>(parameters => parameters.Add(skeleton => skeleton.Cards, 4));
+            var component = testContext.Render<MetricGridSkeleton>(parameters => parameters.Add(skeleton => skeleton.Cards, 4));
 
             Assert.AreEqual(4, MarkupTestHelper.CountOccurrences(component.Markup, "dug-skeleton-card"), "The metric grid skeleton must render one card placeholder per requested card");
         }
@@ -32,14 +33,15 @@ public class MetricGridSkeletonTests
     /// <summary>
     /// Verify the metric grid skeleton defaults to six card placeholders
     /// </summary>
+    /// <returns>Task</returns>
     [TestMethod]
-    public void MetricGridSkeletonDefaultRendersSixCards()
+    public async Task MetricGridSkeletonDefaultRendersSixCards()
     {
         var testContext = BlazorTestContextFactory.Create();
 
-        using (testContext)
+        await using (testContext)
         {
-            var component = testContext.RenderComponent<MetricGridSkeleton>();
+            var component = testContext.Render<MetricGridSkeleton>();
 
             Assert.AreEqual(6, MarkupTestHelper.CountOccurrences(component.Markup, "dug-skeleton-card"), "The metric grid skeleton must render six card placeholders by default");
         }

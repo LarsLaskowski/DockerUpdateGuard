@@ -31,12 +31,13 @@ public class ObservedImagesPersistentStateTests
     /// <summary>
     /// Verify the page reuses the prerendered image list without reloading from the view service
     /// </summary>
+    /// <returns>Task</returns>
     [TestMethod]
-    public void ObservedImagesRestoresFromPersistentState()
+    public async Task ObservedImagesRestoresFromPersistentState()
     {
         var testContext = BlazorTestContextFactory.Create();
 
-        using (testContext)
+        await using (testContext)
         {
             var viewService = Substitute.For<IApplicationViewService>();
 
@@ -55,22 +56,23 @@ public class ObservedImagesPersistentStateTests
                                                                                   }
                                                                               });
 
-            var component = testContext.RenderComponent<ObservedImages>();
+            var component = testContext.Render<ObservedImages>();
 
             Assert.Contains("restored-image", component.Markup, "The page must render the image list restored from persistent state");
-            viewService.DidNotReceive().GetManualObservedImagesAsync(Arg.Any<CancellationToken>());
+            await viewService.DidNotReceive().GetManualObservedImagesAsync(Arg.Any<CancellationToken>()).ConfigureAwait(false);
         }
     }
 
     /// <summary>
     /// Verify the page persists the loaded image list for the interactive render
     /// </summary>
+    /// <returns>Task</returns>
     [TestMethod]
-    public void ObservedImagesPersistsLoadedStateForPrerender()
+    public async Task ObservedImagesPersistsLoadedStateForPrerender()
     {
         var testContext = BlazorTestContextFactory.Create();
 
-        using (testContext)
+        await using (testContext)
         {
             var viewService = Substitute.For<IApplicationViewService>();
 
@@ -89,7 +91,7 @@ public class ObservedImagesPersistentStateTests
 
             var persistentState = testContext.GetPersistentComponentState();
 
-            testContext.RenderComponent<ObservedImages>();
+            testContext.Render<ObservedImages>();
 
             persistentState.TriggerOnPersisting();
 
@@ -103,7 +105,7 @@ public class ObservedImagesPersistentStateTests
     /// </summary>
     /// <param name="testContext">Test context</param>
     /// <param name="viewService">Application view service substitute</param>
-    private static void RegisterServices(Bunit.TestContext testContext, IApplicationViewService viewService)
+    private static void RegisterServices(Bunit.BunitContext testContext, IApplicationViewService viewService)
     {
         testContext.Services.AddSingleton(viewService);
         testContext.Services.AddSingleton(Substitute.For<IImageRegistrationService>());
