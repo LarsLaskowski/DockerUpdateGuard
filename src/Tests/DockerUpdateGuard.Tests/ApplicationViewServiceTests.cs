@@ -2257,5 +2257,185 @@ public class ApplicationViewServiceTests
         }
     }
 
+    /// <summary>
+    /// Verify the vulnerability overview collapses image versions that share the same digest-less reference into a single affected image
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task ApplicationViewServiceVulnerabilityOverviewCollapsesDuplicateImageReferencesAsync()
+    {
+        var options = new DbContextOptionsBuilder<DockerUpdateGuardDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString())
+                                                                               .Options;
+
+        var dbContext = new DockerUpdateGuardDbContext(options);
+
+        await using (dbContext.ConfigureAwait(false))
+        {
+            var imageCatalogRepository = new ImageCatalogRepository(dbContext);
+            var firstVersion = await imageCatalogRepository.GetOrCreateImageVersionAsync("docker.io",
+                                                                                         "networlddev/dockerupdateguard",
+                                                                                         "latest",
+                                                                                         "sha256:first",
+                                                                                         cancellationToken: CancellationToken.None)
+                                                           .ConfigureAwait(false);
+            var secondVersion = await imageCatalogRepository.GetOrCreateImageVersionAsync("docker.io",
+                                                                                          "networlddev/dockerupdateguard",
+                                                                                          "latest",
+                                                                                          "sha256:second",
+                                                                                          cancellationToken: CancellationToken.None)
+                                                            .ConfigureAwait(false);
+
+            var observedImage = new ObservedImage
+                                {
+                                    Name = "Docker Update Guard",
+                                    CurrentImageVersionId = secondVersion.Id,
+                                    Source = RegistrationSource.Discovery,
+                                };
+            var dockerInstance = new DockerInstance
+                                 {
+                                     Name = "Production",
+                                     EndpointUri = "https://docker.example.test",
+                                     ConnectionKind = DockerConnectionKind.Https,
+                                 };
+
+            dbContext.ObservedImages.Add(observedImage);
+            dbContext.ContainerSnapshots.Add(new ContainerSnapshot
+                                             {
+                                                 DockerInstance = dockerInstance,
+                                                 ImageVersionId = firstVersion.Id,
+                                                 ContainerId = "container-old",
+                                                 Name = "guard-old",
+                                             });
+            dbContext.ContainerSnapshots.Add(new ContainerSnapshot
+                                             {
+                                                 DockerInstance = dockerInstance,
+                                                 ImageVersionId = secondVersion.Id,
+                                                 ContainerId = "container-new",
+                                                 Name = "guard-new",
+                                             });
+            dbContext.VulnerabilityFindings.Add(new VulnerabilityFinding
+                                                {
+                                                    ImageVersionId = firstVersion.Id,
+                                                    AdvisoryId = "CVE-2025-68121",
+                                                    Title = "stdlib advisory",
+                                                    Severity = VulnerabilitySeverity.High,
+                                                    Source = VulnerabilitySource.Trivy,
+                                                    AffectedPackage = "stdlib",
+                                                    IsActive = true,
+                                                });
+            dbContext.VulnerabilityFindings.Add(new VulnerabilityFinding
+                                                {
+                                                    ImageVersionId = secondVersion.Id,
+                                                    AdvisoryId = "CVE-2025-68121",
+                                                    Title = "stdlib advisory",
+                                                    Severity = VulnerabilitySeverity.High,
+                                                    Source = VulnerabilitySource.Trivy,
+                                                    AffectedPackage = "stdlib",
+                                                    IsActive = true,
+                                                });
+
+            await dbContext.SaveChangesAsync(CancellationToken.None)
+                           .ConfigureAwait(false);
+
+            var service = new ApplicationViewService(dbContext,
+                                                     new ImageReferenceParser(),
+                                                     new SharedBaseImageQueryService(dbContext));
+
+            var overview = await service.GetVulnerabilityOverviewAsync(CancellationToken.None)
+                                        .ConfigureAwait(false);
+            var item = overview.Single();
+
+            Assert.HasCount(1,
+                            item.AffectedImages,
+                            "Image versions that differ only by digest must collapse into a single affected image entry");
+            Assert.AreEqual(observedImage.Id,
+                            item.AffectedImages.Single().ObservedImageId,
+                            "The collapsed affected image must keep the linkable observed image as its representative");
+            Assert.AreEqual(2,
+                            item.AffectedContainerCount,
+                            "Running containers must still be counted across every collapsed image version");
+        }
+    }
+
+    /// <summary>
+    /// Verify collapsing duplicate affected images prefers the discovery-owned image as the representative
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task ApplicationViewServiceVulnerabilityOverviewPrefersOwnImageWhenCollapsingDuplicatesAsync()
+    {
+        var options = new DbContextOptionsBuilder<DockerUpdateGuardDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString())
+                                                                               .Options;
+
+        var dbContext = new DockerUpdateGuardDbContext(options);
+
+        await using (dbContext.ConfigureAwait(false))
+        {
+            var imageCatalogRepository = new ImageCatalogRepository(dbContext);
+            var manualVersion = await imageCatalogRepository.GetOrCreateImageVersionAsync("docker.io",
+                                                                                          "networlddev/dockerupdateguard",
+                                                                                          "latest",
+                                                                                          "sha256:manual",
+                                                                                          cancellationToken: CancellationToken.None)
+                                                            .ConfigureAwait(false);
+            var ownVersion = await imageCatalogRepository.GetOrCreateImageVersionAsync("docker.io",
+                                                                                       "networlddev/dockerupdateguard",
+                                                                                       "latest",
+                                                                                       "sha256:own",
+                                                                                       cancellationToken: CancellationToken.None)
+                                                         .ConfigureAwait(false);
+            var manualObservedImage = new ObservedImage
+                                      {
+                                          Name = "Manual Docker Update Guard",
+                                          CurrentImageVersionId = manualVersion.Id,
+                                          Source = RegistrationSource.Manual,
+                                      };
+            var ownObservedImage = new ObservedImage
+                                   {
+                                       Name = "Own Docker Update Guard",
+                                       CurrentImageVersionId = ownVersion.Id,
+                                       Source = RegistrationSource.Discovery,
+                                   };
+
+            dbContext.ObservedImages.AddRange(manualObservedImage, ownObservedImage);
+            dbContext.VulnerabilityFindings.Add(new VulnerabilityFinding
+                                                {
+                                                    ImageVersionId = manualVersion.Id,
+                                                    AdvisoryId = "CVE-2025-68121",
+                                                    Title = "stdlib advisory",
+                                                    Severity = VulnerabilitySeverity.High,
+                                                    Source = VulnerabilitySource.Trivy,
+                                                    AffectedPackage = "stdlib",
+                                                    IsActive = true,
+                                                });
+            dbContext.VulnerabilityFindings.Add(new VulnerabilityFinding
+                                                {
+                                                    ImageVersionId = ownVersion.Id,
+                                                    AdvisoryId = "CVE-2025-68121",
+                                                    Title = "stdlib advisory",
+                                                    Severity = VulnerabilitySeverity.High,
+                                                    Source = VulnerabilitySource.Trivy,
+                                                    AffectedPackage = "stdlib",
+                                                    IsActive = true,
+                                                });
+
+            await dbContext.SaveChangesAsync(CancellationToken.None)
+                           .ConfigureAwait(false);
+
+            var service = new ApplicationViewService(dbContext,
+                                                     new ImageReferenceParser(),
+                                                     new SharedBaseImageQueryService(dbContext));
+
+            var overview = await service.GetVulnerabilityOverviewAsync(CancellationToken.None)
+                                        .ConfigureAwait(false);
+            var affectedImage = overview.Single().AffectedImages.Single();
+
+            Assert.IsTrue(affectedImage.IsOwnImage, "The collapsed affected image must prefer the discovery-owned image as its representative");
+            Assert.AreEqual(ownObservedImage.Id,
+                            affectedImage.ObservedImageId,
+                            "The representative affected image must link back to the discovery-owned observed image");
+        }
+    }
+
     #endregion // Methods
 }

@@ -259,6 +259,16 @@ internal static partial class ImageHostLoggingExtensions
     public static partial void VulnerabilitySaveFailed(this ILogger logger, Exception exception);
 
     /// <summary>
+    /// Log that vulnerability findings of stale image versions were deactivated
+    /// </summary>
+    /// <param name="logger">Logger</param>
+    /// <param name="deactivatedFindingCount">Number of deactivated findings</param>
+    [LoggerMessage(EventId = 2054,
+                   Level = LogLevel.Information,
+                   Message = "Deactivated {DeactivatedFindingCount} vulnerability finding(s) for image versions no longer running or observed")]
+    public static partial void VulnerabilityStaleFindingsDeactivated(this ILogger logger, int deactivatedFindingCount);
+
+    /// <summary>
     /// Log that observed image batch scanning has started
     /// </summary>
     /// <param name="logger">Logger</param>

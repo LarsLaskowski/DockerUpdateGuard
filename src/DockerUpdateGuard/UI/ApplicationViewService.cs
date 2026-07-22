@@ -729,6 +729,18 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                };
     }
 
+    /// <summary>
+    /// Select the representative affected image for a set of image versions that share the same digest-less reference
+    /// </summary>
+    /// <param name="referenceGroup">Affected image versions resolving to the same registry, repository and tag</param>
+    /// <returns>Representative affected image preferring a linkable, owned image</returns>
+    private static VulnerabilityOverviewAffectedImageData SelectRepresentativeAffectedImage(IEnumerable<VulnerabilityOverviewAffectedImageData> referenceGroup)
+    {
+        return referenceGroup.OrderByDescending(entity => entity.IsOwnImage)
+                             .ThenByDescending(entity => entity.ObservedImageId.HasValue)
+                             .First();
+    }
+
     #endregion // Static methods
 
     #region Methods
@@ -1592,10 +1604,14 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
         var representativeFinding = advisoryGroup.OrderByDescending(entity => entity.Severity)
                                                  .ThenByDescending(entity => entity.CvssScore ?? decimal.MinValue)
                                                  .First();
-        var affectedImages = advisoryGroup.GroupBy(entity => entity.ImageVersionId)
-                                          .Select(imageGroup => CreateAffectedImage(imageGroup.First().ImageVersion))
-                                          .OrderBy(entity => entity.ImageReference, StringComparer.OrdinalIgnoreCase)
-                                          .ToList();
+        var affectedImageVersions = advisoryGroup.GroupBy(entity => entity.ImageVersionId)
+                                                 .Select(imageGroup => CreateAffectedImage(imageGroup.First().ImageVersion))
+                                                 .ToList();
+        var affectedContainerCount = affectedImageVersions.Sum(entity => GetCountOrZero(containerCountsByImageVersion, entity.ImageVersionId));
+        var affectedImages = affectedImageVersions.GroupBy(entity => ImageReferenceFormatter.GetReference(entity.ImageReference), StringComparer.OrdinalIgnoreCase)
+                                                  .Select(referenceGroup => SelectRepresentativeAffectedImage(referenceGroup))
+                                                  .OrderBy(entity => entity.ImageReference, StringComparer.OrdinalIgnoreCase)
+                                                  .ToList();
 
         return new VulnerabilityOverviewItemData
                {
@@ -1617,7 +1633,7 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                                                 .OrderBy(fixedVersion => fixedVersion, StringComparer.OrdinalIgnoreCase)
                                                 .ToList(),
                    AffectedImages = affectedImages,
-                   AffectedContainerCount = affectedImages.Sum(entity => GetCountOrZero(containerCountsByImageVersion, entity.ImageVersionId)),
+                   AffectedContainerCount = affectedContainerCount,
                };
     }
 

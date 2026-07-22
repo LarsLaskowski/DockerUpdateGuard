@@ -27,6 +27,7 @@ public static class ServiceCollectionExtensions
         services.AddDbContext<DockerUpdateGuardDbContext>(configureDbContext);
         services.AddScoped<IImageCatalogRepository, ImageCatalogRepository>();
         services.AddScoped<ISharedBaseImageQueryService, SharedBaseImageQueryService>();
+        services.AddScoped<ILiveImageInventoryQueryService, LiveImageInventoryQueryService>();
 
         return services;
     }
