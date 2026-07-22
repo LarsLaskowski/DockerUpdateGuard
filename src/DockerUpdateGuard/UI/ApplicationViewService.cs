@@ -707,6 +707,7 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                    VulnerabilityAssessmentStatus.FindingsDetected => "Findings detected",
                    VulnerabilityAssessmentStatus.NotConfigured => "Not configured",
                    VulnerabilityAssessmentStatus.Unsupported => "Unsupported",
+                   VulnerabilityAssessmentStatus.Unavailable => "Unavailable",
                    VulnerabilityAssessmentStatus.Failed => "Failed",
                    _ => "Not scanned",
                };
