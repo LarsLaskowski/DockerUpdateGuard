@@ -21,12 +21,13 @@ public class RuntimeContainerDetailTests
     /// <summary>
     /// Verify the vulnerability assessment card shows the fixable finding count and the update hint chip near the tag candidates
     /// </summary>
+    /// <returns>Task</returns>
     [TestMethod]
-    public void RuntimeContainerDetailWithFixableFindingsShowsFixableSummaryAndUpdateHint()
+    public async Task RuntimeContainerDetailWithFixableFindingsShowsFixableSummaryAndUpdateHint()
     {
         var testContext = BlazorTestContextFactory.Create();
 
-        using (testContext)
+        await using (testContext)
         {
             var dockerInstanceId = Guid.NewGuid();
             const string containerId = "container-a";
@@ -62,8 +63,8 @@ public class RuntimeContainerDetailTests
             testContext.Services.AddSingleton(viewService);
             testContext.Services.AddSingleton(tagSelectionService);
 
-            var component = testContext.RenderComponent<RuntimeContainerDetail>(parameters => parameters.Add(page => page.DockerInstanceId, dockerInstanceId)
-                                                                                                        .Add(page => page.ContainerId, containerId));
+            var component = testContext.Render<RuntimeContainerDetail>(parameters => parameters.Add(page => page.DockerInstanceId, dockerInstanceId)
+                                                                                               .Add(page => page.ContainerId, containerId));
 
             Assert.Contains("1 of 2 active findings have a fix available",
                             component.Markup,
@@ -77,12 +78,13 @@ public class RuntimeContainerDetailTests
     /// <summary>
     /// Verify the fixable summary line and update hint chip are hidden when there are no fixable findings
     /// </summary>
+    /// <returns>Task</returns>
     [TestMethod]
-    public void RuntimeContainerDetailWithoutFixableFindingsHidesFixableSummaryAndUpdateHint()
+    public async Task RuntimeContainerDetailWithoutFixableFindingsHidesFixableSummaryAndUpdateHint()
     {
         var testContext = BlazorTestContextFactory.Create();
 
-        using (testContext)
+        await using (testContext)
         {
             var dockerInstanceId = Guid.NewGuid();
             const string containerId = "container-a";
@@ -118,8 +120,8 @@ public class RuntimeContainerDetailTests
             testContext.Services.AddSingleton(viewService);
             testContext.Services.AddSingleton(tagSelectionService);
 
-            var component = testContext.RenderComponent<RuntimeContainerDetail>(parameters => parameters.Add(page => page.DockerInstanceId, dockerInstanceId)
-                                                                                                        .Add(page => page.ContainerId, containerId));
+            var component = testContext.Render<RuntimeContainerDetail>(parameters => parameters.Add(page => page.DockerInstanceId, dockerInstanceId)
+                                                                                               .Add(page => page.ContainerId, containerId));
 
             Assert.DoesNotContain("active findings have a fix available",
                                   component.Markup,

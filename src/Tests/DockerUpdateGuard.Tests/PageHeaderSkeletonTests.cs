@@ -16,14 +16,15 @@ public class PageHeaderSkeletonTests
     /// <summary>
     /// Verify the header skeleton renders a hero panel with three placeholder bars
     /// </summary>
+    /// <returns>Task</returns>
     [TestMethod]
-    public void PageHeaderSkeletonRendersHeroPanelWithThreeBars()
+    public async Task PageHeaderSkeletonRendersHeroPanelWithThreeBars()
     {
         var testContext = BlazorTestContextFactory.Create();
 
-        using (testContext)
+        await using (testContext)
         {
-            var component = testContext.RenderComponent<PageHeaderSkeleton>();
+            var component = testContext.Render<PageHeaderSkeleton>();
             var markup = component.Markup;
 
             Assert.Contains("hero-panel", markup, "The header skeleton must render inside the hero panel");

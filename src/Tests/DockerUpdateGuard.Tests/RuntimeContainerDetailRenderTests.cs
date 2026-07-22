@@ -22,12 +22,13 @@ public class RuntimeContainerDetailRenderTests
     /// <summary>
     /// Verify the resource-history charts render inside the responsive chart wrapper and the current-usage cards render
     /// </summary>
+    /// <returns>Task</returns>
     [TestMethod]
-    public void RuntimeContainerDetailWithHistoryRendersResponsiveChartsAndUsageCards()
+    public async Task RuntimeContainerDetailWithHistoryRendersResponsiveChartsAndUsageCards()
     {
         var testContext = BlazorTestContextFactory.Create();
 
-        using (testContext)
+        await using (testContext)
         {
             var viewService = Substitute.For<IApplicationViewService>();
             var tagSelectionService = Substitute.For<IRuntimeContainerTagSelectionService>();
@@ -61,8 +62,8 @@ public class RuntimeContainerDetailRenderTests
             testContext.Services.AddSingleton(viewService);
             testContext.Services.AddSingleton(tagSelectionService);
 
-            var component = testContext.RenderComponent<RuntimeContainerDetailPage>(parameters => parameters.Add(page => page.DockerInstanceId, instanceId)
-                                                                                                            .Add(page => page.ContainerId, "abc123"));
+            var component = testContext.Render<RuntimeContainerDetailPage>(parameters => parameters.Add(page => page.DockerInstanceId, instanceId)
+                                                                                                   .Add(page => page.ContainerId, "abc123"));
             var markup = component.Markup;
 
             Assert.Contains("dug-chart", markup, "The resource-history charts must render inside the responsive chart wrapper");

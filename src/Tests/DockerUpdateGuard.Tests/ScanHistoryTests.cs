@@ -26,12 +26,13 @@ public class ScanHistoryTests
     /// <summary>
     /// Verify the refresh button is shown and triggers the enrichment service when scanning is enabled
     /// </summary>
+    /// <returns>Task</returns>
     [TestMethod]
-    public void ScanHistoryVulnerabilitiesEnabledClickingRefreshTriggersEnrichment()
+    public async Task ScanHistoryVulnerabilitiesEnabledClickingRefreshTriggersEnrichment()
     {
         var testContext = BlazorTestContextFactory.Create();
 
-        using (testContext)
+        await using (testContext)
         {
             var viewService = Substitute.For<IApplicationViewService>();
             var enrichmentService = Substitute.For<IVulnerabilityEnrichmentService>();
@@ -53,25 +54,26 @@ public class ScanHistoryTests
             testContext.Services.AddSingleton(new DashboardRefreshState());
             testContext.Services.AddSingleton<IOptionsMonitor<DockerUpdateGuardOptions>>(CreateOptionsMonitor(enabled: true));
 
-            var component = testContext.RenderComponent<ScanHistory>();
+            var component = testContext.Render<ScanHistory>();
 
             Assert.Contains("Refresh vulnerabilities", component.Markup, "The refresh button must be shown when vulnerability scanning is enabled");
 
-            component.Find("button").Click();
+            await component.Find("button").ClickAsync().ConfigureAwait(false);
 
-            enrichmentService.Received(1).RefreshAsync(ScanTriggerSource.Manual, Arg.Any<CancellationToken>());
+            await enrichmentService.Received(1).RefreshAsync(ScanTriggerSource.Manual, Arg.Any<CancellationToken>()).ConfigureAwait(false);
         }
     }
 
     /// <summary>
     /// Verify the refresh button is hidden when scanning is disabled
     /// </summary>
+    /// <returns>Task</returns>
     [TestMethod]
-    public void ScanHistoryVulnerabilitiesDisabledHidesRefreshButton()
+    public async Task ScanHistoryVulnerabilitiesDisabledHidesRefreshButton()
     {
         var testContext = BlazorTestContextFactory.Create();
 
-        using (testContext)
+        await using (testContext)
         {
             var viewService = Substitute.For<IApplicationViewService>();
 
@@ -83,7 +85,7 @@ public class ScanHistoryTests
             testContext.Services.AddSingleton(new DashboardRefreshState());
             testContext.Services.AddSingleton<IOptionsMonitor<DockerUpdateGuardOptions>>(CreateOptionsMonitor(enabled: false));
 
-            var component = testContext.RenderComponent<ScanHistory>();
+            var component = testContext.Render<ScanHistory>();
 
             Assert.DoesNotContain("Refresh vulnerabilities", component.Markup, "The refresh button must be hidden when vulnerability scanning is disabled");
         }
@@ -92,12 +94,13 @@ public class ScanHistoryTests
     /// <summary>
     /// Verify a surfaced enrichment failure is shown as an error alert
     /// </summary>
+    /// <returns>Task</returns>
     [TestMethod]
-    public void ScanHistoryRefreshFailureShowsErrorAlert()
+    public async Task ScanHistoryRefreshFailureShowsErrorAlert()
     {
         var testContext = BlazorTestContextFactory.Create();
 
-        using (testContext)
+        await using (testContext)
         {
             var viewService = Substitute.For<IApplicationViewService>();
             var enrichmentService = Substitute.For<IVulnerabilityEnrichmentService>();
@@ -112,9 +115,9 @@ public class ScanHistoryTests
             testContext.Services.AddSingleton(new DashboardRefreshState());
             testContext.Services.AddSingleton<IOptionsMonitor<DockerUpdateGuardOptions>>(CreateOptionsMonitor(enabled: true));
 
-            var component = testContext.RenderComponent<ScanHistory>();
+            var component = testContext.Render<ScanHistory>();
 
-            component.Find("button").Click();
+            await component.Find("button").ClickAsync().ConfigureAwait(false);
 
             Assert.Contains("scan boom", component.Markup, "A failed refresh must surface its error message as an alert");
         }

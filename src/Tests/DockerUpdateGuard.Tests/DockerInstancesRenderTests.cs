@@ -22,12 +22,13 @@ public class DockerInstancesRenderTests
     /// <summary>
     /// Verify the single-instance history charts render inside the responsive chart wrapper
     /// </summary>
+    /// <returns>Task</returns>
     [TestMethod]
-    public void DockerInstancesSingleInstanceWithHistoryRendersResponsiveCharts()
+    public async Task DockerInstancesSingleInstanceWithHistoryRendersResponsiveCharts()
     {
         var testContext = BlazorTestContextFactory.Create();
 
-        using (testContext)
+        await using (testContext)
         {
             var viewService = Substitute.For<IApplicationViewService>();
             var instanceId = Guid.NewGuid();
@@ -54,7 +55,7 @@ public class DockerInstancesRenderTests
 
             testContext.Services.AddSingleton(viewService);
 
-            var component = testContext.RenderComponent<DockerInstancesPage>();
+            var component = testContext.Render<DockerInstancesPage>();
 
             Assert.Contains("dug-chart", component.Markup, "The usage-history charts must render inside the responsive chart wrapper");
         }

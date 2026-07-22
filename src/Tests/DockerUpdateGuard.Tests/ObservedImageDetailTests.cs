@@ -21,12 +21,13 @@ public class ObservedImageDetailTests
     /// <summary>
     /// Verify the vulnerability assessment card shows the fixable finding count and the update-finding hint chip
     /// </summary>
+    /// <returns>Task</returns>
     [TestMethod]
-    public void ObservedImageDetailWithFixableFindingsShowsFixableSummaryAndUpdateHint()
+    public async Task ObservedImageDetailWithFixableFindingsShowsFixableSummaryAndUpdateHint()
     {
         var testContext = BlazorTestContextFactory.Create();
 
-        using (testContext)
+        await using (testContext)
         {
             var observedImageId = Guid.NewGuid();
             var viewService = Substitute.For<IApplicationViewService>();
@@ -55,7 +56,7 @@ public class ObservedImageDetailTests
 
             testContext.Services.AddSingleton(viewService);
 
-            var component = testContext.RenderComponent<ObservedImageDetail>(parameters => parameters.Add(page => page.ObservedImageId, observedImageId));
+            var component = testContext.Render<ObservedImageDetail>(parameters => parameters.Add(page => page.ObservedImageId, observedImageId));
 
             Assert.Contains("2 of 3 active findings have a fix available",
                             component.Markup,
@@ -69,12 +70,13 @@ public class ObservedImageDetailTests
     /// <summary>
     /// Verify the update-finding hint chip is hidden when there are no active update findings
     /// </summary>
+    /// <returns>Task</returns>
     [TestMethod]
-    public void ObservedImageDetailWithoutActiveUpdateFindingsHidesUpdateHint()
+    public async Task ObservedImageDetailWithoutActiveUpdateFindingsHidesUpdateHint()
     {
         var testContext = BlazorTestContextFactory.Create();
 
-        using (testContext)
+        await using (testContext)
         {
             var observedImageId = Guid.NewGuid();
             var viewService = Substitute.For<IApplicationViewService>();
@@ -96,7 +98,7 @@ public class ObservedImageDetailTests
 
             testContext.Services.AddSingleton(viewService);
 
-            var component = testContext.RenderComponent<ObservedImageDetail>(parameters => parameters.Add(page => page.ObservedImageId, observedImageId));
+            var component = testContext.Render<ObservedImageDetail>(parameters => parameters.Add(page => page.ObservedImageId, observedImageId));
 
             Assert.Contains("1 of 1 active findings have a fix available",
                             component.Markup,

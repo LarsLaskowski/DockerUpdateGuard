@@ -30,12 +30,13 @@ public class SharedBaseImagesPersistentStateTests
     /// <summary>
     /// Verify the page reuses the prerendered base-image list without reloading from the view service
     /// </summary>
+    /// <returns>Task</returns>
     [TestMethod]
-    public void SharedBaseImagesRestoresFromPersistentState()
+    public async Task SharedBaseImagesRestoresFromPersistentState()
     {
         var testContext = BlazorTestContextFactory.Create();
 
-        using (testContext)
+        await using (testContext)
         {
             var viewService = Substitute.For<IApplicationViewService>();
 
@@ -53,22 +54,23 @@ public class SharedBaseImagesPersistentStateTests
                                                                                     }
                                                                                 });
 
-            var component = testContext.RenderComponent<SharedBaseImages>();
+            var component = testContext.Render<SharedBaseImages>();
 
             Assert.Contains("Base image overview", component.Markup, "The page must render the base-image overview restored from persistent state");
-            viewService.DidNotReceive().GetBaseImagesAsync(Arg.Any<CancellationToken>());
+            await viewService.DidNotReceive().GetBaseImagesAsync(Arg.Any<CancellationToken>()).ConfigureAwait(false);
         }
     }
 
     /// <summary>
     /// Verify the page persists the loaded base-image list for the interactive render
     /// </summary>
+    /// <returns>Task</returns>
     [TestMethod]
-    public void SharedBaseImagesPersistsLoadedStateForPrerender()
+    public async Task SharedBaseImagesPersistsLoadedStateForPrerender()
     {
         var testContext = BlazorTestContextFactory.Create();
 
-        using (testContext)
+        await using (testContext)
         {
             var viewService = Substitute.For<IApplicationViewService>();
             var baseImageVersionId = Guid.NewGuid();
@@ -87,7 +89,7 @@ public class SharedBaseImagesPersistentStateTests
 
             var persistentState = testContext.GetPersistentComponentState();
 
-            testContext.RenderComponent<SharedBaseImages>();
+            testContext.Render<SharedBaseImages>();
 
             persistentState.TriggerOnPersisting();
 

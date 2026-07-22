@@ -22,12 +22,13 @@ public class VulnerabilitiesTests
     /// <summary>
     /// Verify the page renders one row per advisory with its severity, package, and reference link
     /// </summary>
+    /// <returns>Task</returns>
     [TestMethod]
-    public void VulnerabilitiesActiveAdvisoriesRendersOverviewRow()
+    public async Task VulnerabilitiesActiveAdvisoriesRendersOverviewRow()
     {
         var testContext = BlazorTestContextFactory.Create();
 
-        using (testContext)
+        await using (testContext)
         {
             var viewService = Substitute.For<IApplicationViewService>();
 
@@ -58,7 +59,7 @@ public class VulnerabilitiesTests
 
             testContext.Services.AddSingleton(viewService);
 
-            var component = testContext.RenderComponent<VulnerabilitiesPage>();
+            var component = testContext.Render<VulnerabilitiesPage>();
 
             Assert.Contains("CVE-2026-7001", component.Markup, "The advisory identifier must be rendered");
             Assert.Contains("openssl", component.Markup, "The affected package must be rendered");
@@ -69,12 +70,13 @@ public class VulnerabilitiesTests
     /// <summary>
     /// Verify the empty state is shown when there are no active vulnerability findings
     /// </summary>
+    /// <returns>Task</returns>
     [TestMethod]
-    public void VulnerabilitiesNoActiveFindingsShowsEmptyState()
+    public async Task VulnerabilitiesNoActiveFindingsShowsEmptyState()
     {
         var testContext = BlazorTestContextFactory.Create();
 
-        using (testContext)
+        await using (testContext)
         {
             var viewService = Substitute.For<IApplicationViewService>();
 
@@ -83,7 +85,7 @@ public class VulnerabilitiesTests
 
             testContext.Services.AddSingleton(viewService);
 
-            var component = testContext.RenderComponent<VulnerabilitiesPage>();
+            var component = testContext.Render<VulnerabilitiesPage>();
 
             Assert.Contains("No active vulnerability findings have been recorded yet.",
                             component.Markup,
@@ -94,12 +96,13 @@ public class VulnerabilitiesTests
     /// <summary>
     /// Verify the free-text filter hides advisories that do not match the search text
     /// </summary>
+    /// <returns>Task</returns>
     [TestMethod]
-    public void VulnerabilitiesFreeTextFilterHidesNonMatchingAdvisories()
+    public async Task VulnerabilitiesFreeTextFilterHidesNonMatchingAdvisories()
     {
         var testContext = BlazorTestContextFactory.Create();
 
-        using (testContext)
+        await using (testContext)
         {
             var viewService = Substitute.For<IApplicationViewService>();
 
@@ -122,9 +125,9 @@ public class VulnerabilitiesTests
 
             testContext.Services.AddSingleton(viewService);
 
-            var component = testContext.RenderComponent<VulnerabilitiesPage>();
+            var component = testContext.Render<VulnerabilitiesPage>();
 
-            component.Find("input[placeholder='Filter by advisory, package, or title']").Input("7002");
+            await component.Find("input[placeholder='Filter by advisory, package, or title']").InputAsync("7002").ConfigureAwait(false);
 
             Assert.Contains("CVE-2026-7002", component.Markup, "A matching advisory must remain visible after filtering by text");
             Assert.DoesNotContain("CVE-2026-7003", component.Markup, "A non-matching advisory must be hidden after filtering by text");
@@ -134,12 +137,13 @@ public class VulnerabilitiesTests
     /// <summary>
     /// Verify a critical advisory row carries the severity-rail CSS class
     /// </summary>
+    /// <returns>Task</returns>
     [TestMethod]
-    public void VulnerabilitiesCriticalAdvisoryRendersSeverityRailClass()
+    public async Task VulnerabilitiesCriticalAdvisoryRendersSeverityRailClass()
     {
         var testContext = BlazorTestContextFactory.Create();
 
-        using (testContext)
+        await using (testContext)
         {
             var viewService = Substitute.For<IApplicationViewService>();
 
@@ -156,7 +160,7 @@ public class VulnerabilitiesTests
 
             testContext.Services.AddSingleton(viewService);
 
-            var component = testContext.RenderComponent<VulnerabilitiesPage>();
+            var component = testContext.Render<VulnerabilitiesPage>();
 
             Assert.Contains("dug-rail-critical", component.Markup, "A critical advisory row must carry the severity-rail CSS class");
         }

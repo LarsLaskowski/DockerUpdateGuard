@@ -64,12 +64,13 @@ public class RuntimeContainerDetailPersistentStateTests
     /// <summary>
     /// Verify the page reuses the prerendered detail without reloading from the view service
     /// </summary>
+    /// <returns>Task</returns>
     [TestMethod]
-    public void RuntimeContainerDetailRestoresFromPersistentState()
+    public async Task RuntimeContainerDetailRestoresFromPersistentState()
     {
         var testContext = BlazorTestContextFactory.Create();
 
-        using (testContext)
+        await using (testContext)
         {
             var viewService = Substitute.For<IApplicationViewService>();
             var dockerInstanceId = Guid.NewGuid();
@@ -80,23 +81,24 @@ public class RuntimeContainerDetailPersistentStateTests
 
             persistentState.Persist(StateKey, CreateDetail(dockerInstanceId, "restored-container"));
 
-            var component = testContext.RenderComponent<RuntimeContainerDetail>(parameters => parameters.Add(page => page.DockerInstanceId, dockerInstanceId)
-                                                                                                        .Add(page => page.ContainerId, ContainerId));
+            var component = testContext.Render<RuntimeContainerDetail>(parameters => parameters.Add(page => page.DockerInstanceId, dockerInstanceId)
+                                                                                               .Add(page => page.ContainerId, ContainerId));
 
             Assert.Contains("restored-container", component.Markup, "The page must render the detail restored from persistent state");
-            viewService.DidNotReceive().GetRuntimeContainerDetailAsync(Arg.Any<Guid>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+            await viewService.DidNotReceive().GetRuntimeContainerDetailAsync(Arg.Any<Guid>(), Arg.Any<string>(), Arg.Any<CancellationToken>()).ConfigureAwait(false);
         }
     }
 
     /// <summary>
     /// Verify the page persists the loaded detail for the interactive render
     /// </summary>
+    /// <returns>Task</returns>
     [TestMethod]
-    public void RuntimeContainerDetailPersistsLoadedStateForPrerender()
+    public async Task RuntimeContainerDetailPersistsLoadedStateForPrerender()
     {
         var testContext = BlazorTestContextFactory.Create();
 
-        using (testContext)
+        await using (testContext)
         {
             var viewService = Substitute.For<IApplicationViewService>();
             var dockerInstanceId = Guid.NewGuid();
@@ -108,8 +110,8 @@ public class RuntimeContainerDetailPersistentStateTests
 
             var persistentState = testContext.GetPersistentComponentState();
 
-            testContext.RenderComponent<RuntimeContainerDetail>(parameters => parameters.Add(page => page.DockerInstanceId, dockerInstanceId)
-                                                                                        .Add(page => page.ContainerId, ContainerId));
+            testContext.Render<RuntimeContainerDetail>(parameters => parameters.Add(page => page.DockerInstanceId, dockerInstanceId)
+                                                                               .Add(page => page.ContainerId, ContainerId));
 
             persistentState.TriggerOnPersisting();
 
@@ -123,7 +125,7 @@ public class RuntimeContainerDetailPersistentStateTests
     /// </summary>
     /// <param name="testContext">Test context</param>
     /// <param name="viewService">Application view service substitute</param>
-    private static void RegisterServices(Bunit.TestContext testContext, IApplicationViewService viewService)
+    private static void RegisterServices(Bunit.BunitContext testContext, IApplicationViewService viewService)
     {
         testContext.Services.AddSingleton(viewService);
         testContext.Services.AddSingleton(Substitute.For<IRuntimeContainerTagSelectionService>());

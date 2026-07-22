@@ -36,12 +36,13 @@ public class DockerInstancesPersistentStateTests
     /// <summary>
     /// Verify the page reuses the prerendered instance list and single-instance detail without reloading from the view service
     /// </summary>
+    /// <returns>Task</returns>
     [TestMethod]
-    public void DockerInstancesRestoresFromPersistentState()
+    public async Task DockerInstancesRestoresFromPersistentState()
     {
         var testContext = BlazorTestContextFactory.Create();
 
-        using (testContext)
+        await using (testContext)
         {
             var viewService = Substitute.For<IApplicationViewService>();
             var instanceId = Guid.NewGuid();
@@ -68,22 +69,23 @@ public class DockerInstancesPersistentStateTests
                                         EndpointUri = "unix:///var/run/docker.sock",
                                     });
 
-            var component = testContext.RenderComponent<DockerInstancesPage>();
+            var component = testContext.Render<DockerInstancesPage>();
 
             Assert.Contains("restored-instance", component.Markup, "The page must render the instances restored from persistent state");
-            viewService.DidNotReceive().GetDockerInstancesAsync(Arg.Any<CancellationToken>());
+            await viewService.DidNotReceive().GetDockerInstancesAsync(Arg.Any<CancellationToken>()).ConfigureAwait(false);
         }
     }
 
     /// <summary>
     /// Verify the page persists the loaded instance list and single-instance detail for the interactive render
     /// </summary>
+    /// <returns>Task</returns>
     [TestMethod]
-    public void DockerInstancesPersistsLoadedStateForPrerender()
+    public async Task DockerInstancesPersistsLoadedStateForPrerender()
     {
         var testContext = BlazorTestContextFactory.Create();
 
-        using (testContext)
+        await using (testContext)
         {
             var viewService = Substitute.For<IApplicationViewService>();
             var instanceId = Guid.NewGuid();
@@ -109,7 +111,7 @@ public class DockerInstancesPersistentStateTests
 
             var persistentState = testContext.GetPersistentComponentState();
 
-            testContext.RenderComponent<DockerInstancesPage>();
+            testContext.Render<DockerInstancesPage>();
 
             persistentState.TriggerOnPersisting();
 

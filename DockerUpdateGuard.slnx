@@ -3,7 +3,6 @@
     <File Path=".dockerignore" />
     <File Path=".editorconfig" />
     <File Path=".gitignore" />
-    <File Path="azure-pipelines.yml" />
     <File Path="Directory.Build.props" />
     <File Path="Directory.Packages.props" />
     <File Path="DOCKER.md" />
@@ -19,6 +18,11 @@
   <Folder Name="/00 Solution items/Rules/">
     <File Path="rules/DockerUpdateGuard.Debug.ruleset" />
     <File Path="rules/DockerUpdateGuard.Release.ruleset" />
+  </Folder>
+  <Folder Name="/00 Solution items/Workflows/">
+    <File Path=".github/workflows/ci.yml" />
+    <File Path=".github/workflows/codeql.yml" />
+    <File Path=".github/workflows/release.yml" />
   </Folder>
   <Folder Name="/src/">
     <Project Path="src/DockerUpdateGuard.Data/DockerUpdateGuard.Data.csproj" />
