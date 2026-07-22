@@ -103,34 +103,11 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IDockerInstanceClient, DockerInstanceClient>();
         services.AddSingleton<IPortainerClient, PortainerClient>();
 
-        if (applicationOptions.Vulnerabilities.Enabled)
-        {
-            switch (applicationOptions.Vulnerabilities.Provider)
-            {
-                case VulnerabilityProviderKind.DockerScout:
-                    {
-                        services.AddSingleton<IVulnerabilityProvider, DockerScoutVulnerabilityProvider>();
-                    }
-                    break;
-
-                case VulnerabilityProviderKind.Trivy:
-                    {
-                        services.TryAddSingleton<IProcessRunner, ProcessRunner>();
-                        services.AddSingleton<IVulnerabilityProvider, TrivyVulnerabilityProvider>();
-                    }
-                    break;
-
-                default:
-                    {
-                        services.AddSingleton<IVulnerabilityProvider, DefaultVulnerabilityProvider>();
-                    }
-                    break;
-            }
-        }
-        else
-        {
-            services.AddSingleton<IVulnerabilityProvider, DefaultVulnerabilityProvider>();
-        }
+        services.TryAddSingleton<IProcessRunner, ProcessRunner>();
+        services.AddSingleton<DefaultVulnerabilityProvider>();
+        services.AddSingleton<DockerScoutVulnerabilityProvider>();
+        services.AddSingleton<TrivyVulnerabilityProvider>();
+        services.AddSingleton<IVulnerabilityProviderResolver, VulnerabilityProviderResolver>();
 
         services.AddScoped<IDockerHubClient>(serviceProvider => serviceProvider.GetRequiredService<DockerHubClient>());
         services.AddScoped<IRegistryMetadataClient>(serviceProvider => serviceProvider.GetRequiredService<DockerHubClient>());
