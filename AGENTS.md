@@ -26,6 +26,8 @@ null handling, suppressed analyzer rules) are imported below and are
 - Write the PR title and description in English, regardless of the language used in the conversation.
 - Do not mention Codex, Anthropic, or any AI assistant in the PR title or description.
 - Do not include Codex session links, "Co-Authored-By: Codex" trailers, "Generated with Codex" notices, or any other reference indicating the PR was created with AI assistance.
+- Follow the PR template in `.github/PULL_REQUEST_TEMPLATE.md`. Use its sections and do not add extra sections beyond it.
+- Do not add a "Validation", "Verification", "Testing", or similar section that lists `reihitsu-format`, `dotnet build`, `dotnet test`, or other build/test commands. Build and tests run automatically as PR checks, so restating them in the description is unnecessary.
 
 ## Build, test, and format
 
