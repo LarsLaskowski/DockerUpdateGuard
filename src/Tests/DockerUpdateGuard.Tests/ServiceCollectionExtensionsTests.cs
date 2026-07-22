@@ -4,6 +4,8 @@ using DockerUpdateGuard.DockerHub;
 using DockerUpdateGuard.Images;
 using DockerUpdateGuard.Images.Interfaces;
 using DockerUpdateGuard.Infrastructure;
+using DockerUpdateGuard.Vulnerabilities;
+using DockerUpdateGuard.Vulnerabilities.Interfaces;
 
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -73,6 +75,11 @@ public class ServiceCollectionExtensionsTests
         Assert.IsNotNull(loggerFactory, "The host registration must register an ILoggerFactory instance through telemetry");
         Assert.Contains(provider => provider.GetType().FullName?.Contains("OpenTelemetry", StringComparison.Ordinal) == true, loggerProviders, "The host registration must register an OpenTelemetry logger provider when telemetry logging is enabled");
         Assert.IsNotNull(serviceProvider.GetService<IDockerHubAccountImageDiscoveryService>(), "The Docker Hub account discovery service must be registered");
+        Assert.IsNotNull(serviceProvider.GetService<IVulnerabilityProviderResolver>(), "The vulnerability provider resolver must be registered");
+        Assert.IsNotNull(serviceProvider.GetService<DefaultVulnerabilityProvider>(), "The default vulnerability provider must be registered unconditionally");
+        Assert.IsNotNull(serviceProvider.GetService<DockerScoutVulnerabilityProvider>(), "The Docker Scout vulnerability provider must be registered unconditionally");
+        Assert.IsNotNull(serviceProvider.GetService<TrivyVulnerabilityProvider>(), "The Trivy vulnerability provider must be registered unconditionally");
+        Assert.IsNull(serviceProvider.GetService<IVulnerabilityProvider>(), "No conditional IVulnerabilityProvider registration must remain; consumers must depend on the resolver");
     }
 
     #endregion // Methods
