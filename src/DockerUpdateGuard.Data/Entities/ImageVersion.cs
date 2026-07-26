@@ -73,6 +73,11 @@ public class ImageVersion
     public DateTimeOffset? VulnerabilityAssessmentCheckedAtUtc { get; set; }
 
     /// <summary>
+    /// Optional identifier of the scan run that produced the latest vulnerability assessment
+    /// </summary>
+    public Guid? VulnerabilityAssessmentScanRunId { get; set; }
+
+    /// <summary>
     /// Related registry repository
     /// </summary>
     public RegistryRepository RegistryRepository { get; set; } = null!;

@@ -717,8 +717,8 @@ public class ApplicationViewServiceTests
     }
 
     /// <summary>
-    /// Verify observed image detail computes new/resolved finding deltas for the most recent scan window
-    /// and marks the newly detected finding in the returned finding list
+    /// Verify observed image detail computes new/resolved finding deltas from the scan run that produced the
+    /// latest assessment and marks the newly detected finding in the returned finding list
     /// </summary>
     /// <returns>Task</returns>
     [TestMethod]
@@ -739,8 +739,11 @@ public class ApplicationViewServiceTests
                                                                                          cancellationToken: CancellationToken.None)
                                                            .ConfigureAwait(false);
             var lastCheckedAtUtc = new DateTimeOffset(2026, 7, 20, 12, 0, 0, TimeSpan.Zero);
+            var previousScanRunId = Guid.NewGuid();
+            var currentScanRunId = Guid.NewGuid();
 
             imageVersion.VulnerabilityAssessmentCheckedAtUtc = lastCheckedAtUtc;
+            imageVersion.VulnerabilityAssessmentScanRunId = currentScanRunId;
 
             var observedImage = new ObservedImage
                                 {
@@ -752,6 +755,7 @@ public class ApplicationViewServiceTests
             dbContext.VulnerabilityFindings.Add(new VulnerabilityFinding
                                                 {
                                                     ImageVersionId = imageVersion.Id,
+                                                    ScanRunId = previousScanRunId,
                                                     AdvisoryId = "CVE-2026-4001",
                                                     Title = "Long-standing active finding",
                                                     Severity = VulnerabilitySeverity.High,
@@ -762,6 +766,7 @@ public class ApplicationViewServiceTests
             dbContext.VulnerabilityFindings.Add(new VulnerabilityFinding
                                                 {
                                                     ImageVersionId = imageVersion.Id,
+                                                    ScanRunId = currentScanRunId,
                                                     AdvisoryId = "CVE-2026-4002",
                                                     Title = "Newly detected active finding",
                                                     Severity = VulnerabilitySeverity.Critical,
@@ -772,13 +777,15 @@ public class ApplicationViewServiceTests
             dbContext.VulnerabilityFindings.Add(new VulnerabilityFinding
                                                 {
                                                     ImageVersionId = imageVersion.Id,
+                                                    ScanRunId = previousScanRunId,
+                                                    ResolvedByScanRunId = currentScanRunId,
                                                     AdvisoryId = "CVE-2026-4003",
                                                     Title = "Recently resolved finding",
                                                     Severity = VulnerabilitySeverity.Medium,
                                                     Source = VulnerabilitySource.Trivy,
                                                     IsActive = false,
                                                     DetectedAtUtc = lastCheckedAtUtc.AddDays(-60),
-                                                    ResolvedAtUtc = lastCheckedAtUtc.AddMinutes(-1),
+                                                    ResolvedAtUtc = lastCheckedAtUtc,
                                                 });
 
             await dbContext.SaveChangesAsync(CancellationToken.None)
@@ -794,16 +801,111 @@ public class ApplicationViewServiceTests
             Assert.IsNotNull(detail, "The observed image detail must be returned");
             Assert.AreEqual(1,
                             detail.VulnerabilityAssessment.NewFindingCount,
-                            "Only the finding detected within the last scan window must count as new");
+                            "Only the finding detected by the most recent scan run must count as new");
             Assert.AreEqual(1,
                             detail.VulnerabilityAssessment.ResolvedFindingCount,
-                            "Only the finding resolved within the last scan window must count as resolved");
+                            "Only the finding resolved by the most recent scan run must count as resolved");
 
             var newFinding = detail.VulnerabilityFindings.Single(finding => finding.AdvisoryId == "CVE-2026-4002");
             var oldFinding = detail.VulnerabilityFindings.Single(finding => finding.AdvisoryId == "CVE-2026-4001");
 
             Assert.IsTrue(newFinding.IsNewSinceLastScan, "The newly detected finding must be marked as new since the last scan");
             Assert.IsFalse(oldFinding.IsNewSinceLastScan, "The long-standing finding must not be marked as new since the last scan");
+        }
+    }
+
+    /// <summary>
+    /// Verify observed image detail reports zero deltas when the whole finding set was resolved and re-inserted
+    /// by an earlier scan run and a second scan run followed shortly afterwards
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task ApplicationViewServiceObservedImageDetailReportsZeroDeltaForConsecutiveScanRunsAsync()
+    {
+        var options = new DbContextOptionsBuilder<DockerUpdateGuardDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString())
+                                                                               .Options;
+
+        var dbContext = new DockerUpdateGuardDbContext(options);
+
+        await using (dbContext.ConfigureAwait(false))
+        {
+            var imageCatalogRepository = new ImageCatalogRepository(dbContext);
+            var imageVersion = await imageCatalogRepository.GetOrCreateImageVersionAsync("docker.io",
+                                                                                         "library/phpmyadmin",
+                                                                                         "latest",
+                                                                                         "sha256:phpmyadmin",
+                                                                                         cancellationToken: CancellationToken.None)
+                                                           .ConfigureAwait(false);
+            var churnScanRunAtUtc = new DateTimeOffset(2026, 7, 20, 12, 0, 0, TimeSpan.Zero);
+            var originScanRunId = Guid.NewGuid();
+            var churnScanRunId = Guid.NewGuid();
+            var currentScanRunId = Guid.NewGuid();
+
+            // The manual refresh follows the scheduled refresh one second later, which is well inside the
+            // five-minute wall-clock window the previous heuristic used to attribute findings to a scan
+            imageVersion.VulnerabilityAssessmentCheckedAtUtc = churnScanRunAtUtc.AddSeconds(1);
+            imageVersion.VulnerabilityAssessmentScanRunId = currentScanRunId;
+
+            var observedImage = new ObservedImage
+                                {
+                                    Name = "phpMyAdmin",
+                                    CurrentImageVersionId = imageVersion.Id,
+                                };
+
+            dbContext.ObservedImages.Add(observedImage);
+
+            for (var findingIndex = 0; findingIndex < 3; findingIndex++)
+            {
+                dbContext.VulnerabilityFindings.Add(new VulnerabilityFinding
+                                                    {
+                                                        ImageVersionId = imageVersion.Id,
+                                                        ScanRunId = originScanRunId,
+                                                        ResolvedByScanRunId = churnScanRunId,
+                                                        AdvisoryId = $"CVE-2026-43{findingIndex:D2}",
+                                                        AffectedPackage = "openssl",
+                                                        Title = "Resolved copy of a re-inserted finding",
+                                                        Severity = VulnerabilitySeverity.High,
+                                                        Source = VulnerabilitySource.Trivy,
+                                                        IsActive = false,
+                                                        DetectedAtUtc = churnScanRunAtUtc.AddDays(-30),
+                                                        ResolvedAtUtc = churnScanRunAtUtc,
+                                                    });
+                dbContext.VulnerabilityFindings.Add(new VulnerabilityFinding
+                                                    {
+                                                        ImageVersionId = imageVersion.Id,
+                                                        ScanRunId = churnScanRunId,
+                                                        AdvisoryId = $"CVE-2026-43{findingIndex:D2}",
+                                                        AffectedPackage = "openssl",
+                                                        Title = "Re-inserted copy of an unchanged finding",
+                                                        Severity = VulnerabilitySeverity.High,
+                                                        Source = VulnerabilitySource.Trivy,
+                                                        IsActive = true,
+                                                        DetectedAtUtc = churnScanRunAtUtc,
+                                                    });
+            }
+
+            await dbContext.SaveChangesAsync(CancellationToken.None)
+                           .ConfigureAwait(false);
+
+            var service = new ApplicationViewService(dbContext,
+                                                     new ImageReferenceParser(),
+                                                     new SharedBaseImageQueryService(dbContext));
+
+            var detail = await service.GetObservedImageDetailAsync(observedImage.Id, CancellationToken.None)
+                                      .ConfigureAwait(false);
+
+            Assert.IsNotNull(detail, "The observed image detail must be returned");
+            Assert.AreEqual(3,
+                            detail.VulnerabilityAssessment.ActiveFindingCount,
+                            "The re-inserted findings must remain the active finding set");
+            Assert.AreEqual(0,
+                            detail.VulnerabilityAssessment.NewFindingCount,
+                            "A scan run that changed nothing must not report the re-inserted findings as new");
+            Assert.AreEqual(0,
+                            detail.VulnerabilityAssessment.ResolvedFindingCount,
+                            "A scan run that changed nothing must not report the earlier resolve batch as resolved");
+            Assert.IsTrue(detail.VulnerabilityFindings.All(finding => finding.IsNewSinceLastScan == false),
+                          "No finding must be marked as new when the most recent scan run changed nothing");
         }
     }
 
@@ -829,8 +931,10 @@ public class ApplicationViewServiceTests
                                                                                          cancellationToken: CancellationToken.None)
                                                            .ConfigureAwait(false);
             var lastCheckedAtUtc = new DateTimeOffset(2026, 7, 20, 12, 0, 0, TimeSpan.Zero);
+            var currentScanRunId = Guid.NewGuid();
 
             imageVersion.VulnerabilityAssessmentCheckedAtUtc = lastCheckedAtUtc;
+            imageVersion.VulnerabilityAssessmentScanRunId = currentScanRunId;
 
             var observedImage = new ObservedImage
                                 {
@@ -842,6 +946,7 @@ public class ApplicationViewServiceTests
             dbContext.VulnerabilityFindings.Add(new VulnerabilityFinding
                                                 {
                                                     ImageVersionId = imageVersion.Id,
+                                                    ScanRunId = currentScanRunId,
                                                     AdvisoryId = "CVE-2026-4101",
                                                     Title = "First-scan finding",
                                                     Severity = VulnerabilitySeverity.High,
@@ -894,8 +999,12 @@ public class ApplicationViewServiceTests
                                                                                          cancellationToken: CancellationToken.None)
                                                            .ConfigureAwait(false);
             var lastCheckedAtUtc = new DateTimeOffset(2026, 7, 20, 12, 0, 0, TimeSpan.Zero);
+            var originScanRunId = Guid.NewGuid();
+            var previousScanRunId = Guid.NewGuid();
+            var currentScanRunId = Guid.NewGuid();
 
             imageVersion.VulnerabilityAssessmentCheckedAtUtc = lastCheckedAtUtc;
+            imageVersion.VulnerabilityAssessmentScanRunId = currentScanRunId;
 
             var observedImage = new ObservedImage
                                 {
@@ -907,6 +1016,7 @@ public class ApplicationViewServiceTests
             dbContext.VulnerabilityFindings.Add(new VulnerabilityFinding
                                                 {
                                                     ImageVersionId = imageVersion.Id,
+                                                    ScanRunId = originScanRunId,
                                                     AdvisoryId = "CVE-2026-4201",
                                                     Title = "Steady-state active finding",
                                                     Severity = VulnerabilitySeverity.Low,
@@ -917,6 +1027,8 @@ public class ApplicationViewServiceTests
             dbContext.VulnerabilityFindings.Add(new VulnerabilityFinding
                                                 {
                                                     ImageVersionId = imageVersion.Id,
+                                                    ScanRunId = originScanRunId,
+                                                    ResolvedByScanRunId = previousScanRunId,
                                                     AdvisoryId = "CVE-2026-4202",
                                                     Title = "Long-resolved finding",
                                                     Severity = VulnerabilitySeverity.Low,

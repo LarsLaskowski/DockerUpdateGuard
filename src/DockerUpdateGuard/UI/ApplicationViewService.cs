@@ -32,11 +32,6 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
     private static readonly TimeSpan _resourceHistoryWindow = TimeSpan.FromHours(24);
 
     /// <summary>
-    /// Tolerance applied when matching finding timestamps to the most recent vulnerability scan window
-    /// </summary>
-    private static readonly TimeSpan _lastScanWindowTolerance = TimeSpan.FromMinutes(5);
-
-    /// <summary>
     /// Database-access gate
     /// </summary>
     private readonly SemaphoreSlim _dbContextLock = new(1, 1);
@@ -107,45 +102,29 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
     }
 
     /// <summary>
-    /// Determine whether a timestamp falls within the most recent completed vulnerability scan window
-    /// </summary>
-    /// <param name="timestamp">Timestamp to test</param>
-    /// <param name="lastCheckedAtUtc">Timestamp of the most recent vulnerability assessment check</param>
-    /// <returns><c>true</c> when the timestamp falls within the last scan window; otherwise <c>false</c></returns>
-    private static bool IsWithinLastScanWindow(DateTimeOffset? timestamp, DateTimeOffset? lastCheckedAtUtc)
-    {
-        if (timestamp is null || lastCheckedAtUtc is null)
-        {
-            return false;
-        }
-
-        return timestamp.Value >= lastCheckedAtUtc.Value - _lastScanWindowTolerance;
-    }
-
-    /// <summary>
-    /// Compute the new/resolved finding deltas for the most recent completed vulnerability scan window,
-    /// suppressing the deltas when every finding still originates from the image's first recorded scan
+    /// Compute the new/resolved finding deltas of the most recent vulnerability scan run, suppressing the
+    /// deltas when every finding still originates from that same run and therefore from the image's first scan
     /// </summary>
     /// <param name="findings">Vulnerability findings for the image version</param>
-    /// <param name="lastCheckedAtUtc">Timestamp of the most recent vulnerability assessment check</param>
+    /// <param name="currentScanRunId">Identifier of the scan run that produced the latest vulnerability assessment</param>
     /// <returns>New finding count, resolved finding count, and whether the deltas were suppressed as a first scan</returns>
     private static (int NewFindingCount, int ResolvedFindingCount, bool IsFirstScan) ComputeVulnerabilityScanDelta(List<VulnerabilityFinding> findings,
-                                                                                                                   DateTimeOffset? lastCheckedAtUtc)
+                                                                                                                   Guid? currentScanRunId)
     {
-        if (findings.Count == 0 || lastCheckedAtUtc is null)
+        if (findings.Count == 0 || currentScanRunId is null)
         {
             return (0, 0, true);
         }
 
-        var oldestDetectedAtUtc = findings.Min(entity => entity.DetectedAtUtc);
+        var hasFindingFromEarlierScanRun = findings.Any(entity => entity.ScanRunId != currentScanRunId);
 
-        if (IsWithinLastScanWindow(oldestDetectedAtUtc, lastCheckedAtUtc))
+        if (hasFindingFromEarlierScanRun == false)
         {
             return (0, 0, true);
         }
 
-        var newFindingCount = findings.Count(entity => entity.IsActive && IsWithinLastScanWindow(entity.DetectedAtUtc, lastCheckedAtUtc));
-        var resolvedFindingCount = findings.Count(entity => IsWithinLastScanWindow(entity.ResolvedAtUtc, lastCheckedAtUtc));
+        var newFindingCount = findings.Count(entity => entity.IsActive && entity.ScanRunId == currentScanRunId);
+        var resolvedFindingCount = findings.Count(entity => entity.ResolvedByScanRunId == currentScanRunId);
 
         return (newFindingCount, resolvedFindingCount, false);
     }
@@ -161,8 +140,8 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                                                                                                                                                 List<VulnerabilityFinding> vulnerabilityFindings)
     {
         var vulnerabilityAssessment = CreateVulnerabilityAssessment(imageVersion, CreateSeveritySummaryFromFindings(vulnerabilityFindings));
-        var lastCheckedAtUtc = imageVersion.VulnerabilityAssessmentCheckedAtUtc;
-        var scanDelta = ComputeVulnerabilityScanDelta(vulnerabilityFindings, lastCheckedAtUtc);
+        var currentScanRunId = imageVersion.VulnerabilityAssessmentScanRunId;
+        var scanDelta = ComputeVulnerabilityScanDelta(vulnerabilityFindings, currentScanRunId);
 
         vulnerabilityAssessment.FixableFindingCount = CountFixableActiveFindings(vulnerabilityFindings);
         vulnerabilityAssessment.NewFindingCount = scanDelta.NewFindingCount;
@@ -171,7 +150,7 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
         var mappedFindings = vulnerabilityFindings.Select(entity => MapVulnerabilityFinding(entity,
                                                                                             scanDelta.IsFirstScan == false
                                                                                             && entity.IsActive
-                                                                                            && IsWithinLastScanWindow(entity.DetectedAtUtc, lastCheckedAtUtc)))
+                                                                                            && entity.ScanRunId == currentScanRunId))
                                                   .ToList();
 
         return (vulnerabilityAssessment, mappedFindings);
