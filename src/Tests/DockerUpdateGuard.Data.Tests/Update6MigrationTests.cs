@@ -26,7 +26,7 @@ public class Update6MigrationTests
     /// Create the migration under test with the active provider applied
     /// </summary>
     /// <returns>Migration under test</returns>
-    private static Migration CreateMigration()
+    private static Update6 CreateMigration()
     {
         return new Update6
                {
