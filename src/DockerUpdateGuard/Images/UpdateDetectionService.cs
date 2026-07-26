@@ -1,8 +1,11 @@
+using DockerUpdateGuard.Configuration;
 using DockerUpdateGuard.DockerHub;
 using DockerUpdateGuard.Images.Data;
 using DockerUpdateGuard.Images.Enums;
 using DockerUpdateGuard.Images.Helper;
 using DockerUpdateGuard.Images.Interfaces;
+
+using Microsoft.Extensions.Options;
 
 namespace DockerUpdateGuard.Images;
 
@@ -20,6 +23,28 @@ public class UpdateDetectionService : IUpdateDetectionService
 
     #endregion // Const fields
 
+    #region Fields
+
+    /// <summary>
+    /// Application options
+    /// </summary>
+    private readonly IOptionsMonitor<DockerUpdateGuardOptions> _options;
+
+    #endregion // Fields
+
+    #region Constructors
+
+    /// <summary>
+    /// Constructor
+    /// </summary>
+    /// <param name="options">Application options</param>
+    public UpdateDetectionService(IOptionsMonitor<DockerUpdateGuardOptions> options)
+    {
+        _options = options;
+    }
+
+    #endregion // Constructors
+
     #region Methods
 
     /// <summary>
@@ -27,10 +52,12 @@ public class UpdateDetectionService : IUpdateDetectionService
     /// </summary>
     /// <param name="orderedTags">Ordered available tags</param>
     /// <param name="currentTag">Current semantic tag or resolved exact tag</param>
+    /// <param name="currentDigest">Current running digest</param>
     /// <param name="currentPublishedAtUtc">Current tag publication timestamp</param>
     /// <returns>Higher semantic version candidates</returns>
     private static List<(DockerHubTagData Tag, Version Version)> GetHigherVersionCandidates(IReadOnlyList<DockerHubTagData> orderedTags,
                                                                                             string currentTag,
+                                                                                            string? currentDigest,
                                                                                             DateTimeOffset? currentPublishedAtUtc)
     {
         var currentIsPreRelease = VersionTagResolutionHelper.IsPreReleaseVersionTag(currentTag);
@@ -41,6 +68,7 @@ public class UpdateDetectionService : IUpdateDetectionService
                                         && comparison > 0
                                         && (currentIsPreRelease
                                             || VersionTagResolutionHelper.IsPreReleaseVersionTag(tag.Tag) == false)
+                                        && CurrentDigestMatches(currentDigest, tag.Digest) == false
                                         && IsCandidatePublishedAfterBaseline(tag.PublishedAtUtc, currentPublishedAtUtc))
                           .Select(tag => (Tag: tag, Version: ParseVersion(tag.Tag)))
                           .OrderByDescending(entity => entity.Tag.Tag, Comparer<string>.Create((left, right) => VersionTagResolutionHelper.TryCompareVersionTags(left, right, out var comparison) ? comparison : 0))
@@ -54,11 +82,13 @@ public class UpdateDetectionService : IUpdateDetectionService
     /// <param name="orderedTags">Ordered available tags</param>
     /// <param name="currentTag">Current tag</param>
     /// <param name="currentYear">Current major year</param>
+    /// <param name="currentDigest">Current running digest</param>
     /// <param name="currentPublishedAtUtc">Current tag publication timestamp</param>
     /// <returns>Higher year-based candidates</returns>
     private static List<(DockerHubTagData Tag, int Year, string Suffix)> GetHigherYearPrefixedCandidates(IReadOnlyList<DockerHubTagData> orderedTags,
                                                                                                          string currentTag,
                                                                                                          int currentYear,
+                                                                                                         string? currentDigest,
                                                                                                          DateTimeOffset? currentPublishedAtUtc)
     {
         return orderedTags.Select(tag =>
@@ -69,7 +99,9 @@ public class UpdateDetectionService : IUpdateDetectionService
                                   })
                           .Where(candidate => candidate.IsYearPrefixedVersion
                                               && candidate.Year == currentYear
+                                              && VersionTagResolutionHelper.IsMatchingYearPrefixedVariantFamily(currentTag, candidate.Tag.Tag)
                                               && VersionTagResolutionHelper.CompareYearPrefixedTags(candidate.Tag.Tag, currentTag) > 0
+                                              && CurrentDigestMatches(currentDigest, candidate.Tag.Digest) == false
                                               && IsCandidatePublishedAfterBaseline(candidate.Tag.PublishedAtUtc, currentPublishedAtUtc))
                           .Select(candidate => (candidate.Tag, candidate.Year, candidate.Suffix))
                           .OrderByDescending(entity => entity.Tag.Tag, Comparer<string>.Create(VersionTagResolutionHelper.CompareYearPrefixedTags))
@@ -81,12 +113,14 @@ public class UpdateDetectionService : IUpdateDetectionService
     /// Create an update result for semantic version successors
     /// </summary>
     /// <param name="versionCandidates">Higher semantic version candidates</param>
+    /// <param name="currentVersion">Current semantic version</param>
     /// <param name="resolvedCurrentVersionCandidate">Optional current resolved version candidate</param>
     /// <returns>Update evaluation result</returns>
     private static UpdateEvaluationResult CreateSemanticVersionUpdateResult(List<(DockerHubTagData Tag, Version Version)> versionCandidates,
+                                                                            Version currentVersion,
                                                                             UpdateCandidateData? resolvedCurrentVersionCandidate = null)
     {
-        var recommended = versionCandidates[0].Tag;
+        var recommended = versionCandidates[0];
         var candidates = versionCandidates.Take(resolvedCurrentVersionCandidate is null ? MaxCandidateCount : MaxCandidateCount - 1)
                                           .Select(entity => new UpdateCandidateData
                                                             {
@@ -107,11 +141,49 @@ public class UpdateDetectionService : IUpdateDetectionService
         return new UpdateEvaluationResult
                {
                    Status = UpdateEvaluationStatus.UpdateAvailable,
-                   Summary = $"Newer tag '{recommended.Tag}' is available",
-                   RecommendedTag = recommended.Tag,
-                   RecommendedDigest = recommended.Digest,
+                   Summary = $"Newer tag '{recommended.Tag.Tag}' is available",
+                   Details = recommended.Version.Major > currentVersion.Major
+                                 ? $"No newer version is available in the {currentVersion.Major}.x version line"
+                                 : null,
+                   RecommendedTag = recommended.Tag.Tag,
+                   RecommendedDigest = recommended.Tag.Digest,
                    Candidates = candidates,
                };
+    }
+
+    /// <summary>
+    /// Create an up-to-date result for a semantic version tag
+    /// </summary>
+    /// <param name="currentVersion">Current semantic version</param>
+    /// <param name="deferredMajorUpgradeTag">Recommended tag of a deferred major upgrade</param>
+    /// <returns>Update evaluation result</returns>
+    private static UpdateEvaluationResult CreateSemanticVersionUpToDateResult(Version currentVersion, string? deferredMajorUpgradeTag)
+    {
+        if (deferredMajorUpgradeTag is null)
+        {
+            return new UpdateEvaluationResult
+                   {
+                       Status = UpdateEvaluationStatus.UpToDate,
+                       Summary = "No newer semantic version was found",
+                   };
+        }
+
+        return new UpdateEvaluationResult
+               {
+                   Status = UpdateEvaluationStatus.UpToDate,
+                   Summary = $"No newer version was found in the {currentVersion.Major}.x version line",
+                   Details = CreateDeferredMajorUpgradeDetails(deferredMajorUpgradeTag),
+               };
+    }
+
+    /// <summary>
+    /// Create the details text for a major upgrade that is not recommended yet
+    /// </summary>
+    /// <param name="deferredMajorUpgradeTag">Recommended tag of the deferred major upgrade</param>
+    /// <returns>Details text</returns>
+    private static string CreateDeferredMajorUpgradeDetails(string deferredMajorUpgradeTag)
+    {
+        return $"Tag '{deferredMajorUpgradeTag}' introduces a new major version and is not recommended yet";
     }
 
     /// <summary>
@@ -215,43 +287,6 @@ public class UpdateDetectionService : IUpdateDetectionService
                  };
 
         return true;
-    }
-
-    /// <summary>
-    /// Evaluate an update for a tag whose running digest matches a concrete version tag
-    /// </summary>
-    /// <param name="currentImage">Current image reference</param>
-    /// <param name="currentTagData">Tag metadata of the current tag</param>
-    /// <param name="orderedTags">Available tags ordered by publication date</param>
-    /// <returns>Evaluation result, or null when the running digest cannot be mapped to a version tag</returns>
-    private static UpdateEvaluationResult? EvaluateResolvedDigestUpdate(ImageReference currentImage,
-                                                                        DockerHubTagData? currentTagData,
-                                                                        IReadOnlyList<DockerHubTagData> orderedTags)
-    {
-        if (TryResolveCurrentVersionFromDigest(currentImage,
-                                               orderedTags,
-                                               out var resolvedVersionTagData,
-                                               out _) == false)
-        {
-            return null;
-        }
-
-        var versionCandidates = GetHigherVersionCandidates(orderedTags,
-                                                           resolvedVersionTagData!.Tag,
-                                                           resolvedVersionTagData.PublishedAtUtc ?? currentTagData?.PublishedAtUtc);
-
-        if (versionCandidates.Count > 0)
-        {
-            return CreateSemanticVersionUpdateResult(versionCandidates,
-                                                     CreateResolvedCurrentVersionCandidate(resolvedVersionTagData));
-        }
-
-        return new UpdateEvaluationResult
-               {
-                   Status = UpdateEvaluationStatus.UpToDate,
-                   Summary = $"The running digest matches version tag '{resolvedVersionTagData!.Tag}'",
-                   Details = "No newer semantic version was found",
-               };
     }
 
     /// <summary>
@@ -376,28 +411,199 @@ public class UpdateDetectionService : IUpdateDetectionService
     }
 
     /// <summary>
+    /// Get the newest publication timestamp of the current major version line
+    /// </summary>
+    /// <param name="orderedTags">Ordered available tags</param>
+    /// <param name="currentTag">Current concrete version tag</param>
+    /// <param name="currentVersion">Current semantic version</param>
+    /// <returns>Newest publication timestamp of the current major version line, or null when unknown</returns>
+    private static DateTimeOffset? GetCurrentMajorLinePublication(IReadOnlyList<DockerHubTagData> orderedTags,
+                                                                  string currentTag,
+                                                                  Version currentVersion)
+    {
+        var currentIsPreRelease = VersionTagResolutionHelper.IsPreReleaseVersionTag(currentTag);
+
+        return orderedTags.Where(tag => tag.PublishedAtUtc is not null
+                                        && (currentIsPreRelease
+                                            || VersionTagResolutionHelper.IsPreReleaseVersionTag(tag.Tag) == false)
+                                        && VersionTagResolutionHelper.TryCompareVersionTags(tag.Tag, currentTag, out _)
+                                        && ParseVersion(tag.Tag).Major == currentVersion.Major)
+                          .Max(tag => tag.PublishedAtUtc);
+    }
+
+    /// <summary>
+    /// Apply the major-version upgrade policy to the higher semantic version candidates
+    /// Successors inside the current major line always win; a major upgrade is only offered once no
+    /// in-line successor exists and the new major line is established
+    /// </summary>
+    /// <param name="versionCandidates">Higher semantic version candidates</param>
+    /// <param name="currentTag">Current concrete version tag</param>
+    /// <param name="currentVersion">Current semantic version</param>
+    /// <param name="orderedTags">Ordered available tags</param>
+    /// <param name="deferredMajorUpgradeTag">Recommended tag of a major upgrade that is held back</param>
+    /// <returns>Candidates that may be recommended, ordered by recommendation</returns>
+    private List<(DockerHubTagData Tag, Version Version)> SelectUpgradePolicyCandidates(List<(DockerHubTagData Tag, Version Version)> versionCandidates,
+                                                                                        string currentTag,
+                                                                                        Version currentVersion,
+                                                                                        IReadOnlyList<DockerHubTagData> orderedTags,
+                                                                                        out string? deferredMajorUpgradeTag)
+    {
+        deferredMajorUpgradeTag = null;
+
+        if (versionCandidates.Count == 0)
+        {
+            return versionCandidates;
+        }
+
+        var currentMajorCandidates = versionCandidates.Where(entity => entity.Version.Major == currentVersion.Major)
+                                                      .ToList();
+
+        if (currentMajorCandidates.Count > 0)
+        {
+            return currentMajorCandidates.Concat(versionCandidates.Where(entity => entity.Version.Major != currentVersion.Major))
+                                         .ToList();
+        }
+
+        var nextMajor = versionCandidates.Min(entity => entity.Version.Major);
+        var nextMajorCandidates = versionCandidates.Where(entity => entity.Version.Major == nextMajor)
+                                                   .ToList();
+
+        if (IsMajorUpgradeRecommendable(nextMajorCandidates,
+                                        currentTag,
+                                        currentVersion,
+                                        orderedTags))
+        {
+            return nextMajorCandidates.Concat(versionCandidates.Where(entity => entity.Version.Major != nextMajor))
+                                      .ToList();
+        }
+
+        deferredMajorUpgradeTag = nextMajorCandidates[0].Tag.Tag;
+
+        return [];
+    }
+
+    /// <summary>
+    /// Determine whether the next major version line may already be recommended
+    /// </summary>
+    /// <param name="nextMajorCandidates">Candidates of the next major version line</param>
+    /// <param name="currentTag">Current concrete version tag</param>
+    /// <param name="currentVersion">Current semantic version</param>
+    /// <param name="orderedTags">Ordered available tags</param>
+    /// <returns>True when the major upgrade may be recommended</returns>
+    private bool IsMajorUpgradeRecommendable(List<(DockerHubTagData Tag, Version Version)> nextMajorCandidates,
+                                             string currentTag,
+                                             Version currentVersion,
+                                             IReadOnlyList<DockerHubTagData> orderedTags)
+    {
+        var scanningOptions = _options.CurrentValue.Scanning;
+        var releaseCount = nextMajorCandidates.Select(entity => entity.Version)
+                                              .Distinct()
+                                              .Count();
+
+        if (scanningOptions.MajorUpgradeMinimumReleaseCount > 0
+            && releaseCount < scanningOptions.MajorUpgradeMinimumReleaseCount)
+        {
+            return false;
+        }
+
+        if (scanningOptions.MajorUpgradeMinimumAgeDays <= 0)
+        {
+            return true;
+        }
+
+        var establishedBeforeUtc = DateTimeOffset.UtcNow.AddDays(-scanningOptions.MajorUpgradeMinimumAgeDays);
+        var firstMajorReleaseAtUtc = nextMajorCandidates.Where(entity => entity.Tag.PublishedAtUtc is not null)
+                                                        .Min(entity => entity.Tag.PublishedAtUtc);
+
+        if (firstMajorReleaseAtUtc is not null && firstMajorReleaseAtUtc > establishedBeforeUtc)
+        {
+            return false;
+        }
+
+        var currentMajorLinePublishedAtUtc = GetCurrentMajorLinePublication(orderedTags,
+                                                                            currentTag,
+                                                                            currentVersion);
+
+        return currentMajorLinePublishedAtUtc is null
+               || currentMajorLinePublishedAtUtc <= establishedBeforeUtc;
+    }
+
+    /// <summary>
+    /// Evaluate an update for a tag whose running digest matches a concrete version tag
+    /// </summary>
+    /// <param name="currentImage">Current image reference</param>
+    /// <param name="currentTagData">Tag metadata of the current tag</param>
+    /// <param name="orderedTags">Available tags ordered by publication date</param>
+    /// <returns>Evaluation result, or null when the running digest cannot be mapped to a version tag</returns>
+    private UpdateEvaluationResult? EvaluateResolvedDigestUpdate(ImageReference currentImage,
+                                                                 DockerHubTagData? currentTagData,
+                                                                 IReadOnlyList<DockerHubTagData> orderedTags)
+    {
+        if (TryResolveCurrentVersionFromDigest(currentImage,
+                                               orderedTags,
+                                               out var resolvedVersionTagData,
+                                               out var resolvedVersion) == false
+            || resolvedVersionTagData is null)
+        {
+            return null;
+        }
+
+        var versionCandidates = GetHigherVersionCandidates(orderedTags,
+                                                           resolvedVersionTagData.Tag,
+                                                           currentImage.Digest,
+                                                           resolvedVersionTagData.PublishedAtUtc ?? currentTagData?.PublishedAtUtc);
+        var eligibleCandidates = SelectUpgradePolicyCandidates(versionCandidates,
+                                                               resolvedVersionTagData.Tag,
+                                                               resolvedVersion,
+                                                               orderedTags,
+                                                               out var deferredMajorUpgradeTag);
+
+        if (eligibleCandidates.Count > 0)
+        {
+            return CreateSemanticVersionUpdateResult(eligibleCandidates,
+                                                     resolvedVersion,
+                                                     CreateResolvedCurrentVersionCandidate(resolvedVersionTagData));
+        }
+
+        return new UpdateEvaluationResult
+               {
+                   Status = UpdateEvaluationStatus.UpToDate,
+                   Summary = $"The running digest matches version tag '{resolvedVersionTagData.Tag}'",
+                   Details = deferredMajorUpgradeTag is null
+                                 ? "No newer semantic version was found"
+                                 : CreateDeferredMajorUpgradeDetails(deferredMajorUpgradeTag),
+               };
+    }
+
+    /// <summary>
     /// Evaluate an update for a semantic version tag
     /// </summary>
     /// <param name="currentImage">Current image reference</param>
     /// <param name="currentTagData">Tag metadata of the current tag</param>
     /// <param name="orderedTags">Available tags ordered by publication date</param>
     /// <returns>Evaluation result, or null when the current tag is not a semantic version</returns>
-    private static UpdateEvaluationResult? EvaluateSemanticVersionUpdate(ImageReference currentImage,
-                                                                         DockerHubTagData? currentTagData,
-                                                                         IReadOnlyList<DockerHubTagData> orderedTags)
+    private UpdateEvaluationResult? EvaluateSemanticVersionUpdate(ImageReference currentImage,
+                                                                  DockerHubTagData? currentTagData,
+                                                                  IReadOnlyList<DockerHubTagData> orderedTags)
     {
-        if (TryParseVersion(currentImage.Tag, out _) == false)
+        if (TryParseVersion(currentImage.Tag, out var currentVersion) == false)
         {
             return null;
         }
 
         var versionCandidates = GetHigherVersionCandidates(orderedTags,
                                                            currentImage.Tag,
+                                                           currentImage.Digest,
                                                            currentTagData?.PublishedAtUtc);
+        var eligibleCandidates = SelectUpgradePolicyCandidates(versionCandidates,
+                                                               currentImage.Tag,
+                                                               currentVersion,
+                                                               orderedTags,
+                                                               out var deferredMajorUpgradeTag);
 
-        if (versionCandidates.Count > 0)
+        if (eligibleCandidates.Count > 0)
         {
-            return CreateSemanticVersionUpdateResult(versionCandidates);
+            return CreateSemanticVersionUpdateResult(eligibleCandidates, currentVersion);
         }
 
         if (TryCreateDigestUpdateResult(currentImage,
@@ -408,11 +614,7 @@ public class UpdateDetectionService : IUpdateDetectionService
             return digestUpdateResult;
         }
 
-        return new UpdateEvaluationResult
-               {
-                   Status = UpdateEvaluationStatus.UpToDate,
-                   Summary = "No newer semantic version was found",
-               };
+        return CreateSemanticVersionUpToDateResult(currentVersion, deferredMajorUpgradeTag);
     }
 
     /// <summary>
@@ -422,9 +624,9 @@ public class UpdateDetectionService : IUpdateDetectionService
     /// <param name="currentTagData">Tag metadata of the current tag</param>
     /// <param name="orderedTags">Available tags ordered by publication date</param>
     /// <returns>Evaluation result, or null when the current tag is not a year-prefixed version</returns>
-    private static UpdateEvaluationResult? EvaluateYearPrefixedUpdate(ImageReference currentImage,
-                                                                      DockerHubTagData? currentTagData,
-                                                                      IReadOnlyList<DockerHubTagData> orderedTags)
+    private UpdateEvaluationResult? EvaluateYearPrefixedUpdate(ImageReference currentImage,
+                                                               DockerHubTagData? currentTagData,
+                                                               IReadOnlyList<DockerHubTagData> orderedTags)
     {
         if (TryParseYearPrefixedVersion(currentImage.Tag, out var currentYear, out _) == false)
         {
@@ -434,6 +636,7 @@ public class UpdateDetectionService : IUpdateDetectionService
         var versionCandidates = GetHigherYearPrefixedCandidates(orderedTags,
                                                                 currentImage.Tag,
                                                                 currentYear,
+                                                                currentImage.Digest,
                                                                 currentTagData?.PublishedAtUtc);
 
         if (versionCandidates.Count > 0)

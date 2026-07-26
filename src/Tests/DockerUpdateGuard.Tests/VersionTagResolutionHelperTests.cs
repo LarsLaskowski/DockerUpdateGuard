@@ -287,5 +287,56 @@ public class VersionTagResolutionHelperTests
         Assert.IsFalse(isMatching, "A version-line component exceeding Int32 range must not throw and must return false");
     }
 
+    /// <summary>
+    /// Verify year-prefixed servicing levels of the same variant family are matched
+    /// </summary>
+    [TestMethod]
+    public void VersionTagResolutionHelperIsMatchingYearPrefixedVariantFamilyMatchesServicingLevels()
+    {
+        var isMatching = VersionTagResolutionHelper.IsMatchingYearPrefixedVariantFamily("2019-CU32-GDR10-ubuntu-20.04",
+                                                                                        "2019-CU33-ubuntu-20.04");
+
+        Assert.IsTrue(isMatching,
+                      "Servicing levels of the same year line and operating system must belong to the same variant family");
+    }
+
+    /// <summary>
+    /// Verify year-prefixed alias tags are kept separate from concrete servicing tags
+    /// </summary>
+    [TestMethod]
+    public void VersionTagResolutionHelperIsMatchingYearPrefixedVariantFamilyRejectsAliasTag()
+    {
+        var isMatching = VersionTagResolutionHelper.IsMatchingYearPrefixedVariantFamily("2019-CU32-GDR10-ubuntu-20.04",
+                                                                                        "2019-latest");
+
+        Assert.IsFalse(isMatching,
+                       "A year alias tag must not share the variant family of a concrete servicing tag");
+    }
+
+    /// <summary>
+    /// Verify year-prefixed tags of different operating systems are kept separate
+    /// </summary>
+    [TestMethod]
+    public void VersionTagResolutionHelperIsMatchingYearPrefixedVariantFamilyRejectsOtherOperatingSystem()
+    {
+        var isMatching = VersionTagResolutionHelper.IsMatchingYearPrefixedVariantFamily("2019-CU32-ubuntu-20.04",
+                                                                                        "2019-CU33-ubuntu-22.04");
+
+        Assert.IsFalse(isMatching,
+                       "Servicing tags built on different operating systems must not share a variant family");
+    }
+
+    /// <summary>
+    /// Verify calendar-style year-prefixed tags stay comparable
+    /// </summary>
+    [TestMethod]
+    public void VersionTagResolutionHelperIsMatchingYearPrefixedVariantFamilyMatchesCalendarTags()
+    {
+        var isMatching = VersionTagResolutionHelper.IsMatchingYearPrefixedVariantFamily("2024-01-15", "2024-02-01");
+
+        Assert.IsTrue(isMatching,
+                      "Calendar-style year-prefixed tags must stay comparable because they carry no variant family");
+    }
+
     #endregion // Methods
 }

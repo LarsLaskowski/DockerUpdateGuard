@@ -68,6 +68,8 @@ public class DockerUpdateGuardOptionsValidatorTests
         options.Scanning.CleanupIntervalMinutes = 0;
         options.Scanning.DockerHubAccountDiscoveryIntervalMinutes = 0;
         options.Scanning.DockerHubReservedManualRequestsPerWindow = options.Scanning.DockerHubRequestLimitPerWindow;
+        options.Scanning.MajorUpgradeMinimumAgeDays = -1;
+        options.Scanning.MajorUpgradeMinimumReleaseCount = -1;
         options.DockerInstances = [
                                       new DockerInstanceOptions
                                       {
@@ -112,6 +114,12 @@ public class DockerUpdateGuardOptionsValidatorTests
         Assert.Contains(message => message.Contains("Scanning:DockerHubReservedManualRequestsPerWindow", StringComparison.Ordinal),
                         failures,
                         "An invalid manual Docker Hub request reserve must be reported");
+        Assert.Contains(message => message.Contains("Scanning:MajorUpgradeMinimumAgeDays", StringComparison.Ordinal),
+                        failures,
+                        "An invalid major upgrade waiting period must be reported");
+        Assert.Contains(message => message.Contains("Scanning:MajorUpgradeMinimumReleaseCount", StringComparison.Ordinal),
+                        failures,
+                        "An invalid major upgrade release requirement must be reported");
         Assert.Contains(message => message.Contains("duplicate instance name", StringComparison.OrdinalIgnoreCase),
                         failures,
                         "Duplicate Docker instance names must be reported");

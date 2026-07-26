@@ -9,6 +9,7 @@ It is designed for teams that want more than "a newer tag exists". The app keeps
 - Discover configured Docker instances and the containers currently running on them
 - Detect whether a running container is up to date, behind a newer version, or needs manual review
 - Resolve alias tags such as `latest` to matching semantic version tags when they share the same digest
+- Recommend updates inside the current major version line first and hold a new major version back until it is established
 - Track resource usage over time for Docker instances and runtime containers
 - Correlate runtime containers with observed images and shared base images
 - Refresh vulnerability data for images
@@ -149,6 +150,8 @@ versions. Override them to route the lookups through an internal mirror or proxy
 | `CleanupIntervalMinutes` | `720` | Interval for cleaning old scan data |
 | `RetryCount` | `2` | Retry count for transient background failures |
 | `RetainScanRunsDays` | `30` | Retention period for completed scan history |
+| `MajorUpgradeMinimumAgeDays` | `30` | Waiting period before a new major version line is recommended; `0` disables the waiting period |
+| `MajorUpgradeMinimumReleaseCount` | `2` | Number of releases a new major version line must have before it is recommended; `0` disables the requirement |
 
 ### `DockerUpdateGuard:DockerInstances[]`
 

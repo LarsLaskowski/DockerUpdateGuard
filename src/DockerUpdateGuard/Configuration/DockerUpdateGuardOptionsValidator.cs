@@ -229,6 +229,16 @@ public class DockerUpdateGuardOptionsValidator : IValidateOptions<DockerUpdateGu
                       3650,
                       $"{DockerUpdateGuardOptions.SectionName}:Scanning:RetainScanRunsDays",
                       failures);
+        ValidateRange(options.MajorUpgradeMinimumAgeDays,
+                      0,
+                      3650,
+                      $"{DockerUpdateGuardOptions.SectionName}:Scanning:MajorUpgradeMinimumAgeDays",
+                      failures);
+        ValidateRange(options.MajorUpgradeMinimumReleaseCount,
+                      0,
+                      100,
+                      $"{DockerUpdateGuardOptions.SectionName}:Scanning:MajorUpgradeMinimumReleaseCount",
+                      failures);
     }
 
     /// <summary>
