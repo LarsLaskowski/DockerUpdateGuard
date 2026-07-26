@@ -67,5 +67,18 @@ public class ScanningOptions
     /// </summary>
     public int RetainScanRunsDays { get; set; } = 30;
 
+    /// <summary>
+    /// Number of days a new major version line must be established before a major upgrade is
+    /// recommended, and number of days the current major version line must have been without a
+    /// release before the major upgrade takes over; a value of zero disables both waiting periods
+    /// </summary>
+    public int MajorUpgradeMinimumAgeDays { get; set; } = 30;
+
+    /// <summary>
+    /// Number of releases a new major version line must have published before a major upgrade is
+    /// recommended; a value of zero disables the requirement
+    /// </summary>
+    public int MajorUpgradeMinimumReleaseCount { get; set; } = 2;
+
     #endregion // Properties
 }
