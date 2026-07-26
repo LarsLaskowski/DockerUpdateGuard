@@ -1,7 +1,9 @@
+using DockerUpdateGuard.Configuration;
 using DockerUpdateGuard.DockerHub;
 using DockerUpdateGuard.Images;
 using DockerUpdateGuard.Images.Data;
 using DockerUpdateGuard.Images.Enums;
+using DockerUpdateGuard.Tests.Data;
 
 namespace DockerUpdateGuard.Tests;
 
@@ -19,7 +21,7 @@ public class UpdateDetectionServiceTests
     [TestMethod]
     public void UpdateDetectionServiceDigestChangeReturnsCurrentTagUpdate()
     {
-        var service = new UpdateDetectionService();
+        var service = CreateService();
 
         var evaluation = service.Evaluate(new ImageReference
                                           {
@@ -63,7 +65,7 @@ public class UpdateDetectionServiceTests
     [TestMethod]
     public void UpdateDetectionServiceDigestChangeReturnsAliasAndResolvedVersionCandidates()
     {
-        var service = new UpdateDetectionService();
+        var service = CreateService();
 
         var evaluation = service.Evaluate(new ImageReference
                                           {
@@ -105,7 +107,7 @@ public class UpdateDetectionServiceTests
     [TestMethod]
     public void UpdateDetectionServiceSemverSuccessorReturnsHighestCandidate()
     {
-        var service = new UpdateDetectionService();
+        var service = CreateService();
 
         var evaluation = service.Evaluate(new ImageReference
                                           {
@@ -154,7 +156,7 @@ public class UpdateDetectionServiceTests
     [TestMethod]
     public void UpdateDetectionServicePreReleaseCurrentTagPrefersReleaseOverLaterPreRelease()
     {
-        var service = new UpdateDetectionService();
+        var service = CreateService();
 
         var evaluation = service.Evaluate(new ImageReference
                                           {
@@ -197,7 +199,7 @@ public class UpdateDetectionServiceTests
     [TestMethod]
     public void UpdateDetectionServiceYearCuTagOnlyUsesSameYearSuccessors()
     {
-        var service = new UpdateDetectionService();
+        var service = CreateService();
 
         var evaluation = service.Evaluate(new ImageReference
                                           {
@@ -238,7 +240,7 @@ public class UpdateDetectionServiceTests
     [TestMethod]
     public void UpdateDetectionServiceYearPrefixedTagUsesSameYearSuccessors()
     {
-        var service = new UpdateDetectionService();
+        var service = CreateService();
 
         var evaluation = service.Evaluate(new ImageReference
                                           {
@@ -275,7 +277,7 @@ public class UpdateDetectionServiceTests
     [TestMethod]
     public void UpdateDetectionServiceMcrChannelTagUsesSameVariantFamilySuccessors()
     {
-        var service = new UpdateDetectionService();
+        var service = CreateService();
 
         var evaluation = service.Evaluate(new ImageReference
                                           {
@@ -329,7 +331,7 @@ public class UpdateDetectionServiceTests
     [TestMethod]
     public void UpdateDetectionServiceNonSemverTagReturnsNeedsReview()
     {
-        var service = new UpdateDetectionService();
+        var service = CreateService();
 
         var evaluation = service.Evaluate(new ImageReference
                                           {
@@ -374,7 +376,7 @@ public class UpdateDetectionServiceTests
     [TestMethod]
     public void UpdateDetectionServiceLatestAliasWithCurrentLatestDigestReturnsUpToDate()
     {
-        var service = new UpdateDetectionService();
+        var service = CreateService();
 
         var evaluation = service.Evaluate(new ImageReference
                                           {
@@ -421,7 +423,7 @@ public class UpdateDetectionServiceTests
     [TestMethod]
     public void UpdateDetectionServiceLatestAliasIgnoresOlderPublishedCalendarTagAsync()
     {
-        var service = new UpdateDetectionService();
+        var service = CreateService();
 
         var evaluation = service.Evaluate(new ImageReference
                                           {
@@ -471,7 +473,7 @@ public class UpdateDetectionServiceTests
     [TestMethod]
     public void UpdateDetectionServiceLatestAliasWithMatchingSemanticDigestAndNoSuccessorReturnsUpToDate()
     {
-        var service = new UpdateDetectionService();
+        var service = CreateService();
 
         var evaluation = service.Evaluate(new ImageReference
                                           {
@@ -509,7 +511,7 @@ public class UpdateDetectionServiceTests
     [TestMethod]
     public void UpdateDetectionServiceLatestAliasWithoutSemanticMatchAndUnchangedDigestReturnsUpToDate()
     {
-        var service = new UpdateDetectionService();
+        var service = CreateService();
 
         var evaluation = service.Evaluate(new ImageReference
                                           {
@@ -547,7 +549,7 @@ public class UpdateDetectionServiceTests
     [TestMethod]
     public void UpdateDetectionServiceSemverCandidatesAreLimitedToFiftyEntries()
     {
-        var service = new UpdateDetectionService();
+        var service = CreateService();
         var availableTags = Enumerable.Range(1, 60)
                                       .Select(index => new DockerHubTagData
                                                        {
@@ -584,5 +586,448 @@ public class UpdateDetectionServiceTests
                         "The highest semantic successor must remain first in the capped candidate set");
     }
 
+    /// <summary>
+    /// Verify year-based tags stay up to date when an alias tag of the same year shares the running digest
+    /// </summary>
+    [TestMethod]
+    public void UpdateDetectionServiceYearAliasTagWithRunningDigestReturnsUpToDate()
+    {
+        var service = CreateService();
+
+        var evaluation = service.Evaluate(new ImageReference
+                                          {
+                                              Registry = "mcr.microsoft.com",
+                                              Repository = "mssql/server",
+                                              Tag = "2019-CU32-GDR10-ubuntu-20.04",
+                                              Digest = "sha256:2019-cu32-gdr10",
+                                          },
+                                          [
+                                              new DockerHubTagData
+                                              {
+                                                  Tag = "2019-CU32-GDR10-ubuntu-20.04",
+                                                  Digest = "sha256:2019-cu32-gdr10",
+                                                  PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
+                                              },
+                                              new DockerHubTagData
+                                              {
+                                                  Tag = "2019-latest",
+                                                  Digest = "sha256:2019-cu32-gdr10",
+                                                  PublishedAtUtc = new DateTimeOffset(2025, 06, 02, 12, 00, 00, TimeSpan.Zero),
+                                              },
+                                          ]);
+
+        Assert.AreEqual(UpdateEvaluationStatus.UpToDate,
+                        evaluation.Status,
+                        "An alias tag that resolves to the running digest must not be reported as an update");
+        Assert.AreEqual("No newer year-based version was found",
+                        evaluation.Summary,
+                        "The summary must state that no newer year-based version exists");
+        Assert.IsEmpty(evaluation.Candidates,
+                       "No candidates must be produced when the alias tag carries the running digest");
+    }
+
+    /// <summary>
+    /// Verify year-based alias tags are not recommended as successors of a concrete servicing tag
+    /// </summary>
+    [TestMethod]
+    public void UpdateDetectionServiceYearAliasTagIsNotRecommendedAsSuccessor()
+    {
+        var service = CreateService();
+
+        var evaluation = service.Evaluate(new ImageReference
+                                          {
+                                              Registry = "mcr.microsoft.com",
+                                              Repository = "mssql/server",
+                                              Tag = "2019-CU32-GDR10-ubuntu-20.04",
+                                              Digest = "sha256:2019-cu32-gdr10",
+                                          },
+                                          [
+                                              new DockerHubTagData
+                                              {
+                                                  Tag = "2019-CU32-GDR10-ubuntu-20.04",
+                                                  Digest = "sha256:2019-cu32-gdr10",
+                                                  PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
+                                              },
+                                              new DockerHubTagData
+                                              {
+                                                  Tag = "2019-latest",
+                                                  Digest = "sha256:2019-cu33",
+                                                  PublishedAtUtc = new DateTimeOffset(2025, 06, 05, 12, 00, 00, TimeSpan.Zero),
+                                              },
+                                              new DockerHubTagData
+                                              {
+                                                  Tag = "2019-CU33-ubuntu-20.04",
+                                                  Digest = "sha256:2019-cu33",
+                                                  PublishedAtUtc = new DateTimeOffset(2025, 06, 05, 12, 00, 00, TimeSpan.Zero),
+                                              },
+                                          ]);
+
+        Assert.AreEqual(UpdateEvaluationStatus.UpdateAvailable,
+                        evaluation.Status,
+                        "A newer servicing tag of the same year line must still produce an update");
+        Assert.AreEqual("2019-CU33-ubuntu-20.04",
+                        evaluation.RecommendedTag,
+                        "The concrete servicing tag must be recommended instead of the year alias tag");
+        Assert.AreSequenceEqual(["2019-CU33-ubuntu-20.04"],
+                                evaluation.Candidates.Select(candidate => candidate.Tag)
+                                                     .ToArray(),
+                                "Alias tags of a different variant family must not become update candidates");
+    }
+
+    /// <summary>
+    /// Verify successors of the current major line win over a higher major version
+    /// </summary>
+    [TestMethod]
+    public void UpdateDetectionServiceSemverPrefersCurrentMajorLineSuccessor()
+    {
+        var service = CreateService();
+
+        var evaluation = service.Evaluate(new ImageReference
+                                          {
+                                              Registry = "docker.io",
+                                              Repository = "grafana/mimir",
+                                              Tag = "2.7.10",
+                                              Digest = "sha256:2710",
+                                          },
+                                          [
+                                              new DockerHubTagData
+                                              {
+                                                  Tag = "2.7.10",
+                                                  Digest = "sha256:2710",
+                                                  PublishedAtUtc = CreateRelativeTimestamp(-720),
+                                              },
+                                              new DockerHubTagData
+                                              {
+                                                  Tag = "2.16.1",
+                                                  Digest = "sha256:2161",
+                                                  PublishedAtUtc = CreateRelativeTimestamp(-90),
+                                              },
+                                              new DockerHubTagData
+                                              {
+                                                  Tag = "3.1.4",
+                                                  Digest = "sha256:314",
+                                                  PublishedAtUtc = CreateRelativeTimestamp(-60),
+                                              },
+                                          ]);
+
+        Assert.AreEqual(UpdateEvaluationStatus.UpdateAvailable,
+                        evaluation.Status,
+                        "A newer version inside the current major line must produce an update");
+        Assert.AreEqual("2.16.1",
+                        evaluation.RecommendedTag,
+                        "Updates must stay inside the current major line while newer versions exist there");
+        Assert.AreSequenceEqual(["2.16.1", "3.1.4"],
+                                evaluation.Candidates.Select(candidate => candidate.Tag)
+                                                     .ToArray(),
+                                "Higher major versions must remain selectable behind the recommended in-line successor");
+    }
+
+    /// <summary>
+    /// Verify a freshly published major version line is not recommended yet
+    /// </summary>
+    [TestMethod]
+    public void UpdateDetectionServiceSemverDefersRecentMajorUpgrade()
+    {
+        var service = CreateService();
+
+        var evaluation = service.Evaluate(new ImageReference
+                                          {
+                                              Registry = "docker.io",
+                                              Repository = "grafana/mimir",
+                                              Tag = "2.16.1",
+                                              Digest = "sha256:2161",
+                                          },
+                                          [
+                                              new DockerHubTagData
+                                              {
+                                                  Tag = "2.16.1",
+                                                  Digest = "sha256:2161",
+                                                  PublishedAtUtc = CreateRelativeTimestamp(-20),
+                                              },
+                                              new DockerHubTagData
+                                              {
+                                                  Tag = "3.0.0",
+                                                  Digest = "sha256:300",
+                                                  PublishedAtUtc = CreateRelativeTimestamp(-10),
+                                              },
+                                              new DockerHubTagData
+                                              {
+                                                  Tag = "3.0.1",
+                                                  Digest = "sha256:301",
+                                                  PublishedAtUtc = CreateRelativeTimestamp(-2),
+                                              },
+                                          ]);
+
+        Assert.AreEqual(UpdateEvaluationStatus.UpToDate,
+                        evaluation.Status,
+                        "A major version line that is younger than the configured waiting period must not be recommended");
+        Assert.AreEqual("No newer version was found in the 2.x version line",
+                        evaluation.Summary,
+                        "The summary must state that the current major line has no newer version");
+        Assert.AreEqual("Tag '3.0.1' introduces a new major version and is not recommended yet",
+                        evaluation.Details,
+                        "The details must name the major version that is held back");
+    }
+
+    /// <summary>
+    /// Verify a major version line with too few releases is not recommended yet
+    /// </summary>
+    [TestMethod]
+    public void UpdateDetectionServiceSemverDefersMajorUpgradeWithSingleRelease()
+    {
+        var service = CreateService();
+
+        var evaluation = service.Evaluate(new ImageReference
+                                          {
+                                              Registry = "docker.io",
+                                              Repository = "grafana/mimir",
+                                              Tag = "2.16.1",
+                                              Digest = "sha256:2161",
+                                          },
+                                          [
+                                              new DockerHubTagData
+                                              {
+                                                  Tag = "2.16.1",
+                                                  Digest = "sha256:2161",
+                                                  PublishedAtUtc = CreateRelativeTimestamp(-400),
+                                              },
+                                              new DockerHubTagData
+                                              {
+                                                  Tag = "3.0.0",
+                                                  Digest = "sha256:300",
+                                                  PublishedAtUtc = CreateRelativeTimestamp(-300),
+                                              },
+                                          ]);
+
+        Assert.AreEqual(UpdateEvaluationStatus.UpToDate,
+                        evaluation.Status,
+                        "A major version line with a single release must not be recommended");
+        Assert.AreEqual("Tag '3.0.0' introduces a new major version and is not recommended yet",
+                        evaluation.Details,
+                        "The details must name the major version that is held back");
+    }
+
+    /// <summary>
+    /// Verify a major upgrade is deferred while the current major line still receives releases
+    /// </summary>
+    [TestMethod]
+    public void UpdateDetectionServiceSemverDefersMajorUpgradeWhileCurrentLineIsActive()
+    {
+        var service = CreateService();
+
+        var evaluation = service.Evaluate(new ImageReference
+                                          {
+                                              Registry = "docker.io",
+                                              Repository = "grafana/mimir",
+                                              Tag = "2.16.1",
+                                              Digest = "sha256:2162",
+                                          },
+                                          [
+                                              new DockerHubTagData
+                                              {
+                                                  Tag = "2.16.2",
+                                                  Digest = "sha256:2162",
+                                                  PublishedAtUtc = CreateRelativeTimestamp(-3),
+                                              },
+                                              new DockerHubTagData
+                                              {
+                                                  Tag = "3.0.0",
+                                                  Digest = "sha256:300",
+                                                  PublishedAtUtc = CreateRelativeTimestamp(-300),
+                                              },
+                                              new DockerHubTagData
+                                              {
+                                                  Tag = "3.1.4",
+                                                  Digest = "sha256:314",
+                                                  PublishedAtUtc = CreateRelativeTimestamp(-200),
+                                              },
+                                          ]);
+
+        Assert.AreEqual(UpdateEvaluationStatus.UpToDate,
+                        evaluation.Status,
+                        "A major upgrade must wait while the current major line still receives releases");
+        Assert.AreEqual("Tag '3.1.4' introduces a new major version and is not recommended yet",
+                        evaluation.Details,
+                        "The details must name the major version that is held back");
+    }
+
+    /// <summary>
+    /// Verify an established major version line is recommended once the current line is dormant
+    /// </summary>
+    [TestMethod]
+    public void UpdateDetectionServiceSemverRecommendsEstablishedMajorUpgrade()
+    {
+        var service = CreateService();
+
+        var evaluation = service.Evaluate(new ImageReference
+                                          {
+                                              Registry = "docker.io",
+                                              Repository = "grafana/mimir",
+                                              Tag = "2.16.1",
+                                              Digest = "sha256:2161",
+                                          },
+                                          [
+                                              new DockerHubTagData
+                                              {
+                                                  Tag = "2.16.1",
+                                                  Digest = "sha256:2161",
+                                                  PublishedAtUtc = CreateRelativeTimestamp(-400),
+                                              },
+                                              new DockerHubTagData
+                                              {
+                                                  Tag = "3.0.0",
+                                                  Digest = "sha256:300",
+                                                  PublishedAtUtc = CreateRelativeTimestamp(-300),
+                                              },
+                                              new DockerHubTagData
+                                              {
+                                                  Tag = "3.1.4",
+                                                  Digest = "sha256:314",
+                                                  PublishedAtUtc = CreateRelativeTimestamp(-200),
+                                              },
+                                          ]);
+
+        Assert.AreEqual(UpdateEvaluationStatus.UpdateAvailable,
+                        evaluation.Status,
+                        "An established major version line must be recommended when the current line is dormant");
+        Assert.AreEqual("3.1.4",
+                        evaluation.RecommendedTag,
+                        "The newest version of the next major line must be recommended");
+        Assert.AreEqual("No newer version is available in the 2.x version line",
+                        evaluation.Details,
+                        "The details must explain why the update crosses a major version boundary");
+    }
+
+    /// <summary>
+    /// Verify the major upgrade waiting periods can be switched off
+    /// </summary>
+    [TestMethod]
+    public void UpdateDetectionServiceSemverRecommendsMajorUpgradeWithoutWaitingPeriod()
+    {
+        var service = CreateService(new ScanningOptions
+                                    {
+                                        MajorUpgradeMinimumAgeDays = 0,
+                                        MajorUpgradeMinimumReleaseCount = 0,
+                                    });
+
+        var evaluation = service.Evaluate(new ImageReference
+                                          {
+                                              Registry = "docker.io",
+                                              Repository = "grafana/mimir",
+                                              Tag = "2.16.1",
+                                              Digest = "sha256:2161",
+                                          },
+                                          [
+                                              new DockerHubTagData
+                                              {
+                                                  Tag = "2.16.1",
+                                                  Digest = "sha256:2161",
+                                                  PublishedAtUtc = CreateRelativeTimestamp(-20),
+                                              },
+                                              new DockerHubTagData
+                                              {
+                                                  Tag = "3.0.0",
+                                                  Digest = "sha256:300",
+                                                  PublishedAtUtc = CreateRelativeTimestamp(-2),
+                                              },
+                                          ]);
+
+        Assert.AreEqual(UpdateEvaluationStatus.UpdateAvailable,
+                        evaluation.Status,
+                        "Disabled waiting periods must report the major upgrade immediately");
+        Assert.AreEqual("3.0.0",
+                        evaluation.RecommendedTag,
+                        "The newest version of the next major line must be recommended when no waiting period applies");
+    }
+
+    /// <summary>
+    /// Verify the next major line is preferred over an even higher major line
+    /// </summary>
+    [TestMethod]
+    public void UpdateDetectionServiceSemverRecommendsNextMajorLineFirst()
+    {
+        var service = CreateService();
+
+        var evaluation = service.Evaluate(new ImageReference
+                                          {
+                                              Registry = "docker.io",
+                                              Repository = "grafana/mimir",
+                                              Tag = "2.16.1",
+                                              Digest = "sha256:2161",
+                                          },
+                                          [
+                                              new DockerHubTagData
+                                              {
+                                                  Tag = "2.16.1",
+                                                  Digest = "sha256:2161",
+                                                  PublishedAtUtc = CreateRelativeTimestamp(-400),
+                                              },
+                                              new DockerHubTagData
+                                              {
+                                                  Tag = "3.0.0",
+                                                  Digest = "sha256:300",
+                                                  PublishedAtUtc = CreateRelativeTimestamp(-300),
+                                              },
+                                              new DockerHubTagData
+                                              {
+                                                  Tag = "3.1.4",
+                                                  Digest = "sha256:314",
+                                                  PublishedAtUtc = CreateRelativeTimestamp(-200),
+                                              },
+                                              new DockerHubTagData
+                                              {
+                                                  Tag = "4.0.0",
+                                                  Digest = "sha256:400",
+                                                  PublishedAtUtc = CreateRelativeTimestamp(-100),
+                                              },
+                                          ]);
+
+        Assert.AreEqual("3.1.4",
+                        evaluation.RecommendedTag,
+                        "A major upgrade must advance to the next major line instead of the highest one");
+        Assert.AreSequenceEqual(["3.1.4", "3.0.0", "4.0.0"],
+                                evaluation.Candidates.Select(candidate => candidate.Tag)
+                                                     .ToArray(),
+                                "Higher major lines must remain selectable behind the recommended next major line");
+    }
+
     #endregion // Methods
+
+    #region Static methods
+
+    /// <summary>
+    /// Create an update detection service with the default scanning options
+    /// </summary>
+    /// <returns>Update detection service</returns>
+    private static UpdateDetectionService CreateService()
+    {
+        return CreateService(new ScanningOptions());
+    }
+
+    /// <summary>
+    /// Create an update detection service with the given scanning options
+    /// </summary>
+    /// <param name="scanningOptions">Scanning options</param>
+    /// <returns>Update detection service</returns>
+    private static UpdateDetectionService CreateService(ScanningOptions scanningOptions)
+    {
+        var options = new DockerUpdateGuardOptions
+                      {
+                          Scanning = scanningOptions,
+                      };
+
+        return new UpdateDetectionService(new TestOptionsMonitor<DockerUpdateGuardOptions>(options));
+    }
+
+    /// <summary>
+    /// Create a publication timestamp relative to the current time
+    /// </summary>
+    /// <param name="offsetDays">Offset in days</param>
+    /// <returns>Publication timestamp</returns>
+    private static DateTimeOffset CreateRelativeTimestamp(int offsetDays)
+    {
+        return DateTimeOffset.UtcNow.AddDays(offsetDays);
+    }
+
+    #endregion // Static methods
 }

@@ -370,6 +370,65 @@ public static partial class VersionTagResolutionHelper
     }
 
     /// <summary>
+    /// Determine whether two year-prefixed tags belong to the same variant family
+    /// </summary>
+    /// <param name="tag">Current year-prefixed tag</param>
+    /// <param name="candidateTag">Candidate year-prefixed tag</param>
+    /// <returns>True when both tags describe the same variant family</returns>
+    public static bool IsMatchingYearPrefixedVariantFamily(string tag, string candidateTag)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tag);
+        ArgumentException.ThrowIfNullOrWhiteSpace(candidateTag);
+
+        if (TryParseYearPrefixedTag(tag, out _, out var suffix) == false
+            || TryParseYearPrefixedTag(candidateTag, out _, out var candidateSuffix) == false)
+        {
+            return false;
+        }
+
+        return string.Equals(ResolveYearPrefixedVariantFamilyKey(suffix),
+                             ResolveYearPrefixedVariantFamilyKey(candidateSuffix),
+                             StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Resolve the variant-family key of a year-prefixed tag suffix
+    /// The leading servicing segments such as 'CU32' or 'GDR10' describe the update level inside a
+    /// family, while the remaining segments such as 'ubuntu-20.04' or 'latest' identify the family
+    /// itself; a remainder without any letter is treated as part of the update level so that
+    /// calendar-style suffixes stay comparable
+    /// </summary>
+    /// <param name="suffix">Suffix after the leading year</param>
+    /// <returns>Normalized variant-family key</returns>
+    private static string ResolveYearPrefixedVariantFamilyKey(string suffix)
+    {
+        var segments = suffix.Split('-', StringSplitOptions.RemoveEmptyEntries);
+        var variantIndex = 0;
+
+        while (variantIndex < segments.Length && IsYearPrefixedServicingSegment(segments[variantIndex]))
+        {
+            variantIndex++;
+        }
+
+        var variantPart = string.Join('-', segments.Skip(variantIndex));
+
+        return variantPart.Any(char.IsLetter)
+                   ? variantPart.ToLowerInvariant()
+                   : string.Empty;
+    }
+
+    /// <summary>
+    /// Determine whether a year-prefixed suffix segment describes a servicing level
+    /// </summary>
+    /// <param name="segment">Raw suffix segment</param>
+    /// <returns>True when the segment combines a leading identifier with a numeric level</returns>
+    private static bool IsYearPrefixedServicingSegment(string segment)
+    {
+        return string.IsNullOrEmpty(GetLeadingLetters(segment)) == false
+               && segment.Any(char.IsDigit);
+    }
+
+    /// <summary>
     /// Attempt to parse a numeric version-line tag
     /// </summary>
     /// <param name="value">Candidate tag value</param>

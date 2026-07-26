@@ -128,7 +128,7 @@ public class RuntimeContainerScanOrchestratorTests
                                                                         logger,
                                                                         optionsMonitor,
                                                                         registryMetadataService,
-                                                                        new UpdateDetectionService());
+                                                                        new UpdateDetectionService(optionsMonitor));
 
                 await orchestrator.ScanAllAsync(ScanTriggerSource.Scheduled, CancellationToken.None)
                                   .ConfigureAwait(false);
@@ -285,7 +285,7 @@ public class RuntimeContainerScanOrchestratorTests
                                                                         new TestLogger<RuntimeContainerScanOrchestrator>(),
                                                                         optionsMonitor,
                                                                         registryMetadataService,
-                                                                        new UpdateDetectionService());
+                                                                        new UpdateDetectionService(optionsMonitor));
 
                 await orchestrator.ScanAllAsync(ScanTriggerSource.Scheduled, CancellationToken.None)
                                   .ConfigureAwait(false);
@@ -406,7 +406,7 @@ public class RuntimeContainerScanOrchestratorTests
                                                                         new TestLogger<RuntimeContainerScanOrchestrator>(),
                                                                         optionsMonitor,
                                                                         registryMetadataService,
-                                                                        new UpdateDetectionService());
+                                                                        new UpdateDetectionService(optionsMonitor));
 
                 await orchestrator.ScanAllAsync(ScanTriggerSource.Scheduled, CancellationToken.None)
                                   .ConfigureAwait(false);
@@ -523,7 +523,7 @@ public class RuntimeContainerScanOrchestratorTests
                                                                         new TestLogger<RuntimeContainerScanOrchestrator>(),
                                                                         optionsMonitor,
                                                                         registryMetadataService,
-                                                                        new UpdateDetectionService());
+                                                                        new UpdateDetectionService(optionsMonitor));
 
                 await orchestrator.ScanAllAsync(ScanTriggerSource.Scheduled, CancellationToken.None)
                                   .ConfigureAwait(false);
@@ -636,7 +636,7 @@ public class RuntimeContainerScanOrchestratorTests
                                                                         new TestLogger<RuntimeContainerScanOrchestrator>(),
                                                                         optionsMonitor,
                                                                         registryMetadataService,
-                                                                        new UpdateDetectionService());
+                                                                        new UpdateDetectionService(optionsMonitor));
 
                 await orchestrator.ScanAllAsync(ScanTriggerSource.Scheduled, CancellationToken.None)
                                   .ConfigureAwait(false);
@@ -731,7 +731,7 @@ public class RuntimeContainerScanOrchestratorTests
                                                                         logger,
                                                                         optionsMonitor,
                                                                         registryMetadataService,
-                                                                        new UpdateDetectionService());
+                                                                        new UpdateDetectionService(optionsMonitor));
 
                 await orchestrator.ScanAllAsync(ScanTriggerSource.Scheduled, CancellationToken.None)
                                   .ConfigureAwait(false);
@@ -856,7 +856,7 @@ public class RuntimeContainerScanOrchestratorTests
                                                                         logger,
                                                                         optionsMonitor,
                                                                         registryMetadataService,
-                                                                        new UpdateDetectionService());
+                                                                        new UpdateDetectionService(optionsMonitor));
 
                 await orchestrator.ScanAllAsync(ScanTriggerSource.Scheduled, CancellationToken.None)
                                   .ConfigureAwait(false);
@@ -971,7 +971,7 @@ public class RuntimeContainerScanOrchestratorTests
                                                                         logger,
                                                                         optionsMonitor,
                                                                         registryMetadataService,
-                                                                        new UpdateDetectionService());
+                                                                        new UpdateDetectionService(optionsMonitor));
 
                 await orchestrator.ScanAllAsync(ScanTriggerSource.Scheduled, CancellationToken.None)
                                   .ConfigureAwait(false);
@@ -1098,7 +1098,7 @@ public class RuntimeContainerScanOrchestratorTests
                                                                         logger,
                                                                         optionsMonitor,
                                                                         registryMetadataService,
-                                                                        new UpdateDetectionService());
+                                                                        new UpdateDetectionService(optionsMonitor));
 
                 await orchestrator.ScanAllAsync(ScanTriggerSource.Scheduled, CancellationToken.None)
                                   .ConfigureAwait(false);
@@ -1229,7 +1229,7 @@ public class RuntimeContainerScanOrchestratorTests
                                                                         logger,
                                                                         optionsMonitor,
                                                                         registryMetadataService,
-                                                                        new UpdateDetectionService());
+                                                                        new UpdateDetectionService(optionsMonitor));
 
                 await orchestrator.ScanAllAsync(ScanTriggerSource.Scheduled, CancellationToken.None)
                                   .ConfigureAwait(false);
@@ -1357,7 +1357,7 @@ public class RuntimeContainerScanOrchestratorTests
                                                                         logger,
                                                                         optionsMonitor,
                                                                         registryMetadataService,
-                                                                        new UpdateDetectionService());
+                                                                        new UpdateDetectionService(optionsMonitor));
 
                 await orchestrator.ScanAllAsync(ScanTriggerSource.Scheduled, CancellationToken.None)
                                   .ConfigureAwait(false);
@@ -1489,7 +1489,7 @@ public class RuntimeContainerScanOrchestratorTests
                                                                         logger,
                                                                         optionsMonitor,
                                                                         registryMetadataService,
-                                                                        new UpdateDetectionService());
+                                                                        new UpdateDetectionService(optionsMonitor));
 
                 await orchestrator.ScanAllAsync(ScanTriggerSource.Scheduled, CancellationToken.None)
                                   .ConfigureAwait(false);
@@ -1634,7 +1634,7 @@ public class RuntimeContainerScanOrchestratorTests
                                                                         logger,
                                                                         optionsMonitor,
                                                                         registryMetadataService,
-                                                                        new UpdateDetectionService());
+                                                                        new UpdateDetectionService(optionsMonitor));
 
                 await orchestrator.ScanAllAsync(ScanTriggerSource.Scheduled, CancellationToken.None)
                                   .ConfigureAwait(false);
@@ -1763,7 +1763,7 @@ public class RuntimeContainerScanOrchestratorTests
                                                                         logger,
                                                                         optionsMonitor,
                                                                         registryMetadataService,
-                                                                        new UpdateDetectionService());
+                                                                        new UpdateDetectionService(optionsMonitor));
 
                 await orchestrator.ScanAllAsync(ScanTriggerSource.Scheduled, CancellationToken.None)
                                   .ConfigureAwait(false);
@@ -1894,7 +1894,7 @@ public class RuntimeContainerScanOrchestratorTests
                                                                         logger,
                                                                         optionsMonitor,
                                                                         registryMetadataService,
-                                                                        new UpdateDetectionService());
+                                                                        new UpdateDetectionService(optionsMonitor));
 
                 await orchestrator.ScanAllAsync(ScanTriggerSource.Scheduled, CancellationToken.None)
                                   .ConfigureAwait(false);
@@ -1961,7 +1961,7 @@ public class RuntimeContainerScanOrchestratorTests
                                                                             logger,
                                                                             optionsMonitor,
                                                                             Substitute.For<IRegistryMetadataService>(),
-                                                                            new UpdateDetectionService());
+                                                                            new UpdateDetectionService(optionsMonitor));
 
                     failingContext.FailOnSaveChanges = true;
 
@@ -2021,7 +2021,7 @@ public class RuntimeContainerScanOrchestratorTests
                                                                             logger,
                                                                             optionsMonitor,
                                                                             Substitute.For<IRegistryMetadataService>(),
-                                                                            new UpdateDetectionService());
+                                                                            new UpdateDetectionService(optionsMonitor));
 
                     failingContext.SaveChangesException = new OperationCanceledException();
                     failingContext.FailOnSaveChanges = true;
