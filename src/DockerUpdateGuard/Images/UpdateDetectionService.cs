@@ -432,6 +432,48 @@ public class UpdateDetectionService : IUpdateDetectionService
     }
 
     /// <summary>
+    /// Evaluate an update for a year-prefixed version tag
+    /// </summary>
+    /// <param name="currentImage">Current image reference</param>
+    /// <param name="currentTagData">Tag metadata of the current tag</param>
+    /// <param name="orderedTags">Available tags ordered by publication date</param>
+    /// <returns>Evaluation result, or null when the current tag is not a year-prefixed version</returns>
+    private static UpdateEvaluationResult? EvaluateYearPrefixedUpdate(ImageReference currentImage,
+                                                                      DockerHubTagData? currentTagData,
+                                                                      IReadOnlyList<DockerHubTagData> orderedTags)
+    {
+        if (TryParseYearPrefixedVersion(currentImage.Tag, out var currentYear, out _) == false)
+        {
+            return null;
+        }
+
+        var versionCandidates = GetHigherYearPrefixedCandidates(orderedTags,
+                                                                currentImage.Tag,
+                                                                currentYear,
+                                                                currentImage.Digest,
+                                                                currentTagData?.PublishedAtUtc);
+
+        if (versionCandidates.Count > 0)
+        {
+            return CreateYearPrefixedUpdateResult(versionCandidates);
+        }
+
+        if (TryCreateDigestUpdateResult(currentImage,
+                                        currentTagData,
+                                        orderedTags,
+                                        out var digestUpdateResult))
+        {
+            return digestUpdateResult;
+        }
+
+        return new UpdateEvaluationResult
+               {
+                   Status = UpdateEvaluationStatus.UpToDate,
+                   Summary = "No newer year-based version was found",
+               };
+    }
+
+    /// <summary>
     /// Apply the major-version upgrade policy to the higher semantic version candidates
     /// Successors inside the current major line always win; a major upgrade is only offered once no
     /// in-line successor exists and the new major line is established
@@ -615,48 +657,6 @@ public class UpdateDetectionService : IUpdateDetectionService
         }
 
         return CreateSemanticVersionUpToDateResult(currentVersion, deferredMajorUpgradeTag);
-    }
-
-    /// <summary>
-    /// Evaluate an update for a year-prefixed version tag
-    /// </summary>
-    /// <param name="currentImage">Current image reference</param>
-    /// <param name="currentTagData">Tag metadata of the current tag</param>
-    /// <param name="orderedTags">Available tags ordered by publication date</param>
-    /// <returns>Evaluation result, or null when the current tag is not a year-prefixed version</returns>
-    private UpdateEvaluationResult? EvaluateYearPrefixedUpdate(ImageReference currentImage,
-                                                               DockerHubTagData? currentTagData,
-                                                               IReadOnlyList<DockerHubTagData> orderedTags)
-    {
-        if (TryParseYearPrefixedVersion(currentImage.Tag, out var currentYear, out _) == false)
-        {
-            return null;
-        }
-
-        var versionCandidates = GetHigherYearPrefixedCandidates(orderedTags,
-                                                                currentImage.Tag,
-                                                                currentYear,
-                                                                currentImage.Digest,
-                                                                currentTagData?.PublishedAtUtc);
-
-        if (versionCandidates.Count > 0)
-        {
-            return CreateYearPrefixedUpdateResult(versionCandidates);
-        }
-
-        if (TryCreateDigestUpdateResult(currentImage,
-                                        currentTagData,
-                                        orderedTags,
-                                        out var digestUpdateResult))
-        {
-            return digestUpdateResult;
-        }
-
-        return new UpdateEvaluationResult
-               {
-                   Status = UpdateEvaluationStatus.UpToDate,
-                   Summary = "No newer year-based version was found",
-               };
     }
 
     #endregion // Methods
