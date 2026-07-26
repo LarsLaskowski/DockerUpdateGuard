@@ -66,6 +66,23 @@ public class MappingTests
                 Assert.AreEqual(DeleteBehavior.Restrict,
                                 imageRelationshipForeignKey.DeleteBehavior,
                                 "Base image relationships must restrict deleting referenced base versions");
+
+                var vulnerabilityFindingEntity = dbContext.Model.FindEntityType(typeof(VulnerabilityFinding));
+
+                Assert.IsNotNull(vulnerabilityFindingEntity, "Vulnerability finding entity must be part of the EF model");
+
+                var resolvedByScanRunForeignKey = vulnerabilityFindingEntity.GetForeignKeys()
+                                                                            .SingleOrDefault(foreignKey => foreignKey.Properties.Single().Name == nameof(VulnerabilityFinding.ResolvedByScanRunId));
+
+                Assert.IsNotNull(resolvedByScanRunForeignKey, "Vulnerability finding must have a foreign key to the resolving scan run");
+                Assert.AreEqual(DeleteBehavior.SetNull,
+                                resolvedByScanRunForeignKey.DeleteBehavior,
+                                "Deleting a scan run must clear the resolving scan run instead of deleting the finding");
+                Assert.IsNull(resolvedByScanRunForeignKey.DependentToPrincipal,
+                              "The resolving scan run must be mapped without a navigation property");
+
+                Assert.IsNotNull(imageVersionEntity.FindProperty(nameof(ImageVersion.VulnerabilityAssessmentScanRunId)),
+                                 "Image version must map the scan run of the latest vulnerability assessment");
             }
         }
     }
