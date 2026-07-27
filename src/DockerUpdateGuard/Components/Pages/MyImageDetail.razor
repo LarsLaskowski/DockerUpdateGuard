@@ -47,28 +47,7 @@
                     </MudPaper>
                 </MudItem>
                 <MudItem xs="12" md="6">
-                    <MudPaper Class="summary-card" Elevation="0">
-                        <span class="summary-label">Vulnerability assessment</span>
-                        <MudChip T="string" Size="Size.Small" Color="@GetVulnerabilityAssessmentColor(_detail.VulnerabilityAssessment.Status, _detail.VulnerabilityAssessment.SeveritySummary)">@_detail.VulnerabilityAssessment.Status</MudChip>
-                        <VulnerabilitySeverityChips Summary="_detail.VulnerabilityAssessment.SeveritySummary" />
-                        @if (_detail.VulnerabilityAssessment.NewFindingCount > 0)
-                        {
-                            <MudChip T="string" Size="Size.Small" Color="Color.Error">@($"+{_detail.VulnerabilityAssessment.NewFindingCount} new")</MudChip>
-                        }
-                        @if (_detail.VulnerabilityAssessment.ResolvedFindingCount > 0)
-                        {
-                            <MudChip T="string" Size="Size.Small" Color="Color.Success">@($"−{_detail.VulnerabilityAssessment.ResolvedFindingCount} resolved")</MudChip>
-                        }
-                        <span class="table-secondary">@($"{_detail.VulnerabilityAssessment.Source} · {_detail.VulnerabilityAssessment.ActiveFindingCount} active")</span>
-                        @if (_detail.VulnerabilityAssessment.ActiveFindingCount > 0)
-                        {
-                            <span class="table-secondary">@($"{_detail.VulnerabilityAssessment.FixableFindingCount} of {_detail.VulnerabilityAssessment.ActiveFindingCount} active findings have a fix available")</span>
-                        }
-                        @if (string.IsNullOrWhiteSpace(_detail.VulnerabilityAssessment.Message) == false)
-                        {
-                            <span class="table-secondary">@_detail.VulnerabilityAssessment.Message</span>
-                        }
-                    </MudPaper>
+                    <VulnerabilityAssessmentCard Assessment="_detail.VulnerabilityAssessment" />
                 </MudItem>
                 @if (string.IsNullOrWhiteSpace(_detail.BaseRuntimeAlertSummary) == false)
                 {
@@ -155,7 +134,7 @@
                         <MudTd DataLabel="Base Image">@ImageReferenceFormatter.GetReference(context.ImageReference)</MudTd>
                         <MudTd DataLabel="Source">@ImageReferenceFormatter.GetReference(context.SourceReference ?? string.Empty)</MudTd>
                         <MudTd DataLabel="Vulnerabilities">
-                            <MudChip T="string" Size="Size.Small" Color="@GetVulnerabilityAssessmentColor(context.VulnerabilityAssessment.Status, context.VulnerabilityAssessment.SeveritySummary)">@context.VulnerabilityAssessment.Status</MudChip>
+                            <MudChip T="string" Size="Size.Small" Color="@VulnerabilityDisplayFormatter.GetStatusColor(context.VulnerabilityAssessment.Status, context.VulnerabilityAssessment.SeveritySummary)">@context.VulnerabilityAssessment.Status</MudChip>
                             <VulnerabilitySeverityChips Summary="context.VulnerabilityAssessment.SeveritySummary" />
                             <span class="table-secondary">@($"{context.VulnerabilityAssessment.ActiveFindingCount} active · {context.VulnerabilityAssessment.Source}")</span>
                         </MudTd>

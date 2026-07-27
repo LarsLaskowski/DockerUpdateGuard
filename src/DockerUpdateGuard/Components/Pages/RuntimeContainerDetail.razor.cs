@@ -109,22 +109,6 @@ public sealed partial class RuntimeContainerDetail : IDisposable
     }
 
     /// <summary>
-    /// Resolve the chip color for a vulnerability status
-    /// </summary>
-    /// <param name="status">Vulnerability status</param>
-    /// <param name="severitySummary">Severity summary of the active findings</param>
-    /// <returns>Chip color</returns>
-    private static Color GetVulnerabilityStatusColor(string? status, VulnerabilitySeveritySummaryViewData? severitySummary)
-    {
-        if (string.IsNullOrWhiteSpace(status))
-        {
-            return Color.Default;
-        }
-
-        return VulnerabilityDisplayFormatter.GetStatusColor(status, severitySummary);
-    }
-
-    /// <summary>
     /// Resolve the chip color for a scan status
     /// </summary>
     /// <param name="status">Scan status</param>
