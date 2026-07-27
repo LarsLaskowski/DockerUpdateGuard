@@ -934,7 +934,7 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
 
         var imageReferenceOrId = string.IsNullOrWhiteSpace(container.LocalImageId)
                                      ? container.ImageReference
-                                     : container.LocalImageId!;
+                                     : container.LocalImageId;
         var historyResult = await _dockerInstanceClient.GetImageHistoryAsync(configuredInstance,
                                                                              imageReferenceOrId,
                                                                              cancellationToken)
@@ -1073,7 +1073,7 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
     {
         var imageReferenceOrId = string.IsNullOrWhiteSpace(container.LocalImageId)
                                      ? container.ImageReference
-                                     : container.LocalImageId!;
+                                     : container.LocalImageId;
         var inspectResult = await _dockerInstanceClient.InspectImageAsync(configuredInstance,
                                                                           imageReferenceOrId,
                                                                           cancellationToken)
