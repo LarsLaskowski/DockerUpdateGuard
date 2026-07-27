@@ -540,6 +540,24 @@ a {
     overflow-wrap: anywhere;
 }
 
+.summary-remediation {
+    display: block;
+    margin: 0.35rem 0 0.55rem;
+    color: var(--dug-text-muted);
+    font-size: 0.88rem;
+    font-weight: 600;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+}
+
+.summary-remediation--warning {
+    color: var(--dug-warning);
+}
+
+.dug-dark .summary-remediation--warning {
+    color: #f59e0b;
+}
+
 .dug-chart {
     position: relative;
     min-height: 200px;
