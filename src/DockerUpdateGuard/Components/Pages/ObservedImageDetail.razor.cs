@@ -83,17 +83,6 @@ public sealed partial class ObservedImageDetail : IDisposable
     }
 
     /// <summary>
-    /// Resolve the chip color for a vulnerability assessment status
-    /// </summary>
-    /// <param name="status">Status label</param>
-    /// <param name="severitySummary">Severity summary of the active findings</param>
-    /// <returns>Chip color</returns>
-    private static Color GetVulnerabilityAssessmentColor(string status, VulnerabilitySeveritySummaryViewData? severitySummary)
-    {
-        return VulnerabilityDisplayFormatter.GetStatusColor(status, severitySummary);
-    }
-
-    /// <summary>
     /// Resolve the chip color for a base-runtime alert
     /// </summary>
     /// <param name="isOwnImage">Whether the image is owned</param>

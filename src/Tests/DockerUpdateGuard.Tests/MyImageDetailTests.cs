@@ -28,12 +28,6 @@ public class MyImageDetailTests
     private static readonly MethodInfo _getScanStatusColorMethod = typeof(MyImageDetail).GetMethod("GetScanStatusColor", BindingFlags.NonPublic | BindingFlags.Static)
                                                                        ?? throw new InvalidOperationException("MyImageDetail must expose the non-public static GetScanStatusColor method");
 
-    /// <summary>
-    /// Non-public vulnerability-assessment chip color resolver
-    /// </summary>
-    private static readonly MethodInfo _getVulnerabilityAssessmentColorMethod = typeof(MyImageDetail).GetMethod("GetVulnerabilityAssessmentColor", BindingFlags.NonPublic | BindingFlags.Static)
-                                                                                    ?? throw new InvalidOperationException("MyImageDetail must expose the non-public static GetVulnerabilityAssessmentColor method");
-
     #endregion // Fields
 
     #region Methods
@@ -65,32 +59,6 @@ public class MyImageDetailTests
         Assert.AreEqual(expectedColor,
                         color,
                         $"Scan status '{status}' must map to Color.{expectedColor}");
-    }
-
-    /// <summary>
-    /// Verify vulnerability assessment chip colors map to expected MudBlazor color values
-    /// </summary>
-    /// <param name="status">Vulnerability assessment status string</param>
-    /// <param name="expectedColor">Expected chip color</param>
-    [TestMethod]
-    [DataRow("Findings Detected", Color.Warning)]
-    [DataRow("FINDINGS DETECTED", Color.Warning)]
-    [DataRow("No Findings", Color.Success)]
-    [DataRow("NO FINDINGS", Color.Success)]
-    [DataRow("Failed", Color.Error)]
-    [DataRow("FAILED", Color.Error)]
-    [DataRow("Not Configured", Color.Default)]
-    [DataRow("NOT CONFIGURED", Color.Default)]
-    [DataRow("Unsupported", Color.Default)]
-    [DataRow("UNSUPPORTED", Color.Default)]
-    [DataRow("anything-else", Color.Info)]
-    public void MyImageDetailGetVulnerabilityAssessmentColorKnownStatusReturnsExpectedColor(string status, Color expectedColor)
-    {
-        var color = (Color)_getVulnerabilityAssessmentColorMethod.Invoke(null, [status, null])!;
-
-        Assert.AreEqual(expectedColor,
-                        color,
-                        $"Vulnerability assessment status '{status}' must map to Color.{expectedColor}");
     }
 
     /// <summary>
