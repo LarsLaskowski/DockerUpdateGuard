@@ -58,7 +58,7 @@ public class ObservedImageDetailTests
 
             var component = testContext.Render<ObservedImageDetail>(parameters => parameters.Add(page => page.ObservedImageId, observedImageId));
 
-            Assert.Contains("2 of 3 active findings have a fix available",
+            Assert.Contains("2 of 3 findings can be fixed by updating this image",
                             component.Markup,
                             "The vulnerability assessment card must show the fixable finding count");
             Assert.Contains("Updating may resolve up to 2 of 3 active findings",
@@ -100,7 +100,7 @@ public class ObservedImageDetailTests
 
             var component = testContext.Render<ObservedImageDetail>(parameters => parameters.Add(page => page.ObservedImageId, observedImageId));
 
-            Assert.Contains("1 of 1 active findings have a fix available",
+            Assert.Contains("1 of 1 findings can be fixed by updating this image",
                             component.Markup,
                             "The vulnerability assessment card must still show the fixable finding count");
             Assert.DoesNotContain("Updating may resolve",

@@ -101,7 +101,7 @@ public class MyImageDetailTests
 
             var component = testContext.Render<MyImageDetail>(parameters => parameters.Add(page => page.ObservedImageId, observedImageId));
 
-            Assert.Contains("1 of 2 active findings have a fix available",
+            Assert.Contains("1 of 2 findings can be fixed by updating this image",
                             component.Markup,
                             "The vulnerability assessment card must show the fixable finding count");
             Assert.Contains("Updating may resolve up to 1 of 2 active findings",
@@ -150,9 +150,9 @@ public class MyImageDetailTests
 
             var component = testContext.Render<MyImageDetail>(parameters => parameters.Add(page => page.ObservedImageId, observedImageId));
 
-            Assert.DoesNotContain("active findings have a fix available",
+            Assert.DoesNotContain("summary-remediation",
                                   component.Markup,
-                                  "The fixable summary line must be hidden when there are no active findings");
+                                  "The remediation line must be hidden when there are no active findings");
             Assert.DoesNotContain("Updating may resolve",
                                   component.Markup,
                                   "The update findings hint chip must be hidden when no active finding has a fix available");
