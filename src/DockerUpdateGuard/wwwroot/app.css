@@ -558,6 +558,21 @@ a {
     color: #f59e0b;
 }
 
+.summary-card__detail-toggle.mud-button-root {
+    display: flex;
+    margin-top: 0.3rem;
+    padding: 0.1rem 0.35rem;
+    min-width: 0;
+    color: var(--dug-text-faint);
+    font-size: 0.82rem;
+    font-weight: 600;
+    text-transform: none;
+}
+
+.summary-card__detail {
+    margin-top: 0.1rem;
+}
+
 .dug-chart {
     position: relative;
     min-height: 200px;
