@@ -1153,113 +1153,114 @@ public class ImageScanOrchestratorTests
             var dbContext2 = database.CreateDbContext();
 
             await using (dbContext1.ConfigureAwait(false))
-
-            await using (dbContext2.ConfigureAwait(false))
             {
-                var imageCatalogRepository1 = new ImageCatalogRepository(dbContext1);
-                var imageCatalogRepository2 = new ImageCatalogRepository(dbContext2);
-                var imageReferenceParser = new ImageReferenceParser();
-                var baseImageResolver = Substitute.For<IBaseImageResolver>();
-                var derivedBaseRuntimeDetector = Substitute.For<IDerivedBaseRuntimeDetector>();
-                var dotNetReleaseMetadataService = Substitute.For<IDotNetReleaseMetadataService>();
-                var nginxReleaseMetadataService = Substitute.For<INginxReleaseMetadataService>();
-                var registryMetadataService = Substitute.For<IRegistryMetadataService>();
-                var firstResolveStarted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-                var releaseFirstResolve = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-                var resolveCallCount = 0;
-                var baseImageDescriptors = ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>.Succeeded([
-                                                                                                                     new BaseImageDescriptor
-                                                                                                                     {
-                                                                                                                         Registry = "docker.io",
-                                                                                                                         Repository = "library/debian",
-                                                                                                                         Tag = "12.0.0",
-                                                                                                                         Digest = "sha256:base",
-                                                                                                                         Depth = 1,
-                                                                                                                         SourceReference = "FROM debian:12.0.0",
-                                                                                                                     },
-                                                                                                                 ]);
-
-                baseImageResolver.ResolveAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
-                                 .Returns(async _ =>
-                                          {
-                                              var callIndex = Interlocked.Increment(ref resolveCallCount);
-
-                                              if (callIndex == 1)
-                                              {
-                                                  firstResolveStarted.TrySetResult(true);
-                                                  await releaseFirstResolve.Task.ConfigureAwait(false);
-                                              }
-
-                                              return baseImageDescriptors;
-                                          });
-                registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), cancellationToken: Arg.Any<CancellationToken>())
-                                       .Returns(callInfo =>
-                                                {
-                                                    var imageReference = callInfo.ArgAt<ImageReference>(0);
-
-                                                    return ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
-                                                                                                               {
-                                                                                                                   Tag = imageReference.Tag,
-                                                                                                                   Digest = imageReference.Digest,
-                                                                                                                   PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
-                                                                                                               });
-                                                });
-                registryMetadataService.GetImageConfigurationAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
-                                       .Returns(ExternalOperationResult<RegistryImageConfigurationData>.NotFound("No registry config"));
-
-                var orchestrator1 = new ImageScanOrchestrator(new ApplicationTelemetry(),
-                                                              baseImageResolver,
-                                                              dbContext1,
-                                                              derivedBaseRuntimeDetector,
-                                                              dotNetReleaseMetadataService,
-                                                              nginxReleaseMetadataService,
-                                                              imageCatalogRepository1,
-                                                              imageReferenceParser,
-                                                              NullLogger<ImageScanOrchestrator>.Instance,
-                                                              registryMetadataService);
-                var orchestrator2 = new ImageScanOrchestrator(new ApplicationTelemetry(),
-                                                              baseImageResolver,
-                                                              dbContext2,
-                                                              derivedBaseRuntimeDetector,
-                                                              dotNetReleaseMetadataService,
-                                                              nginxReleaseMetadataService,
-                                                              imageCatalogRepository2,
-                                                              imageReferenceParser,
-                                                              NullLogger<ImageScanOrchestrator>.Instance,
-                                                              registryMetadataService);
-                var observedImageId = await dbContext1.ObservedImages.Select(entity => entity.Id)
-                                                                     .SingleAsync(TestContext.CancellationToken)
-                                                                     .ConfigureAwait(false);
-
-                var firstScanTask = orchestrator1.ScanAsync(observedImageId, ScanTriggerSource.Scheduled, CancellationToken.None);
-
-                await firstResolveStarted.Task.ConfigureAwait(false);
-
-                var secondScanTask = orchestrator2.ScanAsync(observedImageId, ScanTriggerSource.Scheduled, CancellationToken.None);
-
-                await Task.Delay(100, TestContext.CancellationToken).ConfigureAwait(false);
-
-                Assert.AreEqual(1,
-                                Volatile.Read(ref resolveCallCount),
-                                "Concurrent scans for the same observed image must wait for the in-flight scan before starting base-image resolution");
-
-                releaseFirstResolve.SetResult(true);
-
-                await Task.WhenAll(firstScanTask, secondScanTask).ConfigureAwait(false);
-
-                var assertionContext = database.CreateDbContext();
-
-                await using (assertionContext.ConfigureAwait(false))
+                await using (dbContext2.ConfigureAwait(false))
                 {
-                    var relationshipCount = await assertionContext.ImageRelationships.CountAsync(TestContext.CancellationToken).ConfigureAwait(false);
-                    var scanRunCount = await assertionContext.ScanRuns.CountAsync(TestContext.CancellationToken).ConfigureAwait(false);
+                    var imageCatalogRepository1 = new ImageCatalogRepository(dbContext1);
+                    var imageCatalogRepository2 = new ImageCatalogRepository(dbContext2);
+                    var imageReferenceParser = new ImageReferenceParser();
+                    var baseImageResolver = Substitute.For<IBaseImageResolver>();
+                    var derivedBaseRuntimeDetector = Substitute.For<IDerivedBaseRuntimeDetector>();
+                    var dotNetReleaseMetadataService = Substitute.For<IDotNetReleaseMetadataService>();
+                    var nginxReleaseMetadataService = Substitute.For<INginxReleaseMetadataService>();
+                    var registryMetadataService = Substitute.For<IRegistryMetadataService>();
+                    var firstResolveStarted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+                    var releaseFirstResolve = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+                    var resolveCallCount = 0;
+                    var baseImageDescriptors = ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>.Succeeded([
+                                                                                                                         new BaseImageDescriptor
+                                                                                                                         {
+                                                                                                                             Registry = "docker.io",
+                                                                                                                             Repository = "library/debian",
+                                                                                                                             Tag = "12.0.0",
+                                                                                                                             Digest = "sha256:base",
+                                                                                                                             Depth = 1,
+                                                                                                                             SourceReference = "FROM debian:12.0.0",
+                                                                                                                         },
+                                                                                                                     ]);
+
+                    baseImageResolver.ResolveAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
+                                     .Returns(async _ =>
+                                              {
+                                                  var callIndex = Interlocked.Increment(ref resolveCallCount);
+
+                                                  if (callIndex == 1)
+                                                  {
+                                                      firstResolveStarted.TrySetResult(true);
+                                                      await releaseFirstResolve.Task.ConfigureAwait(false);
+                                                  }
+
+                                                  return baseImageDescriptors;
+                                              });
+                    registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), cancellationToken: Arg.Any<CancellationToken>())
+                                           .Returns(callInfo =>
+                                                    {
+                                                        var imageReference = callInfo.ArgAt<ImageReference>(0);
+
+                                                        return ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
+                                                                                                                   {
+                                                                                                                       Tag = imageReference.Tag,
+                                                                                                                       Digest = imageReference.Digest,
+                                                                                                                       PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
+                                                                                                                   });
+                                                    });
+                    registryMetadataService.GetImageConfigurationAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
+                                           .Returns(ExternalOperationResult<RegistryImageConfigurationData>.NotFound("No registry config"));
+
+                    var orchestrator1 = new ImageScanOrchestrator(new ApplicationTelemetry(),
+                                                                  baseImageResolver,
+                                                                  dbContext1,
+                                                                  derivedBaseRuntimeDetector,
+                                                                  dotNetReleaseMetadataService,
+                                                                  nginxReleaseMetadataService,
+                                                                  imageCatalogRepository1,
+                                                                  imageReferenceParser,
+                                                                  NullLogger<ImageScanOrchestrator>.Instance,
+                                                                  registryMetadataService);
+                    var orchestrator2 = new ImageScanOrchestrator(new ApplicationTelemetry(),
+                                                                  baseImageResolver,
+                                                                  dbContext2,
+                                                                  derivedBaseRuntimeDetector,
+                                                                  dotNetReleaseMetadataService,
+                                                                  nginxReleaseMetadataService,
+                                                                  imageCatalogRepository2,
+                                                                  imageReferenceParser,
+                                                                  NullLogger<ImageScanOrchestrator>.Instance,
+                                                                  registryMetadataService);
+                    var observedImageId = await dbContext1.ObservedImages.Select(entity => entity.Id)
+                                                                         .SingleAsync(TestContext.CancellationToken)
+                                                                         .ConfigureAwait(false);
+
+                    var firstScanTask = orchestrator1.ScanAsync(observedImageId, ScanTriggerSource.Scheduled, CancellationToken.None);
+
+                    await firstResolveStarted.Task.ConfigureAwait(false);
+
+                    var secondScanTask = orchestrator2.ScanAsync(observedImageId, ScanTriggerSource.Scheduled, CancellationToken.None);
+
+                    await Task.Delay(100, TestContext.CancellationToken).ConfigureAwait(false);
 
                     Assert.AreEqual(1,
-                                    relationshipCount,
-                                    "Serialized scans must leave a single current base-image relationship for the observed image");
-                    Assert.AreEqual(2,
-                                    scanRunCount,
-                                    "Both serialized scans must complete and persist their scan runs");
+                                    Volatile.Read(ref resolveCallCount),
+                                    "Concurrent scans for the same observed image must wait for the in-flight scan before starting base-image resolution");
+
+                    releaseFirstResolve.SetResult(true);
+
+                    await Task.WhenAll(firstScanTask, secondScanTask).ConfigureAwait(false);
+
+                    var assertionContext = database.CreateDbContext();
+
+                    await using (assertionContext.ConfigureAwait(false))
+                    {
+                        var relationshipCount = await assertionContext.ImageRelationships.CountAsync(TestContext.CancellationToken).ConfigureAwait(false);
+                        var scanRunCount = await assertionContext.ScanRuns.CountAsync(TestContext.CancellationToken).ConfigureAwait(false);
+
+                        Assert.AreEqual(1,
+                                        relationshipCount,
+                                        "Serialized scans must leave a single current base-image relationship for the observed image");
+                        Assert.AreEqual(2,
+                                        scanRunCount,
+                                        "Both serialized scans must complete and persist their scan runs");
+                    }
                 }
             }
         }

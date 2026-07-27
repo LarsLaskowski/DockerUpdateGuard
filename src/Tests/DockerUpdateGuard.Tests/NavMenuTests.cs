@@ -136,7 +136,7 @@ public class NavMenuTests
             var vulnerabilitiesLink = component.FindAll("a").SingleOrDefault(link => link.TextContent.Trim() == "Vulnerabilities");
 
             Assert.IsNotNull(vulnerabilitiesLink, "The Vulnerabilities navigation entry must always be rendered");
-            Assert.IsTrue(vulnerabilitiesLink!.GetAttribute("href")?.Contains("vulnerabilities", StringComparison.OrdinalIgnoreCase),
+            Assert.IsTrue(vulnerabilitiesLink.GetAttribute("href")?.Contains("vulnerabilities", StringComparison.OrdinalIgnoreCase),
                           "The Vulnerabilities navigation entry must link to the vulnerabilities page");
         }
     }

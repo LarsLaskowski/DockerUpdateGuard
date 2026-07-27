@@ -116,7 +116,8 @@ public partial class PortainerClient : IPortainerClient
         var containers = await response.Content.ReadFromJsonAsync<DockerContainerItem[]>(cancellationToken: cancellationToken).ConfigureAwait(false);
 
         return containers?.FirstOrDefault(c => c.Names?.Any(n => string.Equals(n, $"/{containerName}", StringComparison.OrdinalIgnoreCase)
-                                                                 || string.Equals(n, containerName, StringComparison.OrdinalIgnoreCase)) == true)?.Id;
+                                                                 || string.Equals(n, containerName, StringComparison.OrdinalIgnoreCase)) == true)
+                         ?.Id;
     }
 
     #endregion // Static methods
@@ -149,7 +150,7 @@ public partial class PortainerClient : IPortainerClient
             if (string.IsNullOrWhiteSpace(options.Username) == false
                 && string.IsNullOrWhiteSpace(options.Password) == false)
             {
-                var loginBody = new PortainerLoginRequest(options.Username!, options.Password!);
+                var loginBody = new PortainerLoginRequest(options.Username, options.Password);
                 using var loginResponse = await client.PostAsJsonAsync("/api/auth", loginBody, cancellationToken).ConfigureAwait(false);
 
                 if (loginResponse.IsSuccessStatusCode)
