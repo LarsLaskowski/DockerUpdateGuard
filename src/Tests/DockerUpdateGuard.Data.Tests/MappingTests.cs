@@ -83,6 +83,36 @@ public class MappingTests
 
                 Assert.IsNotNull(imageVersionEntity.FindProperty(nameof(ImageVersion.VulnerabilityAssessmentScanRunId)),
                                  "Image version must map the scan run of the latest vulnerability assessment");
+
+                var fixStatusProperty = vulnerabilityFindingEntity.FindProperty(nameof(VulnerabilityFinding.FixStatus));
+                var packageClassProperty = vulnerabilityFindingEntity.FindProperty(nameof(VulnerabilityFinding.PackageClass));
+                var packageTypeProperty = vulnerabilityFindingEntity.FindProperty(nameof(VulnerabilityFinding.PackageType));
+
+                Assert.IsNotNull(fixStatusProperty, "Vulnerability finding must map the reported fix status");
+                Assert.IsFalse(fixStatusProperty.IsNullable, "The fix status must be non-nullable and default to NotSet");
+                Assert.IsNotNull(packageClassProperty, "Vulnerability finding must map the reported package class");
+                Assert.IsTrue(packageClassProperty.IsNullable, "The package class must stay optional for providers that do not report one");
+                Assert.AreEqual(50,
+                                packageClassProperty.GetMaxLength(),
+                                "The package class must use the configured maximum length");
+                Assert.IsNotNull(packageTypeProperty, "Vulnerability finding must map the reported package type");
+                Assert.IsTrue(packageTypeProperty.IsNullable, "The package type must stay optional for providers that do not report one");
+                Assert.AreEqual(50,
+                                packageTypeProperty.GetMaxLength(),
+                                "The package type must use the configured maximum length");
+
+                var findingIdentityIndex = vulnerabilityFindingEntity.GetIndexes()
+                                                                     .SingleOrDefault(index => index.IsUnique);
+
+                Assert.IsNotNull(findingIdentityIndex, "Vulnerability findings must keep a unique identity index");
+                Assert.AreSequenceEqual([
+                                            nameof(VulnerabilityFinding.ImageVersionId),
+                                            nameof(VulnerabilityFinding.AdvisoryId),
+                                            nameof(VulnerabilityFinding.AffectedPackage),
+                                        ],
+                                        findingIdentityIndex.Properties.Select(property => property.Name)
+                                                                       .ToList(),
+                                        "The finding identity must stay the image version, advisory and affected package");
             }
         }
     }
@@ -204,7 +234,10 @@ public class MappingTests
                                                AdvisoryId = "CVE-2026-0001",
                                                DetectedAtUtc = DateTimeOffset.UtcNow,
                                                ImageVersion = baseImageVersion,
+                                               FixStatus = VulnerabilityFixStatus.WillNotFix,
                                                IsActive = true,
+                                               PackageClass = "os-pkgs",
+                                               PackageType = "debian",
                                                Severity = VulnerabilitySeverity.High,
                                                Summary = "Representative advisory",
                                                Title = "glibc issue"
@@ -267,6 +300,19 @@ public class MappingTests
                 Assert.HasCount(1,
                                 persistedUpdateFinding.TagCandidates,
                                 "The update finding must keep its tag candidates");
+
+                var persistedVulnerabilityFinding = await dbContext.VulnerabilityFindings.SingleAsync(TestContext.CancellationToken)
+                                                                                         .ConfigureAwait(false);
+
+                Assert.AreEqual(VulnerabilityFixStatus.WillNotFix,
+                                persistedVulnerabilityFinding.FixStatus,
+                                "The reported fix status must survive the persistence round-trip");
+                Assert.AreEqual("os-pkgs",
+                                persistedVulnerabilityFinding.PackageClass,
+                                "The reported package class must survive the persistence round-trip");
+                Assert.AreEqual("debian",
+                                persistedVulnerabilityFinding.PackageType,
+                                "The reported package type must survive the persistence round-trip");
             }
         }
     }
