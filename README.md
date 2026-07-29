@@ -132,7 +132,8 @@ versions. Override them to route the lookups through an internal mirror or proxy
 | `TrivyExecutablePath` | `trivy` | No | Path to the Trivy executable (resolved through `PATH` by default; bundled in the published container image) |
 | `DockerScoutLoginUrl` | `https://hub.docker.com/v2/users/login` | No | Docker Hub login endpoint used by the `DockerScout` provider |
 | `DockerScoutBaseUrl` | `https://api.scout.docker.com` | No | Base address of the Docker Scout API |
-| `RequestTimeoutSeconds` | `30` | No | Timeout for vulnerability provider requests |
+| `RequestTimeoutSeconds` | `120` | No | Timeout for vulnerability provider requests; first-time Trivy scans of large images regularly exceed shorter timeouts |
+| `MaxParallelScans` | `1` | No | Maximum number of vulnerability provider scans running at the same time (`1` to `8`) |
 
 ### `DockerUpdateGuard:Scanning`
 
@@ -232,7 +233,8 @@ If all three telemetry switches are `false`, telemetry is effectively disabled.
       "Enabled": true,
       "Provider": "Trivy",
       "TrivyBaseUrl": "http://trivy:4954",
-      "RequestTimeoutSeconds": 30
+      "RequestTimeoutSeconds": 120,
+      "MaxParallelScans": 1
     },
     "Scanning": {
       "DiscoveryIntervalMinutes": 5,

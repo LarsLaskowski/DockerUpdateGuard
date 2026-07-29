@@ -113,6 +113,16 @@ internal static partial class ImageHostLoggingExtensions
                                                     int removedScanRuns);
 
     /// <summary>
+    /// Log the number of abandoned running scan runs that were marked as failed
+    /// </summary>
+    /// <param name="logger">Logger</param>
+    /// <param name="repairedScanRuns">Repaired scan run count</param>
+    [LoggerMessage(EventId = 2021,
+                   Level = LogLevel.Warning,
+                   Message = "Marked {RepairedScanRuns} abandoned running scan runs as failed because they never completed")]
+    public static partial void StaleScanRunsRepaired(this ILogger logger, int repairedScanRuns);
+
+    /// <summary>
     /// Log an observed image scan failure
     /// </summary>
     /// <param name="logger">Logger</param>

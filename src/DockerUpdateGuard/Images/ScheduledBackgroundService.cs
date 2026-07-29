@@ -54,6 +54,42 @@ public abstract class ScheduledBackgroundService : BackgroundService
     protected abstract Task ExecuteCoreAsync(CancellationToken stoppingToken);
 
     /// <summary>
+    /// Execute a short startup step before the scheduled loop begins, independent of <see cref="ShouldExecuteImmediately"/>
+    /// </summary>
+    /// <param name="stoppingToken">Cancellation token</param>
+    /// <returns>Task</returns>
+    protected virtual Task ExecuteStartupAsync(CancellationToken stoppingToken)
+    {
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Execute the startup step with exception logging
+    /// </summary>
+    /// <param name="stoppingToken">Cancellation token</param>
+    /// <returns>Task</returns>
+    private async Task ExecuteStartupSafelyAsync(CancellationToken stoppingToken)
+    {
+        var backgroundServiceName = GetType().Name;
+        var stopwatch = Stopwatch.StartNew();
+
+        try
+        {
+            await ExecuteStartupAsync(stoppingToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            // Expected during host shutdown, the startup step is neither completed nor failed
+        }
+        catch (Exception exception)
+        {
+            _logger.BackgroundServiceExecutionFailed(exception,
+                                                     backgroundServiceName,
+                                                     stopwatch.ElapsedMilliseconds);
+        }
+    }
+
+    /// <summary>
     /// Execute the background operation with exception logging
     /// </summary>
     /// <param name="stoppingToken">Cancellation token</param>
@@ -96,6 +132,8 @@ public abstract class ScheduledBackgroundService : BackgroundService
         {
             _logger.BackgroundServiceStarted(backgroundServiceName, GetInterval().TotalMinutes);
         }
+
+        await ExecuteStartupSafelyAsync(stoppingToken).ConfigureAwait(false);
 
         if (ShouldExecuteImmediately())
         {

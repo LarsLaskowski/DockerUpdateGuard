@@ -42,5 +42,15 @@ internal sealed class TestScanCleanupBackgroundService : ScanCleanupBackgroundSe
         return ExecuteCoreAsync(cancellationToken);
     }
 
+    /// <summary>
+    /// Execute the startup step of the cleanup service
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Task</returns>
+    public Task ExecuteStartupOnceAsync(CancellationToken cancellationToken)
+    {
+        return ExecuteStartupAsync(cancellationToken);
+    }
+
     #endregion // Methods
 }

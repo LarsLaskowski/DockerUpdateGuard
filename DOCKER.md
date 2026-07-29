@@ -81,6 +81,8 @@ Common JSON paths:
 | `DockerUpdateGuard:Vulnerabilities:Provider` | `None`, `DockerScout`, or `Trivy` |
 | `DockerUpdateGuard:Vulnerabilities:TrivyBaseUrl` | Required when `Provider=Trivy`; base URL of the Trivy server used by the bundled Trivy CLI in client mode |
 | `DockerUpdateGuard:Vulnerabilities:TrivyExecutablePath` | Optional path to the Trivy executable; defaults to `trivy` (bundled in the image) |
+| `DockerUpdateGuard:Vulnerabilities:RequestTimeoutSeconds` | Timeout for vulnerability provider requests; defaults to `120` because first-time scans of large images are slow |
+| `DockerUpdateGuard:Vulnerabilities:MaxParallelScans` | Number of vulnerability scans running at the same time (`1` to `8`); defaults to `1` |
 | `Telemetry:OtlpEndpoint` | Optional OTLP collector endpoint |
 | `DockerUpdateGuard:DisplayVersion` | Version label shown in the UI; set by the image build argument |
 

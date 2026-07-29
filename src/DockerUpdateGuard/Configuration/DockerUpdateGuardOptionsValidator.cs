@@ -148,6 +148,11 @@ public class DockerUpdateGuardOptionsValidator : IValidateOptions<DockerUpdateGu
             failures.Add($"'{DockerUpdateGuardOptions.SectionName}:Vulnerabilities:RequestTimeoutSeconds' must be between 1 and 300");
         }
 
+        ValidateRange(options.MaxParallelScans,
+                      1,
+                      8,
+                      $"{DockerUpdateGuardOptions.SectionName}:Vulnerabilities:MaxParallelScans",
+                      failures);
         ValidateAbsoluteHttpUri(options.DockerScoutLoginUrl,
                                 $"{DockerUpdateGuardOptions.SectionName}:Vulnerabilities:DockerScoutLoginUrl",
                                 failures);
