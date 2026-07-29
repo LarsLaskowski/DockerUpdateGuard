@@ -53,6 +53,16 @@ public class DashboardViewData
     public VulnerabilitySeveritySummaryViewData VulnerabilitySeveritySummary { get; set; } = new();
 
     /// <summary>
+    /// Indicates whether vulnerability scanning is enabled
+    /// </summary>
+    public bool VulnerabilityScanningEnabled { get; set; }
+
+    /// <summary>
+    /// Configuration hint that should be surfaced for the vulnerability setup
+    /// </summary>
+    public VulnerabilityConfigurationHintKind VulnerabilityConfigurationHint { get; set; }
+
+    /// <summary>
     /// Recent scan list
     /// </summary>
     public IReadOnlyList<ScanHistoryItemData> RecentScans { get; set; } = [];

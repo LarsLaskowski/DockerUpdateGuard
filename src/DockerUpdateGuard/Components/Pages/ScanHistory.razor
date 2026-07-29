@@ -11,23 +11,29 @@
         </div>
         @if (VulnerabilitiesEnabled)
         {
-            <MudButton Variant="Variant.Filled"
-                       Color="Color.Primary"
-                       Disabled="@_isRefreshingVulnerabilities"
-                       OnClick="TriggerVulnerabilityRefreshAsync">
-                @if (_isRefreshingVulnerabilities)
+            <MudStack Spacing="1" AlignItems="AlignItems.End">
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           Disabled="@_isRefreshingVulnerabilities"
+                           OnClick="TriggerVulnerabilityRefreshAsync">
+                    @if (_isRefreshingVulnerabilities)
+                    {
+                        <MudProgressCircular Class="me-2"
+                                             Size="Size.Small"
+                                             Indeterminate="true"
+                                             Color="Color.Inherit" />
+                        <span>Refreshing vulnerabilities...</span>
+                    }
+                    else
+                    {
+                        <span>Refresh vulnerabilities</span>
+                    }
+                </MudButton>
+                @if (_schedule?.VulnerabilityScanningEnabled == true)
                 {
-                    <MudProgressCircular Class="me-2"
-                                         Size="Size.Small"
-                                         Indeterminate="true"
-                                         Color="Color.Inherit" />
-                    <span>Refreshing vulnerabilities...</span>
+                    <MudText Typo="Typo.caption">Next scheduled vulnerability refresh: @FormatNextVulnerabilityRefresh(_schedule)</MudText>
                 }
-                else
-                {
-                    <span>Refresh vulnerabilities</span>
-                }
-            </MudButton>
+            </MudStack>
         }
     </div>
 

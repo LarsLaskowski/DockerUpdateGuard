@@ -1,9 +1,12 @@
+﻿using DockerUpdateGuard.Configuration;
 using DockerUpdateGuard.Data;
 using DockerUpdateGuard.Data.Entities;
 using DockerUpdateGuard.Data.Queries;
 using DockerUpdateGuard.Data.Repositories;
 using DockerUpdateGuard.Images;
+using DockerUpdateGuard.Tests.Data;
 using DockerUpdateGuard.UI;
+using DockerUpdateGuard.Vulnerabilities;
 
 using Microsoft.EntityFrameworkCore;
 
@@ -32,6 +35,130 @@ public class ApplicationViewServiceTests
     public TestContext TestContext { get; set; }
 
     #endregion // Properties
+
+    #region Static methods
+
+    /// <summary>
+    /// Create an options monitor with the default application options
+    /// </summary>
+    /// <returns>Options monitor</returns>
+    private static TestOptionsMonitor<DockerUpdateGuardOptions> CreateOptionsMonitor()
+    {
+        return new TestOptionsMonitor<DockerUpdateGuardOptions>(new DockerUpdateGuardOptions());
+    }
+
+    /// <summary>
+    /// Create an options monitor with an explicit vulnerability configuration
+    /// </summary>
+    /// <param name="enabled">Whether vulnerability scanning is enabled</param>
+    /// <param name="provider">Configured vulnerability provider</param>
+    /// <param name="refreshIntervalMinutes">Vulnerability refresh interval in minutes</param>
+    /// <returns>Options monitor</returns>
+    private static TestOptionsMonitor<DockerUpdateGuardOptions> CreateOptionsMonitor(bool enabled,
+                                                                                     VulnerabilityProviderKind provider,
+                                                                                     int refreshIntervalMinutes = 180)
+    {
+        return new TestOptionsMonitor<DockerUpdateGuardOptions>(new DockerUpdateGuardOptions
+                                                                {
+                                                                    Vulnerabilities = new VulnerabilityOptions
+                                                                                      {
+                                                                                          Enabled = enabled,
+                                                                                          Provider = provider,
+                                                                                      },
+                                                                    Scanning = new ScanningOptions
+                                                                               {
+                                                                                   VulnerabilityRefreshIntervalMinutes = refreshIntervalMinutes,
+                                                                               },
+                                                                });
+    }
+
+    /// <summary>
+    /// Create a completed vulnerability scan run
+    /// </summary>
+    /// <param name="status">Scan run status</param>
+    /// <param name="errorMessage">Scan run error message</param>
+    /// <param name="startedAtUtc">Scan run start timestamp</param>
+    /// <returns>Vulnerability scan run</returns>
+    private static ScanRun CreateVulnerabilityScanRun(ScanRunStatus status, string? errorMessage, DateTimeOffset startedAtUtc)
+    {
+        return new ScanRun
+               {
+                   Type = ScanRunType.Vulnerability,
+                   Status = status,
+                   TriggerSource = ScanTriggerSource.Scheduled,
+                   StartedAtUtc = startedAtUtc,
+                   CompletedAtUtc = startedAtUtc.AddMinutes(1),
+                   ErrorMessage = errorMessage,
+               };
+    }
+
+    /// <summary>
+    /// Read the dashboard for a vulnerability configuration and an optionally seeded vulnerability scan run
+    /// </summary>
+    /// <param name="optionsMonitor">Options monitor</param>
+    /// <param name="scanRun">Vulnerability scan run to seed, or null when no run exists</param>
+    /// <returns>Dashboard view data</returns>
+    private static async Task<DashboardViewData> ReadDashboardAsync(TestOptionsMonitor<DockerUpdateGuardOptions> optionsMonitor, ScanRun? scanRun)
+    {
+        var options = new DbContextOptionsBuilder<DockerUpdateGuardDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString())
+                                                                               .Options;
+
+        var dbContext = new DockerUpdateGuardDbContext(options);
+
+        await using (dbContext.ConfigureAwait(false))
+        {
+            if (scanRun is not null)
+            {
+                dbContext.ScanRuns.Add(scanRun);
+
+                await dbContext.SaveChangesAsync(CancellationToken.None)
+                               .ConfigureAwait(false);
+            }
+
+            var service = new ApplicationViewService(dbContext,
+                                                     new ImageReferenceParser(),
+                                                     optionsMonitor,
+                                                     new SharedBaseImageQueryService(dbContext));
+
+            return await service.GetDashboardAsync(CancellationToken.None)
+                                .ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Read the vulnerability schedule for a vulnerability configuration and an optionally seeded vulnerability scan run
+    /// </summary>
+    /// <param name="optionsMonitor">Options monitor</param>
+    /// <param name="scanRun">Vulnerability scan run to seed, or null when no run exists</param>
+    /// <returns>Vulnerability schedule view data</returns>
+    private static async Task<VulnerabilityScheduleViewData> ReadVulnerabilityScheduleAsync(TestOptionsMonitor<DockerUpdateGuardOptions> optionsMonitor, ScanRun? scanRun)
+    {
+        var options = new DbContextOptionsBuilder<DockerUpdateGuardDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString())
+                                                                               .Options;
+
+        var dbContext = new DockerUpdateGuardDbContext(options);
+
+        await using (dbContext.ConfigureAwait(false))
+        {
+            if (scanRun is not null)
+            {
+                dbContext.ScanRuns.Add(scanRun);
+
+                await dbContext.SaveChangesAsync(CancellationToken.None)
+                               .ConfigureAwait(false);
+            }
+
+            var service = new ApplicationViewService(dbContext,
+                                                     new ImageReferenceParser(),
+                                                     optionsMonitor,
+                                                     new SharedBaseImageQueryService(dbContext));
+
+            return await service.GetVulnerabilityScheduleAsync(CancellationToken.None)
+                                .ConfigureAwait(false);
+        }
+    }
+
+    #endregion // Static methods
 
     #region Methods
 
@@ -112,6 +239,7 @@ public class ApplicationViewServiceTests
 
             var service = new ApplicationViewService(dbContext,
                                                      new ImageReferenceParser(),
+                                                     CreateOptionsMonitor(),
                                                      new SharedBaseImageQueryService(dbContext));
 
             var runtimeContainersTask = service.GetRuntimeContainersAsync(CancellationToken.None);
@@ -235,6 +363,7 @@ public class ApplicationViewServiceTests
 
             var service = new ApplicationViewService(dbContext,
                                                      new ImageReferenceParser(),
+                                                     CreateOptionsMonitor(),
                                                      new SharedBaseImageQueryService(dbContext));
             var dashboard = await service.GetDashboardAsync(CancellationToken.None)
                                          .ConfigureAwait(false);
@@ -332,6 +461,7 @@ public class ApplicationViewServiceTests
 
             var service = new ApplicationViewService(dbContext,
                                                      new ImageReferenceParser(),
+                                                     CreateOptionsMonitor(),
                                                      new SharedBaseImageQueryService(dbContext));
             var hasBaseImages = await service.HasBaseImagesAsync(CancellationToken.None)
                                              .ConfigureAwait(false);
@@ -525,6 +655,7 @@ public class ApplicationViewServiceTests
 
             var service = new ApplicationViewService(dbContext,
                                                      new ImageReferenceParser(),
+                                                     CreateOptionsMonitor(),
                                                      new SharedBaseImageQueryService(dbContext));
 
             var detail = await service.GetRuntimeContainerDetailAsync(dockerInstance.Id, "container-a", CancellationToken.None)
@@ -615,6 +746,7 @@ public class ApplicationViewServiceTests
 
             var service = new ApplicationViewService(dbContext,
                                                      new ImageReferenceParser(),
+                                                     CreateOptionsMonitor(),
                                                      new SharedBaseImageQueryService(dbContext));
 
             var detail = await service.GetObservedImageDetailAsync(observedImage.Id, CancellationToken.None)
@@ -701,6 +833,7 @@ public class ApplicationViewServiceTests
 
             var service = new ApplicationViewService(dbContext,
                                                      new ImageReferenceParser(),
+                                                     CreateOptionsMonitor(),
                                                      new SharedBaseImageQueryService(dbContext));
 
             var detail = await service.GetObservedImageDetailAsync(observedImage.Id, CancellationToken.None)
@@ -793,6 +926,7 @@ public class ApplicationViewServiceTests
 
             var service = new ApplicationViewService(dbContext,
                                                      new ImageReferenceParser(),
+                                                     CreateOptionsMonitor(),
                                                      new SharedBaseImageQueryService(dbContext));
 
             var detail = await service.GetObservedImageDetailAsync(observedImage.Id, CancellationToken.None)
@@ -889,6 +1023,7 @@ public class ApplicationViewServiceTests
 
             var service = new ApplicationViewService(dbContext,
                                                      new ImageReferenceParser(),
+                                                     CreateOptionsMonitor(),
                                                      new SharedBaseImageQueryService(dbContext));
 
             var detail = await service.GetObservedImageDetailAsync(observedImage.Id, CancellationToken.None)
@@ -960,6 +1095,7 @@ public class ApplicationViewServiceTests
 
             var service = new ApplicationViewService(dbContext,
                                                      new ImageReferenceParser(),
+                                                     CreateOptionsMonitor(),
                                                      new SharedBaseImageQueryService(dbContext));
 
             var detail = await service.GetObservedImageDetailAsync(observedImage.Id, CancellationToken.None)
@@ -1043,6 +1179,7 @@ public class ApplicationViewServiceTests
 
             var service = new ApplicationViewService(dbContext,
                                                      new ImageReferenceParser(),
+                                                     CreateOptionsMonitor(),
                                                      new SharedBaseImageQueryService(dbContext));
 
             var detail = await service.GetObservedImageDetailAsync(observedImage.Id, CancellationToken.None)
@@ -1108,6 +1245,7 @@ public class ApplicationViewServiceTests
 
             var service = new ApplicationViewService(dbContext,
                                                      new ImageReferenceParser(),
+                                                     CreateOptionsMonitor(),
                                                      new SharedBaseImageQueryService(dbContext));
             var listItems = await service.GetObservedImagesAsync(CancellationToken.None)
                                          .ConfigureAwait(false);
@@ -1200,6 +1338,7 @@ public class ApplicationViewServiceTests
 
             var service = new ApplicationViewService(dbContext,
                                                      new ImageReferenceParser(),
+                                                     CreateOptionsMonitor(),
                                                      new SharedBaseImageQueryService(dbContext));
             var observedImages = await service.GetObservedImagesAsync(CancellationToken.None)
                                               .ConfigureAwait(false);
@@ -1305,6 +1444,7 @@ public class ApplicationViewServiceTests
 
             var service = new ApplicationViewService(dbContext,
                                                      new ImageReferenceParser(),
+                                                     CreateOptionsMonitor(),
                                                      new SharedBaseImageQueryService(dbContext));
             var observedImages = await service.GetObservedImagesAsync(CancellationToken.None)
                                               .ConfigureAwait(false);
@@ -1422,6 +1562,7 @@ public class ApplicationViewServiceTests
 
             var service = new ApplicationViewService(dbContext,
                                                      new ImageReferenceParser(),
+                                                     CreateOptionsMonitor(),
                                                      new SharedBaseImageQueryService(dbContext));
             var runtimeContainers = await service.GetRuntimeContainersAsync(CancellationToken.None)
                                                  .ConfigureAwait(false);
@@ -1564,6 +1705,7 @@ public class ApplicationViewServiceTests
 
             var service = new ApplicationViewService(dbContext,
                                                      new ImageReferenceParser(),
+                                                     CreateOptionsMonitor(),
                                                      new SharedBaseImageQueryService(dbContext));
             var runtimeContainers = await service.GetRuntimeContainersAsync(CancellationToken.None)
                                                  .ConfigureAwait(false);
@@ -1642,6 +1784,7 @@ public class ApplicationViewServiceTests
 
             var service = new ApplicationViewService(dbContext,
                                                      new ImageReferenceParser(),
+                                                     CreateOptionsMonitor(),
                                                      new SharedBaseImageQueryService(dbContext));
             var runtimeContainers = await service.GetRuntimeContainersAsync(CancellationToken.None)
                                                  .ConfigureAwait(false);
@@ -1738,6 +1881,7 @@ public class ApplicationViewServiceTests
 
             var service = new ApplicationViewService(dbContext,
                                                      new ImageReferenceParser(),
+                                                     CreateOptionsMonitor(),
                                                      new SharedBaseImageQueryService(dbContext));
             var runtimeContainers = await service.GetRuntimeContainersAsync(CancellationToken.None)
                                                  .ConfigureAwait(false);
@@ -1798,6 +1942,7 @@ public class ApplicationViewServiceTests
 
             var service = new ApplicationViewService(dbContext,
                                                      new ImageReferenceParser(),
+                                                     CreateOptionsMonitor(),
                                                      new SharedBaseImageQueryService(dbContext));
             var dashboardTask = service.GetDashboardAsync(CancellationToken.None);
             var observedImagesTask = service.GetObservedImagesAsync(CancellationToken.None);
@@ -1900,6 +2045,7 @@ public class ApplicationViewServiceTests
 
             var service = new ApplicationViewService(dbContext,
                                                      new ImageReferenceParser(),
+                                                     CreateOptionsMonitor(),
                                                      new SharedBaseImageQueryService(dbContext));
             var observedImages = await service.GetObservedImagesAsync(CancellationToken.None)
                                               .ConfigureAwait(false);
@@ -1968,6 +2114,7 @@ public class ApplicationViewServiceTests
 
             var service = new ApplicationViewService(dbContext,
                                                      new ImageReferenceParser(),
+                                                     CreateOptionsMonitor(),
                                                      new SharedBaseImageQueryService(dbContext));
             var manualImages = await service.GetManualObservedImagesAsync(CancellationToken.None)
                                             .ConfigureAwait(false);
@@ -2029,6 +2176,7 @@ public class ApplicationViewServiceTests
 
             var service = new ApplicationViewService(dbContext,
                                                      new ImageReferenceParser(),
+                                                     CreateOptionsMonitor(),
                                                      new SharedBaseImageQueryService(dbContext));
             var discoveryImages = await service.GetDiscoveryObservedImagesAsync(CancellationToken.None)
                                                .ConfigureAwait(false);
@@ -2116,6 +2264,7 @@ public class ApplicationViewServiceTests
 
             var service = new ApplicationViewService(dbContext,
                                                      new ImageReferenceParser(),
+                                                     CreateOptionsMonitor(),
                                                      new SharedBaseImageQueryService(dbContext));
 
             var overview = await service.GetVulnerabilityOverviewAsync(CancellationToken.None)
@@ -2186,6 +2335,7 @@ public class ApplicationViewServiceTests
 
             var service = new ApplicationViewService(dbContext,
                                                      new ImageReferenceParser(),
+                                                     CreateOptionsMonitor(),
                                                      new SharedBaseImageQueryService(dbContext));
 
             var overview = await service.GetVulnerabilityOverviewAsync(CancellationToken.None)
@@ -2274,6 +2424,7 @@ public class ApplicationViewServiceTests
 
             var service = new ApplicationViewService(dbContext,
                                                      new ImageReferenceParser(),
+                                                     CreateOptionsMonitor(),
                                                      new SharedBaseImageQueryService(dbContext));
 
             var overview = await service.GetVulnerabilityOverviewAsync(CancellationToken.None)
@@ -2358,6 +2509,7 @@ public class ApplicationViewServiceTests
 
             var service = new ApplicationViewService(dbContext,
                                                      new ImageReferenceParser(),
+                                                     CreateOptionsMonitor(),
                                                      new SharedBaseImageQueryService(dbContext));
 
             var overview = await service.GetVulnerabilityOverviewAsync(CancellationToken.None)
@@ -2451,6 +2603,7 @@ public class ApplicationViewServiceTests
 
             var service = new ApplicationViewService(dbContext,
                                                      new ImageReferenceParser(),
+                                                     CreateOptionsMonitor(),
                                                      new SharedBaseImageQueryService(dbContext));
 
             var overview = await service.GetVulnerabilityOverviewAsync(CancellationToken.None)
@@ -2536,6 +2689,7 @@ public class ApplicationViewServiceTests
 
             var service = new ApplicationViewService(dbContext,
                                                      new ImageReferenceParser(),
+                                                     CreateOptionsMonitor(),
                                                      new SharedBaseImageQueryService(dbContext));
 
             var overview = await service.GetVulnerabilityOverviewAsync(CancellationToken.None)
@@ -2598,6 +2752,7 @@ public class ApplicationViewServiceTests
 
             var service = new ApplicationViewService(dbContext,
                                                      new ImageReferenceParser(),
+                                                     CreateOptionsMonitor(),
                                                      new SharedBaseImageQueryService(dbContext));
             var runtimeContainers = await service.GetRuntimeContainersAsync(CancellationToken.None)
                                                  .ConfigureAwait(false);
@@ -2609,6 +2764,130 @@ public class ApplicationViewServiceTests
                             runtimeContainers.Single().ContainerName,
                             "The collapsed runtime container projection must expose the most recently recorded snapshot");
         }
+    }
+
+    /// <summary>
+    /// Verify the dashboard reports the disabled hint when vulnerability scanning is switched off
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task ApplicationViewServiceDashboardScanningDisabledReportsDisabledHintAsync()
+    {
+        var dashboard = await ReadDashboardAsync(CreateOptionsMonitor(enabled: false, VulnerabilityProviderKind.None), scanRun: null).ConfigureAwait(false);
+
+        Assert.IsFalse(dashboard.VulnerabilityScanningEnabled, "The dashboard must report vulnerability scanning as disabled when the option is switched off");
+        Assert.AreEqual(VulnerabilityConfigurationHintKind.ScanningDisabled,
+                        dashboard.VulnerabilityConfigurationHint,
+                        "Disabled vulnerability scanning must resolve to the disabled configuration hint");
+    }
+
+    /// <summary>
+    /// Verify the dashboard names the missing Trivy base URL when the latest vulnerability run reported it
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task ApplicationViewServiceDashboardTrivyNotConfiguredReportsTrivyBaseUrlHintAsync()
+    {
+        var scanRun = CreateVulnerabilityScanRun(ScanRunStatus.Partial,
+                                                 VulnerabilityProviderMessages.TrivyBaseUrlNotConfigured,
+                                                 DateTimeOffset.UtcNow.AddMinutes(-30));
+        var dashboard = await ReadDashboardAsync(CreateOptionsMonitor(enabled: true, VulnerabilityProviderKind.Trivy), scanRun).ConfigureAwait(false);
+
+        Assert.IsTrue(dashboard.VulnerabilityScanningEnabled, "The dashboard must report vulnerability scanning as enabled when the option is switched on");
+        Assert.AreEqual(VulnerabilityConfigurationHintKind.TrivyBaseUrlMissing,
+                        dashboard.VulnerabilityConfigurationHint,
+                        "A Trivy run reporting a missing base URL must resolve to the Trivy configuration hint");
+    }
+
+    /// <summary>
+    /// Verify the dashboard names the missing Docker Hub credentials when the latest vulnerability run reported them
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task ApplicationViewServiceDashboardDockerScoutNotConfiguredReportsCredentialsHintAsync()
+    {
+        var scanRun = CreateVulnerabilityScanRun(ScanRunStatus.Failed,
+                                                 VulnerabilityProviderMessages.DockerScoutCredentialsNotConfigured,
+                                                 DateTimeOffset.UtcNow.AddMinutes(-30));
+        var dashboard = await ReadDashboardAsync(CreateOptionsMonitor(enabled: true, VulnerabilityProviderKind.DockerScout), scanRun).ConfigureAwait(false);
+
+        Assert.AreEqual(VulnerabilityConfigurationHintKind.DockerHubCredentialsMissing,
+                        dashboard.VulnerabilityConfigurationHint,
+                        "A Docker Scout run reporting missing credentials must resolve to the Docker Hub configuration hint");
+    }
+
+    /// <summary>
+    /// Verify the dashboard reports no hint when the latest vulnerability run succeeded
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task ApplicationViewServiceDashboardConfiguredProviderReportsNoHintAsync()
+    {
+        var scanRun = CreateVulnerabilityScanRun(ScanRunStatus.Succeeded, errorMessage: null, DateTimeOffset.UtcNow.AddMinutes(-30));
+        var dashboard = await ReadDashboardAsync(CreateOptionsMonitor(enabled: true, VulnerabilityProviderKind.Trivy), scanRun).ConfigureAwait(false);
+
+        Assert.AreEqual(VulnerabilityConfigurationHintKind.None,
+                        dashboard.VulnerabilityConfigurationHint,
+                        "A correctly configured provider must not surface a configuration hint");
+    }
+
+    /// <summary>
+    /// Verify the dashboard ignores unrelated failures of the latest vulnerability run
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task ApplicationViewServiceDashboardUnrelatedFailureReportsNoHintAsync()
+    {
+        var scanRun = CreateVulnerabilityScanRun(ScanRunStatus.Failed, "Trivy scan timed out after 30 seconds", DateTimeOffset.UtcNow.AddMinutes(-30));
+        var dashboard = await ReadDashboardAsync(CreateOptionsMonitor(enabled: true, VulnerabilityProviderKind.Trivy), scanRun).ConfigureAwait(false);
+
+        Assert.AreEqual(VulnerabilityConfigurationHintKind.None,
+                        dashboard.VulnerabilityConfigurationHint,
+                        "A failure unrelated to the provider configuration must not surface a configuration hint");
+    }
+
+    /// <summary>
+    /// Verify the next scheduled vulnerability refresh is derived from the latest run and the configured interval
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task ApplicationViewServiceVulnerabilityScheduleWithRecordedRunReturnsEstimatedNextRefreshAsync()
+    {
+        var startedAtUtc = DateTimeOffset.UtcNow.AddMinutes(-45);
+        var scanRun = CreateVulnerabilityScanRun(ScanRunStatus.Succeeded, errorMessage: null, startedAtUtc);
+        var schedule = await ReadVulnerabilityScheduleAsync(CreateOptionsMonitor(enabled: true, VulnerabilityProviderKind.Trivy, refreshIntervalMinutes: 120), scanRun).ConfigureAwait(false);
+
+        Assert.IsTrue(schedule.VulnerabilityScanningEnabled, "The schedule must report vulnerability scanning as enabled when the option is switched on");
+        Assert.AreEqual(startedAtUtc.AddMinutes(120),
+                        schedule.NextVulnerabilityRefreshUtc,
+                        "The next scheduled refresh must be the start of the latest run plus the configured refresh interval");
+    }
+
+    /// <summary>
+    /// Verify the next scheduled vulnerability refresh stays unset when no run was recorded yet
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task ApplicationViewServiceVulnerabilityScheduleWithoutRecordedRunReturnsNoNextRefreshAsync()
+    {
+        var schedule = await ReadVulnerabilityScheduleAsync(CreateOptionsMonitor(enabled: true, VulnerabilityProviderKind.Trivy), scanRun: null).ConfigureAwait(false);
+
+        Assert.IsTrue(schedule.VulnerabilityScanningEnabled, "The schedule must report vulnerability scanning as enabled when the option is switched on");
+        Assert.IsNull(schedule.NextVulnerabilityRefreshUtc, "The next scheduled refresh must stay unset when no vulnerability run was recorded yet");
+    }
+
+    /// <summary>
+    /// Verify the vulnerability schedule stays empty when scanning is disabled
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task ApplicationViewServiceVulnerabilityScheduleWithDisabledScanningReturnsDisabledScheduleAsync()
+    {
+        var scanRun = CreateVulnerabilityScanRun(ScanRunStatus.Succeeded, errorMessage: null, DateTimeOffset.UtcNow.AddMinutes(-45));
+        var schedule = await ReadVulnerabilityScheduleAsync(CreateOptionsMonitor(enabled: false, VulnerabilityProviderKind.None), scanRun).ConfigureAwait(false);
+
+        Assert.IsFalse(schedule.VulnerabilityScanningEnabled, "The schedule must report vulnerability scanning as disabled when the option is switched off");
+        Assert.IsNull(schedule.NextVulnerabilityRefreshUtc, "The next scheduled refresh must stay unset when vulnerability scanning is disabled");
     }
 
     #endregion // Methods
