@@ -70,7 +70,9 @@ public class ScanningOptions
     /// <summary>
     /// Number of days a new major version line must be established before a major upgrade is
     /// recommended, and number of days the current major version line must have been without a
-    /// release before the major upgrade takes over; a value of zero disables both waiting periods
+    /// release before the major upgrade takes over; the upgrade additionally stays deferred while
+    /// the current major version line is still served next to the new line and while the start of
+    /// the new line is unknown; a value of zero disables all of these waiting periods
     /// </summary>
     public int MajorUpgradeMinimumAgeDays { get; set; } = 30;
 

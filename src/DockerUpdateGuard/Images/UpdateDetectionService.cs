@@ -411,6 +411,28 @@ public class UpdateDetectionService : IUpdateDetectionService
     }
 
     /// <summary>
+    /// Get all known tags of a major version line that are comparable to the current tag
+    /// </summary>
+    /// <param name="orderedTags">Ordered available tags</param>
+    /// <param name="currentTag">Current concrete version tag</param>
+    /// <param name="major">Major version of the requested version line</param>
+    /// <returns>Tags of the requested major version line that carry a publication timestamp</returns>
+    private static List<(DockerHubTagData Tag, Version Version)> GetMajorLineTags(IReadOnlyList<DockerHubTagData> orderedTags,
+                                                                                   string currentTag,
+                                                                                   int major)
+    {
+        var currentIsPreRelease = VersionTagResolutionHelper.IsPreReleaseVersionTag(currentTag);
+
+        return orderedTags.Where(tag => tag.PublishedAtUtc is not null
+                                        && (currentIsPreRelease
+                                            || VersionTagResolutionHelper.IsPreReleaseVersionTag(tag.Tag) == false)
+                                        && VersionTagResolutionHelper.TryCompareVersionTags(tag.Tag, currentTag, out _)
+                                        && ParseVersion(tag.Tag).Major == major)
+                          .Select(tag => (Tag: tag, Version: ParseVersion(tag.Tag)))
+                          .ToList();
+    }
+
+    /// <summary>
     /// Get the newest publication timestamp of the current major version line
     /// </summary>
     /// <param name="orderedTags">Ordered available tags</param>
@@ -421,14 +443,47 @@ public class UpdateDetectionService : IUpdateDetectionService
                                                                   string currentTag,
                                                                   Version currentVersion)
     {
-        var currentIsPreRelease = VersionTagResolutionHelper.IsPreReleaseVersionTag(currentTag);
+        var currentLineTags = GetMajorLineTags(orderedTags,
+                                               currentTag,
+                                               currentVersion.Major);
 
-        return orderedTags.Where(tag => tag.PublishedAtUtc is not null
-                                        && (currentIsPreRelease
-                                            || VersionTagResolutionHelper.IsPreReleaseVersionTag(tag.Tag) == false)
-                                        && VersionTagResolutionHelper.TryCompareVersionTags(tag.Tag, currentTag, out _)
-                                        && ParseVersion(tag.Tag).Major == currentVersion.Major)
-                          .Max(tag => tag.PublishedAtUtc);
+        return currentLineTags.Max(entity => entity.Tag.PublishedAtUtc);
+    }
+
+    /// <summary>
+    /// Get the oldest known release of a major version line
+    /// The lowest version of the line is used instead of the oldest publication timestamp so that
+    /// a truncated tag scan can be detected reliably
+    /// </summary>
+    /// <param name="orderedTags">Ordered available tags</param>
+    /// <param name="currentTag">Current concrete version tag</param>
+    /// <param name="major">Major version of the requested version line</param>
+    /// <returns>Lowest known release of the version line, or null when no release is known</returns>
+    private static (DockerHubTagData Tag, Version Version)? GetMajorLineFirstRelease(IReadOnlyList<DockerHubTagData> orderedTags,
+                                                                                     string currentTag,
+                                                                                     int major)
+    {
+        var lineTags = GetMajorLineTags(orderedTags, currentTag, major);
+
+        if (lineTags.Count == 0)
+        {
+            return null;
+        }
+
+        return lineTags.OrderBy(entity => entity.Version)
+                       .ThenBy(entity => entity.Tag.PublishedAtUtc)
+                       .First();
+    }
+
+    /// <summary>
+    /// Determine whether a version is the initial release of its major version line
+    /// </summary>
+    /// <param name="version">Version to inspect</param>
+    /// <returns>True when the version starts a major version line</returns>
+    private static bool IsMajorLineInitialRelease(Version version)
+    {
+        return version.Minor == 0
+               && version.Build <= 0;
     }
 
     /// <summary>
@@ -526,6 +581,9 @@ public class UpdateDetectionService : IUpdateDetectionService
 
     /// <summary>
     /// Determine whether the next major version line may already be recommended
+    /// The line must have published enough releases, its initial release must be known and old
+    /// enough, and the current major version line must have gone dormant before that initial
+    /// release; an unknown or truncated release history defers the upgrade
     /// </summary>
     /// <param name="nextMajorCandidates">Candidates of the next major version line</param>
     /// <param name="currentTag">Current concrete version tag</param>
@@ -554,10 +612,19 @@ public class UpdateDetectionService : IUpdateDetectionService
         }
 
         var establishedBeforeUtc = DateTimeOffset.UtcNow.AddDays(-scanningOptions.MajorUpgradeMinimumAgeDays);
-        var firstMajorReleaseAtUtc = nextMajorCandidates.Where(entity => entity.Tag.PublishedAtUtc is not null)
-                                                        .Min(entity => entity.Tag.PublishedAtUtc);
+        var firstMajorRelease = GetMajorLineFirstRelease(orderedTags,
+                                                         currentTag,
+                                                         nextMajorCandidates[0].Version.Major);
 
-        if (firstMajorReleaseAtUtc is not null && firstMajorReleaseAtUtc > establishedBeforeUtc)
+        if (firstMajorRelease is null
+            || IsMajorLineInitialRelease(firstMajorRelease.Value.Version) == false)
+        {
+            return false;
+        }
+
+        var firstMajorReleaseAtUtc = firstMajorRelease.Value.Tag.PublishedAtUtc;
+
+        if (firstMajorReleaseAtUtc is null || firstMajorReleaseAtUtc > establishedBeforeUtc)
         {
             return false;
         }
@@ -566,8 +633,9 @@ public class UpdateDetectionService : IUpdateDetectionService
                                                                             currentTag,
                                                                             currentVersion);
 
-        return currentMajorLinePublishedAtUtc is null
-               || currentMajorLinePublishedAtUtc <= establishedBeforeUtc;
+        return currentMajorLinePublishedAtUtc is not null
+               && currentMajorLinePublishedAtUtc <= establishedBeforeUtc
+               && currentMajorLinePublishedAtUtc <= firstMajorReleaseAtUtc;
     }
 
     /// <summary>

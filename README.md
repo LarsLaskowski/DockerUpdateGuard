@@ -150,7 +150,7 @@ versions. Override them to route the lookups through an internal mirror or proxy
 | `CleanupIntervalMinutes` | `720` | Interval for cleaning old scan data |
 | `RetryCount` | `2` | Retry count for transient background failures |
 | `RetainScanRunsDays` | `30` | Retention period for completed scan history |
-| `MajorUpgradeMinimumAgeDays` | `30` | Waiting period before a new major version line is recommended; `0` disables the waiting period |
+| `MajorUpgradeMinimumAgeDays` | `30` | Waiting period before a new major version line is recommended; the upgrade also stays deferred while the current major version line is still served next to the new line or while its first release is unknown; `0` disables the waiting periods |
 | `MajorUpgradeMinimumReleaseCount` | `2` | Number of releases a new major version line must have before it is recommended; `0` disables the requirement |
 
 ### `DockerUpdateGuard:DockerInstances[]`

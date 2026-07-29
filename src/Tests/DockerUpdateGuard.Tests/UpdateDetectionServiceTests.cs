@@ -991,6 +991,153 @@ public class UpdateDetectionServiceTests
                                 "Higher major lines must remain selectable behind the recommended next major line");
     }
 
+    /// <summary>
+    /// Verify a major upgrade is deferred while the current major line is still served next to the new line
+    /// </summary>
+    [TestMethod]
+    public void UpdateDetectionServiceSemverDefersMajorUpgradeForParallelMaintainedLine()
+    {
+        var service = CreateService();
+
+        var evaluation = service.Evaluate(new ImageReference
+                                          {
+                                              Registry = "docker.io",
+                                              Repository = "grafana/mimir",
+                                              Tag = "2.17.11",
+                                              Digest = "sha256:21711",
+                                          },
+                                          [
+                                              new DockerHubTagData
+                                              {
+                                                  Tag = "2.17.10",
+                                                  Digest = "sha256:21710",
+                                                  PublishedAtUtc = CreateRelativeTimestamp(-98),
+                                              },
+                                              new DockerHubTagData
+                                              {
+                                                  Tag = "2.17.11",
+                                                  Digest = "sha256:21711",
+                                                  PublishedAtUtc = CreateRelativeTimestamp(-74),
+                                              },
+                                              new DockerHubTagData
+                                              {
+                                                  Tag = "3.0.0",
+                                                  Digest = "sha256:300",
+                                                  PublishedAtUtc = CreateRelativeTimestamp(-270),
+                                              },
+                                              new DockerHubTagData
+                                              {
+                                                  Tag = "3.1.0",
+                                                  Digest = "sha256:310",
+                                                  PublishedAtUtc = CreateRelativeTimestamp(-56),
+                                              },
+                                              new DockerHubTagData
+                                              {
+                                                  Tag = "3.1.4",
+                                                  Digest = "sha256:314",
+                                                  PublishedAtUtc = CreateRelativeTimestamp(-6),
+                                              },
+                                          ]);
+
+        Assert.AreEqual(UpdateEvaluationStatus.UpToDate,
+                        evaluation.Status,
+                        "A major line that is served next to the current major line must not be recommended");
+        Assert.AreEqual("Tag '3.1.4' introduces a new major version and is not recommended yet",
+                        evaluation.Details,
+                        "The details must name the major version that is held back");
+    }
+
+    /// <summary>
+    /// Verify a major upgrade is deferred when the start of the new major line is outside the scanned tags
+    /// </summary>
+    [TestMethod]
+    public void UpdateDetectionServiceSemverDefersMajorUpgradeWithTruncatedMajorLineHistory()
+    {
+        var service = CreateService();
+
+        var evaluation = service.Evaluate(new ImageReference
+                                          {
+                                              Registry = "docker.io",
+                                              Repository = "grafana/mimir",
+                                              Tag = "2.17.11",
+                                              Digest = "sha256:21711",
+                                          },
+                                          [
+                                              new DockerHubTagData
+                                              {
+                                                  Tag = "2.17.11",
+                                                  Digest = "sha256:21711",
+                                                  PublishedAtUtc = CreateRelativeTimestamp(-74),
+                                              },
+                                              new DockerHubTagData
+                                              {
+                                                  Tag = "3.0.7",
+                                                  Digest = "sha256:307",
+                                                  PublishedAtUtc = CreateRelativeTimestamp(-41),
+                                              },
+                                              new DockerHubTagData
+                                              {
+                                                  Tag = "3.1.0",
+                                                  Digest = "sha256:310",
+                                                  PublishedAtUtc = CreateRelativeTimestamp(-56),
+                                              },
+                                              new DockerHubTagData
+                                              {
+                                                  Tag = "3.1.4",
+                                                  Digest = "sha256:314",
+                                                  PublishedAtUtc = CreateRelativeTimestamp(-6),
+                                              },
+                                          ]);
+
+        Assert.AreEqual(UpdateEvaluationStatus.UpToDate,
+                        evaluation.Status,
+                        "A major line whose start is unknown must not be recommended");
+        Assert.AreEqual("Tag '3.1.4' introduces a new major version and is not recommended yet",
+                        evaluation.Details,
+                        "The details must name the major version that is held back");
+    }
+
+    /// <summary>
+    /// Verify a major upgrade is deferred when the tags carry no publication timestamps
+    /// </summary>
+    [TestMethod]
+    public void UpdateDetectionServiceSemverDefersMajorUpgradeWithoutPublicationTimestamps()
+    {
+        var service = CreateService();
+
+        var evaluation = service.Evaluate(new ImageReference
+                                          {
+                                              Registry = "ghcr.io",
+                                              Repository = "grafana/mimir",
+                                              Tag = "2.17.11",
+                                              Digest = "sha256:21711",
+                                          },
+                                          [
+                                              new DockerHubTagData
+                                              {
+                                                  Tag = "2.17.11",
+                                                  Digest = "sha256:21711",
+                                              },
+                                              new DockerHubTagData
+                                              {
+                                                  Tag = "3.0.0",
+                                                  Digest = "sha256:300",
+                                              },
+                                              new DockerHubTagData
+                                              {
+                                                  Tag = "3.1.4",
+                                                  Digest = "sha256:314",
+                                              },
+                                          ]);
+
+        Assert.AreEqual(UpdateEvaluationStatus.UpToDate,
+                        evaluation.Status,
+                        "A major upgrade must not be recommended when the release dates are unknown");
+        Assert.AreEqual("Tag '3.1.4' introduces a new major version and is not recommended yet",
+                        evaluation.Details,
+                        "The details must name the major version that is held back");
+    }
+
     #endregion // Methods
 
     #region Static methods
