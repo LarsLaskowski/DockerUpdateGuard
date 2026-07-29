@@ -118,6 +118,25 @@ else
             </MudItem>
         </MudGrid>
 
+        @if (_dashboard.VulnerabilityConfigurationHint == VulnerabilityConfigurationHintKind.ScanningDisabled)
+        {
+            <MudAlert Severity="Severity.Info" Dense="true">
+                Vulnerability scanning is disabled. Set <code>DockerUpdateGuard:Vulnerabilities:Enabled</code> to <code>true</code> and configure a provider (<code>Trivy</code> or <code>DockerScout</code>) to see security findings.
+            </MudAlert>
+        }
+        else if (_dashboard.VulnerabilityConfigurationHint == VulnerabilityConfigurationHintKind.TrivyBaseUrlMissing)
+        {
+            <MudAlert Severity="Severity.Warning" Dense="true">
+                The Trivy provider reported that it is not configured. Set <code>DockerUpdateGuard:Vulnerabilities:TrivyBaseUrl</code> to the address of your Trivy server.
+            </MudAlert>
+        }
+        else if (_dashboard.VulnerabilityConfigurationHint == VulnerabilityConfigurationHintKind.DockerHubCredentialsMissing)
+        {
+            <MudAlert Severity="Severity.Warning" Dense="true">
+                The Docker Scout provider reported that it is not configured. Set <code>DockerUpdateGuard:DockerHub:UserName</code> and <code>DockerUpdateGuard:DockerHub:Pat</code> to valid Docker Hub credentials.
+            </MudAlert>
+        }
+
         <MudGrid Spacing="2">
             <MudItem xs="12" lg="4">
                 <MudPaper Class="section-paper section-paper--accent" Elevation="0">

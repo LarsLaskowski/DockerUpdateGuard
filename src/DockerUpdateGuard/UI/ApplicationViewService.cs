@@ -1,3 +1,4 @@
+using DockerUpdateGuard.Configuration;
 using DockerUpdateGuard.Data;
 using DockerUpdateGuard.Data.Entities;
 using DockerUpdateGuard.Data.Queries;
@@ -6,6 +7,7 @@ using DockerUpdateGuard.Images.Helper;
 using DockerUpdateGuard.Images.Interfaces;
 
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace DockerUpdateGuard.UI;
 
@@ -47,6 +49,11 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
     private readonly IImageReferenceParser _imageReferenceParser;
 
     /// <summary>
+    /// Application options monitor
+    /// </summary>
+    private readonly IOptionsMonitor<DockerUpdateGuardOptions> _optionsMonitor;
+
+    /// <summary>
     /// Shared-base-image query service
     /// </summary>
     private readonly ISharedBaseImageQueryService _sharedBaseImageQueryService;
@@ -60,13 +67,16 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
     /// </summary>
     /// <param name="dbContext">Database context</param>
     /// <param name="imageReferenceParser">Image reference parser</param>
+    /// <param name="optionsMonitor">Application options monitor</param>
     /// <param name="sharedBaseImageQueryService">Shared base image query service</param>
     public ApplicationViewService(DockerUpdateGuardDbContext dbContext,
                                   IImageReferenceParser imageReferenceParser,
+                                  IOptionsMonitor<DockerUpdateGuardOptions> optionsMonitor,
                                   ISharedBaseImageQueryService sharedBaseImageQueryService)
     {
         _dbContext = dbContext;
         _imageReferenceParser = imageReferenceParser;
+        _optionsMonitor = optionsMonitor;
         _sharedBaseImageQueryService = sharedBaseImageQueryService;
     }
 
@@ -957,6 +967,71 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
     }
 
     /// <summary>
+    /// Resolve the vulnerability configuration hint without re-entering the service gate
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Configuration hint kind</returns>
+    private async Task<VulnerabilityConfigurationHintKind> GetVulnerabilityConfigurationHintCoreAsync(CancellationToken cancellationToken)
+    {
+        var vulnerabilityOptions = _optionsMonitor.CurrentValue.Vulnerabilities;
+
+        if (vulnerabilityOptions.Enabled == false)
+        {
+            return VulnerabilityConfigurationHintKind.ScanningDisabled;
+        }
+
+        var latestRun = await _dbContext.ScanRuns.Where(entity => entity.Type == ScanRunType.Vulnerability
+                                                                  && entity.CompletedAtUtc != null)
+                                                 .OrderByDescending(entity => entity.StartedAtUtc)
+                                                 .Select(entity => new
+                                                                   {
+                                                                       entity.Status,
+                                                                       entity.ErrorMessage,
+                                                                   })
+                                                 .FirstOrDefaultAsync(cancellationToken)
+                                                 .ConfigureAwait(false);
+
+        return VulnerabilityConfigurationHintResolver.Resolve(vulnerabilityOptions, latestRun?.Status, latestRun?.ErrorMessage);
+    }
+
+    /// <summary>
+    /// Estimate the next scheduled vulnerability refresh without re-entering the service gate
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Vulnerability schedule view data</returns>
+    private async Task<VulnerabilityScheduleViewData> GetVulnerabilityScheduleCoreAsync(CancellationToken cancellationToken)
+    {
+        var options = _optionsMonitor.CurrentValue;
+
+        if (options.Vulnerabilities.Enabled == false)
+        {
+            return new VulnerabilityScheduleViewData();
+        }
+
+        var lastStartedAtUtc = await _dbContext.ScanRuns.Where(entity => entity.Type == ScanRunType.Vulnerability)
+                                                        .OrderByDescending(entity => entity.StartedAtUtc)
+                                                        .Select(entity => (DateTimeOffset?)entity.StartedAtUtc)
+                                                        .FirstOrDefaultAsync(cancellationToken)
+                                                        .ConfigureAwait(false);
+
+        if (lastStartedAtUtc is null)
+        {
+            return new VulnerabilityScheduleViewData
+                   {
+                       VulnerabilityScanningEnabled = true,
+                   };
+        }
+
+        var refreshInterval = TimeSpan.FromMinutes(options.Scanning.VulnerabilityRefreshIntervalMinutes);
+
+        return new VulnerabilityScheduleViewData
+               {
+                   VulnerabilityScanningEnabled = true,
+                   NextVulnerabilityRefreshUtc = lastStartedAtUtc.GetValueOrDefault() + refreshInterval,
+               };
+    }
+
+    /// <summary>
     /// Map a linked runtime container projection
     /// </summary>
     /// <param name="entity">Container snapshot entity</param>
@@ -1698,6 +1773,7 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                                                                                                                               .ToListAsync(cancellationToken)
                                                                                                                               .ConfigureAwait(false);
                                                 var vulnerabilitySeveritySummary = CreateSeveritySummary(activeVulnerabilitySeverityCounts.Select(entity => new KeyValuePair<VulnerabilitySeverity, int>(entity.Severity, entity.ActiveFindingCount)));
+                                                var vulnerabilityConfigurationHint = await GetVulnerabilityConfigurationHintCoreAsync(cancellationToken).ConfigureAwait(false);
 
                                                 return new DashboardViewData
                                                        {
@@ -1710,6 +1786,8 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                                                            OwnImageBaseRuntimeWarningCount = ownImageBaseRuntimeWarningCount,
                                                            ActiveVulnerabilityFindingCount = vulnerabilitySeveritySummary.TotalCount,
                                                            VulnerabilitySeveritySummary = vulnerabilitySeveritySummary,
+                                                           VulnerabilityScanningEnabled = _optionsMonitor.CurrentValue.Vulnerabilities.Enabled,
+                                                           VulnerabilityConfigurationHint = vulnerabilityConfigurationHint,
                                                            RecentScans = recentScans,
                                                        };
                                             },
@@ -2095,6 +2173,12 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
     public async Task<IReadOnlyList<ScanHistoryItemData>> GetScanHistoryAsync(int take = 20, CancellationToken cancellationToken = default)
     {
         return await ExecuteSerializedAsync(() => GetScanHistoryCoreAsync(take, cancellationToken), cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc/>
+    public async Task<VulnerabilityScheduleViewData> GetVulnerabilityScheduleAsync(CancellationToken cancellationToken = default)
+    {
+        return await ExecuteSerializedAsync(() => GetVulnerabilityScheduleCoreAsync(cancellationToken), cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc/>

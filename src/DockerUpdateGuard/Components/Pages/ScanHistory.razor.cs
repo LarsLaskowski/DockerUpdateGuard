@@ -22,6 +22,11 @@ public sealed partial class ScanHistory : IDisposable
     /// </summary>
     private const string ScanHistoryStateKey = "ScanHistory.List";
 
+    /// <summary>
+    /// Persistent-state key for the prerendered vulnerability refresh schedule
+    /// </summary>
+    private const string ScheduleStateKey = "ScanHistory.Schedule";
+
     #endregion // Constants
 
     #region Fields
@@ -35,6 +40,11 @@ public sealed partial class ScanHistory : IDisposable
     /// Scan-history items
     /// </summary>
     private IReadOnlyList<ScanHistoryItemData>? _scans;
+
+    /// <summary>
+    /// Estimated vulnerability refresh schedule
+    /// </summary>
+    private VulnerabilityScheduleViewData? _schedule;
 
     /// <summary>
     /// Current error message
@@ -106,6 +116,18 @@ public sealed partial class ScanHistory : IDisposable
                };
     }
 
+    /// <summary>
+    /// Format the estimated next scheduled vulnerability refresh
+    /// </summary>
+    /// <param name="schedule">Vulnerability refresh schedule</param>
+    /// <returns>Formatted schedule value</returns>
+    private static string FormatNextVulnerabilityRefresh(VulnerabilityScheduleViewData schedule)
+    {
+        return schedule.NextVulnerabilityRefreshUtc is null
+                   ? "shortly (no run recorded yet)"
+                   : schedule.NextVulnerabilityRefreshUtc.GetValueOrDefault().ToLocalTime().ToString("g");
+    }
+
     #endregion // Static methods
 
     #region Methods
@@ -118,10 +140,13 @@ public sealed partial class ScanHistory : IDisposable
     {
         var scans = await ViewService.GetScanHistoryAsync()
                                      .ConfigureAwait(false);
+        var schedule = await ViewService.GetVulnerabilityScheduleAsync()
+                                        .ConfigureAwait(false);
 
         await InvokeAsync(() =>
                           {
                               _scans = scans;
+                              _schedule = schedule;
 
                               StateHasChanged();
                           }).ConfigureAwait(false);
@@ -136,6 +161,11 @@ public sealed partial class ScanHistory : IDisposable
         if (_scans is not null)
         {
             PersistentState.PersistAsJson(ScanHistoryStateKey, _scans);
+        }
+
+        if (_schedule is not null)
+        {
+            PersistentState.PersistAsJson(ScheduleStateKey, _schedule);
         }
 
         return Task.CompletedTask;
@@ -195,6 +225,12 @@ public sealed partial class ScanHistory : IDisposable
     protected override async Task OnInitializedAsync()
     {
         _persistingSubscription = PersistentState.RegisterOnPersisting(PersistScanHistory);
+
+        if (PersistentState.TryTakeFromJson<VulnerabilityScheduleViewData>(ScheduleStateKey, out var restoredSchedule)
+            && restoredSchedule is not null)
+        {
+            _schedule = restoredSchedule;
+        }
 
         if (PersistentState.TryTakeFromJson<IReadOnlyList<ScanHistoryItemData>>(ScanHistoryStateKey, out var restoredScans)
             && restoredScans is not null)

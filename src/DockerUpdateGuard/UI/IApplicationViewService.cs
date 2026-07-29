@@ -104,6 +104,13 @@ public interface IApplicationViewService
     Task<IReadOnlyList<ScanHistoryItemData>> GetScanHistoryAsync(int take = 20, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Read the estimated vulnerability refresh schedule for the scan-history page
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Vulnerability schedule view data</returns>
+    Task<VulnerabilityScheduleViewData> GetVulnerabilityScheduleAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Read the fleet-wide vulnerability overview grouped by advisory
     /// </summary>
     /// <param name="cancellationToken">Cancellation token</param>
