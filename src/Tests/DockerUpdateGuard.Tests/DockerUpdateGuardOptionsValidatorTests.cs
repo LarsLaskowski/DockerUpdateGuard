@@ -256,6 +256,7 @@ public class DockerUpdateGuardOptionsValidatorTests
         options.DockerHub.RequestTimeoutSeconds = 301;
         options.DockerHub.MaxParallelRequests = 33;
         options.Vulnerabilities.RequestTimeoutSeconds = 301;
+        options.Vulnerabilities.MaxParallelScans = 9;
         options.Scanning.DiscoveryIntervalMinutes = 1441;
         options.Scanning.OwnImageBaseScanIntervalMinutes = 10081;
         options.Scanning.DockerHubRequestLimitWindowHours = 169;
@@ -297,6 +298,9 @@ public class DockerUpdateGuardOptionsValidatorTests
         Assert.Contains(message => message.Contains("Vulnerabilities:RequestTimeoutSeconds", StringComparison.Ordinal),
                         failures,
                         "A vulnerability timeout above the upper bound must be reported");
+        Assert.Contains(message => message.Contains("Vulnerabilities:MaxParallelScans", StringComparison.Ordinal),
+                        failures,
+                        "A vulnerability scan parallelism above the upper bound must be reported");
         Assert.Contains(message => message.Contains("Scanning:DiscoveryIntervalMinutes", StringComparison.Ordinal),
                         failures,
                         "A discovery interval above the upper bound must be reported");
