@@ -584,6 +584,16 @@ internal static partial class ImageHostLoggingExtensions
                                                                    string? message);
 
     /// <summary>
+    /// Log that a manual single-image vulnerability rescan targeted an image version that no longer exists
+    /// </summary>
+    /// <param name="logger">Logger</param>
+    /// <param name="imageVersionId">Image version identifier</param>
+    [LoggerMessage(EventId = 2083,
+                   Level = LogLevel.Warning,
+                   Message = "Vulnerability refresh could not find image version {ImageVersionId}")]
+    public static partial void VulnerabilityRefreshImageVersionNotFound(this ILogger logger, Guid imageVersionId);
+
+    /// <summary>
     /// Log that Docker instance synchronization has started
     /// </summary>
     /// <param name="logger">Logger</param>

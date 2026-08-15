@@ -43,12 +43,12 @@ public class DashboardViewData
     public int OwnImageBaseRuntimeWarningCount { get; set; }
 
     /// <summary>
-    /// Active vulnerability finding count
+    /// Active vulnerability finding count for image versions currently backing a runtime container
     /// </summary>
     public int ActiveVulnerabilityFindingCount { get; set; }
 
     /// <summary>
-    /// Active vulnerability finding counts per severity
+    /// Active vulnerability finding counts per severity for image versions currently backing a runtime container
     /// </summary>
     public VulnerabilitySeveritySummaryViewData VulnerabilitySeveritySummary { get; set; } = new();
 

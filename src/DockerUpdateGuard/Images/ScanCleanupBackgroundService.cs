@@ -1,6 +1,7 @@
 using DockerUpdateGuard.Configuration;
 using DockerUpdateGuard.Data;
 using DockerUpdateGuard.Data.Entities;
+using DockerUpdateGuard.Data.Queries;
 
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -175,6 +176,7 @@ public class ScanCleanupBackgroundService : ScheduledBackgroundService
         {
             var dbContext = scope.ServiceProvider.GetRequiredService<DockerUpdateGuardDbContext>();
             var applicationTelemetry = scope.ServiceProvider.GetRequiredService<ApplicationTelemetry>();
+            var liveImageInventoryQueryService = scope.ServiceProvider.GetRequiredService<ILiveImageInventoryQueryService>();
             var cleanupStartedAtUtc = DateTimeOffset.UtcNow;
 
             await RepairStaleRunningScanRunsAsync(dbContext,
@@ -182,6 +184,8 @@ public class ScanCleanupBackgroundService : ScheduledBackgroundService
                                                   stoppingToken).ConfigureAwait(false);
 
             var cutoff = cleanupStartedAtUtc.AddDays(-_optionsMonitor.CurrentValue.Scanning.RetainScanRunsDays);
+            var liveImageVersionIds = await liveImageInventoryQueryService.GetLiveImageVersionIdsAsync(stoppingToken).ConfigureAwait(false);
+            var liveImageVersionIdList = liveImageVersionIds.ToList();
 
             var completedUnreferencedScanRuns = dbContext.ScanRuns
                                                          .Where(entity => entity.CompletedAtUtc != null
@@ -215,10 +219,12 @@ public class ScanCleanupBackgroundService : ScheduledBackgroundService
                                                    .ToListAsync(stoppingToken)
                                                    .ConfigureAwait(false);
 
+            // Findings of image versions no longer part of the live fleet are purged immediately once inactive;
+            // findings resolved on still-live image versions (e.g. a patched CVE) keep the age-based retention below
             var oldVulnerabilityFindings = await dbContext.VulnerabilityFindings
                                                           .Where(entity => entity.IsActive == false
-                                                                           && entity.ResolvedAtUtc != null
-                                                                           && entity.ResolvedAtUtc < cutoff)
+                                                                           && (liveImageVersionIdList.Contains(entity.ImageVersionId) == false
+                                                                               || (entity.ResolvedAtUtc != null && entity.ResolvedAtUtc < cutoff)))
                                                           .ToListAsync(stoppingToken)
                                                           .ConfigureAwait(false);
 
