@@ -53,6 +53,8 @@ dotnet test src\Tests\**\*.csproj -c Release --no-build --logger trx --collect:"
 
 To run a single test project or method, see the commands in `README.md` and `CLAUDE.md`.
 
+For detailed rules on how unit tests should be structured and named, see [`UNIT_TESTS.md`](UNIT_TESTS.md).
+
 ### Submitting a pull request
 
 If you'd like to contribute by fixing a bug, implementing a feature, or even correcting typos in the documentation, you'll need to submit a pull request.
@@ -68,11 +70,11 @@ When a PR is related to an issue, use the `Closes #issuenumber` syntax so the is
 
 Use before/after screenshots in the PR description when a change affects the UI.
 
-Follow the PR template in [`.github/PULL_REQUEST_TEMPLATE.md`](.github/PULL_REQUEST_TEMPLATE.md).
+Follow the PR template in [`.github/PULL_REQUEST_TEMPLATE.md`](../.github/PULL_REQUEST_TEMPLATE.md).
 
 ## Code style
 
-Detailed C# code-style rules (naming, regions, formatting, XML docs, null handling) are documented in [`.github/instructions/csharp.instructions.md`](.github/instructions/csharp.instructions.md) and are binding for all contributions. Run `reihitsu-format ./` before opening a pull request.
+Detailed C# code-style rules (naming, regions, formatting, XML docs, null handling) are documented in [`.github/instructions/csharp.instructions.md`](../.github/instructions/csharp.instructions.md) and are binding for all contributions. Run `reihitsu-format ./` before opening a pull request.
 
 ## Stability policy
 
@@ -80,8 +82,8 @@ An essential consideration in every pull request is its impact on the system. Av
 
 ## Reporting security issues
 
-Do not report security vulnerabilities through public GitHub issues. See [`SECURITY.md`](SECURITY.md) for the private reporting process.
+Do not report security vulnerabilities through public GitHub issues. See [`SECURITY.md`](../SECURITY.md) for the private reporting process.
 
 ## License
 
-By contributing to this project, you agree that your contributions will be licensed under the same [MIT License](LICENSE.md) that covers the project.
+By contributing to this project, you agree that your contributions will be licensed under the same [MIT License](../LICENSE.md) that covers the project.
