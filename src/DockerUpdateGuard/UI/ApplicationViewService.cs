@@ -836,6 +836,7 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                                                      ContainerId = entity.ContainerId,
                                                      ContainerName = entity.Name,
                                                      DockerInstanceName = dockerInstance.Name,
+                                                     ImageVersionId = entity.ImageVersionId,
                                                      ImageReference = _imageReferenceParser.Format(imageVersion),
                                                      CurrentTag = imageVersion.Tag,
                                                      ResolvedVersionTag = resolvedVersionTag,
@@ -848,6 +849,7 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                                                      VulnerabilitySeveritySummary = GetSummaryOrEmpty(activeVulnerabilityFindingLookup, entity.ImageVersionId),
                                                      VulnerabilityStatus = FormatVulnerabilityAssessmentStatus(imageVersion.VulnerabilityAssessmentStatus),
                                                      VulnerabilitySummary = imageVersion.VulnerabilityAssessmentMessage,
+                                                     VulnerabilityCheckedAtUtc = imageVersion.VulnerabilityAssessmentCheckedAtUtc,
                                                      ActiveBaseImageVulnerabilityFindingCount = baseImageVulnerabilitySummary.ActiveFindingCount,
                                                      BaseImageVulnerabilitySummary = baseImageVulnerabilitySummary.Summary,
                                                      RecordedAtUtc = entity.RecordedAtUtc,
@@ -1611,6 +1613,7 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                                                                                             Id = entity.Id,
                                                                                             Name = entity.Name,
                                                                                             Description = entity.Description,
+                                                                                            CurrentImageVersionId = entity.CurrentImageVersionId,
                                                                                             ImageReference = _imageReferenceParser.Format(entity.CurrentImageVersion),
                                                                                             LatestScanStatus = GetLatestObservedScanStatus(entity.Id),
                                                                                             LatestScanMessage = GetLatestObservedScanMessage(entity.Id),
@@ -1619,6 +1622,7 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                                                                                             VulnerabilitySeveritySummary = GetSummaryOrEmpty(activeVulnerabilityFindingLookup, entity.CurrentImageVersionId),
                                                                                             VulnerabilityStatus = FormatVulnerabilityAssessmentStatus(entity.CurrentImageVersion.VulnerabilityAssessmentStatus),
                                                                                             VulnerabilityMessage = entity.CurrentImageVersion.VulnerabilityAssessmentMessage,
+                                                                                            VulnerabilityCheckedAtUtc = entity.CurrentImageVersion.VulnerabilityAssessmentCheckedAtUtc,
                                                                                             ActiveBaseImageVulnerabilityFindingCount = baseImageVulnerabilitySummary.ActiveFindingCount,
                                                                                             BaseImageVulnerabilitySummary = baseImageVulnerabilitySummary.Summary,
                                                                                             IsOwnImage = entity.Source == RegistrationSource.Discovery,
@@ -1749,7 +1753,7 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                                                 var observedImageCount = await _dbContext.ObservedImages.CountAsync(entity => entity.Source == RegistrationSource.Manual, cancellationToken).ConfigureAwait(false);
                                                 var myImageCount = await _dbContext.ObservedImages.CountAsync(entity => entity.Source == RegistrationSource.Discovery, cancellationToken).ConfigureAwait(false);
                                                 var dockerInstanceCount = await _dbContext.DockerInstances.CountAsync(cancellationToken).ConfigureAwait(false);
-                                                var runtimeContainers = await GetRuntimeContainersCoreAsync(cancellationToken).ConfigureAwait(false);
+                                                var latestRuntimeContainerSnapshots = await GetLatestContainerSnapshotsAsync(cancellationToken).ConfigureAwait(false);
                                                 var activeUpdateFindingCount = await _dbContext.UpdateFindings.CountAsync(entity => entity.IsActive, cancellationToken).ConfigureAwait(false);
                                                 var ownImageBaseRuntimeWarningCount = await _dbContext.UpdateFindings.Join(_dbContext.ObservedImages.Where(entity => entity.Source == RegistrationSource.Discovery),
                                                                                                                            finding => finding.ObservedImageId,
@@ -1763,16 +1767,21 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                                                                                                                                            && entity.Type == UpdateFindingType.DerivedBaseRuntimeUpdate,
                                                                                                                                  cancellationToken)
                                                                                                                      .ConfigureAwait(false);
-                                                var activeVulnerabilitySeverityCounts = await _dbContext.VulnerabilityFindings.Where(entity => entity.IsActive)
-                                                                                                                              .GroupBy(entity => entity.Severity)
-                                                                                                                              .Select(group => new
-                                                                                                                                               {
-                                                                                                                                                   Severity = group.Key,
-                                                                                                                                                   ActiveFindingCount = group.Count(),
-                                                                                                                                               })
-                                                                                                                              .ToListAsync(cancellationToken)
-                                                                                                                              .ConfigureAwait(false);
-                                                var vulnerabilitySeveritySummary = CreateSeveritySummary(activeVulnerabilitySeverityCounts.Select(entity => new KeyValuePair<VulnerabilitySeverity, int>(entity.Severity, entity.ActiveFindingCount)));
+                                                var runtimeImageVersionIds = latestRuntimeContainerSnapshots.Select(entity => entity.ImageVersionId)
+                                                                                                            .Distinct()
+                                                                                                            .ToList();
+
+                                                // Scoped to current runtime containers so the dashboard reflects live exposure; the fleet-wide
+                                                // vulnerability inventory (including retired image versions) remains available on /vulnerabilities.
+                                                var runtimeVulnerabilitySeveritySummaries = await LoadActiveVulnerabilitySeveritySummariesAsync(runtimeImageVersionIds, cancellationToken).ConfigureAwait(false);
+                                                var vulnerabilitySeveritySummary = new VulnerabilitySeveritySummaryViewData
+                                                                                   {
+                                                                                       CriticalCount = runtimeVulnerabilitySeveritySummaries.Values.Sum(summary => summary.CriticalCount),
+                                                                                       HighCount = runtimeVulnerabilitySeveritySummaries.Values.Sum(summary => summary.HighCount),
+                                                                                       MediumCount = runtimeVulnerabilitySeveritySummaries.Values.Sum(summary => summary.MediumCount),
+                                                                                       LowCount = runtimeVulnerabilitySeveritySummaries.Values.Sum(summary => summary.LowCount),
+                                                                                       OtherCount = runtimeVulnerabilitySeveritySummaries.Values.Sum(summary => summary.OtherCount),
+                                                                                   };
                                                 var vulnerabilityConfigurationHint = await GetVulnerabilityConfigurationHintCoreAsync(cancellationToken).ConfigureAwait(false);
 
                                                 return new DashboardViewData
@@ -1780,7 +1789,7 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                                                            ObservedImageCount = observedImageCount,
                                                            MyImageCount = myImageCount,
                                                            DockerInstanceCount = dockerInstanceCount,
-                                                           RuntimeContainerCount = runtimeContainers.Count,
+                                                           RuntimeContainerCount = latestRuntimeContainerSnapshots.Count,
                                                            BaseImageCount = baseImages.Count,
                                                            ActiveUpdateFindingCount = activeUpdateFindingCount,
                                                            OwnImageBaseRuntimeWarningCount = ownImageBaseRuntimeWarningCount,

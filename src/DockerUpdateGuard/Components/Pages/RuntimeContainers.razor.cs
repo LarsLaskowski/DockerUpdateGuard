@@ -398,6 +398,17 @@ public sealed partial class RuntimeContainers : IDisposable
         }
     }
 
+    /// <summary>
+    /// Refresh the container list and dashboard-derived widgets after a manual vulnerability rescan
+    /// </summary>
+    /// <returns>Task</returns>
+    private async Task HandleRescannedAsync()
+    {
+        DashboardRefreshState.NotifyChanged();
+
+        await LoadAsync().ConfigureAwait(false);
+    }
+
     #endregion // Methods
 
     #region ComponentBase

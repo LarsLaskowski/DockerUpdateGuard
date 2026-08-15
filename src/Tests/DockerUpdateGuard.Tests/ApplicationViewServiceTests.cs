@@ -189,6 +189,9 @@ public class ApplicationViewServiceTests
                                                                                                "sha256:worker",
                                                                                                cancellationToken: CancellationToken.None);
             var disabledImageVersion = await disabledImageVersionTask.ConfigureAwait(false);
+
+            enabledImageVersion.VulnerabilityAssessmentCheckedAtUtc = DateTimeOffset.UtcNow;
+
             var enabledInstance = new DockerInstance
                                   {
                                       Name = "With Portainer",
@@ -249,6 +252,12 @@ public class ApplicationViewServiceTests
 
             Assert.IsTrue(withPortainer.PortainerAvailable, "Runtime containers must surface Portainer availability when the instance endpoint is enabled");
             Assert.IsFalse(withoutPortainer.PortainerAvailable, "Runtime containers must hide Portainer availability when the instance endpoint is disabled");
+            Assert.AreEqual(enabledImageVersion.Id,
+                            withPortainer.ImageVersionId,
+                            "Runtime containers must expose the image version identifier backing the container");
+            Assert.AreEqual(enabledImageVersion.VulnerabilityAssessmentCheckedAtUtc,
+                            withPortainer.VulnerabilityCheckedAtUtc,
+                            "Runtime containers must expose when the image version was last checked for vulnerabilities");
         }
     }
 
@@ -392,6 +401,99 @@ public class ApplicationViewServiceTests
             Assert.HasCount(1,
                             dashboard.RecentScans,
                             "The dashboard must include the recent scan entry");
+        }
+    }
+
+    /// <summary>
+    /// Verify dashboard vulnerability totals only include image versions used by current runtime containers
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task ApplicationViewServiceDashboardExcludesFindingsForInactiveRuntimeImageVersionsAsync()
+    {
+        var options = new DbContextOptionsBuilder<DockerUpdateGuardDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString())
+                                                                               .Options;
+
+        var dbContext = new DockerUpdateGuardDbContext(options);
+
+        await using (dbContext.ConfigureAwait(false))
+        {
+            var imageCatalogRepository = new ImageCatalogRepository(dbContext);
+            var currentImageVersion = await imageCatalogRepository.GetOrCreateImageVersionAsync("docker.io",
+                                                                                                "company/api",
+                                                                                                "2.0.0",
+                                                                                                "sha256:current",
+                                                                                                cancellationToken: CancellationToken.None)
+                                                                  .ConfigureAwait(false);
+            var retiredImageVersion = await imageCatalogRepository.GetOrCreateImageVersionAsync("docker.io",
+                                                                                                "company/api",
+                                                                                                "1.0.0",
+                                                                                                "sha256:retired",
+                                                                                                cancellationToken: CancellationToken.None)
+                                                                  .ConfigureAwait(false);
+            var dockerInstance = new DockerInstance
+                                 {
+                                     Name = "Production Engine",
+                                     EndpointUri = "https://docker.example.test",
+                                     ConnectionKind = DockerConnectionKind.Https,
+                                 };
+            var runtimeScanRun = new ScanRun
+                                 {
+                                     Type = ScanRunType.RuntimeContainer,
+                                     Status = ScanRunStatus.Succeeded,
+                                     TriggerSource = ScanTriggerSource.Scheduled,
+                                 };
+
+            dbContext.DockerInstances.Add(dockerInstance);
+            dbContext.ScanRuns.Add(runtimeScanRun);
+            dbContext.ContainerSnapshots.Add(new ContainerSnapshot
+                                             {
+                                                 DockerInstance = dockerInstance,
+                                                 ImageVersionId = currentImageVersion.Id,
+                                                 ScanRun = runtimeScanRun,
+                                                 ContainerId = "container-a",
+                                                 Name = "api",
+                                                 Status = ContainerRuntimeStatus.Running,
+                                                 IsRunning = true,
+                                             });
+            dbContext.VulnerabilityFindings.AddRange(new VulnerabilityFinding
+                                                     {
+                                                         ImageVersionId = currentImageVersion.Id,
+                                                         AdvisoryId = "CVE-2026-0001",
+                                                         Title = "Current runtime vulnerability",
+                                                         Severity = VulnerabilitySeverity.High,
+                                                         Source = VulnerabilitySource.Trivy,
+                                                         IsActive = true,
+                                                     },
+                                                     new VulnerabilityFinding
+                                                     {
+                                                         ImageVersionId = retiredImageVersion.Id,
+                                                         AdvisoryId = "CVE-2026-0002",
+                                                         Title = "Retired runtime vulnerability",
+                                                         Severity = VulnerabilitySeverity.Critical,
+                                                         Source = VulnerabilitySource.Trivy,
+                                                         IsActive = true,
+                                                     });
+
+            await dbContext.SaveChangesAsync(CancellationToken.None)
+                           .ConfigureAwait(false);
+
+            var service = new ApplicationViewService(dbContext,
+                                                     new ImageReferenceParser(),
+                                                     CreateOptionsMonitor(),
+                                                     new SharedBaseImageQueryService(dbContext));
+            var dashboard = await service.GetDashboardAsync(CancellationToken.None)
+                                         .ConfigureAwait(false);
+
+            Assert.AreEqual(1,
+                            dashboard.ActiveVulnerabilityFindingCount,
+                            "The dashboard must exclude active findings for image versions not used by current runtime containers");
+            Assert.AreEqual(0,
+                            dashboard.VulnerabilitySeveritySummary.CriticalCount,
+                            "The dashboard must exclude the critical finding from the retired image version");
+            Assert.AreEqual(1,
+                            dashboard.VulnerabilitySeveritySummary.HighCount,
+                            "The dashboard must retain the high finding from the current runtime image version");
         }
     }
 
@@ -1259,6 +1361,12 @@ public class ApplicationViewServiceTests
             Assert.AreEqual("Trivy returned 500",
                             listItem.VulnerabilityMessage,
                             "The observed image list must expose the assessment message");
+            Assert.AreEqual(imageVersion.Id,
+                            listItem.CurrentImageVersionId,
+                            "The observed image list must expose the current image version identifier");
+            Assert.AreEqual(imageVersion.VulnerabilityAssessmentCheckedAtUtc,
+                            listItem.VulnerabilityCheckedAtUtc,
+                            "The observed image list must expose when the current image version was last checked for vulnerabilities");
             Assert.IsNotNull(detail, "The observed image detail must be returned for a stored observed image");
             Assert.AreEqual("Failed",
                             detail.VulnerabilityAssessment.Status,

@@ -110,6 +110,7 @@ public class MyImagesPersistentStateTests
     {
         testContext.Services.AddSingleton(viewService);
         testContext.Services.AddSingleton<IOptions<DockerUpdateGuardOptions>>(Options.Create(new DockerUpdateGuardOptions()));
+        testContext.Services.AddSingleton(new DashboardRefreshState());
     }
 
     #endregion // Methods

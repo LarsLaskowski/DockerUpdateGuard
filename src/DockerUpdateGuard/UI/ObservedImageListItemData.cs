@@ -23,6 +23,11 @@ public class ObservedImageListItemData
     public string? Description { get; set; }
 
     /// <summary>
+    /// Current image version identifier
+    /// </summary>
+    public Guid CurrentImageVersionId { get; set; }
+
+    /// <summary>
     /// Image reference
     /// </summary>
     public string ImageReference { get; set; } = string.Empty;
@@ -61,6 +66,11 @@ public class ObservedImageListItemData
     /// Vulnerability message
     /// </summary>
     public string? VulnerabilityMessage { get; set; }
+
+    /// <summary>
+    /// Timestamp when the current image version was last checked for vulnerabilities
+    /// </summary>
+    public DateTimeOffset? VulnerabilityCheckedAtUtc { get; set; }
 
     /// <summary>
     /// Number of active base-image vulnerability findings

@@ -56,6 +56,12 @@ public sealed partial class MyImages : IDisposable
     public IOptions<DockerUpdateGuardOptions> AppOptions { get; set; } = null!;
 
     /// <summary>
+    /// Dashboard refresh state
+    /// </summary>
+    [Inject]
+    public DashboardRefreshState DashboardRefreshState { get; set; } = null!;
+
+    /// <summary>
     /// Persistent component state used to reuse the prerendered data on the interactive render
     /// </summary>
     [Inject]
@@ -136,6 +142,32 @@ public sealed partial class MyImages : IDisposable
         return Task.CompletedTask;
     }
 
+    /// <summary>
+    /// Load the discovery-owned image list
+    /// </summary>
+    /// <returns>Task</returns>
+    private async Task LoadAsync()
+    {
+        var images = await ViewService.GetDiscoveryObservedImagesAsync()
+                                      .ConfigureAwait(false);
+
+        await InvokeAsync(() =>
+                          {
+                              _images = images;
+                          }).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Refresh the image list and dashboard-derived widgets after a manual vulnerability rescan
+    /// </summary>
+    /// <returns>Task</returns>
+    private async Task HandleRescannedAsync()
+    {
+        DashboardRefreshState.NotifyChanged();
+
+        await LoadAsync().ConfigureAwait(false);
+    }
+
     #endregion // Methods
 
     #region ComponentBase
@@ -154,13 +186,7 @@ public sealed partial class MyImages : IDisposable
             return;
         }
 
-        var images = await ViewService.GetDiscoveryObservedImagesAsync()
-                                      .ConfigureAwait(false);
-
-        await InvokeAsync(() =>
-                          {
-                              _images = images;
-                          }).ConfigureAwait(false);
+        await LoadAsync().ConfigureAwait(false);
     }
 
     #endregion // ComponentBase

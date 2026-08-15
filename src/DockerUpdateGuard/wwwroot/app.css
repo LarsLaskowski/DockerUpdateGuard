@@ -618,6 +618,18 @@ a {
     font-size: 0.82rem;
 }
 
+.vulnerability-rescan-control {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    margin-top: 0.15rem;
+}
+
+.vulnerability-rescan-control .table-secondary {
+    display: inline;
+    margin-top: 0;
+}
+
 .section-table .mud-table-container {
     border-radius: var(--dug-radius-md);
     border: 1px solid rgba(226, 232, 240, 0.92);

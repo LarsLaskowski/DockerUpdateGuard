@@ -28,6 +28,11 @@ public class RuntimeContainerListItemData
     public string DockerInstanceName { get; set; } = string.Empty;
 
     /// <summary>
+    /// Image version identifier
+    /// </summary>
+    public Guid ImageVersionId { get; set; }
+
+    /// <summary>
     /// Image reference
     /// </summary>
     public string ImageReference { get; set; } = string.Empty;
@@ -86,6 +91,11 @@ public class RuntimeContainerListItemData
     /// Vulnerability summary
     /// </summary>
     public string? VulnerabilitySummary { get; set; }
+
+    /// <summary>
+    /// Timestamp when the image version was last checked for vulnerabilities
+    /// </summary>
+    public DateTimeOffset? VulnerabilityCheckedAtUtc { get; set; }
 
     /// <summary>
     /// Number of active base-image vulnerability findings

@@ -1,6 +1,8 @@
 using DockerUpdateGuard.Configuration;
 using DockerUpdateGuard.Data;
 using DockerUpdateGuard.Data.Entities;
+using DockerUpdateGuard.Data.Queries;
+using DockerUpdateGuard.Data.Repositories;
 using DockerUpdateGuard.Images;
 using DockerUpdateGuard.Tests.Data;
 using DockerUpdateGuard.Tests.Helper;
@@ -36,6 +38,7 @@ public partial class ScanCleanupBackgroundServiceTests
                                         return new DockerUpdateGuardDbContext(options);
                                     });
         serviceCollection.AddScoped(_ => new ApplicationTelemetry());
+        serviceCollection.AddScoped<ILiveImageInventoryQueryService, LiveImageInventoryQueryService>();
 
         var serviceProvider = serviceCollection.BuildServiceProvider();
 
@@ -123,6 +126,7 @@ public partial class ScanCleanupBackgroundServiceTests
                                         return new DockerUpdateGuardDbContext(options);
                                     });
         serviceCollection.AddScoped(_ => new ApplicationTelemetry());
+        serviceCollection.AddScoped<ILiveImageInventoryQueryService, LiveImageInventoryQueryService>();
 
         var serviceProvider = serviceCollection.BuildServiceProvider();
 
@@ -215,6 +219,7 @@ public partial class ScanCleanupBackgroundServiceTests
                                         return new DockerUpdateGuardDbContext(options);
                                     });
         serviceCollection.AddScoped(_ => new ApplicationTelemetry());
+        serviceCollection.AddScoped<ILiveImageInventoryQueryService, LiveImageInventoryQueryService>();
 
         var serviceProvider = serviceCollection.BuildServiceProvider();
 
@@ -336,6 +341,7 @@ public partial class ScanCleanupBackgroundServiceTests
                                         return new DockerUpdateGuardDbContext(options);
                                     });
         serviceCollection.AddScoped(_ => new ApplicationTelemetry());
+        serviceCollection.AddScoped<ILiveImageInventoryQueryService, LiveImageInventoryQueryService>();
 
         var serviceProvider = serviceCollection.BuildServiceProvider();
 
@@ -425,6 +431,7 @@ public partial class ScanCleanupBackgroundServiceTests
                                         return new DockerUpdateGuardDbContext(options);
                                     });
         serviceCollection.AddScoped(_ => new ApplicationTelemetry());
+        serviceCollection.AddScoped<ILiveImageInventoryQueryService, LiveImageInventoryQueryService>();
 
         var serviceProvider = serviceCollection.BuildServiceProvider();
 
@@ -477,6 +484,123 @@ public partial class ScanCleanupBackgroundServiceTests
                                 crashedScanRun.Status,
                                 "The cleanup startup step must repair running scan runs left behind by a crashed process");
                 Assert.IsNotNull(crashedScanRun.CompletedAtUtc, "A scan run repaired at startup must record a completion timestamp");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Verify deactivated vulnerability findings of image versions no longer part of the live fleet are purged immediately,
+    /// while deactivated findings of still-live image versions keep the age-based retention
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task ScanCleanupBackgroundServiceExecuteCoreAsyncPurgesFindingsOfNonLiveImageVersionsImmediatelyAsync()
+    {
+        var databaseName = Guid.NewGuid().ToString();
+        var serviceCollection = new ServiceCollection();
+
+        serviceCollection.AddScoped(_ =>
+                                    {
+                                        var options = new DbContextOptionsBuilder<DockerUpdateGuardDbContext>().UseInMemoryDatabase(databaseName)
+                                                                                                               .Options;
+
+                                        return new DockerUpdateGuardDbContext(options);
+                                    });
+        serviceCollection.AddScoped(_ => new ApplicationTelemetry());
+        serviceCollection.AddScoped<ILiveImageInventoryQueryService, LiveImageInventoryQueryService>();
+
+        var serviceProvider = serviceCollection.BuildServiceProvider();
+
+        await using (serviceProvider.ConfigureAwait(false))
+        {
+            Guid retiredFindingId;
+            Guid liveImageFindingId;
+
+            var scope = serviceProvider.CreateAsyncScope();
+
+            await using (scope.ConfigureAwait(false))
+            {
+                var dbContext = scope.ServiceProvider.GetRequiredService<DockerUpdateGuardDbContext>();
+                var imageCatalogRepository = new ImageCatalogRepository(dbContext);
+                var retiredImageVersion = await imageCatalogRepository.GetOrCreateImageVersionAsync("docker.io",
+                                                                                                    "company/retired",
+                                                                                                    "1.0.0",
+                                                                                                    "sha256:retired",
+                                                                                                    cancellationToken: CancellationToken.None)
+                                                                      .ConfigureAwait(false);
+                var liveImageVersion = await imageCatalogRepository.GetOrCreateImageVersionAsync("docker.io",
+                                                                                                 "company/live",
+                                                                                                 "1.0.0",
+                                                                                                 "sha256:live",
+                                                                                                 cancellationToken: CancellationToken.None)
+                                                                   .ConfigureAwait(false);
+                var observedImage = new ObservedImage
+                                    {
+                                        Name = "Company Live",
+                                        CurrentImageVersionId = liveImageVersion.Id,
+                                    };
+                var retiredFinding = new VulnerabilityFinding
+                                     {
+                                         ImageVersionId = retiredImageVersion.Id,
+                                         AdvisoryId = "CVE-2026-3000",
+                                         Title = "Retired image finding",
+                                         Severity = VulnerabilitySeverity.High,
+                                         Source = VulnerabilitySource.Trivy,
+                                         AffectedPackage = "openssl",
+                                         IsActive = false,
+                                         ResolvedAtUtc = DateTimeOffset.UtcNow.AddDays(-1),
+                                     };
+                var liveImageFinding = new VulnerabilityFinding
+                                       {
+                                           ImageVersionId = liveImageVersion.Id,
+                                           AdvisoryId = "CVE-2026-4000",
+                                           Title = "Patched finding on a live image",
+                                           Severity = VulnerabilitySeverity.Medium,
+                                           Source = VulnerabilitySource.Trivy,
+                                           AffectedPackage = "zlib",
+                                           IsActive = false,
+                                           ResolvedAtUtc = DateTimeOffset.UtcNow.AddDays(-1),
+                                       };
+
+                dbContext.ObservedImages.Add(observedImage);
+                dbContext.VulnerabilityFindings.AddRange(retiredFinding, liveImageFinding);
+                await dbContext.SaveChangesAsync(CancellationToken.None)
+                               .ConfigureAwait(false);
+
+                retiredFindingId = retiredFinding.Id;
+                liveImageFindingId = liveImageFinding.Id;
+            }
+
+            var options = new DockerUpdateGuardOptions
+                          {
+                              Scanning = new ScanningOptions
+                                         {
+                                             CleanupIntervalMinutes = 60,
+                                             RetainScanRunsDays = 30,
+                                         },
+                          };
+            var service = new TestScanCleanupBackgroundService(new TestLogger<ScanCleanupBackgroundService>(),
+                                                               new TestOptionsMonitor<DockerUpdateGuardOptions>(options),
+                                                               serviceProvider.GetRequiredService<IServiceScopeFactory>());
+
+            await service.ExecuteOnceAsync(CancellationToken.None)
+                         .ConfigureAwait(false);
+
+            var verificationScope = serviceProvider.CreateAsyncScope();
+
+            await using (verificationScope.ConfigureAwait(false))
+            {
+                var dbContext = verificationScope.ServiceProvider.GetRequiredService<DockerUpdateGuardDbContext>();
+                var remainingFindingIds = await dbContext.VulnerabilityFindings.Select(entity => entity.Id)
+                                                                               .ToListAsync(CancellationToken.None)
+                                                                               .ConfigureAwait(false);
+
+                Assert.DoesNotContain(retiredFindingId,
+                                      remainingFindingIds,
+                                      "A deactivated finding of an image version no longer part of the live fleet must be purged immediately, regardless of its age");
+                Assert.Contains(liveImageFindingId,
+                                remainingFindingIds,
+                                "A deactivated finding of a still-live image version must keep the age-based retention window");
             }
         }
     }

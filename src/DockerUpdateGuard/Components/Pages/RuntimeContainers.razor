@@ -129,6 +129,7 @@
                                 <VulnerabilitySeverityChips Summary="context.VulnerabilitySeveritySummary" Compact="true" />
                                 <span class="table-secondary">@($"{context.ActiveVulnerabilityFindingCount} active · {context.VulnerabilitySummary}")</span>
                             }
+                            <VulnerabilityRescanControl ImageVersionId="context.ImageVersionId" CheckedAtUtc="context.VulnerabilityCheckedAtUtc" OnRescanned="HandleRescannedAsync" />
                             @if (context.ActiveBaseImageVulnerabilityFindingCount > 0)
                             {
                                 <MudChip T="string" Size="Size.Small" Color="Color.Warning">Base images affected</MudChip>

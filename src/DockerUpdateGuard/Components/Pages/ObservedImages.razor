@@ -126,6 +126,7 @@
                             <MudChip T="string" Size="Size.Small" Color="Color.Warning">Base images affected</MudChip>
                             <span class="table-secondary">@context.BaseImageVulnerabilitySummary</span>
                         }
+                        <VulnerabilityRescanControl ImageVersionId="context.CurrentImageVersionId" CheckedAtUtc="context.VulnerabilityCheckedAtUtc" OnRescanned="HandleRescannedAsync" />
                     </MudTd>
                 </RowTemplate>
             </MudTable>
