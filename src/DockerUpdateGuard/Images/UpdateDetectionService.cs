@@ -418,8 +418,8 @@ public class UpdateDetectionService : IUpdateDetectionService
     /// <param name="major">Major version of the requested version line</param>
     /// <returns>Tags of the requested major version line that carry a publication timestamp</returns>
     private static List<(DockerHubTagData Tag, Version Version)> GetMajorLineTags(IReadOnlyList<DockerHubTagData> orderedTags,
-                                                                                   string currentTag,
-                                                                                   int major)
+                                                                                  string currentTag,
+                                                                                  int major)
     {
         var currentIsPreRelease = VersionTagResolutionHelper.IsPreReleaseVersionTag(currentTag);
 

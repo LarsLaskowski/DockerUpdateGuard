@@ -60,6 +60,12 @@ jobs:
       - name: Restore
         run: dotnet restore DockerUpdateGuard.slnx
 
+      - name: Install Reihitsu.Cli
+        run: dotnet tool install -g Reihitsu.Cli
+
+      - name: Check formatting
+        run: reihitsu-format --check .
+
       - name: Begin SonarQube analysis
         if: ${{ env.SONAR_TOKEN != '' }}
         run: |

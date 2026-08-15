@@ -33,6 +33,12 @@ jobs:
       - name: Restore
         run: dotnet restore DockerUpdateGuard.slnx
 
+      - name: Install Reihitsu.Cli
+        run: dotnet tool install -g Reihitsu.Cli
+
+      - name: Check formatting
+        run: reihitsu-format --check .
+
       - name: Build
         run: dotnet build DockerUpdateGuard.slnx -c Release --no-restore
 

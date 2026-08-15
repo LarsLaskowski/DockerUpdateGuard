@@ -41,17 +41,17 @@ There is no dedicated lint command at the moment beyond formatting. Static analy
 
 ## High-level architecture
 
-The repository is currently a solution skeleton with project wiring in place, but almost no implementation files yet. The architecture is defined by the solution layout, project references, and package choices:
+The repository contains a complete implementation: Docker/DockerHub/Portainer clients, an EF Core data layer with migrations, a Blazor UI, and a telemetry layer. The architecture is defined by the solution layout, project references, and package choices:
 
 | Path | Role |
 | --- | --- |
-| `src\DockerUpdateGuard` | Main ASP.NET Core host (`Microsoft.NET.Sdk.Web`); references the data and telemetry projects |
-| `src\DockerUpdateGuard.Data` | Data-access layer; prepared for EF Core with PostgreSQL via `Npgsql.EntityFrameworkCore.PostgreSQL` |
-| `src\DockerUpdateGuard.Telemetry` | Shared observability layer; prepared for OpenTelemetry hosting, OTLP export, ASP.NET Core, HTTP, and runtime instrumentation |
+| `src\DockerUpdateGuard` | Main ASP.NET Core host (`Microsoft.NET.Sdk.Web`); composition root; references the data and telemetry projects |
+| `src\DockerUpdateGuard.Data` | Data-access layer; EF Core with PostgreSQL via `Npgsql.EntityFrameworkCore.PostgreSQL` |
+| `src\DockerUpdateGuard.Telemetry` | Shared observability layer; OpenTelemetry hosting, OTLP export, ASP.NET Core, HTTP, and runtime instrumentation |
 | `src\Tests\DockerUpdateGuard.Tests` | Tests for the main host/application layer; references the web project and uses EF Core InMemory plus NSubstitute |
 | `src\Tests\DockerUpdateGuard.Data.Tests` | Tests for the data layer; references the data project and uses EF Core SQLite |
 
-The main host project is the composition root. It is expected to keep web startup and dependency wiring, while persistence stays in `.Data` and observability stays in `.Telemetry`.
+Web startup and dependency wiring stay in the main host project; persistence stays in `.Data`; observability stays in `.Telemetry`.
 
 ## Key conventions
 
@@ -63,19 +63,13 @@ The main host project is the composition root. It is expected to keep web startu
 - Tests are under `src\Tests`, not a top-level `tests` folder. Keep new test projects there.
 - The current test stack is MSTest with `coverlet.collector`.
 - Detailed C# formatting and style rules live in `.github\instructions\csharp.instructions.md`. Follow that file for naming, region layout, XML docs, and null-handling preferences.
-
-## Current state note
-
-- Target the latest stable .NET version used by the solution template. The reference project currently uses `net10.0`.
-- Enable nullable reference types, implicit usings, and XML documentation files in every main project.
-- Link shared files like `SharedAssemblyInfo.cs` into each project when the solution is created.
-- Use `Reihitsu.Analyzer` as a build-time analyzer.
-- Use MSTest with `coverlet.collector` for tests.
 - Prefer MSTest's `Assert` and `CollectionAssert` APIs directly instead of FluentAssertions.
 - Name test classes `{Feature}Tests` and test methods `{Class}{Scenario}{ExpectedResult}`.
 - Always include assertion messages in tests.
 
-If the project adds EF Core migrations, follow the same migration pattern as SeriesOverwatch:
+## EF Core migrations
+
+The project already has EF Core migrations; follow the same pattern for new ones:
 
 - first migration: `InitialCreate`
 - later migrations: `Update1`, `Update2`, `Update3`, ...
