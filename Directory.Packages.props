@@ -6,24 +6,24 @@
     <PackageVersion Include="AngleSharp" Version="1.7.1" />
     <PackageVersion Include="bunit" Version="2.9.0" />
     <PackageVersion Include="coverlet.collector" Version="10.0.1" />
-    <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="10.0.10" />
-    <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.10" />
-    <PackageVersion Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.10" />
-    <PackageVersion Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.10" />
-    <PackageVersion Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.10" />
-    <PackageVersion Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.10" />
-    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.8.1" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="10.0.11" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.11" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.11" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.11" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.11" />
+    <PackageVersion Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.11" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.9.0" />
     <PackageVersion Include="MSTest" Version="4.3.3" />
     <PackageVersion Include="MudBlazor" Version="9.8.0" />
     <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
-    <PackageVersion Include="NSubstitute" Version="6.0.0" />
+    <PackageVersion Include="NSubstitute" Version="6.2.0" />
     <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.17.0" />
     <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.17.0" />
     <PackageVersion Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.17.0" />
     <PackageVersion Include="OpenTelemetry.Instrumentation.Http" Version="1.17.0" />
     <PackageVersion Include="OpenTelemetry.Instrumentation.Runtime" Version="1.17.0" />
     <PackageVersion Include="Reihitsu.Analyzer" Version="1.0.0-beta6" />
-    <PackageVersion Include="SonarAnalyzer.CSharp" Version="10.31.0.145097" />
+    <PackageVersion Include="SonarAnalyzer.CSharp" Version="10.32.0.713" />
     <PackageVersion Include="SQLitePCLRaw.lib.e_sqlite3" Version="3.53.3" />
   </ItemGroup>
 </Project>
