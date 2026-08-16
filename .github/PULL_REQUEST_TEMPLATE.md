@@ -16,7 +16,7 @@ What problem does this change solve?
 Is this a breaking change, chore, fix, feature, etc?
 -->
 
-### 🎫 Issues
+## 🎫 Issues
 
 <!---
 * List and link relevant issues here, for example: Closes #123
