@@ -9,6 +9,17 @@ null handling, suppressed analyzer rules) are imported below and are
 
 @.github/instructions/csharp.instructions.md
 
+## Architecture
+
+[ARCHITECTURE.md](ARCHITECTURE.md) is the binding architecture reference for
+this repository: solution layout, composition root and startup sequence,
+configuration model, data layer, integration clients, the background scan
+engine, the UI layer, telemetry, security posture, and the CI/deployment
+pipeline. Read it before making structural changes (new projects, new
+background jobs, new integration clients, changes to the composition root
+or entity model) and update it in the same change whenever it goes out of
+date — it must never contain open questions or stale claims.
+
 ## Git workflow
 
 - Never run `git commit` or `git push` without explicit user approval.
@@ -57,7 +68,9 @@ build via the configured rulesets and analyzers.
 | `src\Tests\DockerUpdateGuard.Data.Tests` | Tests for the data layer; references the data project; EF Core SQLite |
 
 Web startup and dependency wiring stay in the main host project; persistence
-stays in `.Data`; observability stays in `.Telemetry`.
+stays in `.Data`; observability stays in `.Telemetry`. For everything beyond
+this table — composition root, background jobs, integration clients, data
+model, UI, telemetry, security posture — see [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Key conventions
 

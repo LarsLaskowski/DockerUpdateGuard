@@ -39,9 +39,18 @@ Run `reihitsu-format ./` after source changes and before running a build. The co
 
 There is no dedicated lint command at the moment beyond formatting. Static analysis runs during build through the configured rulesets and analyzers.
 
-## High-level architecture
+## Architecture
 
-The repository contains a complete implementation: Docker/DockerHub/Portainer clients, an EF Core data layer with migrations, a Blazor UI, and a telemetry layer. The architecture is defined by the solution layout, project references, and package choices:
+[ARCHITECTURE.md](../ARCHITECTURE.md) is the binding architecture reference for
+this repository: solution layout, composition root and startup sequence,
+configuration model, data layer, integration clients, the background scan
+engine, the UI layer, telemetry, security posture, and the CI/deployment
+pipeline. Read it before making structural changes (new projects, new
+background jobs, new integration clients, changes to the composition root
+or entity model) and update it in the same change whenever it goes out of
+date — it must never contain open questions or stale claims.
+
+The repository contains a complete implementation: Docker/DockerHub/Portainer clients, an EF Core data layer with migrations, a Blazor UI, and a telemetry layer.
 
 | Path | Role |
 | --- | --- |
@@ -51,7 +60,7 @@ The repository contains a complete implementation: Docker/DockerHub/Portainer cl
 | `src\Tests\DockerUpdateGuard.Tests` | Tests for the main host/application layer; references the web project and uses EF Core InMemory plus NSubstitute |
 | `src\Tests\DockerUpdateGuard.Data.Tests` | Tests for the data layer; references the data project and uses EF Core SQLite |
 
-Web startup and dependency wiring stay in the main host project; persistence stays in `.Data`; observability stays in `.Telemetry`.
+Web startup and dependency wiring stay in the main host project; persistence stays in `.Data`; observability stays in `.Telemetry`. For everything beyond this table, see [ARCHITECTURE.md](../ARCHITECTURE.md).
 
 ## Key conventions
 
