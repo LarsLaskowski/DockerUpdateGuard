@@ -412,9 +412,8 @@ public class UpdateDetectionServiceTests
         Assert.AreEqual("The running image already matches the current 'latest' tag",
                         evaluation.Summary,
                         "The summary must explain that the running latest digest is already current");
-        Assert.HasCount(0,
-                        evaluation.Candidates,
-                        "No candidate list should be produced when the running latest digest already matches the registry latest digest");
+        Assert.IsEmpty(evaluation.Candidates,
+                       "No candidate list should be produced when the running latest digest already matches the registry latest digest");
     }
 
     /// <summary>

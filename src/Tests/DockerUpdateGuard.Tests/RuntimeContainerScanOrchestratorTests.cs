@@ -300,9 +300,8 @@ public class RuntimeContainerScanOrchestratorTests
                 Assert.AreEqual(ScanRunStatus.Succeeded,
                                 scanRun.Status,
                                 "Runtime scans must still complete when a registry candidate has no digest");
-                Assert.HasCount(0,
-                                finding.TagCandidates,
-                                "Candidates without a digest must not be persisted for runtime findings");
+                Assert.IsEmpty(finding.TagCandidates,
+                               "Candidates without a digest must not be persisted for runtime findings");
             }
         }
     }
@@ -424,9 +423,8 @@ public class RuntimeContainerScanOrchestratorTests
                                 "The original finding record must remain for history after the rescan");
                 Assert.IsFalse(findings[0].IsActive,
                                "The previous runtime finding must be deactivated when the update is no longer available");
-                Assert.HasCount(0,
-                                findings[0].TagCandidates,
-                                "Stale tag candidates must be removed when a later scan no longer keeps the finding active");
+                Assert.IsEmpty(findings[0].TagCandidates,
+                               "Stale tag candidates must be removed when a later scan no longer keeps the finding active");
             }
         }
     }
