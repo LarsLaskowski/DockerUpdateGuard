@@ -3,16 +3,16 @@
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
   </PropertyGroup>
   <ItemGroup>
-    <PackageVersion Include="AngleSharp" Version="1.7.3" />
-    <PackageVersion Include="bunit" Version="2.9.0" />
+    <PackageVersion Include="AngleSharp" Version="1.8.1" />
+    <PackageVersion Include="bunit" Version="2.10.3" />
     <PackageVersion Include="coverlet.collector" Version="10.0.1" />
-    <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="10.0.11" />
-    <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.11" />
-    <PackageVersion Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.11" />
-    <PackageVersion Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.11" />
-    <PackageVersion Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.11" />
-    <PackageVersion Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.11" />
-    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.9.0" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.10.0" />
     <PackageVersion Include="MSTest" Version="4.4.0" />
     <PackageVersion Include="MudBlazor" Version="9.9.0" />
     <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
@@ -23,7 +23,7 @@
     <PackageVersion Include="OpenTelemetry.Instrumentation.Http" Version="1.18.0" />
     <PackageVersion Include="OpenTelemetry.Instrumentation.Runtime" Version="1.18.0" />
     <PackageVersion Include="Reihitsu.Analyzer" Version="1.0.0-rc2" />
-    <PackageVersion Include="SonarAnalyzer.CSharp" Version="10.33.0.1635" />
+    <PackageVersion Include="SonarAnalyzer.CSharp" Version="10.34.0.3385" />
     <PackageVersion Include="SQLitePCLRaw.lib.e_sqlite3" Version="3.53.3" />
   </ItemGroup>
 </Project>
