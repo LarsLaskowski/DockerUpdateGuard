@@ -48,7 +48,7 @@ Please provide a summary of the tests affected by this work and any unique strat
 - [ ] New dependencies, if any, were added the way *Dependencies* in `.squad/stack.md` prescribes.
 
 <!-- project:begin checklist -->
-- [ ] I have followed the project's [code style guidelines](../.github/instructions/csharp.instructions.md).
+- [ ] The C# rules in [`csharp.instructions.md`](../.github/instructions/csharp.instructions.md) are followed.
 
 ### UI-specific
 

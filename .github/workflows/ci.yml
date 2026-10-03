@@ -74,7 +74,7 @@ jobs:
             /o:"networlddev" \
             /d:sonar.token="$SONAR_TOKEN" \
             /d:sonar.cs.opencover.reportsPaths="${{ runner.temp }}/TestResults/**/coverage.opencover.xml" \
-            /d:sonar.coverage.exclusions=".squad/**,.claude/**"
+            /d:sonar.coverage.exclusions=".squad/**,.claude/**,src/DockerUpdateGuard.Data/Migrations/**"
 
       - name: Build
         run: dotnet build DockerUpdateGuard.slnx -c Release --no-restore

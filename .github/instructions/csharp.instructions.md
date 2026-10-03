@@ -122,7 +122,7 @@ public void DoSomething()
 5. `Static methods`
 6. `Methods`
 7. `Controller methods` (for controllers)
-8. `IDisposable` / `IDisposable implementation`
+8. `IDisposable` (named after the interface; the description never ends with "implementation")
 9. Interface implementations (e.g. `IAppMetrics properties`, `IAppMetrics methods`)
 
 - Within the same visibility level, place **static methods before instance methods** (for example, `public static` before `public`, and `private static` before `private`)
@@ -492,7 +492,7 @@ public enum TracingTarget
 ## IDisposable Pattern
 
 ```csharp
-#region IDisposable implementation
+#region IDisposable
 
 /// <summary>
 /// Releases the resources used by the current instance of the class
@@ -503,7 +503,7 @@ public void Dispose()
     _resource = null;
 }
 
-#endregion // IDisposable implementation
+#endregion // IDisposable
 ```
 
 For more complex resources: Flush → Shutdown → Dispose → set to null.

@@ -75,6 +75,9 @@ change with it.
 **A new Blazor page or component** touches the UI tests (`…RenderTests`, `…PersistentStateTests`) and the
 UI section of `docs/ARCHITECTURE.md`.
 
+**Every review** also compares the PR description with the diff and reads the SonarQube Cloud result of the
+PR; a description that overstates or misses part of the change, or a failing quality gate, is a finding.
+
 **Async code in service and data-access code** uses `.ConfigureAwait(false)`; EF Core navigation and query
 assumptions (included navigations, tracking) are checked against the query that loads the entity.
 

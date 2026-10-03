@@ -326,7 +326,6 @@ reportgenerator "-reports:TestResults/**/coverage.cobertura.xml" "-targetdir:cov
 - [ ] The *Analyzer gate* (`python3 .squad/tools/analyzer-check.py`) reports no diagnostic in a changed test
       file (MSTest analyzer rules are info-level and only visible there or in SonarQube Cloud).
 - [ ] At least 80 % line coverage on new/changed production code and overall (*Coverage gate*).
-
 - [ ] Test class named `{TypeUnderTest}Tests` (or `...RenderTests` /
       `...PersistentStateTests` when split), in the matching test project.
 - [ ] Test method named `{TypeUnderTest}{Scenario}{ExpectedResult}` (PascalCase,
