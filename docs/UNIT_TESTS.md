@@ -298,6 +298,7 @@ the same measure as SonarQube's "coverage on new code". Check it locally before 
 coverage* and the *Coverage gate* from [`.squad/stack.md`](../.squad/stack.md):
 
 ```shell
+rm -rf TestResults
 dotnet test DockerUpdateGuard.slnx -c Release --no-build --collect:"XPlat Code Coverage" --results-directory ./TestResults
 python3 .squad/tools/coverage-check.py
 ```

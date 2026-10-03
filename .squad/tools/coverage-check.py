@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Coverage gate for the squad: line coverage of new/changed production lines (like SonarQube's
-"coverage on new code") and overall line coverage, merged from the coverage reports of the latest test run (one per test project).
+"coverage on new code") and overall line coverage, merged from all coverage reports
+(one per test project) of the latest test run; *Test with coverage* clears the results directory first.
 
 Supported report formats (set COVERAGE_FORMAT in `.squad/tools/squad_settings.py`):
 - `cobertura` — e.g. coverlet's `coverage.cobertura.xml` (.NET), or any Cobertura XML
@@ -58,17 +59,13 @@ def changed_lines():
     return result
 
 
-# Reports written within this many seconds of the newest one belong to the same test run (one report per
-# test project); older ones are leftovers of earlier runs and are ignored.
-RUN_WINDOW_SECONDS = 600
-
-
-def latest_run_reports():
-    reports = glob.glob(settings.COVERAGE_REPORT_GLOB, recursive=True)
+def run_reports():
+    """Every report the glob matches: one per test project of the latest run. *Test with coverage* clears the
+    results directory first, so no report of an earlier run can be among them."""
+    reports = sorted(glob.glob(settings.COVERAGE_REPORT_GLOB, recursive=True))
     if not reports:
         sys.exit(f"No coverage report matches {settings.COVERAGE_REPORT_GLOB} - run *Test with coverage* first")
-    newest = max(os.path.getmtime(report) for report in reports)
-    return sorted(report for report in reports if newest - os.path.getmtime(report) <= RUN_WINDOW_SECONDS)
+    return reports
 
 
 def add_hit(hits, path, number, count):
@@ -147,7 +144,9 @@ def main():
     if loader is None:
         sys.exit(f"Unknown COVERAGE_FORMAT '{settings.COVERAGE_FORMAT}' in squad_settings.py")
     hits = {}
-    for report in latest_run_reports():
+    reports = run_reports()
+    print(f"Coverage reports merged: {len(reports)}")
+    for report in reports:
         for path, lines in loader(report).items():
             for number, count in lines.items():
                 add_hit(hits, path, number, count)

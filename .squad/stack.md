@@ -35,7 +35,7 @@ profile and owned by this repository: keep it true when the build changes.
 | *Build* | `dotnet build DockerUpdateGuard.slnx -c Release --no-restore` |
 | *Test* | `dotnet test DockerUpdateGuard.slnx -c Release --no-build` |
 | *Single test* | `dotnet test src/Tests/DockerUpdateGuard.Tests/DockerUpdateGuard.Tests.csproj --filter "FullyQualifiedName~ClassName.MethodName"` |
-| *Test with coverage* | `dotnet test DockerUpdateGuard.slnx -c Release --no-build --collect:"XPlat Code Coverage" --results-directory ./TestResults` |
+| *Test with coverage* | `rm -rf TestResults && dotnet test DockerUpdateGuard.slnx -c Release --no-build --collect:"XPlat Code Coverage" --results-directory ./TestResults` (clears earlier runs: the coverage gate merges every report it finds) |
 | *Coverage gate* | `python3 .squad/tools/coverage-check.py` |
 | *Analyzer gate* | `python3 .squad/tools/analyzer-check.py` |
 
