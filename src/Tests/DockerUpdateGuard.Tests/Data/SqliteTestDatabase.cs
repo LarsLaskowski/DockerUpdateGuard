@@ -67,9 +67,7 @@ internal sealed class SqliteTestDatabase : IDisposable
 
     #region IDisposable
 
-    /// <summary>
-    /// Release resources
-    /// </summary>
+    /// <inheritdoc/>
     public void Dispose()
     {
         _connection.Dispose();

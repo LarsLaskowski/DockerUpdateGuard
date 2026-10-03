@@ -1383,9 +1383,7 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
 
     #region IDisposable
 
-    /// <summary>
-    /// Releases the resources used by the current instance of the class
-    /// </summary>
+    /// <inheritdoc/>
     public void Dispose()
     {
         _tokenRefreshLock.Dispose();

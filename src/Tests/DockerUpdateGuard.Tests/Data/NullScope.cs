@@ -16,9 +16,7 @@ internal sealed class NullScope : IDisposable
 
     #region IDisposable
 
-    /// <summary>
-    /// Release resources
-    /// </summary>
+    /// <inheritdoc/>
     public void Dispose()
     {
     }

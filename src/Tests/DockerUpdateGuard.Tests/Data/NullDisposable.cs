@@ -16,9 +16,7 @@ internal sealed class NullDisposable : IDisposable
 
     #region IDisposable
 
-    /// <summary>
-    /// Release resources
-    /// </summary>
+    /// <inheritdoc/>
     public void Dispose()
     {
     }
