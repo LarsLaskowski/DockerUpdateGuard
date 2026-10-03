@@ -1,95 +1,117 @@
 ---
 name: review-pr
-description: Reviews a GitHub pull request by number and reports findings and actionable recommendations, without changing any code. Use this whenever the user wants a pull request examined, e.g. "review PR 42", "check #42", or passes a bare PR number for review. Posting a review comment is optional and only happens on explicit request.
+description: Use when the user asks to review a pull request of this repository on GitHub. Checks out the PR, runs the build and tests, reviews it with the squad-reviewer subagent against this project's stack, analyzer, security and unit-test conventions, and posts the findings with an explicit verdict.
 ---
 
-Use this skill when the user gives you a GitHub pull request number (e.g. "review PR 42", "#42", or just "42") and wants it reviewed.
+# Review PR
 
-Repository: `LarsLaskowski/DockerUpdateGuard`.
+Use this skill to review a pull request on GitHub — someone else's, or your
+own when you deliberately want a second opinion after it is open.
 
-This skill is **read-only**. Its job is to understand the PR and give the user findings and actionable recommendations. It must **not** modify any code, commit, push, change the PR, or check out the branch in a way that alters the working tree beyond what is needed to inspect the diff. The output is a review, not a fix.
+For a change that has not been pushed yet, do not use this skill: the
+internal review loop in `create-pr` reviews the local branch before the pull
+request exists, which is cheaper and does not fill the PR with comment
+threads.
 
-Write all output in **English**: your summary to the user, your recommendations, and — only if the user asks for it — any review comment posted to GitHub. This holds regardless of the language the user wrote in.
+Write everything in **English** — the summary to the user, the findings, and
+anything posted to GitHub — regardless of the language the user wrote in.
 
-## Scope
+## Steps
 
-Branch protection on this repository blocks a PR from merging on its own — a review is always required first. That is just how merging works here; it is background context for why this skill exists, not a finding to restate in your output.
+1. Fetch and check out the PR (or read the diff directly if a checkout isn't
+   necessary). Read the PR title and body to understand the intent, and read
+   any issue it references so you can judge whether the change actually
+   solves the stated problem. If the PR is already merged or closed, say so
+   and ask whether the user still wants a review.
+2. Delegate the review itself to the `squad-reviewer` subagent
+   (subagent_type `squad-reviewer`, model `opus`). Give it the
+   base ref, the head SHA, and the round number — round 1 for a first review,
+   and for a re-review the previous round's findings plus the commits that
+   were meant to fix them. The review checklist, the integration-surface
+   sweep, the severity model and the round semantics all live in that agent's
+   definition (`.claude/agents/squad-reviewer.md`), so they stay
+   identical whether the review runs before or after the push; an agent
+   without subagent support follows that same file inline.
+3. Post the result:
+   - Inline comments for findings anchored to a line, otherwise one review
+     comment.
+   - **Only genuine findings.** No positive remarks, no confirmation that
+     checklist items pass, no "looks good" filler, no formatting
+     the formatter already fixes.
+   - Lead the review body with the verdict line the subagent produced
+     (`APPROVE`, or the blocking/non-blocking counts), so the author can see
+     whether anything is required of them without reading every thread.
+   - Mark each finding `blocking` or `non-blocking` explicitly.
+4. If the review produces no findings, post nothing beyond a short approving
+   verdict — and if the previous round already said the same, post nothing at
+   all.
 
-Keep the review itself narrow. Only evaluate:
+## Every posted finding gets worked
 
-1. The code changes in the diff.
-2. Whether the PR description matches what the diff actually does.
-3. The SonarQube Cloud check status — at most.
+A finding that has been posted as a review comment is work, not a note. This
+holds for **every** posted finding — blocking and non-blocking alike, whether
+it came from this skill, from a human reviewer, or from an automated code
+review on the pull request.
 
-Anything else about the PR (other CI checks such as build/test/CodeQL runs, labels, assignees, comment history, unrelated discussion) is out of scope and should not be reported on.
+- Resolve it in the pull request it was posted on, while the session that can
+  act on it is still running.
+- Do not defer a posted finding to "the next change that touches this code"
+  or "the next substantive commit". No such change is scheduled, and the
+  session holding the context needed to act on the comment will not exist
+  later — the deferral is a way of dropping the finding, not of carrying it
+  forward.
+- If a posted finding genuinely should not be acted on in this PR, it gets
+  one of two concrete outcomes, never an implied one: a reply explaining why
+  the code stays as it is, or a GitHub issue opened **now** and linked from
+  the reply. Either way the thread is answered and resolved before the PR is
+  considered done.
+- Non-blocking is about whether a finding gates the merge, not about whether
+  anyone will ever deal with it.
 
-## Workflow
+## Keeping the loop finite
 
-### 1. Load the pull request
+A pull request review can always produce one more finding. These rules make
+it converge, without leaving posted findings unhandled:
 
-- Confirm the PR number from the user's request. If none was given, stop and ask for one.
-- Fetch metadata with `mcp__github__pull_request_read` (`method: get`, `owner: LarsLaskowski`, `repo: DockerUpdateGuard`, `pullNumber: <number>`).
-- Fetch the diff with `method: get_diff`, and the changed files with `method: get_files` if you need per-file granularity.
-- Fetch check runs with `method: get_check_runs` and read only the SonarQube Cloud check's conclusion (pass, fail, or warnings). Ignore every other check.
-- If the PR is already merged or closed, say so and ask whether the user still wants a review before continuing.
+- **Round 1 reviews the whole diff. Every later round reviews only the
+  delta**: does each fix resolve its finding, and did the fix commits break
+  something — including in prose they wrote to fix a documentation finding?
+  Never re-review untouched code; that is what turns three findings into four
+  rounds.
+- **Only blocking findings justify another review round.** A non-blocking
+  finding is still worked per the section above, but working it does not earn
+  a new round of review.
+- **Two consecutive rounds without a blocking finding means done.** Say so
+  plainly instead of leaving the review open-ended.
+- **At most two rounds on GitHub.** If blocking findings survive that, the
+  change needs a decision from the author, not another review pass — say what
+  is still blocking and stop.
+- The number of rounds is capped; the number of posted findings that get
+  handled is not. Every open thread is answered before the PR is done, even
+  when no further round runs.
 
-### 2. Check the description against the diff
+## Answering findings on your own PR
 
-- Read the PR title and body to understand what the change claims to do.
-- If the PR references an issue (e.g. `Closes #N`), read that issue with `mcp__github__issue_read` (`method: get`) so you can judge whether the change actually solves the stated problem.
-- Compare the description to the actual diff. If the description is inaccurate, incomplete, or overstates/understates the change, raise it as a finding (see step 4).
+When acting as the author of a PR under review:
 
-### 3. Review the diff
+- Fix the finding, push, then keep the reply to one line:
+  `Fixed in <sha>: <what changed>`. The reasoning belongs in the commit
+  message, where it stays with the code; the reviewer verifies the commit,
+  not the reply.
+- Re-run *Format*, *Build*, the *Analyzer gate* (no diagnostic in a changed
+  file), *Test with coverage* and the *Coverage gate* from `.squad/stack.md`
+  before each push — a fix that turns CI red costs more
+  than the finding did.
+- Resolve the thread once it is answered. One summary comment per round beats
+  one essay per thread.
+- Work through every open thread before calling the PR done, including the
+  non-blocking ones, as described above.
 
-Evaluate the change against what matters for this project. Focus on:
+## Notes
 
-- **Correctness** — bugs, edge cases, error handling, null handling, concurrency issues. Pay attention to Docker/registry API interaction, async/await usage (missing `.ConfigureAwait(false)` in service/data-access code), and EF Core query/navigation assumptions.
-- **Convention adherence** (`CLAUDE.md` and `.github/instructions/csharp.instructions.md`) — naming, region layout, file-scoped namespaces, XML documentation on public/internal/private members, no `this.`, no primary constructors, `== false` instead of `!`, layering (`.Data` for persistence, `.Telemetry` for observability, main host for web/DI wiring).
-- **Scope and size** — unrelated changes bundled in, accidental file inclusions, debug leftovers.
-- **Tests** — whether tests were added or updated under `src\Tests`, whether they follow the `{Class}{Scenario}{ExpectedResult}` naming and MSTest `Assert`/`CollectionAssert` conventions, and whether assertion messages are present.
-- **Clarity** — naming, dead code, needless complexity, missing or misleading comments/docs.
-
-Do not run builds that modify files unnecessarily; reading the diff and the surrounding code is usually enough. You may read any file in the repo for context.
-
-### 4. Report findings
-
-Present the review to the user in this structure:
-
-```
-## PR #<number> — <title>
-
-**Verdict:** <Approve / Approve with comments / Request changes / Needs discussion>
-
-### Summary
-<1–3 sentences on what the PR does and whether it achieves its goal.>
-
-**Description match:** <Does the PR description accurately reflect the diff? Yes/No and why.>
-**SonarQube Cloud:** <Pass / Fail / Warnings / Not run — no other checks.>
-
-### Findings
-- **[Blocking|Suggestion|Nit] <file:line>** — <what and why, with a recommended action.>
-- ...
-
-### Recommendations
-<Concrete next steps the author should take.>
-```
-
-- Classify each finding as **Blocking** (must fix before merge), **Suggestion** (worth doing), or **Nit** (minor/optional).
-- Reference exact `file:line` locations so findings are easy to act on.
-- If you find nothing wrong, say so plainly rather than inventing issues.
-
-### 5. Optional: post a review comment
-
-- Only post anything to GitHub if the user explicitly asks for it. By default, just report back in the chat.
-- If asked, use `mcp__github__pull_request_review_write`:
-  - `method: create` with `event: COMMENT` for a neutral English review comment, or `event: APPROVE` / `event: REQUEST_CHANGES` only when the user explicitly chooses that action.
-  - For line-specific comments, create a pending review (`method: create` without `event`), add comments with `mcp__github__add_comment_to_pending_review`, then submit with `method: submit_pending`.
-- Do not add any attribution, "Generated with" footer, or other note referencing an AI/assistant.
-
-## Rules
-
-- Never modify code, commit, push, or change the PR contents — this skill only reviews.
+- This skill reviews; it does not silently rewrite the PR. Fixing findings on
+  your own PR is the author's step above, and it is explicit — never edit
+  someone else's branch without being asked.
 - Prefer non-interactive commands only.
-- Do not post any comment or review to GitHub unless the user explicitly requests it.
-- Base your verdict on evidence from the diff and code; if something is uncertain, say so instead of guessing.
-- Stay inside the scope defined above: the diff, the description-vs-diff match, and the SonarQube Cloud check. Do not comment on other checks, labels, or metadata.
+- Base the verdict on evidence from the diff and the code; if something is
+  uncertain, say so instead of guessing.
