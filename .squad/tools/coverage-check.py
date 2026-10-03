@@ -134,15 +134,8 @@ def load_go(report):
 LOADERS = {"cobertura": load_cobertura, "lcov": load_lcov, "go": load_go}
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--threshold", type=float, default=80.0)
-    args = parser.parse_args()
-
-    os.chdir(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
-    loader = LOADERS.get(settings.COVERAGE_FORMAT)
-    if loader is None:
-        sys.exit(f"Unknown COVERAGE_FORMAT '{settings.COVERAGE_FORMAT}' in squad_settings.py")
+def merged_hits(loader):
+    """Merge every report matching COVERAGE_REPORT_GLOB into one map of hits per file and line."""
     hits = {}
     reports = run_reports()
     print(f"Coverage reports merged: {len(reports)}")
@@ -150,7 +143,11 @@ def main():
         for path, lines in loader(report).items():
             for number, count in lines.items():
                 add_hit(hits, path, number, count)
+    return hits
 
+
+def overall_coverage(hits):
+    """Return (percent, hit lines, coverable lines) over the tracked production files."""
     tracked = set(subprocess.run(
         ["git", "ls-files", "--", *settings.COVERAGE_PATHSPECS,
          *[f":(exclude){p}" for p in settings.COVERAGE_EXCLUDES]],
@@ -158,8 +155,11 @@ def main():
     production = {path: lines for path, lines in hits.items() if path in tracked}
     total = sum(len(lines) for lines in production.values())
     total_hit = sum(1 for lines in production.values() for count in lines.values() if count > 0)
-    overall = total_hit / total * 100 if total else 100.0
+    return (total_hit / total * 100 if total else 100.0), total_hit, total
 
+
+def new_code_coverage(hits):
+    """Print the changed production files and returns (percent, hit lines, coverable lines)."""
     covered = coverable = 0
     print("Changed production files (coverable changed lines):")
     for path, lines in sorted(changed_lines().items()):
@@ -170,14 +170,27 @@ def main():
         missed = sorted(n for n in relevant if file_hits[n] == 0)
         rate = f"{hit / len(relevant) * 100:5.1f}%" if relevant else "  n/a "
         print(f"  {rate}  {hit}/{len(relevant)}  {path}" + (f"  uncovered: {missed}" if missed else ""))
+    return (covered / coverable * 100 if coverable else 100.0), covered, coverable
 
-    new_code = covered / coverable * 100 if coverable else 100.0
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--threshold", type=float, default=80.0)
+    args = parser.parse_args()
+
+    os.chdir(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
+    loader = LOADERS.get(settings.COVERAGE_FORMAT)
+    if loader is None:
+        sys.exit(f"Unknown COVERAGE_FORMAT '{settings.COVERAGE_FORMAT}' in squad_settings.py")
+    hits = merged_hits(loader)
+    overall, total_hit, total = overall_coverage(hits)
+    new_code, covered, coverable = new_code_coverage(hits)
+
     print(f"\nNew/changed code: {new_code:.1f}% ({covered}/{coverable} lines)")
     print(f"Overall:          {overall:.1f}% ({total_hit}/{total} lines)")
     ok = new_code >= args.threshold and overall >= args.threshold
     print(f"Threshold {args.threshold:.0f}%: {'PASS' if ok else 'FAIL'}")
     return 0 if ok else 1
-
 
 if __name__ == "__main__":
     sys.exit(main())
