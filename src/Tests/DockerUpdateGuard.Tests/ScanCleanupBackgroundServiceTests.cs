@@ -196,7 +196,9 @@ public partial class ScanCleanupBackgroundServiceTests
                 Assert.HasCount(21,
                                 remainingCorrelationIds,
                                 "Cleanup must preserve running scan runs in addition to retained completed history");
-                Assert.Contains("running-scan", remainingCorrelationIds, "Cleanup must not delete a running scan run that has not produced related entities yet");
+                Assert.Contains(entity => entity == "running-scan",
+                                remainingCorrelationIds,
+                                "Cleanup must not delete a running scan run that has not produced related entities yet");
             }
         }
     }
