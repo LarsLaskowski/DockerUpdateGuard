@@ -1,5 +1,6 @@
 # Contributing
 
+<!-- project:begin getting-started -->
 ## Getting started
 
 ### Machine setup
@@ -48,42 +49,77 @@ dotnet build DockerUpdateGuard.slnx -c Release --no-restore
 ### Running tests
 
 ```shell
-dotnet test src\Tests\**\*.csproj -c Release --no-build --logger trx --collect:"XPlat Code Coverage"
+dotnet test DockerUpdateGuard.slnx -c Release --no-build
 ```
 
-To run a single test project or method, see the commands in `README.md` and `CLAUDE.md`.
+Coverage, single-test and analyzer commands are listed in [`.squad/stack.md`](../.squad/stack.md).
 
 For detailed rules on how unit tests should be structured and named, see [`UNIT_TESTS.md`](UNIT_TESTS.md).
+<!-- project:end getting-started -->
 
-### Submitting a pull request
+## Submitting a pull request
 
-If you'd like to contribute by fixing a bug, implementing a feature, or even correcting typos in the documentation, you'll need to submit a pull request.
+Nothing is ever committed or pushed directly to `main` — every change goes through a separate branch and
+a pull request.
 
-Before submitting a pull request, be sure to [rebase](https://www.atlassian.com/git/tutorials/merging-vs-rebasing) your branch onto the current `main`. Do not use `git merge` or the *merge* button provided by GitHub.
+Pull requests are merged with **Squash and merge**: the PR title becomes the single commit subject on
+`main` and the description its body, so the commits on the branch are working history and need not be
+curated. Keep the branch up to date by merging the current `main` into it (no force-push needed); do not
+use the plain *Create a merge commit* or *Rebase and merge* buttons (see the decision record on
+squash-merging in [`decisions/`](decisions/README.md)).
 
 For PR naming use the following convention: `[area] Description` (no period at the end).
 
-- For the area, use the affected project or feature (for example `Data`, `Telemetry`, `UI`, `Scanning`).
-- For the description, do not reference an issue number in there. A clear, short summary of what the change entails is enough; there is room to elaborate in the description.
+- For the area, use one of the areas listed below, capitalized.
+- For the description, do not reference an issue number in there. A clear, short summary of what
+  the change entails is enough; there is room to elaborate in the description.
 
-When a PR is related to an issue, use the `Closes #issuenumber` syntax so the issue links to the PR automatically and closes when the PR is merged.
+<!-- project:begin areas -->
+Areas: `Data`, `Telemetry`, `UI`, `Scanning`, `Host`, `Tests`, `Docker`, `CI`, `Docs` — the affected project or
+feature. Use before/after screenshots in the PR description when a change affects the UI.
+<!-- project:end areas -->
 
-Use before/after screenshots in the PR description when a change affects the UI.
+When a PR is related to an issue, use the `Closes #issuenumber` syntax so the issue links to the
+PR automatically and closes when the PR is merged.
 
-Follow the PR template in [`.github/PULL_REQUEST_TEMPLATE.md`](../.github/PULL_REQUEST_TEMPLATE.md).
+Follow the PR template in [`.github/pull_request_template.md`](../.github/pull_request_template.md).
 
-## Code style
+## Quality gates
 
-Detailed C# code-style rules (naming, regions, formatting, XML docs, null handling) are documented in [`.github/instructions/csharp.instructions.md`](../.github/instructions/csharp.instructions.md) and are binding for all contributions. Run `reihitsu-format ./` before opening a pull request.
+Code-style rules are documented in [`CLAUDE.md`](../CLAUDE.md) (mirrored in `AGENTS.md` and
+[`.github/copilot-instructions.md`](../.github/copilot-instructions.md)) and in
+[`.squad/stack.md`](../.squad/stack.md), and are binding for all contributions. Before opening a pull
+request, run the commands from `stack.md`: *Format*, *Build*, the *Analyzer gate* (no analyzer diagnostic
+of any severity in a changed file) and the *Coverage gate* (at least 80 % line coverage on new or changed
+production code and overall, see [`UNIT_TESTS.md`](UNIT_TESTS.md#code-coverage)). A pull request is
+expected to arrive clean (see the decision record on quality gates in [`decisions/`](decisions/README.md)).
 
+<!-- project:begin releases -->
+## Versioning and releases
+
+Releases are cut by pushing a `v*.*.*` tag on `main` (with explicit approval): `.github/workflows/release.yml`
+builds and tests, pushes the Docker image (version and `latest`) to Docker Hub
+(`networlddev/dockerupdateguard`) and creates a GitHub Release with generated notes. Merging a PR by itself
+never publishes a release (see [`ARCHITECTURE.md`](ARCHITECTURE.md), *Build, CI, and deployment*).
+<!-- project:end releases -->
+
+<!-- project:begin stability -->
 ## Stability policy
 
-An essential consideration in every pull request is its impact on the system. Avoid introducing unnecessary breaking changes, performance or functional regressions, or negative impacts on usability.
+An essential consideration in every pull request is its impact on the system. Avoid introducing unnecessary
+breaking changes, performance or functional regressions, or negative impacts on usability. In particular,
+preserve the guarantees listed in [`.squad/project.md`](../.squad/project.md) (*Guarantees*) and described in
+[`ARCHITECTURE.md`](ARCHITECTURE.md) unless a change explicitly intends to alter one.
+<!-- project:end stability -->
 
 ## Reporting security issues
 
-Do not report security vulnerabilities through public GitHub issues. See [`SECURITY.md`](../SECURITY.md) for the private reporting process.
+Do not report security vulnerabilities through public GitHub issues. See
+[`SECURITY.md`](../SECURITY.md) for the private reporting process.
 
 ## License
 
-By contributing to this project, you agree that your contributions will be licensed under the same [MIT License](../LICENSE.md) that covers the project.
+<!-- project:begin license -->
+By contributing to this project, you agree that your contributions will be licensed under the same
+[MIT License](../LICENSE.md) that covers the project.
+<!-- project:end license -->

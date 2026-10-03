@@ -293,15 +293,20 @@ Code coverage is collected with `coverlet.collector`, already referenced by
 both test projects — no separate installation is needed to collect coverage
 during `dotnet test`.
 
-Run the full suite with coverage collection, as documented in `README.md` and
-`CLAUDE.md`:
+**Threshold: at least 80 % line coverage on new or changed production code, and at least 80 % overall** —
+the same measure as SonarQube's "coverage on new code". Check it locally before a push with *Test with
+coverage* and the *Coverage gate* from [`.squad/stack.md`](../.squad/stack.md):
 
 ```shell
-dotnet test src\Tests\**\*.csproj -c Release --no-build --logger trx --collect:"XPlat Code Coverage"
+dotnet test DockerUpdateGuard.slnx -c Release --no-build --collect:"XPlat Code Coverage" --results-directory ./TestResults
+python3 .squad/tools/coverage-check.py
 ```
 
-This produces a `coverage.cobertura.xml` file per test project under its
-`TestResults` folder. To turn those into a browsable HTML report locally,
+The gate lists every changed production file with its covered/coverable changed lines and the uncovered line
+numbers. Lines that genuinely cannot be covered by a unit test (for example host startup glue) need an
+explicit, recorded decision — they are not silently accepted.
+
+This produces a `coverage.cobertura.xml` file per test project under `TestResults`. To turn those into a browsable HTML report locally,
 install [ReportGenerator](https://reportgenerator.io) once:
 
 ```shell
@@ -311,10 +316,15 @@ dotnet tool install --global dotnet-reportgenerator-globaltool
 and merge the reports:
 
 ```shell
-reportgenerator "-reports:src\Tests\**\TestResults\**\coverage.cobertura.xml" "-targetdir:coverage-report" -reporttypes:Html
+reportgenerator "-reports:TestResults/**/coverage.cobertura.xml" "-targetdir:coverage-report" -reporttypes:Html
 ```
 
 ## Checklist for new tests
+
+- [ ] New production code has accompanying unit tests — mandatory, not optional.
+- [ ] The *Analyzer gate* (`python3 .squad/tools/analyzer-check.py`) reports no diagnostic in a changed test
+      file (MSTest analyzer rules are info-level and only visible there or in SonarQube Cloud).
+- [ ] At least 80 % line coverage on new/changed production code and overall (*Coverage gate*).
 
 - [ ] Test class named `{TypeUnderTest}Tests` (or `...RenderTests` /
       `...PersistentStateTests` when split), in the matching test project.
