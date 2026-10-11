@@ -24,7 +24,12 @@ Mode `tests-first`:
    plan names, reusing the existing test doubles. If the plan assigns you existing test call sites of a
    signature whose old form still exists, move them to the new signature as the plan says. For a bug, use
    the input reported in the issue. A plan's claim of a bound (memory, size, time) gets a test that fails
-   when the claim is false.
+   when the claim is false. A time bound that cannot be expressed as a count (allocations, iterations) is
+   tested as the ratio of two durations measured in the same test (for example a doubled input against the
+   base input), never as an absolute duration; the limit is at least three times the highest ratio you
+   measured, with the instrumentation of *Test with coverage* included (`docs/UNIT_TESTS.md`).
+   A case about an escape (`\u0041`, an escaped surrogate pair) keeps its backslash on disk and asserts
+   that its input still contains it (*Escapes in files* in `.squad/team.md`).
 2. Build and run the new tests. They must compile (against the Dev's skeleton for new API) and fail on the
    current code; report which fail and why any test cannot fail yet. Leave the suite building, so the
    other tests keep running. If a skeleton body aborts the whole test run, report which tests could not run
@@ -55,7 +60,8 @@ Rules:
   detects the failure, and measure before handing over.
 - Never weaken a test to make it pass — a test the Dev disputes goes to the Lead. Never edit production
   code, never run Git write operations (that includes `git stash`; baselines go into a scratch
-  `git worktree`, see *Concurrency* in `.squad/routing.md`).
+  `git worktree`, see *Concurrency* in `.squad/routing.md`), never call session-management tools
+  (`create_session`, `send_message`, `archive_session`).
 
 When you change code that can be run, built or type-checked, run a real check that exercises the change
 before reporting it done: the project's tests, type-checker or build, or the test run itself. A

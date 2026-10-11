@@ -1,6 +1,9 @@
 # CLAUDE.md
 
-Project guidance for Claude when working in this repository. This file is a summary; the
+Project guidance for Claude when working in this repository. These rules are mirrored for GitHub Copilot in
+[`.github/copilot-instructions.md`](/.github/copilot-instructions.md): everything from the first `##` heading on
+is identical in both files (Claude Code's `@` import lines aside), so a change to it is made in both, and
+`.squad/tools/config-check.py` fails when they differ. This file is a summary; the
 binding, detailed references are [`ARCHITECTURE.md`](/docs/ARCHITECTURE.md) (how the system is put
 together and why), [`CONTRIBUTING.md`](/docs/CONTRIBUTING.md) (workflow, PR conventions, versioning),
 [`UNIT_TESTS.md`](/docs/UNIT_TESTS.md) (test conventions — **unit tests are mandatory for new code**) and
@@ -146,14 +149,16 @@ them is a sync bug to fix):
 FluentAssertions); test doubles as `.squad/project.md` (*Test doubles*) and `docs/UNIT_TESTS.md` prescribe —
 real objects and hand-written fakes/stubs unless the project names a mocking library. Classes
 `{TypeUnderTest}Tests`, methods `{Class}{Scenario}{ExpectedResult}` in PascalCase **without underscores**;
-always pass an assert message.
+always pass an assert message. Timing through an injected `TimeProvider`, never the real clock (the one
+exception, a time bound tested as the ratio of two durations, never an absolute one, is in
+`docs/UNIT_TESTS.md`).
 <!-- stack:end testing -->
 Full conventions, including the project's test doubles and the checklist to run before committing a new
 test, are in [`UNIT_TESTS.md`](/docs/UNIT_TESTS.md).
 
 ## Related skills
 
-Project-specific workflow skills live under `.claude/skills/`:
+Project-specific workflow skills live under `.claude/skills/` and run in Claude Code:
 
 - `create-pr` — verify (format, build, tests, analyzer and coverage gates), review the change locally,
   then open a PR following [`.github/pull_request_template.md`](/.github/pull_request_template.md).
@@ -171,8 +176,8 @@ Project-specific workflow skills live under `.claude/skills/`:
 - `review-pr` — review an open pull request against this project's stack, analyzer, security and
   unit-test conventions, and post the findings with an explicit verdict.
 
-Review runs as a subagent defined in `.claude/agents/squad-reviewer.md` (read-only, pinned to Opus, fresh
-context). `create-pr` and the squad skills call it *before* pushing, so a change is reviewed while it is
+Review is defined in `.claude/agents/squad-reviewer.md`, which Claude Code runs as a subagent (read-only,
+pinned to Opus, fresh context). `create-pr` and the squad skills call it *before* pushing, so a change is reviewed while it is
 still local; `review-pr` calls the same agent for a pull request that is already open. The review
 checklist, the integration-surface sweep, the blocking/non-blocking severity model and the "round 1 is a
 full review, later rounds review only the delta" rule live in that one file, so they are identical either
@@ -180,7 +185,7 @@ way.
 
 The squad skills run a multi-role pipeline defined in [`.squad/`](/.squad/team.md) — Lead (plan, decisions,
 PR approval decisions), Devil's Advocate (one plan challenge), Security (plan and diff on the `security` tier), Tester (tests first,
-coverage), Dev, Code Officer (format, analyzers) and Reviewer — as subagents under
+coverage), Dev, Code Officer (format, analyzers) and Reviewer — as Claude Code subagents under
 `.claude/agents/squad-*.md` (read-only where the role demands it: a hook in each agent denies Git and
 GitHub writes, so only the orchestrating session commits, pushes and posts), with the loop limits and
 escalation rules in [`.squad/routing.md`](/.squad/routing.md). Stack commands live in [`.squad/stack.md`](/.squad/stack.md),
@@ -188,7 +193,8 @@ the project's guarantees, security areas and integration surface in
 [`.squad/project.md`](/.squad/project.md). Their working records (`plan.md`, `log.md`, for features also
 `spec.md` and `tasks.md`) live under `specs/` on the work branch only; before the PR they are posted as a
 comment on the issue and removed, so `main` keeps no working records. An issue or feature PR never changes
-the squad or these instructions (`.squad/` except `stack.md` and `project.md`, `.claude/`, `CLAUDE.md`): squad
+the squad or these instructions (`.squad/` except `stack.md` and `project.md`, `.claude/`, `CLAUDE.md`,
+`.github/copilot-instructions.md`): squad
 lessons are filed as GitHub issues labelled `squad` and never fixed in a product PR. The squad and these
 rules come from the template repository named in `.squad/template.json`: a lesson about a template-managed
 file becomes an issue there and is rolled out with its `adopt-template` skill; a lesson about project

@@ -270,6 +270,19 @@ publicly (for example a static markup-formatting helper), reflection via
 `MethodInfo` is an accepted pattern in this codebase — see
 `MyImagesTests.cs` for the reference implementation.
 
+## Time in tests
+
+Production code that depends on the current time takes an injected `TimeProvider`, and its tests drive time
+with `FakeTimeProvider` (`Microsoft.Extensions.TimeProvider.Testing`) — never `Thread.Sleep` or the real
+clock. A `Task.Delay` inside a test double that simulates latency is fine; an assertion on elapsed wall-clock
+time is not.
+
+**Time bounds as a ratio.** A time bound that cannot be tested as a count (allocations, iterations) — a
+quadratic check that must stay linear, say — is the one exception to the real clock: measure two durations
+in the same test (the base input and a multiple of it) and assert their **ratio**, never an absolute
+duration; set the limit to at least three times the highest ratio measured, with the coverage
+instrumentation of *Test with coverage* included.
+
 ## XML documentation on tests
 
 Per `.github/instructions/csharp.instructions.md`, XML documentation is

@@ -20,7 +20,7 @@ Is this a breaking change, chore, fix, feature, etc?
 * List and link relevant issues here, for example: Closes #123
 -->
 
-## 👩‍💻 Reviewer Notes
+## 💬 Reviewer Notes
 
 <!---
 Provide some notes for reviewers to help them provide targeted feedback and testing.

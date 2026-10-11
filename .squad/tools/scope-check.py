@@ -6,7 +6,7 @@ Checks, over every file changed since the merge base with BASE_REF (working tree
 included; BASE_REF from `.squad/tools/squad_settings.py`, default origin/main):
 
 - no squad or instruction file is changed: `.squad/` except `stack.md` and `project.md`, `.claude/`,
-  `CLAUDE.md` (`.squad/routing.md`, *Scope of a product PR*; squad lessons become issues);
+  `CLAUDE.md`, `.github/copilot-instructions.md` (`.squad/routing.md`, *Scope of a product PR*; squad lessons become issues);
 - a marked file (`docs/CONTRIBUTING.md`, `docs/ARCHITECTURE.md`, the bug report and pull request templates,
   the decision and area index) is changed only inside its `<!-- project:… -->` blocks;
 - no changed Markdown file contains a control character (Unicode categories Cc, Cf, Zl, Zp other than tab
@@ -35,6 +35,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from analyzer_common import git, merge_base  # noqa: E402  (shared helpers next to this script)
 
 SQUAD_FILES_ALLOWED = {".squad/stack.md", ".squad/project.md"}
+INSTRUCTION_FILES = {"CLAUDE.md", ".github/copilot-instructions.md"}
 MARKED = ["docs/CONTRIBUTING.md", "docs/ARCHITECTURE.md", ".github/ISSUE_TEMPLATE/bug_report.md",
           ".github/pull_request_template.md", "docs/decisions/README.md", "docs/areas/README.md"]
 DOCS_TIER = ["README.md", "SECURITY.md", ".squad/stack.md", ".squad/project.md",
@@ -55,7 +56,7 @@ def changed_files(base):
 def is_squad_file(path):
     if path in SQUAD_FILES_ALLOWED:
         return False
-    return path.startswith((".squad/", ".claude/")) or path == "CLAUDE.md"
+    return path.startswith((".squad/", ".claude/")) or path in INSTRUCTION_FILES
 
 
 def is_working_record(path):

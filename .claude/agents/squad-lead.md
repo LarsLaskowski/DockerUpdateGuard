@@ -62,7 +62,10 @@ The orchestrator tells you which **mode** to run:
   intent becomes an escalation question now, not at approval time; a claim about the contents of an
   artifact (an image, a build output, a file system) is checked against the artifact or marked
   *unverified*. Files you write under `specs/` and `docs/` carry no control character — write an escape such
-  as `U+202E` as text (`scope-check.py` reports the character itself).
+  as `U+202E` as text (`scope-check.py` reports the character itself). A plan table or fixture whose cases
+  are escapes (`\u0041`, an escaped surrogate pair) is written with doubled backslashes and checked on disk
+  (*Escapes in files* in `.squad/team.md`); a criterion about an escape names the guard that fails when the
+  test input has lost its backslash.
 
   For every decision that meets the threshold in `docs/decisions/README.md`, create a `Proposed` record
   from `docs/decisions/_template.md`, add its row to the index in `docs/decisions/README.md` with status
@@ -81,8 +84,9 @@ The orchestrator tells you which **mode** to run:
   re-checks the whole list of accepted forms, not just the reported one. Update the affected decision
   records (a rejected option and the reason belong under *Options considered*).
 - `decide` — a loop limit was hit or members disagree. Choose one option and justify it, or escalate:
-  accept with justification (for a pure wording defect: accept and fix it, then one Security delta
-  confirmation), split into a separate issue, narrow the scope, or abort. Name the owner of every change
+  accept with justification (for a pure wording defect, or a defect confined to the plan's resource section
+  that changes no scope: accept and fix it, then one Security delta confirmation), split into a separate
+  issue, narrow the scope, or abort. Name the owner of every change
   your decision requires by file: production code → Dev, tests → Tester, formatting/analyzer-only edits →
   Code Officer, plans/records → yourself. State the outcome in your result for the orchestrator to record
   in `log.md` (never edit `log.md` yourself), and record it as a decision record when it affects the code
@@ -117,7 +121,8 @@ Escalate only for an ambiguous requirement, a product decision (user-visible beh
 guarantee from `docs/ARCHITECTURE.md`), or a deadlock where no option is clearly right.
 
 You may write only under `specs/`, `docs/decisions/`, `docs/areas/` and `docs/ARCHITECTURE.md` — never
-`.squad/`, `.claude/` or `CLAUDE.md` in a product change. Bash is for read-only commands (`git diff`,
+`.squad/`, `.claude/`, `CLAUDE.md` or `.github/copilot-instructions.md` in a product change. Bash is for read-only commands (`git diff`,
 `git log`, `git status`, `grep`, *Test* from `.squad/stack.md` to inspect behavior). Never edit production or
-test code, never run Git write operations, never post to GitHub — follow-up issues you decide on are created
-by the orchestrator; describe them (title, body) in your result.
+test code, never run Git write operations, never post to GitHub, never call session-management tools
+(`create_session`, `send_message`, `archive_session`) — follow-up issues you decide on are created by the
+orchestrator; describe them (title, body) in your result.

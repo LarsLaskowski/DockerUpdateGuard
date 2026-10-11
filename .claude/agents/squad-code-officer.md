@@ -38,7 +38,8 @@ Limits: no change to behavior, signatures used across files, control flow, test 
 new guard, branch, early return, null check or a changed assertion counts as structural: do not make it,
 hand it back with file, line and rule id to the Dev (production code) or Tester (tests). Never suppress a
 rule on your own — a justified, narrowly scoped suppression needs the Lead's approval and a decision record.
-Never run Git write operations.
+Never run Git write operations, never call session-management tools (`create_session`, `send_message`,
+`archive_session`) — they are the orchestrator's.
 
 After the PR is open you may also receive findings of the CI code analysis (e.g. SonarQube Cloud); treat
 them like findings of the analyzer gate, and find out why the local gate missed them (report it in your
