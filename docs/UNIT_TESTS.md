@@ -272,11 +272,12 @@ publicly (for example a static markup-formatting helper), reflection via
 
 ## Time in tests
 
-New or changed production code that depends on the current time takes an injected `TimeProvider`; its
-tests substitute it with NSubstitute (`GetUtcNow` is virtual), as `.squad/project.md` (*Test doubles*) does for
-every clock, and never wait with `Thread.Sleep` or `Task.Delay` for time to pass. Existing code still reads
-`DateTimeOffset.UtcNow` directly; it moves to `TimeProvider` when it is changed. A `Task.Delay` inside a test
-double that simulates latency is fine; an assertion on elapsed wall-clock time is not.
+Tests never depend on the real clock. New or changed time-dependent logic in services takes an injected
+`TimeProvider`; its tests substitute it with NSubstitute (`GetUtcNow` is virtual), as `.squad/project.md`
+(*Test doubles*) does for every clock, and never wait with `Thread.Sleep` or `Task.Delay` for time to pass.
+Existing services still read `DateTimeOffset.UtcNow` directly and move to `TimeProvider` when they are changed;
+entity timestamp defaults (`CreatedAtUtc = DateTimeOffset.UtcNow`) stay as they are. A `Task.Delay` inside a
+test double that simulates latency is fine; an assertion on elapsed wall-clock time is not.
 
 **Time bounds as a ratio.** A time bound that cannot be tested as a count (allocations, iterations) — a
 quadratic check that must stay linear, say — is the one exception to the real clock: measure two durations
