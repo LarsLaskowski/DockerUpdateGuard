@@ -55,6 +55,14 @@ SonarQube Cloud's own quality profile can still report `S####` rules the local d
 and its non-Roslyn checks (duplication, hotspots, taint analysis) only run in CI — such findings arrive in
 squad step 11.
 
+Changed shell scripts (`*.sh`), GitHub workflows (`.github/workflows/*.yml`) and Dockerfiles are checked with
+`shellcheck`, `actionlint` and `hadolint`; the SessionStart hook installs the three as pinned, checksum-verified
+binaries (`.claude/hooks/install-linters.sh`), and the gate reports NOT RUN for one that is missing (a refused
+download, for example). The gate itself checks two SonarQube Cloud shell rules shellcheck does not report:
+`shelldre:S7679` (a positional parameter `$1`…`$9` used as a word of its own inside a function — assign it to a
+local variable first) and `shelldre:S7688` (`[ … ]` instead of `[[ … ]]`). Other `shelldre:*` findings only report
+in squad step 11.
+
 ## Writing code
 
 - File-scoped namespaces; one top-level type per file; `using` outside the namespace (System first).

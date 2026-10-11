@@ -1,0 +1,15 @@
+# Enforce consistent CRLF line endings to match .editorconfig and the Reihitsu analyzer
+* text=auto eol=crlf
+
+# Binary assets
+*.png binary
+*.jpg binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+
+# Shell scripts must keep LF, otherwise bash fails on the carriage returns
+*.sh text eol=lf
+
+# The Dockerfile is parsed inside a Linux build; keep LF so no carriage return reaches a RUN command
+Dockerfile text eol=lf
