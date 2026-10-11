@@ -294,8 +294,10 @@ both test projects — no separate installation is needed to collect coverage
 during `dotnet test`.
 
 **Threshold: at least 80 % line coverage on new or changed production code, and at least 80 % overall** —
-the same measure as SonarQube's "coverage on new code". Check it locally before a push with *Test with
-coverage* and the *Coverage gate* from [`.squad/stack.md`](../.squad/stack.md):
+the same measure as SonarQube's "coverage on new code". Both values are set in `.squad/tools/squad_settings.py`
+(`COVERAGE_THRESHOLD`, `COVERAGE_OVERALL_THRESHOLD`); the overall one may start lower in a repository adopted
+with a coverage debt and is only ever raised. Check it locally before a push with *Test with coverage* and the
+*Coverage gate* from [`.squad/stack.md`](../.squad/stack.md):
 
 ```shell
 rm -rf TestResults

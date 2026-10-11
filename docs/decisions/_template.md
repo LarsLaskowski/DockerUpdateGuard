@@ -1,9 +1,10 @@
 # NNNN: <short title>
 
-- **Status:** Proposed | Accepted | Superseded by NNNN
+- **Status:** Proposed | Accepted | Superseded by NNNN (only for a released record; an unreleased record is edited in place)
 - **Date:** YYYY-MM-DD
+- **Area:** <area from docs/areas/README.md> | —
 - **Source:** Issue #<number> / PR #<number>
-- **Supersedes:** — | NNNN
+- **Supersedes:** — | NNNN (a released record only; also for a record that only amends it: say what it amends; NNNN stays unedited)
 
 ## Context
 
@@ -17,7 +18,8 @@ The situation and the forces at play: the problem, constraints, relevant guarant
 
 ## Decision
 
-What was chosen, stated so it can be checked against the code.
+What was chosen, in one to three sentences, stated so it can be checked against the code. The rules of the
+resulting behavior (values, formats, limits) go into the area document, linked here.
 
 ## Consequences
 

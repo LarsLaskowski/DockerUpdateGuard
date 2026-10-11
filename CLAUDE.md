@@ -1,7 +1,6 @@
 # CLAUDE.md
 
-Project guidance for Claude when working in this repository. These rules mirror `AGENTS.md` and `.github/copilot-instructions.md`; keep all three in sync —
-everything from the first `##` heading on is identical in all three files. This file is a summary; the
+Project guidance for Claude when working in this repository. This file is a summary; the
 binding, detailed references are [`ARCHITECTURE.md`](/docs/ARCHITECTURE.md) (how the system is put
 together and why), [`CONTRIBUTING.md`](/docs/CONTRIBUTING.md) (workflow, PR conventions, versioning),
 [`UNIT_TESTS.md`](/docs/UNIT_TESTS.md) (test conventions — **unit tests are mandatory for new code**) and
@@ -42,8 +41,9 @@ or stale claims.
   never show up as build warnings but that the CI code analysis (e.g. SonarQube Cloud) reports. Check with
   the *Analyzer gate* from `.squad/stack.md` and fix every finding before considering the work done (in
   the squad skills, the Code Officer owns this).
-- New or changed production code needs **at least 80 % line coverage**, and overall coverage must stay
-  at least 80 % (*Coverage gate* in `.squad/stack.md`, see [`UNIT_TESTS.md`](/docs/UNIT_TESTS.md#code-coverage)).
+- New or changed production code needs unit tests until the *Coverage gate* in `.squad/stack.md` passes:
+  **at least 80 % line coverage** on new or changed lines and overall (the thresholds live in
+  `.squad/tools/squad_settings.py`, see [`UNIT_TESTS.md`](/docs/UNIT_TESTS.md#code-coverage)).
 <!-- stack:begin golden-rules -->
 - Add new packages via **Central Package Management** (`Directory.Packages.props`); do not put version
   numbers in individual `.csproj` files.
@@ -54,32 +54,24 @@ or stale claims.
   un-regioned and never add the regions only after an analyzer warning.
 <!-- stack:end golden-rules -->
 
-## Commit messages
+## Commit messages and pull requests
 
-- Keep the subject line to a single summary of **no more than 80 characters** and do not end it with a
-  period.
-- Do not write the message in the first person.
-- Keep the body to **3–5 sentences**, depending on the number of changes.
-
-## Pull requests
-
-- Title and description are always written in **English**, regardless of the language used in the
-  conversation.
+- Commit subject: one summary of **no more than 80 characters**, no trailing period, not in the first
+  person. A body only where the subject does not explain the change; pull requests are squash-merged, so
+  branch commits never reach `main` and may simply name the pipeline step.
+- Pull request title `[area] Description` (areas in `docs/CONTRIBUTING.md`), description of **3–5
+  sentences** on what changed and why: they become the commit on `main`. Title and description are always
+  written in **English**, regardless of the language used in the conversation.
 
 ## Commands
 
 <!-- stack:begin commands -->
-Run from the repository root, where the solution file lives (exact commands, with the solution name, in
-`.squad/stack.md`):
-
-```bash
-dotnet restore
-reihitsu-format ./                                          # dotnet tool install -g Reihitsu.Cli
-dotnet build -c Release --no-restore
-dotnet test -c Release --no-build
-python3 .squad/tools/analyzer-check.py                      # analyzer gate
-python3 .squad/tools/coverage-check.py                      # coverage gate, after a coverage run
-```
+Run from the repository root, where the solution file lives, in this order: *Restore*, *Format*, *Build*,
+*Test*, *Analyzer gate*, and after *Test with coverage* the *Coverage gate*. Use the commands of those names
+in `.squad/stack.md` as they stand, never a copy from memory: they carry the solution name, the build
+configuration the project tests in, and the formatter's `--force` (`reihitsu-format` asks for confirmation
+for more than 25 files and, without a terminal, formats nothing). The formatter is installed with
+`dotnet tool install -g Reihitsu.Cli`.
 <!-- stack:end commands -->
 
 All commands, with what each one checks, are listed in [`.squad/stack.md`](/.squad/stack.md).
@@ -161,18 +153,21 @@ test, are in [`UNIT_TESTS.md`](/docs/UNIT_TESTS.md).
 
 ## Related skills
 
-Project-specific workflow skills live under `.claude/skills/`, mirrored identically under
-`.agents/skills/` (Codex/GPT) and `.github/skills/` (GitHub Copilot):
+Project-specific workflow skills live under `.claude/skills/`:
 
 - `create-pr` — verify (format, build, tests, analyzer and coverage gates), review the change locally,
   then open a PR following [`.github/pull_request_template.md`](/.github/pull_request_template.md).
 - `squad-issue` — fix a GitHub issue with the squad: the Lead plans and picks a tier
   (`docs` / `trivial` / `standard` / `security`), the Devil's Advocate challenges `standard`/`security`
-  plans once, Security reviews security-relevant plans, the Tester writes failing tests first, the Dev
-  implements to ≥ 80 % coverage, the Code Officer clears format and analyzer diagnostics, Reviewer and
-  Security review the diff, the Lead approves, then a PR referencing the issue is opened.
+  plans once, Security reviews plan and diff of `security` changes, the Tester writes failing tests first,
+  the Dev implements until the *Coverage gate* passes, the Code Officer clears format and analyzer
+  diagnostics, the Reviewer reviews the diff, the PR is approved by checklist (the Lead decides what is
+  open), then a PR referencing the issue is opened.
 - `squad-spec` — the same squad pipeline for a new feature, planned as `spec.md`, `plan.md` and
   `tasks.md` in a working folder under `specs/`.
+- `decision-consolidate` — merge unreleased decision records (Superseded chains, records on one topic) into
+  one record each, delete the obsolete ones, lift behavior that sits in records into the area documents and fix
+  links and index; released records stay untouched.
 - `review-pr` — review an open pull request against this project's stack, analyzer, security and
   unit-test conventions, and post the findings with an explicit verdict.
 
@@ -181,32 +176,35 @@ context). `create-pr` and the squad skills call it *before* pushing, so a change
 still local; `review-pr` calls the same agent for a pull request that is already open. The review
 checklist, the integration-surface sweep, the blocking/non-blocking severity model and the "round 1 is a
 full review, later rounds review only the delta" rule live in that one file, so they are identical either
-way. An agent without subagent support follows the same file inline.
+way.
 
 The squad skills run a multi-role pipeline defined in [`.squad/`](/.squad/team.md) — Lead (plan, decisions,
-PR approval), Devil's Advocate (one plan challenge), Security (plan and diff), Tester (tests first,
+PR approval decisions), Devil's Advocate (one plan challenge), Security (plan and diff on the `security` tier), Tester (tests first,
 coverage), Dev, Code Officer (format, analyzers) and Reviewer — as subagents under
-`.claude/agents/squad-*.md`, with the loop limits and escalation rules in
-[`.squad/routing.md`](/.squad/routing.md). Stack commands live in [`.squad/stack.md`](/.squad/stack.md),
+`.claude/agents/squad-*.md` (read-only where the role demands it: a hook in each agent denies Git and
+GitHub writes, so only the orchestrating session commits, pushes and posts), with the loop limits and
+escalation rules in [`.squad/routing.md`](/.squad/routing.md). Stack commands live in [`.squad/stack.md`](/.squad/stack.md),
 the project's guarantees, security areas and integration surface in
 [`.squad/project.md`](/.squad/project.md). Their working records (`plan.md`, `log.md`, for features also
 `spec.md` and `tasks.md`) live under `specs/` on the work branch only; before the PR they are posted as a
 comment on the issue and removed, so `main` keeps no working records. An issue or feature PR never changes
-the squad or these instructions (`.squad/` except `stack.md` and `project.md`, `.claude/`,
-`.github/skills/`, `.agents/skills/`, `CLAUDE.md`, `AGENTS.md`, `.github/copilot-instructions.md`): squad
+the squad or these instructions (`.squad/` except `stack.md` and `project.md`, `.claude/`, `CLAUDE.md`): squad
 lessons are filed as GitHub issues labelled `squad` and never fixed in a product PR. The squad and these
 rules come from the template repository named in `.squad/template.json`: a lesson about a template-managed
 file becomes an issue there and is rolled out with its `adopt-template` skill; a lesson about project
 knowledge (`.squad/stack.md`, `.squad/project.md`, a project block) becomes an issue here and is worked in
 a squad-maintenance PR checked with `python3 .squad/tools/config-check.py` (`.squad/routing.md`,
-*Squad lessons*). The user acts as Product Manager
-and is only asked when the Lead escalates. Pull requests are merged with *Squash and merge*, so only the
+*Squad lessons*); `python3 .squad/tools/scope-check.py` reports a squad file in a product change. The user
+acts as Product Manager and is only asked when the Lead escalates. Pull requests are merged with *Squash and merge*, so only the
 PR title and description reach `main`.
 
 The reasoning behind code decisions — why something was built the way it was — is recorded by the Lead
-as one decision record per decision in [`docs/decisions/`](/docs/decisions/README.md) (append-only,
-superseded rather than rewritten), not in `ARCHITECTURE.md`. Read the relevant records before changing
-code they cover, and do not contradict an accepted record without superseding it.
+as one decision record per decision in [`docs/decisions/`](/docs/decisions/README.md) (unreleased records are
+edited in place, released ones are append-only and superseded), not in `ARCHITECTURE.md`. What holds today —
+formats, limits, error behavior, guarantees — is written once in the area document of the change in
+[`docs/areas/`](/docs/areas/README.md), which the same pull request updates. Read the relevant records and area
+documents before changing code they cover, and do not contradict an accepted record without changing it
+(unreleased) or superseding it (released).
 
 Two rules these skills enforce that are easy to get wrong:
 

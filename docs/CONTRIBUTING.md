@@ -86,12 +86,11 @@ Follow the PR template in [`.github/pull_request_template.md`](../.github/pull_r
 
 ## Quality gates
 
-Code-style rules are documented in [`CLAUDE.md`](../CLAUDE.md) (mirrored in `AGENTS.md` and
-[`.github/copilot-instructions.md`](../.github/copilot-instructions.md)) and in
+Code-style rules are documented in [`CLAUDE.md`](../CLAUDE.md) and in
 [`.squad/stack.md`](../.squad/stack.md), and are binding for all contributions. Before opening a pull
 request, run the commands from `stack.md`: *Format*, *Build*, the *Analyzer gate* (no analyzer diagnostic
-of any severity in a changed file) and the *Coverage gate* (at least 80 % line coverage on new or changed
-production code and overall, see [`UNIT_TESTS.md`](UNIT_TESTS.md#code-coverage)). A pull request is
+of any severity in a changed file) and the *Coverage gate* (line coverage on new or changed production code
+and overall, thresholds in [`UNIT_TESTS.md`](UNIT_TESTS.md#code-coverage)). A pull request is
 expected to arrive clean (see the decision record on quality gates in [`decisions/`](decisions/README.md)).
 
 <!-- project:begin releases -->

@@ -36,19 +36,18 @@ in.
      `stack.md` lists as forbidden
    - *Analyzer gate* — no analyzer diagnostic of any severity in a changed
      file; treat each as a failure
-   - *Test with coverage* and *Coverage gate* — at least 80 % line coverage
-     on new/changed production code and overall
-   - `python3 .squad/tools/config-check.py` when the diff touches `.claude/`,
-     `.github/skills/`, `.agents/skills/` or an instruction file — Claude Code
-     silently drops an agent or skill whose front matter does not parse, and
-     the skill copies and instruction files must match
+   - *Test with coverage* and *Coverage gate* — it must pass (the thresholds
+     are in `.squad/tools/squad_settings.py`)
+   - `python3 .squad/tools/config-check.py` when the diff touches `.claude/`
+     or `CLAUDE.md` — Claude Code silently drops an agent or skill whose front
+     matter does not parse
    Fix any failures before proceeding — do not open a PR with failing checks,
    unformatted code or outstanding analyzer diagnostics. This step is the gate
    before the PR; CI is not meant to find anything here.
 5. **Commit** with a subject line of at most 80 characters, not written in
-   the first person and without a trailing period, and a body of 3–5
-   sentences explaining *what* changed and *why* if it is not obvious from
-   the diff. Stage only the files that belong to this task.
+   the first person and without a trailing period; a body only if the subject
+   does not explain the change (the PR is squash-merged, its description is
+   the lasting record). Stage only the files that belong to this task.
 6. **Run the internal review loop** (see below) and resolve what it finds.
    This happens *before* the push, so the pull request opens on a reviewed
    change instead of collecting review rounds afterwards.
@@ -89,8 +88,7 @@ The review happens here, in this session, against the local branch — not as
 a round trip through pull request comments. Each pass is delegated to the
 `squad-reviewer` subagent, which runs on Opus with a fresh
 context and the repository's full review checklist. That checklist lives in
-`.claude/agents/squad-reviewer.md`; an agent without subagent
-support follows the same file inline, so the review is the same either way.
+`.claude/agents/squad-reviewer.md`.
 
 1. **Pass 1** — launch `squad-reviewer` (subagent_type
    `squad-reviewer`, model `opus`). Tell it the base ref, the

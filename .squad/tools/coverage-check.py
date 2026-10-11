@@ -3,19 +3,25 @@
 "coverage on new code") and overall line coverage, merged from all coverage reports
 (one per test project) of the latest test run; *Test with coverage* clears the results directory first.
 
-Supported report formats (set COVERAGE_FORMAT in `.squad/tools/squad_settings.py`):
+Supported report formats (set COVERAGE_FORMAT in `.squad/tools/squad_settings.py`; a repository with
+several stack profiles lists one `(format, glob)` pair per report kind in COVERAGE_REPORTS instead, and
+the hits of all of them are merged):
 - `cobertura` — e.g. coverlet's `coverage.cobertura.xml` (.NET), or any Cobertura XML
 - `lcov`      — `lcov.info` (Node: c8, Node's test runner, Jest, Vitest, ...)
 - `go`        — a `go test -coverprofile` file
 
-The base (origin/main), the report location and the production-code paths are fixed in
-`squad_settings.py`, not taken from the command line, so nothing user-supplied reaches git or the
-filesystem.
+The base (BASE_REF, default origin/main), the report location, the production-code paths and the thresholds
+(COVERAGE_THRESHOLD for new/changed lines, COVERAGE_OVERALL_THRESHOLD for the whole code base, both default
+80) are fixed in `squad_settings.py`, not taken from the command line, so nothing user-supplied reaches git
+or the filesystem.
 
 Usage, from the repository root, after *Test with coverage* from `.squad/stack.md`:
-    python3 .squad/tools/coverage-check.py [--threshold 80]
+    python3 .squad/tools/coverage-check.py
 
-Exit code 0 when both values reach the threshold, 1 otherwise.
+Exit code 0 when both values reach their threshold, 1 otherwise. When the diff contains neither production
+nor test code, the overall value is only reported: such a change cannot make coverage worse, so a gap that
+already exists on the base does not fail it. A diff that only changes or deletes tests is gated, because
+it can lower overall coverage.
 """
 import argparse
 import glob
@@ -28,7 +34,16 @@ import xml.etree.ElementTree as ET
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import squad_settings as settings  # noqa: E402  (per-repository settings next to this script)
 
-BASE_REF = "origin/main"
+BASE_REF = getattr(settings, "BASE_REF", "origin/main")
+
+
+def merge_base():
+    """The merge base of BASE_REF and HEAD; a missing base ref is a clear error, not a traceback."""
+    result = subprocess.run(["git", "merge-base", BASE_REF, "HEAD"], capture_output=True, text=True, check=False)
+    if result.returncode != 0:
+        sys.exit(f"Cannot find the merge base with {BASE_REF}: fetch it (git fetch origin <branch>) or set BASE_REF "
+                 "in .squad/tools/squad_settings.py to the base branch of this repository")
+    return result.stdout.strip()
 
 
 def repo_path(path):
@@ -39,11 +54,9 @@ def repo_path(path):
 def changed_lines():
     """Return {repo-relative path: set(line numbers)} of lines added or changed since the merge base with
     origin/main (working tree included) in the production paths from squad_settings."""
-    merge_base = subprocess.run(
-        ["git", "merge-base", BASE_REF, "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
     pathspecs = list(settings.COVERAGE_PATHSPECS) + [f":(exclude){p}" for p in settings.COVERAGE_EXCLUDES]
     diff = subprocess.run(
-        ["git", "diff", "-U0", merge_base, "--", *pathspecs],
+        ["git", "diff", "-U0", merge_base(), "--", *pathspecs],
         capture_output=True, text=True, check=True).stdout
     result, current = {}, None
     for line in diff.splitlines():
@@ -59,12 +72,36 @@ def changed_lines():
     return result
 
 
-def run_reports():
+def changed_test_files():
+    """Return the repo-relative test files changed since the merge base with origin/main (working tree
+    included): the paths in COVERAGE_TEST_PATHSPECS, by default the COVERAGE_EXCLUDES of squad_settings."""
+    pathspecs = getattr(settings, "COVERAGE_TEST_PATHSPECS", settings.COVERAGE_EXCLUDES)
+    if not pathspecs:
+        return []
+    return subprocess.run(
+        ["git", "diff", "--name-only", merge_base(), "--", *pathspecs],
+        capture_output=True, text=True, check=True).stdout.splitlines()
+
+
+def report_sources():
+    """The (format, glob) pairs to read: COVERAGE_REPORTS when set (several stack profiles), otherwise the
+    single COVERAGE_FORMAT / COVERAGE_REPORT_GLOB."""
+    pairs = getattr(settings, "COVERAGE_REPORTS", None)
+    if pairs is None:
+        pairs = [(settings.COVERAGE_FORMAT, settings.COVERAGE_REPORT_GLOB)]
+    for report_format, _ in pairs:
+        if report_format not in LOADERS:
+            sys.exit(f"Unknown coverage format '{report_format}' in squad_settings.py")
+    return list(pairs)
+
+
+def run_reports(pattern):
     """Every report the glob matches: one per test project of the latest run. *Test with coverage* clears the
     results directory first, so no report of an earlier run can be among them."""
-    reports = sorted(glob.glob(settings.COVERAGE_REPORT_GLOB, recursive=True))
+    reports = sorted(glob.glob(pattern, recursive=True))
     if not reports:
-        sys.exit(f"No coverage report matches {settings.COVERAGE_REPORT_GLOB} - run *Test with coverage* first")
+        sys.exit(f"No coverage report matches {pattern} - the report was never written or "
+                 "has been deleted; run *Test with coverage* from .squad/stack.md first, then this gate again")
     return reports
 
 
@@ -134,15 +171,17 @@ def load_go(report):
 LOADERS = {"cobertura": load_cobertura, "lcov": load_lcov, "go": load_go}
 
 
-def merged_hits(loader):
-    """Merge every report matching COVERAGE_REPORT_GLOB into one map of hits per file and line."""
-    hits = {}
-    reports = run_reports()
-    print(f"Coverage reports merged: {len(reports)}")
-    for report in reports:
-        for path, lines in loader(report).items():
-            for number, count in lines.items():
-                add_hit(hits, path, number, count)
+def merged_hits():
+    """Merge every report matching the globs of COVERAGE_REPORTS into one map of hits per file and line."""
+    hits, merged = {}, 0
+    for report_format, pattern in report_sources():
+        reports = run_reports(pattern)
+        merged += len(reports)
+        for report in reports:
+            for path, lines in LOADERS[report_format](report).items():
+                for number, count in lines.items():
+                    add_hit(hits, path, number, count)
+    print(f"Coverage reports merged: {merged}")
     return hits
 
 
@@ -173,23 +212,39 @@ def new_code_coverage(hits):
     return (covered / coverable * 100 if coverable else 100.0), covered, coverable
 
 
+def warn_untracked():
+    """Name the untracked production files: neither `git diff` nor `git ls-files` sees them, so the gate
+    would silently leave them out of both values and could fail at a false low percentage."""
+    untracked = subprocess.run(
+        ["git", "ls-files", "--others", "--exclude-standard", "--", *settings.COVERAGE_PATHSPECS,
+         *[f":(exclude){p}" for p in settings.COVERAGE_EXCLUDES]],
+        capture_output=True, text=True, check=True).stdout.splitlines()
+    if untracked:
+        print("WARNING: untracked production files ignored by this gate (stage them with `git add` first):")
+        for path in untracked:
+            print(f"  {path}")
+        print()
+
+
 def main():
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--threshold", type=float, default=80.0)
-    args = parser.parse_args()
+    argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter).parse_args()
+    threshold = float(getattr(settings, "COVERAGE_THRESHOLD", 80))
+    overall_threshold = float(getattr(settings, "COVERAGE_OVERALL_THRESHOLD", threshold))
 
     os.chdir(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
-    loader = LOADERS.get(settings.COVERAGE_FORMAT)
-    if loader is None:
-        sys.exit(f"Unknown COVERAGE_FORMAT '{settings.COVERAGE_FORMAT}' in squad_settings.py")
-    hits = merged_hits(loader)
+    warn_untracked()
+    hits = merged_hits()
     overall, total_hit, total = overall_coverage(hits)
+    changed = changed_lines()
     new_code, covered, coverable = new_code_coverage(hits)
 
     print(f"\nNew/changed code: {new_code:.1f}% ({covered}/{coverable} lines)")
     print(f"Overall:          {overall:.1f}% ({total_hit}/{total} lines)")
-    ok = new_code >= args.threshold and overall >= args.threshold
-    print(f"Threshold {args.threshold:.0f}%: {'PASS' if ok else 'FAIL'}")
+    gated = bool(changed) or bool(changed_test_files())
+    if not gated:
+        print("No production or test code changed: overall coverage is reported, not gated (the change cannot lower it).")
+    ok = not gated or (new_code >= threshold and overall >= overall_threshold)
+    print(f"Thresholds {threshold:.0f}% on new/changed code, {overall_threshold:.0f}% overall: {'PASS' if ok else 'FAIL'}")
     return 0 if ok else 1
 
 if __name__ == "__main__":

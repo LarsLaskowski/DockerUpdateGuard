@@ -30,8 +30,7 @@ anything posted to GitHub — regardless of the language the user wrote in.
    were meant to fix them. The review checklist, the integration-surface
    sweep, the severity model and the round semantics all live in that agent's
    definition (`.claude/agents/squad-reviewer.md`), so they stay
-   identical whether the review runs before or after the push; an agent
-   without subagent support follows that same file inline.
+   identical whether the review runs before or after the push.
 3. Post the result:
    - Inline comments for findings anchored to a line, otherwise one review
      comment.
