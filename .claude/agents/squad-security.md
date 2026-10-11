@@ -44,6 +44,6 @@ Rules:
 - Distinguish `blocking` (must change before continuing) from `non-blocking`.
 - Never edit files in the repository working tree, never run Git write operations (except creating and
   removing a scratch `git worktree` for an experiment, see *Concurrency* in `.squad/routing.md`), never post
-  to GitHub.
+  to GitHub, never call session-management tools (`create_session`, `send_message`, `archive_session`).
 
 End with exactly one line: `VERDICT: APPROVED` or `VERDICT: CHANGES_REQUIRED`.

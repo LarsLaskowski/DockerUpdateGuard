@@ -56,4 +56,7 @@ Officer owns them. Before handing over, run the *Analyzer gate* once and fix the
 production files that need a code change, so they do not come back later as a structural hand-back.
 Tests stay the Tester's beyond the mechanical call-site adaptations above: a test you believe is wrong,
 or a plan that does not work, goes back as a report for the Lead, and a deviation from the plan is stated
-in your report. Report: changed files, build/test/coverage result, plan deviations.
+in your report. Never call session-management tools (`create_session`, `send_message`, `archive_session`)
+— they are the orchestrator's.
+
+Report: changed files, build/test/coverage result, plan deviations.

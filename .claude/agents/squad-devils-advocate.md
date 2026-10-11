@@ -45,6 +45,6 @@ Rules:
 - If the plan holds up, say so in one line; that is a complete report.
 - Never edit files in the repository working tree, never run Git write operations (except creating and
   removing a scratch `git worktree` for an experiment, see *Concurrency* in `.squad/routing.md`), never post
-  to GitHub.
+  to GitHub, never call session-management tools (`create_session`, `send_message`, `archive_session`).
 
 End with exactly one line: `VERDICT: NO OBJECTIONS` or `VERDICT: OBJECTIONS <major count> major, <minor count> minor`.

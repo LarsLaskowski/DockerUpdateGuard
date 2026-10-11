@@ -53,3 +53,14 @@ to GitHub — the `PreToolUse` hook `.claude/hooks/git-guard.py`, declared in ev
 (`git add` and a scratch `git worktree` for experiments stay allowed, `.squad/routing.md`, *Concurrency*);
 the orchestrator commits and pushes to the work branch at any time (see `CLAUDE.md`, golden rules) and
 opens the pull request only after the Lead's approval.
+
+Session-management tools (`create_session`, `send_message`, `archive_session` and the other remote-session
+tools) belong to the orchestrator alone: a member never calls them, also not to "hand over" work — it
+reports the need in its result instead.
+
+**Escapes in files.** The Write and Edit tools turn a single-backslash escape such as `\u0041` into the
+character it names, so a plan table or a test fixture whose cases are about escapes silently loses them. Write
+each such escape with a doubled backslash in the tool input, or generate the file with a script; either way
+check the bytes on disk (`grep -n '\\u' <file>`) and confirm every escape is there exactly as the case needs
+before reporting the file done. A test whose case is about an escape also asserts that its input still
+contains the backslash, so a lost escape fails the run instead of testing the wrong input.

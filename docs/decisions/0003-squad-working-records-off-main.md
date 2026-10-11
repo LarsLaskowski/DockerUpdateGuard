@@ -22,7 +22,8 @@ refresh.
 ## Decision
 
 Option 2. In addition, an issue or feature PR never changes the squad or the agent instructions
-(`.squad/` except `stack.md` and `project.md`, `.claude/`, `CLAUDE.md`). Lessons about the squad become a GitHub issue
+(`.squad/` except `stack.md` and `project.md`, `.claude/`, `CLAUDE.md` and its Copilot mirror
+`.github/copilot-instructions.md`). Lessons about the squad become a GitHub issue
 labelled `squad`: lessons about template-managed files in the template repository
 (LarsLaskowski/Squad-Spec-Repository-Template), fixed there and rolled out with `adopt-template`; lessons
 about project knowledge in the product repository, worked in a separate squad-maintenance PR.

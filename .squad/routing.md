@@ -24,7 +24,8 @@ comment that replaces it). Step numbers below are the ones the skills use.
 ## Scope of a product PR
 
 An issue or feature PR changes the product and its documentation only. It never touches the squad or the
-agent instructions: `.squad/` (`team.md`, `routing.md`, tools), `.claude/` and `CLAUDE.md`.
+agent instructions: `.squad/` (`team.md`, `routing.md`, tools), `.claude/`, `CLAUDE.md` and
+`.github/copilot-instructions.md`.
 Lessons about the squad are collected in step 12 and filed where they can be fixed (*Squad lessons*
 below), never fixed in the product PR. `python3 .squad/tools/scope-check.py` reports any such file in the
 diff; the orchestrator runs it in step 7 and the Reviewer in step 8, and a finding is blocking.
@@ -47,7 +48,9 @@ repository, its commit and the stack profile). Three kinds:
 - **Marked** — rebuilt on every refresh, keeping the repository's content inside
   `<!-- project:… -->` blocks: `CLAUDE.md`, `docs/CONTRIBUTING.md`, `docs/ARCHITECTURE.md`, `.github/ISSUE_TEMPLATE/bug_report.md`,
   `.github/pull_request_template.md`, `docs/decisions/README.md` and `docs/areas/README.md`. Text outside the
-  project blocks is the template's.
+  project blocks is the template's. `.github/copilot-instructions.md` is generated from `CLAUDE.md`: its own
+  title and introduction, then the body of `CLAUDE.md` from the first `##` heading on, which `config-check.py`
+  keeps identical — a change to that body (a project block, too) is made in both files.
 - **Seeded** — created once and owned by the repository from then on: `.squad/stack.md`,
   `.squad/project.md`, `.squad/tools/squad_settings.py`,
   `.claude/settings.json`, `SECURITY.md`, `docs/UNIT_TESTS.md` and the stack profile's CI, CodeQL, Dependabot and tool
@@ -173,7 +176,8 @@ told so.
   objection (accept and revise, or reject with a reason); a rejected objection is not raised again.
 - **Plan ↔ Security (steps 2–3):** at most 2 rejections. After the 2nd `CHANGES_REQUIRED` the Lead
   decides: narrow the scope, split into separate issues, escalate to the Product Manager, or — when the
-  remaining defect is a pure wording defect — accept and fix it, followed by exactly one Security delta
+  remaining defect is a pure wording defect, or a defect confined to the plan's resource section (limits,
+  bounds, sizes) whose fix changes no scope — accept and fix it, followed by exactly one Security delta
   confirmation of the fix (a further rejection then goes to the Product Manager).
 - **Review ↔ Dev (steps 6–8):** review pass 1 is a full review; at most **2 further fix-and-review
   rounds**, each reviewing only the delta. Blocking findings still open after that go to the Lead, who

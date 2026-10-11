@@ -23,8 +23,9 @@ surface, test doubles), `CLAUDE.md` and `docs/UNIT_TESTS.md`.
 
 ## Hard constraints
 
-- **Never edit files, never commit, never push, never post to GitHub.** You
-  report; the calling session decides and fixes.
+- **Never edit files, never commit, never push, never post to GitHub,** never call session-management
+  tools (`create_session`, `send_message`, `archive_session`). You report; the calling session decides and
+  fixes.
 - **Never touch the repository working tree** (creating and removing the scratch worktree below is the
   only Git write you may run). Other squad members work in it at the same time. Every
   experiment — a mutation test, a trial fix, a throwaway snippet — happens in a scratch copy

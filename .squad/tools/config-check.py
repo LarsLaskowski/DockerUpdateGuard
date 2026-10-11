@@ -12,7 +12,9 @@ it. This script checks, without arguments:
 - every squad agent (`squad-*.md`) declares the `PreToolUse` hook `.claude/hooks/git-guard.py` for `Bash`, and
   that hook exists: it keeps Git and GitHub write operations out of the members' hands; it also names its
   `model` as an alias (`haiku`, `sonnet`, `opus`) and an explicit `effort`;
-- `CLAUDE.md` exists;
+- `CLAUDE.md` and its GitHub Copilot mirror `.github/copilot-instructions.md` exist and are identical from their
+  first `## ` heading on (only the title and introduction differ; Claude Code `@path` import lines on a line of
+  their own are left out of the comparison, Copilot reads `.github/instructions/*.instructions.md` itself);
 - `.squad/template.json` names the template repository (where lessons about template-managed files are
   filed) and, for a repository with several stack profiles, lists them in `profiles` (the first one is
   `profile`); then every profile has its `analyzer-check-<profile>.py` and `session-start-<profile>.sh`
@@ -42,11 +44,12 @@ GIT_GUARD = os.path.join(CLAUDE_DIR, "hooks", "git-guard.py")
 MODELS = ("haiku", "sonnet", "opus")
 EFFORTS = ("low", "medium", "high", "xhigh", "max")
 SKILLS_DIR = os.path.join(CLAUDE_DIR, "skills")
-INSTRUCTION_FILES = ["CLAUDE.md"]
+INSTRUCTION_FILES = ["CLAUDE.md", os.path.join(GITHUB_DIR, "copilot-instructions.md")]
 REQUIRED_FILES = [os.path.join(SQUAD_DIR, "stack.md"), os.path.join(SQUAD_DIR, "project.md"),
                   os.path.join(SQUAD_DIR, "tools", "squad_settings.py")]
 # No quantifier overlaps another one, so matching stays linear (no backtracking).
 PLACEHOLDER = re.compile(r"\{\{TODO:([^{}]*)\}\}")
+IMPORT_LINE = re.compile(r"^@[^\s@]\S*[ \t]*\n", re.M)
 PLACEHOLDER_GLOBS = INSTRUCTION_FILES + REQUIRED_FILES + [
     "SECURITY.md", "sonar-project.properties",
     os.path.join(SQUAD_DIR, "**", "*.md"), os.path.join("docs", "**", "*.md"),
@@ -124,10 +127,22 @@ def check_skills(errors):
     return skills
 
 
+def instruction_body(path):
+    """An instruction file from its first `## ` heading on, without Claude Code import lines."""
+    text = read_text(path)
+    start = text.find("\n## ")
+    return IMPORT_LINE.sub("", text[start:]) if start >= 0 else ""
+
+
 def check_instructions(errors):
-    for path in INSTRUCTION_FILES:
-        if not os.path.isfile(path):
-            errors.append(f"{path} is missing")
+    missing = [path for path in INSTRUCTION_FILES if not os.path.isfile(path)]
+    for path in missing:
+        errors.append(f"{path} is missing (written by adopt-template)")
+    if missing:
+        return
+    reference, mirror = INSTRUCTION_FILES
+    if instruction_body(mirror) != instruction_body(reference):
+        errors.append(f"{mirror} differs from {reference} after the first '## ' heading - make the same change in both")
 
 
 def check_template_record(errors):
