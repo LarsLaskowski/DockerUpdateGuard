@@ -1,3 +1,7 @@
+---
+applyTo: "**/*.cs"
+---
+
 # C# Code Style Instructions
 
 This file describes the preferred C# code style conventions.
