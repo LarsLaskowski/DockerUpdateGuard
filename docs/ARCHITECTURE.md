@@ -6,7 +6,8 @@ implemented. It is a technical reference for contributors and AI coding
 agents working in this repository; it complements, and does not repeat,
 [README.md](../README.md) (product scope, configuration reference), the
 [docs/](.) folder (contribution, testing, deployment tiers), and
-[CLAUDE.md](../CLAUDE.md) and
+[CLAUDE.md](../CLAUDE.md) /
+[.github/copilot-instructions.md](../.github/copilot-instructions.md) and
 [.github/instructions/csharp.instructions.md](../.github/instructions/csharp.instructions.md)
 (coding conventions).
 
