@@ -94,7 +94,8 @@ public async Task VulnerabilityEnrichmentServiceRefreshAsyncProviderExceptionMar
 ```
 
 Test class names follow `{TypeUnderTest}Tests` (or `{TypeUnderTest}RenderTests`
-/ `{TypeUnderTest}PersistentStateTests` when split, per `AGENTS.md`).
+/ `{TypeUnderTest}PersistentStateTests` when split, as described under the
+test project layout above).
 
 ## Arranging your tests
 
