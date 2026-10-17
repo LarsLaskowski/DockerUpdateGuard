@@ -38,9 +38,10 @@ in.
      file; treat each as a failure
    - *Test with coverage* and *Coverage gate* — it must pass (the thresholds
      are in `.squad/tools/squad_settings.py`)
-   - `python3 .squad/tools/config-check.py` when the diff touches `.claude/`
-     or `CLAUDE.md` — Claude Code silently drops an agent or skill whose front
-     matter does not parse
+   - `python3 .squad/tools/config-check.py` when the diff touches `.claude/`,
+     `CLAUDE.md` or `.github/copilot-instructions.md` — Claude Code silently
+     drops an agent or skill whose front matter does not parse, and the two
+     instruction files must stay identical from the first `##` heading on
    Fix any failures before proceeding — do not open a PR with failing checks,
    unformatted code or outstanding analyzer diagnostics. This step is the gate
    before the PR; CI is not meant to find anything here.
@@ -52,7 +53,7 @@ in.
    This happens *before* the push, so the pull request opens on a reviewed
    change instead of collecting review rounds afterwards.
 7. **Push** the branch: `git push -u origin <branch-name>`.
-8. **Open the PR** using the repository's template at
+8. **Open the PR as a draft** (`draft: true`) using the repository's template at
    `.github/pull_request_template.md`:
    - base branch `main`, unless the user explicitly requests a different base
    - title `[area] Description` per
@@ -65,7 +66,24 @@ in.
      verified) — including the unit-test, formatting, analyzer, coverage,
      documentation and dependency items, not just the general ones
    - wrap the body in a HEREDOC so the formatting survives
-9. Report the branch name and the PR URL back to the user.
+9. **Keep it a draft until green** (`.squad/routing.md`, *Draft until green*).
+   Subscribe to the PR's activity (`subscribe_pr_activity` when available;
+   otherwise check the results yourself before finishing). On every look at the
+   PR, read its mergeability first (`pull_request_read`, method `get`): a
+   conflict with the base branch (`mergeable: false`, `mergeable_state:
+   "dirty"`) blocks CI from starting, so merge `origin/main` into the branch,
+   resolve it, rerun step 4 on the merged files and push before waiting for
+   anything else (`.squad/routing.md`, *Merge conflicts*). Then wait until every
+   CI check on the head has finished. Fix each failing check and every new
+   issue the CI code analysis (e.g. SonarQube Cloud) reports — a passed quality
+   gate with open new issues is still rework — rerun step 4 on the fix, commit
+   once per round and push. Only when all checks are green and the code
+   analysis lists no new issue on the head and the PR merges cleanly, mark it ready for review
+   (`update_pull_request` with `draft: false`). If a failure lies outside the
+   change or the code analysis cannot be read, leave it a draft and tell the
+   user what blocks it.
+10. Report the branch name, the PR URL and whether it is ready for review or
+    still a draft (and why) back to the user.
 
 ## What the pull request says — and what it doesn't
 
@@ -133,7 +151,8 @@ posted comment.
 - Prefer non-interactive commands only.
 - Do not amend existing commits unless the user explicitly asks.
 - If a PR already exists for the branch, push the new commits and report the
-  existing URL instead of opening a duplicate.
+  existing URL instead of opening a duplicate; a draft stays a draft until
+  step 9 holds on the new head.
 - If push or PR creation fails, stop and report the failure clearly instead
   of continuing as if it succeeded.
 - Never force-push over another contributor's commits without explicit

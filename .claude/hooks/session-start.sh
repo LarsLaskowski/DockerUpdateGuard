@@ -23,7 +23,7 @@ if [[ -n "${CLAUDE_ENV_FILE:-}" ]]; then
   } >> "$CLAUDE_ENV_FILE"
 fi
 
-# Formatter used by the Code Officer
+# Formatter (*Format* in .squad/stack.md), run by the squad member that changed the files
 if ! command -v reihitsu-format >/dev/null 2>&1; then
   dotnet tool install -g Reihitsu.Cli
 fi

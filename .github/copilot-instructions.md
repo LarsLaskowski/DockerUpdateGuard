@@ -36,11 +36,12 @@ or stale claims.
   when a session ends. Force-pushing or otherwise rewriting published history, deleting branches, and
   creating tags (a `v*` tag may trigger a release) still need explicit user approval.
 - **Pull requests are only opened by the squad or by the user.** The `squad-issue` and `squad-spec`
-  skills open a PR after the Lead's approval (tier `docs`: after a clean review); outside the squad, a PR
+  skills open a PR after the Lead's approval (tiers `docs` and `patch`: after a clean review); outside the squad, a PR
   is opened only when the user explicitly asks for one (e.g. by running the `create-pr` skill). Never open
   a PR on your own initiative.
 - Run *Format* from [`.squad/stack.md`](/.squad/stack.md) after editing code and before building; CI is
-  not meant to find formatting issues. In the squad skills only the Code Officer runs it.
+  not meant to find formatting issues. In the squad skills the member that changed the files runs it on
+  them before handing back (`.squad/team.md`, *Shared rules*).
 - A changed file may not carry **any analyzer diagnostic of any severity**, including info-level ones that
   never show up as build warnings but that the CI code analysis (e.g. SonarQube Cloud) reports. Check with
   the *Analyzer gate* from `.squad/stack.md` and fix every finding before considering the work done (in
@@ -163,10 +164,10 @@ Project-specific workflow skills live under `.claude/skills/` and run in Claude 
 - `create-pr` — verify (format, build, tests, analyzer and coverage gates), review the change locally,
   then open a PR following [`.github/pull_request_template.md`](/.github/pull_request_template.md).
 - `squad-issue` — fix a GitHub issue with the squad: the Lead plans and picks a tier
-  (`docs` / `trivial` / `standard` / `security`), the Devil's Advocate challenges `standard`/`security`
-  plans once, Security reviews plan and diff of `security` changes, the Tester writes failing tests first,
-  the Dev implements until the *Coverage gate* passes, the Code Officer clears format and analyzer
-  diagnostics, the Reviewer reviews the diff, the PR is approved by checklist (the Lead decides what is
+  (`docs` / `patch` / `trivial` / `standard` / `security`), the Devil's Advocate challenges `standard`/`security`
+  plans that weigh options once, Security reviews plan and diff of `security` changes, the Tester writes failing tests first,
+  the Dev implements until the *Coverage gate* passes, each member formats the files it changed, the Code
+  Officer clears analyzer diagnostics, the Reviewer reviews the diff, the PR is approved by checklist (the Lead decides what is
   open), then a PR referencing the issue is opened.
 - `squad-spec` — the same squad pipeline for a new feature, planned as `spec.md`, `plan.md` and
   `tasks.md` in a working folder under `specs/`.
@@ -185,7 +186,7 @@ way.
 
 The squad skills run a multi-role pipeline defined in [`.squad/`](/.squad/team.md) — Lead (plan, decisions,
 PR approval decisions), Devil's Advocate (one plan challenge), Security (plan and diff on the `security` tier), Tester (tests first,
-coverage), Dev, Code Officer (format, analyzers) and Reviewer — as Claude Code subagents under
+coverage), Dev, Code Officer (analyzer gate) and Reviewer — as Claude Code subagents under
 `.claude/agents/squad-*.md` (read-only where the role demands it: a hook in each agent denies Git and
 GitHub writes, so only the orchestrating session commits, pushes and posts), with the loop limits and
 escalation rules in [`.squad/routing.md`](/.squad/routing.md). Stack commands live in [`.squad/stack.md`](/.squad/stack.md),

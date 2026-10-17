@@ -4,8 +4,10 @@ lint pass over changed files no stack analyzer covers — shell scripts (shellch
 (`shelldre:S7679`, `shelldre:S7688`). The SessionStart hook installs the three linters
 (`.claude/hooks/install-linters.sh`); a missing one is reported as NOT RUN, never as a pass.
 
-Written by adopt-template; it takes no arguments, so nothing user-supplied reaches the shell, git or the
-filesystem."""
+Written by adopt-template. The gates accept one flag, `--lint-only`, and no value: it runs this lint pass alone,
+without the stack's build and analyzers, for a `patch` that touches only scripts, workflows or Dockerfiles
+(`.squad/routing.md`, *Gates of a patch*). Anything else on the command line is refused, so nothing
+user-supplied reaches the shell, git or the filesystem."""
 import os
 import re
 import shutil
@@ -16,6 +18,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import squad_settings as settings  # noqa: E402  (per-repository settings next to this script)
 
 BASE_REF = getattr(settings, "BASE_REF", "origin/main")
+LINT_ONLY = "--lint-only"
 WORKFLOW_DIR = ".github/workflows/"
 # A positional parameter, with the quotes it may carry: `$1`, `"$1"`, `${1}`, `"${1}"`. positional_words()
 # keeps the ones used as a word of their own — not inside a longer string (`"::error::$1"`) and not the
@@ -147,3 +150,19 @@ def lint_check():
     for tool, label, matches, command in LINTERS:
         ok = run_linter(tool, label, command, [f for f in files if matches(f)]) and ok
     return sonar_shell_check([f for f in files if is_shell(f)]) and ok
+
+
+def lint_only_requested(argv=None):
+    """True when the gate was called with `--lint-only`, the one flag it accepts. Any other argument ends the run
+    with a usage error (exit code 1), so no user-supplied value reaches the shell, git or the filesystem."""
+    args = sys.argv[1:] if argv is None else list(argv)
+    if args and args != [LINT_ONLY]:
+        sys.exit(f"usage: analyzer-check.py [{LINT_ONLY}]")
+    return bool(args)
+
+
+def lint_only_main():
+    """The lint pass alone, printed like the full gate; its exit code."""
+    ok = lint_check()
+    print("PASS" if ok else "FAIL")
+    return 0 if ok else 1
