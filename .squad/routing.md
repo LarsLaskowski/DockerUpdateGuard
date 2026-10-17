@@ -43,9 +43,10 @@ Many squad, instruction and documentation files come from the Squad-Spec-Reposit
 are refreshed from there with its `adopt-template` skill (`.squad/template.json` records the template
 repository, its commit and the stack profile). Three kinds:
 
-- **Managed** — overwritten on every refresh: `.squad/team.md`, `.squad/routing.md`, `.squad/tools/*.py`
-  except `squad_settings.py`, `.squad/tools/.gitignore`,
-  `.claude/agents/squad-*.md`, `.claude/hooks/`, the template's skills under `.claude/skills/`,
+- **Managed** — overwritten on every refresh: `CLAUDE.md` (it only imports `AGENTS.md`, `@AGENTS.md`, so
+  Claude Code reads the same rules as every other agent), `.squad/team.md`, `.squad/routing.md`,
+  `.squad/tools/*.py` except `squad_settings.py`, `.squad/tools/.gitignore`, `.claude/agents/squad-*.md`,
+  `.claude/hooks/`, the template's skills under `.claude/skills/`,
   `.github/ISSUE_TEMPLATE/feature_request.md`, `docs/decisions/_template.md`, `docs/areas/_template.md`,
   `specs/README.md` and `specs/_template/`.
 - **Marked** — rebuilt on every refresh, keeping the repository's content inside
@@ -53,8 +54,7 @@ repository, its commit and the stack profile). Three kinds:
   `.github/pull_request_template.md`, `docs/decisions/README.md` and `docs/areas/README.md`. Text outside the
   project blocks is the template's. `.github/copilot-instructions.md` is generated from `AGENTS.md`: its own
   title and introduction, then the body of `AGENTS.md` from the first `##` heading on, which `config-check.py`
-  keeps identical — a change to that body (a project block, too) is made in both files. `CLAUDE.md` is managed:
-  it only imports `AGENTS.md` (`@AGENTS.md`), so Claude Code reads the same rules as every other agent.
+  keeps identical — a change to that body (a project block, too) is made in both files.
 - **Seeded** — created once and owned by the repository from then on: `.squad/stack.md`,
   `.squad/project.md`, `.squad/tools/squad_settings.py`,
   `.claude/settings.json`, `SECURITY.md`, `docs/UNIT_TESTS.md` and the stack profile's CI, CodeQL, Dependabot and tool
