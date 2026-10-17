@@ -39,7 +39,7 @@ in.
    - *Test with coverage* and *Coverage gate* — it must pass (the thresholds
      are in `.squad/tools/squad_settings.py`)
    - `python3 .squad/tools/config-check.py` when the diff touches `.claude/`,
-     `CLAUDE.md` or `.github/copilot-instructions.md` — Claude Code silently
+     `AGENTS.md`, `CLAUDE.md` or `.github/copilot-instructions.md` — Claude Code silently
      drops an agent or skill whose front matter does not parse, and the two
      instruction files must stay identical from the first `##` heading on
    Fix any failures before proceeding — do not open a PR with failing checks,

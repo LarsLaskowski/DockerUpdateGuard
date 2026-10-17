@@ -1,7 +1,7 @@
 # Copilot instructions
 
 Project guidance for GitHub Copilot when working in this repository. These rules mirror
-[`CLAUDE.md`](/CLAUDE.md): everything from the first `##` heading on is generated from it by the template's
+[`AGENTS.md`](/AGENTS.md): everything from the first `##` heading on is generated from it by the template's
 `adopt-template` skill (Claude Code's `@` import lines aside — Copilot reads
 `.github/instructions/*.instructions.md` through their `applyTo` front matter), and
 `.squad/tools/config-check.py` fails when the two differ. Change both files together. This file is a
@@ -194,8 +194,8 @@ the project's guarantees, security areas and integration surface in
 [`.squad/project.md`](/.squad/project.md). Their working records (`plan.md`, `log.md`, for features also
 `spec.md` and `tasks.md`) live under `specs/` on the work branch only; before the PR they are posted as a
 comment on the issue and removed, so `main` keeps no working records. An issue or feature PR never changes
-the squad or these instructions (`.squad/` except `stack.md` and `project.md`, `.claude/`, `CLAUDE.md`,
-`.github/copilot-instructions.md`): squad
+the squad or these instructions (`.squad/` except `stack.md` and `project.md`, `.claude/`, `AGENTS.md`,
+`CLAUDE.md`, `.github/copilot-instructions.md`): squad
 lessons are filed as GitHub issues labelled `squad` and never fixed in a product PR. The squad and these
 rules come from the template repository named in `.squad/template.json`: a lesson about a template-managed
 file becomes an issue there and is rolled out with its `adopt-template` skill; a lesson about project

@@ -86,7 +86,7 @@ Follow the PR template in [`.github/pull_request_template.md`](../.github/pull_r
 
 ## Quality gates
 
-Code-style rules are documented in [`CLAUDE.md`](../CLAUDE.md) and in
+Code-style rules are documented in [`AGENTS.md`](../AGENTS.md) and in
 [`.squad/stack.md`](../.squad/stack.md), and are binding for all contributions. Before opening a pull
 request, run the commands from `stack.md`: *Format*, *Build*, the *Analyzer gate* (no analyzer diagnostic
 of any severity in a changed file) and the *Coverage gate* (line coverage on new or changed production code

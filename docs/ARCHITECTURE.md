@@ -6,7 +6,7 @@ implemented. It is a technical reference for contributors and AI coding
 agents working in this repository; it complements, and does not repeat,
 [README.md](../README.md) (product scope, configuration reference), the
 [docs/](.) folder (contribution, testing, deployment tiers), and
-[CLAUDE.md](../CLAUDE.md) /
+[AGENTS.md](../AGENTS.md) /
 [.github/copilot-instructions.md](../.github/copilot-instructions.md) and
 [.github/instructions/csharp.instructions.md](../.github/instructions/csharp.instructions.md)
 (coding conventions).
@@ -67,7 +67,7 @@ observability stays in `.Telemetry`; the host project owns composition.
 Solution-wide conventions (`.slnx` format, `net10.0`, nullable/implicit
 usings, `SharedAssemblyInfo.cs`, per-configuration rulesets, centralized
 `GlobalSuppressions.cs`, `Reihitsu.Analyzer` + `SonarAnalyzer.CSharp`) are
-documented in [CLAUDE.md](../CLAUDE.md) and not repeated here.
+documented in [AGENTS.md](../AGENTS.md) and not repeated here.
 
 ## 3. Host composition and startup sequence
 
@@ -208,7 +208,7 @@ read/write intent, not by entity:
 
 Current migrations, in order: `InitialCreate` → `Update1` → … → `Update7`
 (latest). New migrations follow the `Update{N}` naming convention described
-in [CLAUDE.md](../CLAUDE.md#project-configuration); `Design\
+in [AGENTS.md](../AGENTS.md#project-configuration); `Design\
 DockerUpdateGuardDbContextFactory` provides the design-time `DbContext` for
 `dotnet ef` tooling.
 
@@ -530,9 +530,9 @@ Summarized here for quick reference; details are in the sections above.
 
 ## Development process
 
-This repository is developed with Claude Code: `CLAUDE.md` holds the rules (mirrored for GitHub Copilot in
-`.github/copilot-instructions.md`), the skills live under `.claude/skills/` and the squad roles under
-`.claude/agents/`. Every pull request is reviewed before it is opened by the read-only reviewer in `.claude/agents/squad-reviewer.md`
+This repository is developed with Claude Code: `AGENTS.md` holds the rules every AI coding agent reads
+(imported by `CLAUDE.md`, mirrored for GitHub Copilot in `.github/copilot-instructions.md`), the skills
+live under `.claude/skills/` and the squad roles under `.claude/agents/`. Every pull request is reviewed before it is opened by the read-only reviewer in `.claude/agents/squad-reviewer.md`
 — round 1 is a full review, every later round looks only at the delta, and only blocking findings earn
 another round, because a fresh full re-review of unchanged code always finds something new.
 

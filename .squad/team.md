@@ -47,7 +47,7 @@ Lead cannot resolve.
 
 ## Shared rules (apply to every member)
 
-`CLAUDE.md`, `docs/ARCHITECTURE.md`, `docs/CONTRIBUTING.md`, `docs/UNIT_TESTS.md`, `.squad/stack.md` and
+`AGENTS.md`, `docs/ARCHITECTURE.md`, `docs/CONTRIBUTING.md`, `docs/UNIT_TESTS.md`, `.squad/stack.md` and
 `.squad/project.md` are binding: unit tests for all new code until the *Coverage gate* passes, the code
 conventions from `stack.md` while writing, English for everything
 that ends up in the repository or on GitHub. Inside the squad, the member that changed files — Dev,
@@ -58,7 +58,7 @@ labels it "Code Officer only" is superseded by this rule. The Code Officer owns 
 launched only for analyzer diagnostics or style findings that need reading. Subagents never run Git write operations or post
 to GitHub — the `PreToolUse` hook `.claude/hooks/git-guard.py`, declared in every `squad-*.md`, denies them
 (`git add` and a scratch `git worktree` for experiments stay allowed, `.squad/routing.md`, *Concurrency*);
-the orchestrator commits and pushes to the work branch at any time (see `CLAUDE.md`, golden rules) and
+the orchestrator commits and pushes to the work branch at any time (see `AGENTS.md`, golden rules) and
 opens the pull request only after the Lead's approval. Because the orchestrator may commit an interim state
 while a member works (a stop hook demands it), a clean `git status` at hand-back is no sign of lost work: a
 member reports its changes against the head SHA it was given (`git diff <sha>`).

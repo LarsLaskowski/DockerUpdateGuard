@@ -39,7 +39,7 @@ action yourself — including follow-up issues the Lead decides on.
   continuations of one agent or once its reported tokens pass 300,000, launch the member fresh with a short
   hand-over (*Continuing a member*). A continued member keeps its role's limits (`.squad/team.md`).
 - **The squad does not change itself in a product PR.** An issue or feature PR never touches `.squad/`
-  (`team.md`, `routing.md`, tools), `.claude/`, `CLAUDE.md` or `.github/copilot-instructions.md`. Lessons about the squad are filed in step 12 as `.squad/routing.md`,
+  (`team.md`, `routing.md`, tools), `.claude/`, `AGENTS.md`, `CLAUDE.md` or `.github/copilot-instructions.md`. Lessons about the squad are filed in step 12 as `.squad/routing.md`,
   *Squad lessons*, says — template-managed files in the template repository, project knowledge here. If the
   change itself genuinely needs one of those files (e.g. a new build command every contributor must know),
   the Lead escalates instead and the Product Manager decides: `.squad/stack.md` and `.squad/project.md` may
@@ -54,7 +54,7 @@ action yourself — including follow-up issues the Lead decides on.
   break each other (`.squad/routing.md`). Launch them one after another; only `squad-devils-advocate` and
   `squad-security` may run together in steps 2–3, and `squad-reviewer` and `squad-security` in step 8,
   because they are read-only and the reviewer's own build happens in a scratch copy.
-- **Commits and pushes** to the work branch are always allowed (`CLAUDE.md`, golden rules): commit and
+- **Commits and pushes** to the work branch are always allowed (`AGENTS.md`, golden rules): commit and
   push `specs/<folder>/log.md` right after intake (step 1), so a stop hook or a crashed session finds no
   untracked files, and after every further completed step. PRs are merged with *Squash and merge*, so only
   the PR title and description reach `main`; intermediate commit messages may name the step, but never
