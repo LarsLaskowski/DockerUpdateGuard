@@ -15,12 +15,18 @@ included; BASE_REF from `.squad/tools/squad_settings.py`, default origin/main):
   under `specs/` is left in the diff, only `specs/README.md` and `specs/_template/` may change;
 - with `--tier docs`: every changed file is product documentation as the `docs` tier defines it
   (`README.md`, `SECURITY.md`, `docs/` except `docs/decisions/` and `docs/areas/`, `.squad/stack.md`,
-  `.squad/project.md`, the bug report and pull request templates) or a working record under `specs/`.
+  `.squad/project.md`, the bug report and pull request templates) or a working record under `specs/`;
+- with `--tier patch`: the files outside `specs/` change by at most PATCH_MAX_LINES lines in all (added plus
+  removed, an untracked file with every line; default 30, `squad_settings.py`), and no binary file changes.
+
+When BASE_REF is not an ancestor of HEAD (a stale local copy in a fresh session, or a base that moved on), the
+script prints a warning above the result: the file list may then include changes that are not this branch's, so
+fetch the base (`git fetch origin main`) and merge it first. The warning does not change the exit code.
 
 The script takes only these two options, so nothing user-supplied reaches git or the filesystem.
 
 Usage, from the repository root:
-    python3 .squad/tools/scope-check.py [--tier docs|trivial|standard|security] [--no-specs]
+    python3 .squad/tools/scope-check.py [--tier docs|patch|trivial|standard|security] [--no-specs]
 
 Exit code 0 when the diff is in scope, 1 otherwise.
 """
@@ -32,7 +38,7 @@ import sys
 import unicodedata
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from analyzer_common import git, merge_base  # noqa: E402  (shared helpers next to this script)
+from analyzer_common import BASE_REF, git, merge_base, settings  # noqa: E402  (shared helpers next to this script)
 
 SQUAD_FILES_ALLOWED = {".squad/stack.md", ".squad/project.md"}
 INSTRUCTION_FILES = {"CLAUDE.md", ".github/copilot-instructions.md"}
@@ -45,6 +51,7 @@ DOCS_TIER_EXCLUDED = ["docs/decisions/", "docs/areas/"]
 PROJECT_BLOCK = re.compile(r"<!-- project:begin ([\w-]+) -->\n.*?<!-- project:end \1 -->\n?", re.S)
 CONTROL_CATEGORIES = {"Cc", "Cf", "Zl", "Zp"}
 KEEP = {"\t", "\n", "\r"}
+PATCH_MAX_LINES = getattr(settings, "PATCH_MAX_LINES", 30)
 
 
 def changed_files(base):
@@ -117,19 +124,50 @@ def file_errors(path, base, tier, no_specs):
     return errors + ([control] if control else [])
 
 
+def patch_errors(base):
+    """The `patch` tier's budget: lines added plus removed outside `specs/` (an untracked file counts every line),
+    and no binary file."""
+    errors, lines = [], 0
+    for row in git("diff", "--numstat", base).splitlines():
+        added, removed, path = row.split("\t", 2)
+        if is_working_record(path):
+            continue
+        if added == "-":
+            errors.append(f"{path}: binary file changed - tier patch allows only text edits (raise the tier)")
+            continue
+        lines += int(added) + int(removed)
+    for path in git("ls-files", "--others", "--exclude-standard").splitlines():
+        if path.strip() and not is_working_record(path) and os.path.isfile(path):
+            lines += len(read_text(path).splitlines())
+    if lines > PATCH_MAX_LINES:
+        errors.append(f"{lines} changed lines outside specs/: tier patch allows at most {PATCH_MAX_LINES} "
+                      "(raise the tier)")
+    return errors
+
+
 def check(files, base, tier, no_specs):
-    return [error for path in files for error in file_errors(path, base, tier, no_specs)]
+    errors = [error for path in files for error in file_errors(path, base, tier, no_specs)]
+    return errors + (patch_errors(base) if tier == "patch" else [])
+
+
+def base_is_stale():
+    """True when BASE_REF is not an ancestor of HEAD, so the diff against the merge base may show foreign files."""
+    result = subprocess.run(["git", "merge-base", "--is-ancestor", BASE_REF, "HEAD"], capture_output=True, check=False)
+    return result.returncode == 1
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--tier", choices=["docs", "trivial", "standard", "security"])
+    parser.add_argument("--tier", choices=["docs", "patch", "trivial", "standard", "security"])
     parser.add_argument("--no-specs", action="store_true", help="no working record may be left under specs/")
     args = parser.parse_args()
     os.chdir(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
     base = merge_base()
     files = changed_files(base)
     errors = check(files, base, args.tier, args.no_specs)
+    if base_is_stale():
+        print(f"WARNING: {BASE_REF} is not an ancestor of HEAD: fetch it (git fetch origin main) and merge it, or "
+              "the changed files below may include changes of the base branch")
     for error in errors:
         print(f"ERROR: {error}")
     print(f"\nChecked {len(files)} changed files: {'PASS' if not errors else 'FAIL'}")

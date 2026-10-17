@@ -46,7 +46,6 @@ Please provide a summary of the tests affected by this work and any unique strat
 - [ ] I have updated the project documentation ([`README.md`](../README.md), [`ARCHITECTURE.md`](../docs/ARCHITECTURE.md)) to reflect my changes.
 - [ ] I have read the [CONTRIBUTING](../docs/CONTRIBUTING.md) documentation and followed the project's code style guidelines.
 - [ ] New dependencies, if any, were added the way *Dependencies* in `.squad/stack.md` prescribes.
-
 <!-- project:begin checklist -->
 - [ ] The C# rules in [`csharp.instructions.md`](../.github/instructions/csharp.instructions.md) are followed.
 

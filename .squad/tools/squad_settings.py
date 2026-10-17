@@ -4,6 +4,9 @@ later refreshes; the scripts that import it are template-managed."""
 # Base branch the gates diff against (merge base with HEAD); fetch it before running the gates.
 BASE_REF = "origin/main"
 
+# Tier `patch` (.squad/routing.md, *Tiers*; scope-check.py --tier patch): changed lines outside specs/ at most.
+PATCH_MAX_LINES = 30
+
 # Solution or project file the analyzer gate builds.
 SOLUTION = "DockerUpdateGuard.slnx"
 

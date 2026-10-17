@@ -8,6 +8,9 @@ Checks, run from anywhere inside the repository (it takes no arguments):
 - the index in `docs/decisions/README.md` has exactly one row per record, with the same status (the number
   in a row, and the record in a `Superseded by` status, may be written as a link, `[NNNN](NNNN-title.md)`);
 - `Superseded by NNNN` names an existing record that lists this one under `Supersedes`;
+- no two records share a number, and every relative link from a record or the index to a record file
+  (`[0003](0003-title.md)`, `../decisions/0003-title.md#why`) names a file that exists, so a renumbered or
+  renamed record leaves no stale link behind;
 - once `docs/areas/README.md` lists areas, every area links an existing document in `docs/areas/` and every
   record has an `Area:` field naming a listed area, or `—` for a record about no area (a repository without
   areas is not checked for this);
@@ -43,7 +46,9 @@ NUMBER = re.compile(r"\b(\d{4})\b")
 INDEX_BLOCK = re.compile(r"<!-- project:begin index -->(.*?)<!-- project:end index -->", re.DOTALL)
 INDEX_NUMBER = re.compile(r"^\d{4}$")
 RECORD_LINK = re.compile(r"\[(\d{4})\]\([^)]*\)")
+LINK_TARGET = re.compile(r"\]\(<?([^)\s>]+)>?(?:\s+\"[^\"]*\")?\)")
 RELEASE_TAGS = "v*"
+INDEX_FILE = "README.md"
 
 
 def plain(text):
@@ -104,6 +109,23 @@ def check_links(records, errors):
                           f"{number} under Supersedes")
 
 
+def check_record_links(root, records, errors):
+    """Every relative Markdown link from a record or the index to a record file must name an existing file."""
+    decisions = os.path.join(root, DECISIONS_DIR)
+    sources = [(record["rel"], record["text"]) for record in records.values()]
+    index = os.path.join(decisions, INDEX_FILE)
+    if os.path.isfile(index):
+        sources.append((f"{DECISIONS_DIR}/{INDEX_FILE}".replace(os.sep, "/"), read_text(index)))
+    for rel, text in sources:
+        for target in LINK_TARGET.findall(text):
+            path = target.split("#", 1)[0]
+            if not path or "://" in path or path.startswith("mailto:") or not RECORD_NAME.match(os.path.basename(path)):
+                continue
+            base = root if path.startswith("/") else decisions
+            if not os.path.isfile(os.path.normpath(os.path.join(base, path.lstrip("/")))):
+                errors.append(f"{rel}: links {target}, which does not exist")
+
+
 def parse_index_row(line):
     """(number, status) of a `| NNNN | Title | Status | Date |` row, or None for any other line. The title may
     contain pipes, so the status and the date are taken from the end of the row."""
@@ -114,7 +136,7 @@ def parse_index_row(line):
 
 
 def check_index(root, records, errors):
-    path = os.path.join(root, DECISIONS_DIR, "README.md")
+    path = os.path.join(root, DECISIONS_DIR, INDEX_FILE)
     if not os.path.isfile(path):
         if records:
             errors.append(f"{DECISIONS_DIR}/README.md is missing")
@@ -157,7 +179,7 @@ def parse_area_row(line):
 
 def load_areas(root, errors):
     """Area name -> document for the areas `docs/areas/README.md` lists; empty without a list."""
-    path = os.path.join(root, AREAS_DIR, "README.md")
+    path = os.path.join(root, AREAS_DIR, INDEX_FILE)
     block = AREA_INDEX_BLOCK.search(read_text(path)) if os.path.isfile(path) else None
     areas = {}
     for line in block.group(1).splitlines() if block else []:
@@ -251,6 +273,7 @@ def main():
     errors, warnings = [], []
     records = load_records(root, errors)
     check_links(records, errors)
+    check_record_links(root, records, errors)
     check_index(root, records, errors)
     check_areas(root, records, errors)
     check_freeze(root, records, errors, warnings)
