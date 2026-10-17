@@ -68,7 +68,7 @@ change with it.
 - the client table in `docs/ARCHITECTURE.md`, *Integration clients*
 
 **A change to the entity model** touches:
-- `DockerUpdateGuardDbContext`, a migration named per the convention in `CLAUDE.md` (*Project configuration*)
+- `DockerUpdateGuardDbContext`, a migration named per the convention in `AGENTS.md` (*Project configuration*)
 - `src/Tests/DockerUpdateGuard.Data.Tests`
 - `docs/ARCHITECTURE.md`, *Data layer*
 

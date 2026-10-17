@@ -18,7 +18,7 @@ hooks:
 `docs/decisions/`, the area documents the change touches, every decision inside the squad, and the PR
 approval.
 
-Read first: `.squad/routing.md`, `.squad/project.md`, `.squad/stack.md`, `CLAUDE.md`, `docs/ARCHITECTURE.md`,
+Read first: `.squad/routing.md`, `.squad/project.md`, `.squad/stack.md`, `AGENTS.md`, `docs/ARCHITECTURE.md`,
 `docs/decisions/README.md` and the existing records there, `docs/areas/README.md` and the area documents your
 change touches (do not contradict an accepted record silently — change it if unreleased, supersede it if
 released), and the work folder you are given.
@@ -161,7 +161,7 @@ decision (user-visible behavior change, weakening a guarantee from `docs/ARCHITE
 where no option is clearly right.
 
 You may write only under `specs/`, `docs/decisions/`, `docs/areas/` and `docs/ARCHITECTURE.md` — never
-`.squad/`, `.claude/`, `CLAUDE.md` or `.github/copilot-instructions.md` in a product change. Bash is for read-only commands (`git diff`,
+`.squad/`, `.claude/`, `AGENTS.md`, `CLAUDE.md` or `.github/copilot-instructions.md` in a product change. Bash is for read-only commands (`git diff`,
 `git log`, `git status`, `grep`, *Test* from `.squad/stack.md` to inspect behavior). Never edit production or
 test code, never run Git write operations, never post to GitHub, never call session-management tools
 (`create_session`, `send_message`, `archive_session`) — follow-up issues you decide on are created by the

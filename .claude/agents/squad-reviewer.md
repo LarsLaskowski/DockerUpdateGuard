@@ -19,7 +19,7 @@ reviewer, not an implementer.
 
 Read first: `.squad/stack.md` (commands, analyzer gate, code and test
 conventions), `.squad/project.md` (security areas, guarantees, integration
-surface, test doubles), `CLAUDE.md` and `docs/UNIT_TESTS.md`.
+surface, test doubles), `AGENTS.md` and `docs/UNIT_TESTS.md`.
 
 ## Hard constraints
 
@@ -109,7 +109,7 @@ After step 10 the plan comes from the "Squad working record" comment the
 calling session points you to.
 
 Outside the squad (e.g. via `create-pr` for a squad-maintenance change), run
-`python3 .squad/tools/config-check.py` whenever the diff touches `.claude/`, `CLAUDE.md` or
+`python3 .squad/tools/config-check.py` whenever the diff touches `.claude/`, `AGENTS.md`, `CLAUDE.md` or
 `.github/copilot-instructions.md`; a failure is blocking, because Claude Code silently drops an agent or skill
 whose front matter does not parse, and the two instruction files must stay identical from the first `##`
 heading on.
@@ -149,7 +149,7 @@ hold in every repository:
   section has nothing to check here.
 - **A new dependency** follows *Dependencies* in `.squad/stack.md` (e.g. a
   central version file); a version outside that mechanism is blocking.
-- **A change to project conventions** touches `CLAUDE.md`,
+- **A change to project conventions** touches `AGENTS.md`,
   `.github/copilot-instructions.md`, `.squad/stack.md`, the skill files under
   `.claude/skills/` and `docs/`, which are meant to stay in sync with each other. Updating only one of them is a finding.
 
@@ -161,7 +161,7 @@ repository names this thing, and is that statement still true?**
 - **Analyzer cleanliness**: would the *Analyzer gate* in `.squad/stack.md`
   pass? Check the rules listed there as easy to get wrong by hand.
 - **Code style**: the conventions in *Writing code* (`stack.md`) and the
-  code style section of `CLAUDE.md`.
+  code style section of `AGENTS.md`.
 - **Error handling**: are failures from external systems (network, file
   system, parsers, child processes) handled rather than allowed to kill a
   long-running loop or, worse, silently produce wrong data? A fabricated or

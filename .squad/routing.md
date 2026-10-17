@@ -27,8 +27,8 @@ launch) — (after step 10, in the "Squad working record" comment that replaces 
 ## Scope of a product PR
 
 An issue or feature PR changes the product and its documentation only. It never touches the squad or the
-agent instructions: `.squad/` (`team.md`, `routing.md`, tools), `.claude/`, `CLAUDE.md` and
-`.github/copilot-instructions.md`.
+agent instructions: `.squad/` (`team.md`, `routing.md`, tools), `.claude/`, `AGENTS.md`, `CLAUDE.md`
+and `.github/copilot-instructions.md`.
 Lessons about the squad are collected in step 12 and filed where they can be fixed (*Squad lessons*
 below), never fixed in the product PR. `python3 .squad/tools/scope-check.py` reports any such file in the
 diff; the orchestrator runs it in step 7 and the Reviewer in step 8, and a finding is blocking.
@@ -49,11 +49,12 @@ repository, its commit and the stack profile). Three kinds:
   `.github/ISSUE_TEMPLATE/feature_request.md`, `docs/decisions/_template.md`, `docs/areas/_template.md`,
   `specs/README.md` and `specs/_template/`.
 - **Marked** — rebuilt on every refresh, keeping the repository's content inside
-  `<!-- project:… -->` blocks: `CLAUDE.md`, `docs/CONTRIBUTING.md`, `docs/ARCHITECTURE.md`, `.github/ISSUE_TEMPLATE/bug_report.md`,
+  `<!-- project:… -->` blocks: `AGENTS.md`, `docs/CONTRIBUTING.md`, `docs/ARCHITECTURE.md`, `.github/ISSUE_TEMPLATE/bug_report.md`,
   `.github/pull_request_template.md`, `docs/decisions/README.md` and `docs/areas/README.md`. Text outside the
-  project blocks is the template's. `.github/copilot-instructions.md` is generated from `CLAUDE.md`: its own
-  title and introduction, then the body of `CLAUDE.md` from the first `##` heading on, which `config-check.py`
-  keeps identical — a change to that body (a project block, too) is made in both files.
+  project blocks is the template's. `.github/copilot-instructions.md` is generated from `AGENTS.md`: its own
+  title and introduction, then the body of `AGENTS.md` from the first `##` heading on, which `config-check.py`
+  keeps identical — a change to that body (a project block, too) is made in both files. `CLAUDE.md` is managed:
+  it only imports `AGENTS.md` (`@AGENTS.md`), so Claude Code reads the same rules as every other agent.
 - **Seeded** — created once and owned by the repository from then on: `.squad/stack.md`,
   `.squad/project.md`, `.squad/tools/squad_settings.py`,
   `.claude/settings.json`, `SECURITY.md`, `docs/UNIT_TESTS.md` and the stack profile's CI, CodeQL, Dependabot and tool
@@ -65,7 +66,7 @@ Every lesson from step 12 is filed once, where it can actually be fixed:
 
 | The lesson concerns | Filed as | Fixed by |
 | ------------------- | -------- | -------- |
-| a **managed** file, or the template part of a **marked** file (squad rules, agents, skills, tools, the template sections of `CLAUDE.md`) | an issue labelled `squad` in the template repository named in `.squad/template.json` (`repository`), titled `[Squad] <lesson> (from <this repository>#<issue>)` and linking the run | a PR in the template repository, then a refresh of every repository that uses the template (`adopt-template`) — never a local edit, which the next refresh would overwrite |
+| a **managed** file, or the template part of a **marked** file (squad rules, agents, skills, tools, the template sections of `AGENTS.md`) | an issue labelled `squad` in the template repository named in `.squad/template.json` (`repository`), titled `[Squad] <lesson> (from <this repository>#<issue>)` and linking the run | a PR in the template repository, then a refresh of every repository that uses the template (`adopt-template`) — never a local edit, which the next refresh would overwrite |
 | **project knowledge**: `.squad/stack.md`, `.squad/project.md`, `.squad/tools/squad_settings.py`, a `<!-- project:… -->` block, another seeded file | an issue labelled `squad` in this repository | a small squad-maintenance PR in this repository, checked with `.squad/tools/config-check.py` |
 
 One run's lessons go into at most one issue per destination. A lesson that is general — one that would change
@@ -181,7 +182,7 @@ coverage. Step 7 still runs *Format check*, the *Analyzer gate* and `scope-check
 **Continuing a member.** A fix round or a delta round of the same member within the same run continues
 that member's last launch (the harness keeps a launched subagent's context: `SendMessage` to its agent id,
 or the Agent tool's resume) with the findings and the new head SHA, instead of a fresh launch that reloads
-`CLAUDE.md`, `stack.md`, `project.md`, the plan and the code. A fresh launch stays the rule for the first
+`AGENTS.md`, `stack.md`, `project.md`, the plan and the code. A fresh launch stays the rule for the first
 launch of a mode, after a session restart (the agent id is gone) and when the previous launch ended on an
 API error. The log records a continuation as a launch of that member (`squad-log.py … --continued`): the
 notification reports the agent's tokens since its first launch but its tool uses and duration for the round
