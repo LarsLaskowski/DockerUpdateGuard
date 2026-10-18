@@ -1,7 +1,7 @@
 # Team
 
-Squad for this repository, used for both GitHub issues (`squad-issue` skill) and new features
-(`squad-spec` skill). The idea follows [bradygaster/squad](https://github.com/bradygaster/squad): this
+Squad for this repository, used for both bug reports (`squad-issue` skill) and new features, with or
+without a GitHub issue (`squad-spec` skill; `routing.md`, *Bug or feature*). The idea follows [bradygaster/squad](https://github.com/bradygaster/squad): this
 file names the members, `routing.md` holds the pipeline and its limits, and each role's charter is the
 Claude Code subagent file under `.claude/agents/` (all changed only in squad-maintenance PRs). The roles run
 as subagents, driven by the invoking session (the orchestrator).

@@ -45,7 +45,13 @@ The orchestrator tells you which **mode** to run:
   - the **tier** with a one-sentence justification — when in doubt, the higher tier;
   - acceptance criteria the Tester can turn into unit tests, each with the name of its test (one or a few
     per criterion) — the Tester writes exactly those first, so a criterion without a testable statement is
-    a plan defect;
+    a plan defect. A criterion that words a condition for user-visible text (a status line, a message) is
+    derived from the code path that decides it, and the plan names that path — not a paraphrase of the
+    trigger, which can hold while the code path does not (or the reverse);
+  - the **documentation updates**, found by a sweep before they are listed: search the area documents and
+    `docs/ARCHITECTURE.md` for every enumeration or "only these …" statement the change extends (routes,
+    rules, settings, tables, limits) and list each hit as an update, besides the documents you already know
+    the change touches;
   - for a feature, the **Behavior coverage**: every bullet of `spec.md`'s *Behavior* mapped to the acceptance
     criterion that covers it, or marked "out of scope" — a bullet no criterion names is never asserted by the
     Tester and never built by the Dev;
@@ -105,7 +111,9 @@ The orchestrator tells you which **mode** to run:
   For every decision that meets the threshold in `docs/decisions/README.md`, create a `Proposed` record
   from `docs/decisions/_template.md`, add its row to the index in `docs/decisions/README.md` with status
   `Proposed` right away (`decision-check.py` fails on a record without one), and list it in the plan; extend
-  an existing unreleased record on the same topic instead of adding one. A record you delete takes its
+  an existing unreleased record on the same topic instead of adding one. Confirm that a record is unreleased
+  with `git ls-remote --tags origin` (or after `git fetch --tags`) before you edit it in place; an empty local
+  `git tag --list 'v*'` proves nothing, because a cloud checkout does not fetch tags. A record you delete takes its
   index row with it. Keep the record to the why: the behavior it leads to is written once
   in the area document, which the record links and names in its `Area:` field. If a guarantee or flow
   changes, update `docs/ARCHITECTURE.md` too and link the record from it.
@@ -116,7 +124,8 @@ The orchestrator tells you which **mode** to run:
   objections you are given; on `security` both arrive together in one launch. Answer each objection, the
   minor ones included, in the plan's *Challenge* section (accepted and the plan revised, or rejected with a
   reason) and each Security finding in a *Security review* section; fold an existing *Challenge notes*
-  section into *Challenge*. Because of an objection you may narrow the scope, raise the tier or return
+  section into *Challenge* and decide every choice a *Security notes* entry leaves the plan (the option
+  taken and why), folding the section into *Security review*. Because of an objection you may narrow the scope, raise the tier or return
   `RESULT: NO CHANGE`; a Security finding alone never leads to `NO CHANGE`. A revision for a Security finding on a guard
   re-checks the whole list of accepted forms, not just the reported one. Update the affected decision
   records (a rejected option and the reason belong under *Options considered*).

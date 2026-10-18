@@ -165,14 +165,15 @@ Project-specific workflow skills live under `.claude/skills/` and run in Claude 
 
 - `create-pr` — verify (format, build, tests, analyzer and coverage gates), review the change locally,
   then open a PR following [`.github/pull_request_template.md`](/.github/pull_request_template.md).
-- `squad-issue` — fix a GitHub issue with the squad: the Lead plans and picks a tier
+- `squad-issue` — fix a bug reported in a GitHub issue with the squad: the Lead plans and picks a tier
   (`docs` / `patch` / `trivial` / `standard` / `security`), the Devil's Advocate challenges `standard`/`security`
   plans that weigh options once, Security reviews plan and diff of `security` changes, the Tester writes failing tests first,
   the Dev implements until the *Coverage gate* passes, each member formats the files it changed, the Code
   Officer clears analyzer diagnostics, the Reviewer reviews the diff, the PR is approved by checklist (the Lead decides what is
   open), then a PR referencing the issue is opened.
 - `squad-spec` — the same squad pipeline for a new feature, planned as `spec.md`, `plan.md` and
-  `tasks.md` in a working folder under `specs/`.
+  `tasks.md` in a working folder under `specs/`; also for an issue the user calls a feature or that is
+  labelled `feature`/`enhancement` (`.squad/routing.md`, *Bug or feature*).
 - `decision-consolidate` — merge unreleased decision records (Superseded chains, records on one topic) into
   one record each, delete the obsolete ones, lift behavior that sits in records into the area documents and fix
   links and index; released records stay untouched.

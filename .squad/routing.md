@@ -1,7 +1,8 @@
 # Routing
 
-The pipeline is the same for issues and features; only the input differs (a GitHub issue for
-`squad-issue`, a feature idea plus `spec.md` for `squad-spec`). The orchestrator — the session that runs
+The pipeline is the same for bug fixes and features; only the input differs (a bug reported in a GitHub
+issue for `squad-issue`, a feature — described by the user or in a GitHub issue — plus `spec.md` for
+`squad-spec`; see *Bug or feature*). The orchestrator — the session that runs
 the skill — launches the members, passes documents between them (subagents cannot talk to each other
 directly), performs every Git and GitHub action (including follow-up issues the Lead decides on) and
 records every step in the work folder's `log.md` with `python3 .squad/tools/squad-log.py` — each subagent
@@ -9,13 +10,33 @@ launch with its model and effort (`--agent`) and the usage its task notification
 added later with `--amend-last` when the notification follows the hand-back (`--step "<step>"` reaches a row
 that is no longer the member's last, as after parallel launches; `--unreported` marks a launch whose
 notification never came), corrected with `--replace-last` and reduced to the round's share with `--continued`
-for a continued member (`--continued-from "<step>"` when the agent continued is not the member's last fresh
-launch) — (after step 10, in the "Squad working record" comment that replaces it). Step numbers below are the ones the skills use.
+for a continued member (`--continued-from "<step>"` with the step cell of the fresh launch when the agent
+continued is not the member's last fresh launch; a new row never takes `--step`) — (after step 10, in the "Squad working record" comment that replaces it). Step numbers below are the ones the skills use.
+
+## Bug or feature
+
+A GitHub issue is either a bug fix (`squad-issue`) or a feature (`squad-spec`). The orchestrator decides
+which before step 1 — before any branch or work folder exists — and the first rule that applies wins:
+
+1. **The user's request.** The user calling it a feature ("implement feature #12", in any language) or
+   invoking `squad-spec` with the issue makes it a feature; calling it a bug ("fix bug #12") or invoking
+   `squad-issue` makes it a bug fix — whatever the issue's labels or text say. The user knows the intent
+   even when the issue does not show it.
+2. **Label or issue type.** A label `feature` or `enhancement` (case-insensitive, also as the last part of
+   a scoped label such as `type: feature` or `kind/enhancement`) or the GitHub issue type *Feature* makes
+   it a feature; a label `bug` or the issue type *Bug* makes it a bug fix. Both kinds at once: ask the user.
+3. **Otherwise** it is a bug fix with `squad-issue`. The issue text alone does not decide it: a feature
+   request without label is labelled or called a feature by the user.
+
+When the kind points to the other skill, switch to it now and say so in one line. The intake row in
+`log.md` names the kind and what decided it (`feature: user request`, `feature: label enhancement`,
+`bug: no feature label`).
 
 ## Work folder
 
-- Issue: `specs/issue-<number>/` — `plan.md`, `log.md`
-- Feature: `specs/feature-<short-slug>/` — `spec.md`, `plan.md`, `tasks.md`, `log.md`
+- Issue (bug fix): `specs/issue-<number>/` — `plan.md`, `log.md`
+- Feature: `specs/feature-<short-slug>/`, from an issue `specs/feature-<number>-<short-slug>/` — `spec.md`,
+  `plan.md`, `tasks.md`, `log.md`
 - The work folder lives **only on the work branch**: it is committed and pushed after every step so a
   crashed session can resume, and in step 10 its content is posted as a "Squad working record" comment
   (on the issue, or on the PR for a feature without issue) and the folder is removed before the PR opens.
@@ -165,7 +186,7 @@ quality gate after the PR was open).
 | 3 | Plan security review | Security | `security` tier only, launched together with the plan challenge on the same plan commit. `APPROVED` → 4; `CHANGES_REQUIRED` → one Lead revision answers it together with the major objections, then a Security delta confirmation of the revision |
 | 4 | Skeleton | Dev | Only when the plan adds or changes API: compile-only signatures built as *Skeleton* in `.squad/stack.md` describes, *Build* passes |
 | 5 | Tests first | Tester | Only the tests the plan names for its acceptance criteria (one or a few per criterion); they compile and **fail** on the current code or the skeleton. A test that cannot fail yet is not written here: guards, pins of existing behavior, determinism and bound tests wait for step 6 |
-| 6 | Implementation + coverage | Dev, Tester | All tests green; *Coverage gate* from `.squad/stack.md` passes; doc updates from the plan done, including the area documents. The Tester's coverage pass adds tests only for lines the gate reports uncovered, a resource bound the plan names, or a test a reviewer asks for |
+| 6 | Implementation + coverage | Dev, Tester | All tests green; *Coverage gate* from `.squad/stack.md` passes; doc updates from the plan done, including the area documents. The Tester's coverage pass adds tests only for lines the gate reports uncovered, a resource bound the plan names, a plan-named test the orchestrator finds missing in the test files before step 7, or a test a reviewer asks for |
 | 7 | Code check | Orchestrator, Code Officer | Dev and Tester ran *Format* on their files before handing back. The orchestrator runs *Format check*, *Analyzer gate*, *Test*, *Coverage gate* and `scope-check.py`. A *Format check* failure the orchestrator clears itself (*Format*, then `git restore` of every file outside the change); only analyzer diagnostics or style findings that need reading launch the Code Officer (analyzer-only edits; structural items go to the Dev or Tester), then the gates run again. Exit: every gate passes on the head, same tests green |
 | 8 | Review | Reviewer (+ Security on `security`) | They get the code SHA and the orchestrator's gate output of step 7 (they do not re-run the gates); later commits during the round may touch only `specs/` and do not make it stale. No blocking findings → 9; blocking → owner fixes (Dev: code, Tester: tests), back to 6, then a mandatory delta round — except a finding, blocking or not, whose fix is a verbatim documentation edit: the orchestrator applies it (*Verbatim documentation fixes*), no launch, no build, no delta round |
 | 9 | PR approval | Orchestrator, Lead when needed | The orchestrator checks: the latest review round is clean and covers every change to production code, tests and `docs/` since it ran (only `specs/` bookkeeping and the verbatim documentation fixes of that round, *Verbatim documentation fixes*, may follow it); the gates of step 7 pass on the head; the area documents and documentation updates the plan names are in the diff; then sets each `Proposed` record of this change and its index row to `Accepted` (`decision-check.py` passes). The Lead is launched in mode `approve-pr` only after this checklist passed in full (a due delta round runs first) and only when a decision is open: a plan deviation in a member's report, a Lead decision recorded during steps 3–8 (loop limit, dispute, accepted gap, finding accepted unfixed), non-blocking findings that touch code and are not yet decided, or a change to `docs/ARCHITECTURE.md` or `.squad/project.md` that the plan does not name or the Reviewer did not find consistent. Otherwise "approved by checklist" is logged → 10 |
@@ -280,13 +301,17 @@ defect) or `minor`, each with one sentence why, so the orchestrator routes witho
 - **Only minor objections** (on `security`: and Security approved): no Lead launch. The orchestrator appends them verbatim to `plan.md` as a
   *Challenge notes* section (bookkeeping, like `log.md`); Dev and Tester follow them or report a deviation,
   and the Reviewer checks them in round 1.
+- **Non-blocking Security findings of an `APPROVED` plan review** are appended verbatim to `plan.md` as a
+  *Security notes* section, like minor objections. A note that leaves the plan a choice ("document it, or
+  reject") is not for the orchestrator or a member to decide: the Lead is launched in mode `revise` before
+  the skeleton (one launch together with any major objection) and decides it in the plan.
 - **A major objection:** the Lead is launched in mode `revise` with all objections and answers each one in
   the plan's *Challenge* section, the minor ones included.
 
 On `security` the plan challenge and the Security plan review (step 3) run **in parallel** on the same plan
 commit; one Lead revision then answers the major objections and the `CHANGES_REQUIRED` findings together,
-followed by one Security delta confirmation of the revision. When Security approves and the objections are
-minor, neither the Lead nor Security is launched again.
+followed by one Security delta confirmation of the revision. When Security approves, the objections are
+minor and no Security note leaves the plan a choice, neither the Lead nor Security is launched again.
 
 ## Reading issues and pull requests
 
@@ -329,14 +354,17 @@ told so.
 ## Loop limits
 
 - **Plan challenge (step 2):** at most one Devil's Advocate round, no veto. Minor objections alone go into
-  the plan's *Challenge notes* without a Lead launch; after a major one the Lead answers every objection
+  the plan's *Challenge notes* without a Lead launch (non-blocking Security findings go into *Security notes*
+  the same way, except a note that leaves the plan a choice, which goes to the Lead); after a major one the Lead answers every objection
   (accept and revise, or reject with a reason); a rejected objection is not raised again.
 - **Plan ↔ Security (steps 2–3):** at most 2 rejections; on `security` the first revision answers the plan
   challenge and the first `CHANGES_REQUIRED` together. After the 2nd `CHANGES_REQUIRED` the Lead
   decides: narrow the scope, split into separate issues, escalate to the Product Manager, or — when the
-  remaining defect is a pure wording defect, or a defect confined to the plan's resource section (limits,
-  bounds, sizes) whose fix changes no scope — accept and fix it, followed by exactly one Security delta
-  confirmation of the fix (a further rejection then goes to the Product Manager).
+  remaining defect is a pure wording defect, a defect confined to the plan's resource section (limits,
+  bounds, sizes) whose fix changes no scope, or a defect whose failure Security has **measured** and whose
+  **complete fix** (the exact statements or edits) Security supplied, where the fix changes no scope and no
+  acceptance criterion — accept and fix it, followed by exactly one Security delta confirmation of the fix
+  (a further rejection then goes to the Product Manager).
 - **Review ↔ Dev (steps 6–8):** review pass 1 is a full review; at most **2 further fix-and-review
   rounds**, each reviewing only the delta. Blocking findings still open after that go to the Lead, who
   decides: accept with justification, split into a follow-up issue, abort, or escalate. A round is counted

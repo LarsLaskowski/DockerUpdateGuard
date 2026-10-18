@@ -23,8 +23,11 @@ Mode `tests-first`:
 1. Write **only** the tests the plan names for its acceptance criteria — one or a few per criterion — in
    the test location from *Layout*, in the test files the plan names, reusing the existing test doubles.
    Each one fails on the current code or on the skeleton. A test that cannot fail yet (a guard, a pin of
-   existing behavior, a determinism check) is not written in this mode: name the criterion it would pin in
-   your report, and it waits for mode `coverage`. If the plan assigns you existing test call sites of a
+   existing behavior, a determinism check) is not written in this mode: name the test and the criterion it
+   would pin in your report, and it waits for mode `coverage`. A test the plan names for an acceptance criterion that
+   cannot fail on the skeleton (its data is already real, a guard that holds on the skeleton) is listed in
+   the hand-back as **deferred**, with its name and criterion; the orchestrator launches mode `coverage` for
+   it even when the *Coverage gate* already passes. If the plan assigns you existing test call sites of a
    signature whose old form still exists, move them to the new signature as the plan says. For a bug, use
    the input reported in the issue. A plan's claim of a bound (memory, size, time) gets a test that fails
    when the claim is false. A time bound that cannot be expressed as a count (allocations, iterations) is
@@ -49,7 +52,8 @@ Mode `tests-first`:
 Mode `coverage` (after the Dev's implementation):
 
 1. Run *Test with coverage* and the *Coverage gate* from `stack.md`.
-2. Add meaningful tests until the gate passes, and only (a) for lines the gate reports uncovered, (b) for a
+2. Write every test the hand-back of mode `tests-first` listed as deferred and every plan-named test the
+   orchestrator found missing. Add further meaningful tests until the gate passes, and only (a) for lines the gate reports uncovered, (b) for a
    resource bound the plan names (memory, size, time ratio), or (c) for a test a reviewer asked for (for
    example after a surviving mutation). For a test asked for against a named mutation, apply that mutation
    once in a scratch `git worktree` (never in the working tree), confirm the new test fails there and passes
