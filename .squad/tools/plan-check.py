@@ -57,7 +57,7 @@ PLACEHOLDERS = [re.compile(p) for p in (r"<title>", r"Issue #<number>", r"<one-s
                                          rf"^\s*- [SE]\d+: {ELLIPSIS}\s*$", rf"^\|.*\|\s*{ELLIPSIS}\s*\|")]
 EMPTY_CELLS = {"", "-", "\u2013", "\u2014", "...", "\u2026", "none", "n/a", "tbd", "todo"}
 COMMENT = re.compile(r"<!--.*?-->", re.S)
-EMPHASIS = re.compile(r"^[`*_]+|[`*_]+$")
+EMPHASIS = re.compile(r"(?:^[`*_]+)|(?:[`*_]+$)")
 NONE = re.compile(r"^\s*(?:[-*]\s+)?none\.?\s*$", re.I)
 TOP_ITEM = re.compile(r"^(?:[-*]|\d+[.)])\s+")
 
