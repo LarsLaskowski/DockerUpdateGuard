@@ -395,6 +395,14 @@ def launches(count, continued):
     return f"{count} ({continued} continued)" if continued else str(count)
 
 
+def whole_seconds(text):
+    """argparse type for --seconds: a number, rounded to whole seconds (duration_ms / 1000 is usually a decimal)."""
+    try:
+        return round(float(text))
+    except (ValueError, OverflowError):
+        raise argparse.ArgumentTypeError(f"invalid number of seconds: '{text}'") from None
+
+
 def build_parser():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("folder")
@@ -416,7 +424,8 @@ def build_parser():
                                                                "the launch overrode the agent file)")
     parser.add_argument("--tokens", type=int, help="subagent_tokens from the usage block of the task notification")
     parser.add_argument("--tool-uses", type=int, help="tool_uses from the usage block of the task notification")
-    parser.add_argument("--seconds", type=int, help="duration of the launch in seconds (duration_ms / 1000)")
+    parser.add_argument("--seconds", type=whole_seconds,
+                        help="duration of the launch in seconds (duration_ms / 1000, rounded to whole seconds)")
     parser.add_argument("--continued", action="store_true",
                         help="the launch continued the member's last fresh agent: the usage block reports the "
                              "agent's tokens since its first launch, the trailer gets this round's share")

@@ -1,11 +1,13 @@
 ---
 name: squad-issue
-description: Use when the user asks to fix a specific GitHub issue in this repository. Runs the squad pipeline — Lead plans and picks a tier, the Devil's Advocate challenges the plan, Security reviews plan and diff of security-tier changes, Tester writes failing tests first, Dev implements until the Coverage gate passes, each member formats its files, Code Officer clears analyzer findings, Reviewer reviews, the PR is approved by checklist with the Lead deciding what is open — and opens a PR referencing the issue.
+description: Use when the user asks to fix a bug reported in a specific GitHub issue of this repository — not for an issue the user calls a feature or that carries a feature/enhancement label, which goes to squad-spec (.squad/routing.md, Bug or feature). Runs the squad pipeline — Lead plans and picks a tier, the Devil's Advocate challenges the plan, Security reviews plan and diff of security-tier changes, Tester writes failing tests first, Dev implements until the Coverage gate passes, each member formats its files, Code Officer clears analyzer findings, Reviewer reviews, the PR is approved by checklist with the Lead deciding what is open — and opens a PR referencing the issue.
 ---
 
 # Squad Issue
 
-Fix a reported GitHub issue with the squad defined in `.squad/`. You are the **orchestrator**: you launch
+Fix a bug reported in a GitHub issue with the squad defined in `.squad/`. A feature — the user calls it
+one, or the issue is labelled `feature`/`enhancement` — runs through `squad-spec` instead (`.squad/routing.md`,
+*Bug or feature*). You are the **orchestrator**: you launch
 the members as subagents, pass their outputs on (they cannot talk to each other), enforce the tiers and
 loop limits from [`.squad/routing.md`](../../../.squad/routing.md), and perform every Git and GitHub
 action yourself — including follow-up issues the Lead decides on.
@@ -35,7 +37,10 @@ action yourself — including follow-up issues the Lead decides on.
   launch of that member with its notification's usage and `--continued`: the usage block reports the agent's
   tokens since its first launch (tool uses and duration for the round alone), the script writes this round's
   share and marks the trailer. When the agent you continue is not the member's last fresh launch (a member
-  ran several task groups), use `--continued-from "<step cell of that launch>"` instead. After five
+  ran several task groups), use `--continued-from "<step cell of that launch>"` instead — the step cell of the
+  agent's fresh launch, not of a later continued row of it. A continued launch is a new row, so it takes no
+  `--step`: that option only selects the row `--amend-last` or `--replace-last` changes, and `squad-log.py`
+  refuses it on a new row. After five
   continuations of one agent or once its reported tokens pass 300,000, launch the member fresh with a short
   hand-over (*Continuing a member*). A continued member keeps its role's limits (`.squad/team.md`).
 - **The squad does not change itself in a product PR.** An issue or feature PR never touches `.squad/`
@@ -77,10 +82,13 @@ action yourself — including follow-up issues the Lead decides on.
 
 ## Steps
 
-1. **Intake.** Read the issue in full, including comments; note the reported environment (versions of the
+1. **Intake.** Read the issue in full, including comments and labels, and decide bug or feature first
+   (`.squad/routing.md`, *Bug or feature*): a feature switches to `squad-spec` now, before any branch or
+   work folder exists; note the reported environment (versions of the
    software involved, image tag or release, host OS, configuration). If it is closed, stop and report that. Start
-   from a clean working tree on a new branch off the latest `main` (run `git fetch origin main` first: a
-   stale local `origin/main` makes `scope-check.py` report files that are not yours), e.g.
+   from a clean working tree on a new branch off the latest `main` (run `git fetch origin main --tags` first: a
+   stale local `origin/main` makes `scope-check.py` report files that are not yours, and a checkout without the
+   release tags makes every decision record look unreleased), e.g.
    `fix-issue-<number>-<short-slug>` (or the branch the session prescribes). Create
    `specs/issue-<number>/log.md` from `specs/_template/log.md`, commit and push it (the first `squad-log.py` row replaces the heading placeholder with
    the work folder's name). Only you (the
@@ -89,7 +97,7 @@ action yourself — including follow-up issues the Lead decides on.
    ending, escapes pipes and control characters, and stamps the row with date and time of day (UTC), so the
    wrap-up can measure your own share of the run. For a subagent launch add the metrics:
    `--agent squad-<role> --tokens <subagent_tokens> --tool-uses <tool_uses> --seconds <duration_ms / 1000>`
-   (`--agent` reads the model and effort from the agent file; `--launch <model>/<effort>` only when the launch
+   (a decimal such as `495.4` is rounded to whole seconds; `--agent` reads the model and effort from the agent file; `--launch <model>/<effort>` only when the launch
    overrode them). The three numbers come from the usage block of the launch's **task notification**, not
    from the member's hand-back message, and that notification may arrive after you have already read the
    report: write the row as soon as the report is in, **without any metric option** (no `--agent`,
@@ -116,8 +124,8 @@ action yourself — including follow-up issues the Lead decides on.
    launch and names it instead of refusing the table; when that notification turns up after all, the row
    already carries a trailer, so a second `--amend-last` refuses it ("without a launch trailer") and
    `--replace-last "<member>"` with the numbers turns the mark into the full trailer. A continued launch
-   (*Continue a member*) is logged with the same options plus `--continued` (or `--continued-from "<step>"`,
-   see there), with the notification's numbers copied unchanged: they are cumulative, and the script
+   (*Continue a member*) is logged with the same options plus `--continued` (or `--continued-from "<step>"`
+   with the step cell of the fresh launch, never `--step`, see there), with the notification's numbers copied unchanged: they are cumulative, and the script
    computes the round's share. The wrap-up sums the trailers per role. After every member's report, commit and push the files it left in the work
    folder (the Lead's records, the Tester's tests) yourself, so the next report does not list them as
    untracked noise.
@@ -152,7 +160,10 @@ action yourself — including follow-up issues the Lead decides on.
    record, or the tier is `security`; otherwise log "challenge skipped: no options". On `security`, launch
    it together with step 3 on the same plan commit. On `VERDICT: OBJECTIONS 0 major, …` (on `security`: and
    Security's `APPROVED`), append the minor objections verbatim to `plan.md` as a *Challenge notes* section
-   and go on without a Lead launch; Dev and Tester get that section with the plan. On a major objection, launch `squad-lead` in mode `revise` with
+   and go on without a Lead launch; Dev and Tester get that section with the plan. Non-blocking findings of Security's
+   `APPROVED` plan review are appended verbatim as a *Security notes* section the same way; a note that leaves the
+   plan a choice goes to `squad-lead` in mode `revise` before step 4 (one launch together with any major
+   objection), so neither a member nor you decide it. On a major objection, launch `squad-lead` in mode `revise` with
    all objections (on `security` together with Security's `CHANGES_REQUIRED` findings, if any); it answers
    each one in the plan's *Challenge* section (accepted and the plan revised, or rejected with a reason) and
    may narrow the scope, raise the tier or switch to `RESULT: NO CHANGE`. `RESULT: NO CHANGE` and
@@ -176,7 +187,8 @@ action yourself — including follow-up issues the Lead decides on.
    compile.
 5. **Tests first** (skipped for `trivial`). Launch `squad-tester` in mode `tests-first`: only the tests the
    plan names for its acceptance criteria, each failing on the current code or the skeleton; guards and pins
-   of existing behavior wait for the coverage pass. Confirm yourself that the new tests compile and fail on
+   of existing behavior wait for the coverage pass. A plan-named acceptance-criterion test that cannot fail on the
+   skeleton comes back in the hand-back as **deferred**. Confirm yourself that the new tests compile and fail on
    the current code (unless the Tester justified why one cannot).
    A fix without a reproducing test is only acceptable when the bug genuinely needs a live external
    system — then the PR says so.
@@ -188,8 +200,12 @@ action yourself — including follow-up issues the Lead decides on.
    in mode `decide`; the Tester changes a test only if the Lead says so. Then run *Test with coverage* and
    the *Coverage gate* yourself (both in `.squad/stack.md`). Launch `squad-tester` in mode `coverage` only
    when the gate fails, the Dev reports uncovered new lines, the plan names a resource bound still without
-   its test, or a reviewer asks for a test — and pass that reason; if the gate already passes and the only
-   uncovered lines are accepted gaps, skip the pass and log why in `log.md`. Repeat Dev/Tester until the gate passes. Lines reported as not unit-testable go to
+   its test, a deferred plan test of step 5 is still open (also when the gate already passes), or a reviewer
+   asks for a test — and pass that reason; if the gate already passes, no deferred plan test is open and the only
+   uncovered lines are accepted gaps, skip the pass and log why in `log.md`. Repeat Dev/Tester until the gate passes.
+   Before step 7, search the test files (`grep`) for every test the plan names; a name without a match is a
+   deferred plan test still open, whatever the Tester's report called it (a test it held back as a guard or pin
+   waits for this pass too), so launch `squad-tester` in mode `coverage` with the missing names. Lines reported as not unit-testable go to
    `squad-lead` in mode `decide`; an accepted gap is recorded in `log.md`.
 7. **Code check.** Before the first review round, fetch `main` and merge it when the work branch lacks its
    latest commit (`git merge-base --is-ancestor origin/main HEAD` fails), as *Merge conflicts* in
@@ -271,7 +287,9 @@ action yourself — including follow-up issues the Lead decides on.
     reproducing test, `Closes #<number>` under Issues, links to the decision records. Next Steps lists
     **only linked GitHub issues** (create them now) or "None" — never an unlinked "revisit later". Follow the `create-pr` skill's template rules, but
     do **not** run its internal review loop — step 8 replaced it. If the fix is not fully verifiable
-    without a real external system, say so.
+    without a real external system, say so. Read the body back right after creating or updating the PR
+    (`pull_request_read`, method `get`) and compare its links and code spans with what you sent; a mangled one
+    is fixed with `update_pull_request` now, before step 11.
 11. **After the PR.** Subscribe to the PR's activity right after opening it (`subscribe_pr_activity` when
     available; otherwise check the CI and code-analysis (e.g. SonarQube Cloud) results yourself before finishing) — a session
     that ends with an unwatched PR has not completed this step. On every look at the PR, read its mergeability

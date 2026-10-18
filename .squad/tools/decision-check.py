@@ -18,7 +18,8 @@ Checks, run from anywhere inside the repository (it takes no arguments):
   record is never deleted and never changed except for its status becoming `Superseded by NNNN`; an
   unreleased record is never `Superseded` (it is edited in place or deleted instead).
 
-Without release tags nothing is released and the freeze checks pass. Without Git history (not a Git
+Without release tags nothing is released and the freeze checks pass; with a remote configured that is
+reported as a warning, because the tags may simply not be fetched. Without Git history (not a Git
 repository, shallow clone) the freeze checks are skipped with a warning.
 
 Usage, from anywhere inside the repository:
@@ -259,6 +260,9 @@ def check_freeze(root, records, errors, warnings):
         return
     tags = (git(root, "tag", "--list", RELEASE_TAGS) or "").split()
     if not tags:
+        if (git(root, "remote") or "").strip():
+            warnings.append(f"no local '{RELEASE_TAGS}' tags although a remote is configured - released records "
+                            f"are not checked (run 'git fetch origin main --tags')")
         return
     if (git(root, "rev-parse", "--is-shallow-repository") or "").strip() == "true":
         warnings.append("shallow clone - released records are not checked (fetch the full history and tags)")

@@ -66,6 +66,9 @@ in.
      verified) — including the unit-test, formatting, analyzer, coverage,
      documentation and dependency items, not just the general ones
    - wrap the body in a HEREDOC so the formatting survives
+   - read the body back right after creating the PR (`pull_request_read`,
+     method `get`) and compare its links and code spans with what you sent; a
+     mangled one is fixed with `update_pull_request` before anything else
 9. **Keep it a draft until green** (`.squad/routing.md`, *Draft until green*).
    Subscribe to the PR's activity (`subscribe_pr_activity` when available;
    otherwise check the results yourself before finishing). On every look at the

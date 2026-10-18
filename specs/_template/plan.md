@@ -99,6 +99,8 @@ which Dev and Tester follow (or report a deviation) and the Reviewer checks. A c
 ## Security review
 
 `security` tier only, left out when the plan is written: each `CHANGES_REQUIRED` finding and how the
-revision resolves it.
+revision resolves it. When Security approves with non-blocking findings, the orchestrator appends them
+verbatim as a *Security notes* section instead, which Dev and Tester follow (or report a deviation) and the
+Reviewer checks; a note that leaves the plan a choice goes to the Lead first, who decides it here.
 
 ## Out of scope / follow-ups
