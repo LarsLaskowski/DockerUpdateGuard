@@ -12,8 +12,8 @@ every feature area relies on it for validated configuration and a migrated datab
 
 ### Configuration sources
 
-- Configuration is read from, in increasing precedence: `appsettings.json`, `appsettings.{Environment}.json`, user
-  secrets (Development only), environment variables and command-line arguments. Environment variables use `__` as the
+- Configuration is read from, in increasing precedence: `appsettings.json`, `appsettings.{Environment}.json`,
+  environment variables and command-line arguments. Environment variables use `__` as the
   section separator (`DockerUpdateGuard__Scanning__RetryCount`).
 - The application reads four top-level sections: `DockerUpdateGuard` (application settings), `Telemetry` (see
   [Telemetry](telemetry.md)), `ConnectionStrings` and `Logging`. The key-by-key reference with defaults and ranges is
@@ -146,7 +146,7 @@ These properties hold today and must be provided for by the deployment:
 | Invalid `Telemetry` configuration | Startup fails before the host is built (see [Telemetry](telemetry.md)). |
 | Database unreachable within `MigrationStartupTimeoutSeconds` | The attempts are logged; startup fails. |
 | Non-transient database error while waiting | Startup fails immediately. |
-| Migration fails | Logged; startup fails. A schema is never half-reported as ready. |
+| Migration fails | Logged; startup fails. |
 | Advisory lock cannot be released | Logged; the migration outcome stands. |
 | Mounted settings file not readable by the container user | Entrypoint exits with code `1` and a fix-it message. |
 | Certificate import not possible | A message is printed; the container starts anyway. |
