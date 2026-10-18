@@ -145,8 +145,8 @@ Each cleanup pass computes a cutoff of now minus `DockerUpdateGuard:Scanning:Ret
   container action.
 - **Resource samples:** container and Docker instance samples recorded before the cutoff.
 
-After the removal the cleanup pass refreshes the inventory gauges ([Telemetry](telemetry.md)) and logs the number of
-removed items per kind. Nothing else (images, observed images, Docker instances, relationships, tag selections) is
+After the removal the cleanup pass refreshes the inventory gauges ([Telemetry](telemetry.md)) and logs how many
+tag candidates, update findings, vulnerability findings, snapshots and scan runs it removed. Nothing else (images, observed images, Docker instances, relationships, tag selections) is
 removed by cleanup.
 
 ### Live images
@@ -176,8 +176,8 @@ may scan the same image at the same time. This is wasteful but does not corrupt 
 - The smallest possible interval of every job is one minute; there is no sub-minute schedule and no cron-style
   schedule.
 - A step that reports a failure or an unexpected error turns the run `Failed`; the error message of the run carries
-  the step's message as returned by the integration or the error. Integrations report expected failures as results,
-  not errors ([Registries](registries.md)), so their messages do not contain credentials.
+  the step's message as returned by the integration, or the error's own message. Integrations report expected
+  failures as results, not errors ([Registries](registries.md)).
 - A run that cannot be saved at its end (for example because the database became unreachable) stays `Running` until
   the stale-run repair marks it `Failed`. A vulnerability refresh retries this final save once on a fresh state
   before giving up.
