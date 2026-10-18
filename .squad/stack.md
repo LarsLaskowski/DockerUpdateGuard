@@ -30,14 +30,16 @@ profile and owned by this repository: keep it true when the build changes.
 | Name | Command |
 | ---- | ------- |
 | *Restore* | `dotnet restore DockerUpdateGuard.slnx` |
-| *Format* (Code Officer only in the squad) | `reihitsu-format --force ./` |
+| *Format* (in the squad: by the member that changed the files, `.squad/team.md`) | `reihitsu-format --force ./` |
 | *Format check* | `reihitsu-format --check ./` |
 | *Build* | `dotnet build DockerUpdateGuard.slnx -c Release --no-restore` |
 | *Test* | `dotnet test DockerUpdateGuard.slnx -c Release --no-build` |
 | *Single test* | `dotnet test src/Tests/DockerUpdateGuard.Tests/DockerUpdateGuard.Tests.csproj --filter "FullyQualifiedName~ClassName.MethodName"` |
+| *Test (project)* | `dotnet test src/Tests/<Project>.Tests -c Release --no-build` (the test project of the changed code; a `patch` that changes only test code, `.squad/routing.md` *Gates of a patch* — it writes no coverage report, so a `patch` that changes production code runs *Test with coverage* instead) |
 | *Test with coverage* | `rm -rf TestResults && dotnet test DockerUpdateGuard.slnx -c Release --no-build --collect:"XPlat Code Coverage" --results-directory ./TestResults` (clears earlier runs: the coverage gate merges every report it finds) |
 | *Coverage gate* | `python3 .squad/tools/coverage-check.py` |
 | *Analyzer gate* | `python3 .squad/tools/analyzer-check.py` |
+| *Image build check* | `docker build -f src/DockerUpdateGuard/Dockerfile .` where Docker runs; otherwise the restore-order reproduction under *Image build check* below (`.squad/routing.md`, *Criteria verified only in CI*) |
 
 ## Analyzer gate
 
@@ -55,6 +57,11 @@ SonarQube Cloud's own quality profile can still report `S####` rules the local d
 and its non-Roslyn checks (duplication, hotspots, taint analysis) only run in CI — such findings arrive in
 squad step 11.
 
+Own browser scripts (`wwwroot/js/*.js`, no Node build) have no local analyzer; the repository has none today.
+SonarQube Cloud's JavaScript rules would report on one only in squad step 11, so a new one is written to those
+rules from the start. The one that bit (`javascript:S2486`): a `catch` block that ignores the exception holds
+exactly one whole-line comment and nothing else — a comment before a `return` inside the block is still flagged.
+
 Changed shell scripts (`*.sh`), GitHub workflows (`.github/workflows/*.yml`) and Dockerfiles are checked with
 `shellcheck`, `actionlint` and `hadolint`; the SessionStart hook installs the three as pinned, checksum-verified
 binaries (`.claude/hooks/install-linters.sh`), and the gate reports NOT RUN for one that is missing (a refused
@@ -62,6 +69,44 @@ download, for example). The gate itself checks two SonarQube Cloud shell rules s
 `shelldre:S7679` (a positional parameter `$1`…`$9` used as a word of its own inside a function — assign it to a
 local variable first) and `shelldre:S7688` (`[ … ]` instead of `[[ … ]]`). Other `shelldre:*` findings only report
 in squad step 11.
+
+## Image build check
+
+`src/DockerUpdateGuard/Dockerfile` copies `Directory.Packages.props`, `Directory.Build.props` and the three
+production project files first, restores `src/DockerUpdateGuard/DockerUpdateGuard.csproj`, then copies the
+sources (filtered by `.dockerignore`) and publishes. The .NET SDK decides at restore time what the publish output
+holds (content items, static web assets, the `_framework/` scripts of a Blazor app), so a publish from the full
+working tree can contain files the image never gets (Vandox#24: `_framework/blazor.web.js` was in the local
+publish and missing from the image). The publish here restores again, which narrows that gap, but a change to the
+copy or restore lines can widen it. Where Docker runs, build the image. Where it does not (the sandbox),
+reproduce the Dockerfile's order in a scratch directory; every change to a `.csproj`, `Directory.*.props`, a
+`.razor` or other content item, a static web asset or the Dockerfile runs it before the review:
+
+```bash
+scratch="$(mktemp -d)"
+cp --parents Directory.Packages.props Directory.Build.props \
+  src/DockerUpdateGuard/DockerUpdateGuard.csproj \
+  src/DockerUpdateGuard.Data/DockerUpdateGuard.Data.csproj \
+  src/DockerUpdateGuard.Telemetry/DockerUpdateGuard.Telemetry.csproj "$scratch"
+(cd "$scratch" && dotnet restore src/DockerUpdateGuard/DockerUpdateGuard.csproj)
+git ls-files -z | xargs -0 -I{} cp --parents {} "$scratch"
+(cd "$scratch" && dotnet publish src/DockerUpdateGuard/DockerUpdateGuard.csproj -c Release -o ./publish)
+ls "$scratch"/publish/wwwroot/_framework/blazor.web.js
+```
+
+Keep the first copy equal to the `COPY` lines before `RUN dotnet restore` in the Dockerfile, and the publish
+equal to its `RUN dotnet publish` (add `--no-restore` here if the Dockerfile gets it). A publish that fails, or
+an output that is missing, is the defect the CI release build would report after the PR is open.
+
+## Coverage exclusions
+
+Two places compute coverage and must agree (`.squad/routing.md`, *Code a unit test cannot cover*): the
+*Coverage gate* reads `COVERAGE_PATHSPECS` and `COVERAGE_EXCLUDES` in `.squad/tools/squad_settings.py`
+(`src/*.cs` and `src/*.razor`, minus the tests and the generated EF Core migrations), and SonarQube Cloud reads
+`sonar.coverage.exclusions`, passed as `/d:sonar.coverage.exclusions=…` in the *Begin SonarQube analysis*
+step of `.github/workflows/ci.yml` (today `.squad/**`, `.claude/**` and
+`src/DockerUpdateGuard.Data/Migrations/**`). A file no unit test can cover (`wwwroot/js/**`, a generated file) is
+added to both with a decision record — never to `sonar.exclusions`, which would drop it from the analysis too.
 
 ## Writing code
 
@@ -77,6 +122,18 @@ in squad step 11.
 - Guards an analyzer asks for (e.g. `if (_logger.IsEnabled(...))` for CA1873) are written by the Dev,
   not added later by the Code Officer.
 
+## Logger arguments
+
+CodeQL's *Clear text storage of sensitive information* (`cs/cleartext-storage-of-sensitive-information`) judges
+a value by its **name**: a variable, field, constant, property or parameter whose lower-case name contains
+`password`, `passwd`, `trusted`, `account…id`, `accnt…id`, `account…key`, `accnt…key`, `license…key`,
+`licence…key` or `voucher…code` counts as sensitive (`csharp/ql/lib/semmle/code/csharp/security/SensitiveActions.qll`
+in `github/codeql`). For names there is no exemption: `PasswordHash` and a constant `EnvWebPasswordHash` that
+holds only the name of an environment variable count too (the `hashed`/`encrypted`/`crypt` exemption applies
+to string values, not to names). Such a name passed to a log call fails the PR in CI (`.github/workflows/codeql.yml`),
+and no local gate reports it. The remedy is a neutral name for the value (a constant `WebLoginHashVariable` for
+the variable name, for example) whose text a test pins, never a suppression.
+
 ## Writing tests
 
 See `docs/UNIT_TESTS.md` — MSTest with **NSubstitute** for collaborators that cross an infrastructure boundary,
@@ -89,6 +146,10 @@ without handing back: pass `TestContext.CancellationToken` to every call that ac
 
 New members with their full signature, XML docs and `#region` blocks, bodies
 `throw new NotImplementedException();`, so the solution builds and the tests compile and fail.
+Constructors store their arguments and never throw: a test harness builds these types, so only member bodies
+fail.
+The `Skeleton` body above is the default. A zero-value stub is allowed only where it would break a test that
+exists and passes today: the new tests must still fail on the stub, and the Dev reports it as a deviation.
 
 ## Dependencies
 
@@ -107,3 +168,8 @@ itself with a lock (`obj/analyzer-check.lock`), plain builds do not.
   `DOTNET_ROOT="$(dirname "$(readlink -f "$(command -v dotnet)")")"`.
 - `reihitsu-format` asks for confirmation for more than 25 files; `--force` skips the prompt, which a
   non-interactive session cannot answer.
+- `reihitsu-format` rewrites a `\u` escape in a C# string literal into the character it names, so a literal
+  U+2028 then breaks the compilation and a test about an escape tests the wrong input. After *Format*, check
+  the escapes of the changed files on disk (`grep -n '\\u' <file>`, *Escapes in files* in `.squad/team.md`);
+  where the formatter keeps rewriting one, build the character at run time (`char.ConvertFromUtf32(0x2028)`)
+  instead of writing it as an escape in a literal.

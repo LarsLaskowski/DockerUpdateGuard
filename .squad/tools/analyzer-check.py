@@ -9,11 +9,12 @@ S####, MSTEST####, CA####, ...) located in a file changed since the merge base w
 (working tree and untracked files included).
 
 The build command (solution from `.squad/tools/squad_settings.py`), the base (origin/main) and the log
-location are fixed on purpose: the script takes no arguments, so nothing user-supplied reaches the shell,
-git or the filesystem.
+location are fixed on purpose: the script accepts one flag, `--lint-only` (the lint pass over changed shell
+scripts, workflows and Dockerfiles without the build, for a `patch` that touches no C# — `.squad/routing.md`,
+*Gates of a patch*), and no value, so nothing user-supplied reaches the shell, git or the filesystem.
 
 Usage, from the repository root (after *Restore* from `.squad/stack.md`):
-    python3 .squad/tools/analyzer-check.py
+    python3 .squad/tools/analyzer-check.py [--lint-only]
 
 Runs are serialized with a lock file (obj/analyzer-check.lock), because two concurrent full builds of the
 solution break each other. The check fails if the build fails or if any project produced no SARIF log.
@@ -30,7 +31,7 @@ from urllib.parse import unquote, urlparse
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import squad_settings as settings  # noqa: E402  (per-repository settings next to this script)
-from analyzer_common import git, merge_base, lint_check  # noqa: E402  (shared helpers next to this script)
+from analyzer_common import git, merge_base, lint_check, lint_only_requested, lint_only_main  # noqa: E402  (shared helpers next to this script)
 
 SARIF_NAME = os.path.join("obj", "roslyn.sarif")
 LOCK_FILE = os.path.join("obj", "analyzer-check.lock")
@@ -76,6 +77,8 @@ def project_dirs():
 
 def main():
     os.chdir(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
+    if lint_only_requested():
+        return lint_only_main()
     os.makedirs("obj", exist_ok=True)
     with open(LOCK_FILE, "w", encoding="utf-8") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)

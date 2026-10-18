@@ -12,6 +12,7 @@
     <File Path="src/GlobalSuppressions.cs" />
   </Folder>
   <Folder Name="/00 Solution items/Instructions/">
+    <File Path="AGENTS.md" />
     <File Path="CLAUDE.md" />
     <File Path=".github/copilot-instructions.md" />
     <File Path=".github/instructions/csharp.instructions.md" />

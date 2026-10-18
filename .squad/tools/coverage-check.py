@@ -18,7 +18,8 @@ or the filesystem.
 Usage, from the repository root, after *Test with coverage* from `.squad/stack.md`:
     python3 .squad/tools/coverage-check.py
 
-Exit code 0 when both values reach their threshold, 1 otherwise. When the diff contains neither production
+Exit code 0 when both values reach their threshold, 1 otherwise; an overall value measured over zero lines
+fails too, since it would meet any threshold without checking anything. When the diff contains neither production
 nor test code, the overall value is only reported: such a change cannot make coverage worse, so a gap that
 already exists on the base does not fail it. A diff that only changes or deletes tests is gated, because
 it can lower overall coverage.
@@ -185,12 +186,23 @@ def merged_hits():
     return hits
 
 
+def production_files(*options):
+    """The production files `git ls-files <options>` lists: COVERAGE_PATHSPECS minus COVERAGE_EXCLUDES. The
+    excludes are subtracted from a second listing, not passed as `:(exclude)` pathspecs: `git ls-files`
+    (2.43) drops every tracked file for an exclude that matches none of them (`:(exclude)*.d.ts` with no
+    declaration file under `src/`), which left the overall value at 0/0 lines."""
+    def listed(pathspecs):
+        return set(subprocess.run(["git", "ls-files", *options, "--", *pathspecs],
+                                  capture_output=True, text=True, check=True).stdout.splitlines())
+    files = listed(settings.COVERAGE_PATHSPECS)
+    if settings.COVERAGE_EXCLUDES:
+        files -= listed(settings.COVERAGE_EXCLUDES)
+    return files
+
+
 def overall_coverage(hits):
     """Return (percent, hit lines, coverable lines) over the tracked production files."""
-    tracked = set(subprocess.run(
-        ["git", "ls-files", "--", *settings.COVERAGE_PATHSPECS,
-         *[f":(exclude){p}" for p in settings.COVERAGE_EXCLUDES]],
-        capture_output=True, text=True, check=True).stdout.splitlines())
+    tracked = production_files()
     production = {path: lines for path, lines in hits.items() if path in tracked}
     total = sum(len(lines) for lines in production.values())
     total_hit = sum(1 for lines in production.values() for count in lines.values() if count > 0)
@@ -215,13 +227,10 @@ def new_code_coverage(hits):
 def warn_untracked():
     """Name the untracked production files: neither `git diff` nor `git ls-files` sees them, so the gate
     would silently leave them out of both values and could fail at a false low percentage."""
-    untracked = subprocess.run(
-        ["git", "ls-files", "--others", "--exclude-standard", "--", *settings.COVERAGE_PATHSPECS,
-         *[f":(exclude){p}" for p in settings.COVERAGE_EXCLUDES]],
-        capture_output=True, text=True, check=True).stdout.splitlines()
+    untracked = production_files("--others", "--exclude-standard")
     if untracked:
         print("WARNING: untracked production files ignored by this gate (stage them with `git add` first):")
-        for path in untracked:
+        for path in sorted(untracked):
             print(f"  {path}")
         print()
 
@@ -243,7 +252,12 @@ def main():
     gated = bool(changed) or bool(changed_test_files())
     if not gated:
         print("No production or test code changed: overall coverage is reported, not gated (the change cannot lower it).")
-    ok = not gated or (new_code >= threshold and overall >= overall_threshold)
+    unmeasured = total == 0
+    if unmeasured:
+        print("Overall coverage measured no line: no report line belongs to a tracked production file, so the "
+              "overall threshold checks nothing - compare the report's paths with COVERAGE_PATHSPECS and "
+              "COVERAGE_EXCLUDES in .squad/tools/squad_settings.py")
+    ok = not gated or (not unmeasured and new_code >= threshold and overall >= overall_threshold)
     print(f"Thresholds {threshold:.0f}% on new/changed code, {overall_threshold:.0f}% overall: {'PASS' if ok else 'FAIL'}")
     return 0 if ok else 1
 

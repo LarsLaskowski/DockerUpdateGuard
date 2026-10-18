@@ -94,7 +94,8 @@ public async Task VulnerabilityEnrichmentServiceRefreshAsyncProviderExceptionMar
 ```
 
 Test class names follow `{TypeUnderTest}Tests` (or `{TypeUnderTest}RenderTests`
-/ `{TypeUnderTest}PersistentStateTests` when split, per `CLAUDE.md`).
+/ `{TypeUnderTest}PersistentStateTests` when split, as described under the
+test project layout above).
 
 ## Arranging your tests
 
@@ -121,7 +122,7 @@ public void ImageReferenceParserParseWrappedMicrosoftRegistryReferenceNormalizes
 
 Every `Assert.*` call must include a message explaining what the assertion
 guarantees — not what it checks mechanically, but why it matters. This is a
-binding project rule (see `CLAUDE.md`), not a suggestion:
+binding project rule (see `AGENTS.md`), not a suggestion:
 
 ```csharp
 Assert.AreEqual(UpdateEvaluationStatus.UpdateAvailable,
@@ -237,7 +238,7 @@ using (var database = new SqliteTestDatabase())
 ```
 
 - Migration tests (`Update{N}MigrationTests.cs`) follow the migration naming
-  rules from `CLAUDE.md` (`InitialCreate`, `Update1`, `Update2`, ...).
+  rules from `AGENTS.md` (`InitialCreate`, `Update1`, `Update2`, ...).
 
 ## Testing Blazor components
 

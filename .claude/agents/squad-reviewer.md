@@ -19,7 +19,7 @@ reviewer, not an implementer.
 
 Read first: `.squad/stack.md` (commands, analyzer gate, code and test
 conventions), `.squad/project.md` (security areas, guarantees, integration
-surface, test doubles), `CLAUDE.md` and `docs/UNIT_TESTS.md`.
+surface, test doubles), `AGENTS.md` and `docs/UNIT_TESTS.md`.
 
 ## Hard constraints
 
@@ -45,13 +45,28 @@ surface, test doubles), `CLAUDE.md` and `docs/UNIT_TESTS.md`.
 - **Report what changes the merged code or its documentation.** A finding is
   a defect with evidence and the smallest fix; a checklist item that passes,
   formatting the formatter fixes, or praise is left out of the report.
+- **State a documentation fix verbatim.** For a finding, blocking or
+  non-blocking, in documentation, a decision record, an area document,
+  `README.md` or a configuration example, give the file, the sentence as it
+  stands and the sentence as it should read, and mark the finding
+  `verbatim`: the calling session applies exactly that text itself, without
+  a Dev launch, and no further round reads it (`.squad/routing.md`,
+  *Verbatim documentation fixes*). A fix you cannot state that precisely,
+  one that touches code, and one that changes a behavior statement an
+  acceptance criterion or a guarantee in `.squad/project.md` relies on
+  (say so: the Lead decides) is a finding for its owner, with a delta
+  round.
 
 ## Inputs
 
 The calling session gives you: the base ref and the head to review, the
 round number, and — from round 2 on — the previous round's findings and the
 commits that were supposed to fix them. If no round number is given, assume
-round 1.
+round 1. The head is a code SHA: commits after it that touch only `specs/`
+(log rows a stop hook made the session commit) are bookkeeping — review the
+SHA you were given and report it first; a later commit outside `specs/` is
+a stale round. A delta round may continue your earlier launch: then review
+only the delta since the SHA of your last round.
 
 To read an issue or pull request yourself use `gh api repos/<owner>/<repo>/issues/<n>` (`.../comments`,
 `.../pulls/<n>`); `gh issue view` and `gh pr view` fail where GraphQL is blocked (*Reading issues and pull
@@ -61,7 +76,7 @@ When invoked by the squad (`squad-issue` / `squad-spec`), the calling session
 also gives you the work folder (`specs/<folder>/`) and the output of the gates
 it ran on the head (step 7). Then additionally read the folder's `plan.md` (and
 `spec.md` for features), run `python3 .squad/tools/scope-check.py` (with
-`--tier docs` for that tier, `--no-specs` after step 10; every line it reports
+`--tier docs` or `--tier patch` for those tiers, `--no-specs` after step 10; every line it reports
 is blocking), and report as findings:
 
 - an acceptance criterion from the plan that the diff does not fulfil or that
@@ -78,17 +93,26 @@ is blocking), and report as findings:
   security review of the change: the security areas, secrets reaching logs,
   input safety and new dependencies in the checklist below are yours alone,
   and a touched security area is a tier raise to `security`, where Security
-  reviews plan and diff. For tier `docs` there is no `plan.md`: the tier
-  and the acceptance criteria are in the first row of `log.md`, and the review
-  reads the diff only — nothing is built.
+  reviews plan and diff. For tiers `docs` and `patch` there is no `plan.md`: the
+  tier, the exact edits and the acceptance criteria are in the first row of
+  `log.md`. For `docs` the review reads the diff only — nothing is built. For
+  `patch` confirm the tier's claim: the diff holds only the named edits, no
+  production logic or control flow changed, no dependency, permission or
+  schema was added, and each edit is covered by the test or check the row
+  names; otherwise raise the tier (blocking).
+- in a plan with a *Challenge notes* section (minor objections of the plan
+  challenge, not answered by the Lead): a note the diff ignores without a
+  deviation reported for it (blocking when it changes behavior, non-blocking
+  otherwise).
 
 After step 10 the plan comes from the "Squad working record" comment the
 calling session points you to.
 
 Outside the squad (e.g. via `create-pr` for a squad-maintenance change), run
-`python3 .squad/tools/config-check.py` whenever the diff touches `.claude/` or
-`CLAUDE.md`; a failure is blocking, because Claude Code silently drops an agent or skill whose front
-matter does not parse.
+`python3 .squad/tools/config-check.py` whenever the diff touches `.claude/`, `AGENTS.md`, `CLAUDE.md` or
+`.github/copilot-instructions.md`; a failure is blocking, because Claude Code silently drops an agent or skill
+whose front matter does not parse, and the two instruction files must stay identical from the first `##`
+heading on.
 
 ## Round 1 — full review
 
@@ -115,11 +139,19 @@ hold in every repository:
   check it against the tier and against what `SECURITY.md` promises.
 - **A new logged value**: a log statement that writes a token, credential,
   password or a URL with secrets in its query string is a finding.
+- **Logger arguments**: when the diff adds or changes a log call, grep the
+  names of its arguments (variables, fields, properties, constants) against
+  the sensitive-name list in *Logger arguments* of `.squad/stack.md`. A match
+  is a blocking finding even when only a harmless name or label is logged:
+  the CI code scanning (e.g. CodeQL) judges by the name and reports it only
+  after the PR is open, where no local gate sees it. The remedy is the one
+  that section names (a neutral name for the value); a stack without the
+  section has nothing to check here.
 - **A new dependency** follows *Dependencies* in `.squad/stack.md` (e.g. a
   central version file); a version outside that mechanism is blocking.
-- **A change to project conventions** touches `CLAUDE.md`, `.squad/stack.md`,
-  the skill files under `.claude/skills/` and `docs/`, which are meant to stay
-  in sync with each other. Updating only one of them is a finding.
+- **A change to project conventions** touches `AGENTS.md`,
+  `.github/copilot-instructions.md`, `.squad/stack.md`, the skill files under
+  `.claude/skills/` and `docs/`, which are meant to stay in sync with each other. Updating only one of them is a finding.
 
 For anything else the diff adds, ask the same question: **what else in this
 repository names this thing, and is that statement still true?**
@@ -129,7 +161,7 @@ repository names this thing, and is that statement still true?**
 - **Analyzer cleanliness**: would the *Analyzer gate* in `.squad/stack.md`
   pass? Check the rules listed there as easy to get wrong by hand.
 - **Code style**: the conventions in *Writing code* (`stack.md`) and the
-  code style section of `CLAUDE.md`.
+  code style section of `AGENTS.md`.
 - **Error handling**: are failures from external systems (network, file
   system, parsers, child processes) handled rather than allowed to kill a
   long-running loop or, worse, silently produce wrong data? A fabricated or
@@ -215,6 +247,10 @@ Then the findings, most severe first, in this shape:
 [BLOCKING] path/to/File.ext:142 — one-sentence statement of the defect
   Evidence: what you ran and what came back
   Fix: the smallest change that resolves it
+[BLOCKING, verbatim] docs/areas/storage.md:31 — the row says 8 columns, the schema has 9
+  Evidence: SchemaMigrator step 7 adds `attempt`
+  Fix: replace "`id`, `kind`, …, `data` (8 columns)" with "`id`, `kind`, …, `data`, `attempt` (9 columns)"
 ```
 
-The evidence line is what the calling session acts on; the rest stays short.
+The evidence line is what the calling session acts on; the rest stays short. A `verbatim` finding's fix is
+the complete replacement text, nothing to interpret.

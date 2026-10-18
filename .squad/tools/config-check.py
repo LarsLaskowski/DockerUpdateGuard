@@ -12,9 +12,11 @@ it. This script checks, without arguments:
 - every squad agent (`squad-*.md`) declares the `PreToolUse` hook `.claude/hooks/git-guard.py` for `Bash`, and
   that hook exists: it keeps Git and GitHub write operations out of the members' hands; it also names its
   `model` as an alias (`haiku`, `sonnet`, `opus`) and an explicit `effort`;
-- `CLAUDE.md` and its GitHub Copilot mirror `.github/copilot-instructions.md` exist and are identical from their
-  first `## ` heading on (only the title and introduction differ; Claude Code `@path` import lines on a line of
-  their own are left out of the comparison, Copilot reads `.github/instructions/*.instructions.md` itself);
+- `AGENTS.md` (the rules every agent reads) and its GitHub Copilot mirror `.github/copilot-instructions.md` exist
+  and are identical from their first `## ` heading on (only the title and introduction differ; Claude Code `@path`
+  import lines on a line of their own are left out of the comparison, Copilot reads
+  `.github/instructions/*.instructions.md` itself), and `CLAUDE.md` imports `AGENTS.md` (`@AGENTS.md` on a line of
+  its own), so Claude Code loads the same rules;
 - `.squad/template.json` names the template repository (where lessons about template-managed files are
   filed) and, for a repository with several stack profiles, lists them in `profiles` (the first one is
   `profile`); then every profile has its `analyzer-check-<profile>.py` and `session-start-<profile>.sh`
@@ -44,7 +46,9 @@ GIT_GUARD = os.path.join(CLAUDE_DIR, "hooks", "git-guard.py")
 MODELS = ("haiku", "sonnet", "opus")
 EFFORTS = ("low", "medium", "high", "xhigh", "max")
 SKILLS_DIR = os.path.join(CLAUDE_DIR, "skills")
-INSTRUCTION_FILES = ["CLAUDE.md", os.path.join(GITHUB_DIR, "copilot-instructions.md")]
+INSTRUCTION_FILES = ["AGENTS.md", os.path.join(GITHUB_DIR, "copilot-instructions.md")]
+CLAUDE_FILE = "CLAUDE.md"
+RULES_IMPORT = re.compile(r"^@AGENTS\.md[ \t]*$", re.M)
 REQUIRED_FILES = [os.path.join(SQUAD_DIR, "stack.md"), os.path.join(SQUAD_DIR, "project.md"),
                   os.path.join(SQUAD_DIR, "tools", "squad_settings.py")]
 # No quantifier overlaps another one, so matching stays linear (no backtracking).
@@ -143,6 +147,11 @@ def check_instructions(errors):
     reference, mirror = INSTRUCTION_FILES
     if instruction_body(mirror) != instruction_body(reference):
         errors.append(f"{mirror} differs from {reference} after the first '## ' heading - make the same change in both")
+    if not os.path.isfile(CLAUDE_FILE):
+        errors.append(f"{CLAUDE_FILE} is missing (written by adopt-template)")
+    elif not RULES_IMPORT.search(read_text(CLAUDE_FILE)):
+        errors.append(f"{CLAUDE_FILE} does not import {reference} ('@{reference}' on a line of its own) - "
+                      "refresh the squad with adopt-template")
 
 
 def check_template_record(errors):
