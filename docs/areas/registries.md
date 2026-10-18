@@ -1,0 +1,204 @@
+# Registries
+
+## Scope
+
+Read access to container registries: Docker Hub (its web API and its registry) and every other registry that speaks the
+OCI Distribution API. Covers which client serves which registry, what can be read (tags, manifests, image
+configuration and labels), how DockerUpdateGuard authenticates, the Docker Hub account image discovery, the Docker Hub
+request budget and parallelism, the retry of transient HTTP failures shared by the outbound HTTP integrations, and the
+failure model every integration uses. The image catalog, base-image resolution and update detection rely on it for
+registry data; operators rely on it to configure credentials and limits; the other integration areas link here for the
+retry policy and the failure model.
+
+## Behavior
+
+### Failure model of integrations
+
+- An integration call answers with an outcome instead of raising an error for an expected failure. The outcomes are:
+  - *succeeded* — the call returned data;
+  - *not configured* — the feature lacks the configuration it needs;
+  - *unsupported* — the integration cannot serve this target (for example a registry no client handles);
+  - *not found* — the target does not exist (HTTP 404 for an account, repository, tag, manifest or blob);
+  - *failed* — the call was made and did not succeed (any other non-success status, a missing token, a response
+    without the expected content);
+  - *unknown* — the outcome could not be classified.
+- Every outcome other than *succeeded* carries a human-readable message. Callers decide on the outcome, not on errors;
+  how a scan turns outcomes into scan-run statuses is described with each scan
+  ([Base images](base-images.md), [Update detection](update-detection.md), [Scan engine](scan-engine.md)).
+- A *failed* outcome from a registry names the HTTP status code and includes the response body the remote side sent.
+
+### Choice of client per registry
+
+- The registry of an image reference (see [Image catalog](image-catalog.md)) decides which client serves it. The Docker
+  Hub client serves the hosts `docker.io`, `index.docker.io`, `registry-1.docker.io`, `hub.docker.com`, `docker.com`
+  and `www.docker.com`, compared case-insensitively; a registry given as an absolute URL is matched by its host.
+- Every other non-empty registry is served by the generic OCI client. Only an empty registry is *unsupported*.
+- The Docker Hub client uses three endpoints: the web API at `DockerUpdateGuard:DockerHub:ApiBaseUrl` (default
+  `https://hub.docker.com/`), the token service `https://auth.docker.io/token` and the registry
+  `https://registry-1.docker.io`. A repository without a namespace is addressed as `library/<name>`.
+- The OCI client addresses `https://<registry>/v2/<repository>/…`. A registry given as an absolute URL is used with its
+  own scheme and base path; registry names are compared lowercased and keep a non-default port.
+- Outbound requests to registries and release feeds carry the user agent `DockerUpdateGuard/1.0`.
+
+### What can be read
+
+- **Tag lookup** — digest and publication time of one tag.
+  - Docker Hub: the web API's tag record (the digest Docker Hub reports and its `last_pushed` time).
+  - Other registries: a manifest request for the tag. The digest is the `Docker-Content-Digest` of the first response
+    (for a multi-platform index, the index digest). The publication time is known only when the manifest carries a
+    top-level `created` timestamp; otherwise it is unknown.
+- **Image configuration** — environment variables, labels (keys compared case-insensitively), creation time, operating
+  system and architecture, read from the image's configuration blob. For a multi-platform index one platform manifest
+  is chosen:
+  - Docker Hub: the first `linux` entry, skipping entries whose operating system or architecture is `unknown`
+    (attestations); otherwise the first remaining entry.
+  - Other registries: the entry matching the caller's operating system and architecture, then the first entry matching
+    the architecture, then the first entry with a digest. A caller that passes no platform gets the first entry.
+- **Tag listing** — the tags of a repository with digest and publication time.
+  - Docker Hub: web API pages of 100 tags, in the order Docker Hub returns them (most recently pushed first), following
+    the `next` link of each page.
+  - Other registries: `tags/list` pages of 100 names following the `Link: rel="next"` header; every tag is then
+    inspected with a tag lookup. A tag whose lookup does not succeed is still listed, by name only.
+
+### Bounded tag listings
+
+- A caller may bound a listing with the current tag, the current digest, a minimum version tag, a version-line tag, a
+  published-since time and a maximum count (default 250 when bounds are given). Without bounds every tag is read.
+- The current tag is always kept. With a version-line tag only tags of that version line are kept (version lines and
+  version comparison: [Update detection](update-detection.md)). A tag published before the published-since time, or
+  lower than the minimum version, is dropped unless its digest equals the current digest; a tag that cannot be
+  compared with the minimum version is kept.
+- Docker Hub: the listing stops once the maximum count of kept tags is reached, and at the first tag older than the
+  published-since time — except when the current tag is `latest` with a known digest and no specific version tag
+  with that digest has been seen yet.
+- Other registries: the maximum count limits the number of inspected tags; a tag that fails the name checks (current
+  tag, version line, minimum version) is not inspected.
+
+### Authentication
+
+- **Docker Hub web API.** Anonymous unless `DockerUpdateGuard:DockerHub:Pat` is set. With `Pat` and `UserName` (both
+  trimmed) the client logs in and sends the returned token as a bearer token. The token is kept in memory and renewed
+  one minute before its expiry (its `exp` claim, or five minutes after issue when it has none). `Pat` without
+  `UserName` makes every web API request *failed*, naming the missing key. `UserName` without `Pat` is anonymous.
+- **Docker Hub registry.** A pull token is requested from the token service for every lookup, with the configured user
+  name and PAT as basic credentials when both are set, otherwise anonymously.
+- **Other registries.** Access is anonymous only. On a 401 with a `Bearer` challenge a token is requested anonymously
+  from the challenge's realm, with its `service` and `scope` (default `repository:<repository>:pull`). Tokens are
+  cached per registry host and repository until `issued_at` + `expires_in` (60 seconds when absent) minus 5 seconds; a
+  401 with a cached token drops it and authenticates again once. Any other challenge, or a failed token request, makes
+  the call *failed* — private repositories outside Docker Hub cannot be read.
+
+### Docker Hub account discovery
+
+- Discovers the repositories of the configured Docker Hub account as own images. It runs only when both `UserName`
+  and `Pat` are set; otherwise each run is skipped with a log entry. It runs every
+  `DockerUpdateGuard:Scanning:DockerHubAccountDiscoveryIntervalMinutes` ([Scan engine](scan-engine.md)).
+- The account listing requires `DockerUpdateGuard:DockerHub:Registry` to name a Docker Hub host; otherwise it answers
+  *unsupported* and the run ends without changes.
+- The account is the namespace equal to `UserName`. All its repositories are listed (pages of 100), including private
+  ones the token can see. Repository names are lowercased; duplicates collapse to the most recently updated one.
+- For each repository the full tag list is read and one tag is tracked: the most recently pushed; on equal push time
+  `latest` first, then alphabetical; tags without a push time come last.
+- Each repository becomes an observed image with source *discovery*, matched by registry and repository
+  (case-insensitive). A new one is created enabled; an existing one gets its name set to the repository, its
+  description set to the Docker Hub description, its current version set to the tracked tag, and is enabled again.
+  The catalog entry is created as described in [Image catalog](image-catalog.md), with the tag's digest and push time.
+- Discovered observed images whose repository is no longer listed are disabled, never deleted.
+- A repository whose tag listing does not succeed or has no tags is skipped; its observed image keeps its state. When
+  the account listing does not succeed, nothing changes.
+- All changes of a run are saved together at its end. Discovery does not scan; discovered images are scanned by the
+  observed-image scan ([Scan engine](scan-engine.md)).
+
+### Docker Hub request budget and parallelism
+
+- `Scanning:DockerHubRequestLimitWindowHours` (default 6, range 1–168), `Scanning:DockerHubRequestLimitPerWindow`
+  (default 200, range 1–100000) and `Scanning:DockerHubReservedManualRequestsPerWindow` (default 40, range 0–100000,
+  smaller than the per-window limit) describe the Docker Hub request budget. They only stretch the schedule of the
+  observed-image scan ([Scan engine](scan-engine.md)). Requests are not counted, manual scans are not limited, and no
+  request is refused for budget reasons.
+- `DockerUpdateGuard:DockerHub:MaxParallelRequests` (default 4, range 1–32) caps the requests one Docker Hub client
+  instance has in flight at once, covering web API, login, token and registry requests. Every scan and every UI
+  operation works with its own client instances, so the cap is not global. The value is read when an instance is
+  created, so a configuration reload applies to later operations. Requests to other registries are not capped.
+- Docker Hub rate limiting (HTTP 429) is handled by the retry below.
+
+### Retry of transient HTTP failures
+
+- Applies to Docker Hub (web API, login, token service, registry), other registries and their token services, the
+  .NET and nginx release feeds ([Base images](base-images.md)) and Portainer
+  ([Container actions](container-actions.md)). It does not apply to Docker Engine connections
+  ([Docker instances](docker-instances.md)) or to Docker Scout ([Vulnerabilities](vulnerabilities.md)).
+- Transient are the responses 408, 429 and every 5xx, and transport errors and timeouts raised while sending. Other
+  statuses (including 401, 403 and 404) and cancellation are not retried.
+- A request is retried up to `DockerUpdateGuard:Scanning:RetryCount` times (default 2, range 0–10; 0 disables
+  retries). The value is read for every request, so a configuration reload applies at once.
+- The wait before a retry is the response's `Retry-After` (delta or date) when positive, capped at 30 seconds;
+  otherwise 500 ms × 2^n for the n-th retry (n starting at 0), capped at 30 seconds, plus a random jitter of up to 20 %
+  of that value, the total again capped at 30 seconds.
+- Every method is retried, including requests with a body (the body is buffered so it can be resent).
+- When the retries are used up the last response is returned to the caller, or the last error is raised.
+- Each retry is logged as a warning with the method, the URL without its query, the status or error, the attempt
+  number and the wait.
+- `DockerUpdateGuard:DockerHub:RequestTimeoutSeconds` (default 30, range 1–300) is the total time one request may
+  take including all retries and waits, for Docker Hub, other registries and the release feeds. A request that runs
+  out of time is not retried.
+
+### Configuration reload
+
+- Read live: `DockerHub:UserName`, `DockerHub:Pat`, `DockerHub:Registry` (for account discovery),
+  `DockerHub:MaxParallelRequests` (for new client instances) and `Scanning:RetryCount`.
+- Fixed at startup, a change needs a restart: `DockerHub:ApiBaseUrl` and `DockerHub:RequestTimeoutSeconds`.
+- Validation of these keys at startup (an invalid value fails startup, see [Hosting](hosting.md)): `Registry`
+  non-empty, `ApiBaseUrl` an absolute `http`/`https` URL, and the ranges above.
+
+## Limits and errors
+
+- *Unsupported*: an empty registry; the account listing when `DockerHub:Registry` is not a Docker Hub host.
+- *Not found*: HTTP 404 for an account, repository, tag, manifest or configuration blob; an image whose manifest names
+  no configuration blob.
+- *Failed*: any other non-success status, a token that cannot be obtained, a PAT without user name, a multi-platform
+  index without a usable entry. The message contains the status code and the remote response body.
+- Some failures still surface as errors instead of outcomes: transport errors and timeouts that remain after the
+  retries, and malformed JSON, during tag lookups, tag listings and the account listing (both clients) and during
+  image configuration lookups on other registries. A Docker Hub configuration lookup turns them into *failed*. The
+  scan that made the call records such an error as a failed scan.
+- The PAT is never written to logs or messages. The user name appears in the log entry and the message of a failed
+  Docker Hub login.
+- Registry responses are untrusted: missing or mistyped JSON fields are treated as unknown values. An unbounded
+  listing (account discovery) reads every page the registry offers.
+
+## Related decisions
+
+None yet.
+
+## Not here
+
+- When scans and discovery run, and the formula that turns the request budget into a schedule:
+  [Scan engine](scan-engine.md).
+- Parsing image references and storing what was read: [Image catalog](image-catalog.md).
+- Following base-image labels and the release feeds' content: [Base images](base-images.md).
+- Version lines, tag ranking and update recommendations: [Update detection](update-detection.md).
+- Docker Scout and Trivy: [Vulnerabilities](vulnerabilities.md).
+- Docker Engine access: [Docker instances](docker-instances.md); Portainer: [Container actions](container-actions.md).
+
+## Open questions
+
+1. `MaxParallelRequests` limits each Docker Hub client instance, not the process: concurrent scans, and the two client
+   instances one scan resolves, each get the full allowance. Is a process-wide cap intended?
+2. The request budget assumes one Docker Hub request per observed image and scan, while a scan issues several (token,
+   manifest, platform manifest and blob per chain level, tag lookups and up to 150 tags per floating base tag). Should
+   the budget count real requests, or be documented as a rough scheduling hint only?
+3. Requests with a body are retried like any other, including the Docker Hub login (and Portainer actions, see
+   [Container actions](container-actions.md)). Should non-idempotent requests be excluded?
+4. `DockerHub:Registry` does not decide which registries the Docker Hub client serves (that host list is fixed). It
+   only gates the account listing and, when set to an absolute URL with a non-Docker-Hub host, replaces the web API
+   base address. What is the intended meaning of the key?
+5. Transport errors, timeouts and malformed JSON escape as errors from several calls (see *Limits and errors*), which
+   contradicts the rule that integrations answer with outcomes. Should they map to *failed*?
+6. For other registries an image configuration lookup without a platform takes the first index entry, which can be an
+   attestation manifest; Docker Hub skips `unknown` platforms. Should both behave alike?
+7. Publication times for other registries come only from a top-level `created` field of the manifest, which most
+   registries do not send, so those tags usually have no publication time. Should the configuration blob's `created`
+   be used instead?
+8. Pagination links (`next` on Docker Hub, `Link` elsewhere) are followed to whatever host they name, and the Docker
+   Hub bearer token is sent along. Should pagination be restricted to the original host?
