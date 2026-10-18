@@ -2,11 +2,13 @@
 
 <!-- project:begin architecture -->
 This document describes the architecture of DockerUpdateGuard as currently
-implemented. It is a technical reference for contributors and AI coding
-agents working in this repository; it complements, and does not repeat,
-[README.md](../README.md) (product scope, configuration reference), the
-[docs/](.) folder (contribution, testing, deployment tiers), and
-[AGENTS.md](../AGENTS.md) /
+implemented: how the parts fit together and why. It is a technical reference
+for contributors and AI coding agents working in this repository. What each
+part guarantees — formats, defaults, limits, error behavior — is written once
+in the [area documents](areas/README.md) and linked from here instead of
+repeated. It also complements [README.md](../README.md) (product scope,
+configuration reference), the [docs/](.) folder (contribution, testing,
+deployment tiers), and [AGENTS.md](../AGENTS.md) /
 [.github/copilot-instructions.md](../.github/copilot-instructions.md) and
 [.github/instructions/csharp.instructions.md](../.github/instructions/csharp.instructions.md)
 (coding conventions).
@@ -15,19 +17,25 @@ agents working in this repository; it complements, and does not repeat,
 
 DockerUpdateGuard is a single-process ASP.NET Core web application that:
 
-1. discovers Docker Engine instances and the containers running on them,
+1. discovers Docker Engine instances and the containers running on them
+   ([Docker instances](areas/docker-instances.md)),
 2. correlates what is running with registry tag/digest data to detect
-   available or needed updates,
-3. resolves base-image relationships and reuse across observed images,
-4. enriches images with vulnerability data (Trivy or Docker Scout),
-5. records the results of all of the above as history in PostgreSQL, and
-6. serves a Blazor Server UI over that data.
+   available or needed updates ([Registries](areas/registries.md),
+   [Image catalog](areas/image-catalog.md),
+   [Update detection](areas/update-detection.md)),
+3. resolves base-image relationships and reuse across observed images
+   ([Base images](areas/base-images.md)),
+4. enriches images with vulnerability data from Trivy or Docker Scout
+   ([Vulnerabilities](areas/vulnerabilities.md)),
+5. records the results of all of the above as history in PostgreSQL
+   ([Scan engine](areas/scan-engine.md)), and
+6. serves a Blazor Server UI over that data ([Web UI](areas/web-ui.md)).
 
 There is no separate API tier, message queue, or worker process — scanning,
 persistence, and UI all run inside one ASP.NET Core host, coordinated
 in-process via `IHostedService` background jobs and a shared PostgreSQL
 database. This keeps deployment to a single container plus PostgreSQL (see
-§10), at the cost of the background scan engine and the UI sharing the same
+§13), at the cost of the background scan engine and the UI sharing the same
 process and connection pool.
 
 ## 2. Solution layout
@@ -75,84 +83,70 @@ documented in [AGENTS.md](../AGENTS.md) and not repeated here.
 registration to `ServiceCollectionExtensions.AddDockerUpdateGuardHost`, the
 composition root, which in order:
 
-1. Binds and validates `DockerUpdateGuardOptions` (`.ValidateOnStart()` —
-   the host fails fast on invalid configuration before it accepts traffic).
+1. Binds and validates `DockerUpdateGuardOptions` (`.ValidateOnStart()`).
 2. Resolves the PostgreSQL connection string
    (`DockerUpdateGuardConnectionStringResolver`) and registers the EF Core
-   context via `DockerUpdateGuard.Data`'s `AddDockerUpdateGuardData`, with
-   `EnableRetryOnFailure` driven by `DatabaseOptions`.
+   context via `DockerUpdateGuard.Data`'s `AddDockerUpdateGuardData`.
 3. Registers OpenTelemetry via `DockerUpdateGuard.Telemetry`'s
    `AddDockerUpdateGuardTelemetry`.
-4. Registers `TransientHttpRetryHandler` as the outbound message handler
-   for every named `HttpClient` (Docker Hub, generic OCI registry,
-   .NET/nginx release metadata, Portainer).
+4. Registers the typed/named `HttpClient`s (Docker Hub, generic OCI
+   registry, .NET/nginx release metadata, Portainer) with
+   `TransientHttpRetryHandler` as their outbound message handler.
 5. Registers the integration clients, domain/orchestration services, the
    UI facade (`IApplicationViewService`), and all 7 background jobs
-   (`AddHostedService<T>()`) — see §6 and §7.
+   (`AddHostedService<T>()`) — see §6 to §8.
 
 `Program.cs` then adds MudBlazor (`AddMudServices()`) and Razor Components
-with **Interactive Server** rendering (`AddInteractiveServerComponents()` /
-`AddInteractiveServerRenderMode()`) — Blazor Server only, no WebAssembly or
+with **Interactive Server** rendering — Blazor Server only, no WebAssembly or
 Auto render mode anywhere in the app.
 
 After `WebApplication.Build()` and before `RunAsync()`, the host calls
 `ApplicationInitializationExtensions.InitializeDockerUpdateGuardAsync`,
-which blocks startup on:
+which blocks startup on three steps:
 
-1. `DatabaseMigrator.MigrateAsync` — waits for the database to become
-   reachable (retrying transient connection failures), then, on PostgreSQL,
-   takes a session-scoped **advisory lock**
-   (`pg_advisory_lock(5410320540103205)`) before running EF Core migrations
-   and releases it in a `finally`. This serializes `dotnet ef`-style
-   migrations across multiple instances of the app starting concurrently
-   against the same database (e.g. a rolling deployment), so only one
-   instance applies migrations while the others wait.
+1. `DatabaseMigrator.MigrateAsync` — waits for the database, then applies
+   EF Core migrations under a PostgreSQL session-scoped advisory lock, so
+   concurrently starting instances never migrate at the same time.
 2. `IInstanceDiscoveryService.SynchronizeConfiguredInstancesAsync` —
-   reconciles configured `DockerInstanceOptions` against the DB. This is
-   local, DB-only work and is awaited synchronously.
+   reconciles the configured Docker instances against the database
+   (local, DB-only work).
 3. `ApplicationTelemetry.RefreshInventoryMetricsAsync` — seeds the
-   observable gauges (§9) with current counts.
+   inventory gauges (§10).
 
-Docker Hub account discovery (`DockerHubAccountImageDiscoveryService`) is
-**deliberately not** part of this blocking sequence, because it makes
-sequential per-repository network calls — it instead runs as the first
-iteration of `DockerHubAccountImageDiscoveryBackgroundService` immediately
-after the host starts accepting traffic, so a slow or unreachable Docker
-Hub does not delay application startup.
+Network-bound work (Docker Hub account discovery, scans) is deliberately
+not part of this blocking sequence: it runs as the first iteration of the
+background jobs once the host accepts traffic (§8), so a slow or
+unreachable remote system does not delay startup.
 
-The middleware pipeline (non-Development only where noted) is:
-`UseExceptionHandler("/error")` → `UseHsts()` → `UseHttpsRedirection()`
-(Production only) → `UseStatusCodePagesWithReExecute("/not-found")` →
-`UseAntiforgery()` → `MapStaticAssets()` →
-`MapRazorComponents<App>().AddInteractiveServerRenderMode()`. There is no
-authentication, authorization, health-check, or rate-limiting middleware —
-see §11 for the resulting security posture.
+The exact startup order, retry and timeout values, the middleware pipeline
+and error pages, and how configuration reload behaves are specified in
+[Hosting and configuration](areas/hosting.md). There is no authentication,
+authorization, health-check, or rate-limiting middleware (§11).
 
 ## 4. Configuration model
 
 Configuration is bound from the `DockerUpdateGuard` and `Telemetry` sections
-via standard ASP.NET Core configuration (files, command-line, secret
-stores). The full key-by-key reference (defaults, valid ranges, required
-combinations) lives in [README.md](../README.md#configuration-reference) and
-is not duplicated here.
+via standard ASP.NET Core configuration (files, environment variables,
+command line). The key-by-key reference lives in
+[README.md](../README.md#configuration-reference); which keys are validated,
+which apply on reload and which need a restart is specified in
+[Hosting and configuration](areas/hosting.md), and the meaning of each
+feature's keys in that feature's area.
 
 Architecturally relevant points:
 
-- Every options class (`DockerUpdateGuardOptions` and its nested
-  `Database`/`DockerHub`/`ReleaseMetadata`/`Vulnerabilities`/`Scanning`/
-  `DockerInstances[]`/`Portainer` sections, plus `TelemetryOptions`) has a
-  matching `IValidateOptions<T>` validator wired with `.ValidateOnStart()`,
-  so misconfiguration is a startup failure, not a runtime surprise.
-- `ScanningOptions` and `DockerHubOptions` are read live through
-  `IOptionsMonitor<DockerUpdateGuardOptions>` by the background jobs and
-  `TransientHttpRetryHandler`, so interval/retry/parallelism changes in
-  `appsettings.json` take effect without a restart (a config *reload*, not
-  a live-edit UI).
-- `DockerUpdateGuardConnectionStringResolver` prefers an inline
-  `DockerUpdateGuard:ConnectionString` over the named `ConnectionStrings`
-  entry, and is used identically by both the DI registration and the
-  validator so the two can never disagree about which connection string is
-  active.
+- One `IValidateOptions<T>` validator covers the whole `DockerUpdateGuard`
+  section and one the `Telemetry` section, both wired with
+  `.ValidateOnStart()`, so misconfiguration is a startup failure, not a
+  runtime surprise.
+- The background jobs and `TransientHttpRetryHandler` read
+  `IOptionsMonitor<DockerUpdateGuardOptions>` on every use, so schedule and
+  retry settings follow a configuration reload. Settings consumed while the
+  container is composed (`HttpClient` base addresses and timeouts, the
+  database, telemetry) are fixed until restart.
+- `DockerUpdateGuardConnectionStringResolver` is used identically by the DI
+  registration and the validator, so the two can never disagree about which
+  connection string is active.
 
 ## 5. Data layer (`DockerUpdateGuard.Data`)
 
@@ -163,25 +157,25 @@ auto-discovered via `ApplyConfigurationsFromAssembly`.
 
 ### 5.1 Entity model
 
-| Entity | Role |
-| --- | --- |
-| `RegistryRepository` | Normalized `(Registry, Repository)` pair; parent of all `ImageVersion` rows for that repository. |
-| `ImageVersion` | Normalized, deduplicated `(repository, tag, digest)` node — the central catalog entity; carries a vulnerability-assessment rollup. |
-| `ImageRelationship` | Edge from a child `ImageVersion` to its base `ImageVersion` (`BaseImage`/`BuildStage`), with `Depth` — the base-image dependency graph. |
-| `ObservedImage` | A user/discovery-registered "track this image" target; points at a `CurrentImageVersion`. |
-| `DockerInstance` | A configured Docker Engine endpoint; optionally has one `PortainerEndpoint`. |
-| `PortainerEndpoint` | Portainer connection details for a `DockerInstance`. |
-| `ContainerSnapshot` | A discovered/running container at a point in time, with its resolved `UpdateAssessmentStatus`. |
-| `ScanRun` | A persisted scan execution (type/status/trigger), optionally scoped to an `ObservedImage` or `DockerInstance`. |
-| `UpdateFinding` | A detected update (subject `ImageVersion` → optional recommended `ImageVersion`), linked to an `ObservedImage` and/or `ContainerSnapshot`. |
-| `TagCandidate` | One ranked candidate tag belonging to an `UpdateFinding`. |
-| `VulnerabilityFinding` | A CVE/advisory against an `ImageVersion` (severity, fix status, CVSS). |
-| `ContainerActionRun` | A requested Portainer action (restart/redeploy/update) against a container, service, or stack. |
-| `RuntimeContainerTagSelection` | A manually pinned tag/digest override for a specific runtime container. |
-| `DockerInstanceResourceSample` / `RuntimeContainerResourceSample` | Instance-level and per-container CPU/memory/network time series. |
+| Entity | Role | Area |
+| --- | --- | --- |
+| `RegistryRepository` | `(Registry, Repository)` pair; parent of all `ImageVersion` rows for that repository. | [Image catalog](areas/image-catalog.md) |
+| `ImageVersion` | Deduplicated `(repository, tag, digest)` node — the central catalog entity; carries a vulnerability-assessment rollup. | [Image catalog](areas/image-catalog.md) |
+| `ImageRelationship` | Edge from a child `ImageVersion` to its base `ImageVersion`, with type and `Depth` — the base-image dependency graph. | [Base images](areas/base-images.md) |
+| `ObservedImage` | A manually or discovery-registered "track this image" target; points at a `CurrentImageVersion`. | [Image catalog](areas/image-catalog.md) |
+| `DockerInstance` | A configured Docker Engine endpoint; optionally has one `PortainerEndpoint`. | [Docker instances](areas/docker-instances.md) |
+| `PortainerEndpoint` | Portainer connection details for a `DockerInstance`. | [Container actions](areas/container-actions.md) |
+| `ContainerSnapshot` | A discovered container at a point in time, with its `UpdateAssessmentStatus`. | [Docker instances](areas/docker-instances.md) |
+| `ScanRun` | A persisted scan execution (type/status/trigger), optionally scoped to an `ObservedImage` or `DockerInstance`. | [Scan engine](areas/scan-engine.md) |
+| `UpdateFinding` | A detected update (subject `ImageVersion` → optional recommended `ImageVersion`), linked to an `ObservedImage` and/or `ContainerSnapshot`. | [Update detection](areas/update-detection.md) |
+| `TagCandidate` | One ranked candidate tag belonging to an `UpdateFinding`. | [Update detection](areas/update-detection.md) |
+| `VulnerabilityFinding` | A CVE/advisory against an `ImageVersion` (severity, fix status, CVSS). | [Vulnerabilities](areas/vulnerabilities.md) |
+| `ContainerActionRun` | A record of a Portainer action against a container, service, or stack. | [Container actions](areas/container-actions.md) |
+| `RuntimeContainerTagSelection` | A user's tag/digest selection for a specific runtime container. | [Update detection](areas/update-detection.md) |
+| `DockerInstanceResourceSample` / `RuntimeContainerResourceSample` | Instance-level and per-container CPU/memory/network time series. | [Docker instances](areas/docker-instances.md) |
 
 Every enum used by these entities lives alongside them in the `Entities`
-namespace (the dedicated `Enums\` folder is present but unused).
+namespace.
 
 ### 5.2 Repositories vs. Queries
 
@@ -189,20 +183,19 @@ The `Repositories\` and `Queries\` folders are deliberately split by
 read/write intent, not by entity:
 
 - **`Repositories\` — `IImageCatalogRepository`.** The single write-side
-  aggregate root for the `RegistryRepository`/`ImageVersion` catalog. Its
-  `GetOrCreateImageVersionAsync`/`GetOrCreateRegistryRepositoryAsync`
-  methods enforce catalog uniqueness (including a `DbUpdateException`
-  race-retry path for concurrent get-or-create calls under load) so
-  scanners never create duplicate catalog rows. This is the only
-  repository in the project — no entity outside the catalog needed one.
+  entry point for the `RegistryRepository`/`ImageVersion` catalog. Its
+  get-or-create methods enforce catalog uniqueness, including a race-retry
+  path for concurrent get-or-create calls, so scanners never create
+  duplicate catalog rows ([Image catalog](areas/image-catalog.md)). This is
+  the only repository in the project — no entity outside the catalog
+  needed one.
 - **`Queries\` — `ILiveImageInventoryQueryService`,
   `ISharedBaseImageQueryService`.** Read-only, multi-entity, page-shaped
-  projections (joins/grouping across `ImageVersion`, `ImageRelationship`,
-  `ObservedImage`, `ContainerSnapshot`) that return plain DTOs instead of
-  tracked entities, and don't naturally belong to any single entity's
-  repository. `ILiveImageInventoryQueryService.GetLiveImageVersionIdsAsync`
-  in particular is the shared definition of "still relevant" used by
-  `ScanCleanupBackgroundService` (§7) to decide what history to keep.
+  projections that return plain DTOs instead of tracked entities and don't
+  naturally belong to any single entity's repository.
+  `ILiveImageInventoryQueryService` is the shared definition of "still
+  relevant" that cleanup uses to decide what history to keep
+  ([Scan engine](areas/scan-engine.md)).
 
 ### 5.3 Migrations
 
@@ -216,34 +209,34 @@ DockerUpdateGuardDbContextFactory` provides the design-time `DbContext` for
 
 Each external system has one hand-written client behind a narrow interface
 — there is no dependency on `Docker.DotNet`, a Portainer SDK, or a Trivy
-client library. All clients return plain DTOs wrapped in
+client library. Clients return plain DTOs wrapped in
 `ExternalOperationResult<T>` (`Infrastructure\ExternalOperationResult{T}.cs`)
-rather than throwing for expected failure modes (`NotConfigured`,
-`Unsupported`, `NotFound`, `Failed`, `Unknown`); orchestrators branch on
-that status instead of on exceptions.
+for expected failure modes, and orchestrators branch on that status instead
+of on exceptions. The outcomes and where errors still escape are specified
+in [Registries](areas/registries.md#failure-model-of-integrations).
 
-| Client | Talks to | Notes |
+| Client | Talks to | Area |
 | --- | --- | --- |
-| `DockerInstanceClient` (`Docker\`) | Docker Engine HTTP API (`v1.41`) | One HTTP transport supporting `http(s)://`, `tcp://`, `unix://` (via `SocketsHttpHandler.ConnectCallback`), and `npipe://` (Windows named pipes) behind a single client, pooled per connection config. |
-| `DockerHubClient` (`DockerHub\`) | Docker Hub REST API **and** the OCI Distribution v2 API (`registry-1.docker.io`) | Implements both `IDockerHubClient` (repository/tag metadata) and the generic `IRegistryMetadataClient` (manifest/blob/base-image-label resolution), because Docker Hub is both a metadata API and an OCI registry. |
-| `OciRegistryClient` (`Images\`) | Any OCI Distribution v2 registry | The registry-agnostic counterpart to `DockerHubClient`'s registry half, for non-Docker-Hub registries. |
-| `PortainerClient` (`Portainer\`) | Portainer REST API | JWT login, then endpoint/container listing and action execution (restart/redeploy/update) behind `IPortainerClient`. |
-| `TrivyVulnerabilityProvider` (`Vulnerabilities\`) | Trivy CLI (external process), client mode against a Trivy server | Runs `trivy image --server <url> --format json …` via `IProcessRunner`/`ProcessRunner`, parses stdout JSON. The `trivy` binary ships inside the container image (see §10). |
-| `DockerScoutVulnerabilityProvider` (`Vulnerabilities\`) | Docker Scout / Docker Hub HTTP API | Docker Hub login → cached bearer token → paginated vulnerability fetch (capped at 50 pages). |
-| `DefaultVulnerabilityProvider` (`Vulnerabilities\`) | — | No-op fallback when vulnerability scanning is disabled/unconfigured (`IVulnerabilityProviderResolver` selects it). |
+| `DockerInstanceClient` (`Docker\`) | Docker Engine HTTP API over `http(s)://`, `tcp://`, `unix://` and `npipe://`, one hand-built `HttpClient` pooled per connection config. | [Docker instances](areas/docker-instances.md) |
+| `DockerHubClient` (`DockerHub\`) | Docker Hub REST API **and** the OCI Distribution v2 API (`registry-1.docker.io`); implements both `IDockerHubClient` and the generic `IRegistryMetadataClient`, because Docker Hub is both a metadata API and an OCI registry. | [Registries](areas/registries.md) |
+| `OciRegistryClient` (`Images\`) | Any other OCI Distribution v2 registry. | [Registries](areas/registries.md) |
+| `PortainerClient` (`Portainer\`) | Portainer REST API (API key or JWT login), endpoint and container listing, container actions. | [Container actions](areas/container-actions.md) |
+| `TrivyVulnerabilityProvider` (`Vulnerabilities\`) | Trivy CLI (external process via `IProcessRunner`), client mode against a Trivy server. | [Vulnerabilities](areas/vulnerabilities.md) |
+| `DockerScoutVulnerabilityProvider` (`Vulnerabilities\`) | Docker Scout / Docker Hub HTTP API. | [Vulnerabilities](areas/vulnerabilities.md) |
+| `DefaultVulnerabilityProvider` (`Vulnerabilities\`) | — (no-op fallback selected by `IVulnerabilityProviderResolver` when scanning is disabled). | [Vulnerabilities](areas/vulnerabilities.md) |
 
 `RegistryMetadataService` is the dispatcher in front of
 `IRegistryMetadataClient`: it holds every registered client and picks the
 first whose `CanHandle(registry)` matches, falling back to
-`NullRegistryMetadataClient` (an `Unsupported` sentinel) for registries
-nothing can handle — adding a new registry type means adding one more
-`IRegistryMetadataClient` implementation, not touching the dispatcher.
+`NullRegistryMetadataClient` (an `Unsupported` sentinel) — adding a new
+registry type means adding one more `IRegistryMetadataClient`
+implementation, not touching the dispatcher.
 
-`TransientHttpRetryHandler` (`Infrastructure\`) is attached to every
-outbound `HttpClient` (Docker Hub, OCI registry, release-metadata feeds,
-Portainer) and retries transient failures (408/429/5xx,
-`HttpRequestException`, `TimeoutException`) honoring `Retry-After`,
-otherwise exponential backoff with jitter, up to `ScanningOptions.RetryCount`.
+`TransientHttpRetryHandler` (`Infrastructure\`) is attached to the
+typed/named `HttpClient`s registered in the composition root (§3). The
+Docker Engine client and Docker Scout create their `HttpClient`s without
+it. The retry policy is specified in
+[Registries](areas/registries.md#retry-of-transient-http-failures).
 
 ## 7. Domain / orchestration layer and the scan engine
 
@@ -266,7 +259,7 @@ flowchart TD
         ISO[ImageScanOrchestrator]
         RCSO[RuntimeContainerScanOrchestrator]
         VES[VulnerabilityEnrichmentService]
-        BIR["IBaseImageResolver<br>(DockerHub/Registry)"]
+        BIR["IBaseImageResolver<br>(registry labels)"]
     end
 
     subgraph Persistence["DockerUpdateGuard.Data"]
@@ -287,35 +280,24 @@ flowchart TD
 ```
 
 - **`IUpdateDetectionService` (`UpdateDetectionService`)** is a pure
-  evaluator (`Evaluate(ImageReference, tags) -> UpdateEvaluationResult`,
-  no I/O), so update logic can be unit-tested without mocking HTTP or the
-  database.
-- **`VersionTagResolutionHelper`** is the tag-comparison engine: parses
-  `major.minor.patch[-suffix]` and `YYYY-suffix` (year-prefixed) tags,
-  groups tags into "variant families" (e.g. `-alpine`, `-jammy`) so an
-  Alpine tag is never recommended as an update for a Debian one, resolves
-  floating alias tags (`latest`) back to the concrete semver tag sharing
-  their digest, and ranks pre-release identifiers below GA releases.
-- **Major-version upgrades are deliberately conservative.** A new major
-  line is only surfaced as an actionable update once it has at least
-  `Scanning:MajorUpgradeMinimumReleaseCount` releases, its first (`x.0.0`)
-  release is older than `Scanning:MajorUpgradeMinimumAgeDays`, and the
-  current major line has gone dormant. Until then it is shown only as
-  descriptive text on an otherwise `UpToDate` result — this avoids
-  recommending a major upgrade the day it ships. Both thresholds accept
-  `0` to disable the corresponding wait.
-- **`IDerivedBaseRuntimeDetector`** infers a locally running .NET/nginx
-  runtime version from Docker inspect environment variables and image
-  history alone (no registry call), which `IDotNetReleaseMetadataService`/
-  `INginxReleaseMetadataService` then compare against upstream release
-  feeds — this covers images that don't expose a useful base-image label,
-  at the cost of only recognizing the two runtimes it has explicit
-  detection rules for.
+  evaluator (no network or database I/O) over an image reference and its
+  tags, and **`VersionTagResolutionHelper`** is the tag-comparison engine
+  behind it, so update logic — including the deliberately conservative
+  major-upgrade gating — can be unit-tested without mocking HTTP or the
+  database. The rules themselves are in
+  [Update detection](areas/update-detection.md).
+- **`IBaseImageResolver`** (registered as `RegistryBaseImageResolver`)
+  resolves base images from registry image labels; **`IDerivedBaseRuntimeDetector`**
+  infers a .NET/nginx runtime from environment variables (and, for runtime
+  containers, image history), which `IDotNetReleaseMetadataService`/
+  `INginxReleaseMetadataService` compare against upstream release feeds.
+  This covers images without a useful base-image label, at the cost of only
+  recognizing the two runtimes it has explicit rules for
+  ([Base images](areas/base-images.md)).
 - **`ImageScanOrchestrator`** guards against overlapping scans of the same
-  observed image with a static per-image `SemaphoreSlim` registry
-  (`ObservedImageScanLockEntry`), not a database lock — this is a
-  same-process concurrency guard, not a multi-instance one (see §11 for
-  the deployment assumption this relies on).
+  observed image with a static per-image `SemaphoreSlim` registry, not a
+  database lock — a same-process concurrency guard, not a multi-instance
+  one (§11, [Scan engine](areas/scan-engine.md)).
 - Orchestrators write directly to `DbContext` sets (`UpdateFindings`,
   `ImageRelationships`, `ScanRuns`) for their own aggregates, and go
   through `IImageCatalogRepository` only for the shared, dedup-sensitive
@@ -329,52 +311,26 @@ All seven scheduled jobs derive from `ScheduledBackgroundService`
 `ExecuteCoreAsync`, optionally `ExecuteStartupAsync` (runs once before the
 loop) and override `ShouldExecuteImmediately()` (default `true`). The base
 class re-evaluates `GetInterval()` every iteration (so config-reload
-changes apply live), creates a DI scope per run, and catches/logs
-exceptions from `ExecuteCoreAsync` so one failing run never crashes the
-host.
+changes apply live), creates a DI scope per run, and catches and logs
+exceptions from `ExecuteCoreAsync`, so a failing run does not end the job.
 
-| Job | Does | Interval source |
-| --- | --- | --- |
-| `DockerInstanceDiscoveryBackgroundService` | Reconciles configured `DockerInstanceOptions` against the DB. | `Scanning:DiscoveryIntervalMinutes` |
-| `DockerHubAccountImageDiscoveryBackgroundService` | Discovers repositories/images under the configured Docker Hub account. Runs immediately at startup (§3). | `Scanning:DockerHubAccountDiscoveryIntervalMinutes` |
-| `OwnImageBaseRefreshBackgroundService` | Scans all enabled observed images for base-image/tag updates (`ImageScanOrchestrator.ScanAllAsync`). | **Dynamic** — see below |
-| `RuntimeContainerRefreshBackgroundService` | Scans running containers for update opportunities (`RuntimeContainerScanOrchestrator.ScanAllAsync`). | `Scanning:RuntimeImageUpdateScanIntervalMinutes` |
-| `ResourceStatisticsRefreshBackgroundService` | Samples Docker instance/container CPU/memory/network usage. | `Scanning:ResourceStatisticsIntervalMinutes` |
-| `VulnerabilityRefreshBackgroundService` | Refreshes CVE findings via the resolved `IVulnerabilityProvider`. | `Scanning:VulnerabilityRefreshIntervalMinutes` |
-| `ScanCleanupBackgroundService` | Repairs stale `Running` scan rows on startup, then purges history past retention (see below). | `Scanning:CleanupIntervalMinutes` |
+| Job | Does |
+| --- | --- |
+| `DockerInstanceDiscoveryBackgroundService` | Reconciles configured Docker instances against the DB. |
+| `DockerHubAccountImageDiscoveryBackgroundService` | Discovers repositories/images under the configured Docker Hub account. |
+| `OwnImageBaseRefreshBackgroundService` | Scans all enabled observed images (`ImageScanOrchestrator.ScanAllAsync`) on a dynamic interval. |
+| `RuntimeContainerRefreshBackgroundService` | Scans running containers (`RuntimeContainerScanOrchestrator.ScanAllAsync`). |
+| `ResourceStatisticsRefreshBackgroundService` | Samples Docker instance/container CPU/memory/network usage. |
+| `VulnerabilityRefreshBackgroundService` | Refreshes CVE findings via the resolved `IVulnerabilityProvider`. |
+| `ScanCleanupBackgroundService` | Repairs stale `Running` scan rows on startup, then purges history past retention. |
 
-**Dynamic own-image scan interval.** Unlike the other jobs,
-`OwnImageBaseRefreshBackgroundService.GetInterval()` computes its interval
-per iteration via `ObservedImageScanIntervalCalculator`:
-`max(OwnImageBaseScanIntervalMinutes, ⌈(DockerHubRequestLimitWindowHours ×
-60 × enabledObservedImageCount) / (DockerHubRequestLimitPerWindow −
-DockerHubReservedManualRequestsPerWindow)⌉)`. As the number of tracked
-images grows, the interval stretches so scheduled Docker Hub calls stay
-within the configured request budget for the window while always reserving
-`DockerHubReservedManualRequestsPerWindow` capacity for manual/ad-hoc
-scans. This is one of three independent Docker Hub rate-limiting
-mechanisms:
-
-1. **Schedule-level** — the dynamic interval above.
-2. **Concurrency-level** — `DockerHubClient` bounds concurrent outbound
-   calls with a `SemaphoreSlim` sized to `DockerHub:MaxParallelRequests`.
-3. **Transport-level** — `TransientHttpRetryHandler` (§6) treats HTTP 429
-   as transient and retries with backoff/`Retry-After`.
-
-There is no separate token-bucket or sliding-window counter; the three
-mechanisms above compose to keep Docker Hub traffic within budget.
-
-**Cleanup and crash recovery.** `ScanCleanupBackgroundService` does not run
-immediately; its `ExecuteStartupAsync` first repairs any `ScanRun` stuck in
-`Running` status (from a crash or restart) older than
-`max(2 × the relevant scan interval, 24h)`, marking it `Failed`. Its
-recurring pass then purges data older than `Scanning:RetainScanRunsDays`:
-resolved/stale `TagCandidates`, resolved `UpdateFindings`, dead
-`VulnerabilityFindings` (immediately if the image is no longer "live" per
-`ILiveImageInventoryQueryService`, else age-based), orphaned
-`ContainerSnapshots`, and old resource samples — while always keeping the
-most recent 20 completed `ScanRun`s for the Scan History UI even past
-retention. It finishes by refreshing the telemetry gauges (§9).
+Intervals and their configuration keys, the dynamic own-image interval that
+stretches with the number of observed images to stay within the Docker Hub
+request budget, overlap rules, scan-run statuses, crash recovery and
+retention are specified in [Scan engine](areas/scan-engine.md). Docker Hub
+traffic is shaped by that schedule, by a per-client concurrency limit and
+by the transport retry (§6); none of them counts requests. Their exact
+behavior is in [Registries](areas/registries.md).
 
 ## 9. UI layer
 
@@ -382,92 +338,68 @@ Blazor Server (**Interactive Server** render mode, applied at the `App`
 root — no WebAssembly, no Auto mode) with **MudBlazor** as the component
 library, plus a hand-rolled CSS design-system layer
 (`wwwroot\app.css`, light/dark via a `.dug-dark` class) on top of it.
+Pages, routes and what each page shows or triggers are specified in
+[Web UI](areas/web-ui.md).
 
-- **Pages** (`Components\Pages`, one `@page` route each): Dashboard (`/`),
-  My Images / My Image Detail, Observed Images / Observed Image Detail,
-  Runtime Containers / Runtime Container Detail, Docker Instances / Docker
-  Instance Detail, Shared Base Images (`/base-images`), Vulnerabilities,
-  Scan History, plus `Error`/`NotFound`.
+- **Pages** (`Components\Pages`) have one `@page` route each.
 - **`IApplicationViewService` (`UI\ApplicationViewService`)** is the single
   facade every page depends on. It maps `DockerUpdateGuard.Data` entities
-  into a set of `*ViewData` DTOs (`UI\`) — pages never query
+  into `*ViewData` DTOs (`UI\`) — pages never query
   `DockerUpdateGuardDbContext` or the repositories/query services
   directly. This keeps EF Core change-tracking and entity shapes out of
   the component tree, at the cost of `ApplicationViewService` being a
   fairly wide surface (one method per page/section).
 - **`Components\Shared`** holds cross-page building blocks: loading
-  skeletons (`PageHeaderSkeleton`, `TableSkeleton`, `MetricGridSkeleton`)
-  and the vulnerability widgets (`VulnerabilityAssessmentCard`,
-  `VulnerabilityFindingsTable`, `VulnerabilitySeverityChips`,
-  `VulnerabilityRescanControl`) shared between the Vulnerabilities page and
-  image/container detail pages.
-- **`DashboardRefreshState`** is a small injected scoped pub/sub class
-  background jobs and manual-scan actions use to signal the Dashboard to
-  refresh without a full page reload.
+  skeletons and the vulnerability widgets shared between the
+  Vulnerabilities page and image/container detail pages.
+- **`DashboardRefreshState`** is a small singleton pub/sub class that
+  manual-scan actions in the UI use to signal open Dashboards to refresh
+  without a full page reload.
 
 ## 10. Telemetry
 
 `DockerUpdateGuard.Telemetry.AddDockerUpdateGuardTelemetry` wires
-OpenTelemetry logging, tracing, and metrics — each independently
-toggleable (`Telemetry:EnableLogging/EnableMetrics/EnableTracing`, default
-on) — exported over a single OTLP exporter when `Telemetry:OtlpEndpoint` is
-a valid absolute HTTP(S) URI (registration is skipped entirely if all three
-signals are disabled; there is no console/Prometheus exporter fallback).
-
-- **Tracing**: a custom `ActivitySource` (`DockerUpdateGuardTelemetry.
-  ActivitySource`) plus ASP.NET Core and HttpClient instrumentation.
-  `TelemetryActivityNames` defines the custom activity names in use
-  (`scan.run`, `dockerhub.request`, `dockerengine.request`, `cve.request`,
-  `portainer.request`, `portainer.action`, `persistence.operation`).
-- **Metrics**: a custom `Meter` plus ASP.NET Core, HttpClient, and .NET
-  runtime instrumentation. `ApplicationTelemetry` (host project) owns the
-  application-specific instruments: counters/histogram for scan
-  runs/failures/duration, and observable gauges for inventory counts
-  (`ObservedImages`, `RuntimeContainers`, `DeduplicatedBaseImages`,
-  `ActiveUpdateFindings`, `ActiveCveFindings`, `NeedsReviewFindings`) —
-  refreshed at startup and after every cleanup pass (§8).
-- **Logging**: structured, via `ILogger<T>` and source-generated
-  `[LoggerMessage]` partial classes — every integration client and
-  background job has a matching `*Logging.cs` partial class following this
-  pattern, rather than ad-hoc `_logger.LogInformation(...)` calls.
+OpenTelemetry logging, tracing, and metrics, exported over a single OTLP
+exporter. A custom `ActivitySource` and `Meter` live in the telemetry
+project (`DockerUpdateGuardTelemetry`, `TelemetryActivityNames`);
+`ApplicationTelemetry` in the host project owns the application-specific
+instruments. Logging is structured, via `ILogger<T>` and source-generated
+`[LoggerMessage]` partial classes — every integration client and
+background job has a matching `*Logging.cs` partial class rather than
+ad-hoc `_logger.LogInformation(...)` calls. Switches, export conditions,
+the emitted span and instrument names, and when the inventory gauges
+refresh are specified in [Telemetry](areas/telemetry.md).
 
 ## 11. Security posture and operating assumptions
 
-These are observed characteristics of the current implementation, not
-aspirational guarantees:
+These are observed characteristics of the current implementation; the
+details are in [Hosting and configuration](areas/hosting.md) and the areas
+it links:
 
-- **No authentication or authorization layer.** There is no
-  `AddAuthentication`/`AddAuthorization`, no login page, and no API key
-  check anywhere in the host. The application is meant to be deployed
-  behind network-level access control (private network, VPN, or a reverse
-  proxy that terminates auth) rather than exposed directly — this is a
-  deployment responsibility, not something the app enforces itself. See
+- **No authentication or authorization layer.** The application is meant
+  to be deployed behind network-level access control (private network,
+  VPN, or a reverse proxy that terminates auth) — a deployment
+  responsibility, not something the app enforces. See
   [SECURITY.md](../SECURITY.md) for the vulnerability-reporting process.
 - **No health-check or rate-limiting endpoints** are registered.
-- **Single-instance assumption for the scan engine.** The PostgreSQL
-  advisory lock (§3) serializes *migrations* across concurrently starting
-  instances, but the background jobs and `ImageScanOrchestrator`'s
-  in-memory scan lock (§7) are not distributed — running more than one
-  instance of the app against the same database will duplicate scan work
-  (harmless but wasteful; catalog writes stay correct via
-  `IImageCatalogRepository`'s get-or-create race-retry) rather than
-  coordinate it.
-- **Container runs as a non-root, unprivileged user** (UID 64000, GID 0 —
-  the root group, not root user) so a group-owned, root:root Docker socket
-  bind-mount stays readable (e.g. on Synology DSM) without running the
-  process as root; see the comment block in
+- **Single-instance assumption for the scan engine.** The advisory lock
+  (§3) serializes *migrations* across concurrently starting instances, but
+  the background jobs and `ImageScanOrchestrator`'s in-memory scan lock
+  (§7) are not distributed — running more than one instance against the
+  same database duplicates scan work rather than coordinating it; catalog
+  writes stay correct via `IImageCatalogRepository`'s race-retry.
+- **Container runs as a non-root user** (UID 64000, GID 0) so a
+  group-owned, root:root Docker socket bind-mount stays readable without
+  running the process as root; see
   [src/DockerUpdateGuard/Dockerfile](../src/DockerUpdateGuard/Dockerfile).
-  Mounting the host's Docker socket is nonetheless a high-trust operation
-  (equivalent to root on the host) and is inherent to the feature, not a
-  bug.
+  Mounting the host's Docker socket is nonetheless root-equivalent on the
+  host and inherent to the feature.
 - **Secrets in configuration.** Docker Hub PAT, Portainer credentials/API
-  token, and the database password are plain configuration values (no
-  secret-store integration beyond what ASP.NET Core's configuration
-  providers already support). `SkipCertificateValidation` (Docker
-  instances) and `AllowInsecureHttp` (Portainer) exist for
-  trusted/self-signed/local setups and are logged as warnings at runtime
-  when active — operators are responsible for not enabling them over
-  untrusted networks.
+  token, and the database password are plain configuration values.
+  `SkipCertificateValidation` (Docker instances) and `AllowInsecureHttp`
+  (Portainer) exist for trusted/self-signed/local setups; how each is
+  validated and reported is in [Docker instances](areas/docker-instances.md)
+  and [Container actions](areas/container-actions.md).
 
 ## 12. Testing architecture
 
@@ -497,14 +429,16 @@ the two production projects that matter for this split:
   `v*.*.*` tag — builds, tests, then builds and pushes the multi-stage
   Docker image (tagged with the version and `latest`) to Docker Hub
   (`networlddev/dockerupdateguard`) and creates a GitHub Release with
-  auto-generated notes. The image build records the exact
-  `mcr.microsoft.com/dotnet/runtime` base digest as an OCI label.
+  auto-generated notes. The workflow passes the digest of
+  `mcr.microsoft.com/dotnet/runtime:10.0-alpine` into the image's
+  `org.opencontainers.image.base.digest` label, while the runtime stage
+  builds on `mcr.microsoft.com/dotnet/aspnet:10.0-alpine`.
 - **Container image**
   (`src/DockerUpdateGuard/Dockerfile`): multi-stage — SDK build stage,
-  a `trivy` CLI stage copied in from the official Trivy image (bundling
-  the CLI so `Vulnerabilities:Provider=Trivy` works out of the box against
-  a separately-run Trivy *server*), and an Alpine ASP.NET runtime stage
-  running as the non-root user described in §11. Listens on `:8080`.
+  a `trivy` CLI stage copied in from the official Trivy image (so the
+  Trivy provider works out of the box against a separately-run Trivy
+  *server*), and an Alpine ASP.NET runtime stage running as the non-root
+  user described in §11; see [Hosting and configuration](areas/hosting.md).
 - **Deployment tiers** (`docs/docker-compose.{minimal,trivy,full}.yml`,
   walked through in [INSTALL.md](../INSTALL.md)): minimal
   (app + PostgreSQL), + Trivy server, or + a full Grafana OTel-LGTM stack
@@ -520,9 +454,9 @@ Summarized here for quick reference; details are in the sections above.
 | Decision | Rationale evidenced in the code |
 | --- | --- |
 | Blazor Server (Interactive Server), not WebAssembly | Keeps all data access server-side against `DockerUpdateGuardDbContext`; no separate public API surface is needed since there is no WASM client to serve one to. |
-| Hand-written HTTP clients instead of `Docker.DotNet`/a Portainer SDK/a Trivy client library | Each client only needs a small slice of its target API (engine stats/inspect, Hub tags, Portainer actions, Trivy CLI JSON) — see §6 for exactly what each one covers. |
+| Hand-written HTTP clients instead of `Docker.DotNet`/a Portainer SDK/a Trivy client library | Each client only needs a small slice of its target API — see §6 for what each one covers. |
 | Trivy runs as an external CLI process (`IProcessRunner`), not an HTTP client to a Trivy server API | The image is scanned locally by the CLI in client mode; only the vulnerability database lookup goes to the configured Trivy server. |
-| Update detection (`IUpdateDetectionService`) and tag comparison (`VersionTagResolutionHelper`) are pure, I/O-free | Lets the update-recommendation logic — including the deliberately conservative major-version-upgrade gating (§7) — be unit-tested exhaustively without mocking HTTP or the database. |
+| Update detection (`IUpdateDetectionService`) and tag comparison (`VersionTagResolutionHelper`) are pure, I/O-free | Lets the update-recommendation logic — including the deliberately conservative major-upgrade gating — be unit-tested exhaustively without mocking HTTP or the database. |
 | One shared `IImageCatalogRepository` for the `RegistryRepository`/`ImageVersion` catalog, but no repository for any other entity | Only the catalog has a get-or-create-with-dedup concern that benefits from a single enforced entry point (§5.2); other entities are written directly by the orchestrator that owns them. |
 | PostgreSQL advisory lock around migrations, but no distributed lock around scanning | Migrations are unsafe to run concurrently and are cheap to serialize once at startup; duplicate concurrent scans are wasteful but not unsafe (§11), so they were not made distributed. |
 | No authentication/authorization in the app itself | The app assumes a trusted network perimeter (reverse proxy, VPN, private network) rather than implementing its own auth layer (§11). |
