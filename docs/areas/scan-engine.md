@@ -50,8 +50,8 @@ interval = max(OwnImageBaseScanIntervalMinutes, ⌈DockerHubRequestLimitWindowHo
 - With no enabled observed image the interval is `OwnImageBaseScanIntervalMinutes`.
 - The count of enabled observed images is read again before every wait.
 - Defaults and ranges: `DockerHubRequestLimitWindowHours` 6 (1–168), `DockerHubRequestLimitPerWindow` 200
-  (1–100000), `DockerHubReservedManualRequestsPerWindow` 40 (0–100000). The reserved share must be smaller than the
-  limit per window, so the budget is always at least 1.
+  (1–100000), `DockerHubReservedManualRequestsPerWindow` 40 (0–100000). The reserved share must be smaller than
+  the limit per window, so the budget is always at least 1.
 - With the defaults, up to 26 enabled images are scanned every 60 minutes; from 27 images on the interval grows by
   about 2.25 minutes per image (e.g. 100 images → 225 minutes).
 - The formula only spaces out scheduled runs. Manual scans are not counted against the budget, and the job does not
@@ -146,8 +146,8 @@ Each cleanup pass computes a cutoff of now minus `DockerUpdateGuard:Scanning:Ret
 - **Resource samples:** container and Docker instance samples recorded before the cutoff.
 
 After the removal the cleanup pass refreshes the inventory gauges ([Telemetry](telemetry.md)) and logs how many
-tag candidates, update findings, vulnerability findings, snapshots and scan runs it removed. Nothing else (images, observed images, Docker instances, relationships, tag selections) is
-removed by cleanup.
+tag candidates, update findings, vulnerability findings, snapshots and scan runs it removed. Nothing else (images,
+observed images, Docker instances, relationships, tag selections) is removed by cleanup.
 
 ### Live images
 
