@@ -77,7 +77,7 @@ transport security; the UI is the intended caller of the actions.
 - A container snapshot referenced by an action run is never removed by retention ([Scan engine](scan-engine.md)).
   Deleting the Portainer endpoint or the snapshot keeps the action run and clears the link.
 - Today no component executes actions or writes action runs: neither a page nor a background job calls the capability
-  check or an action (see *Open questions*).
+  check or an action (see *Known gaps*).
 
 ## Limits and errors
 
@@ -87,6 +87,21 @@ transport security; the UI is the intended caller of the actions.
 - A disabled Portainer section is not validated at all; its values may be incomplete.
 - Error messages and log entries name the Docker instance, the Portainer base URL, the action, the container name and
   HTTP status codes. They never contain the password, the API token or the JWT.
+
+### Known gaps
+
+- Container actions cannot be triggered from the UI or a job, and no action run is ever recorded. The executable
+  actions (`start`, `stop`, `restart`, `kill`, `pause`, `unpause` on containers) do not match the action types of the
+  action-run record, and redeploying stacks and updating services are not implemented. Tracked in
+  [#280](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/280).
+- The login and the action request are retried on transient answers like any other request, so one requested action
+  can be executed more than once ([Registries](registries.md)). Tracked in
+  [#273](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/273).
+- `AllowInsecureHttp: true` logs no runtime warning, unlike `SkipCertificateValidation` for Docker instances. Tracked
+  in [#276](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/276).
+- Without `EndpointId` the first environment Portainer lists is used, which can be an environment other than the one
+  that manages the Docker instance; an explicit `EndpointId` is not required when Portainer manages several
+  environments. Tracked in [#279](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/279).
 
 ## Related decisions
 
@@ -99,19 +114,3 @@ None yet.
 - Startup validation failure and configuration reload: [Hosting](hosting.md).
 - Retention of snapshots and other history: [Scan engine](scan-engine.md).
 - What the UI shows about Portainer availability: [Web UI](web-ui.md).
-
-## Open questions
-
-1. No page or job triggers Portainer actions, and no action run is ever written. Is the integration meant to be wired
-   into the UI (the security area list names "the UI that triggers them"), or should the unused parts be removed?
-2. The executable actions (`start`, `stop`, `restart`, `kill`, `pause`, `unpause` on containers) do not match the
-   action types of the action-run record (*restart container*, *redeploy stack*, *update service* on containers,
-   services and stacks). Which set is the intended contract? Redeploying stacks and updating services are not
-   implemented.
-3. The action request and the login are retried on HTTP 408, 429 and 5xx answers like any idempotent request, so one
-   requested action can be executed more than once. Should non-idempotent Portainer requests be excluded from retry?
-4. `AllowInsecureHttp` produces no runtime warning, while the documentation of the security posture says it is logged
-   as a warning at runtime. Should a warning be added, as for `SkipCertificateValidation`?
-5. Without `EndpointId`, the first environment Portainer lists is used, which can be an environment other than the one
-   that manages the Docker instance. Should an explicit `EndpointId` be required when Portainer manages more than one
-   environment?

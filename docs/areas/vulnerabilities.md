@@ -151,6 +151,22 @@ The dashboard shows at most one hint about the vulnerability configuration:
 - Messages are built from the image reference and the provider's error text; no credentials or tokens are put into
   them.
 
+### Known gaps
+
+- Docker Scout follows the `next` link of a response to whatever host it names and sends the bearer token along; the
+  same gap in the registry clients is owned by [Registries](registries.md). Tracked in
+  [#264](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/264).
+- Docker Scout requests do not go through the transient-failure retry the other outbound HTTP calls use, and Docker
+  Scout scans the tag, not the digest, so an image version whose tag was republished is assessed with the advisories
+  of the newer image. Tracked in [#267](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/267).
+- Provider values longer than the stored lengths (for example a Trivy title over 300 characters) are not shortened;
+  saving them fails and ends the whole refresh *failed*, leaving the remaining image versions unscanned. Tracked in
+  [#271](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/271).
+- Some values are kept although nothing produces them: validation makes the *Trivy base URL missing* hint and the
+  Trivy *not configured* result unreachable (unless an invalid reloaded configuration is still served), and the
+  finding sources *registry advisory* and *manual* exist in the data model but are never produced. Tracked in
+  [#293](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/293).
+
 ## Related decisions
 
 None yet.
@@ -163,20 +179,3 @@ None yet.
 - Validation at startup, the bundled Trivy CLI in the container image: [Hosting](hosting.md).
 - How assessments, findings, severities and the rescan control are displayed: [Web UI](web-ui.md).
 - Inventory gauges for active findings: [Telemetry](telemetry.md).
-
-## Open questions
-
-1. Docker Scout follows the `next` link of a response as given and sends the bearer token with it, without checking
-   that it points to `DockerScoutBaseUrl`. Should the link be restricted to the configured host?
-2. Docker Scout requests do not go through the transient-failure retry that the other outbound HTTP calls use. Is that
-   intended?
-3. Docker Scout scans the tag, not the digest, so an image version whose tag was republished is assessed with the
-   advisories of the newer image. Is that acceptable?
-4. Provider values longer than the stored lengths (for example a Trivy title over 300 characters) are not shortened;
-   saving them fails and ends the whole refresh *failed*, leaving the remaining image versions unscanned. Should they
-   be truncated?
-5. Validation rejects `Enabled` with `Provider` `Trivy` and no `TrivyBaseUrl`, so the *Trivy base URL missing* hint
-   and the Trivy *not configured* result look unreachable (unless an invalid reloaded configuration is still served).
-   Are they kept on purpose?
-6. The finding sources *registry advisory* and *manual* exist in the data model but are never produced. Reserved or
-   obsolete?

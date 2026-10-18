@@ -51,7 +51,7 @@ Every exported signal carries the same resource:
   | `dockerengine.request` | Container discovery on one Docker instance | `docker.instance.name` (the configured instance name) |
 
 - The span names `scan.run`, `cve.request`, `portainer.request`, `portainer.action` and `persistence.operation` are
-  reserved for the application's source but not emitted (see *Open questions*).
+  reserved for the application's source but not emitted (see *Known gaps*).
 
 ### Logs
 
@@ -75,8 +75,8 @@ Every exported signal carries the same resource:
   | `dockerupdateguard.scans.duration` | Histogram | `s` | The run's duration in seconds |
 
   All three carry `scan.type` (`ObservedImage`, `RuntimeContainer` or `Vulnerability`) and `result.status` (the
-  final status, for example `Succeeded`, `Partial` or `Failed`). A run that ends `Partial` is counted in
-  `scans.total` but not in `scans.failed`.
+  final status, for example `Succeeded`, `Partial` or `Failed`). `scans.failed` counts only runs that produced no
+  usable result; a run that ends `Partial` is not a failed run and is counted in `scans.total` only.
 - Inventory gauges:
 
   | Name | Value |
@@ -115,6 +115,18 @@ Every exported signal carries the same resource:
   database is contacted.
 - Export failures are handled inside the exporter and are never surfaced to users or scans.
 
+### Known gaps
+
+- Scans, vulnerability provider calls, Portainer calls and persistence have no application span; the reserved span
+  names `scan.run`, `cve.request`, `portainer.request`, `portainer.action` and `persistence.operation` are never
+  emitted. Tracked in [#83](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/83).
+- `dockerupdateguard.runtime_containers` counts every container that still has a stored snapshot, including
+  containers that have since stopped or been removed, until cleanup deletes their snapshots; it does not count only
+  the currently known containers. Tracked in [#294](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/294).
+- Configured base URLs (Docker instance, Portainer) are logged verbatim, and retry log lines keep the user-info part
+  of a URL, so credentials embedded in a URL (`https://user:secret@host`) reach the logs.
+  Tracked in [#295](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/295).
+
 ## Related decisions
 
 None yet.
@@ -128,17 +140,3 @@ None yet.
 - Secrets in the UI: [Web UI](web-ui.md); secrets in configuration: [Hosting](hosting.md).
 - Runtime warnings for `SkipCertificateValidation` and `AllowInsecureHttp`: [Docker instances](docker-instances.md)
   and [Container actions](container-actions.md).
-
-## Open questions
-
-1. The span names `scan.run`, `cve.request`, `portainer.request`, `portainer.action` and `persistence.operation` are
-   defined but no code starts such spans, so scans, vulnerability provider calls, Portainer calls and persistence
-   have no application span. Should they be emitted, or the names dropped?
-2. `dockerupdateguard.runtime_containers` counts every container that still has a stored snapshot, including
-   containers that have since stopped or been removed, until cleanup deletes their snapshots. Is "containers seen
-   within the retention period" the intended meaning, or should it count only currently known containers?
-3. Configured base URLs (Docker instance, Portainer) are logged verbatim, and the retry log keeps the user-info part of
-   a URL. A base URL with embedded credentials (`https://user:secret@host`) would therefore reach the logs. Should
-   URLs be stripped of user info before logging?
-4. A scan run that ends `Partial` is not counted in `dockerupdateguard.scans.failed`. Is that the intended alerting
-   signal, or should partial runs be counted separately?

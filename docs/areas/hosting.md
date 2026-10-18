@@ -85,7 +85,8 @@ registry never delays or prevents startup.
   - `DockerUpdateGuard:DockerHub:ApiBaseUrl`, `DockerUpdateGuard:DockerHub:RequestTimeoutSeconds` (also the request
     timeout for generic registries and release-metadata feeds) and `DockerUpdateGuard:ReleaseMetadata:*`;
   - the whole `Telemetry` section.
-- A reloaded configuration is validated by the same rules as at startup when it is next read; see *Open questions*.
+- A reloaded configuration is validated by the same rules as at startup when it is next read; a reload that fails
+  validation raises an error where it is read (see *Known gaps*).
 
 ### HTTP pipeline
 
@@ -153,6 +154,26 @@ These properties hold today and must be provided for by the deployment:
 | Unhandled exception in a request (non-Development) | The `/error` page with a generic message. |
 | Unknown URL or bodyless error status | The `/not-found` page. |
 
+### Known gaps
+
+- An invalid configuration reload is not rejected while the last valid configuration stays in use: the background
+  jobs read their interval from the reloaded configuration outside their error handling, so a reload that fails
+  validation can stop the host ([Scan engine](scan-engine.md)).
+  Tracked in [#281](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/281).
+- Forwarded headers from a reverse proxy are not supported. Behind a TLS-terminating proxy the application sees
+  plain HTTP, so it never sends HSTS and HTTPS redirection cannot determine a port; both are left to the proxy.
+  Tracked in [#283](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/283).
+- Certificates in `/app/certs` are not imported for the default user: in the shipped image the system trust store is
+  owned by root and not writable by group `0`, so the import is skipped unless the container runs as root.
+  Tracked in [#285](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/285).
+- Waiting for the migration advisory lock is bounded by the 30-second database command timeout and then retried like
+  any transient database failure (see *Database connection*), so an instance that starts while another one runs a
+  long migration can fail its startup after several minutes.
+  Tracked in [#287](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/287).
+- The shipped `appsettings.json` configures one Docker instance with an empty name, which fails configuration
+  validation; the application does not start with the shipped settings until that instance is named or removed.
+  Tracked in [#288](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/288).
+
 ## Related decisions
 
 None yet.
@@ -168,18 +189,3 @@ None yet.
 - Pages and what they show: [Web UI](web-ui.md).
 - Building, testing, CI and releasing the image: `docs/CONTRIBUTING.md`.
 - Compose files and the walkthrough for the deployment tiers: `INSTALL.md`.
-
-## Open questions
-
-1. Background jobs read their interval from the reloaded configuration outside their error handling. If a reload
-   produces a configuration that fails validation, reading it raises an error there that is not caught, which can
-   stop the host instead of keeping the last valid configuration. Is stopping the intended reaction to an invalid
-   reload?
-2. There is no handling of forwarded headers from a reverse proxy. Behind a TLS-terminating proxy the application
-   sees plain HTTP, so HSTS is never sent and HTTPS redirection cannot determine a port. Is relying on the proxy for
-   both intended?
-3. In the shipped image the trust store is owned by root and not writable by group `0`, so the certificate import
-   from `/app/certs` appears to be skipped unless the container is started as root. Should the import work for the
-   default user?
-4. An instance waiting for the migration advisory lock is subject to the database command timeout. Whether a long
-   migration by one instance can make a concurrently starting instance fail its startup is not established.

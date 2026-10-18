@@ -25,9 +25,10 @@ on the snapshots and samples it produces.
   - creates a record for each new name, with registration source *configuration file*;
   - updates endpoint URI (trimmed `BaseUrl`), connection kind, enabled flag and `SkipCertificateValidation` of each
     existing one;
-  - **deletes** every stored instance whose name is no longer configured, together with its scan runs, container
-    snapshots, resource samples, Portainer endpoint and action runs. Update findings that pointed at a deleted
-    snapshot lose that link but are kept.
+  - **deletes** every stored instance whose name is no longer configured, immediately and without waiting for
+    retention, together with its scan runs, container snapshots, resource samples, Portainer endpoint and action
+    runs. A removed instance is not kept as disabled. Update findings that pointed at a deleted snapshot lose that
+    link but are kept.
 - A disabled instance (`Enabled: false`) keeps its stored history but is not contacted: no discovery, no inspection,
   no resource sampling. Every Engine call for it answers *not configured*.
 - The stored connection kind is derived from `BaseUrl`: `http` → Http, `https` → Https, `tcp` → Https when `UseTls`
@@ -152,6 +153,19 @@ on the snapshots and samples it produces.
 - `SkipCertificateValidation` and a mounted Docker socket are trust relaxations the operator chooses; the socket is
   root-equivalent on the host ([Hosting](hosting.md)).
 
+### Known gaps
+
+- Instance lookups during a runtime scan or a resource collection compare the configured `Name` untrimmed with the
+  trimmed stored name, so an instance whose configured name has leading or trailing spaces is stored but always
+  skipped as missing from configuration. Tracked in
+  [#266](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/266).
+- A `CertificatePath` that is not a `.pfx`/`.p12` file is loaded as a certificate without a private key, which cannot
+  authenticate a TLS client, and a `CertificatePath` file that does not exist is ignored without validation error or
+  warning. Tracked in [#269](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/269).
+- A single timed-out or broken stats request discards the whole round of samples for its instance, while a
+  non-success stats answer only drops that container. Tracked in
+  [#270](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/270).
+
 ## Related decisions
 
 None yet.
@@ -165,16 +179,3 @@ None yet.
 - Restart and other actions through Portainer: [Container actions](container-actions.md).
 - Pages that show instances, containers and resource charts: [Web UI](web-ui.md).
 - Startup, validation failure and the container image's socket access: [Hosting](hosting.md).
-
-## Open questions
-
-1. Instance lookups during a scan or a resource collection match the configured `Name` untrimmed, while the stored
-   name is trimmed. A configured name with leading or trailing spaces is therefore stored but always skipped as
-   "missing from configuration". Is that intended, or should both sides trim?
-2. A `CertificatePath` that is not a `.pfx`/`.p12` file is loaded as a certificate without a private key, which
-   cannot authenticate a TLS client. Should PEM certificate-plus-key files be supported, or only PKCS#12 be accepted?
-3. A missing `CertificatePath` file is ignored silently. Should it fail validation or log a warning?
-4. A single stats timeout discards the whole round of samples for an instance, while a non-success stats answer only
-   drops that container. Is the asymmetry intended?
-5. Removing an instance from configuration deletes its whole history, including scan runs, without retention. Is
-   that the desired behavior, or should a removed instance be kept as disabled?

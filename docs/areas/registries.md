@@ -113,9 +113,11 @@ retry policy and the failure model.
 
 - `Scanning:DockerHubRequestLimitWindowHours` (default 6, range 1–168), `Scanning:DockerHubRequestLimitPerWindow`
   (default 200, range 1–100000) and `Scanning:DockerHubReservedManualRequestsPerWindow` (default 40, range 0–100000,
-  smaller than the per-window limit) describe the Docker Hub request budget. They only stretch the schedule of the
-  observed-image scan ([Scan engine](scan-engine.md)). Requests are not counted, manual scans are not limited, and no
-  request is refused for budget reasons.
+  smaller than the per-window limit) describe the Docker Hub request budget. The budget is a scheduling hint: it
+  assumes one Docker Hub request per observed image and scan and only stretches the schedule of the observed-image
+  scan ([Scan engine](scan-engine.md)). It does not count requests; a scan may issue several requests per image
+  (token, manifests, configuration blobs, tag lookups and listings), manual scans are not limited, and no request is
+  refused for budget reasons.
 - `DockerUpdateGuard:DockerHub:MaxParallelRequests` (default 4, range 1–32) caps the requests one Docker Hub client
   instance has in flight at once, covering web API, login, token and registry requests. Every scan and every UI
   operation works with its own client instances, so the cap is not global. The value is read when an instance is
@@ -167,6 +169,27 @@ retry policy and the failure model.
 - Registry responses are untrusted: missing or mistyped JSON fields are treated as unknown values. An unbounded
   listing (account discovery) reads every page the registry offers.
 
+### Known gaps
+
+- `MaxParallelRequests` caps each Docker Hub client instance, not the process: concurrent scans, and the client
+  instances one scan uses, each get the full allowance. Tracked in
+  [#265](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/265).
+- Non-idempotent requests with a body, such as the Docker Hub login and Portainer actions, are retried like any other
+  request, so one request can take effect more than once. Tracked in
+  [#273](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/273).
+- `DockerHub:Registry` does not decide which registries the Docker Hub client serves (that host list is fixed); it
+  only gates the account listing and, when set to an absolute URL with a non-Docker-Hub host, replaces the web API
+  base address. Tracked in [#268](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/268).
+- Transport errors, timeouts and malformed JSON escape as errors from several calls instead of being answered as
+  *failed* outcomes. Tracked in [#272](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/272).
+- For other registries an image configuration lookup without a platform takes the first index entry, which can be an
+  attestation manifest, and publication times come only from a top-level `created` field of the manifest, which most
+  registries do not send, so their tags usually have no publication time. Tracked in
+  [#277](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/277).
+- Pagination links (`next` on Docker Hub, `Link` elsewhere) are followed to whatever host they name, and the Docker
+  Hub bearer token is sent along to that host. Tracked in
+  [#264](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/264).
+
 ## Related decisions
 
 None yet.
@@ -180,25 +203,3 @@ None yet.
 - Version lines, tag ranking and update recommendations: [Update detection](update-detection.md).
 - Docker Scout and Trivy: [Vulnerabilities](vulnerabilities.md).
 - Docker Engine access: [Docker instances](docker-instances.md); Portainer: [Container actions](container-actions.md).
-
-## Open questions
-
-1. `MaxParallelRequests` limits each Docker Hub client instance, not the process: concurrent scans, and the two client
-   instances one scan resolves, each get the full allowance. Is a process-wide cap intended?
-2. The request budget assumes one Docker Hub request per observed image and scan, while a scan issues several (token,
-   manifest, platform manifest and blob per chain level, tag lookups and up to 150 tags per floating base tag). Should
-   the budget count real requests, or be documented as a rough scheduling hint only?
-3. Requests with a body are retried like any other, including the Docker Hub login (and Portainer actions, see
-   [Container actions](container-actions.md)). Should non-idempotent requests be excluded?
-4. `DockerHub:Registry` does not decide which registries the Docker Hub client serves (that host list is fixed). It
-   only gates the account listing and, when set to an absolute URL with a non-Docker-Hub host, replaces the web API
-   base address. What is the intended meaning of the key?
-5. Transport errors, timeouts and malformed JSON escape as errors from several calls (see *Limits and errors*), which
-   contradicts the rule that integrations answer with outcomes. Should they map to *failed*?
-6. For other registries an image configuration lookup without a platform takes the first index entry, which can be an
-   attestation manifest; Docker Hub skips `unknown` platforms. Should both behave alike?
-7. Publication times for other registries come only from a top-level `created` field of the manifest, which most
-   registries do not send, so those tags usually have no publication time. Should the configuration blob's `created`
-   be used instead?
-8. Pagination links (`next` on Docker Hub, `Link` elsewhere) are followed to whatever host they name, and the Docker
-   Hub bearer token is sent along. Should pagination be restricted to the original host?

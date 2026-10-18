@@ -184,6 +184,19 @@ may scan the same image at the same time. This is wasteful but does not corrupt 
 - If the database cannot be reached during a cleanup pass, the whole pass fails, nothing is removed, and the next
   pass starts after one interval.
 
+### Known gaps
+
+- Reading a job's interval is outside the job's error handling. When it fails — a configuration reload with an
+  invalid value, or an unreachable database while the observed-image refresh counts the enabled images — the job
+  ends with an error and the host stops, instead of the job keeping its last known interval.
+  Tracked in [#281](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/281).
+- The 20 most recently completed scan runs are a cap, not a minimum: an unreferenced run completed before the
+  `RetainScanRunsDays` cutoff is removed even when it is among the 20 most recent, so the scan history can be
+  empty after a long pause. Tracked in [#290](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/290).
+- Runtime container scans and vulnerability refreshes have no per-subject guard: a manual and a scheduled run of the
+  same kind can run at the same time (see *Overlapping scans*).
+  Tracked in [#292](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/292).
+
 ## Related decisions
 
 None yet.
@@ -200,16 +213,3 @@ None yet.
 - How scan runs and manual triggers are shown in the UI in [Web UI](web-ui.md).
 - Metrics recorded per run and the inventory gauges in [Telemetry](telemetry.md).
 - Configuration loading, validation and the startup sequence in [Hosting and configuration](hosting.md).
-
-## Open questions
-
-1. The interval of a job is read outside its error handling. If reading it fails — the observed-image refresh counts
-   enabled images in the database for every interval, and a configuration reload with an invalid value makes the
-   options unreadable — the job ends with an error, and with the platform's default behavior the host stops. Is a
-   failing interval lookup meant to stop the host, or should the job fall back to the last known interval?
-2. Scan-run retention keeps unreferenced completed runs only while they are both among the 20 most recent and
-   within `RetainScanRunsDays`, i.e. 20 is a cap, not a minimum kept past retention. Is the cap the intended
-   behavior (the configuration reference describes `RetainScanRunsDays` as the retention period of the scan
-   history)?
-3. Runtime container scans and vulnerability refreshes can overlap between a manual and a scheduled run, unlike
-   observed-image scans. Is overlap acceptable for them, or should they get the same per-subject guard?

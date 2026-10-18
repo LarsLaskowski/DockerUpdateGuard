@@ -115,7 +115,7 @@ never their values.
 - The UI never shows configured secrets: the Docker Hub token, Portainer credentials and token and the database
   connection string are neither displayed nor sent to the browser. Pages show only whether an integration is
   configured, and the Docker Hub user name as the title of the My Images list.
-- Docker instance endpoints are shown as configured.
+- Docker instance endpoints are shown as configured (see *Known gaps*).
 
 ## Limits and errors
 
@@ -130,6 +130,20 @@ never their values.
   is reloaded.
 - Lists are not paged except the Vulnerabilities page; all other lists show every item or the fixed number stated
   above.
+
+### Known gaps
+
+- The scan status chips (dashboard, scan history, observed image and My Images lists) color only `Failed`, `Running`
+  and `Pending`; `Succeeded` and `Partial` are shown without color, so a partial run is not marked as a warning.
+  Tracked in [#274](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/274).
+- A detail route with a well-formed identifier that does not exist (for example a deleted observed image) keeps
+  showing the loading skeleton instead of a not-found state.
+  Tracked in [#40](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/40).
+- Docker instance endpoints are not masked: an endpoint that embeds credentials as user information in its URL is
+  shown with them. Tracked in [#295](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/295).
+- The Scan History and dashboard descriptions mention discovery and cleanup runs, although those jobs record no scan
+  runs ([Scan engine](scan-engine.md)).
+  Tracked in [#278](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/278).
 
 ## Related decisions
 
@@ -148,15 +162,3 @@ None yet.
 - Container actions through Portainer in [Container actions](container-actions.md).
 - Error and status-code middleware, HTTPS and the missing authentication in
   [Hosting and configuration](hosting.md).
-
-## Open questions
-
-1. The scan status chips (dashboard, scan history, observed image and My Images lists) color `Failed`, `Running` and
-   `Pending`, but expect `Completed` for success, a status that does not exist; `Succeeded` and `Partial` are shown
-   without color. Should `Succeeded` be green and `Partial` be marked as a warning?
-2. A detail route with a well-formed identifier that does not exist (for example a deleted observed image) keeps
-   showing the loading skeleton instead of a "not found" state. Is that intended?
-3. Docker instance endpoints are shown exactly as configured. Should an endpoint that embeds credentials in its
-   address (user information in the URL) be masked, or is such configuration unsupported?
-4. The Scan History and dashboard descriptions mention discovery and cleanup runs, but those jobs record no scan
-   runs. Should the text change, or should these jobs record runs?
