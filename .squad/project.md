@@ -7,7 +7,8 @@ and never overwrites it. A product PR updates it when the change makes an entry 
 
 ## Security areas
 
-A change that touches one of these is tier `security` (`.squad/routing.md`). Details in
+A change that touches one of these lists it under *Security areas touched* in its plan, so Security reviews the
+plan (`.squad/routing.md`, *Tiers*, which also says when a change is tier `security`). Details in
 `docs/ARCHITECTURE.md`, *Security posture and operating assumptions*.
 
 - **Secrets in configuration:** Docker Hub PAT, Portainer credentials/API token, database password — never

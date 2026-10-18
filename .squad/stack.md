@@ -39,6 +39,7 @@ profile and owned by this repository: keep it true when the build changes.
 | *Test with coverage* | `rm -rf TestResults && dotnet test DockerUpdateGuard.slnx -c Release --no-build --collect:"XPlat Code Coverage" --results-directory ./TestResults` (clears earlier runs: the coverage gate merges every report it finds) |
 | *Coverage gate* | `python3 .squad/tools/coverage-check.py` |
 | *Analyzer gate* | `python3 .squad/tools/analyzer-check.py` |
+| *Sonar gate* | `python3 .squad/tools/sonar-check.py branch -- bash -c 'dotnet sonarscanner begin /k:"LarsLaskowski_DockerUpdateGuard" /o:"networlddev" /d:sonar.token="$SONAR_TOKEN" /d:sonar.branch.name="$(git branch --show-current)" /d:sonar.projectBaseDir="$PWD" && dotnet build DockerUpdateGuard.slnx -c Release --no-incremental && dotnet sonarscanner end /d:sonar.token="$SONAR_TOKEN"'` (after *Test with coverage*; needs `SONAR_TOKEN` and the `dotnet-sonarscanner` tool, see *Sonar gate* below) |
 | *Image build check* | `docker build -f src/DockerUpdateGuard/Dockerfile .` where Docker runs; otherwise the restore-order reproduction under *Image build check* below (`.squad/routing.md`, *Criteria verified only in CI*) |
 
 ## Analyzer gate
@@ -69,6 +70,21 @@ download, for example). The gate itself checks two SonarQube Cloud shell rules s
 `shelldre:S7679` (a positional parameter `$1`…`$9` used as a word of its own inside a function — assign it to a
 local variable first) and `shelldre:S7688` (`[ … ]` instead of `[[ … ]]`). Other `shelldre:*` findings only report
 in squad step 11.
+
+*Sonar gate* runs SonarQube Cloud's own analysis on the work branch before the pull request (squad step 7):
+`sonar-check.py` runs the scanner with the branch name, waits for the analysis and fails on every open issue or
+security hotspot on a line the branch changed, so the rules no local analyzer has stop surfacing only after the
+pull request. It runs on the committed change (the scanner uploads the working tree, so it refuses uncommitted or
+untracked files other than the coverage reports) and needs `SONAR_TOKEN` in the session's environment (an environment secret) and network access to the
+scanner's download hosts (`api.sonarcloud.io`, `scanner.sonarcloud.io` and the package registry); without them it
+reports NOT CHECKED, and step 11 reads the draft pull request with `python3 .squad/tools/sonar-check.py pr <number>`
+instead. A finding of a rule no local analyzer reports is noted in this section, in the same change, instead of a
+squad lesson.
+The .NET scanner is the `dotnet-sonarscanner` tool (`dotnet tool install dotnet-sonarscanner`, or the repository's
+tool manifest); its `begin` arguments mirror the CI step, plus the branch name and the repository root as base
+directory, and it needs the full, non-incremental build between `begin` and `end`. The local coverage report is
+Cobertura, which the scanner does not read, so the branch analysis carries no coverage figure: the *Coverage
+gate* covers that.
 
 ## Image build check
 
