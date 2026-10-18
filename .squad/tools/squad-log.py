@@ -473,25 +473,33 @@ def build_parser():
 
 def is_pending_row(args):
     """A new launch row with the agent alone: no numbers yet, not an amend or a continuation."""
-    return (args.tokens, args.tool_uses, args.seconds) == (None, None, None) and not args.continued \
+    return not has_numbers(args) and not args.continued \
         and args.continued_from is None and not (args.amend_last or args.replace_last)
+
+
+def has_numbers(args):
+    """Whether any of --tokens, --tool-uses and --seconds is given."""
+    return any(value is not None for value in (args.tokens, args.tool_uses, args.seconds))
+
+
+def unreported_launch(parser, model, args):
+    """The launch of an --unreported row, which takes the agent alone."""
+    if not model or has_numbers(args) or args.continued or args.continued_from is not None:
+        parser.error("--unreported goes with --agent (or --launch) alone: no --tokens, --tool-uses, --seconds "
+                     "or --continued")
+    return (model, None, None, None)
 
 
 def launch_metrics(parser, root, args):
     """(model/effort, tokens, tool uses, seconds) from the options, or None when no metric option is given; an
     incomplete set is a usage error, an unknown agent file ends the run with exit code 1."""
-    if not (args.agent or args.launch or args.tokens is not None or args.tool_uses is not None
-            or args.seconds is not None):
+    if not (args.agent or args.launch or has_numbers(args)):
         return None
     model = args.launch or (agent_launch(root, args.agent) if args.agent else None)
     if args.agent and not args.launch and model is None:
         sys.exit(f"No .claude/agents/{args.agent}.md with a model and an effort")
     if args.unreported:
-        if not model or args.tokens is not None or args.tool_uses is not None or args.seconds is not None \
-                or args.continued or args.continued_from is not None:
-            parser.error("--unreported goes with --agent (or --launch) alone: no --tokens, --tool-uses, --seconds "
-                         "or --continued")
-        return (model, None, None, None)
+        return unreported_launch(parser, model, args)
     if model and is_pending_row(args):
         return (model, PENDING, None, None)  # a new launch row whose notification has not arrived yet
     if not model or None in (args.tokens, args.tool_uses, args.seconds):

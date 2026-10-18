@@ -57,7 +57,8 @@ PLACEHOLDERS = [re.compile(p) for p in (r"<title>", r"Issue #<number>", r"<one-s
                                          rf"^\s*- [SE]\d+: {ELLIPSIS}\s*$", rf"^\|.*\|\s*{ELLIPSIS}\s*\|")]
 EMPTY_CELLS = {"", "-", "\u2013", "\u2014", "...", "\u2026", "none", "n/a", "tbd", "todo"}
 COMMENT = re.compile(r"<!--.*?-->", re.S)
-EMPHASIS = re.compile(r"(?:^[`*_]+)|(?:[`*_]+$)")
+EMPHASIS = "`*_"
+SPEC = "spec.md"
 NONE = re.compile(r"^\s*(?:[-*]\s+)?none\.?\s*$", re.I)
 TOP_ITEM = re.compile(r"^(?:[-*]|\d+[.)])\s+")
 
@@ -109,7 +110,7 @@ def sections(text):
 
 
 def cell(value):
-    return EMPHASIS.sub("", value.strip()).strip()
+    return value.strip().strip(EMPHASIS).strip()
 
 
 def split_row(line):
@@ -254,7 +255,7 @@ def check_tasks(tasks, criteria, errors):
 
 def check_security_areas(plan, errors):
     """The line that decides the Security plan review: "none", or the areas — never empty or left as the template."""
-    areas = re.search(r"^Security areas touched:[ \t]*(.*)$", plan, re.M)
+    areas = re.search(r"^Security areas touched:(.*)", plan, re.M)
     value = cell(areas.group(1)) if areas else ""
     tier = re.search(r"^Tier:\s*`?(\w+)", plan, re.M)
     if NONE.match(value):
@@ -292,11 +293,11 @@ def check_plan(plan, spec, errors):
 def check_spec_only(folder):
     """Findings for `spec.md` alone (step 2, before the plan is written)."""
     errors = []
-    spec = read(os.path.join(folder, "spec.md"), errors)
+    spec = read(os.path.join(folder, SPEC), errors)
     if spec is None:
         return ["spec.md is missing"], []
     check_spec(spec, errors)
-    check_placeholders("spec.md", spec, errors)
+    check_placeholders(SPEC, spec, errors)
     return errors, []
 
 
@@ -304,11 +305,11 @@ def check(folder):
     """All findings for the work folder, and the warnings."""
     errors, warnings = [], []
     plan = read(os.path.join(folder, "plan.md"), errors)
-    spec = read(os.path.join(folder, "spec.md"), errors)
+    spec = read(os.path.join(folder, SPEC), errors)
     if plan is None:
         return ["plan.md is missing (tiers docs and patch write none: there is nothing to check)"], warnings
     criteria = check_plan(plan, spec, errors)
-    for name, text in (("plan.md", plan), ("spec.md", spec)):
+    for name, text in (("plan.md", plan), (SPEC, spec)):
         if text is not None:
             check_placeholders(name, text, errors)
     if spec is not None:
