@@ -37,8 +37,8 @@ inventory metrics rely on the stored assessments and findings.
   pre-release segments in natural order (`rc2` below `rc10`).
 - Year-prefixed tags are comparable only within the same year and the same year-variant family. The year-variant
   family is the suffix after its leading servicing segments (segments that start with letters and contain a digit,
-  such as `CU12`), lower-cased; it is empty when that rest contains no letter. Within a family, tags order by the natural order of the
-  suffix.
+  such as `CU12`), lower-cased; it is empty when that rest contains no letter. Within a family, tags order by the
+  natural order of the suffix.
 
 ### Alias resolution
 
@@ -88,8 +88,8 @@ details, an optional recommended tag and digest, and at most **50** candidates. 
    rule 3 is applied to it. The resolved current version is added to the candidates. Without a successor the result is
    *up to date*, "The running digest matches version tag '…'".
 7. **Anything else** — every other tag that has a digest and was published after the current tag (when both
-   timestamps are known; newest first, at most 50) is a candidate for *needs review*, "Alternative tags are available and require manual review". With no
-   such tag the result is *up to date*.
+   timestamps are known; newest first, at most 50) is a candidate for *needs review*, "Alternative tags are
+   available and require manual review". With no such tag the result is *up to date*.
 
 ### Major-upgrade policy
 
