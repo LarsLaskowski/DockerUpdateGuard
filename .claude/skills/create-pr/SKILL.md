@@ -8,10 +8,6 @@ description: Use when the user asks to open/create a pull request for changes on
 Use this skill to prepare and open a pull request for changes made in this
 repository.
 
-All user-facing output you create — branch name, commit message, PR title and
-body — is written in **English**, regardless of the language the user wrote
-in.
-
 ## Steps
 
 1. **Verify the working tree**: run `git status --short --branch` and
@@ -39,16 +35,15 @@ in.
    - *Test with coverage* and *Coverage gate* — it must pass (the thresholds
      are in `.squad/tools/squad_settings.py`)
    - `python3 .squad/tools/config-check.py` when the diff touches `.claude/`,
-     `AGENTS.md`, `CLAUDE.md` or `.github/copilot-instructions.md` — Claude Code silently
-     drops an agent or skill whose front matter does not parse, and the two
-     instruction files must stay identical from the first `##` heading on
+     `AGENTS.md`, `CLAUDE.md` or `.github/copilot-instructions.md`
    Fix any failures before proceeding — do not open a PR with failing checks,
    unformatted code or outstanding analyzer diagnostics. This step is the gate
    before the PR; CI is not meant to find anything here.
-5. **Commit** with a subject line of at most 80 characters, not written in
-   the first person and without a trailing period; a body only if the subject
-   does not explain the change (the PR is squash-merged, its description is
-   the lasting record). Stage only the files that belong to this task.
+5. **Commit** as `AGENTS.md` (*Commit messages and pull requests*) says,
+   staging only the files that belong to this task. Then run the *Sonar gate*
+   from `.squad/stack.md` — SonarQube Cloud's analysis of the committed
+   branch; fix every finding it lists (and commit again). NOT CHECKED (no
+   `SONAR_TOKEN` in this environment) leaves the check to step 9.
 6. **Run the internal review loop** (see below) and resolve what it finds.
    This happens *before* the push, so the pull request opens on a reviewed
    change instead of collecting review rounds afterwards.
@@ -66,88 +61,70 @@ in.
      verified) — including the unit-test, formatting, analyzer, coverage,
      documentation and dependency items, not just the general ones
    - wrap the body in a HEREDOC so the formatting survives
-   - read the body back right after creating the PR (`pull_request_read`,
-     method `get`) and compare its links and code spans with what you sent; a
-     mangled one is fixed with `update_pull_request` before anything else
+   - read the body back right after creating or updating the PR
+     (`pull_request_read`, method `get`) and compare its links and code spans
+     with what you sent; a mangled one is fixed with `update_pull_request`
+     before anything else
 9. **Keep it a draft until green** (`.squad/routing.md`, *Draft until green*).
    Subscribe to the PR's activity (`subscribe_pr_activity` when available;
-   otherwise check the results yourself before finishing). On every look at the
-   PR, read its mergeability first (`pull_request_read`, method `get`): a
-   conflict with the base branch (`mergeable: false`, `mergeable_state:
-   "dirty"`) blocks CI from starting, so merge `origin/main` into the branch,
-   resolve it, rerun step 4 on the merged files and push before waiting for
-   anything else (`.squad/routing.md`, *Merge conflicts*). Then wait until every
-   CI check on the head has finished. Fix each failing check and every new
-   issue the CI code analysis (e.g. SonarQube Cloud) reports — a passed quality
-   gate with open new issues is still rework — rerun step 4 on the fix, commit
-   once per round and push. Only when all checks are green and the code
-   analysis lists no new issue on the head and the PR merges cleanly, mark it ready for review
-   (`update_pull_request` with `draft: false`). If a failure lies outside the
-   change or the code analysis cannot be read, leave it a draft and tell the
-   user what blocks it.
+   otherwise check the results yourself before finishing). A merge conflict
+   comes first (`.squad/routing.md`, *Merge conflicts*). Fix each failing
+   check and every new issue `python3 .squad/tools/sonar-check.py pr <number>`
+   lists, rerun step 4 on the fix (on merged files: the gates they need),
+   commit once per round and push. Mark the PR ready for review
+   (`update_pull_request` with `draft: false`) only when *Draft until green*
+   holds; otherwise leave it a draft and tell the user what blocks it.
 10. Report the branch name, the PR URL and whether it is ready for review or
     still a draft (and why) back to the user.
 
 ## What the pull request says — and what it doesn't
 
-The pull request documents **the change**, not how the change was produced.
+The pull request documents **the change**, not how the change was produced
+(`AGENTS.md`, *Related skills*): no word about the internal review loop, its
+passes, findings or fixing commits — describe the finished state.
 
 - Reviewer Notes tell a reviewer where to look and why the approach was
   chosen: the components touched, any guarantee from
   [`ARCHITECTURE.md`](../../../docs/ARCHITECTURE.md) the change comes near,
   and a smoke test if one is worth running.
-- Do **not** mention the internal review loop anywhere in the PR — not how
-  many passes ran, not what they found, not which commits resolved their
-  findings. That loop is a working step inside this session, not part of the
-  change's history, and a reader of the PR has no use for it.
-- Describe the finished state of the change, not the sequence of corrections
-  that got there.
 
 ## The internal review loop
 
 The review happens here, in this session, against the local branch — not as
 a round trip through pull request comments. Each pass is delegated to the
-`squad-reviewer` subagent, which runs on Opus with a fresh
-context and the repository's full review checklist. That checklist lives in
+`squad-reviewer` subagent; its checklist and round semantics live in
 `.claude/agents/squad-reviewer.md`.
 
-1. **Pass 1** — launch `squad-reviewer` (subagent_type
-   `squad-reviewer`, model `opus`). Tell it the base ref, the
-   head to review, and that this is round 1.
-2. **Act on the verdict**:
-   - `APPROVE` → done, go push.
+1. **Pass 1** — launch `squad-reviewer` (subagent_type `squad-reviewer`).
+   Tell it the base ref, the head to review, and that this is round 1. When
+   the diff touches a security area listed in `.squad/project.md` (*Security
+   areas*), launch `squad-security` in mode `diff` alongside it (`AGENTS.md`,
+   golden rules); its findings count like the reviewer's.
+2. **Act on the verdict** (with Security alongside: both verdicts):
+   - `APPROVE` (and Security's `APPROVED`) → done, go push.
+   - Security's `CHANGES_REQUIRED` → its findings are blocking findings like the reviewer's.
    - Blocking findings → fix each one minimally and commit. Do not widen the
      change beyond what the finding requires.
-   - Non-blocking findings → **do not open another round for them**. Fix one
-     if it is trivial and already in scope. Otherwise open a GitHub issue for
-     it **now**, in this session, and link that issue under the PR's Next
-     Steps — a note that only exists in this conversation is lost the moment
-     the session ends, so it is not a way to carry a finding forward.
-3. **Pass n+1** — launch a fresh `squad-reviewer` and give it
-   the round number, the previous round's findings, and the commits that
-   fixed them. It reviews the delta only, per its own instructions.
+   - Non-blocking findings → never a pass of their own. A small, in-scope fix
+     goes in with the blocking fixes, so the next delta pass reads it; when
+     no further pass is due, a fix that changes code, tests or `docs/` gets
+     one delta pass. Otherwise open a GitHub issue for it **now** and link it
+     under the PR's Next Steps.
+3. **Pass n+1** — continue the reviewer's earlier launch
+   (`.squad/routing.md`, *Continuing a member*) with the round number, the
+   previous round's findings and the commits that fixed them; it reviews the
+   delta only. When Security's findings were fixed, `squad-security` reviews
+   that delta too.
 4. **Stop** at the first pass that reports no blocking findings. Cap the loop
    at **three passes**: if blocking findings remain after the third, stop and
-   report the open findings to the user rather than continuing to iterate —
-   at that point the change needs a decision, not another round.
-
-Two rules keep this loop finite, and they are the point of the whole
-arrangement:
-
-- **Later passes review the delta, never the whole diff again.** A fresh full
-  review of unchanged code always finds something new.
-- **Only blocking findings start a new pass.** Non-blocking findings are
-  resolved or turned into an issue, not iterated on.
+   report the open findings to the user — the change needs a decision, not
+   another round.
 
 ## Findings that arrive after the push
 
-If a review lands on the pull request after it is open — from a human
-reviewer, from an automated code review, or from the `review-pr` skill — work
-those findings in this session, in this pull request. Do not defer a posted
-finding to "the next change that touches this code": there is no such change
-on the horizon, and the session holding the context needed to act on it will
-not exist later. `review-pr` describes how to answer and close out each
-posted comment.
+A review posted on the open pull request — human, automated or `review-pr` —
+is worked in this session, in this pull request (`AGENTS.md`, *Related
+skills*); `review-pr` (*Answering findings on your own PR*) describes how.
 
 ## Notes
 

@@ -3,28 +3,46 @@
 Source: Issue #<number> | [spec.md](spec.md)
 Status: Draft | Revised (n) | Approved by Security
 Tier: trivial | standard | security  (tiers `docs` and `patch` use no plan.md) — <one-sentence justification>
+Security areas touched: none | <areas>
+<!-- Each security area of `.squad/project.md`, Docker/CI or build configuration and dependency the change
+touches, or "none" — in every plan (`.squad/routing.md`, *Tiers*). -->
 
 ## Problem / root cause
 
-For a bug: the cause, with file and line. For a feature: a summary of `spec.md`.
-Each factual claim of the issue, checked against the code: confirmed or refuted.
+For a bug: the cause, with file and line. For a feature: one sentence pointing to `spec.md` — do not repeat it.
+
+## Verified facts
+
+Every factual claim the plan rests on — from the issue, the spec, the code, a library, the image — with its
+evidence (file and line, a command and its output, the sample or document read) and its status. A claim no
+one could check yet is `unverified`, and its evidence cell says `to verify:` with the measurement, its owner
+and the step. `.squad/tools/plan-check.py` rejects a row without evidence or status.
+
+| # | Claim | Evidence | Status |
+| - | ----- | -------- | ------ |
+| 1 | … | … | confirmed / refuted / unverified |
 
 ## Acceptance criteria
 
-- [ ] AC1: ... (the Tester turns each one into at least one unit test; in a plan without production or test
-  code, *Verification without tests* below says how it is verified instead)
+Bug fix only — a feature's criteria live in `spec.md` and are referred to by their id; do not copy them here.
+
+- [ ] AC1: ... (in a plan without production or test code, *Verification without tests* below says how it is
+  verified instead)
 
 Content the issue supplies verbatim (an image, SVG, configuration, a fixture) was rendered or exercised once
-before "identical to the issue" became a criterion; a mismatch with the evident intent is an escalation
-question here. A criterion that fixes an error text names the exact text the tests compare. A criterion
-about a container image or another build output names the *Image build check* from `.squad/stack.md` as its
-verification, run by the Dev before the review (*Criteria verified only in CI* in `.squad/routing.md`) — a
-build from the full working tree verifies nothing about the image.
+before "identical to the issue" became a criterion. A criterion that fixes an error text names the exact text
+the tests compare. A criterion about a container image names the *Image build check* as its verification
+(*Criteria verified only in CI* in `.squad/routing.md`).
 
-## Behavior coverage
+## Tests per criterion
 
-For a feature: each bullet of `spec.md`'s *Behavior* mapped to the acceptance criterion that covers it, or
-"out of scope" — the Tester checks that every field a criterion names is asserted. Otherwise delete this section.
+One row per acceptance criterion (of this plan, or of `spec.md` for a feature): the tests the Tester writes
+first, named strictly by *Layout* in `.squad/stack.md`. A criterion verified without a test is listed under
+*Verification without tests* instead. `.squad/tools/plan-check.py` reports a criterion without a row.
+
+| AC | Test(s) | Test file |
+| -- | ------- | --------- |
+| AC1 | … | … |
 
 ## Verification without tests
 
@@ -37,9 +55,8 @@ read-only check). Otherwise delete this section.
 
 ## Options considered
 
-Each alternative weighed and why it lost — or "one option: <why the fix is the only reasonable one>". The
-orchestrator launches the Devil's Advocate only for a plan that weighs options, adds or extends a decision
-record, or is `security` (*Plan challenge* in `.squad/routing.md`).
+Each alternative weighed and why it lost — or "one option: <why the fix is the only reasonable one>"
+(*Plan challenge* in `.squad/routing.md`).
 
 ## Affected projects and types
 
@@ -52,8 +69,9 @@ Every new or changed member, with its full signature — or "none".
 
 ## Test files
 
-Named strictly by the convention in *Layout* of [`.squad/stack.md`](../../.squad/stack.md) and
-[UNIT_TESTS.md](../../docs/UNIT_TESTS.md) — no combined file, no alternatives.
+The files of *Tests per criterion*, named strictly by the convention in *Layout* of
+[`.squad/stack.md`](../../.squad/stack.md) and [UNIT_TESTS.md](../../docs/UNIT_TESTS.md) — no combined file, no
+alternatives.
 
 Existing test code that calls a changed signature (factories, helpers): the call sites and who adapts them
 (`.squad/routing.md`, *Loop limits*) — or "none".
@@ -70,8 +88,9 @@ in behavior updates its area document in this pull request.
 
 ## Documentation updates
 
-`README.md` (configuration table, env vars), `docs/*.md` including the area documents — or "none". Every documentation edit has exactly
-one owner (Dev, Tester or Lead); the Lead's approval step only touches status, index rows and bookkeeping.
+`README.md` (configuration table, env vars), `docs/*.md` including the area documents and
+`docs/ARCHITECTURE.md` — or "none". Every documentation edit has exactly one owner (Dev, Tester or Lead); PR
+approval (step 9) only touches status, index rows and bookkeeping.
 
 ## Architecture check
 
@@ -90,17 +109,14 @@ Which guarantees from `docs/ARCHITECTURE.md` are touched and how they are preser
 
 ## Challenge
 
-Left out when the plan is written. The Lead adds it in mode `revise` only after a major Devil's Advocate
-objection: each objection and the answer (accepted — what changed; or rejected — why). When the challenge
-returns only minor objections, the orchestrator appends them verbatim as a *Challenge notes* section instead,
-which Dev and Tester follow (or report a deviation) and the Reviewer checks. A clean challenge
-(`NO OBJECTIONS`) is recorded only in `log.md`.
+Left out when the plan is written. After a major Devil's Advocate objection the Lead adds each objection
+and its answer (accepted — what changed; or rejected — why); minor objections alone arrive as *Challenge
+notes* instead (*Plan challenge* in `.squad/routing.md`).
 
 ## Security review
 
-`security` tier only, left out when the plan is written: each `CHANGES_REQUIRED` finding and how the
-revision resolves it. When Security approves with non-blocking findings, the orchestrator appends them
-verbatim as a *Security notes* section instead, which Dev and Tester follow (or report a deviation) and the
-Reviewer checks; a note that leaves the plan a choice goes to the Lead first, who decides it here.
+Left out when the plan is written. After Security's plan review the Lead adds each `CHANGES_REQUIRED`
+finding and how the revision resolves it, and the choices *Security notes* left open (*Plan challenge* in
+`.squad/routing.md`).
 
 ## Out of scope / follow-ups

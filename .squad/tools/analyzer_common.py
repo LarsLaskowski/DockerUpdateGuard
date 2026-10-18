@@ -47,6 +47,28 @@ def merge_base():
     return result.stdout.strip()
 
 
+def changed_line_map(base, pathspecs=()):
+    """{repository-relative path: set(line numbers)} added or changed since `base` (working tree included) in
+    the files the pathspecs select. Paths are read verbatim (no quoting of spaces or non-ASCII names) and with
+    fixed `a/` `b/` prefixes, whatever the user's git configuration says; a deleted file has no entry."""
+    diff = subprocess.run(
+        ["git", "-c", "core.quotePath=false", "diff", "-U0", "--no-ext-diff", "--no-color", "--src-prefix=a/",
+         "--dst-prefix=b/", base, "--", *pathspecs],
+        capture_output=True, text=True, check=True).stdout
+    result, current = {}, None
+    for line in diff.splitlines():
+        if line.startswith("+++ "):
+            path = line[4:].rstrip("\t")
+            current = path[2:] if path.startswith("b/") else None
+            if current:
+                result.setdefault(current, set())
+        elif line.startswith("@@") and current:
+            match = re.search(r"\+(\d+)(?:,(\d+))?", line)
+            start, count = int(match.group(1)), int(match.group(2) or "1")
+            result[current].update(range(start, start + count))
+    return result
+
+
 def changed_files():
     """Files changed since the merge base, working tree and untracked files included, deleted ones left out."""
     names = git("diff", "--name-only", "--diff-filter=d", merge_base()).splitlines()

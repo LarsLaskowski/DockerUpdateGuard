@@ -13,9 +13,6 @@ internal review loop in `create-pr` reviews the local branch before the pull
 request exists, which is cheaper and does not fill the PR with comment
 threads.
 
-Write everything in **English** — the summary to the user, the findings, and
-anything posted to GitHub — regardless of the language the user wrote in.
-
 ## Steps
 
 1. Fetch and check out the PR (or read the diff directly if a checkout isn't
@@ -24,13 +21,17 @@ anything posted to GitHub — regardless of the language the user wrote in.
    solves the stated problem. If the PR is already merged or closed, say so
    and ask whether the user still wants a review.
 2. Delegate the review itself to the `squad-reviewer` subagent
-   (subagent_type `squad-reviewer`, model `opus`). Give it the
+   (subagent_type `squad-reviewer`). Give it the
    base ref, the head SHA, and the round number — round 1 for a first review,
    and for a re-review the previous round's findings plus the commits that
    were meant to fix them. The review checklist, the integration-surface
    sweep, the severity model and the round semantics all live in that agent's
    definition (`.claude/agents/squad-reviewer.md`), so they stay
-   identical whether the review runs before or after the push.
+   identical whether the review runs before or after the push. When the diff
+   touches a security area listed in `.squad/project.md` (*Security areas*)
+   and the pull request did not come from the squad (no "Squad working record"
+   on it or its issue), launch `squad-security` in mode `diff` alongside it
+   and post its findings with the reviewer's.
 3. Post the result:
    - Inline comments for findings anchored to a line, otherwise one review
      comment.
@@ -47,47 +48,25 @@ anything posted to GitHub — regardless of the language the user wrote in.
 
 ## Every posted finding gets worked
 
-A finding that has been posted as a review comment is work, not a note. This
-holds for **every** posted finding — blocking and non-blocking alike, whether
-it came from this skill, from a human reviewer, or from an automated code
-review on the pull request.
-
-- Resolve it in the pull request it was posted on, while the session that can
-  act on it is still running.
-- Do not defer a posted finding to "the next change that touches this code"
-  or "the next substantive commit". No such change is scheduled, and the
-  session holding the context needed to act on the comment will not exist
-  later — the deferral is a way of dropping the finding, not of carrying it
-  forward.
-- If a posted finding genuinely should not be acted on in this PR, it gets
-  one of two concrete outcomes, never an implied one: a reply explaining why
-  the code stays as it is, or a GitHub issue opened **now** and linked from
-  the reply. Either way the thread is answered and resolved before the PR is
-  considered done.
-- Non-blocking is about whether a finding gates the merge, not about whether
-  anyone will ever deal with it.
+Every posted finding — blocking or not, from this skill, a human or an
+automated review — is worked in the pull request it was posted on, never
+deferred (`AGENTS.md`, *Related skills*). One that genuinely should not be
+acted on here gets a reply explaining why the code stays, or a GitHub issue
+opened **now** and linked from the reply; either way the thread is answered
+and resolved before the PR is done.
 
 ## Keeping the loop finite
 
-A pull request review can always produce one more finding. These rules make
-it converge, without leaving posted findings unhandled:
-
-- **Round 1 reviews the whole diff. Every later round reviews only the
-  delta**: does each fix resolve its finding, and did the fix commits break
-  something — including in prose they wrote to fix a documentation finding?
-  Never re-review untouched code; that is what turns three findings into four
-  rounds.
+- **Round 1 reviews the whole diff, every later round only the delta**
+  (`.claude/agents/squad-reviewer.md`).
 - **Only blocking findings justify another review round.** A non-blocking
-  finding is still worked per the section above, but working it does not earn
-  a new round of review.
-- **Two consecutive rounds without a blocking finding means done.** Say so
-  plainly instead of leaving the review open-ended.
-- **At most two rounds on GitHub.** If blocking findings survive that, the
-  change needs a decision from the author, not another review pass — say what
-  is still blocking and stop.
-- The number of rounds is capped; the number of posted findings that get
-  handled is not. Every open thread is answered before the PR is done, even
-  when no further round runs.
+  finding is still worked, but does not earn a round.
+- **The first round without a blocking finding ends the review**; say so
+  plainly. **At most two rounds on GitHub**: if blocking findings survive the
+  second, say what is still blocking and stop — the change needs the author's
+  decision.
+- The rounds are capped, the handled findings are not: every open thread is
+  answered before the PR is done.
 
 ## Answering findings on your own PR
 
@@ -99,12 +78,9 @@ When acting as the author of a PR under review:
   not the reply.
 - Re-run *Format*, *Build*, the *Analyzer gate* (no diagnostic in a changed
   file), *Test with coverage* and the *Coverage gate* from `.squad/stack.md`
-  before each push — a fix that turns CI red costs more
-  than the finding did.
+  before each push.
 - Resolve the thread once it is answered. One summary comment per round beats
   one essay per thread.
-- Work through every open thread before calling the PR done, including the
-  non-blocking ones, as described above.
 
 ## Notes
 

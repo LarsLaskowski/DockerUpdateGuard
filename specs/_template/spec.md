@@ -1,19 +1,58 @@
 # Spec: <title>
 
-Status: Draft | Approved by Lead
+Source: Issue #<number> | the user's description
+Status: Draft | Approved by Lead | Approved by Product Manager
 
-## Problem / motivation
+<!-- What the feature does for its users, before anyone decides how to build it. Written by the Lead in mode
+`spec`, challenged once by the Devil's Advocate, and from then on the only source of the acceptance criteria:
+`plan.md` and `tasks.md` refer to them by id. `.squad/tools/plan-check.py` checks that every section is filled;
+the guidance in these comments does not count. -->
 
-## Behavior
+## Problem
 
-What the user or the system does differently. No implementation details.
+<!-- Who has the problem, what happens today and why it matters. No solution. -->
+
+## Scenarios
+
+<!-- What a user (or the system) does and sees, one numbered scenario per path, the usual path first, in the
+words of the user interface, the API or the file the user reads: "S1: Given …, when …, then …". -->
+
+- S1: …
+
+## Errors and edge cases
+
+<!-- Invalid or hostile input, a failing or slow dependency, a limit reached, an empty or a very large input, a
+repeated or concurrent action — numbered, each with what the user sees (the exact text where a user reads it). -->
+
+- E1: …
+
+## Non-functional requirements
+
+<!-- Limits and sizes, time and memory, security and privacy, compatibility (versions, platforms, existing data
+and configuration), new configuration with its default, logs and metrics — one bullet each, or "none". -->
 
 ## Acceptance criteria
 
-- [ ] AC1: ...
+<!-- The only list of criteria of this feature. Each is one testable statement and names the scenarios and edge
+cases it covers, e.g. "AC1: an export of an empty library writes a file with the header only (S1, E2)". -->
+
+- [ ] AC1: …
 
 ## Out of scope
 
+<!-- What the feature deliberately does not do. A scenario or edge case listed here by its id needs no
+criterion. -->
+
 ## Open questions
 
-Questions the Lead could not settle go to the Product Manager (escalation).
+<!-- Each question the issue or description leaves open, with "Answered:" and the answer (from the code, the
+documentation, an accepted decision record or the Product Manager) — or "none". A question without an answer
+blocks the plan: the Lead escalates it. -->
+
+## Area documents
+
+<!-- The area documents in docs/areas/ that will describe this behavior once it is built, and what each will
+say, in outline. This is what stays on main when the working record leaves. -->
+
+<!-- Challenge: left out when the spec is written. After the spec challenge the Lead adds a "## Challenge"
+section: each objection of the Devil's Advocate and the answer (accepted — what changed; or rejected — why). -->

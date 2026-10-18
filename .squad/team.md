@@ -2,90 +2,94 @@
 
 Squad for this repository, used for both bug reports (`squad-issue` skill) and new features, with or
 without a GitHub issue (`squad-spec` skill; `routing.md`, *Bug or feature*). The idea follows [bradygaster/squad](https://github.com/bradygaster/squad): this
-file names the members, `routing.md` holds the pipeline and its limits, and each role's charter is the
-Claude Code subagent file under `.claude/agents/` (all changed only in squad-maintenance PRs). The roles run
-as subagents, driven by the invoking session (the orchestrator).
+file names the members and the rules they share, `routing.md` holds the pipeline and its limits, and each
+role's charter is the Claude Code subagent file under `.claude/agents/` (all changed only in squad-maintenance
+PRs). The roles run as subagents, driven by the invoking session (the orchestrator).
 
 The squad files are stack-neutral and come from the Squad-Spec-Repository-Template repository. Everything
 specific to this repository lives in two files the members read first:
 
 - [`stack.md`](stack.md) — toolchain, layout and the exact commands: format, build, test, coverage, the
   analyzer gate, how to write code and tests that pass it, and how to build a compile-only skeleton.
-- [`project.md`](project.md) — what this project guarantees: the security areas that decide the
-  `security` tier, deliberate guarantees, the integration surface the Reviewer sweeps, and the test doubles.
+- [`project.md`](project.md) — what this project guarantees: the security areas that bring in Security's
+  plan review, deliberate guarantees, the integration surface the Reviewer sweeps, and the test doubles.
 
 ## Members
 
-| Role             | Subagent (charter)                                                    | Model, effort  | Writes                                                           |
-| ---------------- | --------------------------------------------------------------------- | -------------- | ---------------------------------------------------------------- |
-| Lead             | [`squad-lead`](../.claude/agents/squad-lead.md)                       | Opus, medium   | plans, decisions, area documents                                 |
-| Devil's Advocate | [`squad-devils-advocate`](../.claude/agents/squad-devils-advocate.md) | Sonnet, medium | nothing (read-only)                                              |
-| Security         | [`squad-security`](../.claude/agents/squad-security.md)               | Opus, medium   | nothing (read-only)                                              |
-| Tester           | [`squad-tester`](../.claude/agents/squad-tester.md)                   | Sonnet, medium | test code                                                        |
-| Dev              | [`squad-dev`](../.claude/agents/squad-dev.md)                         | Sonnet, medium | production code                                                  |
-| Code Officer     | [`squad-code-officer`](../.claude/agents/squad-code-officer.md)       | Haiku, medium  | production and test code (format, analyzer and style fixes only) |
-| Reviewer         | [`squad-reviewer`](../.claude/agents/squad-reviewer.md)               | Opus, medium   | nothing (read-only)                                              |
-| Product Manager  | —                                                                     | —              | answers escalations (the human user)                             |
+| Role             | Subagent (charter)                                                    | Writes                                                           |
+| ---------------- | --------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| Lead             | [`squad-lead`](../.claude/agents/squad-lead.md)                       | plans, decision records, the doc edits the plan assigns to it    |
+| Devil's Advocate | [`squad-devils-advocate`](../.claude/agents/squad-devils-advocate.md) | nothing (read-only)                                              |
+| Security         | [`squad-security`](../.claude/agents/squad-security.md)               | nothing (read-only)                                              |
+| Tester           | [`squad-tester`](../.claude/agents/squad-tester.md)                   | test code, the doc edits the plan assigns to it                  |
+| Dev              | [`squad-dev`](../.claude/agents/squad-dev.md)                         | production code, the doc edits the plan assigns to it            |
+| Code Officer     | [`squad-code-officer`](../.claude/agents/squad-code-officer.md)       | production and test code (format, analyzer and style fixes only); *Analyzer gate* notes in `stack.md` |
+| Reviewer         | [`squad-reviewer`](../.claude/agents/squad-reviewer.md)               | nothing (read-only)                                              |
+| Product Manager  | —                                                                     | answers escalations (the human user)                             |
 
-The model aliases resolve to the current generation of each line; the effort is set per role in the agent
-file so a session's effort setting does not change every role at once. The orchestrator may raise a single
-launch through the launch's own `model` and `effort` parameters, but no step does so by default: the plan of
-a feature ran on `high` until Vandox#19 (1,188 s and 307 k tokens for the plan, and a `CHANGES_REQUIRED`
-from Security all the same), while the plan of Vandox#20 on `medium` went through challenge and security
-review with the same rigor; a run on `xhigh` costs about half the member time of a feature run (Vandox#17)
-and is not used. Every run
-records launches, tokens, tool uses and seconds per role in its working record (`squad-log.py --summary`);
-a model or effort change for a role is made on that evidence, in the template, and rolled out from there.
-
-Where production and test code live is defined in `stack.md` (*Layout*).
+Model and effort are set per role in each agent file's front matter. The orchestrator may override a single
+launch through its own `model` and `effort` parameters, but no step does so by default, and `xhigh` is not
+used. A change of model or effort for a role is made in the template, on the evidence of the runs'
+`squad-log.py --summary` tables. Where production and test code live is defined in `stack.md` (*Layout*).
 
 The **Lead** decides everything inside the squad, including approving plans; the pull request is approved
-by the orchestrator's checklist (`.squad/routing.md`, step 9) and the Lead is launched only for what is still
-open. The **Product Manager** is only involved when the Lead escalates: an unclear requirement, a
-product decision that cannot be derived from the issue or the existing documentation, or a deadlock the
-Lead cannot resolve.
+by the orchestrator's checklist (`routing.md`, *PR approval*) and the Lead is launched only for what is still
+open. The **Product Manager** is only involved when the Lead escalates (`routing.md`, *Escalation to the
+Product Manager*).
 
 ## Shared rules (apply to every member)
 
 `AGENTS.md`, `docs/ARCHITECTURE.md`, `docs/CONTRIBUTING.md`, `docs/UNIT_TESTS.md`, `.squad/stack.md` and
-`.squad/project.md` are binding: unit tests for all new code until the *Coverage gate* passes, the code
-conventions from `stack.md` while writing, English for everything
-that ends up in the repository or on GitHub. Inside the squad, the member that changed files — Dev,
-Tester, or the orchestrator for its own edits — runs *Format* from `stack.md` before handing back and keeps
-its result to those files: every other file the formatter touched is reported, not edited, and the
-orchestrator restores it. *Format* is a deterministic command, not a judgment; an older `stack.md` that
-labels it "Code Officer only" is superseded by this rule. The Code Officer owns a clean analyzer gate and is
-launched only for analyzer diagnostics or style findings that need reading. Subagents never run Git write operations or post
-to GitHub — the `PreToolUse` hook `.claude/hooks/git-guard.py`, declared in every `squad-*.md`, denies them
-(`git add` and a scratch `git worktree` for experiments stay allowed, `.squad/routing.md`, *Concurrency*);
-the orchestrator commits and pushes to the work branch at any time (see `AGENTS.md`, golden rules) and
-opens the pull request only after the Lead's approval. Because the orchestrator may commit an interim state
-while a member works (a stop hook demands it), a clean `git status` at hand-back is no sign of lost work: a
-member reports its changes against the head SHA it was given (`git diff <sha>`).
+`.squad/project.md` are binding: unit tests for all new code until the *Coverage gate* passes, and the code
+conventions from `stack.md` while writing.
 
+**Format.** The member that changed files — Dev, Tester, Code Officer, or the orchestrator for its own edits —
+runs *Format* from `stack.md` before handing back and keeps its result to those files: every other file the
+formatter touched is reported as "formatted outside the change", not edited, and the orchestrator restores it.
+
+**Git and GitHub.** Members never run Git write operations and never post to GitHub (no GitHub MCP write tool
+either); the `PreToolUse` hook `.claude/hooks/git-guard.py`, declared in every `squad-*.md`, denies such Bash
+commands. Read-only Git, `git add` and a scratch `git worktree` stay allowed; a member that needs
+anything else reports it.
 Session-management tools (`create_session`, `send_message`, `archive_session` and the other remote-session
-tools) belong to the orchestrator alone: a member never calls them, also not to "hand over" work — it
-reports the need in its result instead.
+tools) belong to the orchestrator alone, also for "handing over" work. Experiments — mutation tests, trial
+edits, baselines — run in a scratch `git worktree`, never in the repository working tree (`git stash` is a
+Git write, too). The orchestrator commits, pushes and opens the pull request (`routing.md`, *Pipeline*).
 
-**Continued members.** For a fix or delta round the orchestrator may continue a member's earlier launch of
-the same run instead of starting a fresh one (`.squad/routing.md`, *Pipeline*). A continued member keeps
-its role and its limits: the Dev still does not edit tests, the Reviewer and Security still review only the
-commit SHA they are given, and nothing it remembers from an earlier round replaces reading the delta. Its
-task notification reports the agent's tokens since the first launch (tool uses and duration for the round
-alone); the orchestrator logs the round with `--continued` (or `--continued-from "<step>"` for an agent that
-is not the member's last fresh launch), so the record carries the round's share.
+**Reporting against a SHA.** Before the PR the orchestrator may commit your edits as work in progress while
+you work (`routing.md`, *The stop hook*), so a clean `git status` at hand-back is expected: report your
+changes against the head SHA you were given (`git diff <sha>`).
 
-**Test doubles that model a real component.** A test double that copies the behavior of a library, framework
-or server (a response stream where a flush starts the response, a client that retries, a parser that stops at
-a limit) is only as good as that copy, and every gate and test passes on a wrong one. A claim about such
-behavior that a double encodes is checked once against the real component — a scratch measurement in a
-scratch `git worktree`, or the component's source — before the tests rely on it, and the hand-back names the
-measurement. Security's plan review asks for that measurement when the plan relies on such behavior.
+**A real check before "done".** A change to code that can be run, built or type-checked is exercised by a
+real check before it is reported done: the project's tests, type-checker or build, or the changed command
+itself. A syntax-only check, or a check command that failed to start, does not count; when no real check can
+run here, say which one you did not run and why.
+
+**Continued members.** The orchestrator may continue a member's earlier launch for a fix or delta round
+(`routing.md`, *Continuing a member*). A continued member keeps its role and its limits, works on or reviews
+only the delta since the SHA of its last round, and nothing it remembers from an earlier round replaces
+reading that delta.
+
+**Reading GitHub.** GraphQL is blocked in the remote sessions, so `gh issue view`, `gh pr view` and `gh
+search` fail: read an issue with `gh api repos/<owner>/<repo>/issues/<n>` and `.../issues/<n>/comments`, a
+pull request with `.../pulls/<n>`. `gh api` and the GitHub MCP tools answer 403 for repositories outside the
+session (a third-party action): resolve a tag with `git ls-remote --tags https://github.com/<owner>/<repo>` and
+read the source in a shallow clone of that tag (`git clone --depth 1 --branch <tag> …`) in a scratch directory
+outside the working tree.
+
+**Test doubles that model a real component.** A claim about how a library, framework or server behaves — one a
+test double copies (a response stream where a flush starts the response, a client that retries, a parser that
+stops at a limit), or one a security property rests on (a deadline that interrupts a query step, a limit a
+parser enforces) — is checked once against the real component, by a scratch measurement in a scratch `git
+worktree` or by reading the component's source, before tests, records or documentation rely on it. The plan
+marks such a claim *unverified* with its measurement and owner; the hand-back names the measurement, and a
+claim nobody measured is never repeated as fact.
 
 **Escapes in files.** The Write and Edit tools turn a single-backslash escape such as `\u0041` into the
-character it names, so a plan table or a test fixture whose cases are about escapes silently loses them. Write
-each such escape with a doubled backslash in the tool input, or generate the file with a script; either way
-check the bytes on disk (`grep -n '\\u' <file>`) and confirm every escape is there exactly as the case needs
-before reporting the file done — again after *Format*, since a formatter may do the same to string literals
-(*Known pitfalls* in `.squad/stack.md`). A test whose case is about an escape also asserts that its input still
-contains the backslash, so a lost escape fails the run instead of testing the wrong input.
+character it names, so a plan table or a test fixture whose cases are about escapes silently loses them. Every
+member and the orchestrator write each such escape with a doubled backslash in the tool input, or generate the
+file with a script; either way check the bytes on disk (`grep -n '\\u' <file>`) and confirm every escape is
+there exactly as the case needs before reporting the file done — again after *Format*, since a formatter may do
+the same to string literals (*Known pitfalls* in `.squad/stack.md`). A test whose case is about an escape also
+asserts that its input still contains the backslash, so a lost escape fails the run instead of testing the
+wrong input.

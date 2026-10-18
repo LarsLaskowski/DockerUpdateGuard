@@ -34,6 +34,7 @@ import xml.etree.ElementTree as ET
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import squad_settings as settings  # noqa: E402  (per-repository settings next to this script)
+from analyzer_common import changed_line_map  # noqa: E402  (shared helpers next to this script)
 
 BASE_REF = getattr(settings, "BASE_REF", "origin/main")
 
@@ -56,21 +57,7 @@ def changed_lines():
     """Return {repo-relative path: set(line numbers)} of lines added or changed since the merge base with
     origin/main (working tree included) in the production paths from squad_settings."""
     pathspecs = list(settings.COVERAGE_PATHSPECS) + [f":(exclude){p}" for p in settings.COVERAGE_EXCLUDES]
-    diff = subprocess.run(
-        ["git", "diff", "-U0", merge_base(), "--", *pathspecs],
-        capture_output=True, text=True, check=True).stdout
-    result, current = {}, None
-    for line in diff.splitlines():
-        if line.startswith("+++ "):
-            path = line[4:]
-            current = path[2:] if path.startswith("b/") else None
-            if current:
-                result.setdefault(current, set())
-        elif line.startswith("@@") and current:
-            match = re.search(r"\+(\d+)(?:,(\d+))?", line)
-            start, count = int(match.group(1)), int(match.group(2) or "1")
-            result[current].update(range(start, start + count))
-    return result
+    return changed_line_map(merge_base(), pathspecs)
 
 
 def changed_test_files():

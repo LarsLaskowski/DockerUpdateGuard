@@ -37,9 +37,13 @@ or stale claims.
   when a session ends. Force-pushing or otherwise rewriting published history, deleting branches, and
   creating tags (a `v*` tag may trigger a release) still need explicit user approval.
 - **Pull requests are only opened by the squad or by the user.** The `squad-issue` and `squad-spec`
-  skills open a PR after the Lead's approval (tiers `docs` and `patch`: after a clean review); outside the squad, a PR
-  is opened only when the user explicitly asks for one (e.g. by running the `create-pr` skill). Never open
-  a PR on your own initiative.
+  skills open a PR once it is approved (`.squad/routing.md`, *PR approval*); outside the squad, a PR is
+  opened only when the user explicitly asks for one (e.g. by running the `create-pr` skill). Never open a PR
+  on your own initiative.
+- **A change made outside the squad that touches a security area** listed in
+  [`.squad/project.md`](/.squad/project.md) (*Security areas*) is reviewed before it is merged: `create-pr` adds
+  Security's diff review to its review loop, and a pull request opened another way (by hand, from a plain
+  session) gets a `review-pr` run whose findings are worked in that pull request.
 - Run *Format* from [`.squad/stack.md`](/.squad/stack.md) after editing code and before building; CI is
   not meant to find formatting issues. In the squad skills the member that changed the files runs it on
   them before handing back (`.squad/team.md`, *Shared rules*).
@@ -66,8 +70,9 @@ or stale claims.
   person. A body only where the subject does not explain the change; pull requests are squash-merged, so
   branch commits never reach `main` and may simply name the pipeline step.
 - Pull request title `[area] Description` (areas in `docs/CONTRIBUTING.md`), description of **3–5
-  sentences** on what changed and why: they become the commit on `main`. Title and description are always
-  written in **English**, regardless of the language used in the conversation.
+  sentences** on what changed and why: they become the commit on `main`.
+- Everything written to the repository or to GitHub — code, comments, documentation, commit messages, PR
+  titles and descriptions, review comments — is in **English**, regardless of the conversation's language.
 
 ## Commands
 
@@ -166,13 +171,14 @@ Project-specific workflow skills live under `.claude/skills/` and run in Claude 
 - `create-pr` — verify (format, build, tests, analyzer and coverage gates), review the change locally,
   then open a PR following [`.github/pull_request_template.md`](/.github/pull_request_template.md).
 - `squad-issue` — fix a bug reported in a GitHub issue with the squad: the Lead plans and picks a tier
-  (`docs` / `patch` / `trivial` / `standard` / `security`), the Devil's Advocate challenges `standard`/`security`
-  plans that weigh options once, Security reviews plan and diff of `security` changes, the Tester writes failing tests first,
-  the Dev implements until the *Coverage gate* passes, each member formats the files it changed, the Code
-  Officer clears analyzer diagnostics, the Reviewer reviews the diff, the PR is approved by checklist (the Lead decides what is
-  open), then a PR referencing the issue is opened.
-- `squad-spec` — the same squad pipeline for a new feature, planned as `spec.md`, `plan.md` and
-  `tasks.md` in a working folder under `specs/`; also for an issue the user calls a feature or that is
+  (`docs` / `patch` / `trivial` / `standard` / `security`), the Devil's Advocate challenges a plan once when
+  `.squad/routing.md` calls for it, Security reviews the plan whenever a security area is touched and the
+  diff of a change to a security control, the Tester writes failing tests first, the Dev implements until the
+  *Coverage gate* passes, the Code Officer clears analyzer diagnostics, the Reviewer reviews the diff, and
+  once the PR is approved by checklist (the Lead decides what is open) a PR referencing the issue opens.
+- `squad-spec` — the same squad pipeline for a new feature, spec first: the Lead writes `spec.md` (scenarios,
+  edge cases, the acceptance criteria) and the Devil's Advocate challenges it before `plan.md` and `tasks.md`
+  are written against it, in a working folder under `specs/`; also for an issue the user calls a feature or that is
   labelled `feature`/`enhancement` (`.squad/routing.md`, *Bug or feature*).
 - `decision-consolidate` — merge unreleased decision records (Superseded chains, records on one topic) into
   one record each, delete the obsolete ones, lift behavior that sits in records into the area documents and fix
@@ -180,33 +186,15 @@ Project-specific workflow skills live under `.claude/skills/` and run in Claude 
 - `review-pr` — review an open pull request against this project's stack, analyzer, security and
   unit-test conventions, and post the findings with an explicit verdict.
 
-Review is defined in `.claude/agents/squad-reviewer.md`, which Claude Code runs as a subagent (read-only,
-pinned to Opus, fresh context). `create-pr` and the squad skills call it *before* pushing, so a change is reviewed while it is
-still local; `review-pr` calls the same agent for a pull request that is already open. The review
-checklist, the integration-surface sweep, the blocking/non-blocking severity model and the "round 1 is a
-full review, later rounds review only the delta" rule live in that one file, so they are identical either
-way.
-
-The squad skills run a multi-role pipeline defined in [`.squad/`](/.squad/team.md) — Lead (plan, decisions,
-PR approval decisions), Devil's Advocate (one plan challenge), Security (plan and diff on the `security` tier), Tester (tests first,
-coverage), Dev, Code Officer (analyzer gate) and Reviewer — as Claude Code subagents under
-`.claude/agents/squad-*.md` (read-only where the role demands it: a hook in each agent denies Git and
-GitHub writes, so only the orchestrating session commits, pushes and posts), with the loop limits and
-escalation rules in [`.squad/routing.md`](/.squad/routing.md). Stack commands live in [`.squad/stack.md`](/.squad/stack.md),
-the project's guarantees, security areas and integration surface in
-[`.squad/project.md`](/.squad/project.md). Their working records (`plan.md`, `log.md`, for features also
-`spec.md` and `tasks.md`) live under `specs/` on the work branch only; before the PR they are posted as a
-comment on the issue and removed, so `main` keeps no working records. An issue or feature PR never changes
-the squad or these instructions (`.squad/` except `stack.md` and `project.md`, `.claude/`, `AGENTS.md`,
-`CLAUDE.md`, `.github/copilot-instructions.md`): squad
-lessons are filed as GitHub issues labelled `squad` and never fixed in a product PR. The squad and these
-rules come from the template repository named in `.squad/template.json`: a lesson about a template-managed
-file becomes an issue there and is rolled out with its `adopt-template` skill; a lesson about project
-knowledge (`.squad/stack.md`, `.squad/project.md`, a project block) becomes an issue here and is worked in
-a squad-maintenance PR checked with `python3 .squad/tools/config-check.py` (`.squad/routing.md`,
-*Squad lessons*); `python3 .squad/tools/scope-check.py` reports a squad file in a product change. The user
-acts as Product Manager and is only asked when the Lead escalates. Pull requests are merged with *Squash and merge*, so only the
-PR title and description reach `main`.
+Every review — before the push in `create-pr` and the squad skills, on an open pull request in `review-pr` —
+runs the read-only subagent `.claude/agents/squad-reviewer.md`, which holds the checklist, the severity model
+and the round semantics. The squad's members (`.squad/team.md`) run as subagents under
+`.claude/agents/squad-*.md`; a hook denies them Git and GitHub writes, so only the orchestrating session
+commits, pushes and posts. The pipeline, its limits and escalations are in [`.squad/routing.md`](/.squad/routing.md),
+the project's guarantees, security areas and integration surface in [`.squad/project.md`](/.squad/project.md).
+Working records stay under `specs/` on the work branch. A product PR never changes the squad or these
+instructions (`.squad/stack.md` and `.squad/project.md` excepted); squad lessons become `squad` issues where they can be fixed (`.squad/routing.md`, *Squad
+lessons*). The user acts as Product Manager and is asked only when the Lead escalates.
 
 The reasoning behind code decisions — why something was built the way it was — is recorded by the Lead
 as one decision record per decision in [`docs/decisions/`](/docs/decisions/README.md) (unreleased records are
@@ -221,10 +209,9 @@ Two rules these skills enforce that are easy to get wrong:
 - **A pull request documents the change, not how it was produced.** The internal review loop — its
   pass count, its findings, the commits that resolved them — never appears in the PR title, body or
   commit messages.
-- **A finding posted as a review comment gets worked in that pull request**, blocking or not. It is
-  never deferred to "the next change that touches this code": no such change is scheduled, and the
-  session holding the context to act on it will not exist later. If it really should not be fixed
-  here, reply with the reason or open a linked issue now — then resolve the thread.
+- **A finding posted as a review comment gets worked in that pull request**, blocking or not, now, in
+  that pull request — never deferred to "the next change that touches this code". If it
+  really should not be fixed here, reply with the reason or open a linked issue now — then resolve the thread.
 
 ## Pull requests, contributing and architecture
 

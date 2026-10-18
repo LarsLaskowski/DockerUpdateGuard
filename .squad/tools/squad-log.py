@@ -33,9 +33,9 @@ mechanics out of the orchestrator's hands:
   `--continued` needs an earlier row of that member with usage, `--continued-from` a fresh launch of that step;
 - the usage block often arrives only after the member's hand-back: `--amend-last MEMBER` with the same
   options adds the trailer to the last row of that member afterwards, so the row can be written as soon as
-  the report is in. A row gets its trailer once; a second amend is refused. When a later row of that member
-  exists already (two members that ran in parallel, and the first one's notification came last),
-  `--step "<step>"` selects the last row of the member whose step cell is that text, so an earlier launch row
+  the report is in. A row gets its trailer once (a pending one is completed); a second amend is refused. When a
+  later row of that member exists already (two members that ran in parallel, and the first one's notification
+  came last), `--step "<step>"` selects the last row of the member whose step cell is that text, so an earlier launch row
   is still amended with the tool, never by hand;
 - a row whose trailer is wrong (a launch logged with made-up numbers before its notification arrived) is
   corrected with `--replace-last MEMBER` and the same options (`--step` selects an earlier row the same way):
@@ -51,8 +51,9 @@ mechanics out of the orchestrator's hands:
 - the metrics are what a launch really cost: fewer than 1,000 tokens (every launch loads its agent file and
   instructions first, so `--tokens 0` or `--tokens 1` can only be a placeholder) and negative numbers are
   refused, so a placeholder cannot be logged by accident. A row for a launch whose notification has not
-  arrived yet is written without any metric option and completed with `--amend-last` — the only way to add
-  the numbers later.
+  arrived yet is written with `--agent` (or `--launch`) alone: its trailer `(opus/medium · usage pending)` keeps
+  model and effort, the summary lists it as incomplete, and `--amend-last` with the numbers completes it — the
+  only way to add the numbers later.
 
 Usage, from anywhere inside the repository:
     python3 .squad/tools/squad-log.py <work folder> <step> <member> <result> [--agent squad-lead
@@ -101,8 +102,10 @@ TRAILER = re.compile(r"\((?P<launch>[\w.-]+/[\w-]+) · (?P<tokens>[\d,]+) tokens
                      r"(?P<seconds>\d+) s(?P<continued> · continued(?: from (?P<origin>.+))?)?\)\s*$")
 UNREPORTED = "usage not reported"
 UNREPORTED_TRAILER = re.compile(rf"\((?P<launch>[\w.-]+/[\w-]+) · {UNREPORTED}\)\s*$")
-ANY_TRAILER = re.compile(rf"\((?P<launch>[\w.-]+/[\w-]+) · (?:{UNREPORTED}|[\d,]+ tokens · \d+ tool uses · \d+ s"
-                         r"(?: · continued(?: from .+)?)?)\)\s*$")
+PENDING = "usage pending"
+PENDING_TRAILER = re.compile(rf"\((?P<launch>[\w.-]+/[\w-]+) · {PENDING}\)\s*$")
+ANY_TRAILER = re.compile(rf"\((?P<launch>[\w.-]+/[\w-]+) · (?:{UNREPORTED}|{PENDING}|[\d,]+ tokens · \d+ tool uses · "
+                         r"\d+ s(?: · continued(?: from .+)?)?)\)\s*$")
 TWO_MEMBERS = re.compile(r"[,/+&]|\band\b")
 ORCHESTRATOR = "orchestrator"
 NOT_LAUNCHES = {ORCHESTRATOR, "product manager", "user"}
@@ -131,6 +134,8 @@ def trailer(launch, tokens, tool_uses, seconds, continued=False, origin=None):
     launch = cell(launch)
     if tokens is None:
         return f"({launch} · {UNREPORTED})"
+    if tokens == PENDING:
+        return f"({launch} · {PENDING})"
     mark = ""
     if continued:
         mark = f" · continued from {cell(origin)}" if origin else " · continued"
@@ -234,10 +239,31 @@ def agent_launch(root, agent):
     return f"{found['model']}/{found['effort']}" if "model" in found and "effort" in found else None
 
 
+def amendable(result, replace):
+    """(True, the trailer match or None) when the row may take a new trailer: one without a trailer or with a pending
+    one is amended; one with a full or an unreported trailer is replaced (a pending one is amended, not replaced)."""
+    old = ANY_TRAILER.search(result)
+    pending = bool(PENDING_TRAILER.search(result))
+    if replace:
+        return bool(old) and not pending, old
+    return (not old or pending), old
+
+
+def target_result(path, member, step=None):
+    """The result cell of the row `--amend-last`/`--replace-last` would change, or None."""
+    with open(path, encoding="utf-8-sig") as handle:
+        rows = parse_rows(handle.read())
+    wanted, wanted_step = cell(member), None if step is None else cell(step)
+    for _, row_step, row_member, result in reversed(rows):
+        if row_member == wanted and (wanted_step is None or row_step == wanted_step):
+            return result
+    return None
+
+
 def amend_last(path, member, launch, replace=False, step=None):
     """Add the launch trailer to the last row of `member` (with `step`, to its last row of that step); the amended
-    row, or None when no such row exists or it already carries a trailer. With `replace`, that trailer is
-    replaced instead and a row without one is left alone (None)."""
+    row, or None when no such row exists or it already carries a trailer (a pending one is completed). With
+    `replace`, that trailer is replaced instead; a row without one, or with a pending one, is left alone (None)."""
     with open(path, "rb") as handle:
         data = handle.read()
     eol = b"\r\n" if b"\r\n" in data else b"\n"
@@ -247,8 +273,8 @@ def amend_last(path, member, launch, replace=False, step=None):
         match = ROW.match(lines[index])
         if not match or match.group("member") != wanted or (wanted_step is not None and match.group("step") != wanted_step):
             continue
-        old = ANY_TRAILER.search(match.group("result"))
-        if bool(old) != replace:
+        allowed, old = amendable(match.group("result"), replace)
+        if not allowed:
             return None
         result = match.group("result")[:old.start()] if old else match.group("result")
         lines[index] = f"| {match.group('date')} | {match.group('step')} | {match.group('member')} | " \
@@ -341,9 +367,9 @@ def is_not_launch(member):
 
 def missing_usage(rows):
     """(stamp, step, member) of every launch row — a member other than the Orchestrator, the Product Manager and
-    the User — without a trailer; a launch marked as unreported has one."""
+    the User — without usage: no trailer, or a pending one; a launch marked as unreported counts as complete."""
     return [(stamp, step, member) for stamp, step, member, result in rows
-            if not is_not_launch(member) and not ANY_TRAILER.search(result)]
+            if not is_not_launch(member) and (not ANY_TRAILER.search(result) or PENDING_TRAILER.search(result))]
 
 
 def unreported_usage(rows):
@@ -351,14 +377,11 @@ def unreported_usage(rows):
     return [(step, member) for _, step, member, result in rows if UNREPORTED_TRAILER.search(result)]
 
 
-def summary(path):
-    """Markdown table: launches, tokens, tool uses and seconds per member (and model/effort), with a total; then
-    the orchestrator's table when the rows carry a time of day."""
-    with open(path, encoding="utf-8-sig") as handle:
-        rows = parse_rows(handle.read())
+def member_totals(rows):
+    """{(member, model/effort): [launches, tokens, tool uses, seconds, continued launches]} from the trailers."""
     per_member = {}
     for _, _, member, result in rows:
-        match = TRAILER.search(result) or UNREPORTED_TRAILER.search(result)
+        match = TRAILER.search(result) or UNREPORTED_TRAILER.search(result) or PENDING_TRAILER.search(result)
         if not match:
             continue
         entry = per_member.setdefault((member, match.group("launch")), [0, 0, 0, 0, 0])
@@ -368,16 +391,12 @@ def summary(path):
         entry[4] += 1 if match.group("continued") else 0
         for index, value in enumerate(metrics(match), start=1):
             entry[index] += value
-    lines = ["| Member | Model/effort | Launches | Tokens | Tool uses | Seconds |",
-             "| ------ | ------------ | -------- | ------ | --------- | ------- |"]
-    total = [0, 0, 0, 0, 0]
-    for (member, launch), entry in sorted(per_member.items()):
-        lines.append(f"| {member} | {launch} | {launches(entry[0], entry[4])} | {entry[1]:,} | {entry[2]} | "
-                     f"{entry[3]} |")
-        total = [a + b for a, b in zip(total, entry, strict=True)]
-    lines.append(f"| **Total** | | {launches(total[0], total[4])} | {total[1]:,} | {total[2]} | {total[3]} |")
-    own = orchestrator(rows)
-    text = "\n".join(lines) + (f"\n\n{own}" if own else "")
+    return per_member
+
+
+def usage_notes(rows):
+    """The notes under the table: launches whose usage never arrived, and launch rows still without usage."""
+    text = ""
     unreported = unreported_usage(rows)
     if unreported:
         names = ", ".join(f"`{step} · {member}`" for step, member in unreported)
@@ -389,6 +408,23 @@ def summary(path):
         text += (f"\n\n**Incomplete:** {len(missing)} launch row(s) without usage — add it with `--amend-last` "
                  f"from the launch's task notification before posting this table: {names}")
     return text
+
+
+def summary(path):
+    """Markdown table: launches, tokens, tool uses and seconds per member (and model/effort), with a total; then
+    the orchestrator's table when the rows carry a time of day."""
+    with open(path, encoding="utf-8-sig") as handle:
+        rows = parse_rows(handle.read())
+    lines = ["| Member | Model/effort | Launches | Tokens | Tool uses | Seconds |",
+             "| ------ | ------------ | -------- | ------ | --------- | ------- |"]
+    total = [0, 0, 0, 0, 0]
+    for (member, launch), entry in sorted(member_totals(rows).items()):
+        lines.append(f"| {member} | {launch} | {launches(entry[0], entry[4])} | {entry[1]:,} | {entry[2]} | "
+                     f"{entry[3]} |")
+        total = [a + b for a, b in zip(total, entry, strict=True)]
+    lines.append(f"| **Total** | | {launches(total[0], total[4])} | {total[1]:,} | {total[2]} | {total[3]} |")
+    own = orchestrator(rows)
+    return "\n".join(lines) + (f"\n\n{own}" if own else "") + usage_notes(rows)
 
 
 def launches(count, continued):
@@ -435,6 +471,12 @@ def build_parser():
     return parser
 
 
+def is_pending_row(args):
+    """A new launch row with the agent alone: no numbers yet, not an amend or a continuation."""
+    return (args.tokens, args.tool_uses, args.seconds) == (None, None, None) and not args.continued \
+        and args.continued_from is None and not (args.amend_last or args.replace_last)
+
+
 def launch_metrics(parser, root, args):
     """(model/effort, tokens, tool uses, seconds) from the options, or None when no metric option is given; an
     incomplete set is a usage error, an unknown agent file ends the run with exit code 1."""
@@ -450,13 +492,15 @@ def launch_metrics(parser, root, args):
             parser.error("--unreported goes with --agent (or --launch) alone: no --tokens, --tool-uses, --seconds "
                          "or --continued")
         return (model, None, None, None)
+    if model and is_pending_row(args):
+        return (model, PENDING, None, None)  # a new launch row whose notification has not arrived yet
     if not model or None in (args.tokens, args.tool_uses, args.seconds):
         parser.error("--agent (or --launch), --tokens, --tool-uses and --seconds go together; a launch whose "
-                     "notification has not arrived yet is logged without any metric option (no --agent either) "
-                     "and completed with --amend-last")
+                     "notification has not arrived yet is logged with --agent alone (usage pending) and completed "
+                     "with --amend-last")
     if args.tokens < MIN_TOKENS or args.tool_uses < 0 or args.seconds < 0:
         parser.error(f"--tokens must be at least {MIN_TOKENS:,} and --tool-uses and --seconds not negative; a launch "
-                     "whose notification has not arrived yet is logged without any metric option and completed with "
+                     "whose notification has not arrived yet is logged with --agent alone and completed with "
                      "--amend-last")
     return (model, args.tokens, args.tool_uses, args.seconds)
 
@@ -482,19 +526,27 @@ def amend_command(parser, path, folder, member, launch, replace, continued, step
         parser.error(f"{option} needs --agent (or --launch), --tokens, --tool-uses and --seconds (or --unreported)")
     if replace and launch[1] is None:
         parser.error("--unreported marks a row without a trailer: use it with --amend-last")
-    launch = share_of_round(path, member, launch, continued, replace, step, origin)
+    current = target_result(path, member, step) or ""
+    if replace and PENDING_TRAILER.search(current):
+        parser.error("the row's usage is still pending: add it with --amend-last, not --replace-last")
+    # Only a replaced trailer with real numbers is part of the earlier usage a continuation subtracts.
+    launch = share_of_round(path, member, launch, continued, replace and bool(TRAILER.search(current)), step, origin)
     if launch is None:
         return 1
     row = amend_last(path, member, launch, replace=replace, step=step)
     if row is None:
-        state = "with" if replace else "without"
-        where = f"of step '{step}' " if step is not None else ""
-        hint = "" if replace else " (a row that already carries one, also the unreported mark, is corrected " \
-                                  "with --replace-last)"
-        print(f"No row of {member} {where}{state} a launch trailer in {folder}{hint}")
+        print(no_row_message(folder, member, replace, step))
         return 1
     print(row)
     return 0
+
+
+def no_row_message(folder, member, replace, step):
+    state = "with" if replace else "without"
+    where = f"of step '{step}' " if step is not None else ""
+    hint = "" if replace else " (a row that already carries one, also the unreported mark, is corrected with " \
+                              "--replace-last)"
+    return f"No row of {member} {where}{state} a launch trailer in {folder}{hint}"
 
 
 def row_command(parser, path, args, launch):
