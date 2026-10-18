@@ -80,8 +80,9 @@ scanner's download hosts (`api.sonarcloud.io`, `scanner.sonarcloud.io` and the p
 reports NOT CHECKED, and step 11 reads the draft pull request with `python3 .squad/tools/sonar-check.py pr <number>`
 instead. A finding of a rule no local analyzer reports is noted in this section, in the same change, instead of a
 squad lesson.
-The .NET scanner is the `dotnet-sonarscanner` tool (`dotnet tool install dotnet-sonarscanner`, or the repository's
-tool manifest); its `begin` arguments mirror the CI step, plus the branch name and the repository root as base
+The .NET scanner is the `dotnet-sonarscanner` tool, installed globally with `dotnet tool install -g dotnet-sonarscanner`
+(a local install writes an untracked `dotnet-tools.json` to the repository root, which the gate refuses); its `begin`
+arguments mirror the CI step, plus the branch name and the repository root as base
 directory, and it needs the full, non-incremental build between `begin` and `end`. The local coverage report is
 Cobertura, which the scanner does not read, so the branch analysis carries no coverage figure: the *Coverage
 gate* covers that.
