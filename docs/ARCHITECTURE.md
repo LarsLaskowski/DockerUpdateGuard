@@ -432,7 +432,8 @@ the two production projects that matter for this split:
   auto-generated notes. The workflow passes the digest of
   `mcr.microsoft.com/dotnet/runtime:10.0-alpine` into the image's
   `org.opencontainers.image.base.digest` label, while the runtime stage
-  builds on `mcr.microsoft.com/dotnet/aspnet:10.0-alpine`.
+  builds on `mcr.microsoft.com/dotnet/aspnet:10.0-alpine`
+  ([#37](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/37)).
 - **Container image**
   (`src/DockerUpdateGuard/Dockerfile`): multi-stage — SDK build stage,
   a `trivy` CLI stage copied in from the official Trivy image (so the
