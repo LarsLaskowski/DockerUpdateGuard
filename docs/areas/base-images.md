@@ -25,8 +25,9 @@ a base-image update or vulnerability reaches; vulnerability refreshes and the da
 
 ### Resolving the chain
 
-- Base images are resolved only for observed images. Running containers are not resolved themselves; they share an
-  observed image's chain only when they run exactly that image version.
+- Base images are resolved only for observed images. Running containers are not resolved themselves; a container
+  joins an observed image's chain only when it runs the exact image version — tag and digest — of that observed image.
+  A container on another digest of the same tag has no base images.
 - The source is the image configuration's labels: `org.opencontainers.image.base.name` names the base image (parsed as
   an image reference, see [Image catalog](image-catalog.md)); `org.opencontainers.image.base.digest` supplies its
   digest (lowercased) when the name carries none. The same rule applies to Docker Hub and to every other registry.
@@ -75,7 +76,8 @@ a base-image update or vulnerability reaches; vulnerability refreshes and the da
 - Recognizes the .NET or nginx runtime an image is built on, also without base-image labels. One runtime per image.
 - Inputs: for observed images the environment variables of the image configuration from the registry; for running
   containers the environment of the local image and its build history (each entry's command and comment) from the
-  Docker Engine ([Docker instances](docker-instances.md)).
+  Docker Engine ([Docker instances](docker-instances.md)). Registry images have no build history, so the
+  history-based signals apply to running containers only.
 - Signals, strongest first; on equal strength environment variables win over history, and earlier history entries
   over later ones:
 
@@ -122,6 +124,13 @@ a base-image update or vulnerability reaches; vulnerability refreshes and the da
 - Feed failures (non-success status, missing `releases-index` array, unreadable content) only suppress the runtime
   finding; they do not change the scan status. Unreadable content is logged as a warning.
 
+### Known gaps
+
+- The relationship type for build stages is defined in storage but never produced. Tracked in
+  [#293](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/293).
+- The shared base images view also lists bases used by a single observed image and counts disabled observed images.
+  Tracked in [#286](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/286).
+
 ## Related decisions
 
 None yet.
@@ -134,14 +143,3 @@ None yet.
 - Vulnerabilities of base images: [Vulnerabilities](vulnerabilities.md).
 - Schedules, overlap rules and scan-run retention: [Scan engine](scan-engine.md).
 - Page layout of `/base-images` and the detail pages: [Web UI](web-ui.md).
-
-## Open questions
-
-1. Running containers are only connected to a base-image chain when they run the very image version an observed image
-   points at (same tag and digest); a container on a different digest of the same tag shows no base images. Should
-   containers be resolved, or matched by repository?
-2. The build-stage relationship type is defined but never produced. Should it be removed or implemented?
-3. The shared base images view lists bases used by a single observed image and counts disabled observed images. Is
-   "shared" meant to require at least two users, and should disabled images count?
-4. Derived runtime detection for observed images uses environment variables only, without build history, so the
-   history-based signals apply only to running containers. Intended?

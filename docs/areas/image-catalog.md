@@ -91,6 +91,21 @@ refer to the same image the same way.
 - The catalog rejects a blank registry, repository or tag.
 - Nothing in this area handles credentials.
 
+### Known gaps
+
+- Docker Hub references are not normalized to one form (`docker.io/nginx` vs `nginx`, `index.docker.io` vs
+  `docker.io`), so one image can have several catalog entries and is then not recognized as shared. Tracked in
+  [#275](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/275).
+- Manual registration identifies an existing observed image by its untrimmed, case-sensitive name, and names are not
+  unique: near-identical names create separate entries, and registering a manual image under a discovered image's name
+  updates the discovered one, which the next discovery run overwrites.
+  Tracked in [#284](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/284).
+- Observed images cannot be disabled or deleted by the user, and discovery enables every listed repository again on
+  each run. Tracked in [#282](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/282).
+- The recorded kind of the component that last registered an image version is last-writer-wins and carries no
+  meaning, and a further kind (registry metadata) is defined but never written.
+  Tracked in [#293](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/293).
+
 ## Related decisions
 
 None yet.
@@ -104,16 +119,3 @@ None yet.
 - Vulnerability findings: [Vulnerabilities](vulnerabilities.md).
 - Scan runs, schedules and retention: [Scan engine](scan-engine.md).
 - What the pages show: [Web UI](web-ui.md).
-
-## Open questions
-
-1. Docker Hub references are not normalized to one form (`docker.io/nginx` vs `nginx`, `index.docker.io` vs
-   `docker.io`), so one image can have several catalog entries and not be recognized as shared. Should the parser
-   unify them?
-2. Manual registration matches an existing observed image by the untrimmed, case-sensitive name and names are not
-   unique, so near-identical names create separate entries, and registering a manual image under a discovered image's
-   name updates the discovered one (which the next discovery run overwrites). Is name the intended identity?
-3. Observed images can neither be disabled nor deleted by the user, and discovery re-enables every listed repository on
-   each run. Is a user-controlled enabled state planned?
-4. The recorded "registered by" kind of an image version is last-writer-wins and a further kind (registry metadata) is
-   defined but never written. Is the field meant to carry meaning?

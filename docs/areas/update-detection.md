@@ -138,7 +138,9 @@ scan run *partial*, with the message added to the run ([Scan engine](scan-engine
   ([Image catalog](image-catalog.md)).
 - The candidates of the evaluation are stored as tag candidates with tag, digest, publication time, the evaluation
   summary as reason, a rank equal to the candidate's 1-based position in the evaluation and a *recommended* flag on the
-  candidate whose tag equals the recommended tag. Candidates without a digest are not stored, so ranks may have gaps.
+  candidate whose tag equals the recommended tag. Candidates without a digest are not stored, since they offer no
+  reliable update target; a finding can therefore hold fewer candidates than the evaluation produced, and ranks may
+  have gaps.
   A finding holds each tag/digest pair at most once.
 - Whenever a container was evaluated (including *no tag data* and *unsupported*), all active findings of the same
   container on the same Docker instance are first deactivated: they become inactive, get a resolution timestamp and
@@ -168,6 +170,16 @@ scan run *partial*, with the message added to the run ([Scan engine](scan-engine
 - Evaluation itself performs no I/O and has no failure state of its own; registry failures reach it only as missing
   tags and are reported through the assessment status above, with the registry's failure message.
 
+### Known gaps
+
+- The manual tag selection is informational only: it does not pin the recommendation or influence any container
+  action. Tracked in [#291](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/291).
+- Findings of type *base image update* are defined in the data model but never produced. Tracked in
+  [#293](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/293).
+- The major-upgrade age conditions read the system clock directly instead of the application's time source, so they
+  cannot be controlled independently of the real time.
+  Tracked in [#289](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/289).
+
 ## Related decisions
 
 None yet.
@@ -181,12 +193,3 @@ None yet.
 - Container discovery and snapshots: [Docker instances](docker-instances.md).
 - Applying an update through Portainer: [Container actions](container-actions.md).
 - How findings, candidates and the selection are displayed: [Web UI](web-ui.md).
-
-## Open questions
-
-1. The manual tag selection is stored and displayed but has no effect on update evaluation or on container actions.
-   Is it meant to stay informational, or should it pin the recommendation or feed the Portainer update action?
-2. Tag candidates without a digest are dropped when a finding is stored, which can leave a *runtime image update*
-   finding with fewer candidates than the evaluation produced (or none) and ranks with gaps. Is that intended?
-3. Findings of type *base image update* are defined but never created. Is the type reserved for future use or
-   obsolete?
