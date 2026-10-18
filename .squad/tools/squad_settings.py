@@ -10,6 +10,9 @@ PATCH_MAX_LINES = 30
 # Solution or project file the analyzer gate builds.
 SOLUTION = "DockerUpdateGuard.slnx"
 
+# Sonar gate (.squad/tools/sonar-check.py): the report file the .NET scanner writes.
+SONAR_REPORT_TASK = ".sonarqube/out/.sonar/report-task.txt"
+
 # Coverage gate (.squad/tools/coverage-check.py): line coverage on new/changed production lines, and overall.
 # COVERAGE_OVERALL_THRESHOLD may start below COVERAGE_THRESHOLD in a repository adopted with a coverage debt;
 # it is never lowered and is raised towards COVERAGE_THRESHOLD as coverage improves.

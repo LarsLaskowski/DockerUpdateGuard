@@ -39,6 +39,7 @@ profile and owned by this repository: keep it true when the build changes.
 | *Test with coverage* | `rm -rf TestResults && dotnet test DockerUpdateGuard.slnx -c Release --no-build --collect:"XPlat Code Coverage" --results-directory ./TestResults` (clears earlier runs: the coverage gate merges every report it finds) |
 | *Coverage gate* | `python3 .squad/tools/coverage-check.py` |
 | *Analyzer gate* | `python3 .squad/tools/analyzer-check.py` |
+| *Sonar gate* | `python3 .squad/tools/sonar-check.py branch -- bash -c 'dotnet sonarscanner begin /k:"LarsLaskowski_DockerUpdateGuard" /o:"networlddev" /d:sonar.token="$SONAR_TOKEN" /d:sonar.branch.name="$(git branch --show-current)" /d:sonar.projectBaseDir="$PWD" && dotnet build DockerUpdateGuard.slnx -c Release --no-incremental && dotnet sonarscanner end /d:sonar.token="$SONAR_TOKEN"'` (after *Test with coverage*; needs `SONAR_TOKEN` and the `dotnet-sonarscanner` tool, see *Sonar gate* below) |
 | *Image build check* | `docker build -f src/DockerUpdateGuard/Dockerfile .` where Docker runs; otherwise the restore-order reproduction under *Image build check* below (`.squad/routing.md`, *Criteria verified only in CI*) |
 
 ## Analyzer gate
@@ -54,11 +55,12 @@ Easy to get wrong by hand: `#region` blocks on every type, XML documentation on 
 underscores in member names, a region for an interface implementation named after the interface.
 
 SonarQube Cloud's own quality profile can still report `S####` rules the local default profile does not,
-and its non-Roslyn checks (duplication, hotspots, taint analysis) only run in CI — such findings arrive in
-squad step 11.
+and its non-Roslyn checks (hotspots, taint analysis, duplication) have no local equivalent: the *Sonar gate*
+below is the first to report their issues and hotspots, and squad step 11 reads the quality gate,
+duplication included.
 
 Own browser scripts (`wwwroot/js/*.js`, no Node build) have no local analyzer; the repository has none today.
-SonarQube Cloud's JavaScript rules would report on one only in squad step 11, so a new one is written to those
+SonarQube Cloud's JavaScript rules would report on one first in the *Sonar gate* below, so a new one is written to those
 rules from the start. The one that bit (`javascript:S2486`): a `catch` block that ignores the exception holds
 exactly one whole-line comment and nothing else — a comment before a `return` inside the block is still flagged.
 
@@ -67,8 +69,24 @@ Changed shell scripts (`*.sh`), GitHub workflows (`.github/workflows/*.yml`) and
 binaries (`.claude/hooks/install-linters.sh`), and the gate reports NOT RUN for one that is missing (a refused
 download, for example). The gate itself checks two SonarQube Cloud shell rules shellcheck does not report:
 `shelldre:S7679` (a positional parameter `$1`…`$9` used as a word of its own inside a function — assign it to a
-local variable first) and `shelldre:S7688` (`[ … ]` instead of `[[ … ]]`). Other `shelldre:*` findings only report
-in squad step 11.
+local variable first) and `shelldre:S7688` (`[ … ]` instead of `[[ … ]]`). Other `shelldre:*` findings are first
+reported by the *Sonar gate* below.
+
+*Sonar gate* runs SonarQube Cloud's own analysis on the work branch before the pull request (squad step 7):
+`sonar-check.py` runs the scanner with the branch name, waits for the analysis and fails on every open issue or
+security hotspot on a line the branch changed, so the rules no local analyzer has stop surfacing only after the
+pull request. It runs on the committed change (the scanner uploads the working tree, so it refuses uncommitted or
+untracked files other than the coverage reports) and needs `SONAR_TOKEN` in the session's environment (an environment secret) and network access to the
+scanner's download hosts (`api.sonarcloud.io`, `scanner.sonarcloud.io` and the package registry); without them it
+reports NOT CHECKED, and step 11 reads the draft pull request with `python3 .squad/tools/sonar-check.py pr <number>`
+instead. A finding of a rule no local analyzer reports is noted in this section, in the same change, instead of a
+squad lesson.
+The .NET scanner is the `dotnet-sonarscanner` tool, installed globally with `dotnet tool install -g dotnet-sonarscanner`
+(a local install writes an untracked `dotnet-tools.json` to the repository root, which the gate refuses); its `begin`
+arguments mirror the CI step, plus the branch name and the repository root as base
+directory, and it needs the full, non-incremental build between `begin` and `end`. The local coverage report is
+Cobertura, which the scanner does not read, so the branch analysis carries no coverage figure: the *Coverage
+gate* covers that.
 
 ## Image build check
 
