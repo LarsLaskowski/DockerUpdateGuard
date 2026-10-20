@@ -315,7 +315,7 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
     /// </summary>
     /// <param name="socketPath">Unix socket path</param>
     /// <returns>HTTP client</returns>
-    private static HttpClient CreateUnixSocketHttpClient(string socketPath)
+    private static HttpClient _CreateUnixSocketHttpClient(string socketPath)
     {
         var endpoint = new UnixDomainSocketEndPoint(socketPath);
         var handler = new SocketsHttpHandler
