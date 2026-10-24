@@ -340,6 +340,148 @@ public partial class DockerHubClientTests
     }
 
     /// <summary>
+    /// Verify a Docker Hub tag listing that stops on its own condition ignores a foreign next-page link
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerHubClientGetTagsAsyncStopConditionIgnoresForeignNextLinkAsync()
+    {
+        var handler = new StubHttpMessageHandler();
+        var httpClient = new HttpClient(handler);
+
+        try
+        {
+            httpClient.BaseAddress = new Uri("https://hub.docker.com/");
+            handler.AddResponse("https://hub.docker.com/v2/users/login",
+                                """
+                                {
+                                  "token": "header.eyJleHAiOjQxMDI0NDQ4MDB9.signature"
+                                }
+                                """);
+            handler.AddResponse("https://hub.docker.com/v2/namespaces/acme/repositories/api/tags?page_size=100",
+                                """
+                                {
+                                  "next": "https://attacker.example/collect?page=2&token=leak",
+                                  "results": [
+                                    {
+                                      "name": "3.0.0",
+                                      "digest": "sha256:300",
+                                      "last_pushed": "2025-04-03T10:00:00Z"
+                                    },
+                                    {
+                                      "name": "2.4.1",
+                                      "digest": "sha256:241",
+                                      "last_pushed": "2025-04-02T10:00:00Z"
+                                    },
+                                    {
+                                      "name": "2.4.0",
+                                      "digest": "sha256:240",
+                                      "last_pushed": "2025-04-02T10:00:00Z"
+                                    },
+                                    {
+                                      "name": "2.3.9",
+                                      "digest": "sha256:239",
+                                      "last_pushed": "2025-04-01T10:00:00Z"
+                                    }
+                                  ]
+                                }
+                                """);
+
+            var client = CreateClient(httpClient);
+            var result = await client.GetTagsAsync("docker.io",
+                                                   "acme/api",
+                                                   queryOptions: new RegistryTagQueryOptions
+                                                                 {
+                                                                     CurrentTag = "2.4.1",
+                                                                     MaximumTags = 50,
+                                                                     MinimumVersionTag = "2.4.1",
+                                                                     PublishedSinceUtc = new DateTimeOffset(2025, 04, 02, 10, 00, 00, TimeSpan.Zero),
+                                                                 },
+                                                   cancellationToken: CancellationToken.None)
+                                     .ConfigureAwait(false);
+
+            Assert.AreEqual(ExternalOperationStatus.Succeeded,
+                            result.Status,
+                            "A stop condition must end the listing before the foreign link is looked at");
+            Assert.IsNotNull(result.Data, "Bounded Docker Hub tag listing must return tag data");
+            Assert.AreSequenceEqual(["3.0.0", "2.4.1"],
+                                    result.Data.Select(entity => entity.Tag)
+                                               .ToArray(),
+                                    "Bounded Docker Hub tag listing must skip lower versions and stop before older pages");
+            Assert.DoesNotContain(request => request.RequestUri.StartsWith("https://attacker.example", StringComparison.Ordinal),
+                                  handler.Requests,
+                                  "Bounded Docker Hub tag listing must not request the foreign next-page link");
+        }
+        finally
+        {
+            httpClient.Dispose();
+            handler.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Verify a repository page without a results array adds no repositories and does not stop the listing
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerHubClientGetRepositoriesAsyncPageWithoutResultsArraySkipsPageAsync()
+    {
+        var handler = new StubHttpMessageHandler();
+        var httpClient = new HttpClient(handler);
+
+        try
+        {
+            httpClient.BaseAddress = new Uri("https://hub.docker.com/");
+            handler.AddResponse("https://hub.docker.com/v2/users/login",
+                                """
+                                {
+                                  "token": "header.eyJleHAiOjQxMDI0NDQ4MDB9.signature"
+                                }
+                                """);
+            handler.AddResponse("https://hub.docker.com/v2/repositories/acme/?page_size=100",
+                                """
+                                {
+                                  "next": "https://hub.docker.com/v2/repositories/acme/?page=2&page_size=100",
+                                  "results": "unexpected"
+                                }
+                                """);
+            handler.AddResponse("https://hub.docker.com/v2/repositories/acme/?page=2&page_size=100",
+                                """
+                                {
+                                  "next": null,
+                                  "results": [
+                                    {
+                                      "namespace": "acme",
+                                      "name": "web",
+                                      "description": "Web frontend",
+                                      "last_updated": "2025-04-02T10:00:00Z"
+                                    }
+                                  ]
+                                }
+                                """);
+
+            var client = CreateClient(httpClient);
+
+            var result = await client.GetRepositoriesAsync("acme", CancellationToken.None)
+                                     .ConfigureAwait(false);
+
+            Assert.AreEqual(ExternalOperationStatus.Succeeded,
+                            result.Status,
+                            "A page whose results are not an array must not fail the listing");
+            Assert.IsNotNull(result.Data, "Repository listing must return repository data");
+            Assert.AreSequenceEqual(["acme/web"],
+                                    result.Data.Select(entity => entity.Repository)
+                                               .ToArray(),
+                                    "Only the repositories of pages with a results array must be listed");
+        }
+        finally
+        {
+            httpClient.Dispose();
+            handler.Dispose();
+        }
+    }
+
+    /// <summary>
     /// Verify Docker Hub tag lookup uses the top-level Docker Hub digest
     /// </summary>
     /// <returns>Task</returns>

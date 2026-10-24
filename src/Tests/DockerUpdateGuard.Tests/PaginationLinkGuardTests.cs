@@ -146,6 +146,23 @@ public class PaginationLinkGuardTests
     }
 
     /// <summary>
+    /// Verify a non-ASCII host is described in its punycode form
+    /// </summary>
+    /// <param name="link">Raw next-page link</param>
+    /// <param name="expected">Expected origin text</param>
+    [TestMethod]
+    [DataRow("https://b\u00fccher.example/collect?token=leak", "https://xn--bcher-kva.example")]
+    [DataRow("https://b\u00fccher.example:8443/collect", "https://xn--bcher-kva.example:8443")]
+    public void PaginationLinkGuardDescribeOriginNonAsciiHostReturnsPunycodeOrigin(string link, string expected)
+    {
+        var origin = PaginationLinkGuard.DescribeOrigin(new Uri(CurrentRequest), link);
+
+        Assert.AreEqual(expected,
+                        origin,
+                        "A non-ASCII host must be described by its punycode form");
+    }
+
+    /// <summary>
     /// Verify an unparseable link is described by the placeholder
     /// </summary>
     [TestMethod]
