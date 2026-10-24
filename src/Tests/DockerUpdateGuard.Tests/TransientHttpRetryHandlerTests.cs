@@ -7,6 +7,8 @@ using DockerUpdateGuard.Infrastructure;
 using DockerUpdateGuard.Tests.Data;
 using DockerUpdateGuard.Tests.Helper;
 
+using Microsoft.Extensions.Logging;
+
 namespace DockerUpdateGuard.Tests;
 
 /// <summary>
@@ -33,6 +35,18 @@ public partial class TransientHttpRetryHandlerTests
                       };
 
         return new TestOptionsMonitor<DockerUpdateGuardOptions>(options);
+    }
+
+    /// <summary>
+    /// Create a POST request with a small body
+    /// </summary>
+    /// <returns>POST request</returns>
+    private static HttpRequestMessage CreatePostRequest()
+    {
+        return new HttpRequestMessage(HttpMethod.Post, "https://registry.example.test/api/auth")
+               {
+                   Content = new StringContent("{\"username\":\"probe\"}", Encoding.UTF8, "application/json"),
+               };
     }
 
     /// <summary>
@@ -400,27 +414,427 @@ public partial class TransientHttpRetryHandlerTests
     }
 
     /// <summary>
-    /// Verify a request carrying content is buffered and retried successfully
+    /// Verify a request carrying content is buffered once and resent with the identical body after a pre-send failure
     /// </summary>
     /// <returns>Task</returns>
     [TestMethod]
     public async Task TransientHttpRetryHandlerBuffersAndRetriesRequestWithContentAsync()
     {
-        var probe = new RetryProbeHttpMessageHandler([HttpStatusCode.ServiceUnavailable, HttpStatusCode.OK], HttpStatusCode.OK);
-
+        var probe = new RetryProbeHttpMessageHandler([null, HttpStatusCode.OK], HttpStatusCode.OK)
+                    {
+                        FailureFactory = () => new HttpRequestException(HttpRequestError.ConnectionError, "refused"),
+                    };
+        using var content = new CountingHttpContent("{\"username\":\"probe\"}", true, true);
         using var request = new HttpRequestMessage(HttpMethod.Post, "https://registry.example.test/api/auth")
                             {
-                                Content = new StringContent("{\"username\":\"probe\"}", Encoding.UTF8, "application/json"),
+                                Content = content,
                             };
 
         using var response = await SendThroughRetryHandlerAsync(2, probe, request: request).ConfigureAwait(false);
 
         Assert.AreEqual(HttpStatusCode.OK,
                         response.StatusCode,
-                        "The retry handler must retry a request with buffered content");
+                        "The retry handler must retry a request with buffered content after a connection error");
         Assert.AreEqual(2,
                         probe.AttemptCount,
                         "The retry handler must resend the buffered request content on retry");
+        Assert.AreSequenceEqual(["{\"username\":\"probe\"}", "{\"username\":\"probe\"}"],
+                                probe.RequestBodies,
+                                "Both attempts must carry the identical body");
+        Assert.AreEqual(1,
+                        content.SerializationCount,
+                        "The body must be serialized exactly once because the handler buffers it");
+    }
+
+    /// <summary>
+    /// Verify a POST answered with a server error status is sent once and the response is returned
+    /// </summary>
+    /// <param name="statusCode">Server error status code</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [DataRow(HttpStatusCode.InternalServerError)]
+    [DataRow(HttpStatusCode.BadGateway)]
+    [DataRow(HttpStatusCode.ServiceUnavailable)]
+    [DataRow(HttpStatusCode.GatewayTimeout)]
+    [DataRow(HttpStatusCode.RequestTimeout)]
+    public async Task TransientHttpRetryHandlerDoesNotRetryPostOnServerErrorAsync(HttpStatusCode statusCode)
+    {
+        var probe = new RetryProbeHttpMessageHandler([statusCode, HttpStatusCode.OK], HttpStatusCode.OK);
+        var logger = new TestLogger<TransientHttpRetryHandler>();
+        using var request = CreatePostRequest();
+
+        using var response = await SendThroughRetryHandlerAsync(2, probe, request: request, logger: logger).ConfigureAwait(false);
+
+        Assert.AreEqual(statusCode,
+                        response.StatusCode,
+                        "The server error response of a POST must be returned unchanged");
+        Assert.AreEqual(1,
+                        probe.AttemptCount,
+                        "A POST must be sent exactly once because the server may already have processed it");
+        Assert.DoesNotContain(entry => entry.EventId.Id == 3500,
+                              logger.Entries,
+                              "No retry warning may be logged for a POST that is not retried");
+    }
+
+    /// <summary>
+    /// Verify a POST is retried after a failure that proves the request never reached the server
+    /// </summary>
+    /// <param name="error">Transport error raised before any request byte was sent</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [DataRow(HttpRequestError.ConnectionError)]
+    [DataRow(HttpRequestError.NameResolutionError)]
+    [DataRow(HttpRequestError.SecureConnectionError)]
+    [DataRow(HttpRequestError.ProxyTunnelError)]
+    public async Task TransientHttpRetryHandlerRetriesPostOnConnectionErrorAsync(HttpRequestError error)
+    {
+        var probe = new RetryProbeHttpMessageHandler([null, null, HttpStatusCode.OK], HttpStatusCode.OK)
+                    {
+                        FailureFactory = () => new HttpRequestException(error, "not connected"),
+                    };
+        using var request = CreatePostRequest();
+
+        using var response = await SendThroughRetryHandlerAsync(2, probe, request: request).ConfigureAwait(false);
+
+        Assert.AreEqual(HttpStatusCode.OK,
+                        response.StatusCode,
+                        "A POST must be retried until it succeeds after errors raised before sending");
+        Assert.AreEqual(3,
+                        probe.AttemptCount,
+                        "A POST must use the initial attempt plus both retries after pre-send errors");
+    }
+
+    /// <summary>
+    /// Verify the last pre-send failure of a POST is rethrown once the retry budget is exhausted
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task TransientHttpRetryHandlerRethrowsPostConnectionErrorWhenRetriesExhaustedAsync()
+    {
+        var failureCount = 0;
+        var probe = new RetryProbeHttpMessageHandler([null, null], HttpStatusCode.OK)
+                    {
+                        FailureFactory = () => new HttpRequestException(HttpRequestError.ConnectionError, $"failure {++failureCount}"),
+                    };
+        using var request = CreatePostRequest();
+
+        var exception = await Assert.ThrowsExactlyAsync<HttpRequestException>(() => SendThroughRetryHandlerAsync(1, probe, request: request),
+                                                                              "The retry handler must rethrow the pre-send failure when retries are exhausted")
+                                    .ConfigureAwait(false);
+
+        Assert.AreEqual("failure 2",
+                        exception.Message,
+                        "The exception of the last attempt must reach the caller");
+        Assert.AreEqual(2,
+                        probe.AttemptCount,
+                        "A POST must use the initial attempt plus the configured retries");
+    }
+
+    /// <summary>
+    /// Verify a POST is not retried after a failure that may have happened after the server read the request
+    /// </summary>
+    /// <param name="error">Transport error that does not prove the request was unprocessed</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [DataRow(HttpRequestError.ResponseEnded)]
+    [DataRow(HttpRequestError.InvalidResponse)]
+    [DataRow(HttpRequestError.HttpProtocolError)]
+    [DataRow(HttpRequestError.Unknown)]
+    public async Task TransientHttpRetryHandlerDoesNotRetryPostOnResponseEndedAsync(HttpRequestError error)
+    {
+        var probe = new RetryProbeHttpMessageHandler([null, HttpStatusCode.OK], HttpStatusCode.OK)
+                    {
+                        FailureFactory = () => new HttpRequestException(error, "ended"),
+                    };
+        using var request = CreatePostRequest();
+
+        var exception = await Assert.ThrowsExactlyAsync<HttpRequestException>(() => SendThroughRetryHandlerAsync(2, probe, request: request),
+                                                                              "The failure of a POST that may have been processed must reach the caller")
+                                    .ConfigureAwait(false);
+
+        Assert.AreEqual(error,
+                        exception.HttpRequestError,
+                        "The original exception must reach the caller unchanged");
+        Assert.AreEqual(1,
+                        probe.AttemptCount,
+                        "A POST must be sent exactly once after an error that may follow processing");
+    }
+
+    /// <summary>
+    /// Verify a POST failing with a plain HTTP request exception without error is not retried
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task TransientHttpRetryHandlerDoesNotRetryPostOnPlainHttpRequestExceptionAsync()
+    {
+        var probe = new RetryProbeHttpMessageHandler([null, HttpStatusCode.OK], HttpStatusCode.OK);
+        using var request = CreatePostRequest();
+
+        await Assert.ThrowsExactlyAsync<HttpRequestException>(() => SendThroughRetryHandlerAsync(2, probe, request: request),
+                                                              "A plain transport failure of a POST must reach the caller")
+                    .ConfigureAwait(false);
+        Assert.AreEqual(1,
+                        probe.AttemptCount,
+                        "A POST must be sent exactly once after a failure without a pre-send error");
+    }
+
+    /// <summary>
+    /// Verify a POST failing with a timeout exception is not retried
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task TransientHttpRetryHandlerDoesNotRetryPostOnTimeoutAsync()
+    {
+        var probe = new RetryProbeHttpMessageHandler([null, HttpStatusCode.OK], HttpStatusCode.OK)
+                    {
+                        FailureFactory = () => new TimeoutException("timed out"),
+                    };
+        using var request = CreatePostRequest();
+
+        await Assert.ThrowsExactlyAsync<TimeoutException>(() => SendThroughRetryHandlerAsync(2, probe, request: request),
+                                                          "A timeout of a POST must reach the caller")
+                    .ConfigureAwait(false);
+        Assert.AreEqual(1,
+                        probe.AttemptCount,
+                        "A POST must be sent exactly once after a timeout");
+    }
+
+    /// <summary>
+    /// Verify a POST answered with Too Many Requests is retried with the Retry-After or the exponential backoff delay
+    /// </summary>
+    /// <param name="retryAfterSeconds">Retry-After delta in seconds; null for none</param>
+    /// <param name="expectedDelayMilliseconds">Expected backoff delay in milliseconds</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [DataRow(7, 7000)]
+    [DataRow(null, 500)]
+    public async Task TransientHttpRetryHandlerRetriesPostOnTooManyRequestsAsync(int? retryAfterSeconds, int expectedDelayMilliseconds)
+    {
+        var probe = new RetryProbeHttpMessageHandler([HttpStatusCode.TooManyRequests, HttpStatusCode.OK], HttpStatusCode.OK)
+                    {
+                        RetryAfter = retryAfterSeconds is null ? null : new RetryConditionHeaderValue(TimeSpan.FromSeconds(retryAfterSeconds.Value)),
+                    };
+        var capturedDelays = new List<TimeSpan>();
+        using var request = CreatePostRequest();
+
+        using var response = await SendThroughRetryHandlerAsync(2, probe, capturedDelays, request).ConfigureAwait(false);
+
+        Assert.AreEqual(HttpStatusCode.OK,
+                        response.StatusCode,
+                        "A POST answered with 429 was not processed and must be retried");
+        Assert.AreEqual(2,
+                        probe.AttemptCount,
+                        "A POST must be retried once after a 429 response");
+        Assert.AreSequenceEqual([TimeSpan.FromMilliseconds(expectedDelayMilliseconds)],
+                                capturedDelays,
+                                "The wait before the retry must be the Retry-After value or the exponential backoff");
+    }
+
+    /// <summary>
+    /// Verify PATCH and an unknown method are sent once after a server error
+    /// </summary>
+    /// <param name="method">HTTP method name</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [DataRow("PATCH")]
+    [DataRow("LOCK")]
+    public async Task TransientHttpRetryHandlerTreatsNonIdempotentMethodLikePostOnServerErrorAsync(string method)
+    {
+        var probe = new RetryProbeHttpMessageHandler([HttpStatusCode.ServiceUnavailable, HttpStatusCode.OK], HttpStatusCode.OK);
+        using var request = new HttpRequestMessage(new HttpMethod(method), "https://registry.example.test/api/resource");
+
+        using var response = await SendThroughRetryHandlerAsync(2, probe, request: request).ConfigureAwait(false);
+
+        Assert.AreEqual(HttpStatusCode.ServiceUnavailable,
+                        response.StatusCode,
+                        "The 503 response of a non-idempotent method must be returned");
+        Assert.AreEqual(1,
+                        probe.AttemptCount,
+                        "A non-idempotent method must be sent exactly once after a 503 response");
+    }
+
+    /// <summary>
+    /// Verify PATCH and an unknown method are sent once after a response-ended failure
+    /// </summary>
+    /// <param name="method">HTTP method name</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [DataRow("PATCH")]
+    [DataRow("LOCK")]
+    public async Task TransientHttpRetryHandlerTreatsNonIdempotentMethodLikePostOnResponseEndedAsync(string method)
+    {
+        var probe = new RetryProbeHttpMessageHandler([null, HttpStatusCode.OK], HttpStatusCode.OK)
+                    {
+                        FailureFactory = () => new HttpRequestException(HttpRequestError.ResponseEnded, "ended"),
+                    };
+        using var request = new HttpRequestMessage(new HttpMethod(method), "https://registry.example.test/api/resource");
+
+        await Assert.ThrowsExactlyAsync<HttpRequestException>(() => SendThroughRetryHandlerAsync(2, probe, request: request),
+                                                              "The failure of a non-idempotent method must reach the caller")
+                    .ConfigureAwait(false);
+        Assert.AreEqual(1,
+                        probe.AttemptCount,
+                        "A non-idempotent method must be sent exactly once after a response-ended failure");
+    }
+
+    /// <summary>
+    /// Verify PATCH and an unknown method are retried after a connection error
+    /// </summary>
+    /// <param name="method">HTTP method name</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [DataRow("PATCH")]
+    [DataRow("LOCK")]
+    public async Task TransientHttpRetryHandlerTreatsNonIdempotentMethodLikePostOnConnectionErrorAsync(string method)
+    {
+        var probe = new RetryProbeHttpMessageHandler([null, HttpStatusCode.OK], HttpStatusCode.OK)
+                    {
+                        FailureFactory = () => new HttpRequestException(HttpRequestError.ConnectionError, "refused"),
+                    };
+        using var request = new HttpRequestMessage(new HttpMethod(method), "https://registry.example.test/api/resource");
+
+        using var response = await SendThroughRetryHandlerAsync(2, probe, request: request).ConfigureAwait(false);
+
+        Assert.AreEqual(HttpStatusCode.OK,
+                        response.StatusCode,
+                        "A non-idempotent method must be retried after an error raised before sending");
+        Assert.AreEqual(2,
+                        probe.AttemptCount,
+                        "A non-idempotent method must be retried once after a connection error");
+    }
+
+    /// <summary>
+    /// Verify idempotent methods are retried on a server error and on a response-ended failure
+    /// </summary>
+    /// <param name="method">HTTP method name</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [DataRow("GET")]
+    [DataRow("HEAD")]
+    [DataRow("OPTIONS")]
+    [DataRow("TRACE")]
+    [DataRow("PUT")]
+    [DataRow("DELETE")]
+    public async Task TransientHttpRetryHandlerRetriesIdempotentMethodOnServerErrorAndResponseEndedAsync(string method)
+    {
+        var probe = new RetryProbeHttpMessageHandler([HttpStatusCode.ServiceUnavailable, null, HttpStatusCode.OK], HttpStatusCode.OK)
+                    {
+                        FailureFactory = () => new HttpRequestException(HttpRequestError.ResponseEnded, "ended"),
+                    };
+        using var request = new HttpRequestMessage(new HttpMethod(method), "https://registry.example.test/api/resource");
+
+        using var response = await SendThroughRetryHandlerAsync(2, probe, request: request).ConfigureAwait(false);
+
+        Assert.AreEqual(HttpStatusCode.OK,
+                        response.StatusCode,
+                        "An idempotent method must be retried until it succeeds");
+        Assert.AreEqual(3,
+                        probe.AttemptCount,
+                        "An idempotent method must be retried after a 503 and after a response-ended failure");
+    }
+
+    /// <summary>
+    /// Verify a body of unknown length is buffered so that it is sent with a Content-Length
+    /// </summary>
+    /// <param name="retryCount">Retry count</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [DataRow(0)]
+    [DataRow(2)]
+    public async Task TransientHttpRetryHandlerBuffersContentOfUnknownLengthAsync(int retryCount)
+    {
+        var probe = new RetryProbeHttpMessageHandler([], HttpStatusCode.OK);
+        using var content = new CountingHttpContent("{\"username\":\"probe\"}", false, false);
+        using var request = new HttpRequestMessage(HttpMethod.Post, "https://registry.example.test/api/auth")
+                            {
+                                Content = content,
+                            };
+
+        using var response = await SendThroughRetryHandlerAsync(retryCount, probe, request: request).ConfigureAwait(false);
+
+        Assert.AreEqual(HttpStatusCode.OK,
+                        response.StatusCode,
+                        "The request must reach the inner handler");
+        Assert.AreSequenceEqual([(long?)content.ByteLength],
+                                probe.ContentLengths,
+                                "A body of unknown length must reach the inner handler with its byte length as Content-Length");
+    }
+
+    /// <summary>
+    /// Verify a POST left unretried after a server error logs a debug entry with the masked request target
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task TransientHttpRetryHandlerLogsDebugWhenPostIsNotRetriedOnServerErrorAsync()
+    {
+        var probe = new RetryProbeHttpMessageHandler([HttpStatusCode.ServiceUnavailable, HttpStatusCode.OK], HttpStatusCode.OK);
+        var logger = new TestLogger<TransientHttpRetryHandler>();
+        using var request = new HttpRequestMessage(HttpMethod.Post, "https://user:secret@registry.example.test/path?token=x");
+
+        using var response = await SendThroughRetryHandlerAsync(2, probe, request: request, logger: logger).ConfigureAwait(false);
+
+        var entry = logger.Entries.Single(candidate => candidate.EventId.Id == 3502);
+
+        Assert.AreEqual(LogLevel.Debug,
+                        entry.LogLevel,
+                        "The not-retried entry must be logged at Debug");
+        Assert.AreEqual("Transient HTTP outcome 503 for POST https://***@registry.example.test/path not retried: the method is not idempotent",
+                        entry.Message,
+                        "The entry must name the outcome, the method and the masked target");
+        Assert.DoesNotContain("secret", entry.Message, "The entry must not contain the password");
+        Assert.DoesNotContain("token=x", entry.Message, "The entry must not contain the query string");
+        Assert.DoesNotContain(candidate => candidate.EventId.Id == 3500,
+                              logger.Entries,
+                              "No retry warning may be logged for a request that is not retried");
+    }
+
+    /// <summary>
+    /// Verify a POST left unretried after a response-ended failure logs a debug entry naming the error
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task TransientHttpRetryHandlerLogsDebugWhenPostIsNotRetriedOnResponseEndedAsync()
+    {
+        var probe = new RetryProbeHttpMessageHandler([null, HttpStatusCode.OK], HttpStatusCode.OK)
+                    {
+                        FailureFactory = () => new HttpRequestException(HttpRequestError.ResponseEnded, "secret detail"),
+                    };
+        var logger = new TestLogger<TransientHttpRetryHandler>();
+        using var request = new HttpRequestMessage(HttpMethod.Post, "https://user:secret@registry.example.test/path?token=x");
+
+        await Assert.ThrowsExactlyAsync<HttpRequestException>(() => SendThroughRetryHandlerAsync(2, probe, request: request, logger: logger),
+                                                              "The failure must reach the caller")
+                    .ConfigureAwait(false);
+
+        var entry = logger.Entries.Single(candidate => candidate.EventId.Id == 3502);
+
+        Assert.AreEqual(LogLevel.Debug,
+                        entry.LogLevel,
+                        "The not-retried entry must be logged at Debug");
+        Assert.AreEqual("Transient HTTP outcome ResponseEnded for POST https://***@registry.example.test/path not retried: the method is not idempotent",
+                        entry.Message,
+                        "The entry must name the error, the method and the masked target, not the exception message");
+        Assert.DoesNotContain(candidate => candidate.EventId.Id == 3501,
+                              logger.Entries,
+                              "No retry warning may be logged for a request that is not retried");
+    }
+
+    /// <summary>
+    /// Verify no not-retried entry is logged when retries are disabled
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task TransientHttpRetryHandlerWithZeroRetryCountDoesNotLogNotRetriedAsync()
+    {
+        var probe = new RetryProbeHttpMessageHandler([], HttpStatusCode.ServiceUnavailable);
+        var logger = new TestLogger<TransientHttpRetryHandler>();
+        using var request = CreatePostRequest();
+
+        using var response = await SendThroughRetryHandlerAsync(0, probe, request: request, logger: logger).ConfigureAwait(false);
+
+        Assert.DoesNotContain(entry => entry.EventId.Id == 3502,
+                              logger.Entries,
+                              "A request that could not be retried anyway must not log a not-retried entry");
     }
 
     /// <summary>

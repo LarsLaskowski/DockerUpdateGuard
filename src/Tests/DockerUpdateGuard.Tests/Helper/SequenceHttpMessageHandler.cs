@@ -100,6 +100,8 @@ internal sealed class SequenceHttpMessageHandler : HttpMessageHandler
                       {
                           Method = request.Method.Method,
                           RequestUri = request.RequestUri.AbsoluteUri,
+                          HasContent = request.Content is not null,
+                          ContentLength = request.Content?.Headers.ContentLength,
                           AuthorizationScheme = request.Headers.Authorization?.Scheme,
                           AuthorizationParameter = request.Headers.Authorization?.Parameter,
                           ApiKeyHeader = request.Headers.TryGetValues("X-API-Key", out var apiKeyValues)

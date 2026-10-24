@@ -12,6 +12,8 @@ internal sealed class RetryProbeHttpMessageHandler : HttpMessageHandler
 
     private readonly Queue<HttpStatusCode?> _outcomes;
     private readonly HttpStatusCode _fallbackStatusCode;
+    private readonly List<string?> _requestBodies = [];
+    private readonly List<long?> _contentLengths = [];
 
     #endregion // Fields
 
@@ -47,21 +49,41 @@ internal sealed class RetryProbeHttpMessageHandler : HttpMessageHandler
     /// </summary>
     public RetryConditionHeaderValue? RetryAfter { get; set; }
 
+    /// <summary>
+    /// Factory that creates the exception thrown for a null outcome; defaults to a plain transient transport failure
+    /// </summary>
+    public Func<Exception> FailureFactory { get; set; } = () => new HttpRequestException("Simulated transient transport failure");
+
+    /// <summary>
+    /// Request bodies received per attempt; null for an attempt without content
+    /// </summary>
+    public IReadOnlyList<string?> RequestBodies => _requestBodies;
+
+    /// <summary>
+    /// Content-Length header values received per attempt; null when the attempt had no content or no length
+    /// </summary>
+    public IReadOnlyList<long?> ContentLengths => _contentLengths;
+
     #endregion // Properties
 
     #region HttpMessageHandler
 
     /// <inheritdoc/>
-    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
         AttemptCount++;
         LastRequestUri = request.RequestUri is { IsAbsoluteUri: false } relativeUri ? relativeUri.OriginalString : request.RequestUri?.AbsoluteUri;
+
+        _contentLengths.Add(request.Content?.Headers.ContentLength);
+        _requestBodies.Add(request.Content is null
+                               ? null
+                               : await request.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false));
 
         var outcome = _outcomes.Count > 0 ? _outcomes.Dequeue() : _fallbackStatusCode;
 
         if (outcome is null)
         {
-            throw new HttpRequestException("Simulated transient transport failure");
+            throw FailureFactory();
         }
 
         var response = new HttpResponseMessage(outcome.Value)
@@ -74,7 +96,7 @@ internal sealed class RetryProbeHttpMessageHandler : HttpMessageHandler
             response.Headers.RetryAfter = RetryAfter;
         }
 
-        return Task.FromResult(response);
+        return response;
     }
 
     #endregion // HttpMessageHandler
