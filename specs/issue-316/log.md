@@ -15,3 +15,4 @@ are quoted in full.
 | 2026-10-24 18:33 | 5 Tests first | squad-tester | 5 tests (AC1 x3 rows, AC2, AC5 log) written, confirmed failing (5 failed/57 passed); deferred to step 6: AC3 row, AC4, AC5 zero-retry (sonnet/medium · 102,317 tokens · 12 tool uses · 102 s) |
 | 2026-10-24 18:40 | 6 Implement | squad-dev | DONE: handler fix + event 3503 + docs; helper IsNotRetried added (Sonar S3776), 5 new tests green, gates green, coverage new 100%/overall 85.0% (sonnet/medium · 98,711 tokens · 17 tool uses · 417 s) |
 | 2026-10-24 18:40 | 6 Coverage | squad-tester | 3 deferred tests written (AC3 row, AC4, AC5 zero-retry), 65/65 pass (sonnet/medium · 2,707 tokens · 2 tool uses · 29 s · continued) |
+| 2026-10-24 18:42 | 7 Code check | Orchestrator | format/build/675+21 tests/coverage new 100% overall 85.0%/analyzer 0/scope/decision PASS; Sonar gate NOT CHECKED (no SONAR_TOKEN) -> step 11; main already in head |
