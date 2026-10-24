@@ -44,7 +44,8 @@ environment; the Trivy provider drops `--server <url>` from the arguments and pa
   without trailing `/`, user info unchanged (`https://user:secret@trivy.local:4954/` → `https://user:secret@trivy.local:4954`;
   `http://trivy.local:4954` → `http://trivy.local:4954`).
 - [ ] AC3: `ProcessRunner.RunAsync` starts the process with the given environment variables added to the environment
-  it inherits: the child sees each given name with its value and still sees inherited variables such as `PATH`.
+  it inherits: the child sees each given name with its value and still sees inherited variables such as `PATH`;
+  a given name the process also inherits is replaced, so the child sees exactly one entry of that name, with the given value.
 - [ ] AC4: `ProcessRunner.RunAsync` throws `ArgumentNullException` for a null `environmentVariables`, before any
   process starts.
 
@@ -57,7 +58,7 @@ The existing behavior of the provider (not-configured result, timeout, manifest-
 | -- | ------- | --------- |
 | AC1 | `TrivyVulnerabilityProviderGetVulnerabilitiesAsyncBuildsClientModeCommandAsync` (existing, expected list changed to drop `--server` and the URL); new `TrivyVulnerabilityProviderGetVulnerabilitiesAsyncKeepsUserInfoOffCommandLineAsync` (`https://user:secret@trivy.local:4954`: no argument contains `secret`, `user`, `@` or `trivy.local`) | `src/Tests/DockerUpdateGuard.Tests/TrivyVulnerabilityProviderTests.cs` |
 | AC2 | `TrivyVulnerabilityProviderGetVulnerabilitiesAsyncPassesServerAddressThroughEnvironmentAsync` with `[DataRow]`s `("https://user:secret@trivy.local:4954/", "https://user:secret@trivy.local:4954")` and `("http://trivy.local:4954", "http://trivy.local:4954")`; asserts the captured dictionary has count 1 and `TRIVY_SERVER` equals the expected value | `src/Tests/DockerUpdateGuard.Tests/TrivyVulnerabilityProviderTests.cs` |
-| AC3 | `ProcessRunnerRunAsyncAddsEnvironmentVariablesToInheritedEnvironmentAsync`: runs `env` (no arguments) with `{ "DUG_PROCESS_RUNNER_TEST": "value-from-runner" }`, 30 s timeout; asserts exit code 0, a stdout line `DUG_PROCESS_RUNNER_TEST=value-from-runner` and a stdout line starting with `PATH=`; marked `[OSCondition(OperatingSystems.Linux)]` (CI runs on `ubuntu-latest`) | `src/Tests/DockerUpdateGuard.Tests/ProcessRunnerTests.cs` (new) |
+| AC3 | `ProcessRunnerRunAsyncAddsEnvironmentVariablesToInheritedEnvironmentAsync`: runs `env` (no arguments) with `{ "DUG_PROCESS_RUNNER_TEST": "value-from-runner" }`, 30 s timeout; asserts exit code 0, a stdout line `DUG_PROCESS_RUNNER_TEST=value-from-runner` and a stdout line starting with `PATH=`; marked `[OSCondition(OperatingSystems.Linux)]` (CI runs on `ubuntu-latest`); `ProcessRunnerRunAsyncReplacesInheritedEnvironmentVariableAsync` (added in step 9): asserts as precondition that the test process has a non-empty `HOME` (read only, never `Environment.SetEnvironmentVariable`), runs `env` with `{ "HOME": "/dug-overridden" }`, asserts exit code 0 and exactly one stdout line starting with `HOME=`, equal to `HOME=/dug-overridden`; same `OSCondition` | `src/Tests/DockerUpdateGuard.Tests/ProcessRunnerTests.cs` (new) |
 | AC4 | `ProcessRunnerRunAsyncThrowsForNullEnvironmentVariablesAsync`: `RunAsync("env", [], null!, 30 s)` throws `ArgumentNullException` with `ParamName` `environmentVariables` | `src/Tests/DockerUpdateGuard.Tests/ProcessRunnerTests.cs` (new) |
 
 ## Approach
@@ -184,6 +185,8 @@ documented environment binding (fact 4). `docs/ARCHITECTURE.md` §11 gets the se
 
 - A dedicated Trivy token setting: not needed for this fix (`TRIVY_TOKEN` is inherited); no follow-up issue unless the
   Product Manager wants one.
+- An allow-list for the Trivy child environment: no follow-up issue (step 9); the reason is in record 0005,
+  *Consequences*.
 - Other places a credential could reach a process list: none — Trivy is the only external process (fact 8).
 
 ## Challenge notes

@@ -117,5 +117,8 @@ added to the environment it inherits from the application, and no `--server` arg
 - A Trivy executable that does not read `TRIVY_SERVER` (a custom `TrivyExecutablePath`) would scan without a server,
   downloading the vulnerability database itself; the bundled Trivy v0.58.1 reads it. A token setting of our own is
   not added: `TRIVY_TOKEN` in the application's environment reaches Trivy already.
+- The Trivy process inherits the application's whole environment, other secrets supplied as environment variables
+  included. It is not reduced to an allow-list: the process runs as the application's user, which can read the
+  application's own environment and configuration anyway, so an allow-list would draw no boundary against it.
 - Rows stored before the change are masked on display and rewritten masked by the next synchronization; scan-run
   error messages stored before either change are not rewritten.
