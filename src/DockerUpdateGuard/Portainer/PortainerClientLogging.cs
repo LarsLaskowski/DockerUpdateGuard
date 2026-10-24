@@ -120,5 +120,15 @@ internal static partial class PortainerClientLogging
                                                         string dockerInstanceName,
                                                         Exception exception);
 
+    /// <summary>
+    /// Log that a Portainer instance is reached over plaintext HTTP
+    /// </summary>
+    /// <param name="logger">Logger</param>
+    /// <param name="dockerInstanceName">Docker instance name</param>
+    [LoggerMessage(EventId = 3311,
+                   Level = LogLevel.Warning,
+                   Message = "Portainer for Docker instance {DockerInstanceName} uses plaintext HTTP (AllowInsecureHttp); the API token, credentials and session token are transmitted unencrypted")]
+    public static partial void PortainerInsecureHttpInUse(this ILogger logger, string dockerInstanceName);
+
     #endregion // Methods
 }

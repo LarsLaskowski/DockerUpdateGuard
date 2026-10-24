@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Net.Http.Headers;
 using System.Text.Json;
 
@@ -41,6 +42,11 @@ public partial class PortainerClient : IPortainerClient
     /// HTTP-client factory
     /// </summary>
     private readonly IHttpClientFactory _httpClientFactory;
+
+    /// <summary>
+    /// Docker instance names for which the plaintext HTTP warning was already logged
+    /// </summary>
+    private readonly ConcurrentDictionary<string, byte> _insecureHttpWarningInstances = new(StringComparer.Ordinal);
 
     /// <summary>
     /// Logger
@@ -126,19 +132,27 @@ public partial class PortainerClient : IPortainerClient
     #region Methods
 
     /// <summary>
-    /// Create an authenticated HTTP client for the given Portainer options.
+    /// Create an authenticated HTTP client for the Portainer options of the given Docker instance.
     /// PAT takes precedence; falls back to username/password JWT login
     /// </summary>
-    /// <param name="options">Portainer options</param>
+    /// <param name="instanceOptions">Docker instance options</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Authenticated HTTP client</returns>
-    private async Task<HttpClient> CreateAuthenticatedClientAsync(PortainerOptions options, CancellationToken cancellationToken)
+    private async Task<HttpClient> CreateAuthenticatedClientAsync(DockerInstanceOptions instanceOptions, CancellationToken cancellationToken)
     {
+        var options = instanceOptions.Portainer;
         var client = _httpClientFactory.CreateClient(HttpClientName);
 
         try
         {
             client.BaseAddress = new Uri(options.BaseUrl!);
+
+            if (client.BaseAddress.Scheme == Uri.UriSchemeHttp
+                && _insecureHttpWarningInstances.TryAdd(instanceOptions.Name, 0))
+            {
+                _logger.PortainerInsecureHttpInUse(instanceOptions.Name);
+            }
+
             client.Timeout = TimeSpan.FromSeconds(options.RequestTimeoutSeconds);
 
             if (string.IsNullOrWhiteSpace(options.ApiToken) == false)
@@ -221,7 +235,7 @@ public partial class PortainerClient : IPortainerClient
 
         try
         {
-            using var client = await CreateAuthenticatedClientAsync(instanceOptions.Portainer, cancellationToken).ConfigureAwait(false);
+            using var client = await CreateAuthenticatedClientAsync(instanceOptions, cancellationToken).ConfigureAwait(false);
             using var statusResponse = await client.GetAsync("/api/system/status", cancellationToken).ConfigureAwait(false);
 
             if (statusResponse.IsSuccessStatusCode == false)
@@ -303,7 +317,7 @@ public partial class PortainerClient : IPortainerClient
 
         try
         {
-            using var client = await CreateAuthenticatedClientAsync(instanceOptions.Portainer, cancellationToken).ConfigureAwait(false);
+            using var client = await CreateAuthenticatedClientAsync(instanceOptions, cancellationToken).ConfigureAwait(false);
 
             var endpointId = instanceOptions.Portainer.EndpointId;
 
