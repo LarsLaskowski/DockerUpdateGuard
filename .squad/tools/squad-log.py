@@ -21,19 +21,20 @@ mechanics out of the orchestrator's hands:
 - one row names one member: a member cell that lists two (`squad-reviewer / squad-security`, a comma, `and`)
   is refused, because the trailer of a parallel launch belongs to one row each, or `--amend-last` cannot tell
   them apart;
-- a continued launch (`SendMessage` to the agent of an earlier round; `.squad/routing.md`, *Continuing a
-  member*) reports the agent's tokens since its first launch, while its tool uses and its duration cover the
-  round alone: with `--continued` the script subtracts the tokens of that member's last fresh launch and of
-  the continuations logged after it, keeps tool uses and seconds as reported and marks the trailer
-  `· continued`; a reported token figure below the earlier total can only be the round alone and is kept as it
-  is. When the continued agent is not the member's last fresh launch (one member ran several task groups,
-  each in a fresh launch), `--continued-from "<step>"` names the step cell of the fresh launch whose agent was
-  continued: only that launch and its own continuations are subtracted, and the trailer records the step
-  (`· continued from <step>`), so a later continuation of either agent is computed against the right rows.
-  `--continued` needs an earlier row of that member with usage, `--continued-from` a fresh launch of that step.
-  A continuation logged at another step number than the fresh launch it continues prints a warning, unless its
-  step cell names a fix, delta or revise round: the first launch of another mode (`skeleton` to `implement`,
-  `tests-first` to `coverage`, `approve-pr`, `decide`) is a fresh launch, not a continuation;
+- a continued launch (`SendMessage` to the agent of an earlier round; `.squad/routing.md`, *Continuing a member*)
+  reports the agent's tokens since its first launch, while its tool uses and its duration cover the round alone
+  (all three are passed exactly as the task notification reports them): with `--continued` the script subtracts
+  the tokens of that member's last fresh launch and of the continuations logged after it, keeps tool uses and
+  seconds as reported and marks the trailer `· continued`; a reported token figure below the earlier total can
+  only be the round alone and is kept as it is. When the continued agent is not the member's last fresh launch
+  (one member ran several task groups, each in a fresh launch), `--continued-from "<step>"` names the step cell
+  of the fresh launch whose agent was continued: only that launch and its own continuations are subtracted, and
+  the trailer records the step (`· continued from <step>`), so a later continuation of either agent is computed
+  against the right rows. `--continued` needs an earlier row of that member with usage, `--continued-from` a
+  fresh launch of that step. A continuation logged at another step number than the fresh launch it continues
+  prints a warning, unless its step cell names a fix, delta or revise round: the first launch of another mode
+  (`skeleton` to `implement`, `tests-first` to `coverage`, `approve-pr`, `decide`) is a fresh launch, not a
+  continuation;
 - the usage block often arrives only after the member's hand-back: `--amend-last MEMBER` with the same
   options adds the trailer to the last row of that member afterwards, so the row can be written as soon as
   the report is in. A row gets its trailer once (a pending one is completed); a second amend is refused. When a
@@ -508,7 +509,8 @@ def build_parser():
                         help="duration of the launch in seconds (duration_ms / 1000, rounded to whole seconds)")
     parser.add_argument("--continued", action="store_true",
                         help="the launch continued the member's last fresh agent: the usage block reports the "
-                             "agent's tokens since its first launch, the trailer gets this round's share")
+                             "agent's tokens since its first launch, the trailer gets this round's share; its tool uses "
+                             "and seconds cover the round alone and are passed as reported, too")
     parser.add_argument("--continued-from", metavar="STEP",
                         help="like --continued, for the agent of the member's fresh launch whose step cell is STEP "
                              "(when a later fresh launch of the member exists)")

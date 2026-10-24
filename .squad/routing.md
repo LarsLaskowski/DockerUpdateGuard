@@ -227,7 +227,10 @@ Commits and pushes to the work branch happen right after intake (`specs/<folder>
 or a crashed session finds no untracked files) and after every further completed step; with *Squash and
 merge* only the PR title and description reach `main`, so intermediate commits may describe the step.
 They never contain secrets. Before every commit `git symbolic-ref -q HEAD` must name the work branch; a
-detached HEAD is switched back to it first (`git switch <branch>`) and logged with the launch that left it. After the PR every push re-triggers CI and the code analysis, so edits are
+detached HEAD is switched back to it first (`git switch <branch>`, then `git merge --ff-only <sha>` for
+commits made on the detached HEAD) and logged with the launch that left it. Push without `-q` and check after
+every push that `git rev-parse origin/<branch>` equals `git rev-parse HEAD`: a push that did not move the branch
+is a failure, not a success. After the PR every push re-triggers CI and the code analysis, so edits are
 batched and committed once per round.
 
 ### The stop hook
