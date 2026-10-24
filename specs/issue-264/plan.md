@@ -273,3 +273,16 @@ Sweep: `grep -n -i "paginat\|next\|credential"` over `docs/areas/*.md`, `docs/AR
   and `OciRegistryClient.GetTagsAsync` (unbounded) follow same-origin next links without a page limit, so a registry
   that returns the same or an endless next link keeps the scan reading; Docker Scout already caps at 50 pages. Expected:
   a page cap per listing with a defined outcome. Found while planning #264.
+
+
+## Challenge notes
+
+1. **minor**: In the `docs/areas/registries.md` edit, also change the general rule at line 28 ("A *failed* outcome from a registry names the HTTP status code and includes the response body the remote side sent"). Add an exception: a listing stopped by a rejected next-page link names the rejected origin instead. Why: the new outcome has neither a status code nor a body, so line 28 would become a stale claim.
+2. **minor**: In `DockerScoutVulnerabilityProvider.FetchVulnerabilitiesAsync`, read `_optionsMonitor.CurrentValue.Vulnerabilities.DockerScoutBaseUrl` once, into the existing `scoutBaseUrl` local (`:302`). Build both the allowed origin and the first-page `Uri` from that local, not from a second `CurrentValue` read. Why: if the configuration reloads between two reads, the allowed origin and the first request could disagree, and the first follow-up page would then fail for no reason.
+
+## Security notes
+
+1. **Pin two more bypass rows in AC4.** Add `\/attacker.example/x` (reject) and `/\attacker.example/x` (follow, with the resolved host asserted as `reg.example.com`) to the *Approach* table and the `PaginationLinkGuardTests` rows. These are the classic slash/backslash bypass forms. This change handles both safely, as measured above, but nothing pins that today.
+2. **Use the punycode form in `DescribeOrigin`.** It returns the Unicode `Host`, so a rejected `https://reg.example.com。attacker/x` is logged as `https://reg.example.com。attacker`. That is easy to misread as the registry's own host. Building the text as `{Scheme}://{IdnHost}[:{Port}]` (punycode) would make rejected origins clear in logs and messages. This is about readability only; nothing leaks.
+3. **Fact 17 (the real form of Docker Scout's `next` link) is unverified.** The design fails closed, and record 0004 records it as residual risk. That is acceptable for security. The risk is functional: if Scout links to another host, every multi-page Scout listing would fail.
+4. **The page-cap follow-up issue proposed in the plan is the right home for unbounded same-origin pagination.** This change does not add or claim a resource bound.
