@@ -100,6 +100,33 @@ Releases are cut by pushing a `v*.*.*` tag on `main` (with explicit approval): `
 builds and tests, pushes the Docker image (version and `latest`) to Docker Hub
 (`networlddev/dockerupdateguard`) and creates a GitHub Release with generated notes. Merging a PR by itself
 never publishes a release (see [`ARCHITECTURE.md`](ARCHITECTURE.md), *Build, CI, and deployment*).
+
+### Release plan from 1.3.8
+
+The GitHub milestones are the release plan: one milestone is one release. A release is due when the last open
+issue of its milestone has been closed, not earlier and not later. The current release is **1.3.7**.
+
+| Milestone                                  | Issues                                                            | Version     | What an operator gets afterwards                                                   |
+| ------------------------------------------ | ----------------------------------------------------------------- | ----------- | ---------------------------------------------------------------------------------- |
+| M1 – Security and release hygiene          | #264, #295, #276, #269, #273, #279, #285, #34, #37, #39            | **1.3.8**   | No leaked URL credentials or forwarded tokens, safe Portainer targeting, correct release labels |
+| M2 – Scan resilience                       | #281, #272, #271, #270, #287, #288, #292, #267, #265, #6, #25, #19 | **1.3.9**   | Scans and startup survive bad config, slow containers and registry errors          |
+| M3 – Image identity and catalog            | #275, #284, #286, #266, #268, #293, #9, #4, #10                    | **1.3.10**  | One identity per image, correct manual registration and shared base images         |
+| M4 – Update detection and UI correctness   | #277, #289, #290, #294, #278, #274, #82, #15, #40, #36             | **1.3.11**  | Correct publication times, retention, gauges, texts and status chips               |
+| M5 – Catalog control and hosting           | #282, #291, #283, #171, #24                                        | **1.4.0**   | Disable/delete images, pin update targets, reverse-proxy headers, private registries for Trivy |
+| M6 – Data integrity and performance        | #14, #3, #21, #22, #27, #80, #81, #28                              | **1.5.0**   | Unique findings, scoped DbContext, no N+1 loads, tests against PostgreSQL          |
+| M7 – Portainer actions and telemetry       | #280, #83, #84, #86, #87                                           | **1.6.0**   | Portainer container actions from the UI, trace spans, telemetry cleanup            |
+| M8 – Notifications                         | #220–#224                                                          | **1.7.0**   | Webhook notifications for updates and critical CVEs with reliable delivery         |
+| M9 – Notification history (optional)       | #225                                                               | **1.8.0**   | Read-only notification history page                                                |
+
+- M1–M4 are patch releases without new features; M5–M9 are minor releases, each adding one capability.
+- M5 comes before M7 because the Portainer action uses the pinned update target (#291); M1 comes first because
+  it fixes the retry of non-idempotent POSTs (#273), the ambiguous endpoint (#279) and the missing warning (#276)
+  the action depends on.
+- #4 and #9 are covered by #284 and #293; they close with those issues.
+- An issue opened later gets the milestone of the earliest release that has not been tagged yet, unless the
+  maintainer assigns a later one.
+- A tag is pushed only with explicit approval (see above); the milestone, not the merge of a pull request, makes a
+  release due.
 <!-- project:end releases -->
 
 <!-- project:begin stability -->
