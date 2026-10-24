@@ -691,5 +691,20 @@ internal static partial class ImageHostLoggingExtensions
                                                                         int disabledImageCount,
                                                                         int skippedRepositoryCount);
 
+    /// <summary>
+    /// Log that a registry tag listing stopped because the next-page link pointed to a different origin
+    /// </summary>
+    /// <param name="logger">Logger</param>
+    /// <param name="registry">Registry host</param>
+    /// <param name="repository">Repository name</param>
+    /// <param name="rejectedOrigin">Scheme, host and port of the rejected link</param>
+    [LoggerMessage(EventId = 2099,
+                   Level = LogLevel.Warning,
+                   Message = "Registry tag listing for {Registry}/{Repository} stopped because the next-page link pointed to a different origin {RejectedOrigin}")]
+    public static partial void OciRegistryPaginationLinkRejected(this ILogger logger,
+                                                                 string registry,
+                                                                 string repository,
+                                                                 string rejectedOrigin);
+
     #endregion // Methods
 }

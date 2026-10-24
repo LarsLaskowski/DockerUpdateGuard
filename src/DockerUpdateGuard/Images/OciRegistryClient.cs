@@ -633,42 +633,37 @@ public partial class OciRegistryClient : IRegistryMetadataClient
     }
 
     /// <summary>
-    /// Determine the next tags page URI
+    /// Read the raw next-page link target from the Link header
     /// </summary>
     /// <param name="response">Current response</param>
-    /// <param name="registry">Registry host</param>
-    /// <returns>Next page URI or null</returns>
-    private static Uri? GetNextTagsUri(HttpResponseMessage response, string registry)
+    /// <returns>Raw link target or null</returns>
+    private static string? GetNextTagsLink(HttpResponseMessage response)
     {
-        if (response.Headers.TryGetValues("Link", out var linkValues))
+        if (response.Headers.TryGetValues("Link", out var linkValues) == false)
         {
-            var nextLink = linkValues.SelectMany(value => value.Split(',', StringSplitOptions.RemoveEmptyEntries))
-                                     .Select(value => value.Trim())
-                                     .FirstOrDefault(value => value.Contains("rel=\"next\"", StringComparison.OrdinalIgnoreCase));
-
-            if (string.IsNullOrWhiteSpace(nextLink) == false)
-            {
-                var start = nextLink.IndexOf('<');
-                var end = nextLink.IndexOf('>');
-
-                if (start >= 0 && end > start)
-                {
-                    var linkTarget = nextLink[(start + 1)..end];
-
-                    if (Uri.TryCreate(linkTarget, UriKind.Absolute, out var absoluteUri))
-                    {
-                        return absoluteUri;
-                    }
-
-                    if (Uri.TryCreate(CreateRegistryUri(registry, string.Empty), linkTarget, out var relativeUri))
-                    {
-                        return relativeUri;
-                    }
-                }
-            }
+            return null;
         }
 
-        return null;
+        var nextLink = linkValues.SelectMany(value => value.Split(',', StringSplitOptions.RemoveEmptyEntries))
+                                 .Select(value => value.Trim())
+                                 .FirstOrDefault(value => value.Contains("rel=\"next\"", StringComparison.OrdinalIgnoreCase));
+
+        if (string.IsNullOrWhiteSpace(nextLink))
+        {
+            return null;
+        }
+
+        var start = nextLink.IndexOf('<');
+        var end = nextLink.IndexOf('>');
+
+        if (start < 0 || end <= start)
+        {
+            return null;
+        }
+
+        var linkTarget = nextLink[(start + 1)..end];
+
+        return string.IsNullOrWhiteSpace(linkTarget) ? null : linkTarget;
     }
 
     /// <summary>
@@ -1257,7 +1252,8 @@ public partial class OciRegistryClient : IRegistryMetadataClient
         }
 
         var normalizedRegistry = NormalizeRegistry(registry);
-        var requestUri = CreateTagsUri(normalizedRegistry, repository, lastTag: null);
+        var allowedOrigin = CreateTagsUri(normalizedRegistry, repository, lastTag: null);
+        Uri? requestUri = allowedOrigin;
         var tags = new List<DockerHubTagData>();
         var inspectedTagCount = 0;
         var lookupContext = new RegistryTagLookupContext
@@ -1302,7 +1298,25 @@ public partial class OciRegistryClient : IRegistryMetadataClient
                 break;
             }
 
-            requestUri = GetNextTagsUri(response, normalizedRegistry);
+            var nextLink = GetNextTagsLink(response);
+
+            if (nextLink is null)
+            {
+                break;
+            }
+
+            var nextUri = PaginationLinkGuard.ResolveNextLink(requestUri, allowedOrigin, nextLink);
+
+            if (nextUri is null)
+            {
+                var rejectedOrigin = PaginationLinkGuard.DescribeOrigin(requestUri, nextLink);
+
+                _logger.OciRegistryPaginationLinkRejected(normalizedRegistry, repository, rejectedOrigin);
+
+                return ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Failed(PaginationLinkGuard.CreateRejectionMessage($"Registry tag listing for '{normalizedRegistry}/{repository}'", rejectedOrigin));
+            }
+
+            requestUri = nextUri;
         }
 
         return ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Succeeded(tags);

@@ -120,6 +120,12 @@ scan run:
 - Vulnerabilities are read from `<DockerScoutBaseUrl>/v1/repositories/<namespace>/<repository>/tags/<tag>/vulnerabilities`,
   following the `next` link of each page, for at most **50 pages**. When the cap is reached, the advisories read so
   far are returned as a successful result.
+- The `next` link is followed only on the origin of `DockerScoutBaseUrl` (same scheme, host and port); a root-relative
+  link is resolved against the current request. A link to another origin is not requested, so the bearer token never
+  leaves that origin: the provider answers *failed*, "Docker Scout vulnerability listing for '<reference>' stopped: the
+  next-page link pointed to a different origin (<origin>)", with only scheme, host and non-default port of the link in
+  the message and the log; the stored findings stay untouched. A proxy in front of Docker Scout must rewrite next-page
+  links to its own origin ([Registries](registries.md#pagination-links)).
 - HTTP 401 discards the cached token, logs in once more and reads again from the first page; a second 401 gives
   *failed*, "Docker Scout rejected the authentication token". HTTP 404 gives *unavailable*, "Image <reference> not
   found in Docker Scout". Any other unsuccessful status gives *failed*, "Docker Scout request failed with status X".
@@ -153,9 +159,6 @@ The dashboard shows at most one hint about the vulnerability configuration:
 
 ### Known gaps
 
-- Docker Scout follows the `next` link of a response to whatever host it names and sends the bearer token along; the
-  same gap in the registry clients is owned by [Registries](registries.md). Tracked in
-  [#264](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/264).
 - Docker Scout requests do not go through the transient-failure retry the other outbound HTTP calls use, and Docker
   Scout scans the tag, not the digest, so an image version whose tag was republished is assessed with the advisories
   of the newer image. Tracked in [#267](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/267).
@@ -169,7 +172,7 @@ The dashboard shows at most one hint about the vulnerability configuration:
 
 ## Related decisions
 
-None yet.
+- [0004](../decisions/0004-pagination-follows-only-same-origin-links.md): pagination follows only same-origin links.
 
 ## Not here
 

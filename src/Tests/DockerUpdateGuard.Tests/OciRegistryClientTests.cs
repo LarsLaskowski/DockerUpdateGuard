@@ -8,6 +8,8 @@ using DockerUpdateGuard.Infrastructure;
 using DockerUpdateGuard.Tests.Data;
 using DockerUpdateGuard.Tests.Helper;
 
+using Microsoft.Extensions.Logging;
+
 namespace DockerUpdateGuard.Tests;
 
 /// <summary>
@@ -423,9 +425,263 @@ public partial class OciRegistryClientTests
         }
     }
 
+    /// <summary>
+    /// Verify OCI tag listing refuses a Link header on another origin
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task OciRegistryClientGetTagsAsyncForeignLinkHeaderReturnsFailedAsync()
+    {
+        var handler = new SequenceHttpMessageHandler();
+        var httpClient = new HttpClient(handler);
+
+        try
+        {
+            handler.AddResponse("https://mcr.microsoft.com/v2/mssql/server/tags/list?n=100",
+                                CreateTagListResponse("""{ "name": "mssql/server", "tags": [] }""",
+                                                      "<https://attacker.example/collect?last=1.0.0&n=100&token=leak>; rel=\"next\""));
+
+            var logger = new TestLogger<OciRegistryClient>();
+            var client = new OciRegistryClient(httpClient, logger);
+
+            var result = await client.GetTagsAsync("mcr.microsoft.com",
+                                                   "mssql/server",
+                                                   cancellationToken: CancellationToken.None)
+                                     .ConfigureAwait(false);
+
+            Assert.AreEqual(ExternalOperationStatus.Failed,
+                            result.Status,
+                            "A Link header on another origin must fail the tag listing");
+            Assert.AreEqual("Registry tag listing for 'mcr.microsoft.com/mssql/server' stopped: the next-page link pointed to a different origin (https://attacker.example)",
+                            result.Message,
+                            "The failure message must name the rejected origin only");
+            Assert.DoesNotContain(request => request.RequestUri.Contains("attacker.example", StringComparison.OrdinalIgnoreCase),
+                                  handler.Requests,
+                                  "No request may be sent to the origin of a rejected Link target");
+
+            var warning = Assert.ContainsSingle(entry => entry.EventId.Id == 2099 && entry.LogLevel == LogLevel.Warning,
+                                                logger.Entries,
+                                                "A rejected Link target must be logged once as warning 2099");
+
+            Assert.Contains("https://attacker.example",
+                            warning.Message,
+                            "The warning must name the rejected origin");
+            PaginationLeakAssert.DoesNotLeak(string.Join('\n', logger.Entries.Select(entry => entry.Message).Append(result.Message)),
+                                             "mcr-token");
+        }
+        finally
+        {
+            httpClient.Dispose();
+            handler.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Verify OCI tag listing follows a root-relative Link target, the form ghcr.io sends
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task OciRegistryClientGetTagsAsyncRelativeLinkHeaderFollowsLinkAsync()
+    {
+        var handler = new SequenceHttpMessageHandler();
+        var httpClient = new HttpClient(handler);
+
+        try
+        {
+            handler.AddResponse("https://mcr.microsoft.com/v2/mssql/server/tags/list?n=100",
+                                CreateTagListResponse("""{ "name": "mssql/server", "tags": [] }""",
+                                                      "</v2/mssql/server/tags/list?last=1.0.0&n=100>; rel=\"next\""));
+            handler.AddResponse("https://mcr.microsoft.com/v2/mssql/server/tags/list?last=1.0.0&n=100",
+                                CreateTagListResponse("""{ "name": "mssql/server", "tags": [ "2.0.0" ] }""", null));
+            handler.AddResponse("https://mcr.microsoft.com/v2/mssql/server/manifests/2.0.0",
+                                CreateManifestResponse("sha256:200",
+                                                       """
+                                                       {
+                                                         "schemaVersion": 2,
+                                                         "config": {
+                                                           "digest": "sha256:config200"
+                                                         }
+                                                       }
+                                                       """));
+
+            var client = new OciRegistryClient(httpClient, new TestLogger<OciRegistryClient>());
+
+            var result = await client.GetTagsAsync("mcr.microsoft.com",
+                                                   "mssql/server",
+                                                   cancellationToken: CancellationToken.None)
+                                     .ConfigureAwait(false);
+
+            Assert.AreEqual(ExternalOperationStatus.Succeeded,
+                            result.Status,
+                            "A root-relative Link target must be followed on the registry origin");
+            Assert.IsNotNull(result.Data, "OCI registry tag lookup must return tag data");
+            Assert.AreSequenceEqual(["2.0.0"],
+                                    result.Data.Select(entity => entity.Tag)
+                                               .ToArray(),
+                                    "The tags of the page a relative Link target points to must be listed");
+            Assert.ContainsSingle(handler.Requests.Where(request => request.RequestUri == "https://mcr.microsoft.com/v2/mssql/server/tags/list?last=1.0.0&n=100"),
+                                  "The second page must be requested at the resolved absolute address");
+        }
+        finally
+        {
+            httpClient.Dispose();
+            handler.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Verify OCI tag listing follows an absolute Link target on the registry origin
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task OciRegistryClientGetTagsAsyncSameOriginLinkHeaderFollowsLinkAsync()
+    {
+        var handler = new SequenceHttpMessageHandler();
+        var httpClient = new HttpClient(handler);
+
+        try
+        {
+            handler.AddResponse("https://mcr.microsoft.com/v2/mssql/server/tags/list?n=100",
+                                CreateTagListResponse("""{ "name": "mssql/server", "tags": [] }""",
+                                                      "<https://mcr.microsoft.com/v2/mssql/server/tags/list?last=1.0.0&n=100>; rel=\"next\""));
+            handler.AddResponse("https://mcr.microsoft.com/v2/mssql/server/tags/list?last=1.0.0&n=100",
+                                CreateTagListResponse("""{ "name": "mssql/server", "tags": [ "2.0.0" ] }""", null));
+            handler.AddResponse("https://mcr.microsoft.com/v2/mssql/server/manifests/2.0.0",
+                                CreateManifestResponse("sha256:200",
+                                                       """
+                                                       {
+                                                         "schemaVersion": 2,
+                                                         "config": {
+                                                           "digest": "sha256:config200"
+                                                         }
+                                                       }
+                                                       """));
+
+            var client = new OciRegistryClient(httpClient, new TestLogger<OciRegistryClient>());
+
+            var result = await client.GetTagsAsync("mcr.microsoft.com",
+                                                   "mssql/server",
+                                                   cancellationToken: CancellationToken.None)
+                                     .ConfigureAwait(false);
+
+            Assert.AreEqual(ExternalOperationStatus.Succeeded,
+                            result.Status,
+                            "An absolute Link target on the registry origin must be followed");
+            Assert.IsNotNull(result.Data, "OCI registry tag lookup must return tag data");
+            Assert.AreSequenceEqual(["2.0.0"],
+                                    result.Data.Select(entity => entity.Tag)
+                                               .ToArray(),
+                                    "The tags of the page a same-origin Link target points to must be listed");
+            Assert.ContainsSingle(handler.Requests.Where(request => request.RequestUri == "https://mcr.microsoft.com/v2/mssql/server/tags/list?last=1.0.0&n=100"),
+                                  "The second page must be requested at the Link target");
+        }
+        finally
+        {
+            httpClient.Dispose();
+            handler.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Verify OCI tag listing ends at a Link header whose target is not enclosed in angle brackets
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task OciRegistryClientGetTagsAsyncMalformedLinkHeaderEndsListingAsync()
+    {
+        var handler = new SequenceHttpMessageHandler();
+        var httpClient = new HttpClient(handler);
+
+        try
+        {
+            handler.AddResponse("https://mcr.microsoft.com/v2/mssql/server/tags/list?n=100",
+                                CreateTagListResponse("""{ "name": "mssql/server", "tags": [] }""",
+                                                      "/v2/mssql/server/tags/list?last=1.0.0&n=100; rel=\"next\""));
+
+            var client = new OciRegistryClient(httpClient, new TestLogger<OciRegistryClient>());
+
+            var result = await client.GetTagsAsync("mcr.microsoft.com",
+                                                   "mssql/server",
+                                                   cancellationToken: CancellationToken.None)
+                                     .ConfigureAwait(false);
+
+            Assert.AreEqual(ExternalOperationStatus.Succeeded,
+                            result.Status,
+                            "A Link header without a bracketed target must end the listing without failing");
+            Assert.HasCount(1,
+                            handler.Requests,
+                            "No further page may be requested for a Link header without a bracketed target");
+        }
+        finally
+        {
+            httpClient.Dispose();
+            handler.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Verify OCI tag listing ends at a Link header without a next relation
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task OciRegistryClientGetTagsAsyncLinkHeaderWithoutNextRelationEndsListingAsync()
+    {
+        var handler = new SequenceHttpMessageHandler();
+        var httpClient = new HttpClient(handler);
+
+        try
+        {
+            handler.AddResponse("https://mcr.microsoft.com/v2/mssql/server/tags/list?n=100",
+                                CreateTagListResponse("""{ "name": "mssql/server", "tags": [] }""",
+                                                      "</v2/mssql/server/tags/list?last=0.1.0&n=100>; rel=\"prev\""));
+
+            var client = new OciRegistryClient(httpClient, new TestLogger<OciRegistryClient>());
+
+            var result = await client.GetTagsAsync("mcr.microsoft.com",
+                                                   "mssql/server",
+                                                   cancellationToken: CancellationToken.None)
+                                     .ConfigureAwait(false);
+
+            Assert.AreEqual(ExternalOperationStatus.Succeeded,
+                            result.Status,
+                            "A Link header without a next relation must end the listing without failing");
+            Assert.HasCount(1,
+                            handler.Requests,
+                            "No further page may be requested for a Link header without a next relation");
+        }
+        finally
+        {
+            httpClient.Dispose();
+            handler.Dispose();
+        }
+    }
+
     #endregion // Methods
 
     #region Static methods
+
+    /// <summary>
+    /// Create a tag list response with an optional Link header
+    /// </summary>
+    /// <param name="jsonContent">Tag list JSON</param>
+    /// <param name="linkHeader">Link header value or null</param>
+    /// <returns>Tag list response</returns>
+    private static HttpResponseMessage CreateTagListResponse(string jsonContent, string? linkHeader)
+    {
+        var response = new HttpResponseMessage(HttpStatusCode.OK)
+                       {
+                           Content = new StringContent(jsonContent,
+                                                       Encoding.UTF8,
+                                                       "application/json"),
+                       };
+
+        if (linkHeader is not null)
+        {
+            response.Headers.TryAddWithoutValidation("Link", linkHeader);
+        }
+
+        return response;
+    }
 
     /// <summary>
     /// Create an unauthorized response with a bearer challenge

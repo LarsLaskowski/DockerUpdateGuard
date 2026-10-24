@@ -5,6 +5,8 @@ using DockerUpdateGuard.Infrastructure;
 using DockerUpdateGuard.Tests.Data;
 using DockerUpdateGuard.Tests.Helper;
 
+using Microsoft.Extensions.Logging;
+
 namespace DockerUpdateGuard.Tests;
 
 /// <summary>
@@ -13,6 +15,20 @@ namespace DockerUpdateGuard.Tests;
 [TestClass]
 public partial class DockerHubClientTests
 {
+    #region Constants
+
+    /// <summary>
+    /// Bearer token the login response hands out
+    /// </summary>
+    private const string LoginToken = "header.eyJleHAiOjQxMDI0NDQ4MDB9.signature";
+
+    /// <summary>
+    /// Docker Hub login response
+    /// </summary>
+    private const string LoginResponseJson = $$"""{ "token": "{{LoginToken}}" }""";
+
+    #endregion // Constants
+
     #region Methods
 
     /// <summary>
@@ -315,6 +331,148 @@ public partial class DockerHubClientTests
             Assert.DoesNotContain(request => request.RequestUri == "https://hub.docker.com/v2/namespaces/acme/repositories/api/tags?page=2&page_size=100",
                                   handler.Requests,
                                   "Bounded Docker Hub tag listing must not request later pages after the publish-time cutoff");
+        }
+        finally
+        {
+            httpClient.Dispose();
+            handler.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Verify a Docker Hub tag listing that stops on its own condition ignores a foreign next-page link
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerHubClientGetTagsAsyncStopConditionIgnoresForeignNextLinkAsync()
+    {
+        var handler = new StubHttpMessageHandler();
+        var httpClient = new HttpClient(handler);
+
+        try
+        {
+            httpClient.BaseAddress = new Uri("https://hub.docker.com/");
+            handler.AddResponse("https://hub.docker.com/v2/users/login",
+                                """
+                                {
+                                  "token": "header.eyJleHAiOjQxMDI0NDQ4MDB9.signature"
+                                }
+                                """);
+            handler.AddResponse("https://hub.docker.com/v2/namespaces/acme/repositories/api/tags?page_size=100",
+                                """
+                                {
+                                  "next": "https://attacker.example/collect?page=2&token=leak",
+                                  "results": [
+                                    {
+                                      "name": "3.0.0",
+                                      "digest": "sha256:300",
+                                      "last_pushed": "2025-04-03T10:00:00Z"
+                                    },
+                                    {
+                                      "name": "2.4.1",
+                                      "digest": "sha256:241",
+                                      "last_pushed": "2025-04-02T10:00:00Z"
+                                    },
+                                    {
+                                      "name": "2.4.0",
+                                      "digest": "sha256:240",
+                                      "last_pushed": "2025-04-02T10:00:00Z"
+                                    },
+                                    {
+                                      "name": "2.3.9",
+                                      "digest": "sha256:239",
+                                      "last_pushed": "2025-04-01T10:00:00Z"
+                                    }
+                                  ]
+                                }
+                                """);
+
+            var client = CreateClient(httpClient);
+            var result = await client.GetTagsAsync("docker.io",
+                                                   "acme/api",
+                                                   queryOptions: new RegistryTagQueryOptions
+                                                                 {
+                                                                     CurrentTag = "2.4.1",
+                                                                     MaximumTags = 50,
+                                                                     MinimumVersionTag = "2.4.1",
+                                                                     PublishedSinceUtc = new DateTimeOffset(2025, 04, 02, 10, 00, 00, TimeSpan.Zero),
+                                                                 },
+                                                   cancellationToken: CancellationToken.None)
+                                     .ConfigureAwait(false);
+
+            Assert.AreEqual(ExternalOperationStatus.Succeeded,
+                            result.Status,
+                            "A stop condition must end the listing before the foreign link is looked at");
+            Assert.IsNotNull(result.Data, "Bounded Docker Hub tag listing must return tag data");
+            Assert.AreSequenceEqual(["3.0.0", "2.4.1"],
+                                    result.Data.Select(entity => entity.Tag)
+                                               .ToArray(),
+                                    "Bounded Docker Hub tag listing must skip lower versions and stop before older pages");
+            Assert.DoesNotContain(request => request.RequestUri.StartsWith("https://attacker.example", StringComparison.Ordinal),
+                                  handler.Requests,
+                                  "Bounded Docker Hub tag listing must not request the foreign next-page link");
+        }
+        finally
+        {
+            httpClient.Dispose();
+            handler.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Verify a repository page without a results array adds no repositories and does not stop the listing
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerHubClientGetRepositoriesAsyncPageWithoutResultsArraySkipsPageAsync()
+    {
+        var handler = new StubHttpMessageHandler();
+        var httpClient = new HttpClient(handler);
+
+        try
+        {
+            httpClient.BaseAddress = new Uri("https://hub.docker.com/");
+            handler.AddResponse("https://hub.docker.com/v2/users/login",
+                                """
+                                {
+                                  "token": "header.eyJleHAiOjQxMDI0NDQ4MDB9.signature"
+                                }
+                                """);
+            handler.AddResponse("https://hub.docker.com/v2/repositories/acme/?page_size=100",
+                                """
+                                {
+                                  "next": "https://hub.docker.com/v2/repositories/acme/?page=2&page_size=100",
+                                  "results": "unexpected"
+                                }
+                                """);
+            handler.AddResponse("https://hub.docker.com/v2/repositories/acme/?page=2&page_size=100",
+                                """
+                                {
+                                  "next": null,
+                                  "results": [
+                                    {
+                                      "namespace": "acme",
+                                      "name": "web",
+                                      "description": "Web frontend",
+                                      "last_updated": "2025-04-02T10:00:00Z"
+                                    }
+                                  ]
+                                }
+                                """);
+
+            var client = CreateClient(httpClient);
+
+            var result = await client.GetRepositoriesAsync("acme", CancellationToken.None)
+                                     .ConfigureAwait(false);
+
+            Assert.AreEqual(ExternalOperationStatus.Succeeded,
+                            result.Status,
+                            "A page whose results are not an array must not fail the listing");
+            Assert.IsNotNull(result.Data, "Repository listing must return repository data");
+            Assert.AreSequenceEqual(["acme/web"],
+                                    result.Data.Select(entity => entity.Repository)
+                                               .ToArray(),
+                                    "Only the repositories of pages with a results array must be listed");
         }
         finally
         {
@@ -650,15 +808,162 @@ public partial class DockerHubClientTests
     }
 
     /// <summary>
+    /// Verify Docker Hub tag listing refuses a next-page link on another origin and keeps the token at home
+    /// </summary>
+    /// <param name="nextLink">Next-page link returned by Docker Hub</param>
+    /// <param name="expectedOrigin">Expected origin text of the rejected link</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [DataRow("https://attacker.example/collect?page=2&token=leak", "https://attacker.example")]
+    [DataRow("http://hub.docker.com/v2/namespaces/acme/repositories/api/tags?page=2&page_size=100", "http://hub.docker.com")]
+    [DataRow("https://hub.docker.com:8443/v2/namespaces/acme/repositories/api/tags?page=2&page_size=100", "https://hub.docker.com:8443")]
+    public async Task DockerHubClientGetTagsAsyncForeignNextLinkReturnsFailedAsync(string nextLink, string expectedOrigin)
+    {
+        var handler = new StubHttpMessageHandler();
+        var httpClient = new HttpClient(handler);
+
+        try
+        {
+            httpClient.BaseAddress = new Uri("https://hub.docker.com/");
+            handler.AddResponse("https://hub.docker.com/v2/users/login", LoginResponseJson);
+            handler.AddResponse("https://hub.docker.com/v2/namespaces/acme/repositories/api/tags?page_size=100",
+                                $$"""
+                                  {
+                                    "next": "{{nextLink}}",
+                                    "results": [
+                                      {
+                                        "name": "latest",
+                                        "digest": "sha256:latest",
+                                        "last_pushed": "2025-04-02T10:00:00Z"
+                                      }
+                                    ]
+                                  }
+                                  """);
+
+            var logger = new TestLogger<DockerHubClient>();
+            var client = CreateClient(httpClient, logger: logger);
+
+            var result = await client.GetTagsAsync("docker.io", "acme/api", cancellationToken: CancellationToken.None)
+                                     .ConfigureAwait(false);
+
+            Assert.AreEqual(ExternalOperationStatus.Failed,
+                            result.Status,
+                            "A next-page link on another origin must fail the tag listing");
+            Assert.AreEqual($"Docker Hub tag listing for 'acme/api' stopped: the next-page link pointed to a different origin ({expectedOrigin})",
+                            result.Message,
+                            "The failure message must name the rejected origin only");
+            AssertNothingSentToForeignOrigin(handler, expectedOrigin);
+            AssertSingleRejectionWarning(logger, expectedOrigin);
+            PaginationLeakAssert.DoesNotLeak(string.Join('\n', logger.Entries.Select(entry => entry.Message).Append(result.Message)),
+                                             LoginToken);
+        }
+        finally
+        {
+            httpClient.Dispose();
+            handler.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Verify Docker Hub repository listing refuses a next-page link on another origin and keeps the token at home
+    /// </summary>
+    /// <param name="nextLink">Next-page link returned by Docker Hub</param>
+    /// <param name="expectedOrigin">Expected origin text of the rejected link</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [DataRow("https://attacker.example/collect?page=2&token=leak", "https://attacker.example")]
+    public async Task DockerHubClientGetRepositoriesAsyncForeignNextLinkReturnsFailedAsync(string nextLink, string expectedOrigin)
+    {
+        var handler = new StubHttpMessageHandler();
+        var httpClient = new HttpClient(handler);
+
+        try
+        {
+            httpClient.BaseAddress = new Uri("https://hub.docker.com/");
+            handler.AddResponse("https://hub.docker.com/v2/users/login", LoginResponseJson);
+            handler.AddResponse("https://hub.docker.com/v2/repositories/acme/?page_size=100",
+                                $$"""
+                                  {
+                                    "next": "{{nextLink}}",
+                                    "results": [
+                                      {
+                                        "namespace": "acme",
+                                        "name": "api",
+                                        "description": "API service",
+                                        "last_updated": "2025-04-01T10:00:00Z"
+                                      }
+                                    ]
+                                  }
+                                  """);
+
+            var logger = new TestLogger<DockerHubClient>();
+            var client = CreateClient(httpClient, logger: logger);
+
+            var result = await client.GetRepositoriesAsync("acme", CancellationToken.None)
+                                     .ConfigureAwait(false);
+
+            Assert.AreEqual(ExternalOperationStatus.Failed,
+                            result.Status,
+                            "A next-page link on another origin must fail the repository listing");
+            Assert.AreEqual($"Docker Hub repository listing for 'acme' stopped: the next-page link pointed to a different origin ({expectedOrigin})",
+                            result.Message,
+                            "The failure message must name the rejected origin only");
+            AssertNothingSentToForeignOrigin(handler, expectedOrigin);
+            AssertSingleRejectionWarning(logger, expectedOrigin);
+            PaginationLeakAssert.DoesNotLeak(string.Join('\n', logger.Entries.Select(entry => entry.Message).Append(result.Message)),
+                                             LoginToken);
+        }
+        finally
+        {
+            httpClient.Dispose();
+            handler.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Assert no request went to the rejected origin and no credential left Docker Hub
+    /// </summary>
+    /// <param name="handler">Observing handler</param>
+    /// <param name="rejectedOrigin">Origin of the rejected link</param>
+    private static void AssertNothingSentToForeignOrigin(StubHttpMessageHandler handler, string rejectedOrigin)
+    {
+        Assert.DoesNotContain(request => request.RequestUri.StartsWith($"{rejectedOrigin}/", StringComparison.OrdinalIgnoreCase),
+                              handler.Requests,
+                              "No request may be sent to the origin of a rejected next-page link");
+        Assert.DoesNotContain(request => request.AuthorizationScheme is not null
+                                         && request.RequestUri.StartsWith("https://hub.docker.com/", StringComparison.OrdinalIgnoreCase) == false,
+                              handler.Requests,
+                              "A request carrying an Authorization header must never go anywhere but Docker Hub");
+    }
+
+    /// <summary>
+    /// Assert exactly one pagination warning naming the rejected origin was logged
+    /// </summary>
+    /// <param name="logger">Captured logger</param>
+    /// <param name="rejectedOrigin">Origin of the rejected link</param>
+    private static void AssertSingleRejectionWarning(TestLogger<DockerHubClient> logger, string rejectedOrigin)
+    {
+        var warning = Assert.ContainsSingle(entry => entry.EventId.Id == 3211 && entry.LogLevel == LogLevel.Warning,
+                                            logger.Entries,
+                                            "A rejected next-page link must be logged once as warning 3211");
+
+        Assert.Contains(rejectedOrigin,
+                        warning.Message,
+                        "The warning must name the rejected origin");
+    }
+
+    /// <summary>
     /// Create a Docker Hub client for tests
     /// </summary>
     /// <param name="httpClient">Configured HTTP client</param>
     /// <param name="registry">Configured Docker Hub registry value</param>
     /// <param name="userName">Configured Docker Hub user name</param>
+    /// <param name="logger">Logger that captures the client's entries; null creates a new one</param>
     /// <returns>Docker Hub client</returns>
     private static DockerHubClient CreateClient(HttpClient httpClient,
                                                 string registry = "docker.io",
-                                                string? userName = "acme")
+                                                string? userName = "acme",
+                                                TestLogger<DockerHubClient>? logger = null)
     {
         var options = new DockerUpdateGuardOptions
                       {
@@ -672,7 +977,7 @@ public partial class DockerHubClientTests
                       };
 
         return new DockerHubClient(httpClient,
-                                   new TestLogger<DockerHubClient>(),
+                                   logger ?? new TestLogger<DockerHubClient>(),
                                    new TestOptionsMonitor<DockerUpdateGuardOptions>(options));
     }
 

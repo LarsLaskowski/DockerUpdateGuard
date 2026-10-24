@@ -478,6 +478,25 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
         return true;
     }
 
+    /// <summary>
+    /// Parse the repositories of one listing page and append them to the result
+    /// </summary>
+    /// <param name="rootElement">Root element of the page</param>
+    /// <param name="repositories">Repositories read so far</param>
+    private static void AppendRepositoryPage(JsonElement rootElement, List<DockerHubRepositoryData> repositories)
+    {
+        if (rootElement.TryGetProperty("results", out var resultsElement) == false
+            || resultsElement.ValueKind != JsonValueKind.Array)
+        {
+            return;
+        }
+
+        foreach (var resultElement in resultsElement.EnumerateArray())
+        {
+            repositories.Add(ParseRepository(resultElement));
+        }
+    }
+
     #endregion // Static methods
 
     #region Methods
@@ -830,7 +849,18 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
     /// <returns>HTTP response</returns>
     private async Task<HttpResponseMessage> SendGetAsync(string relativeUri, CancellationToken cancellationToken)
     {
-        var request = new HttpRequestMessage(HttpMethod.Get, relativeUri);
+        return await SendGetAsync(new Uri(relativeUri, UriKind.Relative), cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Send a GET request to an already resolved Docker Hub URI
+    /// </summary>
+    /// <param name="requestUri">Request URI</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>HTTP response</returns>
+    private async Task<HttpResponseMessage> SendGetAsync(Uri requestUri, CancellationToken cancellationToken)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Get, requestUri);
         var authenticationResult = await ApplyAuthenticationAsync(request, cancellationToken).ConfigureAwait(false);
 
         if (authenticationResult.Status == ExternalOperationStatus.Failed)
@@ -839,6 +869,38 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
         }
 
         return await SendThrottledAsync(request, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Log a rejected next-page link and create the failed result of the listing
+    /// </summary>
+    /// <typeparam name="T">Result payload type</typeparam>
+    /// <param name="operationName">Listing operation name</param>
+    /// <param name="targetName">Account or repository the listing belongs to</param>
+    /// <param name="listingDescription">Description of the listing for the failure message</param>
+    /// <param name="currentRequestUri">URI of the request that returned the link</param>
+    /// <param name="nextLink">Rejected raw link</param>
+    /// <returns>Failed result</returns>
+    private ExternalOperationResult<T> RejectPaginationLink<T>(string operationName,
+                                                               string targetName,
+                                                               string listingDescription,
+                                                               Uri currentRequestUri,
+                                                               string nextLink)
+    {
+        var rejectedOrigin = PaginationLinkGuard.DescribeOrigin(currentRequestUri, nextLink);
+
+        _logger.DockerHubPaginationLinkRejected(operationName, targetName, rejectedOrigin);
+
+        return ExternalOperationResult<T>.Failed(PaginationLinkGuard.CreateRejectionMessage(listingDescription, rejectedOrigin));
+    }
+
+    /// <summary>
+    /// Determine the origin that Docker Hub API requests and their pagination links must stay on
+    /// </summary>
+    /// <returns>API base URI</returns>
+    private Uri GetApiBaseUri()
+    {
+        return _httpClient.BaseAddress ?? GetBaseUri(_optionsMonitor.CurrentValue.DockerHub);
     }
 
     /// <summary>
@@ -1073,9 +1135,10 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
         }
 
         var repositories = new List<DockerHubRepositoryData>();
-        var requestUri = $"v2/repositories/{Uri.EscapeDataString(accountName)}/?page_size=100";
+        var apiBaseUri = GetApiBaseUri();
+        Uri? requestUri = new Uri(apiBaseUri, $"v2/repositories/{Uri.EscapeDataString(accountName)}/?page_size=100");
 
-        while (string.IsNullOrWhiteSpace(requestUri) == false)
+        while (requestUri is not null)
         {
             using var response = await SendGetAsync(requestUri, cancellationToken).ConfigureAwait(false);
 
@@ -1097,6 +1160,7 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
                                                                                               cancellationToken).ConfigureAwait(false);
             }
 
+            string? nextLink;
             var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken)
                                                        .ConfigureAwait(false);
 
@@ -1105,17 +1169,30 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
                 using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: cancellationToken)
                                                            .ConfigureAwait(false);
 
-                if (jsonDocument.RootElement.TryGetProperty("results", out var resultsElement)
-                    && resultsElement.ValueKind == JsonValueKind.Array)
-                {
-                    foreach (var resultElement in resultsElement.EnumerateArray())
-                    {
-                        repositories.Add(ParseRepository(resultElement));
-                    }
-                }
+                AppendRepositoryPage(jsonDocument.RootElement, repositories);
 
-                requestUri = TryGetString(jsonDocument.RootElement, "next");
+                nextLink = TryGetString(jsonDocument.RootElement, "next");
             }
+
+            if (string.IsNullOrWhiteSpace(nextLink))
+            {
+                requestUri = null;
+
+                continue;
+            }
+
+            var nextUri = PaginationLinkGuard.ResolveNextLink(requestUri, apiBaseUri, nextLink);
+
+            if (nextUri is null)
+            {
+                return RejectPaginationLink<IReadOnlyList<DockerHubRepositoryData>>(nameof(GetRepositoriesAsync),
+                                                                                    accountName,
+                                                                                    $"Docker Hub repository listing for '{accountName}'",
+                                                                                    requestUri,
+                                                                                    nextLink);
+            }
+
+            requestUri = nextUri;
         }
 
         _logger.DockerHubRepositoriesListed(accountName, repositories.Count);
@@ -1248,11 +1325,12 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
 
         var (namespaceName, repositoryName) = SplitRepository(repository);
 
-        var requestUri = $"v2/namespaces/{Uri.EscapeDataString(namespaceName)}/repositories/{EscapeRepository(repositoryName)}/tags?page_size=100";
+        var apiBaseUri = GetApiBaseUri();
+        Uri? requestUri = new Uri(apiBaseUri, $"v2/namespaces/{Uri.EscapeDataString(namespaceName)}/repositories/{EscapeRepository(repositoryName)}/tags?page_size=100");
         var results = new List<DockerHubTagData>();
         var resolvedCurrentVersionTag = false;
 
-        while (string.IsNullOrWhiteSpace(requestUri) == false)
+        while (requestUri is not null)
         {
             using var response = await SendGetAsync(requestUri, cancellationToken).ConfigureAwait(false);
 
@@ -1274,6 +1352,7 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
                                                                                        cancellationToken).ConfigureAwait(false);
             }
 
+            string? nextLink;
             var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken)
                                                        .ConfigureAwait(false);
 
@@ -1282,13 +1361,33 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
                 using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: cancellationToken)
                                                            .ConfigureAwait(false);
 
-                requestUri = AppendTagPage(jsonDocument.RootElement,
-                                           queryOptions,
-                                           results,
-                                           ref resolvedCurrentVersionTag)
-                                 ? TryGetString(jsonDocument.RootElement, "next")
-                                 : null;
+                nextLink = AppendTagPage(jsonDocument.RootElement,
+                                         queryOptions,
+                                         results,
+                                         ref resolvedCurrentVersionTag)
+                               ? TryGetString(jsonDocument.RootElement, "next")
+                               : null;
             }
+
+            if (string.IsNullOrWhiteSpace(nextLink))
+            {
+                requestUri = null;
+
+                continue;
+            }
+
+            var nextUri = PaginationLinkGuard.ResolveNextLink(requestUri, apiBaseUri, nextLink);
+
+            if (nextUri is null)
+            {
+                return RejectPaginationLink<IReadOnlyList<DockerHubTagData>>(nameof(GetTagsAsync),
+                                                                             repository,
+                                                                             $"Docker Hub tag listing for '{repository}'",
+                                                                             requestUri,
+                                                                             nextLink);
+            }
+
+            requestUri = nextUri;
         }
 
         return ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Succeeded(results);
