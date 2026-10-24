@@ -55,7 +55,7 @@ transport security; the UI is the intended caller of the actions.
   - Portainer's status endpoint answers non-success → configured, no actions, message with the HTTP status code;
   - no environment configured and none found → configured, no actions, "No Portainer endpoint found";
   - otherwise → configured, actions supported, message naming the environment used;
-  - any error (including authentication failure) → configured, no actions, message with the error text.
+  - any error → configured, no actions, message `Portainer connection error: ` with the reason (see *Limits and errors*).
 
 ### Actions
 
@@ -66,7 +66,7 @@ transport security; the UI is the intended caller of the actions.
   stopped containers) is searched for an exact, case-insensitive name match, with or without the leading `/`.
 - The action is executed by Portainer on the Docker Engine of that environment. The result is either *succeeded* with
   a confirmation message or *failed* with a reason: Portainer not configured, no environment found, container not
-  found, HTTP status code of a non-success answer, or the error text.
+  found, HTTP status code of a non-success answer, or the reason of an error (see *Limits and errors*).
 - Actions never throw to the caller; every outcome is a result. Executed, failed and not-found actions are logged with
   the action, the container name and the Docker instance name.
 - Portainer requests go through the shared retry of transient HTTP failures described in
@@ -95,6 +95,11 @@ transport security; the UI is the intended caller of the actions.
   absolute `http`/`https` URI; `BaseUrl` is `http` without `AllowInsecureHttp: true`; neither `ApiToken` nor both
   `Username` and `Password` are set; `RequestTimeoutSeconds` is outside 1–300.
 - A disabled Portainer section is not validated at all; its values may be incomplete.
+- An error during a capability check or an action is reported with one fixed reason, never with the error's own text:
+  the authentication error as described in *Authentication*; `cancelled` when the caller cancelled; `timed out after
+  <n> seconds` (`RequestTimeoutSeconds`); `connection failed` for any transport failure; `invalid response` for an
+  answer that is not the expected JSON; `unexpected error` otherwise. The error itself is logged with the failure
+  (EventIds 3306, 3310).
 - Error messages and log entries name the Docker instance, the Portainer base URL (user info masked as `***`), the action, the container name and
   HTTP status codes. They never contain the password, the API token or the JWT.
 
@@ -112,6 +117,7 @@ transport security; the UI is the intended caller of the actions.
 
 - [0006 Insecure Portainer HTTP warns at the first request per instance](../decisions/0006-insecure-portainer-http-warns-at-first-request.md)
 - [0008 Non-idempotent requests are retried only when they cannot have been processed](../decisions/0008-non-idempotent-requests-retry-only-when-not-processed.md)
+- [0009 Portainer results carry fixed failure reasons](../decisions/0009-portainer-results-carry-fixed-failure-reasons.md)
 
 ## Not here
 

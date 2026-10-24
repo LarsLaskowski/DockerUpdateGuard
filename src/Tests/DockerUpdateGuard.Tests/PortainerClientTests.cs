@@ -101,7 +101,21 @@ public class PortainerClientTests
     /// </summary>
     private const int InsecureHttpEventId = 3311;
 
+    /// <summary>
+    /// Host name marker injected into exception texts that must never reach a result message
+    /// </summary>
+    private const string HostMarker = "portainer.internal.test";
+
     #endregion // Constants
+
+    #region Properties
+
+    /// <summary>
+    /// Test context providing information about and functionality for the current test run
+    /// </summary>
+    public TestContext TestContext { get; set; }
+
+    #endregion // Properties
 
     #region Methods
 
@@ -1272,6 +1286,259 @@ public class PortainerClientTests
             httpClient.Dispose();
             handler.Dispose();
         }
+    }
+
+    /// <summary>
+    /// Verify a transport failure during an action reports the fixed connection-failed reason without the exception text
+    /// </summary>
+    /// <param name="error">Transport error of the injected exception</param>
+    /// <param name="exceptionMessage">Message of the injected exception</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [DataRow(HttpRequestError.ConnectionError, "Connection refused (portainer.internal.test:9443)")]
+    [DataRow(HttpRequestError.ResponseEnded, "Error while copying content to a stream. portainer.internal.test")]
+    public async Task PortainerClientExecuteActionAsyncWhenTransportFailsReportsConnectionFailedAsync(HttpRequestError error, string exceptionMessage)
+    {
+        var injected = new HttpRequestException(error, exceptionMessage);
+        var logger = new TestLogger<PortainerClient>();
+        var result = await RunFailingActionAsync(() => injected, logger, CancellationToken.None).ConfigureAwait(false);
+
+        Assert.IsFalse(result.Succeeded, "A transport failure must fail the action");
+        Assert.AreEqual("Action 'restart' failed: connection failed", result.Message, "A transport failure must report the fixed connection-failed reason");
+        Assert.DoesNotContain(HostMarker, result.Message, "The exception text must not reach the action message");
+        Assert.Contains(entry => entry.EventId.Id == 3310 && ReferenceEquals(entry.Exception, injected),
+                        logger.Entries,
+                        "The transport failure must still be logged with the exception");
+    }
+
+    /// <summary>
+    /// Verify a transport failure during a capability check reports the fixed connection-failed reason without the exception text
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task PortainerClientGetCapabilityAsyncWhenTransportFailsReportsConnectionFailedAsync()
+    {
+        var injected = new HttpRequestException(HttpRequestError.ConnectionError, "Connection refused (portainer.internal.test:9443)");
+        var logger = new TestLogger<PortainerClient>();
+        var result = await RunFailingCapabilityAsync(() => injected, logger, CancellationToken.None).ConfigureAwait(false);
+
+        Assert.IsTrue(result.IsConfigured, "A failed capability check must still be reported as configured");
+        Assert.IsFalse(result.SupportsActions, "A failed capability check must not support actions");
+        Assert.AreEqual("Portainer connection error: connection failed", result.Message, "A transport failure must report the fixed connection-failed reason");
+        Assert.DoesNotContain(HostMarker, result.Message, "The exception text must not reach the capability message");
+        Assert.Contains(entry => entry.EventId.Id == 3306 && ReferenceEquals(entry.Exception, injected),
+                        logger.Entries,
+                        "The transport failure must still be logged with the exception");
+    }
+
+    /// <summary>
+    /// Verify a request timeout during an action reports the timed-out reason with the configured seconds
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task PortainerClientExecuteActionAsyncWhenRequestTimesOutReportsTimedOutAsync()
+    {
+        var result = await RunFailingActionAsync(CreateTimeoutException, new TestLogger<PortainerClient>(), CancellationToken.None).ConfigureAwait(false);
+
+        Assert.IsFalse(result.Succeeded, "A timed-out request must fail the action");
+        Assert.AreEqual("Action 'restart' failed: timed out after 15 seconds", result.Message, "A timeout must report the fixed timed-out reason");
+    }
+
+    /// <summary>
+    /// Verify a request timeout during a capability check reports the timed-out reason with the configured seconds
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task PortainerClientGetCapabilityAsyncWhenRequestTimesOutReportsTimedOutAsync()
+    {
+        var result = await RunFailingCapabilityAsync(CreateTimeoutException, new TestLogger<PortainerClient>(), CancellationToken.None).ConfigureAwait(false);
+
+        Assert.IsFalse(result.SupportsActions, "A timed-out capability check must not support actions");
+        Assert.AreEqual("Portainer connection error: timed out after 15 seconds", result.Message, "A timeout must report the fixed timed-out reason");
+    }
+
+    /// <summary>
+    /// Verify a cancelled caller token during an action is reported as cancelled without throwing
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task PortainerClientExecuteActionAsyncWhenCallerCancelsReportsCancelledAsync()
+    {
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.CancellationToken);
+
+        await cts.CancelAsync().ConfigureAwait(false);
+
+        var token = cts.Token;
+        var result = await RunFailingActionAsync(() => new TaskCanceledException("A task was canceled.", null, token), new TestLogger<PortainerClient>(), token).ConfigureAwait(false);
+
+        Assert.IsFalse(result.Succeeded, "A cancelled action must fail the result");
+        Assert.AreEqual("Action 'restart' failed: cancelled", result.Message, "A cancelled caller token must report the fixed cancelled reason");
+    }
+
+    /// <summary>
+    /// Verify a cancelled caller token during a capability check is reported as cancelled without throwing
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task PortainerClientGetCapabilityAsyncWhenCallerCancelsReportsCancelledAsync()
+    {
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.CancellationToken);
+
+        await cts.CancelAsync().ConfigureAwait(false);
+
+        var token = cts.Token;
+        var result = await RunFailingCapabilityAsync(() => new TaskCanceledException("A task was canceled.", null, token), new TestLogger<PortainerClient>(), token).ConfigureAwait(false);
+
+        Assert.IsFalse(result.SupportsActions, "A cancelled capability check must not support actions");
+        Assert.AreEqual("Portainer connection error: cancelled", result.Message, "A cancelled caller token must report the fixed cancelled reason");
+    }
+
+    /// <summary>
+    /// Verify an answer that is not valid JSON reports the invalid-response reason without the parser text
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task PortainerClientExecuteActionAsyncWhenResponseIsNotJsonReportsInvalidResponseAsync()
+    {
+        var handler = new SequenceHttpMessageHandler();
+        var httpClient = new HttpClient(handler);
+        var logger = new TestLogger<PortainerClient>();
+
+        try
+        {
+            handler.AddJsonResponse(ContainersUrl, "<html>nope</html>");
+
+            var client = new PortainerClient(CreateHttpClientFactory(httpClient), logger);
+            var result = await client.ExecuteActionAsync(CreateFailureInstanceOptions(), CreateRestartRequest(), CancellationToken.None)
+                                     .ConfigureAwait(false);
+
+            Assert.IsFalse(result.Succeeded, "An answer that is not JSON must fail the action");
+            Assert.AreEqual("Action 'restart' failed: invalid response", result.Message, "An answer that is not JSON must report the fixed invalid-response reason");
+        }
+        finally
+        {
+            httpClient.Dispose();
+            handler.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Verify an unexpected exception during an action reports the fixed unexpected-error reason without the exception text
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task PortainerClientExecuteActionAsyncWhenUnexpectedExceptionReportsUnexpectedErrorAsync()
+    {
+        var result = await RunFailingActionAsync(CreateUnexpectedException, new TestLogger<PortainerClient>(), CancellationToken.None).ConfigureAwait(false);
+
+        Assert.IsFalse(result.Succeeded, "An unexpected exception must fail the action");
+        Assert.AreEqual("Action 'restart' failed: unexpected error", result.Message, "An unexpected exception must report the fixed unexpected-error reason");
+        Assert.DoesNotContain(HostMarker, result.Message, "The exception text must not reach the action message");
+    }
+
+    /// <summary>
+    /// Verify an unexpected exception during a capability check reports the fixed unexpected-error reason without the exception text
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task PortainerClientGetCapabilityAsyncWhenUnexpectedExceptionReportsUnexpectedErrorAsync()
+    {
+        var result = await RunFailingCapabilityAsync(CreateUnexpectedException, new TestLogger<PortainerClient>(), CancellationToken.None).ConfigureAwait(false);
+
+        Assert.IsFalse(result.SupportsActions, "An unexpected exception must not support actions");
+        Assert.AreEqual("Portainer connection error: unexpected error", result.Message, "An unexpected exception must report the fixed unexpected-error reason");
+        Assert.DoesNotContain(HostMarker, result.Message, "The exception text must not reach the capability message");
+    }
+
+    /// <summary>
+    /// Create the exception of a request that timed out in the HTTP client
+    /// </summary>
+    /// <returns>Exception</returns>
+    private static Exception CreateTimeoutException()
+    {
+        return new TaskCanceledException("The request was canceled due to the configured HttpClient.Timeout of 15 seconds elapsing.", new TimeoutException());
+    }
+
+    /// <summary>
+    /// Create an exception no failure mapping knows, carrying the host marker in its message
+    /// </summary>
+    /// <returns>Exception</returns>
+    private static Exception CreateUnexpectedException()
+    {
+        return new InvalidOperationException("Raw runtime text for portainer.internal.test");
+    }
+
+    /// <summary>
+    /// Create Docker instance options using an API token and an endpoint identifier, so the first request is the container list or the status request
+    /// </summary>
+    /// <returns>Docker instance options</returns>
+    private static DockerInstanceOptions CreateFailureInstanceOptions()
+    {
+        return CreateInstanceOptions(InstanceName,
+                                     options =>
+                                     {
+                                         options.ApiToken = PatToken;
+                                         options.EndpointId = EndpointId;
+                                     });
+    }
+
+    /// <summary>
+    /// Create the restart action request used by the failure tests
+    /// </summary>
+    /// <returns>Action request</returns>
+    private static PortainerActionRequest CreateRestartRequest()
+    {
+        return new PortainerActionRequest
+               {
+                   ActionName = RestartAction,
+                   ResourceName = ContainerName,
+               };
+    }
+
+    /// <summary>
+    /// Execute an action whose first request throws the exception of the factory
+    /// </summary>
+    /// <param name="failureFactory">Factory of the exception thrown by the first request</param>
+    /// <param name="logger">Logger that captures the entries</param>
+    /// <param name="cancellationToken">Token passed to the client</param>
+    /// <returns>Action result</returns>
+    private static async Task<PortainerActionResult> RunFailingActionAsync(Func<Exception> failureFactory,
+                                                                           TestLogger<PortainerClient> logger,
+                                                                           CancellationToken cancellationToken)
+    {
+        using var handler = new RetryProbeHttpMessageHandler([null], HttpStatusCode.OK)
+                            {
+                                FailureFactory = failureFactory,
+                            };
+        using var httpClient = new HttpClient(handler);
+
+        var client = new PortainerClient(CreateHttpClientFactory(httpClient), logger);
+
+        return await client.ExecuteActionAsync(CreateFailureInstanceOptions(), CreateRestartRequest(), cancellationToken)
+                           .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Check a capability whose first request throws the exception of the factory
+    /// </summary>
+    /// <param name="failureFactory">Factory of the exception thrown by the first request</param>
+    /// <param name="logger">Logger that captures the entries</param>
+    /// <param name="cancellationToken">Token passed to the client</param>
+    /// <returns>Capability data</returns>
+    private static async Task<PortainerCapabilityData> RunFailingCapabilityAsync(Func<Exception> failureFactory,
+                                                                                 TestLogger<PortainerClient> logger,
+                                                                                 CancellationToken cancellationToken)
+    {
+        using var handler = new RetryProbeHttpMessageHandler([null], HttpStatusCode.OK)
+                            {
+                                FailureFactory = failureFactory,
+                            };
+        using var httpClient = new HttpClient(handler);
+
+        var client = new PortainerClient(CreateHttpClientFactory(httpClient), logger);
+
+        return await client.GetCapabilityAsync(CreateFailureInstanceOptions(), cancellationToken)
+                           .ConfigureAwait(false);
     }
 
     /// <summary>
