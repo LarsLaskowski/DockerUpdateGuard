@@ -116,8 +116,8 @@ transport security; the UI is the intended caller of the actions.
 ## Related decisions
 
 - [0006 Insecure Portainer HTTP warns at the first request per instance](../decisions/0006-insecure-portainer-http-warns-at-first-request.md)
-- [0009 Portainer results carry fixed failure reasons](../decisions/0009-portainer-results-carry-fixed-failure-reasons.md)
 - [0008 Non-idempotent requests are retried only when they cannot have been processed](../decisions/0008-non-idempotent-requests-retry-only-when-not-processed.md)
+- [0009 Portainer results carry fixed failure reasons](../decisions/0009-portainer-results-carry-fixed-failure-reasons.md)
 
 ## Not here
 

@@ -2,8 +2,8 @@
 
 Source: Issue #315
 Status: Draft
-Tier: standard — the result messages of the Portainer client change (behavior, error output), but no security control is created, changed or removed: URL masking, credential handling and the allow-list stay as they are.
-Security areas touched: Container actions (`PortainerClient` capability check and action results)
+Tier: security (raised from standard in review round 1: `GetFailureReason` is an output-sanitizing allow-list for what an unauthenticated UI viewer sees; area added: Secrets in configuration) — originally standard: the result messages of the Portainer client change (behavior, error output), but no security control is created, changed or removed: URL masking, credential handling and the allow-list stay as they are.
+Security areas touched: Container actions (`PortainerClient` capability check and action results); Secrets in configuration (exception text in Portainer result messages)
 
 ## Problem / root cause
 
@@ -81,7 +81,7 @@ host marker (`portainer.internal.test`) in it.
 | AC1 | `PortainerClientExecuteActionAsyncWhenTransportFailsReportsConnectionFailedAsync` (`[DataRow]`: `ConnectionError` with `Connection refused (portainer.internal.test:9443)`; `ResponseEnded` with `Error while copying content to a stream. portainer.internal.test`); also asserts the 3310 entry carries the exception | `src/Tests/DockerUpdateGuard.Tests/PortainerClientTests.cs` |
 | AC2 | `PortainerClientGetCapabilityAsyncWhenTransportFailsReportsConnectionFailedAsync` (`ConnectionError` with `Connection refused (portainer.internal.test:9443)`); also asserts the 3306 entry carries the exception | `src/Tests/DockerUpdateGuard.Tests/PortainerClientTests.cs` |
 | AC3 | `PortainerClientExecuteActionAsyncWhenRequestTimesOutReportsTimedOutAsync`, `PortainerClientGetCapabilityAsyncWhenRequestTimesOutReportsTimedOutAsync` (`new TaskCanceledException("The request was canceled due to the configured HttpClient.Timeout of 15 seconds elapsing.", new TimeoutException())`, default timeout 15) | `src/Tests/DockerUpdateGuard.Tests/PortainerClientTests.cs` |
-| AC4 | `PortainerClientExecuteActionAsyncWhenCallerCancelsReportsCancelledAsync`, `PortainerClientGetCapabilityAsyncWhenCallerCancelsReportsCancelledAsync` (a `CancellationTokenSource` linked to `TestContext.CancellationToken`, cancelled before the call; `SequenceHttpMessageHandler`, no exception injected) | `src/Tests/DockerUpdateGuard.Tests/PortainerClientTests.cs` |
+| AC4 | `PortainerClientExecuteActionAsyncWhenCallerCancelsReportsCancelledAsync`, `PortainerClientGetCapabilityAsyncWhenCallerCancelsReportsCancelledAsync` (a `CancellationTokenSource` linked to `TestContext.CancellationToken`, cancelled before the call; `RetryProbeHttpMessageHandler`, outcome `[null]`, `FailureFactory` throwing `TaskCanceledException` with that token) | `src/Tests/DockerUpdateGuard.Tests/PortainerClientTests.cs` |
 | AC5 | `PortainerClientExecuteActionAsyncWhenResponseIsNotJsonReportsInvalidResponseAsync` (`SequenceHttpMessageHandler.AddJsonResponse(ContainersUrl, "<html>nope</html>")`) | `src/Tests/DockerUpdateGuard.Tests/PortainerClientTests.cs` |
 | AC6 | `PortainerClientExecuteActionAsyncWhenUnexpectedExceptionReportsUnexpectedErrorAsync`, `PortainerClientGetCapabilityAsyncWhenUnexpectedExceptionReportsUnexpectedErrorAsync` (`new InvalidOperationException("Raw runtime text for portainer.internal.test")` — the type the old login path used, so a mapping by `InvalidOperationException` fails the test) | `src/Tests/DockerUpdateGuard.Tests/PortainerClientTests.cs` |
 | AC7 | existing, unchanged, must stay green: `PortainerClientExecuteActionAsyncWhenLoginFailsFailsAndLogsAuthFailedAsync`, `PortainerClientExecuteActionAsyncWhenLoginReturnsNoJwtFailsAndLogsAuthFailedAsync`, `PortainerClientGetCapabilityAsyncWithUserInfoAndFailedLoginMasksUserInfoAsync`, `PortainerClientGetCapabilityAsyncWithUserInfoAndMissingJwtMasksUserInfoAsync`, `PortainerClientGetCapabilityAsyncWhenLoginFailsReturnsUnsupportedResultAndLogsExceptionAsync` — a pin of existing behavior, not written in step 5 | `src/Tests/DockerUpdateGuard.Tests/PortainerClientTests.cs` |
@@ -210,8 +210,9 @@ All owned by the **Dev**, in step 6. Sweep: `grep -rn -i "error text\|exception 
   `OperationCanceledException` (timeout) / `TimeoutException` → `timed out after <n> seconds`;
   `HttpRequestException` → `connection failed`; `JsonException` → `invalid response`; every other exception →
   `unexpected error`. No raw runtime exception message reaches a result.
-- Logs are unchanged: 3306 and 3310 keep the exception (with the runtime text naming the host), as today; they never
-  contained credentials, since `HttpClient` exception messages carry host and port only.
+- Logs are unchanged: 3306 and 3310 keep the exception (with the runtime text naming the host), as today; the logged
+  exception can name the would-be host parsed from a malformed user info (`admin#secret@` -> `admin:443`) or the proxy
+  URL. The change closes the result-message leak of such a `#`/`?` user-info fragment and of the proxy URL.
 
 ## Decision records
 
@@ -230,7 +231,9 @@ Follow-up issue for the orchestrator to create:
   `DockerScoutVulnerabilityProvider.cs:469`; and the orchestrators that add `exception.Message` to status messages
   (`RuntimeContainerScanOrchestrator.cs:517`, `:673`, `:681`, `VulnerabilityEnrichmentService.cs:489`,
   `ImageScanOrchestrator.cs:763`). Map transport errors to fixed reasons as record 0009 does for Portainer, keeping
-  the exception in the log. Found while fixing #315.
+  the exception in the log. Also, the Portainer log entries 3306 and 3310 keep the exception, whose message can name
+  the would-be host parsed from a malformed user info (`admin#secret@` -> `admin:443`) or the proxy URL. Found while
+  fixing #315.
 
 ## Challenge notes
 
