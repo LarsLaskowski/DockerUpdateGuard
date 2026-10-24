@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-10-24
 - **Area:** Registries
-- **Source:** Issue #273
+- **Source:** Issue #273, Issue #316
 - **Supersedes:** —
 
 ## Context
@@ -22,6 +22,12 @@ showed which `HttpRequestError` a failure carries: a refused connection gives `C
 or resets gives `Unknown` (before or after it read the request), a server that read the request and closed gives
 `ResponseEnded`, a garbage status line `InvalidResponse`.
 
+The retry kept on a 429 waited the server's `Retry-After`, but clamped to the handler's 30-second maximum backoff
+(#316): a server that asked a login to wait an hour got it again after 30 seconds, inside the window it named, which is
+the repeated failing login this record set out to avoid. Waiting longer is not possible either: every client behind
+the handler has an `HttpClient.Timeout` (Portainer 15 seconds, Docker Hub and registries 30 seconds by default) that
+covers the retry waits and would cancel the request.
+
 ## Options considered
 
 1. **A method-based rule inside `TransientHttpRetryHandler`** — idempotent methods keep the full retry; every other
@@ -38,12 +44,18 @@ or resets gives `Unknown` (before or after it read the request), a server that r
    reject; every body stays buffered.
 6. **Letting the handler give every body-less non-idempotent request an empty body** — would cover future callers, but
    rewrites their requests for the single body-less `POST` there is; the Portainer action sends an empty body itself.
+7. **For a 429 with a `Retry-After` beyond the maximum backoff (#316): give up instead of clamping (chosen)** — the
+   request is never resent inside the server's window and the caller gets the server's own 429. The alternatives lost:
+   waiting the full `Retry-After` runs into the clients' timeouts, which turn the 429 into a timeout; never retrying a
+   non-idempotent 429 also drops the retry of a short window that is safe to honor; giving up for every method would
+   change the Docker Hub rate-limit handling of `GET`s, which cannot run an effect twice or count toward a lockout.
 
 ## Decision
 
 Option 1: `TransientHttpRetryHandler` retries `GET`, `HEAD`, `OPTIONS`, `TRACE`, `PUT` and `DELETE` as before, and
 any other method only after an `HttpRequestException` whose `HttpRequestError` is `NameResolutionError`,
-`ConnectionError`, `SecureConnectionError` or `ProxyTunnelError`, or after a 429. The resulting behavior is described in
+`ConnectionError`, `SecureConnectionError` or `ProxyTunnelError`, or after a 429 whose `Retry-After` asks for no more
+than the maximum backoff (option 7). The resulting behavior is described in
 [Registries](../areas/registries.md), *Retry of transient HTTP failures*.
 
 ## Consequences
@@ -51,6 +63,9 @@ any other method only after an `HttpRequestException` whose `HttpRequestError` i
 - A Portainer action or login that meets a 5xx, a 408, a timeout or a broken connection fails after one attempt with
   that status or error; the operator retries it deliberately. A Docker Hub login that meets a transient 5xx fails that
   token request instead of being retried, so the scan step that needed the token fails until its next run.
+- A non-idempotent request answered with a 429 and a longer `Retry-After` fails after one attempt with that 429, also
+  when the server would have accepted it a few seconds after the 30-second mark; idempotent requests keep the clamped
+  wait.
 - No exception list: the Docker Hub and Portainer logins, which are probably safe to repeat, follow the same rule on
   purpose, because a repeated failing login is what trips lockout and rate limits.
 - The rule assumes the request has a body: below the handler, `SocketsHttpHandler` resends a body-less request on its
