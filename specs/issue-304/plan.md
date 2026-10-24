@@ -181,3 +181,12 @@ gets the sentence of update 3, linked to record 0005 already.
   Trivy's token authentication (--token / --token-header) as a proper credential setting, or to document the
   limitation. Found while working on #304.`
 - Masking free text from other external sources: not covered (no other tool output is passed on).
+
+## Security notes
+
+Non-blocking findings of Security's plan review (verdict APPROVED), verbatim:
+
+1. Update fact 9 from "unverified" to "confirmed" with the measurement above (Trivy v0.58.1 built from the Go module proxy; the last stderr line shows `user:***@` for `https://user:secret@…`, `token@` for `https://token@…`, `"https://admin#secret@…"` for `https://admin:#secret@…`, `"https://admin?secret@…"` for `https://admin:?secret@…`, and the full raw URL with `invalid URL escape "%zz"` for `https://user:p%zz@…`).
+2. Fact 6 says the error names the would-be host with no `@` nearby. In practice Trivy prints the full URL, `@` included (`admin#secret@`). AC1 data row 3 could use that measured form instead; the design is unaffected.
+3. Fact 2 cites `DockerUpdateGuardOptionsValidator.cs:110-125`, but the `TrivyBaseUrl` call is at line 141.
+4. The follow-up issue for the credential on the command line (`--server`) is correctly left out of scope.
