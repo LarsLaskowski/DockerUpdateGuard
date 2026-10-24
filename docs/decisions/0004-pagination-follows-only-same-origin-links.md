@@ -1,6 +1,6 @@
 # 0004: Pagination follows only same-origin links
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-24
 - **Area:** Registries
 - **Source:** Issue #264

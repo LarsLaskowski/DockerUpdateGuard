@@ -56,5 +56,5 @@ once in the [area document](../areas/README.md) of the record's area, and the re
 | [0001](0001-quality-gates-before-the-pull-request.md) | Quality gates before the pull request | Accepted | 2026-10-03 |
 | [0002](0002-squash-merge-pull-requests.md) | Squash-merge pull requests | Accepted | 2026-10-03 |
 | [0003](0003-squad-working-records-off-main.md) | Squad working records stay off main, and product PRs never change the squad | Accepted | 2026-10-03 |
-| [0004](0004-pagination-follows-only-same-origin-links.md) | Pagination follows only same-origin links | Proposed | 2026-10-24 |
+| [0004](0004-pagination-follows-only-same-origin-links.md) | Pagination follows only same-origin links | Accepted | 2026-10-24 |
 <!-- project:end index -->
