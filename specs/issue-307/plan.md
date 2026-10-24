@@ -185,3 +185,12 @@ documented environment binding (fact 4). `docs/ARCHITECTURE.md` §11 gets the se
 - A dedicated Trivy token setting: not needed for this fix (`TRIVY_TOKEN` is inherited); no follow-up issue unless the
   Product Manager wants one.
 - Other places a credential could reach a process list: none — Trivy is the only external process (fact 8).
+
+## Challenge notes
+
+1. `minor` — no test anywhere checks that the bundled Trivy binary actually reads `TRIVY_SERVER`, and getting it wrong fails silently. The unit tests only pin the dictionary the provider builds. With a mistyped name or an unbound variable, Trivy would quietly switch to standalone mode: it downloads its own database and scans report *succeeded*, so no criterion would catch it. Instruction: before handing back, the Tester or Dev runs the bundled binary once in the image, or a local `aquasec/trivy:0.58.1`. Run `TRIVY_SERVER=http://127.0.0.1:1 trivy image --quiet --scanners vuln alpine:3.20`, then the same command with `--server` instead of the variable. Record in `specs/issue-307/log.md` that both fail with the same error connecting to the server at `127.0.0.1:1` and neither starts a database download. Ranked minor because the source evidence for fact 4 is concrete and this only confirms it without changing the plan.
+
+## Security notes
+
+1. **Trivy's `TRIVY_SERVER` handling was confirmed from source only, never run.** I tried to download the Trivy v0.58.1 binary to run `TRIVY_SERVER=… trivy image` against a local listener, but the sandbox's permission check refused the download, so no run happened. The credential-hiding guarantee doesn't depend on this: it only needs the URL to be off `ArgumentList`, which AC1 pins. If the binding failed, Trivy would quietly scan without the server and download the vulnerability database itself (an unexpected outbound call). That is a functional regression, not a credential leak. I recommend the Dev or the user run the bundled image once against a Trivy server, or against a listener that logs the request, and record the result in `log.md`.
+2. **Existing hardening gap, outside this change.** Trivy, a third-party binary, inherits the application's whole environment. That includes any secrets an operator supplies as environment variables, such as the database connection string, the Docker Hub PAT and Portainer credentials. This exposure is not new and this change does not widen it. If the Product Manager wants it, it belongs in its own issue (for example, an allow-list for the child environment), not in this PR.
