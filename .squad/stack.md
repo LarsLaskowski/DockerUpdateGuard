@@ -125,7 +125,8 @@ Two places compute coverage and must agree (`.squad/routing.md`, *Code a unit te
 step of `.github/workflows/ci.yml` (today `.squad/**`, `.claude/**` and
 `src/DockerUpdateGuard.Data/Migrations/**`). A file no unit test can cover (`wwwroot/js/**`, a generated file) is
 added to both with a decision record — never to `sonar.exclusions`, which would drop it from the analysis too.
-`sonar.exclusions` holds only `docs/**` (concept mockups and screenshot scripts, no product code), set in the same
+`sonar.exclusions` holds only `docs/**` (concept mockups, screenshot scripts and the deployment examples
+`docker-compose.*.yml` and `.env.example`, no product code), set in the same
 step of `ci.yml` and in the *Sonar gate* command.
 
 ## Writing code
