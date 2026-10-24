@@ -10,4 +10,4 @@ are quoted in full.
 | 2026-10-24 10:00 | 2 Plan challenge | squad-devils-advocate | 0 major, 2 minor objections (registries.md line 28 stale claim; read DockerScoutBaseUrl once into scoutBaseUrl) (opus/medium · 62,573 tokens · 14 tool uses · 106 s) |
 | 2026-10-24 10:01 | 3 Plan security review | squad-security | APPROVED, no blocking; 4 non-blocking notes appended verbatim as Security notes (opus/medium · 64,769 tokens · 10 tool uses · 149 s) |
 | 2026-10-24 10:01 | 2 Plan | Orchestrator | challenge notes (2 minor) and security notes appended verbatim; no revision needed |
-| 2026-10-24 10:05 | 4 Skeleton | squad-dev | skeleton built, Build passes (0 errors, 6 expected Sonar warnings on stubs); RH2003 pragmas around NotImplemented bodies; GetNextTagsUri kept until implement (sonnet/medium · usage pending) |
+| 2026-10-24 10:05 | 4 Skeleton | squad-dev | skeleton built, Build passes (0 errors, 6 expected Sonar warnings on stubs); RH2003 pragmas around NotImplemented bodies; GetNextTagsUri kept until implement (sonnet/medium · 89,727 tokens · 9 tool uses · 228 s) |
