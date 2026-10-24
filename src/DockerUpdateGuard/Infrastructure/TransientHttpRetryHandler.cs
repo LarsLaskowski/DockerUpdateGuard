@@ -264,22 +264,33 @@ public class TransientHttpRetryHandler : DelegatingHandler
     }
 
     /// <summary>
-    /// Determine whether a non-idempotent request must not be retried because the server asked for a longer wait than
-    /// the maximum, and log the decision
+    /// Determine whether the transient response of a non-idempotent request must not be retried, and log the decision:
+    /// the status does not prove that the request was not processed, or the server asked for a longer wait than the maximum
     /// </summary>
     /// <param name="request">Request message</param>
     /// <param name="requestTarget">Log-safe request target</param>
-    /// <param name="statusCode">Status code number</param>
-    /// <param name="isIdempotent">True when the request method is idempotent</param>
+    /// <param name="response">Transient response</param>
     /// <param name="retryAfter">Wait requested by the server, or null when there is none</param>
     /// <returns>True when the response is to be returned without a retry</returns>
-    private bool IsRetryAfterBeyondMaximum(HttpRequestMessage request,
-                                           string requestTarget,
-                                           int statusCode,
-                                           bool isIdempotent,
-                                           TimeSpan? retryAfter)
+    private bool IsNotRetried(HttpRequestMessage request,
+                              string requestTarget,
+                              HttpResponseMessage response,
+                              out TimeSpan? retryAfter)
     {
-        if (isIdempotent || retryAfter is not TimeSpan requested || requested.TotalMilliseconds <= MaxBackoffMilliseconds)
+        var statusCode = (int)response.StatusCode;
+
+        retryAfter = null;
+
+        if (IsNotProcessedStatusCode(response.StatusCode) == false)
+        {
+            LogNotRetried(request, requestTarget, statusCode.ToString(CultureInfo.InvariantCulture));
+
+            return true;
+        }
+
+        retryAfter = GetRetryAfter(response);
+
+        if (retryAfter is not TimeSpan requested || requested.TotalMilliseconds <= MaxBackoffMilliseconds)
         {
             return false;
         }
@@ -342,19 +353,14 @@ public class TransientHttpRetryHandler : DelegatingHandler
 
                 var statusCode = (int)response.StatusCode;
 
-                if (isIdempotent == false && IsNotProcessedStatusCode(response.StatusCode) == false)
-                {
-                    LogNotRetried(request, requestTarget, statusCode.ToString(CultureInfo.InvariantCulture));
+                TimeSpan? retryAfter = null;
 
-                    return response;
-                }
-
-                var retryAfter = GetRetryAfter(response);
-
-                if (IsRetryAfterBeyondMaximum(request, requestTarget, statusCode, isIdempotent, retryAfter))
+                if (isIdempotent == false && IsNotRetried(request, requestTarget, response, out retryAfter))
                 {
                     return response;
                 }
+
+                retryAfter ??= GetRetryAfter(response);
 
                 var delay = GetRetryDelay(attempt, retryAfter);
 

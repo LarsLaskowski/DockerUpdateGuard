@@ -13,3 +13,4 @@ are quoted in full.
 | 2026-10-24 18:30 | 3 Plan security delta | squad-security | APPROVED on Revised (1); follow-up issue #320 opened for Known gaps link, #321 TimeProvider (opus/medium · 10,936 tokens · 4 tool uses · 23 s · continued) |
 | 2026-10-24 18:30 | 4 Skeleton | Orchestrator | skipped: only private members change, tests drive SendAsync and compile on current code |
 | 2026-10-24 18:33 | 5 Tests first | squad-tester | 5 tests (AC1 x3 rows, AC2, AC5 log) written, confirmed failing (5 failed/57 passed); deferred to step 6: AC3 row, AC4, AC5 zero-retry (sonnet/medium · 102,317 tokens · 12 tool uses · 102 s) |
+| 2026-10-24 18:40 | 6 Implement | squad-dev | DONE: handler fix + event 3503 + docs; helper IsNotRetried added (Sonar S3776), 5 new tests green, gates green, coverage new 100%/overall 85.0% (sonnet/medium · usage pending) |
