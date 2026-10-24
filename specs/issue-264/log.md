@@ -19,3 +19,5 @@ are quoted in full.
 | 2026-10-24 10:26 | 8 Review | squad-reviewer | round 1 at dd7cb3a: 2 blocking (Scout whitespace next must end listing -> Dev+test; registries.md ApiBaseUrl sentence verbatim doc fix), 0 non-blocking (opus/medium · 99,464 tokens · 20 tool uses · 162 s) |
 | 2026-10-24 10:28 | 8 Fix round 1 | Orchestrator | registries.md ApiBaseUrl sentence applied verbatim (reviewer fix) |
 | 2026-10-24 10:29 | 8 Fix round 1 | squad-dev | Scout next link: IsNullOrWhiteSpace; build/tests green (sonnet/medium · 1,588 tokens · 2 tool uses · 109 s · continued from 6 Implement) |
+| 2026-10-24 10:29 | 8 Fix round 1 | squad-tester | whitespace-next Scout test added; 521+21 green; coverage 100% new (sonnet/medium · 4,054 tokens · 3 tool uses · 52 s · continued from 6 Coverage) |
+| 2026-10-24 10:31 | 7 Code check | Orchestrator | after fix round 1: Format 0/366, Analyzer 0, tests 521+21, Coverage gate PASS (100% new, 84.2%), scope/decision checks PASS; Sonar NOT CHECKED (no SONAR_TOKEN) |
