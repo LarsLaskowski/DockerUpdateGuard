@@ -672,6 +672,18 @@ public partial class OciRegistryClient : IRegistryMetadataClient
     }
 
     /// <summary>
+    /// Read the raw next-page link target from the Link header
+    /// </summary>
+    /// <param name="response">Current response</param>
+    /// <returns>Raw link target or null</returns>
+    private static string? GetNextTagsLink(HttpResponseMessage response)
+    {
+#pragma warning disable RH2003 // Skeleton body, replaced by the implementation
+        throw new NotImplementedException();
+#pragma warning restore RH2003
+    }
+
+    /// <summary>
     /// Create a structured failure result from an HTTP response
     /// </summary>
     /// <typeparam name="T">Result payload type</typeparam>

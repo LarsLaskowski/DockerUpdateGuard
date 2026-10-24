@@ -132,5 +132,20 @@ internal static partial class DockerHubClientLogging
                                                                   Exception exception,
                                                                   string imageReference);
 
+    /// <summary>
+    /// Log that a Docker Hub pagination stopped because the next-page link pointed to a different origin
+    /// </summary>
+    /// <param name="logger">Logger</param>
+    /// <param name="operationName">Listing operation name</param>
+    /// <param name="targetName">Account or repository the listing belongs to</param>
+    /// <param name="rejectedOrigin">Scheme, host and port of the rejected link</param>
+    [LoggerMessage(EventId = 3211,
+                   Level = LogLevel.Warning,
+                   Message = "Docker Hub {OperationName} pagination for {TargetName} stopped because the next-page link pointed to a different origin {RejectedOrigin}")]
+    public static partial void DockerHubPaginationLinkRejected(this ILogger logger,
+                                                               string operationName,
+                                                               string targetName,
+                                                               string rejectedOrigin);
+
     #endregion // Methods
 }

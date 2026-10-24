@@ -842,6 +842,32 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
     }
 
     /// <summary>
+    /// Determine the origin that Docker Hub API requests and their pagination links must stay on
+    /// </summary>
+    /// <returns>API base URI</returns>
+    private Uri GetApiBaseUri()
+    {
+#pragma warning disable RH2003 // Skeleton body, replaced by the implementation
+        throw new NotImplementedException();
+#pragma warning restore RH2003
+    }
+
+    /// <summary>
+    /// Send a GET request to an already resolved Docker Hub URI
+    /// </summary>
+    /// <param name="requestUri">Request URI</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>HTTP response</returns>
+    private async Task<HttpResponseMessage> SendGetAsync(Uri requestUri, CancellationToken cancellationToken)
+    {
+        await Task.CompletedTask.ConfigureAwait(false);
+
+#pragma warning disable RH2003 // Skeleton body, replaced by the implementation
+        throw new NotImplementedException();
+#pragma warning restore RH2003
+    }
+
+    /// <summary>
     /// Send an HTTP request while honoring the configured Docker Hub request parallelism limit
     /// </summary>
     /// <param name="request">Outbound HTTP request</param>
