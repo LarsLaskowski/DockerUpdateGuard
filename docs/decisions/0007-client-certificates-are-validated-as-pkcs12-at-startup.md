@@ -1,6 +1,6 @@
 # 0007: Client certificates are validated as PKCS#12 at startup
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-24
 - **Area:** Docker instances
 - **Source:** Issue #269
