@@ -173,3 +173,7 @@ returning results instead of throwing; the new code path cannot throw (fact 11).
 
 - A startup warning without Portainer traffic (record 0006, option 2).
 - Wiring a caller of `PortainerClient` (#280); trace spans for Portainer calls (#83).
+
+## Challenge notes
+
+1. (minor) When the Dev rewrites `docs/areas/container-actions.md` *Transport security* line 33, the new text must say that the warning only appears once something calls `PortainerClient`, which nothing does today (#280). It should also link to the existing statement at `container-actions.md:80-81`. Otherwise the area document reads as if operators with `AllowInsecureHttp: true` will already see the warning, while record 0006 (*Consequences*, first bullet) says they won't. Why minor: it is a wording instruction the Dev can follow without changing the plan.
