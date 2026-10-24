@@ -11,3 +11,4 @@ are quoted in full.
 | 2026-10-24 16:27 | 3 Plan security review | squad-security | CHANGES_REQUIRED: B1 SocketsHttpHandler resends body-less action POST (content: null) on reused connection; B2 area 'Logging and telemetry of external data' not listed; non-blocking N1-N4 (opus/medium · 50,963 tokens · 10 tool uses · 131 s) |
 | 2026-10-24 16:30 | 3 Plan revise | squad-lead | DONE: revised for DA minors + Security B1/B2: action sent with empty ByteArrayContent (AC10), buffering unchanged (AC7), area Logging added; follow-ups proposed: raw ex.Message, 429 Retry-After clamp on login (opus/medium · 69,421 tokens · 29 tool uses · 194 s) |
 | 2026-10-24 16:31 | 3 Plan security delta | squad-security | APPROVED (B1, B2 resolved); NB1/NB2 appended to plan.md as Security notes (opus/medium · 12,036 tokens · 3 tool uses · 31 s · continued) |
+| 2026-10-24 16:31 | 4 Skeleton | Orchestrator | skipped: plan adds no API (private/internal members only) |
