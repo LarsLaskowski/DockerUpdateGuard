@@ -85,6 +85,21 @@ public class PortainerClientTests
     /// </summary>
     private const string AdminUsername = "admin";
 
+    /// <summary>
+    /// Portainer base URL using plaintext HTTP
+    /// </summary>
+    private const string InsecureBaseUrl = "http://portainer.example.test";
+
+    /// <summary>
+    /// Portainer authentication endpoint using plaintext HTTP
+    /// </summary>
+    private const string InsecureAuthUrl = "http://portainer.example.test/api/auth";
+
+    /// <summary>
+    /// Event identifier of the plaintext HTTP warning
+    /// </summary>
+    private const int InsecureHttpEventId = 3311;
+
     #endregion // Constants
 
     #region Methods
@@ -886,6 +901,273 @@ public class PortainerClientTests
     }
 
     /// <summary>
+    /// Verify an http Portainer base URL logs the plaintext warning exactly once per Docker instance across calls
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task PortainerClientWithInsecureHttpLogsWarningOncePerInstanceAsync()
+    {
+        var handler = new SequenceHttpMessageHandler();
+        var logger = new TestLogger<PortainerClient>();
+
+        try
+        {
+            var client = new PortainerClient(CreateHttpClientFactory(handler), logger);
+            var instanceOptions = CreateInstanceOptions(InstanceName,
+                                                        options =>
+                                                        {
+                                                            options.BaseUrl = InsecureBaseUrl;
+                                                            options.AllowInsecureHttp = true;
+                                                            options.ApiToken = PatToken;
+                                                            options.EndpointId = EndpointId;
+                                                        });
+            var actionRequest = new PortainerActionRequest
+                                {
+                                    ActionName = RestartAction,
+                                    ResourceName = ContainerName,
+                                };
+
+            await client.GetCapabilityAsync(instanceOptions, CancellationToken.None)
+                        .ConfigureAwait(false);
+            await client.ExecuteActionAsync(instanceOptions, actionRequest, CancellationToken.None)
+                        .ConfigureAwait(false);
+
+            var warnings = logger.Entries.Where(entry => entry.EventId.Id == InsecureHttpEventId)
+                                         .ToList();
+
+            Assert.HasCount(1, warnings, "Two calls for the same Docker instance must log the plaintext HTTP warning exactly once");
+            Assert.AreEqual(LogLevel.Warning, warnings[0].LogLevel, "The plaintext HTTP entry must be a warning");
+            Assert.Contains(InstanceName,
+                            warnings[0].Message,
+                            "The plaintext HTTP warning must name the Docker instance");
+        }
+        finally
+        {
+            handler.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Verify two Docker instances with differently spelled http schemes each log their own plaintext warning
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task PortainerClientWithInsecureHttpForTwoInstancesLogsOneWarningPerInstanceAsync()
+    {
+        var handler = new SequenceHttpMessageHandler();
+        var logger = new TestLogger<PortainerClient>();
+
+        try
+        {
+            var client = new PortainerClient(CreateHttpClientFactory(handler), logger);
+            var lowerCaseInstance = CreateInstanceOptions("LowerCaseInstance",
+                                                          options =>
+                                                          {
+                                                              options.BaseUrl = InsecureBaseUrl;
+                                                              options.AllowInsecureHttp = true;
+                                                              options.ApiToken = PatToken;
+                                                              options.EndpointId = EndpointId;
+                                                          });
+            var upperCaseInstance = CreateInstanceOptions("UpperCaseInstance",
+                                                          options =>
+                                                          {
+                                                              options.BaseUrl = "HTTP://portainer.example.test";
+                                                              options.AllowInsecureHttp = true;
+                                                              options.ApiToken = PatToken;
+                                                              options.EndpointId = EndpointId;
+                                                          });
+
+            await client.GetCapabilityAsync(lowerCaseInstance, CancellationToken.None)
+                        .ConfigureAwait(false);
+            await client.GetCapabilityAsync(upperCaseInstance, CancellationToken.None)
+                        .ConfigureAwait(false);
+            await client.GetCapabilityAsync(lowerCaseInstance, CancellationToken.None)
+                        .ConfigureAwait(false);
+
+            var warnings = logger.Entries.Where(entry => entry.EventId.Id == InsecureHttpEventId)
+                                         .ToList();
+
+            Assert.HasCount(2, warnings, "Two Docker instances must log one plaintext HTTP warning each");
+            Assert.ContainsSingle(entry => entry.LogLevel == LogLevel.Warning && entry.Message.Contains("LowerCaseInstance", StringComparison.Ordinal),
+                                  warnings,
+                                  "The lower case http instance must log one warning naming itself");
+            Assert.ContainsSingle(entry => entry.LogLevel == LogLevel.Warning && entry.Message.Contains("UpperCaseInstance", StringComparison.Ordinal),
+                                  warnings,
+                                  "The upper case HTTP instance must log one warning naming itself");
+        }
+        finally
+        {
+            handler.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Verify an https base URL with AllowInsecureHttp enabled logs no plaintext warning
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task PortainerClientExecuteActionAsyncWithHttpsAndAllowInsecureHttpDoesNotLogInsecureWarningAsync()
+    {
+        var handler = new SequenceHttpMessageHandler();
+        var httpClient = new HttpClient(handler);
+        var logger = new TestLogger<PortainerClient>();
+
+        try
+        {
+            handler.AddJsonResponse(ContainersUrl, ContainerFoundJson);
+            handler.AddResponse(RestartActionUrl, new HttpResponseMessage(HttpStatusCode.NoContent));
+
+            var client = new PortainerClient(CreateHttpClientFactory(httpClient), logger);
+            var instanceOptions = CreateInstanceOptions(InstanceName,
+                                                        options =>
+                                                        {
+                                                            options.AllowInsecureHttp = true;
+                                                            options.ApiToken = PatToken;
+                                                            options.EndpointId = EndpointId;
+                                                        });
+            var actionRequest = new PortainerActionRequest
+                                {
+                                    ActionName = RestartAction,
+                                    ResourceName = ContainerName,
+                                };
+
+            var result = await client.ExecuteActionAsync(instanceOptions, actionRequest, CancellationToken.None)
+                                     .ConfigureAwait(false);
+
+            Assert.IsTrue(result.Succeeded, "The https action must succeed so that the request path was exercised");
+            Assert.DoesNotContain(entry => entry.EventId.Id == InsecureHttpEventId,
+                                  logger.Entries,
+                                  "An https base URL must not log the plaintext HTTP warning even with AllowInsecureHttp enabled");
+        }
+        finally
+        {
+            httpClient.Dispose();
+            handler.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Verify the plaintext warning contains neither the API token, the credentials nor the JWT
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task PortainerClientWithInsecureHttpWarningDoesNotContainSecretsAsync()
+    {
+        const string secretToken = "secret-api-token-4711";
+        const string secretUser = "secret-user-4711";
+        const string secretPassword = "secret-password-4711";
+        const string secretJwt = "secret-jwt-4711";
+
+        var handler = new SequenceHttpMessageHandler();
+        var logger = new TestLogger<PortainerClient>();
+
+        try
+        {
+            handler.AddJsonResponse(InsecureAuthUrl, $$"""{"jwt":"{{secretJwt}}"}""");
+
+            var client = new PortainerClient(CreateHttpClientFactory(handler), logger);
+            var tokenInstance = CreateInstanceOptions("TokenInstance",
+                                                      options =>
+                                                      {
+                                                          options.BaseUrl = InsecureBaseUrl;
+                                                          options.AllowInsecureHttp = true;
+                                                          options.ApiToken = secretToken;
+                                                          options.EndpointId = EndpointId;
+                                                      });
+            var loginInstance = CreateInstanceOptions("LoginInstance",
+                                                      options =>
+                                                      {
+                                                          options.BaseUrl = InsecureBaseUrl;
+                                                          options.AllowInsecureHttp = true;
+                                                          options.Username = secretUser;
+                                                          options.Password = secretPassword;
+                                                          options.EndpointId = EndpointId;
+                                                      });
+
+            await client.GetCapabilityAsync(tokenInstance, CancellationToken.None)
+                        .ConfigureAwait(false);
+            await client.GetCapabilityAsync(loginInstance, CancellationToken.None)
+                        .ConfigureAwait(false);
+
+            var warnings = logger.Entries.Where(entry => entry.EventId.Id == InsecureHttpEventId)
+                                         .ToList();
+
+            Assert.Contains(request => request.RequestUri == InsecureAuthUrl,
+                            handler.Requests,
+                            "The login instance must have logged in successfully so that a JWT exists");
+            Assert.HasCount(2, warnings, "Each instance must log the plaintext HTTP warning");
+
+            foreach (var warning in warnings)
+            {
+                Assert.DoesNotContain(secretToken, warning.Message, "The plaintext HTTP warning must not contain the API token");
+                Assert.DoesNotContain(secretUser, warning.Message, "The plaintext HTTP warning must not contain the username");
+                Assert.DoesNotContain(secretPassword, warning.Message, "The plaintext HTTP warning must not contain the password");
+                Assert.DoesNotContain(secretJwt, warning.Message, "The plaintext HTTP warning must not contain the JWT");
+            }
+        }
+        finally
+        {
+            handler.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Verify the plaintext warning is logged before the login request outcome is handled
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task PortainerClientGetCapabilityAsyncWithInsecureHttpAndFailedLoginLogsWarningBeforeAuthFailureAsync()
+    {
+        var handler = new SequenceHttpMessageHandler();
+        var httpClient = new HttpClient(handler);
+        var logger = new TestLogger<PortainerClient>();
+
+        try
+        {
+            handler.AddResponse(InsecureAuthUrl, new HttpResponseMessage(HttpStatusCode.Unauthorized));
+
+            var client = new PortainerClient(CreateHttpClientFactory(httpClient), logger);
+            var instanceOptions = CreateInstanceOptions(InstanceName,
+                                                        options =>
+                                                        {
+                                                            options.BaseUrl = InsecureBaseUrl;
+                                                            options.AllowInsecureHttp = true;
+                                                            options.Username = AdminUsername;
+                                                            options.Password = "wrong-password";
+                                                            options.EndpointId = EndpointId;
+                                                        });
+
+            await client.GetCapabilityAsync(instanceOptions, CancellationToken.None)
+                        .ConfigureAwait(false);
+
+            var warningIndex = -1;
+            var authFailedIndex = -1;
+
+            for (var index = 0; index < logger.Entries.Count; index++)
+            {
+                if (warningIndex < 0 && logger.Entries[index].EventId.Id == InsecureHttpEventId)
+                {
+                    warningIndex = index;
+                }
+
+                if (authFailedIndex < 0 && logger.Entries[index].EventId.Id == 3303)
+                {
+                    authFailedIndex = index;
+                }
+            }
+
+            Assert.IsGreaterThanOrEqualTo(0, warningIndex, "The plaintext HTTP warning must be logged although the login fails");
+            Assert.IsGreaterThanOrEqualTo(0, authFailedIndex, "The failed login must log the authentication failure");
+            Assert.IsLessThan(authFailedIndex, warningIndex, "The plaintext HTTP warning must precede the authentication failure entry");
+        }
+        finally
+        {
+            httpClient.Dispose();
+            handler.Dispose();
+        }
+    }
+
+    /// <summary>
     /// Create Docker instance options configured for Portainer integration tests
     /// </summary>
     /// <param name="name">Docker instance display name</param>
@@ -908,6 +1190,21 @@ public class PortainerClientTests
                    Enabled = true,
                    Portainer = portainerOptions,
                };
+    }
+
+    /// <summary>
+    /// Create an <see cref="IHttpClientFactory"/> stub returning a new HTTP client on the shared handler for every call,
+    /// because the Portainer client disposes the client it receives
+    /// </summary>
+    /// <param name="handler">Shared message handler</param>
+    /// <returns>HTTP client factory stub</returns>
+    private static IHttpClientFactory CreateHttpClientFactory(SequenceHttpMessageHandler handler)
+    {
+        var httpClientFactory = Substitute.For<IHttpClientFactory>();
+
+        httpClientFactory.CreateClient(PortainerClient.HttpClientName).Returns(_ => new HttpClient(handler, false));
+
+        return httpClientFactory;
     }
 
     /// <summary>
