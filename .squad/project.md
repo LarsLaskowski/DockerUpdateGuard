@@ -18,7 +18,7 @@ plan (`.squad/routing.md`, *Tiers*, which also says when a change is tier `secur
 - **Docker Engine access:** `DockerInstanceClient` (HTTP, TCP, Unix socket, named pipe transports); the
   mounted Docker socket is root-equivalent on the host.
 - **Container actions:** `PortainerClient` restart/redeploy/update actions and the UI that triggers them.
-- **External process execution:** `TrivyVulnerabilityProvider` via `IProcessRunner` (argument construction,
+- **External process execution:** `TrivyVulnerabilityProvider` via `IProcessRunner` (argument and environment construction,
   untrusted image references, JSON parsing of stdout).
 - **Registry and Docker Hub calls:** `DockerHubClient`, `OciRegistryClient`, `DockerScoutVulnerabilityProvider`
   (untrusted JSON, pagination caps, token caching), `TransientHttpRetryHandler`.

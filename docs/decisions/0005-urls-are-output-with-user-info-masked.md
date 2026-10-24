@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-10-24
 - **Area:** Telemetry
-- **Source:** Issue #295, Issue #304
+- **Source:** Issue #295, Issue #304, Issue #307
 - **Supersedes:** —
 
 ## Context
@@ -24,6 +24,13 @@ read the part before it as the host, so Go's resolver error names the would-be u
 (`lookup admin: no such host`). Measured with Trivy v0.58.1, the last line of its error output carries `user:***@` for
 `https://user:secret@…`, `token@` for `https://token@…`, `"https://admin#secret@…"` for `https://admin:#secret@…`
 and the full raw URL with `invalid URL escape "%zz"` for `https://user:p%zz@…`.
+
+The same URL was also the `--server` argument of the Trivy process (issue #307). A process's arguments
+(`/proc/<pid>/cmdline`) are readable by every user who can see the process — on the host, every host user, since a
+container's processes are host processes — while its environment (`/proc/<pid>/environ`) is readable only by its own
+user and root; measured on Linux as a second UID: the argument was readable, the environment was "Permission
+denied". Trivy (source of v0.58.1, `pkg/flag/options.go`, `BindEnv`) binds every flag to `TRIVY_<FLAG>`, so
+`TRIVY_SERVER` sets the server address exactly as `--server` does, and `TRIVY_TOKEN` the server token.
 
 ## Options considered
 
@@ -58,6 +65,23 @@ For Trivy's error output:
     would never see the credential in a URL, but how Trivy applies the header was not measured, and the header would
     still stand on the command line; a change of the integration beyond this bug.
 
+For the Trivy command line:
+
+12. **Pass the server address in the process environment (`TRIVY_SERVER`) instead of `--server`** — every
+    configuration that works today keeps working unchanged, the credential leaves the argument list, and the process
+    runner gains a general way to hand a child process values that must not stand on its command line. The address
+    stays readable to processes of the same user and to root, which can read the configuration anyway.
+13. **A dedicated token setting (`--token` / `--token-header`)** — a new configuration option, so a feature rather
+    than this fix, and on its own it would put the token on the command line too. Trivy already reads `TRIVY_TOKEN`
+    from the environment the application passes on, so an operator can use a Trivy server started with `--token`
+    without it.
+14. **Strip the user info from `--server` and send it as an `Authorization` header in `TRIVY_CUSTOM_HEADERS`** —
+    also keeps the credential off the command line, but rebuilds what Go's HTTP client already does with user info,
+    and how Trivy splits a list value read from the environment was not measured.
+15. **Write the address into a Trivy configuration file (`--config`)** — a file holding the secret on disk that
+    must be created with restricted permissions and removed after every scan, for no gain over the environment.
+16. **Document the limitation** — leaves the credential visible to every host user.
+
 ## Decision
 
 Option 1. A value with exactly one `@` that the platform's URI parser accepts as `scheme://` with non-empty user info
@@ -69,6 +93,10 @@ without `@` is output unchanged. The rules and where they apply are specified in
 
 For Trivy's error output, option 7: when `TrivyBaseUrl` contains an `@`, a failed Trivy run reports a fixed text in
 place of the last line of its error output, in the log and in the result message; the rule is in
+[Vulnerabilities](../areas/vulnerabilities.md#trivy).
+
+For the Trivy command line, option 12: the Trivy process gets the server address as `TRIVY_SERVER` in its environment,
+added to the environment it inherits from the application, and no `--server` argument; the rule is in
 [Vulnerabilities](../areas/vulnerabilities.md#trivy).
 
 ## Consequences
@@ -83,7 +111,14 @@ place of the last line of its error output, in the log and in the result message
 - Trivy's error output reaches the log and the pages only for a `TrivyBaseUrl` without `@`, unchanged; for one with
   an `@` (also a path such as `https://host/@x`) it is withheld, so a misconfigured basic-auth setup has to be
   diagnosed by running Trivy by hand. Free text from other sources is not masked.
-- The credential still stands on Trivy's command line (`--server`), readable by processes that may list the
-  container's processes; not covered here.
+- The Trivy server credential no longer stands on Trivy's command line; it is readable from the Trivy process's
+  environment by the application's own user and by root, as the configuration it comes from already is. Trivy still
+  repeats it in its error output, so the withholding above stays.
+- A Trivy executable that does not read `TRIVY_SERVER` (a custom `TrivyExecutablePath`) would scan without a server,
+  downloading the vulnerability database itself; the bundled Trivy v0.58.1 reads it. A token setting of our own is
+  not added: `TRIVY_TOKEN` in the application's environment reaches Trivy already.
+- The Trivy process inherits the application's whole environment, other secrets supplied as environment variables
+  included. It is not reduced to an allow-list: the process runs as the application's user, which can read the
+  application's own environment and configuration anyway, so an allow-list would draw no boundary against it.
 - Rows stored before the change are masked on display and rewritten masked by the next synchronization; scan-run
   error messages stored before either change are not rewritten.

@@ -6,7 +6,7 @@ The image runs the DockerUpdateGuard web UI and background workers. It connects 
 - one or more Docker Engine endpoints for runtime discovery and resource sampling
 - optional Docker Hub, Portainer, Trivy, and OTLP endpoints
 
-The image bundles the Trivy CLI. When `Provider=Trivy` is configured, image scans run through `trivy image --server <TrivyBaseUrl>` in client mode: the CLI pulls and analyzes the image locally and uses the configured Trivy server as the vulnerability database backend. The Trivy cache is written to `/tmp/trivy` (configurable via the `TRIVY_CACHE_DIR` environment variable).
+The image bundles the Trivy CLI. When `Provider=Trivy` is configured, image scans run through `trivy image` in client mode against `<TrivyBaseUrl>`, passed to the CLI as `TRIVY_SERVER` in its environment: the CLI pulls and analyzes the image locally and uses the configured Trivy server as the vulnerability database backend. The Trivy cache is written to `/tmp/trivy` (configurable via the `TRIVY_CACHE_DIR` environment variable).
 
 The container listens on port `8080`.
 

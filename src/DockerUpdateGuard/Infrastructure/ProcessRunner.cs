@@ -12,11 +12,13 @@ public class ProcessRunner : IProcessRunner
     /// <inheritdoc/>
     public async Task<ProcessExecutionResult> RunAsync(string fileName,
                                                        IReadOnlyList<string> arguments,
+                                                       IReadOnlyDictionary<string, string> environmentVariables,
                                                        TimeSpan timeout,
                                                        CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(fileName);
         ArgumentNullException.ThrowIfNull(arguments);
+        ArgumentNullException.ThrowIfNull(environmentVariables);
 
         var startInfo = new ProcessStartInfo
                         {
@@ -30,6 +32,11 @@ public class ProcessRunner : IProcessRunner
         foreach (var argument in arguments)
         {
             startInfo.ArgumentList.Add(argument);
+        }
+
+        foreach (var environmentVariable in environmentVariables)
+        {
+            startInfo.Environment[environmentVariable.Key] = environmentVariable.Value;
         }
 
         using (var process = new Process())
