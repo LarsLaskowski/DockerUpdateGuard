@@ -1301,7 +1301,7 @@ public class PortainerClientTests
     {
         var injected = new HttpRequestException(error, exceptionMessage);
         var logger = new TestLogger<PortainerClient>();
-        var result = await RunFailingActionAsync(() => injected, CancellationToken.None, logger).ConfigureAwait(false);
+        var result = await RunFailingActionAsync(() => injected, logger, CancellationToken.None).ConfigureAwait(false);
 
         Assert.IsFalse(result.Succeeded, "A transport failure must fail the action");
         Assert.AreEqual("Action 'restart' failed: connection failed", result.Message, "A transport failure must report the fixed connection-failed reason");
@@ -1320,7 +1320,7 @@ public class PortainerClientTests
     {
         var injected = new HttpRequestException(HttpRequestError.ConnectionError, "Connection refused (portainer.internal.test:9443)");
         var logger = new TestLogger<PortainerClient>();
-        var result = await RunFailingCapabilityAsync(() => injected, CancellationToken.None, logger).ConfigureAwait(false);
+        var result = await RunFailingCapabilityAsync(() => injected, logger, CancellationToken.None).ConfigureAwait(false);
 
         Assert.IsTrue(result.IsConfigured, "A failed capability check must still be reported as configured");
         Assert.IsFalse(result.SupportsActions, "A failed capability check must not support actions");
@@ -1338,7 +1338,7 @@ public class PortainerClientTests
     [TestMethod]
     public async Task PortainerClientExecuteActionAsyncWhenRequestTimesOutReportsTimedOutAsync()
     {
-        var result = await RunFailingActionAsync(CreateTimeoutException, CancellationToken.None, new TestLogger<PortainerClient>()).ConfigureAwait(false);
+        var result = await RunFailingActionAsync(CreateTimeoutException, new TestLogger<PortainerClient>(), CancellationToken.None).ConfigureAwait(false);
 
         Assert.IsFalse(result.Succeeded, "A timed-out request must fail the action");
         Assert.AreEqual("Action 'restart' failed: timed out after 15 seconds", result.Message, "A timeout must report the fixed timed-out reason");
@@ -1351,7 +1351,7 @@ public class PortainerClientTests
     [TestMethod]
     public async Task PortainerClientGetCapabilityAsyncWhenRequestTimesOutReportsTimedOutAsync()
     {
-        var result = await RunFailingCapabilityAsync(CreateTimeoutException, CancellationToken.None, new TestLogger<PortainerClient>()).ConfigureAwait(false);
+        var result = await RunFailingCapabilityAsync(CreateTimeoutException, new TestLogger<PortainerClient>(), CancellationToken.None).ConfigureAwait(false);
 
         Assert.IsFalse(result.SupportsActions, "A timed-out capability check must not support actions");
         Assert.AreEqual("Portainer connection error: timed out after 15 seconds", result.Message, "A timeout must report the fixed timed-out reason");
@@ -1369,7 +1369,7 @@ public class PortainerClientTests
         await cts.CancelAsync().ConfigureAwait(false);
 
         var token = cts.Token;
-        var result = await RunFailingActionAsync(() => new TaskCanceledException("A task was canceled.", null, token), token, new TestLogger<PortainerClient>()).ConfigureAwait(false);
+        var result = await RunFailingActionAsync(() => new TaskCanceledException("A task was canceled.", null, token), new TestLogger<PortainerClient>(), token).ConfigureAwait(false);
 
         Assert.IsFalse(result.Succeeded, "A cancelled action must fail the result");
         Assert.AreEqual("Action 'restart' failed: cancelled", result.Message, "A cancelled caller token must report the fixed cancelled reason");
@@ -1387,7 +1387,7 @@ public class PortainerClientTests
         await cts.CancelAsync().ConfigureAwait(false);
 
         var token = cts.Token;
-        var result = await RunFailingCapabilityAsync(() => new TaskCanceledException("A task was canceled.", null, token), token, new TestLogger<PortainerClient>()).ConfigureAwait(false);
+        var result = await RunFailingCapabilityAsync(() => new TaskCanceledException("A task was canceled.", null, token), new TestLogger<PortainerClient>(), token).ConfigureAwait(false);
 
         Assert.IsFalse(result.SupportsActions, "A cancelled capability check must not support actions");
         Assert.AreEqual("Portainer connection error: cancelled", result.Message, "A cancelled caller token must report the fixed cancelled reason");
@@ -1429,7 +1429,7 @@ public class PortainerClientTests
     [TestMethod]
     public async Task PortainerClientExecuteActionAsyncWhenUnexpectedExceptionReportsUnexpectedErrorAsync()
     {
-        var result = await RunFailingActionAsync(CreateUnexpectedException, CancellationToken.None, new TestLogger<PortainerClient>()).ConfigureAwait(false);
+        var result = await RunFailingActionAsync(CreateUnexpectedException, new TestLogger<PortainerClient>(), CancellationToken.None).ConfigureAwait(false);
 
         Assert.IsFalse(result.Succeeded, "An unexpected exception must fail the action");
         Assert.AreEqual("Action 'restart' failed: unexpected error", result.Message, "An unexpected exception must report the fixed unexpected-error reason");
@@ -1443,7 +1443,7 @@ public class PortainerClientTests
     [TestMethod]
     public async Task PortainerClientGetCapabilityAsyncWhenUnexpectedExceptionReportsUnexpectedErrorAsync()
     {
-        var result = await RunFailingCapabilityAsync(CreateUnexpectedException, CancellationToken.None, new TestLogger<PortainerClient>()).ConfigureAwait(false);
+        var result = await RunFailingCapabilityAsync(CreateUnexpectedException, new TestLogger<PortainerClient>(), CancellationToken.None).ConfigureAwait(false);
 
         Assert.IsFalse(result.SupportsActions, "An unexpected exception must not support actions");
         Assert.AreEqual("Portainer connection error: unexpected error", result.Message, "An unexpected exception must report the fixed unexpected-error reason");
@@ -1499,12 +1499,12 @@ public class PortainerClientTests
     /// Execute an action whose first request throws the exception of the factory
     /// </summary>
     /// <param name="failureFactory">Factory of the exception thrown by the first request</param>
-    /// <param name="cancellationToken">Token passed to the client</param>
     /// <param name="logger">Logger that captures the entries</param>
+    /// <param name="cancellationToken">Token passed to the client</param>
     /// <returns>Action result</returns>
     private static async Task<PortainerActionResult> RunFailingActionAsync(Func<Exception> failureFactory,
-                                                                           CancellationToken cancellationToken,
-                                                                           TestLogger<PortainerClient> logger)
+                                                                           TestLogger<PortainerClient> logger,
+                                                                           CancellationToken cancellationToken)
     {
         using var handler = new RetryProbeHttpMessageHandler([null], HttpStatusCode.OK)
                             {
@@ -1522,12 +1522,12 @@ public class PortainerClientTests
     /// Check a capability whose first request throws the exception of the factory
     /// </summary>
     /// <param name="failureFactory">Factory of the exception thrown by the first request</param>
-    /// <param name="cancellationToken">Token passed to the client</param>
     /// <param name="logger">Logger that captures the entries</param>
+    /// <param name="cancellationToken">Token passed to the client</param>
     /// <returns>Capability data</returns>
     private static async Task<PortainerCapabilityData> RunFailingCapabilityAsync(Func<Exception> failureFactory,
-                                                                                 CancellationToken cancellationToken,
-                                                                                 TestLogger<PortainerClient> logger)
+                                                                                 TestLogger<PortainerClient> logger,
+                                                                                 CancellationToken cancellationToken)
     {
         using var handler = new RetryProbeHttpMessageHandler([null], HttpStatusCode.OK)
                             {
