@@ -9,3 +9,4 @@ are quoted in full.
 | 2026-10-24 14:49 | 2 Plan | Lead | DONE: tier standard, areas touched (TLS relaxations, container actions, secrets, logging); record 0006 Proposed (opus/medium · 106,159 tokens · 25 tool uses · 201 s) |
 | 2026-10-24 14:50 | 2 Plan challenge | Devil's Advocate | 0 major, 1 minor (area doc wording); appended as Challenge notes (opus/medium · 46,813 tokens · 6 tool uses · 43 s) |
 | 2026-10-24 14:50 | 3 Plan security review | Security | APPROVED, no findings (opus/medium · 44,102 tokens · 5 tool uses · 58 s) |
+| 2026-10-24 14:50 | 4 Skeleton | Orchestrator | skipped: tests use only existing public API and filter EventId 3311 by number; the changed signature is private |
