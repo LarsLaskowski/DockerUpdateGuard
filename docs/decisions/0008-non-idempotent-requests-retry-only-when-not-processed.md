@@ -1,6 +1,6 @@
 # 0008: Non-idempotent requests are retried only when they cannot have been processed
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-24
 - **Area:** Registries
 - **Source:** Issue #273

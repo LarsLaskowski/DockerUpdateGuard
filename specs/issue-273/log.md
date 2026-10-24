@@ -19,3 +19,5 @@ are quoted in full.
 | 2026-10-24 16:50 | 8 Verbatim doc fix | Orchestrator | Applied reviewer's verbatim fix to docs/areas/registries.md (non-idempotent request always carries a body); diff contains nothing else |
 | 2026-10-24 16:52 | 9 PR approval | squad-lead | APPROVED conditional: (1) LogNotRetried helper accepted; (2) add two AC8 guard tests via Tester delta round; (3) NB2 residual stated in PR body, no issue; (4) file both follow-up issues (opus/medium · 59,491 tokens · 10 tool uses · 81 s) |
 | 2026-10-24 16:56 | 8 AC8 guard tests | squad-tester | DONE: two guard tests added; gates green (657+21 tests, coverage new 100%, analyzer PASS) (sonnet/medium · 3,820 tokens · 2 tool uses · 126 s · continued) |
+| 2026-10-24 16:57 | 8 Review round 2 (delta) | squad-reviewer | APPROVE: both round-1 findings fixed, no new defect (opus/medium · 3,962 tokens · 2 tool uses · 22 s · continued) |
+| 2026-10-24 16:57 | 9 PR approval | Orchestrator | checklist met on head cd3392e; record 0008 set Accepted, decision-check PASS |

@@ -60,5 +60,5 @@ once in the [area document](../areas/README.md) of the record's area, and the re
 | [0005](0005-urls-are-output-with-user-info-masked.md) | URLs are output with their user info masked | Accepted | 2026-10-24 |
 | [0006](0006-insecure-portainer-http-warns-at-first-request.md) | Insecure Portainer HTTP warns at the first request per instance | Accepted | 2026-10-24 |
 | [0007](0007-client-certificates-are-validated-as-pkcs12-at-startup.md) | Client certificates are validated as PKCS#12 at startup | Accepted | 2026-10-24 |
-| [0008](0008-non-idempotent-requests-retry-only-when-not-processed.md) | Non-idempotent requests are retried only when they cannot have been processed | Proposed | 2026-10-24 |
+| [0008](0008-non-idempotent-requests-retry-only-when-not-processed.md) | Non-idempotent requests are retried only when they cannot have been processed | Accepted | 2026-10-24 |
 <!-- project:end index -->
