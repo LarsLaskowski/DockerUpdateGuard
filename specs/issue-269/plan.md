@@ -275,3 +275,13 @@ Files of the change no unit test can cover: none.
 - The client certificate added to a pooled handler is not disposed when the pool is disposed (existing, minor; no
   issue proposed).
 - The reload gap itself (#281) and the `/app/certs` trust-store import (#285) stay with their issues.
+
+## Challenge notes
+
+1. `minor`: No test checks that a valid certificate is actually attached on `https`. The existing `DockerInstanceClientCreateHttpClientWithClientCertificateReturnsConfiguredClient` (`DockerInstanceClientTests.cs:571-614`) checks only `BaseAddress`. A build that loads the certificate but never adds it to `SslOptions.ClientCertificates` would pass AC5, AC7 and AC9. Instruction for the Tester: extend that test, or add `DockerInstanceClientCreateHttpClientWithValidPfxOnHttpsAddsClientCertificate`, to read the `SocketsHttpHandler` through reflection and assert that `SslOptions.ClientCertificates` holds exactly one certificate with `HasPrivateKey == true`. Also assert that the collection is null or empty in the AC9 plain-`http` test.
+2. `minor`: The plan's *Areas* text for `docs/areas/hosting.md` *Validation* says validation "reads that one file". It reads one file per enabled instance that sets `CertificatePath`, at startup and again on every configuration reload. Instruction for the Lead or Dev: write it as "validation reads the configured client-certificate file of each enabled instance, at startup and on every reload".
+
+## Security notes
+
+1. Startup now reads one operator-chosen file with no size limit. If the path points at a device or a FIFO (`/dev/zero`, a named pipe), startup or a reload hangs or runs out of memory. The plan accepts this on purpose (operator-trusted configuration, *Security considerations* item 1), and Security agrees it is not a defect of this change. One sentence about it in the area document's *TLS options* would be enough; no code is needed.
+2. Facts 13-16 can be marked confirmed in the plan, citing Security's measurement (.NET SDK 10.0.402, OpenSSL 3.0.13).
