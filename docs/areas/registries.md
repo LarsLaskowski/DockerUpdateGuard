@@ -163,7 +163,7 @@ retry policy and the failure model.
   of that value, the total again capped at 30 seconds.
 - Every method is retried, including requests with a body (the body is buffered so it can be resent).
 - When the retries are used up the last response is returned to the caller, or the last error is raised.
-- Each retry is logged as a warning with the method, the URL without its query, the status or error, the attempt
+- Each retry is logged as a warning with the method, the URL without its user info and query, the status or error, the attempt
   number and the wait.
 - `DockerUpdateGuard:DockerHub:RequestTimeoutSeconds` (default 30, range 1–300) is the total time one request may
   take including all retries and waits, for Docker Hub, other registries and the release feeds. A request that runs

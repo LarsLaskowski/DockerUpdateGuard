@@ -23,7 +23,7 @@ on the snapshots and samples it produces.
   `DockerUpdateGuard:Scanning:DiscoveryIntervalMinutes` tick, and at the start of every runtime container scan and
   every resource-statistics collection (schedules: [Scan engine](scan-engine.md)). A synchronization:
   - creates a record for each new name, with registration source *configuration file*;
-  - updates endpoint URI (trimmed `BaseUrl`), connection kind, enabled flag and `SkipCertificateValidation` of each
+  - updates endpoint URI (trimmed `BaseUrl`, its user info masked as `***`), connection kind, enabled flag and `SkipCertificateValidation` of each
     existing one;
   - **deletes** every stored instance whose name is no longer configured, immediately and without waiting for
     retention, together with its scan runs, container snapshots, resource samples, Portainer endpoint and action
@@ -147,6 +147,8 @@ on the snapshots and samples it produces.
 - A non-success Engine answer is reported as *failed* with the instance name, the HTTP status code and the response
   body. Unexpected errors are reported with the instance name and the error message. These messages can end up in a
   scan run's error message and are shown in the UI.
+- A message or log entry that names an endpoint shows its URL with the user info replaced by `***`; connecting still
+  uses the configured URL.
 - A resource collection that fails for an instance (list request failed or timed out, or any stats request timed out
   or broke) records **no** samples for that instance in that round and logs a warning; other instances are not
   affected.

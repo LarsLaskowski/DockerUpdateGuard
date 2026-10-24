@@ -115,7 +115,8 @@ never their values.
 - The UI never shows configured secrets: the Docker Hub token, Portainer credentials and token and the database
   connection string are neither displayed nor sent to the browser. Pages show only whether an integration is
   configured, and the Docker Hub user name as the title of the My Images list.
-- Docker instance endpoints are shown as configured (see *Known gaps*).
+- Docker instance endpoints are shown with the user info of their URL replaced by `***`
+  (`https://***@docker.example:2376/`), also for rows stored before the masking existed.
 
 ## Limits and errors
 
@@ -139,15 +140,13 @@ never their values.
 - A detail route with a well-formed identifier that does not exist (for example a deleted observed image) keeps
   showing the loading skeleton instead of a not-found state.
   Tracked in [#40](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/40).
-- Docker instance endpoints are not masked: an endpoint that embeds credentials as user information in its URL is
-  shown with them. Tracked in [#295](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/295).
 - The Scan History and dashboard descriptions mention discovery and cleanup runs, although those jobs record no scan
   runs ([Scan engine](scan-engine.md)).
   Tracked in [#278](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/278).
 
 ## Related decisions
 
-None yet.
+- [0005](../decisions/0005-urls-are-output-with-user-info-masked.md) — URLs are output with their user info masked.
 
 ## Not here
 

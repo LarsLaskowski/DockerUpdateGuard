@@ -2,6 +2,7 @@ using System.Net.Http.Headers;
 using System.Text.Json;
 
 using DockerUpdateGuard.Configuration;
+using DockerUpdateGuard.Infrastructure;
 using DockerUpdateGuard.Portainer.Data;
 using DockerUpdateGuard.Portainer.Interfaces;
 
@@ -150,6 +151,7 @@ public partial class PortainerClient : IPortainerClient
             if (string.IsNullOrWhiteSpace(options.Username) == false
                 && string.IsNullOrWhiteSpace(options.Password) == false)
             {
+                var maskedBaseUrl = UrlRedaction.RedactUserInfo(options.BaseUrl);
                 var loginBody = new PortainerLoginRequest(options.Username, options.Password);
                 using var loginResponse = await client.PostAsJsonAsync("/api/auth", loginBody, cancellationToken).ConfigureAwait(false);
 
@@ -163,16 +165,16 @@ public partial class PortainerClient : IPortainerClient
                     }
                     else
                     {
-                        _logger.PortainerAuthFailed(options.BaseUrl ?? string.Empty);
+                        _logger.PortainerAuthFailed(maskedBaseUrl);
 
-                        throw new InvalidOperationException($"Portainer authentication succeeded but returned no JWT token for '{options.BaseUrl}'");
+                        throw new InvalidOperationException($"Portainer authentication succeeded but returned no JWT token for '{maskedBaseUrl}'");
                     }
                 }
                 else
                 {
-                    _logger.PortainerAuthFailed(options.BaseUrl ?? string.Empty);
+                    _logger.PortainerAuthFailed(maskedBaseUrl);
 
-                    throw new InvalidOperationException($"Portainer authentication failed with HTTP {(int)loginResponse.StatusCode} for '{options.BaseUrl}'");
+                    throw new InvalidOperationException($"Portainer authentication failed with HTTP {(int)loginResponse.StatusCode} for '{maskedBaseUrl}'");
                 }
             }
 

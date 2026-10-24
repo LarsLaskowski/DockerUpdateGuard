@@ -471,7 +471,7 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
 
         if (string.IsNullOrWhiteSpace(pipePath))
         {
-            throw new InvalidOperationException($"The Docker named pipe URI '{pipeUri}' does not contain a pipe name");
+            throw new InvalidOperationException($"The Docker named pipe URI '{UrlRedaction.RedactUserInfo(pipeUri)}' does not contain a pipe name");
         }
 
         return pipePath;
@@ -980,9 +980,9 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
 
         if (TryCreateEngineUri(instanceOptions, out var engineUri) == false || engineUri is null)
         {
-            _logger.DockerInstanceEndpointUnsupported(instanceOptions.Name, instanceOptions.BaseUrl);
+            _logger.DockerInstanceEndpointUnsupported(instanceOptions.Name, UrlRedaction.RedactUserInfo(instanceOptions.BaseUrl));
 
-            return ExternalOperationResult<IReadOnlyList<RuntimeContainerDescriptor>>.Unsupported($"Docker instance '{instanceOptions.Name}' uses an unsupported endpoint '{instanceOptions.BaseUrl}'");
+            return ExternalOperationResult<IReadOnlyList<RuntimeContainerDescriptor>>.Unsupported($"Docker instance '{instanceOptions.Name}' uses an unsupported endpoint '{UrlRedaction.RedactUserInfo(instanceOptions.BaseUrl)}'");
         }
 
         using var activity = DockerUpdateGuardTelemetry.ActivitySource.StartActivity(TelemetryActivityNames.DockerEngineRequest, ActivityKind.Client);
@@ -1060,7 +1060,7 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
 
         if (TryCreateEngineUri(instanceOptions, out var engineUri) == false || engineUri is null)
         {
-            return ExternalOperationResult<IReadOnlyList<RuntimeContainerResourceDescriptor>>.Unsupported($"Docker instance '{instanceOptions.Name}' uses an unsupported endpoint '{instanceOptions.BaseUrl}'");
+            return ExternalOperationResult<IReadOnlyList<RuntimeContainerResourceDescriptor>>.Unsupported($"Docker instance '{instanceOptions.Name}' uses an unsupported endpoint '{UrlRedaction.RedactUserInfo(instanceOptions.BaseUrl)}'");
         }
 
         try
@@ -1149,7 +1149,7 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
 
         if (TryCreateEngineUri(instanceOptions, out var engineUri) == false || engineUri is null)
         {
-            return ExternalOperationResult<DockerImageInspectData>.Unsupported($"Docker instance '{instanceOptions.Name}' uses an unsupported endpoint '{instanceOptions.BaseUrl}'");
+            return ExternalOperationResult<DockerImageInspectData>.Unsupported($"Docker instance '{instanceOptions.Name}' uses an unsupported endpoint '{UrlRedaction.RedactUserInfo(instanceOptions.BaseUrl)}'");
         }
 
         try
@@ -1186,7 +1186,7 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
 
         if (TryCreateEngineUri(instanceOptions, out var engineUri) == false || engineUri is null)
         {
-            return ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>.Unsupported($"Docker instance '{instanceOptions.Name}' uses an unsupported endpoint '{instanceOptions.BaseUrl}'");
+            return ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>.Unsupported($"Docker instance '{instanceOptions.Name}' uses an unsupported endpoint '{UrlRedaction.RedactUserInfo(instanceOptions.BaseUrl)}'");
         }
 
         try
@@ -1220,7 +1220,7 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
 
         if (TryCreateEngineUri(instanceOptions, out var engineUri) == false || engineUri is null)
         {
-            return ExternalOperationResult<long>.Unsupported($"Docker instance '{instanceOptions.Name}' uses an unsupported endpoint '{instanceOptions.BaseUrl}'");
+            return ExternalOperationResult<long>.Unsupported($"Docker instance '{instanceOptions.Name}' uses an unsupported endpoint '{UrlRedaction.RedactUserInfo(instanceOptions.BaseUrl)}'");
         }
 
         try

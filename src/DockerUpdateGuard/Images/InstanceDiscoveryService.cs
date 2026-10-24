@@ -2,6 +2,7 @@ using DockerUpdateGuard.Configuration;
 using DockerUpdateGuard.Data;
 using DockerUpdateGuard.Data.Entities;
 using DockerUpdateGuard.Images.Interfaces;
+using DockerUpdateGuard.Infrastructure;
 
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -106,7 +107,7 @@ public class InstanceDiscoveryService : IInstanceDiscoveryService
             existingInstances.Add(existingInstance);
         }
 
-        existingInstance.EndpointUri = configuredInstance.BaseUrl.Trim();
+        existingInstance.EndpointUri = UrlRedaction.RedactUserInfo(configuredInstance.BaseUrl.Trim());
         existingInstance.ConnectionKind = MapConnectionKind(configuredInstance);
         existingInstance.IsEnabled = configuredInstance.Enabled;
         existingInstance.SkipCertificateValidation = configuredInstance.SkipCertificateValidation;
@@ -115,7 +116,7 @@ public class InstanceDiscoveryService : IInstanceDiscoveryService
         if (configuredInstance.Enabled
             && existingInstance.ConnectionKind == DockerConnectionKind.NotSet)
         {
-            _logger.DockerInstanceConfigurationUnsupported(configuredInstance.Name, configuredInstance.BaseUrl);
+            _logger.DockerInstanceConfigurationUnsupported(configuredInstance.Name, UrlRedaction.RedactUserInfo(configuredInstance.BaseUrl));
         }
 
         SynchronizePortainerEndpoint(existingInstance, configuredInstance);
@@ -132,6 +133,7 @@ public class InstanceDiscoveryService : IInstanceDiscoveryService
         {
             if (existingInstance.PortainerEndpoint is not null)
             {
+                existingInstance.PortainerEndpoint.BaseUrl = UrlRedaction.RedactUserInfo(existingInstance.PortainerEndpoint.BaseUrl);
                 existingInstance.PortainerEndpoint.IsEnabled = false;
                 existingInstance.PortainerEndpoint.UpdatedAtUtc = DateTimeOffset.UtcNow;
             }
@@ -152,7 +154,7 @@ public class InstanceDiscoveryService : IInstanceDiscoveryService
         }
 
         existingInstance.PortainerEndpoint.Name = $"{existingInstance.Name} Portainer";
-        existingInstance.PortainerEndpoint.BaseUrl = configuredInstance.Portainer.BaseUrl?.Trim() ?? string.Empty;
+        existingInstance.PortainerEndpoint.BaseUrl = UrlRedaction.RedactUserInfo(configuredInstance.Portainer.BaseUrl?.Trim());
         existingInstance.PortainerEndpoint.ExternalEndpointId = configuredInstance.Portainer.EndpointId;
         existingInstance.PortainerEndpoint.IsEnabled = true;
         existingInstance.PortainerEndpoint.UpdatedAtUtc = DateTimeOffset.UtcNow;

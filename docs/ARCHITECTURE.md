@@ -399,7 +399,9 @@ it links:
   `SkipCertificateValidation` (Docker instances) and `AllowInsecureHttp`
   (Portainer) exist for trusted/self-signed/local setups; how each is
   validated and reported is in [Docker instances](areas/docker-instances.md)
-  and [Container actions](areas/container-actions.md).
+  and [Container actions](areas/container-actions.md). URLs with user info
+  are logged, stored and shown with it masked as `***`
+  ([Telemetry](areas/telemetry.md), [record 0005](decisions/0005-urls-are-output-with-user-info-masked.md)).
 - **Pagination stays on its origin.** `DockerHubClient`, `OciRegistryClient`
   and `DockerScoutVulnerabilityProvider` follow a next-page link only on the
   origin of the listing (`Infrastructure\PaginationLinkGuard`), so a remote

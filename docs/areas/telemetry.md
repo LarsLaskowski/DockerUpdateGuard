@@ -102,8 +102,12 @@ Every exported signal carries the same resource:
   nor the database connection string. Credentials travel only in request headers, and headers are not recorded.
 - Database statements are logged without parameter values.
 - What logs and spans may carry about external systems: configured instance names, image references, configured base
-  URLs, the Docker Hub account name, HTTP methods and status codes, the scheme, host and port of a rejected
-  next-page link, counts, durations and error messages from external tools. Retry log lines carry the request URL without its query string.
+  URLs with any user info replaced by `***`, the Docker Hub account name, HTTP methods and status codes, the scheme,
+  host and port of a rejected next-page link, counts, durations and error messages from external tools. Retry log
+  lines carry the request URL without its user info and query string.
+- HTTP client spans (`url.full`) and the HTTP client log lines carry scheme, host, port and path only, with query
+  values as `*`, unless the platform's URI redaction is switched off
+  (`DOTNET_SYSTEM_NET_HTTP_DISABLEURIREDACTION`). Decision: [0005](../decisions/0005-urls-are-output-with-user-info-masked.md).
 
 ## Limits and errors
 
@@ -123,13 +127,10 @@ Every exported signal carries the same resource:
 - `dockerupdateguard.runtime_containers` counts every container that still has a stored snapshot, including
   containers that have since stopped or been removed, until cleanup deletes their snapshots; it does not count only
   the currently known containers. Tracked in [#294](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/294).
-- Configured base URLs (Docker instance, Portainer) are logged verbatim, and retry log lines keep the user-info part
-  of a URL, so credentials embedded in a URL (`https://user:secret@host`) reach the logs.
-  Tracked in [#295](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/295).
 
 ## Related decisions
 
-None yet.
+- [0005](../decisions/0005-urls-are-output-with-user-info-masked.md) — URLs are output with their user info masked.
 
 ## Not here
 
