@@ -46,6 +46,11 @@ The exception itself is still logged with the failure. The reasons are listed in
 - A result no longer tells *why* a connection failed (refused, name resolution, TLS); the operator reads that in the
   log entry of the failure, which carries the exception.
 - A new failure mode the mapping does not know reads "unexpected error" until it gets its own reason.
+- The authentication failure still names the configured Portainer host and port (only the user info is masked), so
+  once #280 shows these results, anyone who reaches the UI can read that host from a failed login. This is accepted:
+  the same masked base URL is already stored as the Portainer endpoint and Docker instance endpoints are shown on the
+  Docker Instances page ([0005](0005-urls-are-output-with-user-info-masked.md), chosen so operators see which host is
+  meant); the host is configuration, not a secret, and hiding it would make the one actionable failure unreadable.
 - Caller cancellation is reported as a result with the reason "cancelled", not thrown; #280 decides what an action
   run records for it.
 - The other integration clients (Docker Engine, registries, release feeds, vulnerability providers) still put
