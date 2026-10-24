@@ -71,7 +71,7 @@ transport security; the UI is the intended caller of the actions.
   the action, the container name and the Docker instance name.
 - Portainer requests go through the shared retry of transient HTTP failures described in
   [Registries](registries.md). The login and the action request are `POST`s, which are retried only when they cannot
-  have been processed: after a connection error before anything was sent, and on a 429 whose `Retry-After` asks for at most 30 seconds. The action request carries an
+  have been processed: after a connection error before anything was sent, and on a 429 whose `Retry-After` is missing or asks for at most 30 seconds. The action request carries an
   empty body so the runtime does not resend it on its own either. A requested action therefore reaches Portainer's
   processing at most once; a 5xx, 408, timeout, broken connection or a 429 with a longer `Retry-After` ends it *failed* after one attempt, and the
   operator repeats it deliberately.

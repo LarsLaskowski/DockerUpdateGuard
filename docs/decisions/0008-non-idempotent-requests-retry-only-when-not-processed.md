@@ -57,8 +57,8 @@ the retry waits, cancelled the wait instead, so the caller saw a timeout rather 
 
 Option 1: `TransientHttpRetryHandler` retries `GET`, `HEAD`, `OPTIONS`, `TRACE`, `PUT` and `DELETE` as before, and
 any other method only after an `HttpRequestException` whose `HttpRequestError` is `NameResolutionError`,
-`ConnectionError`, `SecureConnectionError` or `ProxyTunnelError`, or after a 429 whose `Retry-After` asks for no more
-than the maximum backoff (option 7). The resulting behavior is described in
+`ConnectionError`, `SecureConnectionError` or `ProxyTunnelError`, or after a 429 whose `Retry-After` is missing or asks
+for no more than the maximum backoff (option 7). The resulting behavior is described in
 [Registries](../areas/registries.md), *Retry of transient HTTP failures*.
 
 ## Consequences

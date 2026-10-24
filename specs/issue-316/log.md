@@ -16,3 +16,4 @@ are quoted in full.
 | 2026-10-24 18:40 | 6 Implement | squad-dev | DONE: handler fix + event 3503 + docs; helper IsNotRetried added (Sonar S3776), 5 new tests green, gates green, coverage new 100%/overall 85.0% (sonnet/medium · 98,711 tokens · 17 tool uses · 417 s) |
 | 2026-10-24 18:40 | 6 Coverage | squad-tester | 3 deferred tests written (AC3 row, AC4, AC5 zero-retry), 65/65 pass (sonnet/medium · 2,707 tokens · 2 tool uses · 29 s · continued) |
 | 2026-10-24 18:42 | 7 Code check | Orchestrator | format/build/675+21 tests/coverage new 100% overall 85.0%/analyzer 0/scope/decision PASS; Sonar gate NOT CHECKED (no SONAR_TOKEN) -> step 11; main already in head |
+| 2026-10-24 18:44 | 8 Review round 1 | squad-reviewer | BLOCKING 1 (verbatim doc: 429 without Retry-After is retried; README, container-actions, 0008), NON-BLOCKING 0 (opus/medium · 56,593 tokens · 9 tool uses · 54 s) |
