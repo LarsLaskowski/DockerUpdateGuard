@@ -43,15 +43,17 @@ public partial class TransientHttpRetryHandlerTests
     /// <param name="capturedDelays">Optional list that receives the backoff delays</param>
     /// <param name="request">Optional request; a GET request is used when null</param>
     /// <param name="nextJitterMilliseconds">Optional jitter provider; no jitter is applied when null</param>
+    /// <param name="logger">Optional logger that captures the handler's log entries; a new logger is used when null</param>
     /// <returns>Resulting response</returns>
     private static async Task<HttpResponseMessage> SendThroughRetryHandlerAsync(int retryCount,
                                                                                 RetryProbeHttpMessageHandler probe,
                                                                                 List<TimeSpan>? capturedDelays = null,
                                                                                 HttpRequestMessage? request = null,
-                                                                                Func<int, int>? nextJitterMilliseconds = null)
+                                                                                Func<int, int>? nextJitterMilliseconds = null,
+                                                                                TestLogger<TransientHttpRetryHandler>? logger = null)
     {
         var handler = new TransientHttpRetryHandler(CreateOptions(retryCount),
-                                                    new TestLogger<TransientHttpRetryHandler>(),
+                                                    logger ?? new TestLogger<TransientHttpRetryHandler>(),
                                                     (delay, cancellationToken) =>
                                                     {
                                                         capturedDelays?.Add(delay);
@@ -419,6 +421,81 @@ public partial class TransientHttpRetryHandlerTests
         Assert.AreEqual(2,
                         probe.AttemptCount,
                         "The retry handler must resend the buffered request content on retry");
+    }
+
+    /// <summary>
+    /// Verify the transient status retry log names the request without user info and query string
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task TransientHttpRetryHandlerTransientStatusLogOmitsUserInfoAndQueryAsync()
+    {
+        var probe = new RetryProbeHttpMessageHandler([HttpStatusCode.ServiceUnavailable, HttpStatusCode.OK], HttpStatusCode.OK);
+        var logger = new TestLogger<TransientHttpRetryHandler>();
+        using var request = new HttpRequestMessage(HttpMethod.Get, "https://user:secret@registry.example.test/v2/path?token=x");
+
+        using var response = await SendThroughRetryHandlerAsync(2, probe, request: request, logger: logger).ConfigureAwait(false);
+
+        var entry = logger.Entries.Single(candidate => candidate.EventId.Id == 3500);
+
+        Assert.Contains("https://***@registry.example.test/v2/path",
+                        entry.Message,
+                        "The transient status retry log must name the request with its user info masked");
+        Assert.DoesNotContain("user", entry.Message, "The transient status retry log must not contain the user name");
+        Assert.DoesNotContain("secret", entry.Message, "The transient status retry log must not contain the password");
+        Assert.DoesNotContain("token=x", entry.Message, "The transient status retry log must not contain the query string");
+        Assert.AreEqual("https://user:secret@registry.example.test/v2/path?token=x",
+                        probe.LastRequestUri,
+                        "The request the inner handler receives must keep its user info and query so that connecting is unchanged");
+    }
+
+    /// <summary>
+    /// Verify the transient exception retry log names the request without user info and query string
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task TransientHttpRetryHandlerTransientExceptionLogOmitsUserInfoAndQueryAsync()
+    {
+        var probe = new RetryProbeHttpMessageHandler([null, HttpStatusCode.OK], HttpStatusCode.OK);
+        var logger = new TestLogger<TransientHttpRetryHandler>();
+        using var request = new HttpRequestMessage(HttpMethod.Get, "https://user:secret@registry.example.test/v2/path?token=x");
+
+        using var response = await SendThroughRetryHandlerAsync(2, probe, request: request, logger: logger).ConfigureAwait(false);
+
+        var entry = logger.Entries.Single(candidate => candidate.EventId.Id == 3501);
+
+        Assert.Contains("https://***@registry.example.test/v2/path",
+                        entry.Message,
+                        "The transient exception retry log must name the request with its user info masked");
+        Assert.DoesNotContain("user", entry.Message, "The transient exception retry log must not contain the user name");
+        Assert.DoesNotContain("secret", entry.Message, "The transient exception retry log must not contain the password");
+        Assert.DoesNotContain("token=x", entry.Message, "The transient exception retry log must not contain the query string");
+        Assert.AreEqual("https://user:secret@registry.example.test/v2/path?token=x",
+                        probe.LastRequestUri,
+                        "The request the inner handler receives must keep its user info and query so that connecting is unchanged");
+    }
+
+    /// <summary>
+    /// Verify the retry log of a relative request URI drops the query string and masks user info
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task TransientHttpRetryHandlerRelativeRequestUriLogOmitsUserInfoAndQueryAsync()
+    {
+        var probe = new RetryProbeHttpMessageHandler([HttpStatusCode.ServiceUnavailable, HttpStatusCode.OK], HttpStatusCode.OK);
+        var logger = new TestLogger<TransientHttpRetryHandler>();
+        using var request = new HttpRequestMessage(HttpMethod.Get, new Uri("/user:secret@host/v2/path?token=x#frag", UriKind.Relative));
+
+        using var response = await SendThroughRetryHandlerAsync(2, probe, request: request, logger: logger).ConfigureAwait(false);
+
+        var entry = logger.Entries.Single(candidate => candidate.EventId.Id == 3500);
+
+        Assert.Contains("***@host/v2/path",
+                        entry.Message,
+                        "The retry log of a relative request URI must name the target with its user info masked");
+        Assert.DoesNotContain("secret", entry.Message, "The retry log must not contain the password of a relative request URI");
+        Assert.DoesNotContain("token=x", entry.Message, "The retry log must not contain the query string of a relative request URI");
+        Assert.DoesNotContain("frag", entry.Message, "The retry log must not contain the fragment of a relative request URI");
     }
 
     #endregion // Methods

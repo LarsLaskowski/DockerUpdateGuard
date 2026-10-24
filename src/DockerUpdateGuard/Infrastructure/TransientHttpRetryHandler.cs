@@ -128,10 +128,13 @@ public class TransientHttpRetryHandler : DelegatingHandler
 
         if (requestUri.IsAbsoluteUri)
         {
-            return requestUri.GetLeftPart(UriPartial.Path);
+            return UrlRedaction.RedactUserInfo(requestUri.GetLeftPart(UriPartial.Path));
         }
 
-        return requestUri.OriginalString;
+        var originalString = requestUri.OriginalString;
+        var queryOrFragment = originalString.IndexOfAny(['?', '#']);
+
+        return UrlRedaction.RedactUserInfo(queryOrFragment < 0 ? originalString : originalString[..queryOrFragment]);
     }
 
     #endregion // Static methods

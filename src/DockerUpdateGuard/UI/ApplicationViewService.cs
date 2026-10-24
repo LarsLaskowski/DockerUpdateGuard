@@ -5,6 +5,7 @@ using DockerUpdateGuard.Data.Queries;
 using DockerUpdateGuard.Images.Data;
 using DockerUpdateGuard.Images.Helper;
 using DockerUpdateGuard.Images.Interfaces;
+using DockerUpdateGuard.Infrastructure;
 
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -2098,7 +2099,7 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                                                                                    {
                                                                                        Id = entity.Id,
                                                                                        Name = entity.Name,
-                                                                                       EndpointUri = entity.EndpointUri,
+                                                                                       EndpointUri = UrlRedaction.RedactUserInfo(entity.EndpointUri),
                                                                                        ConnectionKind = entity.ConnectionKind.ToString(),
                                                                                        PortainerEnabled = entity.PortainerEndpoint is not null && entity.PortainerEndpoint.IsEnabled,
                                                                                        LatestScanStatus = GetLatestRuntimeScanStatus(entity.Id),
@@ -2145,7 +2146,7 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                                                        {
                                                            Id = dockerInstance.Id,
                                                            Name = dockerInstance.Name,
-                                                           EndpointUri = dockerInstance.EndpointUri,
+                                                           EndpointUri = UrlRedaction.RedactUserInfo(dockerInstance.EndpointUri),
                                                            ConnectionKind = dockerInstance.ConnectionKind.ToString(),
                                                            PortainerEnabled = dockerInstance.PortainerEndpoint is not null && dockerInstance.PortainerEndpoint.IsEnabled,
                                                            LatestScanStatus = GetLatestRuntimeScanStatus(dockerInstanceId),

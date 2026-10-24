@@ -17,8 +17,9 @@ transport security; the UI is the intended caller of the actions.
 - A Docker instance has at most one Portainer endpoint. It is synchronized together with the instance
   ([Docker instances](docker-instances.md)):
   - when Portainer is enabled, the stored endpoint is created or updated with the name `<instance name> Portainer`,
-    the trimmed `BaseUrl` and the configured `EndpointId`, and marked enabled;
-  - when Portainer is disabled, an existing stored endpoint is kept but marked disabled;
+    the trimmed `BaseUrl` (its user info masked as `***`) and the configured `EndpointId`, and marked enabled;
+  - when Portainer is disabled, an existing stored endpoint is kept but marked disabled, and its stored base URL is rewritten with the user info
+    masked;
   - when the Docker instance is removed from configuration, its Portainer endpoint and action runs are deleted with it.
 - Credentials (`Username`, `Password`, `ApiToken`) are never stored in the database; they are read from configuration
   at the time of each call.
@@ -39,7 +40,7 @@ transport security; the UI is the intended caller of the actions.
 - Otherwise `Username` and `Password` are posted to Portainer's authentication endpoint and the returned JWT is used as
   a bearer token. The login is repeated for every operation; tokens are not cached.
 - A login that answers non-success, or answers success without a token, ends the operation with an authentication
-  error that names the Portainer base URL and the HTTP status code; credentials never appear in it or in the log.
+  error that names the Portainer base URL (user info masked as `***`) and the HTTP status code; credentials never appear in it or in the log.
 
 ### Capability check
 
@@ -85,7 +86,7 @@ transport security; the UI is the intended caller of the actions.
   absolute `http`/`https` URI; `BaseUrl` is `http` without `AllowInsecureHttp: true`; neither `ApiToken` nor both
   `Username` and `Password` are set; `RequestTimeoutSeconds` is outside 1–300.
 - A disabled Portainer section is not validated at all; its values may be incomplete.
-- Error messages and log entries name the Docker instance, the Portainer base URL, the action, the container name and
+- Error messages and log entries name the Docker instance, the Portainer base URL (user info masked as `***`), the action, the container name and
   HTTP status codes. They never contain the password, the API token or the JWT.
 
 ### Known gaps
