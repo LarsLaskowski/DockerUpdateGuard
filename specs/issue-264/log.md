@@ -11,3 +11,4 @@ are quoted in full.
 | 2026-10-24 10:01 | 3 Plan security review | squad-security | APPROVED, no blocking; 4 non-blocking notes appended verbatim as Security notes (opus/medium · 64,769 tokens · 10 tool uses · 149 s) |
 | 2026-10-24 10:01 | 2 Plan | Orchestrator | challenge notes (2 minor) and security notes appended verbatim; no revision needed |
 | 2026-10-24 10:05 | 4 Skeleton | squad-dev | skeleton built, Build passes (0 errors, 6 expected Sonar warnings on stubs); RH2003 pragmas around NotImplemented bodies; GetNextTagsUri kept until implement (sonnet/medium · 89,727 tokens · 9 tool uses · 228 s) |
+| 2026-10-24 10:13 | 5 Tests first | squad-tester | 33 new test cases fail on skeleton (confirmed by orchestrator: 33 failed/480 passed); 2 deferred: OCI same-origin Link, Hub stop-condition pin (sonnet/medium · 152,837 tokens · 25 tool uses · 393 s) |
