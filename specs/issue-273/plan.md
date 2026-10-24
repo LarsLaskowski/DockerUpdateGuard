@@ -3,7 +3,7 @@
 Source: Issue #273
 Status: Draft
 Tier: standard — the retry decision of `TransientHttpRetryHandler` changes behavior in two security areas, but the retry rule is no guard against an attacker (no authentication, secret handling, allow-list or exposure changes), so it creates, changes or removes no security control.
-Security areas touched: Registries and Docker Hub calls (`TransientHttpRetryHandler`, the Docker Hub login through it); Container actions (`PortainerClient` login and action requests through it)
+Security areas touched: Registries and Docker Hub calls (`TransientHttpRetryHandler`, the Docker Hub login through it); Container actions (`PortainerClient` login and action requests through it, the action request's empty body); Logging and telemetry of external data (the new Debug entry 3502 logs the masked request target: Portainer endpoint and container IDs, registry repository paths)
 
 ## Problem / root cause
 
@@ -37,6 +37,10 @@ connection, although the server may already have acted: one `restart` can run up
 | 12 | `docs/ARCHITECTURE.md` describes the retry policy | `ARCHITECTURE.md:241-245` only says where the handler is attached and links Registries for the policy; nothing there becomes untrue | refuted |
 | 13 | Today no component calls `PortainerClient.ExecuteActionAsync`, so the double execution is latent until #280 | `docs/areas/container-actions.md:85-86`; `grep ExecuteActionAsync src/DockerUpdateGuard` outside `Portainer/` finds no caller | confirmed |
 | 14 | `README.md` describes the retry policy in the `RetryCount` row | `README.md:156` | confirmed |
+| 15 | Below the retry handler, `SocketsHttpHandler` itself resends a body-less `POST` on a new connection when a reused pooled connection is closed after the server read the request; a `POST` with a body (also an empty `ByteArrayContent`) is sent once and fails with `ResponseEnded` | Security's scratch measurement (.NET 10, `SocketsHttpHandler` against a `TcpListener`): first `POST` 200 keep-alive, second read then closed — `content: null` → server read it twice, client got 200 (also with `Connection: close`); `StringContent("x")` → once, `ResponseEnded`; `ByteArrayContent([])` → once, `ResponseEnded`. The action `POST` (`PortainerClient.cs:352`) follows the `GET` of `FindContainerIdAsync` (`:338`) on the same client, so it normally reuses a connection | confirmed |
+| 16 | The login `POST` (`PostAsJsonAsync`, `PortainerClient.cs:170`) sends `JsonContent`, whose length is unknown up front; today the handler's `LoadIntoBufferAsync` (`TransientHttpRetryHandler.cs:189-192`) makes it go out with `Content-Length` instead of chunked | Devil's Advocate's reading; `JsonContent.TryComputeLength` returns `false`, a buffered `HttpContent` reports the buffer length | confirmed |
+| 17 | A connect timeout or `HttpClient.Timeout` surfaces as `TaskCanceledException` (inner `TimeoutException`), not `HttpRequestException`, so `IsTransientException` (`:98-101`, top-level type only) retries it for no method, today and after the change | `TransientHttpRetryHandler.cs:98-101`; Security's measurement (`ConnectTimeout` 300 ms → `TaskCanceledException`, inner `TimeoutException`); no client sets `ConnectTimeout` (`grep ConnectTimeout src/DockerUpdateGuard`: no hit) | confirmed |
+| 18 | `ObservedRequest` (recorded by `SequenceHttpMessageHandler`) holds method, URI and auth headers only, no content | `src/Tests/DockerUpdateGuard.Tests/Data/ObservedRequest.cs`; `SequenceHttpMessageHandler.cs:99-107` | confirmed |
 
 ## Acceptance criteria
 
@@ -45,10 +49,11 @@ connection, although the server may already have acted: one `restart` can run up
 - [ ] AC3: A `POST` whose send throws `HttpRequestException` with `HttpRequestError` `ResponseEnded`, `InvalidResponse`, `HttpProtocolError` or `Unknown` (also one built without an error), or a `TimeoutException`, is sent exactly once and that exception reaches the caller.
 - [ ] AC4: A `POST` answered 429 is retried as before: with `Retry-After: 7` (delta) the wait is 7 s, without it the exponential backoff (500 ms for the first retry, no jitter); 429 then 200 returns 200 after 2 attempts.
 - [ ] AC5: `PATCH` and an unknown method (`new HttpMethod("LOCK")`) behave like `POST` (sent once on 503 and on `ResponseEnded`, retried on `ConnectionError`); `GET`, `HEAD`, `OPTIONS`, `TRACE`, `PUT` and `DELETE` are retried on 503 and on `ResponseEnded` as before; all existing tests except the one rewritten in AC6 pass unchanged.
-- [ ] AC6: A `POST` with a body retried after a `ConnectionError` is resent with the identical body.
-- [ ] AC7: With `RetryCount` 0 the request body is not buffered by the handler; with `RetryCount` above 0 a body is buffered as today.
+- [ ] AC6: A `POST` with a body that can be serialized only once, retried after a `ConnectionError`, is resent with the identical body, and the body is serialized exactly once.
+- [ ] AC7: A request body is buffered whenever `request.Content` is not null, with `RetryCount` 0 as with 2: a body of unknown length reaches the inner handler with a `Content-Length` equal to its byte length.
 - [ ] AC8: When a non-idempotent request gets a transient outcome that an idempotent request would have retried (attempts left, not cancelled) but the rule forbids it, one Debug entry, EventId 3502, is logged: `Transient HTTP outcome {Outcome} for {Method} {RequestTarget} not retried: the method is not idempotent`, with `{Outcome}` the status code number (`503`) or the `HttpRequestError` name (`ResponseEnded`) or `Timeout`, and `{RequestTarget}` from `GetRequestTarget` (no user info, no query). No entry when the retries are already used up or `RetryCount` is 0.
 - [ ] AC9: A Portainer action whose action request answers 503 (with a 200 queued behind it) is sent exactly once through the real `TransientHttpRetryHandler` and reported failed with a message containing `HTTP 503`.
+- [ ] AC10: The Portainer action request (`POST …/containers/{id}/{action}`) reaches the inner handler with a non-null, empty body (`Content-Length` 0), so `SocketsHttpHandler` never resends it on its own (fact 15).
 
 ## Tests per criterion
 
@@ -59,19 +64,20 @@ connection, although the server may already have acted: one `restart` can run up
 | AC3 | `TransientHttpRetryHandlerDoesNotRetryPostOnResponseEndedAsync` (`[DataRow]` `ResponseEnded`, `InvalidResponse`, `HttpProtocolError`, `Unknown`); `TransientHttpRetryHandlerDoesNotRetryPostOnPlainHttpRequestExceptionAsync`; `TransientHttpRetryHandlerDoesNotRetryPostOnTimeoutAsync` | same |
 | AC4 | `TransientHttpRetryHandlerRetriesPostOnTooManyRequestsAsync` (`[DataRow]` with and without `Retry-After`) | same |
 | AC5 | `TransientHttpRetryHandlerTreatsNonIdempotentMethodLikePostAsync` (`[DataRow]` `PATCH`, `LOCK`); `TransientHttpRetryHandlerRetriesIdempotentMethodOnServerErrorAndResponseEndedAsync` (`[DataRow]` the six methods; 503, then `ResponseEnded`, then 200 → 3 attempts) | same |
-| AC6 | `TransientHttpRetryHandlerBuffersAndRetriesRequestWithContentAsync` (rewritten: POST with body, `ConnectionError` then 200, both recorded bodies equal the sent body) | same |
-| AC7 | `TransientHttpRetryHandlerWithZeroRetryCountDoesNotBufferContentAsync`; `TransientHttpRetryHandlerWithRetryCountBuffersContentAsync` | same |
+| AC6 | `TransientHttpRetryHandlerBuffersAndRetriesRequestWithContentAsync` (rewritten: POST with a `CountingHttpContent` that throws on a second `SerializeToStreamAsync`, `ConnectionError` then 200; both recorded bodies equal the sent body, serialization count 1 — a `StringContent` would pass without buffering) | same |
+| AC7 | `TransientHttpRetryHandlerBuffersContentOfUnknownLengthAsync` (`[DataRow]` `RetryCount` 0 and 2; `CountingHttpContent` whose `TryComputeLength` returns `false`; the probe records `Content.Headers.ContentLength`) | same |
 | AC8 | `TransientHttpRetryHandlerLogsDebugWhenPostIsNotRetriedOnServerErrorAsync` (POST to `https://user:secret@…/path?token=x`, 503: one 3502 entry at Debug containing `POST`, `503`, the masked target, not `secret`/`token=x`; no 3500 entry); `TransientHttpRetryHandlerLogsDebugWhenPostIsNotRetriedOnResponseEndedAsync` (outcome `ResponseEnded`, no 3501 entry); `TransientHttpRetryHandlerWithZeroRetryCountDoesNotLogNotRetriedAsync` | same |
 | AC9 | `PortainerClientExecuteActionAsyncWhenActionRequestAnswersServiceUnavailableExecutesOnceAndFailsAsync` | `src/Tests/DockerUpdateGuard.Tests/PortainerClientTests.cs` |
+| AC10 | `PortainerClientExecuteActionAsyncSendsActionRequestWithEmptyContentAsync` (the recorded action request has content, `Content-Length` 0) | same |
 
-All of AC1–AC9 fail on the current code (AC1, AC3, AC5-non-idempotent, AC9 by extra attempts; AC2 and AC6 only once the probe can throw a typed error — AC2 passes today for the retry count, so it may be *deferred* to step 6 if it cannot fail; AC7 and AC8 by buffering and the missing entry).
+AC1, AC3, AC5 (non-idempotent rows), AC8, AC9 and AC10 fail on the current code (extra attempts, missing entry, `content: null`). AC2 and AC6 need the probe's typed failures; AC2 passes today for the retry count, so it may be *deferred* to step 6. AC7 pins today's buffering against the change (DA minor 1) and passes today: a regression guard, not a red test.
 
 ## Approach
 
 In `TransientHttpRetryHandler.SendAsync`:
 
-1. Read `retryCount` first; buffer `request.Content` only when it is not null **and** `retryCount > 0` (with 0 no retry
-   is possible). Compute `var isIdempotent = IsIdempotentMethod(request.Method);` once.
+1. Buffering stays as it is (`request.Content` not null → `LoadIntoBufferAsync`, any `RetryCount`), so `JsonContent`
+   keeps its `Content-Length`. Compute `var isIdempotent = IsIdempotentMethod(request.Method);` once.
 2. Response path: after `if (IsTransientStatusCode(...) == false || attempt >= retryCount) return response;` add
    `if (isIdempotent == false && IsNotProcessedStatusCode(response.StatusCode) == false)` → log
    `NonIdempotentRequestNotRetried(method, requestTarget, ((int)statusCode).ToString(CultureInfo.InvariantCulture))`
@@ -89,10 +95,17 @@ In `TransientHttpRetryHandler.SendAsync`:
 5. Backoff, jitter, `Retry-After`, `RetryCount`, the warnings 3500/3501 (wording unchanged) and the total timeouts stay
    as they are. The debug entry carries no exception and no exception message.
 
-Test helpers (Tester's, `Helper/`): give `RetryProbeHttpMessageHandler` a settable failure factory (default: today's
-`new HttpRequestException("Simulated transient transport failure")`, so existing tests are unchanged) and a list of the
-request bodies it received; add a counting `HttpContent` (`CountingHttpContent`, counts `SerializeToStreamAsync`
-calls) for AC7. The Portainer test builds `new HttpClient(new TransientHttpRetryHandler(options, logger, no-op delay,
+In `PortainerClient.ExecuteActionAsync` (`PortainerClient.cs:352`): send the action with an empty body instead of
+`content: null` — `using var actionContent = new ByteArrayContent([]);` passed to `PostAsync` — with a one-line comment
+that a body-less request would be resent by `SocketsHttpHandler` on a reused connection. `ByteArrayContent` sets no
+`Content-Type`; the Docker restart/stop/start endpoints take no body.
+
+Test helpers (Tester's): give `RetryProbeHttpMessageHandler` a settable failure factory (default: today's
+`new HttpRequestException("Simulated transient transport failure")`, so existing tests are unchanged) and lists of the
+request bodies and `Content-Length` values it received; add `Helper/CountingHttpContent.cs` (counts
+`SerializeToStreamAsync` calls, can throw on a second one, can report an unknown length) for AC6 and AC7; extend
+`Data/ObservedRequest.cs` with `HasContent` and `ContentLength`, filled in `SequenceHttpMessageHandler`, for AC10.
+The Portainer test builds `new HttpClient(new TransientHttpRetryHandler(options, logger, no-op delay,
 _ => 0) { InnerHandler = sequenceHandler })` with `RetryCount` 2.
 
 No new user-visible output besides the debug log line fixed in AC8.
@@ -105,17 +118,21 @@ No new user-visible output besides the debug log line fixed in AC8.
    login unprotected.
 4. **Also retry `HttpRequestError.Unknown`** — lost: the measurement (fact 6) gives `Unknown` both for a connection
    closed before the request was read and for one reset after the whole body was read.
-5. **Keep buffering unconditional** (the issue's "buffer only when a retry is possible" read as moot because a `POST`
-   can be retried on a connection error) — lost to buffering only when `RetryCount > 0`, the one case in which no retry
-   of any method is possible; cheap and keeps the issue's intent.
+5. **Buffer only when `RetryCount > 0`** (the issue's "buffer only when a retry is possible") — lost: with
+   `RetryCount` 0 the Portainer login's `JsonContent` would go out chunked, and some reverse proxies reject chunked
+   request bodies (411); buffering a small login body costs nothing (fact 16, Challenge 1).
+6. **The handler gives every body-less non-idempotent request an empty body** — lost: it rewrites callers' requests
+   (and adds `Content-Length: 0` to custom methods) for the single body-less `POST` there is; record 0008 states the
+   assumption, so a new body-less `POST` is caught in review.
 
 ## Affected projects and types
 
 | Project | Type / file | Change |
 | ------- | ----------- | ------ |
-| `DockerUpdateGuard` | `Infrastructure/TransientHttpRetryHandler.cs` | method rule, conditional buffering, debug log call |
+| `DockerUpdateGuard` | `Infrastructure/TransientHttpRetryHandler.cs` | method rule, debug log call |
 | `DockerUpdateGuard` | `Infrastructure/TransientHttpRetryHandlerLogging.cs` | new Debug message 3502 |
-| `DockerUpdateGuard.Tests` | `TransientHttpRetryHandlerTests.cs`, `PortainerClientTests.cs`, `Helper/RetryProbeHttpMessageHandler.cs`, `Helper/CountingHttpContent.cs` (new) | tests and helpers (Tester) |
+| `DockerUpdateGuard` | `Portainer/PortainerClient.cs` | action sent with an empty `ByteArrayContent` |
+| `DockerUpdateGuard.Tests` | `TransientHttpRetryHandlerTests.cs`, `PortainerClientTests.cs`, `Helper/RetryProbeHttpMessageHandler.cs`, `Helper/SequenceHttpMessageHandler.cs`, `Data/ObservedRequest.cs`, `Helper/CountingHttpContent.cs` (new) | tests and helpers (Tester) |
 
 ## Signatures (for the Dev's skeleton)
 
@@ -132,10 +149,12 @@ unchanged constructor and `SendAsync`):
 
 - `src/Tests/DockerUpdateGuard.Tests/TransientHttpRetryHandlerTests.cs`
 - `src/Tests/DockerUpdateGuard.Tests/PortainerClientTests.cs`
-- helpers: `src/Tests/DockerUpdateGuard.Tests/Helper/RetryProbeHttpMessageHandler.cs` (extended),
+- helpers: `src/Tests/DockerUpdateGuard.Tests/Helper/RetryProbeHttpMessageHandler.cs` and
+  `Helper/SequenceHttpMessageHandler.cs` (extended), `Data/ObservedRequest.cs` (two init properties),
   `src/Tests/DockerUpdateGuard.Tests/Helper/CountingHttpContent.cs` (new)
 
-Existing test code that calls a changed signature: none (no signature changes; the probe's constructor stays). The
+Existing test code that calls a changed signature: none (no signature changes; the probe's constructor stays; the new
+`ObservedRequest` properties are optional init properties). The
 existing test `TransientHttpRetryHandlerBuffersAndRetriesRequestWithContentAsync` is rewritten by the Tester (AC6).
 
 Files no unit test can cover: none.
@@ -146,8 +165,9 @@ Files no unit test can cover: none.
   (line 164); the logging bullet gains the Debug entry 3502; the *Known gaps* entry for #273 goes; *Related decisions*
   links 0008.
 - `docs/areas/container-actions.md`, *Actions*: the login and the action request are `POST`s and are retried only when
-  not processed (connection not established, or 429), so a requested action reaches Portainer's processing at most
-  once and a 5xx/408/timeout/broken connection ends it *failed* after one attempt; the *Known gaps* entry for #273 goes.
+  not processed (connection not established, or 429), and the action request carries an empty body so the runtime
+  does not resend it either; so a requested action reaches Portainer's processing at most once and a
+  5xx/408/timeout/broken connection ends it *failed* after one attempt; the *Known gaps* entry for #273 goes.
 
 ## Documentation updates
 
@@ -181,10 +201,36 @@ raised after exhaustion before. Layering unchanged (handler in the host). `ARCHI
   `Action '<name>' failed: {ex.Message}` (`PortainerClient.cs:380`; the capability check `Portainer connection error: {ex.Message}`, `:287`), e.g. `Error while copying content to a stream.`
   — runtime text, unchanged here (see *Out of scope*).
 - The debug entry logs method, masked target and an outcome token only — never the exception message, body or query.
+- A connect timeout or `HttpClient.Timeout` is a `TaskCanceledException` and is retried for no method, unchanged
+  (fact 17); record 0008 names it.
 
 ## Decision records
 
 - `docs/decisions/0008-non-idempotent-requests-retry-only-when-not-processed.md` (Proposed)
+
+## Challenge
+
+1. *Minor — with `RetryCount` 0 the Portainer login loses its `Content-Length`.* Accepted, first option: buffering
+   stays unconditional (Approach step 1), AC7 now pins that a body of unknown length is sent with `Content-Length` at
+   `RetryCount` 0 and 2; option 5 records the rejected half. Chosen over documenting chunked transfer because a
+   setting meant for retries should not change the wire format, a 411 from a proxy would break the login outright,
+   and buffering a login body is free.
+2. *Minor — the AC6 test passes even with buffering broken.* Accepted: AC6 and its test use a `CountingHttpContent`
+   that throws on a second serialization and assert a count of 1 (Tester note in *Tests per criterion*).
+
+## Security review
+
+- **B1 — `SocketsHttpHandler` resends the body-less action `POST`.** Accepted: the action is sent with an empty
+  `ByteArrayContent` (Approach, `PortainerClient`), AC10 and its test pin non-null content at the inner handler, the
+  measurement is fact 15, and record 0008 *Consequences* states that the rule assumes a body. Handler-wide injection
+  of an empty body was weighed and lost (option 6).
+- **B2 — Debug entry 3502 logs the request target.** Accepted: *Logging and telemetry of external data* added to
+  *Security areas touched*; the masked target, no query and no exception message stay as in AC8.
+- **N1 — `POST` still retried on 429, and `ClampToMaximum` can cut a long `Retry-After`.** Pre-existing, not changed
+  here: follow-up issue proposed below.
+- **N2 — a connect timeout is not retried.** Plan note (fact 17, *Security considerations*) and a line in record 0008;
+  no change.
+- **N3** (argument names clean) needs no action; **N4** supports the follow-up on raw `ex.Message` below.
 
 ## Out of scope / follow-ups
 
@@ -195,3 +241,8 @@ raised after exhaustion before. Layering unchanged (handler in the host). `ARCHI
   content to a stream.` or an `HttpRequestException` text that may name hosts. Map transport errors to a fixed
   reason (HTTP status, `connection failed`, `timed out`) before #280 shows these messages in the UI."
 - Idempotency keys or a per-request opt-in to retry a `POST` on 5xx (record 0008, *Consequences*).
+- Proposed follow-up issue (Security N1): title "[BUG] Retry of a 429 can resend a login before the server's
+  Retry-After window ends"; body: "`TransientHttpRetryHandler` retries every method, `POST` logins included, on 429
+  and clamps the `Retry-After` wait to the maximum backoff (`ClampToMaximum`). A server asking for a longer wait gets
+  the login again early, which can extend a rate limit or lockout. Decide whether a non-idempotent request should give
+  up when `Retry-After` exceeds the maximum backoff instead of clamping it."

@@ -33,6 +33,11 @@ or resets gives `Unknown` (before or after it read the request), a server that r
    Docker Hub login unprotected.
 4. **Treating `HttpRequestError.Unknown` as "not sent" as well** — would retry the accept-then-close case, but the
    measurement shows the same error for a request the server has already read, so it cannot tell the cases apart.
+5. **Buffering a request body only when a retry is possible (`RetryCount` above 0)** — with `RetryCount` 0 the
+   Portainer login's `JsonContent` would be sent chunked instead of with `Content-Length`, which some reverse proxies
+   reject; every body stays buffered.
+6. **Letting the handler give every body-less non-idempotent request an empty body** — would cover future callers, but
+   rewrites their requests for the single body-less `POST` there is; the Portainer action sends an empty body itself.
 
 ## Decision
 
@@ -48,6 +53,12 @@ any other method only after an `HttpRequestException` whose `HttpRequestError` i
   token request instead of being retried, so the scan step that needed the token fails until its next run.
 - No exception list: the Docker Hub and Portainer logins, which are probably safe to repeat, follow the same rule on
   purpose, because a repeated failing login is what trips lockout and rate limits.
+- The rule assumes the request has a body: below the handler, `SocketsHttpHandler` resends a body-less request on its
+  own when a reused pooled connection closes after the server read it (measured: a `content: null` `POST` reached the
+  server twice, one with an empty `ByteArrayContent` once). The Portainer action is therefore sent with an empty body,
+  and a new non-idempotent request must carry one too.
+- A connect timeout or `HttpClient.Timeout` surfaces as `TaskCanceledException`, which the handler retries for no
+  method, before and after this decision.
 - The rule rests on `SocketsHttpHandler` setting the connection-phase errors only before any request byte is written.
   A primary handler other than `SocketsHttpHandler`, or HTTP/2 or HTTP/3 on these clients, would need the measurement
   again.
