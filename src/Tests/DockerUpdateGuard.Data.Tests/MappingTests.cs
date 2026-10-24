@@ -271,14 +271,12 @@ public class MappingTests
                 await dbContext.SaveChangesAsync(TestContext.CancellationToken).ConfigureAwait(false);
                 dbContext.ChangeTracker.Clear();
 
-                var persistedObservedImage = await dbContext.ObservedImages.Include(entity => entity.CurrentImageVersion)
-                                                                           .ThenInclude(entity => entity.RegistryRepository)
+                var persistedObservedImage = await dbContext.ObservedImages.Include(entity => entity.CurrentImageVersion.RegistryRepository)
                                                                            .SingleAsync(TestContext.CancellationToken)
                                                                            .ConfigureAwait(false);
 
                 var persistedUpdateFinding = await dbContext.UpdateFindings.Include(entity => entity.TagCandidates)
-                                                                           .Include(entity => entity.SubjectImageVersion)
-                                                                           .ThenInclude(entity => entity.RegistryRepository)
+                                                                           .Include(entity => entity.SubjectImageVersion.RegistryRepository)
                                                                            .SingleAsync(TestContext.CancellationToken)
                                                                            .ConfigureAwait(false);
 

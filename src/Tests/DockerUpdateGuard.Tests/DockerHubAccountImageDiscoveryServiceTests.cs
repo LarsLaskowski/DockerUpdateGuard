@@ -159,8 +159,7 @@ public class DockerHubAccountImageDiscoveryServiceTests
                 await service.SynchronizeAccountImagesAsync(CancellationToken.None)
                              .ConfigureAwait(false);
 
-                var discoveredImages = await dbContext.ObservedImages.Include(entity => entity.CurrentImageVersion)
-                                                                     .ThenInclude(entity => entity.RegistryRepository)
+                var discoveredImages = await dbContext.ObservedImages.Include(entity => entity.CurrentImageVersion.RegistryRepository)
                                                                      .Where(entity => entity.Source == RegistrationSource.Discovery)
                                                                      .OrderBy(entity => entity.Name)
                                                                      .ToListAsync(CancellationToken.None)

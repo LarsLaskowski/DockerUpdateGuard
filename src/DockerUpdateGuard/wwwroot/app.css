@@ -53,8 +53,8 @@
         linear-gradient(180deg, #0b1220 0%, #0d1526 35%, #0b1220 100%);
 }
 
-.dug-dark .app-topbar {
-    background: rgba(17, 26, 46, 0.72) !important;
+.dug-dark .mud-paper.app-topbar {
+    background: rgba(17, 26, 46, 0.72);
 }
 
 .dug-dark .app-topbar__meta-card {
@@ -183,7 +183,7 @@ a {
 
 .app-nav-menu .mud-nav-link:hover {
     color: #ffffff;
-    background: rgba(148, 163, 184, 0.12);
+    background: linear-gradient(rgba(148, 163, 184, 0.12), rgba(148, 163, 184, 0.12)), #0f172a;
     border-color: rgba(191, 219, 254, 0.12);
     transform: translateX(2px);
 }
@@ -225,13 +225,16 @@ a {
     min-height: 100vh;
 }
 
+.mud-paper.app-topbar {
+    background: rgba(255, 255, 255, 0.72);
+}
+
 .app-topbar {
     position: sticky;
     top: 0;
     z-index: 1100;
     margin: 1.5rem 1.5rem 0.75rem;
     padding: 0.9rem 1.35rem;
-    background: rgba(255, 255, 255, 0.72) !important;
     backdrop-filter: blur(12px);
     border: 1px solid var(--dug-border);
     border-radius: var(--dug-radius-lg);
@@ -840,10 +843,6 @@ a {
         height: 240px;
     }
 
-    .dug-hide-md {
-        display: none !important;
-    }
-
     .section-table .mud-table-body .mud-table-row.dug-rail-critical {
         box-shadow: var(--dug-shadow-card), inset 3px 0 0 var(--dug-sev-critical);
     }
@@ -905,10 +904,6 @@ a {
 
     .dug-chart {
         height: 200px;
-    }
-
-    .dug-hide-sm {
-        display: none !important;
     }
 
     .dug-form-submit {

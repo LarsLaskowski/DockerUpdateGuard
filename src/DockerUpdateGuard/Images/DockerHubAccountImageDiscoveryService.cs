@@ -284,8 +284,7 @@ public class DockerHubAccountImageDiscoveryService : IDockerHubAccountImageDisco
         var discoveredRepositories = repositories.Select(entity => entity.Repository)
                                                  .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var existingObservedImages = await _dbContext.ObservedImages
-                                                     .Include(entity => entity.CurrentImageVersion)
-                                                     .ThenInclude(entity => entity.RegistryRepository)
+                                                     .Include(entity => entity.CurrentImageVersion.RegistryRepository)
                                                      .Where(entity => entity.Source == RegistrationSource.Discovery)
                                                      .ToListAsync(cancellationToken)
                                                      .ConfigureAwait(false);

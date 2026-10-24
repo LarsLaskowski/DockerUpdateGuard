@@ -39,7 +39,7 @@ profile and owned by this repository: keep it true when the build changes.
 | *Test with coverage* | `rm -rf TestResults && dotnet test DockerUpdateGuard.slnx -c Release --no-build --collect:"XPlat Code Coverage" --results-directory ./TestResults` (clears earlier runs: the coverage gate merges every report it finds) |
 | *Coverage gate* | `python3 .squad/tools/coverage-check.py` |
 | *Analyzer gate* | `python3 .squad/tools/analyzer-check.py` |
-| *Sonar gate* | `python3 .squad/tools/sonar-check.py branch -- bash -c 'dotnet sonarscanner begin /k:"LarsLaskowski_DockerUpdateGuard" /o:"networlddev" /d:sonar.token="$SONAR_TOKEN" /d:sonar.branch.name="$(git branch --show-current)" /d:sonar.projectBaseDir="$PWD" && dotnet build DockerUpdateGuard.slnx -c Release --no-incremental && dotnet sonarscanner end /d:sonar.token="$SONAR_TOKEN"'` (after *Test with coverage*; needs `SONAR_TOKEN` and the `dotnet-sonarscanner` tool, see *Sonar gate* below) |
+| *Sonar gate* | `python3 .squad/tools/sonar-check.py branch -- bash -c 'dotnet sonarscanner begin /k:"LarsLaskowski_DockerUpdateGuard" /o:"networlddev" /d:sonar.token="$SONAR_TOKEN" /d:sonar.exclusions="docs/**" /d:sonar.branch.name="$(git branch --show-current)" /d:sonar.projectBaseDir="$PWD" && dotnet build DockerUpdateGuard.slnx -c Release --no-incremental && dotnet sonarscanner end /d:sonar.token="$SONAR_TOKEN"'` (after *Test with coverage*; needs `SONAR_TOKEN` and the `dotnet-sonarscanner` tool, see *Sonar gate* below) |
 | *Image build check* | `docker build -f src/DockerUpdateGuard/Dockerfile .` where Docker runs; otherwise the restore-order reproduction under *Image build check* below (`.squad/routing.md`, *Criteria verified only in CI*) |
 
 ## Analyzer gate
@@ -125,6 +125,9 @@ Two places compute coverage and must agree (`.squad/routing.md`, *Code a unit te
 step of `.github/workflows/ci.yml` (today `.squad/**`, `.claude/**` and
 `src/DockerUpdateGuard.Data/Migrations/**`). A file no unit test can cover (`wwwroot/js/**`, a generated file) is
 added to both with a decision record — never to `sonar.exclusions`, which would drop it from the analysis too.
+`sonar.exclusions` holds only `docs/**` (concept mockups, screenshot scripts and the deployment examples
+`docker-compose.*.yml` and `.env.example`, no product code), set in the same
+step of `ci.yml` and in the *Sonar gate* command.
 
 ## Writing code
 
