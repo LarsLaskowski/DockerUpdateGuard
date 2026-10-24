@@ -26,6 +26,8 @@ retry policy and the failure model.
   how a scan turns outcomes into scan-run statuses is described with each scan
   ([Base images](base-images.md), [Update detection](update-detection.md), [Scan engine](scan-engine.md)).
 - A *failed* outcome from a registry names the HTTP status code and includes the response body the remote side sent.
+  The exception is a listing stopped by a rejected next-page link: it has neither a status code nor a body and names the
+  rejected origin instead ([Pagination links](#pagination-links)).
 
 ### Choice of client per registry
 
@@ -56,8 +58,8 @@ retry policy and the failure model.
     the architecture, then the first entry with a digest. A caller that passes no platform gets the first entry.
 - **Tag listing** — the tags of a repository with digest and publication time.
   - Docker Hub: web API pages of 100 tags, in the order Docker Hub returns them (most recently pushed first), following
-    the `next` link of each page.
-  - Other registries: `tags/list` pages of 100 names following the `Link: rel="next"` header; every tag is then
+    the `next` link of each page ([Pagination links](#pagination-links)).
+  - Other registries: `tags/list` pages of 100 names following the `Link: rel="next"` header ([Pagination links](#pagination-links)); every tag is then
     inspected with a tag lookup. A tag whose lookup does not succeed is still listed, by name only.
 
 ### Bounded tag listings
@@ -73,6 +75,28 @@ retry policy and the failure model.
   with that digest has been seen yet.
 - Other registries: the maximum count limits the number of inspected tags; a tag that fails the name checks (current
   tag, version line, minimum version) is not inspected.
+
+### Pagination links
+
+- A listing follows the next-page link of a response (`next` on Docker Hub, `Link: rel="next"` elsewhere) only when
+  it stays on the origin of the listing's first request: the same scheme, host (compared case-insensitively) and
+  port. For Docker Hub that origin is the one of `DockerHub:ApiBaseUrl` (or of an absolute `DockerHub:Registry`
+  that replaces it); for other registries it is the origin of the first `tags/list` request. A mirror or proxy in
+  front of a registry must rewrite its next-page links to its own origin, otherwise the listing fails.
+- A link is resolved against the URL of the request that returned it, so a root-relative (`/v2/<repository>/tags/list?...`)
+  or path-relative link stays on the same origin and is followed. A link to another host or port, to `http` when the
+  listing uses `https`, or with another scheme is not followed and no request is sent to it, so the Docker Hub bearer
+  token never leaves the configured origin. A link that cannot be parsed is treated the same way.
+- A rejected link makes the listing *failed*, and the entries read before are discarded. The message is
+  `<listing> stopped: the next-page link pointed to a different origin (<origin>)`, for example
+  `Docker Hub tag listing for 'acme/api' stopped: the next-page link pointed to a different origin (https://attacker.example)`;
+  the same origin is logged as a warning. The origin text is the scheme, host (in punycode) and, unless it is the
+  default, the port; user info, path and query of the link are never written. A link that cannot be parsed is
+  described as `unparseable link`.
+- The guard applies only where a listing would follow the link: a listing that stops on its own condition (a Docker
+  Hub bound, the maximum tag count) does not look at it, and an empty link ends the listing as before.
+- Not covered: the token service a `WWW-Authenticate` challenge names, and HTTP redirects.
+- Decision: [0004](../decisions/0004-pagination-follows-only-same-origin-links.md).
 
 ### Authentication
 
@@ -95,8 +119,8 @@ retry policy and the failure model.
   `DockerUpdateGuard:Scanning:DockerHubAccountDiscoveryIntervalMinutes` ([Scan engine](scan-engine.md)).
 - The account listing requires `DockerUpdateGuard:DockerHub:Registry` to name a Docker Hub host; otherwise it answers
   *unsupported* and the run ends without changes.
-- The account is the namespace equal to `UserName`. All its repositories are listed (pages of 100), including private
-  ones the token can see. Repository names are lowercased; duplicates collapse to the most recently updated one.
+- The account is the namespace equal to `UserName`. All its repositories are listed (pages of 100, following the `next` link as described in
+  [Pagination links](#pagination-links)), including private ones the token can see. Repository names are lowercased; duplicates collapse to the most recently updated one.
 - For each repository the full tag list is read and one tag is tracked: the most recently pushed; on equal push time
   `latest` first, then alphabetical; tags without a push time come last.
 - Each repository becomes an observed image with source *discovery*, matched by registry and repository
@@ -149,7 +173,8 @@ retry policy and the failure model.
 
 - Read live: `DockerHub:UserName`, `DockerHub:Pat`, `DockerHub:Registry` (for account discovery),
   `DockerHub:MaxParallelRequests` (for new client instances) and `Scanning:RetryCount`.
-- Fixed at startup, a change needs a restart: `DockerHub:ApiBaseUrl` and `DockerHub:RequestTimeoutSeconds`.
+- Fixed at startup, a change needs a restart: `DockerHub:ApiBaseUrl` and `DockerHub:RequestTimeoutSeconds`. The
+  origin of `ApiBaseUrl` is the only one Docker Hub pagination follows ([Pagination links](#pagination-links)).
 - Validation of these keys at startup (an invalid value fails startup, see [Hosting](hosting.md)): `Registry`
   non-empty, `ApiBaseUrl` an absolute `http`/`https` URL, and the ranges above.
 
@@ -159,7 +184,8 @@ retry policy and the failure model.
 - *Not found*: HTTP 404 for an account, repository, tag, manifest or configuration blob; an image whose manifest names
   no configuration blob.
 - *Failed*: any other non-success status, a token that cannot be obtained, a PAT without user name, a multi-platform
-  index without a usable entry. The message contains the status code and the remote response body.
+  index without a usable entry. The message contains the status code and the remote response body. A next-page link
+  to another origin also gives *failed*, with the message of [Pagination links](#pagination-links).
 - Some failures still surface as errors instead of outcomes: transport errors and timeouts that remain after the
   retries, and malformed JSON, during tag lookups, tag listings and the account listing (both clients) and during
   image configuration lookups on other registries. A Docker Hub configuration lookup turns them into *failed*. The
@@ -186,13 +212,10 @@ retry policy and the failure model.
   attestation manifest, and publication times come only from a top-level `created` field of the manifest, which most
   registries do not send, so their tags usually have no publication time. Tracked in
   [#277](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/277).
-- Pagination links (`next` on Docker Hub, `Link` elsewhere) are followed to whatever host they name, and the Docker
-  Hub bearer token is sent along to that host. Tracked in
-  [#264](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/264).
 
 ## Related decisions
 
-None yet.
+- [0004](../decisions/0004-pagination-follows-only-same-origin-links.md): pagination follows only same-origin links.
 
 ## Not here
 

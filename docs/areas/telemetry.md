@@ -102,8 +102,8 @@ Every exported signal carries the same resource:
   nor the database connection string. Credentials travel only in request headers, and headers are not recorded.
 - Database statements are logged without parameter values.
 - What logs and spans may carry about external systems: configured instance names, image references, configured base
-  URLs, the Docker Hub account name, HTTP methods and status codes, counts, durations and error messages from
-  external tools. Retry log lines carry the request URL without its query string.
+  URLs, the Docker Hub account name, HTTP methods and status codes, the scheme, host and port of a rejected
+  next-page link, counts, durations and error messages from external tools. Retry log lines carry the request URL without its query string.
 
 ## Limits and errors
 

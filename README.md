@@ -110,7 +110,7 @@ For example:
 | Key | Default | Required | Description |
 | --- | --- | --- | --- |
 | `Registry` | `docker.io` | Yes | Registry host handled by the Docker Hub integration |
-| `ApiBaseUrl` | `https://hub.docker.com/` | No | Docker Hub API base address used for registries served by Docker Hub |
+| `ApiBaseUrl` | `https://hub.docker.com/` | No | Docker Hub API base address used for registries served by Docker Hub; a mirror or proxy must rewrite next-page links to its own origin, otherwise listings fail |
 | `UserName` | none | No | Docker Hub username for authenticated API requests |
 | `Pat` | none | No | Docker Hub personal access token |
 | `RequestTimeoutSeconds` | `30` | No | Total time per outbound Docker Hub, OCI registry and .NET/nginx release-feed request, including its retries |
@@ -135,7 +135,7 @@ versions. Override them to route the lookups through an internal mirror or proxy
 | `TrivyBaseUrl` | none | Required for `Trivy` | Base URL of the Trivy server used by the Trivy CLI in client mode |
 | `TrivyExecutablePath` | `trivy` | No | Path to the Trivy executable (resolved through `PATH` by default; bundled in the published container image) |
 | `DockerScoutLoginUrl` | `https://hub.docker.com/v2/users/login` | No | Docker Hub login endpoint used by the `DockerScout` provider |
-| `DockerScoutBaseUrl` | `https://api.scout.docker.com` | No | Base address of the Docker Scout API |
+| `DockerScoutBaseUrl` | `https://api.scout.docker.com` | No | Base address of the Docker Scout API; a proxy must rewrite next-page links to its own origin, otherwise listings fail |
 | `RequestTimeoutSeconds` | `120` | No | Timeout for vulnerability provider requests; first-time Trivy scans of large images regularly exceed shorter timeouts |
 | `MaxParallelScans` | `1` | No | Maximum number of vulnerability provider scans running at the same time (`1` to `8`) |
 

@@ -25,9 +25,24 @@ internal static class PaginationLinkGuard
     /// <returns>Resolved link or null when it is empty, unparseable or on another origin</returns>
     public static Uri? ResolveNextLink(Uri currentRequestUri, Uri allowedOrigin, string? nextLink)
     {
-#pragma warning disable RH2003 // Skeleton body, replaced by the implementation
-        throw new NotImplementedException();
-#pragma warning restore RH2003
+        if (string.IsNullOrWhiteSpace(nextLink))
+        {
+            return null;
+        }
+
+        if (Uri.TryCreate(currentRequestUri, nextLink, out var resolved) == false)
+        {
+            return null;
+        }
+
+        if (string.Equals(resolved.Scheme, allowedOrigin.Scheme, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(resolved.IdnHost, allowedOrigin.IdnHost, StringComparison.OrdinalIgnoreCase)
+            && resolved.Port == allowedOrigin.Port)
+        {
+            return resolved;
+        }
+
+        return null;
     }
 
     /// <summary>
@@ -38,9 +53,19 @@ internal static class PaginationLinkGuard
     /// <returns>Scheme, host and non-default port, or the unparseable link description</returns>
     public static string DescribeOrigin(Uri currentRequestUri, string? nextLink)
     {
-#pragma warning disable RH2003 // Skeleton body, replaced by the implementation
-        throw new NotImplementedException();
-#pragma warning restore RH2003
+        if (Uri.TryCreate(currentRequestUri, nextLink, out var resolved) == false)
+        {
+            return UnparseableLinkDescription;
+        }
+
+        var origin = $"{resolved.Scheme}://{resolved.IdnHost}";
+
+        if (resolved.IsDefaultPort == false)
+        {
+            origin = $"{origin}:{resolved.Port}";
+        }
+
+        return origin;
     }
 
     /// <summary>
@@ -51,9 +76,7 @@ internal static class PaginationLinkGuard
     /// <returns>Failure message</returns>
     public static string CreateRejectionMessage(string listingDescription, string rejectedOrigin)
     {
-#pragma warning disable RH2003 // Skeleton body, replaced by the implementation
-        throw new NotImplementedException();
-#pragma warning restore RH2003
+        return $"{listingDescription} stopped: the next-page link pointed to a different origin ({rejectedOrigin})";
     }
 
     #endregion // Methods
