@@ -161,10 +161,18 @@ retry policy and the failure model.
 - The wait before a retry is the response's `Retry-After` (delta or date) when positive, capped at 30 seconds;
   otherwise 500 ms × 2^n for the n-th retry (n starting at 0), capped at 30 seconds, plus a random jitter of up to 20 %
   of that value, the total again capped at 30 seconds.
-- Every method is retried, including requests with a body (the body is buffered so it can be resent).
+- `GET`, `HEAD`, `OPTIONS`, `TRACE`, `PUT` and `DELETE` are retried as described above. Every other method (`POST`,
+  `PATCH`, any custom method) is not idempotent: a repeat could run its effect twice, so it is retried only on a 429
+  and after an `HttpRequestException` whose error shows that no request byte was sent (`NameResolutionError`,
+  `ConnectionError`, `SecureConnectionError`, `ProxyTunnelError`). A 5xx, a 408, a timeout or a connection that broke
+  after the connection was established ends the request after one attempt: the response is returned or the error
+  raised. The requests concerned are the Docker Hub login and the Portainer login and actions. A non-idempotent request always carries a body, an empty one if it has nothing to send: the runtime resends a body-less request on its own when a reused connection closes after the server read it ([0008](../decisions/0008-non-idempotent-requests-retry-only-when-not-processed.md)).
+- A request body is buffered before the first attempt, so a retry resends the identical body and a body of unknown
+  length is sent with a `Content-Length`.
 - When the retries are used up the last response is returned to the caller, or the last error is raised.
 - Each retry is logged as a warning with the method, the URL without its user info and query, the status or error, the attempt
-  number and the wait.
+  number and the wait. A transient outcome that is not retried because the method is not idempotent is logged as a
+  debug entry (3502) with the method, the masked URL and the status or error name.
 - `DockerUpdateGuard:DockerHub:RequestTimeoutSeconds` (default 30, range 1–300) is the total time one request may
   take including all retries and waits, for Docker Hub, other registries and the release feeds. A request that runs
   out of time is not retried.
@@ -200,9 +208,6 @@ retry policy and the failure model.
 - `MaxParallelRequests` caps each Docker Hub client instance, not the process: concurrent scans, and the client
   instances one scan uses, each get the full allowance. Tracked in
   [#265](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/265).
-- Non-idempotent requests with a body, such as the Docker Hub login and Portainer actions, are retried like any other
-  request, so one request can take effect more than once. Tracked in
-  [#273](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/273).
 - `DockerHub:Registry` does not decide which registries the Docker Hub client serves (that host list is fixed); it
   only gates the account listing and, when set to an absolute URL with a non-Docker-Hub host, replaces the web API
   base address. Tracked in [#268](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/268).
@@ -216,6 +221,8 @@ retry policy and the failure model.
 ## Related decisions
 
 - [0004](../decisions/0004-pagination-follows-only-same-origin-links.md): pagination follows only same-origin links.
+- [0008](../decisions/0008-non-idempotent-requests-retry-only-when-not-processed.md): non-idempotent requests are
+  retried only when they cannot have been processed.
 
 ## Not here
 

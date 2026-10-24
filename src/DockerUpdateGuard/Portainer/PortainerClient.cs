@@ -349,7 +349,10 @@ public partial class PortainerClient : IPortainerClient
             }
 
             var actionUrl = $"/api/endpoints/{endpointId}/docker/containers/{containerId}/{actionRequest.ActionName}";
-            using var actionResponse = await client.PostAsync(actionUrl, content: null, cancellationToken).ConfigureAwait(false);
+
+            // An empty body keeps SocketsHttpHandler from resending a body-less POST on a reused connection
+            using var actionContent = new ByteArrayContent([]);
+            using var actionResponse = await client.PostAsync(actionUrl, actionContent, cancellationToken).ConfigureAwait(false);
 
             if (actionResponse.IsSuccessStatusCode)
             {

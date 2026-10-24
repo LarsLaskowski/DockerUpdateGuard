@@ -1,6 +1,7 @@
 using System.Net;
 
 using DockerUpdateGuard.Configuration;
+using DockerUpdateGuard.Infrastructure;
 using DockerUpdateGuard.Portainer;
 using DockerUpdateGuard.Portainer.Data;
 using DockerUpdateGuard.Tests.Data;
@@ -786,6 +787,112 @@ public class PortainerClientTests
                                      && entry.Message.Contains(InstanceName, StringComparison.Ordinal),
                             logger.Entries,
                             "A successful Portainer action must log the action, resource and Docker instance");
+        }
+        finally
+        {
+            httpClient.Dispose();
+            handler.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Verify an action request answered with 503 is sent once through the real retry handler and reported failed
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task PortainerClientExecuteActionAsyncWhenActionRequestAnswersServiceUnavailableExecutesOnceAndFailsAsync()
+    {
+        var sequenceHandler = new SequenceHttpMessageHandler();
+        var retryHandler = new TransientHttpRetryHandler(new TestOptionsMonitor<DockerUpdateGuardOptions>(new DockerUpdateGuardOptions
+                                                                                                          {
+                                                                                                              Scanning = new ScanningOptions
+                                                                                                                         {
+                                                                                                                             RetryCount = 2,
+                                                                                                                         },
+                                                                                                          }),
+                                                         new TestLogger<TransientHttpRetryHandler>(),
+                                                         (_, _) => Task.CompletedTask,
+                                                         _ => 0)
+                           {
+                               InnerHandler = sequenceHandler,
+                           };
+        var httpClient = new HttpClient(retryHandler);
+
+        try
+        {
+            sequenceHandler.AddJsonResponse(ContainersUrl, ContainerFoundJson);
+            sequenceHandler.AddResponse(RestartActionUrl, new HttpResponseMessage(HttpStatusCode.ServiceUnavailable));
+            sequenceHandler.AddResponse(RestartActionUrl, new HttpResponseMessage(HttpStatusCode.OK));
+
+            var client = new PortainerClient(CreateHttpClientFactory(httpClient), new TestLogger<PortainerClient>());
+            var instanceOptions = CreateInstanceOptions(InstanceName,
+                                                        options =>
+                                                        {
+                                                            options.ApiToken = PatToken;
+                                                            options.EndpointId = EndpointId;
+                                                        });
+            var actionRequest = new PortainerActionRequest
+                                {
+                                    ActionName = RestartAction,
+                                    ResourceName = ContainerName,
+                                };
+
+            var result = await client.ExecuteActionAsync(instanceOptions, actionRequest, CancellationToken.None)
+                                     .ConfigureAwait(false);
+
+            Assert.IsFalse(result.Succeeded, "An action request answered with 503 must fail the result");
+            Assert.Contains("HTTP 503",
+                            result.Message,
+                            "The failed result must surface the returned HTTP status code");
+            Assert.HasCount(1,
+                            sequenceHandler.Requests.Where(request => request.Method == "POST").ToList(),
+                            "The action request must be sent exactly once because the server may already have executed it");
+        }
+        finally
+        {
+            httpClient.Dispose();
+            retryHandler.Dispose();
+            sequenceHandler.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Verify the action request carries an empty body so that the runtime never resends it on its own
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task PortainerClientExecuteActionAsyncSendsActionRequestWithEmptyContentAsync()
+    {
+        var handler = new SequenceHttpMessageHandler();
+        var httpClient = new HttpClient(handler);
+
+        try
+        {
+            handler.AddJsonResponse(ContainersUrl, ContainerFoundJson);
+            handler.AddResponse(RestartActionUrl, new HttpResponseMessage(HttpStatusCode.NoContent));
+
+            var client = new PortainerClient(CreateHttpClientFactory(httpClient), new TestLogger<PortainerClient>());
+            var instanceOptions = CreateInstanceOptions(InstanceName,
+                                                        options =>
+                                                        {
+                                                            options.ApiToken = PatToken;
+                                                            options.EndpointId = EndpointId;
+                                                        });
+            var actionRequest = new PortainerActionRequest
+                                {
+                                    ActionName = RestartAction,
+                                    ResourceName = ContainerName,
+                                };
+
+            await client.ExecuteActionAsync(instanceOptions, actionRequest, CancellationToken.None)
+                        .ConfigureAwait(false);
+
+            var observed = handler.Requests.Single(request => request.Method == "POST");
+
+            Assert.IsTrue(observed.HasContent, "The action request must carry a non-null body");
+            Assert.AreEqual(0L,
+                            observed.ContentLength,
+                            "The action request body must be empty so that Content-Length 0 is sent");
         }
         finally
         {
