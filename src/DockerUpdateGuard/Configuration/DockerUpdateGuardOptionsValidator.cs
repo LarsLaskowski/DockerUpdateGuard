@@ -390,6 +390,7 @@ public class DockerUpdateGuardOptionsValidator : IValidateOptions<DockerUpdateGu
             }
 
             ValidateDockerInstance(instance, failures);
+            ValidateCertificatePath(instance, failures);
         }
     }
 
@@ -400,7 +401,22 @@ public class DockerUpdateGuardOptionsValidator : IValidateOptions<DockerUpdateGu
     /// <param name="failures">Failure list</param>
     private void ValidateCertificatePath(DockerInstanceOptions instance, List<string> failures)
     {
-        throw new InvalidOperationException("Skeleton: not implemented");
+        if (instance.Enabled == false
+            || string.IsNullOrWhiteSpace(instance.CertificatePath))
+        {
+            return;
+        }
+
+        var status = _clientCertificateLoader.TryLoad(instance.CertificatePath, out var certificate);
+
+        certificate?.Dispose();
+
+        if (status is ClientCertificateLoadStatus.Loaded or ClientCertificateLoadStatus.NotSet)
+        {
+            return;
+        }
+
+        failures.Add($"'{DockerUpdateGuardOptions.SectionName}:DockerInstances:{instance.Name}:CertificatePath' names an unusable client certificate '{instance.CertificatePath}': {ClientCertificateLoader.DescribeFailure(status)}");
     }
 
     #endregion // Methods

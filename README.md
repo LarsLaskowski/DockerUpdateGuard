@@ -169,7 +169,7 @@ Each entry describes one Docker Engine endpoint.
 | `Enabled` | `true` | No | Enables or disables this Docker instance |
 | `UseTls` | `false` | No | For `tcp://` endpoints, upgrade the connection to HTTPS |
 | `SkipCertificateValidation` | `false` | No | Skip server certificate validation for TLS endpoints. **Insecure:** disables TLS authentication and exposes the connection to man-in-the-middle attacks; a warning is logged at runtime whenever it is active. Use only for trusted endpoints with self-signed certificates. |
-| `CertificatePath` | none | No | Optional client certificate path for TLS-secured engine access |
+| `CertificatePath` | none | No | Optional client certificate for TLS-secured engine access: a password-less PKCS#12 bundle (`.pfx` or `.p12`) holding the certificate and its private key, readable by the container user (UID `64000`). It is presented on `https://` endpoints and on `tcp://` endpoints with `UseTls`; `http://`, plain `tcp://`, `unix://` and `npipe://` instances do not use it, but an enabled instance that sets it is still checked at startup (a missing, unreadable, PEM, DER or password-protected file fails startup). Convert PEM files with `openssl pkcs12 -export -in cert.pem -inkey key.pem -out client.pfx -passout pass:`. |
 | `RequestTimeoutSeconds` | `15` | No | Timeout for Docker Engine requests |
 
 Recommended Linux socket configuration:
@@ -295,7 +295,7 @@ See the JSON example above for the exact keys and structure.
 - The container listens on port 8080 by default
 - The image sets `DockerUpdateGuard:DisplayVersion` from the image build argument
 - For Linux host monitoring, bind-mount `/var/run/docker.sock`
-- For TLS-secured remote engines, also mount the client certificate file if `CertificatePath` is used
+- For TLS-secured remote engines, also mount the client certificate (a password-less `.pfx`/`.p12` bundle readable by UID `64000`) if `CertificatePath` is used
 - The application needs outbound network access to the configured registry, optional Portainer endpoint, optional Trivy server, and optional OTLP collector
 
 ## License
