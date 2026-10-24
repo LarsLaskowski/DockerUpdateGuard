@@ -80,6 +80,7 @@ DockerUpdateGuard uses normal ASP.NET Core configuration binding and prefers con
 
 - `appsettings.json`
 - `appsettings.{Environment}.json`
+- environment variables (`__` as the section separator, e.g. `DockerUpdateGuard__Scanning__RetryCount`)
 - command-line arguments
 - secret stores supported by ASP.NET Core
 
@@ -96,8 +97,11 @@ For example:
 | `ConnectionStrings:DockerUpdateGuard` | none | Yes* | Named PostgreSQL connection string used when `DockerUpdateGuard:ConnectionString` is not set |
 | `DockerUpdateGuard:ConnectionString` | none | Yes* | Inline PostgreSQL connection string |
 | `DockerUpdateGuard:ConnectionStringName` | `DockerUpdateGuard` | No | Name of the `ConnectionStrings` entry to resolve |
-| `DockerUpdateGuard:DisplayVersion` | assembly version | No | Version string shown in the UI footer; the Docker image sets this automatically |
-
+| `DockerUpdateGuard:DisplayVersion` | assembly version | No | Version string shown in the navigation drawer; the Docker image sets this automatically |
+| `DockerUpdateGuard:Database:MaxConnectionRetryCount` | `8` | No | Retries of a transiently failing database command during normal operation |
+| `DockerUpdateGuard:Database:MaxConnectionRetryDelaySeconds` | `30` | No | Maximum back-off in seconds between those retries |
+| `DockerUpdateGuard:Database:MigrationStartupTimeoutSeconds` | `120` | No | How long startup waits for the database to become reachable |
+| `DockerUpdateGuard:Database:MigrationRetryDelaySeconds` | `5` | No | Delay in seconds between connection attempts while startup waits for the database |
 
 \* At least one of `DockerUpdateGuard:ConnectionString` or `ConnectionStrings:{ConnectionStringName}` must be configured.
 
@@ -109,7 +113,7 @@ For example:
 | `ApiBaseUrl` | `https://hub.docker.com/` | No | Docker Hub API base address used for registries served by Docker Hub |
 | `UserName` | none | No | Docker Hub username for authenticated API requests |
 | `Pat` | none | No | Docker Hub personal access token |
-| `RequestTimeoutSeconds` | `30` | No | Timeout for outbound Docker Hub and OCI registry requests |
+| `RequestTimeoutSeconds` | `30` | No | Total time per outbound Docker Hub, OCI registry and .NET/nginx release-feed request, including its retries |
 | `MaxParallelRequests` | `4` | No | Maximum logical request parallelism for registry operations |
 
 ### `DockerUpdateGuard:ReleaseMetadata`
@@ -149,7 +153,7 @@ versions. Override them to route the lookups through an internal mirror or proxy
 | `ResourceStatisticsIntervalMinutes` | `5` | Interval for sampling CPU, memory, and network usage |
 | `VulnerabilityRefreshIntervalMinutes` | `180` | Interval for refreshing vulnerability information |
 | `CleanupIntervalMinutes` | `720` | Interval for cleaning old scan data |
-| `RetryCount` | `2` | Retry count for transient background failures |
+| `RetryCount` | `2` | Retries of a single outbound HTTP request after a transient failure (`0` to `10`); applies to Docker Hub, other registries, the release feeds and Portainer, for scheduled and manual work alike. A failed scan run is not retried before its next scheduled run |
 | `RetainScanRunsDays` | `30` | Retention period for completed scan history |
 | `MajorUpgradeMinimumAgeDays` | `30` | Waiting period before a new major version line is recommended; the upgrade also stays deferred while the current major version line is still served next to the new line or while its first release is unknown; `0` disables the waiting periods |
 | `MajorUpgradeMinimumReleaseCount` | `2` | Number of releases a new major version line must have before it is recommended; `0` disables the requirement |
@@ -205,9 +209,9 @@ must be configured.
 | `ServiceName` | `DockerUpdateGuard` | Required when telemetry is enabled | Service name used in telemetry resources |
 | `OtlpEndpoint` | none | No | Absolute `http` or `https` OTLP endpoint |
 | `Instance` | none | No | Logical deployment instance name |
-| `EnableLogging` | `true` | No | Enables OpenTelemetry logging export |
-| `EnableMetrics` | `true` | No | Enables OpenTelemetry metrics export |
-| `EnableTracing` | `true` | No | Enables OpenTelemetry tracing export |
+| `EnableLogging` | `true` | No | Enables OpenTelemetry logging (exported only when `OtlpEndpoint` is set; console logging is always active) |
+| `EnableMetrics` | `true` | No | Enables OpenTelemetry metrics (exported only when `OtlpEndpoint` is set) |
+| `EnableTracing` | `true` | No | Enables OpenTelemetry tracing (exported only when `OtlpEndpoint` is set) |
 
 If all three telemetry switches are `false`, telemetry is effectively disabled.
 
