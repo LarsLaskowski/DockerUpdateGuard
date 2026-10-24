@@ -64,5 +64,24 @@ internal static partial class TransientHttpRetryHandlerLogging
                                                               string requestTarget,
                                                               string outcome);
 
+    /// <summary>
+    /// Log that a non-idempotent request was not retried because the Retry-After wait exceeds the maximum wait
+    /// </summary>
+    /// <param name="logger">Logger</param>
+    /// <param name="method">HTTP method</param>
+    /// <param name="requestTarget">Request target</param>
+    /// <param name="statusCode">HTTP status code</param>
+    /// <param name="retryAfterMilliseconds">Wait requested by the server in milliseconds</param>
+    /// <param name="maximumMilliseconds">Maximum wait in milliseconds</param>
+    [LoggerMessage(EventId = 3503,
+                   Level = LogLevel.Debug,
+                   Message = "Transient HTTP response {StatusCode} for {Method} {RequestTarget} not retried: Retry-After of {RetryAfterMilliseconds} ms exceeds the maximum wait of {MaximumMilliseconds} ms for a method that is not idempotent")]
+    public static partial void RetryAfterExceedsMaximumNotRetried(this ILogger logger,
+                                                                  string method,
+                                                                  string requestTarget,
+                                                                  int statusCode,
+                                                                  long retryAfterMilliseconds,
+                                                                  int maximumMilliseconds);
+
     #endregion // Methods
 }

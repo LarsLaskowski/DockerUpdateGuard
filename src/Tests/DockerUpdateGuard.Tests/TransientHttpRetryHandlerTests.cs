@@ -607,6 +607,7 @@ public partial class TransientHttpRetryHandlerTests
     /// <returns>Task</returns>
     [TestMethod]
     [DataRow(7, 7000)]
+    [DataRow(30, 30000)]
     [DataRow(null, 500)]
     public async Task TransientHttpRetryHandlerRetriesPostOnTooManyRequestsAsync(int? retryAfterSeconds, int expectedDelayMilliseconds)
     {
@@ -628,6 +629,63 @@ public partial class TransientHttpRetryHandlerTests
         Assert.AreSequenceEqual([TimeSpan.FromMilliseconds(expectedDelayMilliseconds)],
                                 capturedDelays,
                                 "The wait before the retry must be the Retry-After value or the exponential backoff");
+    }
+
+    /// <summary>
+    /// Verify a non-idempotent request answered with Too Many Requests and a Retry-After delta above the maximum wait is sent once
+    /// </summary>
+    /// <param name="method">HTTP method name</param>
+    /// <param name="retryAfterSeconds">Retry-After delta in seconds</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [DataRow("POST", 31)]
+    [DataRow("POST", 3600)]
+    [DataRow("PATCH", 3600)]
+    public async Task TransientHttpRetryHandlerDoesNotRetryNonIdempotentRequestWhenRetryAfterExceedsMaximumAsync(string method, int retryAfterSeconds)
+    {
+        var probe = new RetryProbeHttpMessageHandler([HttpStatusCode.TooManyRequests, HttpStatusCode.OK], HttpStatusCode.OK)
+                    {
+                        RetryAfter = new RetryConditionHeaderValue(TimeSpan.FromSeconds(retryAfterSeconds)),
+                    };
+        var capturedDelays = new List<TimeSpan>();
+        using var request = new HttpRequestMessage(new HttpMethod(method), "https://registry.example.test/api/auth");
+
+        using var response = await SendThroughRetryHandlerAsync(2, probe, capturedDelays, request).ConfigureAwait(false);
+
+        Assert.AreEqual(HttpStatusCode.TooManyRequests,
+                        response.StatusCode,
+                        "The 429 response must be returned to the caller");
+        Assert.AreEqual(1,
+                        probe.AttemptCount,
+                        "A non-idempotent request must not be resent inside the window the server asked for");
+        Assert.IsEmpty(capturedDelays,
+                       "The handler must not wait before returning the 429 response");
+    }
+
+    /// <summary>
+    /// Verify a POST answered with Too Many Requests and a Retry-After date beyond the maximum wait is sent once
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task TransientHttpRetryHandlerDoesNotRetryPostWhenRetryAfterDateExceedsMaximumAsync()
+    {
+        var probe = new RetryProbeHttpMessageHandler([HttpStatusCode.TooManyRequests, HttpStatusCode.OK], HttpStatusCode.OK)
+                    {
+                        RetryAfter = new RetryConditionHeaderValue(DateTimeOffset.UtcNow.AddHours(1)),
+                    };
+        var capturedDelays = new List<TimeSpan>();
+        using var request = CreatePostRequest();
+
+        using var response = await SendThroughRetryHandlerAsync(2, probe, capturedDelays, request).ConfigureAwait(false);
+
+        Assert.AreEqual(HttpStatusCode.TooManyRequests,
+                        response.StatusCode,
+                        "The 429 response must be returned to the caller");
+        Assert.AreEqual(1,
+                        probe.AttemptCount,
+                        "A POST must not be resent before the Retry-After date");
+        Assert.IsEmpty(capturedDelays,
+                       "The handler must not wait before returning the 429 response");
     }
 
     /// <summary>
@@ -889,6 +947,90 @@ public partial class TransientHttpRetryHandlerTests
         Assert.DoesNotContain(entry => entry.EventId.Id == 3502,
                               logger.Entries,
                               "A request that could not be retried anyway must not log a not-retried entry");
+    }
+
+    /// <summary>
+    /// Verify a POST left unretried because of a long Retry-After logs a debug entry with the masked request target
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task TransientHttpRetryHandlerLogsDebugWhenPostIsNotRetriedOnLongRetryAfterAsync()
+    {
+        var probe = new RetryProbeHttpMessageHandler([HttpStatusCode.TooManyRequests, HttpStatusCode.OK], HttpStatusCode.OK)
+                    {
+                        RetryAfter = new RetryConditionHeaderValue(TimeSpan.FromSeconds(3600)),
+                    };
+        var logger = new TestLogger<TransientHttpRetryHandler>();
+        using var request = new HttpRequestMessage(HttpMethod.Post, "https://user:secret@registry.example.test/path?token=x");
+
+        using var response = await SendThroughRetryHandlerAsync(2, probe, request: request, logger: logger).ConfigureAwait(false);
+
+        var entry = logger.Entries.Single(candidate => candidate.EventId.Id == 3503);
+
+        Assert.AreEqual(LogLevel.Debug,
+                        entry.LogLevel,
+                        "The long Retry-After entry must be logged at Debug");
+        Assert.AreEqual("Transient HTTP response 429 for POST https://***@registry.example.test/path not retried: Retry-After of 3600000 ms exceeds the maximum wait of 30000 ms for a method that is not idempotent",
+                        entry.Message,
+                        "The entry must name the status, the method, the masked target, the requested wait and the maximum");
+        Assert.DoesNotContain("secret", entry.Message, "The entry must not contain the password");
+        Assert.DoesNotContain("token=x", entry.Message, "The entry must not contain the query string");
+        Assert.DoesNotContain(candidate => candidate.EventId.Id == 3500,
+                              logger.Entries,
+                              "No retry warning may be logged for a request that is not retried");
+    }
+
+    /// <summary>
+    /// Verify a GET answered with Too Many Requests and a Retry-After above the maximum wait is retried after the clamped wait
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task TransientHttpRetryHandlerClampsRetryAfterOfTooManyRequestsForGetAsync()
+    {
+        var probe = new RetryProbeHttpMessageHandler([HttpStatusCode.TooManyRequests, HttpStatusCode.OK], HttpStatusCode.OK)
+                    {
+                        RetryAfter = new RetryConditionHeaderValue(TimeSpan.FromHours(1)),
+                    };
+        var capturedDelays = new List<TimeSpan>();
+
+        using var response = await SendThroughRetryHandlerAsync(2, probe, capturedDelays).ConfigureAwait(false);
+
+        Assert.AreEqual(HttpStatusCode.OK,
+                        response.StatusCode,
+                        "An idempotent request must be retried after a 429 with a long Retry-After");
+        Assert.AreEqual(2,
+                        probe.AttemptCount,
+                        "An idempotent request must be retried once");
+        Assert.AreSequenceEqual([TimeSpan.FromMilliseconds(30000)],
+                                capturedDelays,
+                                "The wait must be clamped to the maximum backoff");
+    }
+
+    /// <summary>
+    /// Verify no long Retry-After entry is logged when retries are disabled
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task TransientHttpRetryHandlerWithZeroRetryCountDoesNotLogLongRetryAfterAsync()
+    {
+        var probe = new RetryProbeHttpMessageHandler([], HttpStatusCode.TooManyRequests)
+                    {
+                        RetryAfter = new RetryConditionHeaderValue(TimeSpan.FromSeconds(3600)),
+                    };
+        var logger = new TestLogger<TransientHttpRetryHandler>();
+        using var request = CreatePostRequest();
+
+        using var response = await SendThroughRetryHandlerAsync(0, probe, request: request, logger: logger).ConfigureAwait(false);
+
+        Assert.AreEqual(HttpStatusCode.TooManyRequests,
+                        response.StatusCode,
+                        "The 429 response must be returned");
+        Assert.AreEqual(1,
+                        probe.AttemptCount,
+                        "The request must be sent once");
+        Assert.DoesNotContain(entry => entry.EventId.Id == 3503,
+                              logger.Entries,
+                              "A request with no retries left must not log a long Retry-After entry");
     }
 
     /// <summary>
