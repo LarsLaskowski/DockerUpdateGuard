@@ -12,6 +12,7 @@ public class ProcessRunner : IProcessRunner
     /// <inheritdoc/>
     public async Task<ProcessExecutionResult> RunAsync(string fileName,
                                                        IReadOnlyList<string> arguments,
+                                                       IReadOnlyDictionary<string, string> environmentVariables,
                                                        TimeSpan timeout,
                                                        CancellationToken cancellationToken = default)
     {

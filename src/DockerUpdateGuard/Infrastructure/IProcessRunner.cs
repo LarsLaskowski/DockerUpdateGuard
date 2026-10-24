@@ -12,11 +12,13 @@ public interface IProcessRunner
     /// </summary>
     /// <param name="fileName">Executable file name or path</param>
     /// <param name="arguments">Process arguments</param>
+    /// <param name="environmentVariables">Environment variables added to the inherited environment of the process</param>
     /// <param name="timeout">Maximum execution time before the process is terminated</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Process execution result</returns>
     Task<ProcessExecutionResult> RunAsync(string fileName,
                                           IReadOnlyList<string> arguments,
+                                          IReadOnlyDictionary<string, string> environmentVariables,
                                           TimeSpan timeout,
                                           CancellationToken cancellationToken = default);
 
