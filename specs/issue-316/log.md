@@ -17,3 +17,5 @@ are quoted in full.
 | 2026-10-24 18:40 | 6 Coverage | squad-tester | 3 deferred tests written (AC3 row, AC4, AC5 zero-retry), 65/65 pass (sonnet/medium · 2,707 tokens · 2 tool uses · 29 s · continued) |
 | 2026-10-24 18:42 | 7 Code check | Orchestrator | format/build/675+21 tests/coverage new 100% overall 85.0%/analyzer 0/scope/decision PASS; Sonar gate NOT CHECKED (no SONAR_TOKEN) -> step 11; main already in head |
 | 2026-10-24 18:44 | 8 Review round 1 | squad-reviewer | BLOCKING 1 (verbatim doc: 429 without Retry-After is retried; README, container-actions, 0008), NON-BLOCKING 0 (opus/medium · 56,593 tokens · 9 tool uses · 54 s) |
+| 2026-10-24 18:44 | 8 Verbatim fix | Orchestrator | applied reviewer's verbatim doc fix to README, container-actions, 0008 (0008 line wrap adapted); git diff only those 3 lines; format/scope/decision checks PASS; round clean |
+| 2026-10-24 18:45 | 9 PR approval | squad-lead | APPROVED: IsNotRetried deviation accepted (note in plan), records/docs match code (opus/medium · 48,453 tokens · 8 tool uses · 34 s) |

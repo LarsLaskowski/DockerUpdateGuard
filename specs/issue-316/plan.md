@@ -117,6 +117,10 @@ In `TransientHttpRetryHandlerLogging` (region *Methods*):
 
 All members are private or internal; no public API changes, no skeleton files to rewrite beyond these two.
 
+Deviation accepted in step 9: the Dev added `private bool IsNotRetried(HttpRequestMessage request, string requestTarget, HttpResponseMessage response, out TimeSpan? retryAfter)`,
+which holds both non-idempotent give-up checks (3502 and 3503) so `SendAsync` stays below S3776; behavior, log
+entries and the single `Retry-After` read the criteria rest on are unchanged.
+
 ## Test files
 
 - `src/Tests/DockerUpdateGuard.Tests/TransientHttpRetryHandlerTests.cs`
