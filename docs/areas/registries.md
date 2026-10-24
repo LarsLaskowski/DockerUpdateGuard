@@ -174,7 +174,7 @@ retry policy and the failure model.
 - Read live: `DockerHub:UserName`, `DockerHub:Pat`, `DockerHub:Registry` (for account discovery),
   `DockerHub:MaxParallelRequests` (for new client instances) and `Scanning:RetryCount`.
 - Fixed at startup, a change needs a restart: `DockerHub:ApiBaseUrl` and `DockerHub:RequestTimeoutSeconds`. The
-  origin of `ApiBaseUrl` is the only one Docker Hub pagination follows ([Pagination links](#pagination-links)).
+  origin of `ApiBaseUrl` (or of an absolute `DockerHub:Registry` that replaces it), fixed at startup like `ApiBaseUrl`, is the only one Docker Hub pagination follows ([Pagination links](#pagination-links)).
 - Validation of these keys at startup (an invalid value fails startup, see [Hosting](hosting.md)): `Registry`
   non-empty, `ApiBaseUrl` an absolute `http`/`https` URL, and the ranges above.
 
