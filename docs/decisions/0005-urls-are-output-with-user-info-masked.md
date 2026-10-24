@@ -33,9 +33,11 @@ areas*). The clients still have to connect with the URL as configured.
 
 ## Decision
 
-Option 1. A URL that the platform's URI parser accepts with user info is output rebuilt from its parts with the user
-info replaced by `***`; any other text that contains `@` is masked fail-closed from after its `scheme://` (or from its
-start) up to its last `@`; text without `@` is output unchanged. The rules and where they apply are specified in
+Option 1. A value with exactly one `@` that the platform's URI parser accepts as `scheme://` with non-empty user info
+is output rebuilt from its parts with the user info replaced by `***`; every other value that contains `@` is masked
+fail-closed from after its `scheme://` (or from its start) up to its last `@`, because the parser ends the authority at
+the first `/`, `?` or `#` and so reads a password such as `admin:#secret@host` as a host without user info; text
+without `@` is output unchanged. The rules and where they apply are specified in
 [Telemetry](../areas/telemetry.md#credentials-and-external-data) and [Web UI](../areas/web-ui.md#secrets).
 
 ## Consequences
@@ -45,7 +47,8 @@ start) up to its last `@`; text without `@` is output unchanged. The rules and w
   omit user info, because the platform builds their URL from scheme, host, port and path.
 - A URL with user info is shown in the parser's normalized form (lower-case host, default port dropped, trailing
   slash added); a URL without user info is shown exactly as configured.
-- Text that only looks like user info (an `@` in an unparseable value) is over-masked; accepted, it fails closed.
+- A value with an `@` that is not user info (`https://host.example/@scope/pkg` → `https://***@scope/pkg`, or a second
+  `@` in the path) is over-masked; accepted, it fails closed. Masking an already masked value changes nothing.
 - Messages an external tool writes (Trivy's error output) are passed on as they stand; masking free text is not part
   of this decision.
 - Rows stored before the change are masked on display and rewritten masked by the next synchronization; scan-run

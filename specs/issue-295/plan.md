@@ -1,7 +1,7 @@
 # Plan: Credentials embedded in configured URLs leak into logs, error messages and the UI
 
 Source: Issue #295
-Status: Draft
+Status: Revised (1)
 Tier: security — the change adds a redaction control for secrets in configuration (user info of configured URLs) to logs, messages, stored values and the UI.
 Security areas touched: Secrets in configuration; Logging and telemetry of external data; Registry and Docker Hub calls (`TransientHttpRetryHandler`); Container actions (`PortainerClient`); Docker Engine access (`DockerInstanceClient`)
 
@@ -36,7 +36,7 @@ Every output site passes the configured URL string (or a URI that still holds it
 | 9 | `npipe://user:secret@pipehost/` passes validation, and discovery fails with a message that contains the user info | Probe: parses, `UserInfo=[user:secret]`, `AbsolutePath=/`; `CreateNamedPipeHttpClient` calls `GetNamedPipeName` eagerly (`DockerInstanceClient.cs:355-360`), which throws at `:474`; caught at the discovery `catch` → `Failed("… failed for '<name>': <message>")` and event `3104` with the exception | confirmed |
 | 10 | Runtime HTTP exception messages never contain the request URI | `System.Net.Http` `Strings.resx` (release/10.0): the only `{0}` near a URI is the scheme in `net_http_unsupported_requesturi_scheme`; connect failures use `host:port` (`ConnectHelper.cs:143`) | confirmed |
 | 11 | With Portainer disabled, an existing stored endpoint keeps its earlier `BaseUrl` | `InstanceDiscoveryService.cs:131-140` sets only `IsEnabled`/`UpdatedAtUtc` | confirmed |
-| 12 | Parser behavior the helper relies on (probe, .NET 10.0.402): two `@` in the authority (`https://user:p@ss@host/path`), a `/`, `?` or `#` in the password, `npipe://user:secret@./pipe/x`, `unix://user:secret@/var/run/docker.sock` and backslash forms do **not** parse; `user:secret@host:2376` parses as scheme `user` with empty `UserInfo` and path `secret@host:2376`; percent-escaped, IPv6 (`[::1]`), upper-case and whitespace-padded forms parse with `UserInfo` set; `GetComponents(Host \| Port \| PathAndQuery \| Fragment, UriEscaped)` omits default ports, keeps `[::1]:2376`, and gives `unix:///var/run/docker.sock` as `/var/run/docker.sock` | Scratch probe in the session scratchpad | confirmed |
+| 12 | Parser behavior the helper relies on (probe, .NET 10.0.402): (a) two `@` in the authority (`https://user:p@ss@host/path`), a `/` in the password after a non-numeric part (`https://user:pa/ss@host`), `npipe://user:secret@./pipe/x` and `unix://user:secret@/var/run/docker.sock` do **not** parse; (b) the parser ends the authority at the first `/`, `?` or `#`, so a password or user name containing one of them (`https://admin:#Xy7secret@portainer:9443`, `…:?Xy7secret@…`, `…:/Xy7secret@…`, `https://admin:12/34secret@host`, `https://admin:12#secret@host`, `https://ad/min:secret@host`, `https://admin#:secret@host`, `tcp://admin:#secret@docker:2376`) **parses with empty `UserInfo`** and host `admin` — indistinguishable from `https://host.example/@scope/pkg`; (c) `https://a:b@c:/secret@host` parses with `UserInfo` `a:b` and the rest of the secret in the path; (d) backslash forms (`https:\\user:secret@host.example`) parse with `UserInfo` set but do not start with `https://`; (e) `user:secret@host:2376` parses as scheme `user` with empty `UserInfo`; (f) percent-escaped, IPv6 (`[::1]`), upper-case and whitespace-padded forms parse with `UserInfo` set; `GetComponents(Host \| Port \| PathAndQuery \| Fragment, UriEscaped)` omits default ports and keeps `[::1]:2376`; (g) the revised rule (Approach 1) gives the AC1 outputs for every row, and an already masked value is returned unchanged | Scratch probe in the session scratchpad (round 1, re-run in the revision with the rule itself; Security's probe for (b)) | confirmed |
 | 13 | The test logger records the formatted message only, not the structured `{BaseUrl}` attribute; the attribute carries the same argument | `src/Tests/DockerUpdateGuard.Tests/Data/TestLogger{TCategoryName}.cs:54-68`; source-generated `LoggerMessage` passes one value to both | confirmed |
 
 ## Acceptance criteria
@@ -50,7 +50,6 @@ name strings do not occur in the text (`Assert.DoesNotContain` with a message).
   | ----- | ------ | ---- |
   | `null`, `""` | `""` | empty |
   | `unix:///var/run/docker.sock`, `npipe://./pipe/docker_engine`, `https://host.example/path?token=x` | unchanged | no `@` |
-  | `https://host.example/@scope/pkg` | unchanged | parsed with authority, no user info |
   | `https://user:secret@portainer.example:9443/api/auth?x=1` | `https://***@portainer.example:9443/api/auth?x=1` | parsed with user info |
   | `https://user@host.example` | `https://***@host.example/` | parsed with user info |
   | `https://:secret@host.example/` | `https://***@host.example/` | parsed with user info |
@@ -63,6 +62,18 @@ name strings do not occur in the text (`Assert.DoesNotContain` with a message).
   | `npipe://user:secret@./pipe/docker_engine` | `npipe://***@./pipe/docker_engine` | fallback |
   | `user:secret@host:2376` | `***@host:2376` | fallback (parsed as scheme `user`, no authority) |
   | `user:secret@host?x=http://a` | `***@host?x=http://a` | fallback (`://` only after the `@`) |
+  | `https://admin:#Xy7secret@portainer:9443` | `https://***@portainer:9443` | fallback (`@`, no parsed user info) |
+  | `https://admin:?Xy7secret@portainer:9443` | `https://***@portainer:9443` | fallback (`@`, no parsed user info) |
+  | `https://admin:/Xy7secret@portainer:9443` | `https://***@portainer:9443` | fallback (`@`, no parsed user info) |
+  | `https://admin:12/34secret@host` | `https://***@host` | fallback (`@`, no parsed user info) |
+  | `https://admin:12#secret@host` | `https://***@host` | fallback (`@`, no parsed user info) |
+  | `https://ad/min:secret@host` | `https://***@host` | fallback (`@`, no parsed user info) |
+  | `https://admin#:secret@host` | `https://***@host` | fallback (`@`, no parsed user info) |
+  | `tcp://admin:#secret@docker:2376` | `tcp://***@docker:2376` | fallback (`@`, no parsed user info) |
+  | `https://host.example/@scope/pkg` | `https://***@scope/pkg` | fallback (`@`, no parsed user info; over-masked, accepted in 0005) |
+  | `https://a:b@c:/secret@host` | `https://***@host` | fallback (more than one `@`) |
+  | `https:\\user:secret@host.example` | `***@host.example` | fallback (no `scheme://` prefix) |
+  | `https://***@docker.example.test/` | `https://***@docker.example.test/` | parsed with user info `***` (idempotent) |
 
 - [ ] AC2: `UrlRedaction.RedactUserInfo(Uri?)` returns `""` for `null`, the AC1 result of `AbsoluteUri` for an
   absolute URI (`new Uri("https://user:secret@host.example/a")` → `https://***@host.example/a`) and of
@@ -84,23 +95,25 @@ name strings do not occur in the text (`Assert.DoesNotContain` with a message).
 - [ ] AC7: Synchronization stores `EndpointUri` `https://***@docker.example.test:2376/` for a configured
   `https://user:secret@docker.example.test:2376` (connection kind still `Https`, the options' `BaseUrl` unchanged),
   stores the Portainer `BaseUrl` masked, logs event `2091` for an enabled `ssh://user:secret@docker.example.test`
-  masked, and rewrites a stored Portainer `BaseUrl` with user info masked when Portainer is disabled.
+  masked, and rewrites a stored Portainer `BaseUrl` with user info masked when Portainer is disabled (a stored value already
+  masked, `https://***@portainer.example.test:9443/`, stays exactly as it is).
 - [ ] AC8: `GetDockerInstancesAsync` and `GetDockerInstanceDetailAsync` return `EndpointUri`
   `https://***@docker.example.test/` for a stored row whose `EndpointUri` is `https://user:secret@docker.example.test`
-  (a row written before the change), and `unix:///var/run/docker.sock` unchanged.
+  (a row written before the change), the already masked `https://***@docker.example.test/` unchanged, and
+  `unix:///var/run/docker.sock` unchanged.
 
 ## Tests per criterion
 
 | AC | Test(s) | Test file |
 | -- | ------- | --------- |
-| AC1 | `UrlRedactionRedactUserInfoNullOrEmptyReturnsEmpty`, `UrlRedactionRedactUserInfoWithoutAtSignReturnsInputUnchanged` (data rows: unix, npipe, query), `UrlRedactionRedactUserInfoAtSignInPathReturnsInputUnchanged`, `UrlRedactionRedactUserInfoUserAndPasswordMasked` (data rows: the seven "parsed with user info" rows), `UrlRedactionRedactUserInfoUnparsableWithUserInfoMasked` (data rows: the five fallback rows); every masked row also asserts that neither the user name nor the password of its input occurs in the result | `src/Tests/DockerUpdateGuard.Tests/UrlRedactionTests.cs` |
+| AC1 | `UrlRedactionRedactUserInfoNullOrEmptyReturnsEmpty`, `UrlRedactionRedactUserInfoWithoutAtSignReturnsInputUnchanged` (data rows: unix, npipe, query), `UrlRedactionRedactUserInfoAtSignWithoutParsedUserInfoMasked` (data rows: the eight `@`-without-parsed-user-info rows and `@scope/pkg`), `UrlRedactionRedactUserInfoAlreadyMaskedReturnsInputUnchanged`, `UrlRedactionRedactUserInfoUserAndPasswordMasked` (data rows: the seven "parsed with user info" rows), `UrlRedactionRedactUserInfoUnparsableWithUserInfoMasked` (data rows: the five fallback rows of round 1, the `a:b@c:/secret@host` row and the backslash row); every masked row also asserts that neither the user name nor any part of the password of its input (`secret`, `Xy7secret`, `34secret`, `min`, `ss`, `cret`) occurs in the result | `src/Tests/DockerUpdateGuard.Tests/UrlRedactionTests.cs` |
 | AC2 | `UrlRedactionRedactUserInfoNullUriReturnsEmpty`, `UrlRedactionRedactUserInfoAbsoluteUriMasked`, `UrlRedactionRedactUserInfoRelativeUriUsesOriginalString` | `src/Tests/DockerUpdateGuard.Tests/UrlRedactionTests.cs` |
 | AC3 | `TransientHttpRetryHandlerTransientStatusLogOmitsUserInfoAndQueryAsync`, `TransientHttpRetryHandlerTransientExceptionLogOmitsUserInfoAndQueryAsync` | `src/Tests/DockerUpdateGuard.Tests/TransientHttpRetryHandlerTests.cs` |
 | AC4 | `PortainerClientGetCapabilityAsyncWithUserInfoAndFailedLoginMasksUserInfoAsync`, `PortainerClientGetCapabilityAsyncWithUserInfoAndMissingJwtMasksUserInfoAsync` | `src/Tests/DockerUpdateGuard.Tests/PortainerClientTests.cs` |
 | AC5 | `DockerInstanceClientDiscoverContainersAsyncWithUnsupportedEndpointUserInfoMasksUserInfoAsync`, `DockerInstanceClientOperationsWithUnsupportedEndpointUserInfoMaskUserInfoAsync` (the four other operations) | `src/Tests/DockerUpdateGuard.Tests/DockerInstanceClientTests.cs` |
 | AC6 | `DockerInstanceClientDiscoverContainersAsyncWithNamedPipeWithoutPipeNameMasksUserInfoAsync` | `src/Tests/DockerUpdateGuard.Tests/DockerInstanceClientTests.cs` |
-| AC7 | `InstanceDiscoveryServiceSynchronizeConfiguredInstancesAsyncStoresEndpointWithUserInfoMaskedAsync`, `InstanceDiscoveryServiceSynchronizeConfiguredInstancesAsyncStoresPortainerBaseUrlMaskedAsync`, `InstanceDiscoveryServiceSynchronizeConfiguredInstancesAsyncUnsupportedEndpointLogMasksUserInfoAsync`, `InstanceDiscoveryServiceSynchronizeConfiguredInstancesAsyncDisabledPortainerMasksStoredBaseUrlAsync` | `src/Tests/DockerUpdateGuard.Tests/InstanceDiscoveryServiceTests.cs` |
-| AC8 | `ApplicationViewServiceDockerInstancesMaskStoredEndpointUserInfoAsync`, `ApplicationViewServiceDockerInstanceDetailMasksStoredEndpointUserInfoAsync` | `src/Tests/DockerUpdateGuard.Tests/ApplicationViewServiceTests.cs` |
+| AC7 | `InstanceDiscoveryServiceSynchronizeConfiguredInstancesAsyncStoresEndpointWithUserInfoMaskedAsync`, `InstanceDiscoveryServiceSynchronizeConfiguredInstancesAsyncStoresPortainerBaseUrlMaskedAsync`, `InstanceDiscoveryServiceSynchronizeConfiguredInstancesAsyncUnsupportedEndpointLogMasksUserInfoAsync`, `InstanceDiscoveryServiceSynchronizeConfiguredInstancesAsyncDisabledPortainerMasksStoredBaseUrlAsync` (data rows: unmasked and already masked stored value) | `src/Tests/DockerUpdateGuard.Tests/InstanceDiscoveryServiceTests.cs` |
+| AC8 | `ApplicationViewServiceDockerInstancesMaskStoredEndpointUserInfoAsync`, `ApplicationViewServiceDockerInstanceDetailMasksStoredEndpointUserInfoAsync`, `ApplicationViewServiceDockerInstancesKeepAlreadyMaskedEndpointAsync` | `src/Tests/DockerUpdateGuard.Tests/ApplicationViewServiceTests.cs` |
 
 `RedactUserInfo(null)` is ambiguous between the two overloads: the tests write `RedactUserInfo((string?)null)` and
 `RedactUserInfo((Uri?)null)`.
@@ -111,17 +124,19 @@ name strings do not occur in the text (`Assert.DoesNotContain` with a message).
    overload, in this order:
    1. `null` or empty → `""`.
    2. No `@` in the input → the input unchanged.
-   3. `Uri.TryCreate(input, UriKind.Absolute, …)` succeeds and the trimmed input starts with `{uri.Scheme}://`
-      (ordinal, case-insensitive), i.e. the parsed URI has an authority:
-      - `UserInfo` not empty → `$"{uri.Scheme}://{Mask}@{uri.GetComponents(UriComponents.Host | UriComponents.Port | UriComponents.PathAndQuery | UriComponents.Fragment, UriFormat.UriEscaped)}"`;
-      - `UserInfo` empty → the input unchanged (the `@` lies in path, query or fragment for the parser the clients
-        connect with).
-   4. Otherwise (unparseable, or parsed without an authority): `last` = last index of `@`; `start` = index after the first `://` when
+   3. Rebuild only when **all** hold: the input contains exactly one `@`; `Uri.TryCreate(input, UriKind.Absolute, …)`
+      succeeds; the trimmed input starts with `{uri.Scheme}://` (ordinal, case-insensitive); `UserInfo` is not empty.
+      Then return `$"{uri.Scheme}://{Mask}@{uri.GetComponents(UriComponents.Host | UriComponents.Port | UriComponents.PathAndQuery | UriComponents.Fragment, UriFormat.UriEscaped)}"`.
+      There is no "parsed, no user info → unchanged" branch: the parser cannot tell `https://host/@scope` from
+      `https://admin:/secret@host` (fact 12 b).
+   4. Every other input that contains `@` (unparseable, parsed without user info, without an authority, or with more
+      than one `@`): `last` = last index of `@`; `start` = index after the first `://` when
       that occurs before `last`, else `0`; return `input[..start] + Mask + input[last..]`. Fail-closed: everything
       before the last `@` after the scheme separator is masked. String operations only, no regular expression.
    Uri overload: `null` → `""`; absolute → string overload of `AbsoluteUri`; relative → of `OriginalString`.
 2. **Retry handler** `GetRequestTarget`: absolute → `UrlRedaction.RedactUserInfo(requestUri.GetLeftPart(UriPartial.Path))`
-   (query still dropped first); relative → `UrlRedaction.RedactUserInfo(requestUri.OriginalString)`. XML summary
+   (query still dropped first); relative → `OriginalString` cut before its first `?` or `#`, then
+   `UrlRedaction.RedactUserInfo(…)`, so both branches drop the query as the XML summary says (N1). XML summary
    names both. The request itself is untouched.
 3. **Output sites**: pass `UrlRedaction.RedactUserInfo(…)` instead of the raw value at `DockerInstanceClient.cs:474`
    (Uri overload), `:983`, `:985`, `:1063`, `:1152`, `:1189`, `:1223`; `InstanceDiscoveryService.cs:118`;
@@ -230,8 +245,10 @@ change. `ARCHITECTURE.md` gets the sentence above because the secrets posture ga
   and the named-pipe `InvalidOperationException` (`The Docker named pipe URI 'npipe://***@pipehost/' does not contain
   a pipe name`); runtime `HttpRequestException`s carry no URI (fact 10).
 - The helper is the guard: the forms the parser accepts or rejects are enumerated in fact 12, and AC1 has a row for
-  each class (parsed with user info, parsed without, every rejected form seen, no `://`). Any input with `@` that the
-  parser does not resolve to user info with an authority is masked fail-closed up to its last `@`.
+  each class (parsed with user info, `/`, `?` or `#` in the password or user name, numeric port prefix, more than one
+  `@`, backslash form, no authority, unparseable, already masked). Only a value with exactly one `@` that the parser
+  resolves to non-empty user info with a `scheme://` authority is rebuilt; every other value with `@` is masked
+  fail-closed up to its last `@`, at the price of over-masking an `@` in a path (`https://***@scope/pkg`).
 - Scan-run error messages stored before the change are not rewritten (fact 3: the unsupported branches are not
   reachable in production; the named-pipe message is, and old rows age out with scan-run retention).
 
@@ -251,3 +268,24 @@ change. `ARCHITECTURE.md` gets the sentence above because the secrets posture ga
 - `OciRegistryClient.cs:1119,1134` name the token realm URI a registry sends; it is not configured and carries no
   configured secret — unchanged.
 - Rejecting user info in configuration validation: a product decision (0005, option 3), not proposed here.
+
+## Security review
+
+- **B1 (blocking) — accepted.** The branch "parsed with authority, empty `UserInfo` → unchanged" is removed (Approach
+  1.3). Rebuilding now also requires exactly one `@` (my addition: `https://a:b@c:/secret@host` parses with `UserInfo`
+  `a:b` and would otherwise keep `secret@host` in the path); everything else with `@` goes to the fallback. AC1 gains
+  rows for every probe form Security named (including `tcp://admin:#secret@docker:2376`), the `@scope/pkg` row now
+  expects `https://***@scope/pkg`, and the test is renamed to `UrlRedactionRedactUserInfoAtSignWithoutParsedUserInfoMasked`.
+  Fact 12, record 0005 (*Decision*, *Consequences*) and *Security considerations* say the same rule. Re-checked the
+  whole list of accepted forms with the rule itself (fact 12 g): no row leaks a user or password part.
+- **N1 — taken.** The relative branch of `GetRequestTarget` cuts `OriginalString` before its first `?` or `#` before
+  redacting (Approach 2); covered by the existing relative-URI behavior plus the AC3 tests for the absolute branch.
+- **N2 — taken.** Re-redacting is idempotent (`***` parses as user info and is rebuilt identically, fact 12 g): AC1
+  row, AC7 data row and AC8 test with an already masked stored value.
+
+## Challenge
+
+- **Backslash forms (minor) — accepted.** Fact 12 now says `https:\\user:secret@host.example` parses with
+  `UserInfo` set and, since it does not start with `https://`, goes to the fallback with `***@host.example` (scheme
+  lost, nothing leaks); AC1 row added to `UrlRedactionRedactUserInfoUnparsableWithUserInfoMasked`. The `scheme://`
+  prefix condition stays unchanged, keeping `user:secret@host:2376` on the fallback path.
