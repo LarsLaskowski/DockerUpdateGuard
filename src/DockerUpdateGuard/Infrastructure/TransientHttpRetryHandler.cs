@@ -167,6 +167,38 @@ public class TransientHttpRetryHandler : DelegatingHandler
     }
 
     /// <summary>
+    /// Read the wait the server asked for with a Retry-After header, without clamping it
+    /// </summary>
+    /// <param name="response">Response that failed, or null when an exception occurred</param>
+    /// <returns>The positive wait requested by a delta or a date, or null when the header is missing or asks for no wait</returns>
+    private static TimeSpan? GetRetryAfter(HttpResponseMessage? response)
+    {
+        var retryAfter = response?.Headers.RetryAfter;
+
+        if (retryAfter is null)
+        {
+            return null;
+        }
+
+        if (retryAfter.Delta is TimeSpan delta && delta > TimeSpan.Zero)
+        {
+            return delta;
+        }
+
+        if (retryAfter.Date is DateTimeOffset date)
+        {
+            var untilDate = date - DateTimeOffset.UtcNow;
+
+            if (untilDate > TimeSpan.Zero)
+            {
+                return untilDate;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
     /// Build a log-safe request target that omits the query string to avoid leaking credentials
     /// </summary>
     /// <param name="request">Request message</param>
@@ -210,31 +242,64 @@ public class TransientHttpRetryHandler : DelegatingHandler
     }
 
     /// <summary>
+    /// Log that a non-idempotent request was not retried because the server asked for a longer wait than the maximum
+    /// </summary>
+    /// <param name="request">Request message</param>
+    /// <param name="requestTarget">Log-safe request target</param>
+    /// <param name="statusCode">Status code number</param>
+    /// <param name="retryAfter">Wait requested by the server</param>
+    private void LogRetryAfterExceedsMaximum(HttpRequestMessage request,
+                                             string requestTarget,
+                                             int statusCode,
+                                             TimeSpan retryAfter)
+    {
+        if (_logger.IsEnabled(LogLevel.Debug))
+        {
+            _logger.RetryAfterExceedsMaximumNotRetried(request.Method.Method,
+                                                       requestTarget,
+                                                       statusCode,
+                                                       (long)retryAfter.TotalMilliseconds,
+                                                       MaxBackoffMilliseconds);
+        }
+    }
+
+    /// <summary>
+    /// Determine whether a non-idempotent request must not be retried because the server asked for a longer wait than
+    /// the maximum, and log the decision
+    /// </summary>
+    /// <param name="request">Request message</param>
+    /// <param name="requestTarget">Log-safe request target</param>
+    /// <param name="statusCode">Status code number</param>
+    /// <param name="isIdempotent">True when the request method is idempotent</param>
+    /// <param name="retryAfter">Wait requested by the server, or null when there is none</param>
+    /// <returns>True when the response is to be returned without a retry</returns>
+    private bool IsRetryAfterBeyondMaximum(HttpRequestMessage request,
+                                           string requestTarget,
+                                           int statusCode,
+                                           bool isIdempotent,
+                                           TimeSpan? retryAfter)
+    {
+        if (isIdempotent || retryAfter is not TimeSpan requested || requested.TotalMilliseconds <= MaxBackoffMilliseconds)
+        {
+            return false;
+        }
+
+        LogRetryAfterExceedsMaximum(request, requestTarget, statusCode, requested);
+
+        return true;
+    }
+
+    /// <summary>
     /// Compute the backoff delay before the next retry attempt, honoring a Retry-After hint when present
     /// </summary>
     /// <param name="attempt">Zero-based index of the attempt that just failed</param>
-    /// <param name="response">Response that failed, or null when an exception occurred</param>
+    /// <param name="retryAfter">Wait requested by the server, or null when there is none</param>
     /// <returns>Delay to wait before the next attempt</returns>
-    private TimeSpan GetRetryDelay(int attempt, HttpResponseMessage? response)
+    private TimeSpan GetRetryDelay(int attempt, TimeSpan? retryAfter)
     {
-        var retryAfter = response?.Headers.RetryAfter;
-
-        if (retryAfter is not null)
+        if (retryAfter is TimeSpan requested)
         {
-            if (retryAfter.Delta is TimeSpan delta && delta > TimeSpan.Zero)
-            {
-                return ClampToMaximum(delta);
-            }
-
-            if (retryAfter.Date is DateTimeOffset date)
-            {
-                var untilDate = date - DateTimeOffset.UtcNow;
-
-                if (untilDate > TimeSpan.Zero)
-                {
-                    return ClampToMaximum(untilDate);
-                }
-            }
+            return ClampToMaximum(requested);
         }
 
         var exponentialMilliseconds = Math.Min(BaseBackoffMilliseconds * Math.Pow(2, attempt), MaxBackoffMilliseconds);
@@ -284,7 +349,14 @@ public class TransientHttpRetryHandler : DelegatingHandler
                     return response;
                 }
 
-                var delay = GetRetryDelay(attempt, response);
+                var retryAfter = GetRetryAfter(response);
+
+                if (IsRetryAfterBeyondMaximum(request, requestTarget, statusCode, isIdempotent, retryAfter))
+                {
+                    return response;
+                }
+
+                var delay = GetRetryDelay(attempt, retryAfter);
 
                 response.Dispose();
                 _logger.TransientResponseRetry(request.Method.Method,

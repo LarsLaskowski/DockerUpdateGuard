@@ -158,21 +158,25 @@ retry policy and the failure model.
   statuses (including 401, 403 and 404) and cancellation are not retried.
 - A request is retried up to `DockerUpdateGuard:Scanning:RetryCount` times (default 2, range 0–10; 0 disables
   retries). The value is read for every request, so a configuration reload applies at once.
-- The wait before a retry is the response's `Retry-After` (delta or date) when positive, capped at 30 seconds;
+- The wait before a retry is the response's `Retry-After` (delta or date) when positive, capped at 30 seconds (a non-idempotent request with a longer `Retry-After` is not retried, see below);
   otherwise 500 ms × 2^n for the n-th retry (n starting at 0), capped at 30 seconds, plus a random jitter of up to 20 %
   of that value, the total again capped at 30 seconds.
 - `GET`, `HEAD`, `OPTIONS`, `TRACE`, `PUT` and `DELETE` are retried as described above. Every other method (`POST`,
-  `PATCH`, any custom method) is not idempotent: a repeat could run its effect twice, so it is retried only on a 429
+  `PATCH`, any custom method) is not idempotent: a repeat could run its effect twice, so it is retried only on a 429 whose `Retry-After` asks for at most 30 seconds or is missing,
   and after an `HttpRequestException` whose error shows that no request byte was sent (`NameResolutionError`,
   `ConnectionError`, `SecureConnectionError`, `ProxyTunnelError`). A 5xx, a 408, a timeout or a connection that broke
   after the connection was established ends the request after one attempt: the response is returned or the error
-  raised. The requests concerned are the Docker Hub login and the Portainer login and actions. A non-idempotent request always carries a body, an empty one if it has nothing to send: the runtime resends a body-less request on its own when a reused connection closes after the server read it ([0008](../decisions/0008-non-idempotent-requests-retry-only-when-not-processed.md)).
+  raised. A 429 whose `Retry-After` asks for more than 30 seconds is returned after one attempt as well: the retry does
+  not resend the request inside the window the server named. The callers may still log in again with their next
+  request (see *Known gaps*). The requests concerned are the Docker Hub login and the Portainer login and actions. A non-idempotent request always carries a body, an empty one if it has nothing to send: the runtime resends a body-less request on its own when a reused connection closes after the server read it ([0008](../decisions/0008-non-idempotent-requests-retry-only-when-not-processed.md)).
 - A request body is buffered before the first attempt, so a retry resends the identical body and a body of unknown
   length is sent with a `Content-Length`.
 - When the retries are used up the last response is returned to the caller, or the last error is raised.
 - Each retry is logged as a warning with the method, the URL without its user info and query, the status or error, the attempt
   number and the wait. A transient outcome that is not retried because the method is not idempotent is logged as a
-  debug entry (3502) with the method, the masked URL and the status or error name.
+  debug entry (3502) with the method, the masked URL and the status or error name. A 429 that is not retried because its `Retry-After` exceeds 30 seconds
+  is logged as a debug entry (3503) with the status, the method, the masked URL, the requested wait and the 30-second
+  maximum.
 - `DockerUpdateGuard:DockerHub:RequestTimeoutSeconds` (default 30, range 1–300) is the total time one request may
   take including all retries and waits, for Docker Hub, other registries and the release feeds. A request that runs
   out of time is not retried.
@@ -205,6 +209,9 @@ retry policy and the failure model.
 
 ### Known gaps
 
+- After a failed login the Docker Hub client logs in again with its next authenticated request, and the Portainer
+  client logs in for every capability check and action; neither remembers a 429's `Retry-After`. Tracked in
+  [#320](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/320).
 - `MaxParallelRequests` caps each Docker Hub client instance, not the process: concurrent scans, and the client
   instances one scan uses, each get the full allowance. Tracked in
   [#265](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/265).
