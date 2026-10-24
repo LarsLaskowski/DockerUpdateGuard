@@ -18,6 +18,7 @@ public class ProcessRunner : IProcessRunner
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(fileName);
         ArgumentNullException.ThrowIfNull(arguments);
+        ArgumentNullException.ThrowIfNull(environmentVariables);
 
         var startInfo = new ProcessStartInfo
                         {
@@ -31,6 +32,11 @@ public class ProcessRunner : IProcessRunner
         foreach (var argument in arguments)
         {
             startInfo.ArgumentList.Add(argument);
+        }
+
+        foreach (var environmentVariable in environmentVariables)
+        {
+            startInfo.Environment[environmentVariable.Key] = environmentVariable.Value;
         }
 
         using (var process = new Process())

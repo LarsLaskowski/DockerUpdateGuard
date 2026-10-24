@@ -401,7 +401,8 @@ it links:
   validated and reported is in [Docker instances](areas/docker-instances.md)
   and [Container actions](areas/container-actions.md). URLs with user info
   are logged, stored and shown with it masked as `***`, and Trivy's error output is withheld when `TrivyBaseUrl`
-  contains an `@`
+  contains an `@`, and the Trivy server address reaches the Trivy process in its environment (`TRIVY_SERVER`), not
+  on its command line
   ([Telemetry](areas/telemetry.md), [record 0005](decisions/0005-urls-are-output-with-user-info-masked.md)).
 - **Pagination stays on its origin.** `DockerHubClient`, `OciRegistryClient`
   and `DockerScoutVulnerabilityProvider` follow a next-page link only on the

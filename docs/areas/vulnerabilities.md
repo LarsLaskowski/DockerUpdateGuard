@@ -90,8 +90,11 @@ scan run:
 - Trivy runs as a local process in client mode against the Trivy server at `TrivyBaseUrl`; the image is analysed by
   the process, only the vulnerability database lookup goes to the server. No shell is involved; each argument is
   passed separately:
-  `image --server <TrivyBaseUrl without trailing /> --format json --quiet --scanners vuln --pkg-types os,library
-  --timeout <RequestTimeoutSeconds>s <target>`.
+  `image --format json --quiet --scanners vuln --pkg-types os,library --timeout <RequestTimeoutSeconds>s <target>`.
+- The server address is passed as `TRIVY_SERVER` (`TrivyBaseUrl` without trailing `/`, user info unchanged) in the
+  process environment, added to the environment inherited from the application (an inherited `TRIVY_SERVER` is
+  replaced), so it does not stand on the command line, where every user who can see the process could read the user
+  info.
 - The target is `<repository>:<tag>` for `docker.io` images and `<registry>/<repository>:<tag>` otherwise, followed by
   `@<digest>` when the digest is known.
 - The process gets `RequestTimeoutSeconds` plus 10 seconds. When that passes, the process and its children are killed
@@ -178,7 +181,8 @@ The dashboard shows at most one hint about the vulnerability configuration:
 
 - [0004](../decisions/0004-pagination-follows-only-same-origin-links.md): pagination follows only same-origin links.
 - [0005](../decisions/0005-urls-are-output-with-user-info-masked.md): URLs are output with their user info masked;
-  Trivy's error output is withheld for a `TrivyBaseUrl` with an `@`.
+  Trivy's error output is withheld for a `TrivyBaseUrl` with an `@`; the Trivy server address is passed in the
+  environment.
 
 ## Not here
 
