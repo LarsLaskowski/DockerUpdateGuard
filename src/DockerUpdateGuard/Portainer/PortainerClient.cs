@@ -73,6 +73,20 @@ public partial class PortainerClient : IPortainerClient
     #region Static methods
 
     /// <summary>
+    /// Map an exception caught by the client to a fixed, user-safe failure reason
+    /// </summary>
+    /// <param name="exception">Caught exception</param>
+    /// <param name="requestTimeoutSeconds">Configured request timeout in seconds</param>
+    /// <param name="cancellationToken">Cancellation token of the call</param>
+    /// <returns>Fixed failure reason</returns>
+    private static string GetFailureReason(Exception exception,
+                                           int requestTimeoutSeconds,
+                                           CancellationToken cancellationToken)
+    {
+        throw new InvalidOperationException("Skeleton: not implemented");
+    }
+
+    /// <summary>
     /// Resolve the first available Portainer endpoint identifier
     /// </summary>
     /// <param name="client">Authenticated HTTP client</param>
