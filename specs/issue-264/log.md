@@ -17,3 +17,5 @@ are quoted in full.
 | 2026-10-24 10:23 | 7 Code check | Orchestrator | main merged (up to date); Format check 0/366, Analyzer gate 0 diagnostics, build 0 warn, tests 520+21 green, Coverage gate PASS (100% new, 84.2% overall), scope-check PASS, decision-check PASS; Sonar gate NOT CHECKED if no SONAR_TOKEN (left to step 11) |
 | 2026-10-24 10:25 | 8 Review | squad-security | diff review of dd7cb3a: APPROVED, no blocking; 1 non-blocking: Scout whitespace-only next should use IsNullOrWhiteSpace like Hub/OCI (opus/medium · 51,943 tokens · 5 tool uses · 59 s) |
 | 2026-10-24 10:26 | 8 Review | squad-reviewer | round 1 at dd7cb3a: 2 blocking (Scout whitespace next must end listing -> Dev+test; registries.md ApiBaseUrl sentence verbatim doc fix), 0 non-blocking (opus/medium · 99,464 tokens · 20 tool uses · 162 s) |
+| 2026-10-24 10:28 | 8 Fix round 1 | Orchestrator | registries.md ApiBaseUrl sentence applied verbatim (reviewer fix) |
+| 2026-10-24 10:29 | 8 Fix round 1 | squad-dev | Scout next link: IsNullOrWhiteSpace; build/tests green (sonnet/medium · 1,588 tokens · 2 tool uses · 109 s · continued from 6 Implement) |
