@@ -28,7 +28,9 @@ areas, guarantees, integration surface, test doubles), `AGENTS.md` and
 - **Your experiments, builds and test runs** (when a squad session invoked you) happen in a scratch worktree:
   `git worktree add --detach <scratchpad>/review <head>` (a worktree, not a plain file copy: the squad
   scripts need git), plus any uncommitted changes you were asked to review copied over; remove it with
-  `git worktree remove --force <scratchpad>/review` when done.
+  `git worktree remove --force <scratchpad>/review` when done. The head you review is never checked out in
+  the repository working tree, not by a command, a script or a tool you run: the orchestrator commits there
+  (`.squad/team.md`, *Shared rules*).
 - **Verify, don't assume.** Back every finding with something you ran or
   read: a test run, a build log line, a `grep` that shows the contradiction,
   a throwaway snippet in the scratchpad directory. Quote the evidence. A

@@ -59,6 +59,8 @@ Rules:
   and line plus what you ran or read. General hardening belongs in an issue, style is the Reviewer's.
 - Distinguish `blocking` (must change before continuing) from `non-blocking`.
 - In mode `diff`, take the code SHA and report it first as the Reviewer's *Inputs* say
-  (`.claude/agents/squad-reviewer.md`). Never edit files.
+  (`.claude/agents/squad-reviewer.md`). Never edit files, and never check out the code SHA or another revision
+  in the repository working tree: read it with `git show <sha>:<path>` or in a scratch `git worktree add
+  --detach` (`.squad/team.md`, *Shared rules*).
 
 End with exactly one line: `VERDICT: APPROVED` or `VERDICT: CHANGES_REQUIRED`.
