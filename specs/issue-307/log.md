@@ -10,3 +10,4 @@ are quoted in full.
 | 2026-10-24 13:14 | 2 Plan challenge | Devil's Advocate | 0 major, 1 minor (verify TRIVY_SERVER binding with the bundled binary); appended as Challenge notes (opus/medium · 48,393 tokens · 6 tool uses · 57 s) |
 | 2026-10-24 13:14 | 3 Plan security review | Security | APPROVED; 2 non-blocking notes appended as Security notes (opus/medium · 49,430 tokens · 10 tool uses · 91 s) |
 | 2026-10-24 13:19 | 4 Skeleton | Dev | Done; build clean; provider side already implemented, ProcessRunner body unchanged (sonnet/medium · 87,273 tokens · 14 tool uses · 277 s) |
+| 2026-10-24 13:25 | 5 Tests first | Tester | AC1-AC4 written; AC3, AC4 fail as expected (confirmed), AC1, AC2 already pass on the Dev's provider side (sonnet/medium · 89,907 tokens · 12 tool uses · 297 s) |
