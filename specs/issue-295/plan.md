@@ -289,3 +289,14 @@ change. `ARCHITECTURE.md` gets the sentence above because the secrets posture ga
   `UserInfo` set and, since it does not start with `https://`, goes to the fallback with `***@host.example` (scheme
   lost, nothing leaks); AC1 row added to `UrlRedactionRedactUserInfoUnparsableWithUserInfoMasked`. The `scheme://`
   prefix condition stays unchanged, keeping `user:secret@host:2376` on the fallback path.
+
+## Security notes
+
+Security's non-blocking finding of the plan review (round 2), verbatim:
+
+**N3.** The fallback (Approach 1.4) starts masking after the first `://` without checking that the text before it is a valid scheme. So `user:secret://x@host` → `user:secret://***@host` and `https:secret://x@host` → `https:secret://***@host`, and both keep `secret`. Neither can reach an output site:
+- Validation admits only http, https, tcp, unix and npipe.
+- `https:secret://…` does not parse.
+- The retry handler only sees parsed http(s) request URIs.
+
+This does not hold up the plan. Still, using `start` only when the prefix before `://` matches RFC 3986 `ALPHA *( ALPHA / DIGIT / "+" / "-" / "." )` (and otherwise `0`) would make the "fail-closed" claim hold for any input. It needs one AC1 row, `user:secret://x@host` → `***@host`. A one-line change, which can go into this plan.
