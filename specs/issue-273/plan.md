@@ -246,3 +246,10 @@ raised after exhaustion before. Layering unchanged (handler in the host). `ARCHI
   and clamps the `Retry-After` wait to the maximum backoff (`ClampToMaximum`). A server asking for a longer wait gets
   the login again early, which can extend a rate limit or lockout. Decide whether a non-idempotent request should give
   up when `Retry-After` exceeds the maximum backoff instead of clamping it."
+
+## Security notes
+
+Non-blocking findings of Security's delta confirmation (APPROVED), appended verbatim:
+
+- NB1. The no-resend guarantee is only pinned at the request level. AC10 checks that the action request has content, not what `SocketsHttpHandler` does with it; the runtime behavior rests on fact 15's measurement. That is acceptable. If the primary handler or HTTP version ever changes, the measurement has to be repeated, as record 0008 already says.
+- NB2. Empty-body compatibility is unconfirmed. The plan says the Docker restart/stop/start endpoints take no body, which fits a `Content-Length: 0` request with no `Content-Type`, but it was not tested against a real Portainer. The Dev's diff should confirm it doesn't trip Portainer's Docker proxy.
