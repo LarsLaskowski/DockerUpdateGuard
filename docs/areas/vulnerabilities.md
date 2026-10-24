@@ -100,6 +100,10 @@ scan run:
   `not found` (any case) means the image is gone from the registry: *unavailable*, "The image is no longer available
   in the registry. The tag was likely re-published with a newer digest, leaving this version orphaned." Any other
   non-zero exit code is *failed*, "Trivy exited with code X: <last line of the error output, or 'no error output'>".
+  When `TrivyBaseUrl` contains an `@` (user info, or an `@` anywhere else in it), a non-empty error output is
+  replaced by "error output withheld because TrivyBaseUrl may carry credentials" in the message and the log, because
+  Trivy may repeat parts of the URL's user info there (measured with Trivy v0.58.1: the password masked but the user
+  name kept, a user name alone in full, the raw URL for an invalid escape).
 - The JSON report on standard output is mapped per vulnerability of every result block: advisory id from
   `VulnerabilityID`; title from `Title`, else the advisory id; severity from `Severity` (`LOW`, `MEDIUM`, `HIGH`,
   `CRITICAL`, any case, everything else *not set*); affected package, installed and fixed version from `PkgName`,
@@ -173,6 +177,8 @@ The dashboard shows at most one hint about the vulnerability configuration:
 ## Related decisions
 
 - [0004](../decisions/0004-pagination-follows-only-same-origin-links.md): pagination follows only same-origin links.
+- [0005](../decisions/0005-urls-are-output-with-user-info-masked.md): URLs are output with their user info masked;
+  Trivy's error output is withheld for a `TrivyBaseUrl` with an `@`.
 
 ## Not here
 
