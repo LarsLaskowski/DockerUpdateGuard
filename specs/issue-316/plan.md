@@ -1,7 +1,7 @@
 # Plan: A non-idempotent request gives up on a 429 whose Retry-After exceeds the maximum wait
 
 Source: Issue #316
-Status: Draft
+Status: Revised (1)
 Tier: standard — changes the retry behavior of `TransientHttpRetryHandler` for non-idempotent requests (one more case in which a `POST` is not retried) without creating, changing or removing a control that stops an attacker.
 Security areas touched: Registry and Docker Hub calls (`TransientHttpRetryHandler`); Logging and telemetry of external data (new debug entry 3503 with the masked URL and the server's Retry-After value); Container actions (behavior only: the Portainer login and action `POST`s behind the handler, `PortainerClient` itself unchanged)
 
@@ -12,7 +12,7 @@ Security areas touched: Registry and Docker Hub calls (`TransientHttpRetryHandle
 then takes the wait from `GetRetryDelay` (287), which clamps a positive `Retry-After` delta (224–227) or date (229–236)
 to `MaxBackoffMilliseconds` = 30000 (26) through `ClampToMaximum` (162–167). A server that answers a login `POST` with
 429 and `Retry-After: 3600` therefore gets the same login again after 30 seconds, inside the window it asked for, up
-to `RetryCount` times (default 2). The decision that kept the 429 retry for non-idempotent methods,
+to `RetryCount` times (default 2) — as long as the client's `RequestTimeoutSeconds` leaves room for the wait (fact 3). The decision that kept the 429 retry for non-idempotent methods,
 [0008](../../docs/decisions/0008-non-idempotent-requests-retry-only-when-not-processed.md), did not weigh the clamp.
 
 ## Verified facts
@@ -21,14 +21,15 @@ to `RetryCount` times (default 2). The decision that kept the 429 retry for non-
 | - | ----- | -------- | ------ |
 | 1 | Issue: the handler retries every method, `POST` logins included, on 429 | `TransientHttpRetryHandler.cs:273–285`: a non-idempotent request returns early only when `IsNotProcessedStatusCode` is false, i.e. for every transient status but 429; existing test `TransientHttpRetryHandlerRetriesPostOnTooManyRequestsAsync` | confirmed |
 | 2 | Issue: the `Retry-After` wait is clamped to the maximum backoff (`ClampToMaximum`) | `TransientHttpRetryHandler.cs:224–236`, `162–167`; existing test `TransientHttpRetryHandlerClampsRetryAfterToMaximumBackoffAsync` expects 30000 ms for a 1 h delta | confirmed |
-| 3 | Issue: a server asking for a longer wait gets the login again early | Follows from 1 and 2 with `RetryCount` ≥ 1 (default 2, `docs/areas/registries.md:159`) | confirmed |
+| 3 | Issue: a server asking for a longer wait gets the login again early — only when the client's `RequestTimeoutSeconds` exceeds the 30 s wait plus the first attempt; with the defaults (Portainer 15 s, Docker Hub 30 s) the `HttpClient.Timeout` cancels the wait and the caller gets a timeout instead of the 429 | Follows from 1 and 2 with `RetryCount` ≥ 1 (default 2, `docs/areas/registries.md:159`); `PortainerOptions.cs:48`, `DockerHubOptions.cs:33` (validator allows up to 300 s) | confirmed |
 | 4 | Issue: the early resend can extend a rate limit or lockout | to verify: server-side behavior of Docker Hub and Portainer, not measurable in the session (needs their real limiter); owner none, no step depends on it — the fix honors the server's window whatever the server does with an early resend | unverified |
 | 5 | The non-idempotent requests behind the handler are the Docker Hub login, the Portainer login and the Portainer action, all `POST` | `DockerHubClient.cs:1031`, `PortainerClient.cs:210`, `PortainerClient.cs:395`; Docker Scout's login (`DockerScoutVulnerabilityProvider.cs:226`) has no handler (`docs/areas/vulnerabilities.md:169`) | confirmed |
 | 6 | The callers report a returned 429 as a failure with its status: Docker Hub login → *failed* with the status and body, Portainer login → `PortainerAuthenticationException` "failed with HTTP 429", Portainer action → "Action '…' failed: HTTP 429" | `DockerHubClient.cs:1039–1048`, `PortainerClient.cs:228–232`, `PortainerClient.cs:410–416` | confirmed |
 | 7 | The forms of `Retry-After` the handler reads are `RetryConditionHeaderValue.Delta` (delta-seconds) and `.Date` (HTTP-date); an invalid header leaves `Headers.RetryAfter` null, so the exponential backoff applies | `TransientHttpRetryHandler.cs:220–238`; RFC 9110 §10.2.3 defines exactly these two forms | confirmed |
-| 8 | A delta-seconds value beyond `int.MaxValue` (about 68 years) does not parse in .NET, so the handler sees no `Retry-After` and retries with the exponential backoff | to verify: Security reads `RetryConditionHeaderValue.GetRetryConditionLength` (delta read as `Int32`) in the dotnet/runtime source in step 3; the plan accepts the outcome either way (out of scope below) | unverified |
+| 8 | A delta-seconds value beyond `int.MaxValue` (about 68 years), and a negative, signed or fractional delta, does not parse in .NET, so the handler sees no `Retry-After` and retries with the exponential backoff; `2147483647` parses as a delta, a far-future date does not overflow, a duplicated header gives the delta | Security's measurement on .NET SDK 10.0.402 in step 3 | confirmed |
 | 9 | `0008` is unreleased and is edited in place | `git tag --contains eba66b9` (the commit that added it) prints nothing; latest remote tag `v1.3.7` (`git ls-remote --tags origin`) | confirmed |
 | 10 | The Portainer client's `HttpClient.Timeout` (default 15 s) and the Docker Hub/registry clients' (default 30 s) bound a request including its retry waits, so a wait longer than the remaining time ends in a cancellation, not a resend | `PortainerClient.cs:196`, `ServiceCollectionExtensions.cs:76–96`; `docs/areas/registries.md:176–178`, `docs/areas/container-actions.md:78` | confirmed |
+| 11 | The callers log in again on their own after a failed login: the Docker Hub client does not cache a failed token request or its `Retry-After`, so every later authenticated request of the same client instance posts `v2/users/login` again; the Portainer client keeps no JWT and posts `/api/auth` per capability check and per action | `DockerHubClient.cs:864` (`SendGetAsync` → `ApplyAuthenticationAsync`), `DockerHubClient.cs:953–1002` (`GetAccessTokenAsync` returns the failure uncached); `PortainerClient.cs:181–232` (`CreateAuthenticatedClientAsync`), called at 278 and 360 | confirmed |
 
 ## Acceptance criteria
 
@@ -80,8 +81,8 @@ All in `src/Tests/DockerUpdateGuard.Tests/TransientHttpRetryHandlerTests.cs`, th
 
 ## Options considered
 
-1. **Give up on a non-idempotent 429 whose `Retry-After` exceeds 30 s (chosen)** — the request is never resent
-   inside the server's window, the caller gets the server's own 429, and a short `Retry-After` is still honored
+1. **Give up on a non-idempotent 429 whose `Retry-After` exceeds 30 s (chosen)** — the retry handler does not resend
+   the request inside the server's window (the callers' own next login is a follow-up, *Challenge* 1), the caller gets the server's own 429, and a short `Retry-After` is still honored
    exactly, which keeps the retry 0008 deliberately kept.
 2. **Wait the full `Retry-After` for non-idempotent requests (no clamp)** — the `HttpClient.Timeout` of every client
    behind the handler (Portainer 15 s, Docker Hub 30 s by default, fact 10) cancels such a wait, so the caller would
@@ -141,14 +142,21 @@ All owned by the **Dev** (with the code); the record by the **Lead** (done in st
 - `docs/areas/registries.md` lines 165–166: "so it is retried only on a 429 and after an `HttpRequestException`" →
   "so it is retried only on a 429 whose `Retry-After` asks for at most 30 seconds or is missing, and after an
   `HttpRequestException`"; and after "ends the request after one attempt: the response is returned or the error
-  raised." add "A 429 whose `Retry-After` asks for more than 30 seconds is returned after one attempt as well, so the
-  request is never resent inside the window the server named."
+  raised." add "A 429 whose `Retry-After` asks for more than 30 seconds is returned after one attempt as well: the
+  retry does not resend the request inside the window the server named. The callers may still log in again with their
+  next request (see *Known gaps*)."
+- `docs/areas/registries.md`, *Known gaps*: new bullet "After a failed login the Docker Hub client logs in again with
+  its next authenticated request, and the Portainer client logs in for every capability check and action; neither
+  remembers a 429's `Retry-After`. Tracked in [#<n>](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/<n>)."
+  The orchestrator opens the follow-up issue (*Out of scope / follow-ups*) before step 6 and gives the Dev its number.
 - `docs/areas/registries.md` lines 174–175: append "A 429 that is not retried because its `Retry-After` exceeds 30
   seconds is logged as a debug entry (3503) with the status, the method, the masked URL, the requested wait and the
   30-second maximum."
 - `docs/areas/container-actions.md` lines 73–77: "and on 429." → "and on a 429 whose `Retry-After` asks for at most
   30 seconds."; and "a 5xx, 408, timeout or broken connection ends it *failed* after one attempt" → "a 5xx, 408,
-  timeout, broken connection or a 429 with a longer `Retry-After` ends it *failed* after one attempt".
+  timeout, broken connection or a 429 with a longer `Retry-After` ends it *failed* after one attempt". The
+  sentence "A requested action therefore reaches Portainer's processing at most once" stays (a 429 is not processed);
+  no statement there may claim the login is not repeated by the next action.
 - `README.md` line 156 (`RetryCount` row): "and on 429" → "and on a 429 whose `Retry-After` asks for at most 30
   seconds".
 - `docs/decisions/0008-…md`: extended in place by the Lead (Options 7, Decision, Consequences, Source).
@@ -173,6 +181,35 @@ response and map it to *failed* as today, fact 6); no layering, composition-root
 - [ ] The new log entry carries the method, the masked URL without query (as 3500–3502), a status number and two
   durations; no header value, body or credential.
 
+## Challenge
+
+1. **Major — the "never resent inside the window" wording is false, because the callers log in again on their own.**
+   Accepted; claims checked in the code (fact 11). Decision: narrow the wording, and split the caller path into a
+   follow-up issue rather than bringing it into scope. Reason: a caller-level login back-off is a different design —
+   Docker Hub client instances live per scan and per UI operation (`docs/areas/registries.md:145–148`), so honoring a
+   `Retry-After` across them needs shared state with its own lifetime, and the Portainer client would need a login
+   cache it does not have; neither belongs in the retry handler's fix. Changed: the area-document, `container-actions.md`
+   and `README.md` texts in *Documentation updates* now say the retry handler does not resend the request; a *Known
+   gaps* bullet in `registries.md` names the caller path with the follow-up issue; record 0008 (option 7, Decision,
+   Consequences) says the same; the follow-up is listed under *Out of scope / follow-ups*.
+2. **Minor — fact 3 and 0008's Context hold only when `RequestTimeoutSeconds` exceeds 30 s.** Accepted: fact 3,
+   *Problem / root cause* and 0008's Context are qualified; under the defaults the visible change is the caller getting
+   the 429 at once instead of a timeout. Tests unchanged.
+3. **Minor — a Portainer `POST` with 429 and `Retry-After` of 16–30 s is still retried and ends in the 15 s timeout.**
+   Accepted: one sentence in 0008's Consequences and in *Out of scope / follow-ups*; it is not a regression.
+
+## Security review
+
+Security approved (tier `standard` stays) and confirmed fact 8 by measurement. The one note that left a choice — a
+`Retry-After` that is present but unparseable (beyond `Int32` seconds, negative, signed, fractional, garbage) still lets
+a non-idempotent 429 be retried after the normal backoff:
+
+- **Option taken: no change and no follow-up issue.** An unparseable value names no window the handler could honor,
+  so the request is treated like a 429 without `Retry-After`, which 0008 retries on purpose; RFC 9110 lets a recipient
+  ignore an invalid field value. Reading `Headers.NonValidated` to refuse the retry would treat a server's malformed
+  header as a long window by guess, and the only realistic long form (a delta above about 68 years) is not a case
+  worth a guard. Recorded under *Out of scope / follow-ups* and in 0008's Consequences.
+
 ## Decision records
 
 - `docs/decisions/0008-non-idempotent-requests-retry-only-when-not-processed.md` (Accepted, unreleased) — extended in
@@ -182,8 +219,19 @@ response and map it to *failed* as today, fact 6); no layering, composition-root
 ## Out of scope / follow-ups
 
 - Idempotent requests keep the clamped wait (option 3).
-- A `Retry-After` delta beyond `Int32` seconds (fact 8) is treated as absent by the runtime and retried with the
-  exponential backoff, for every method; a server asking for 68 years is not a case worth a guard.
+- A `Retry-After` that is present but unparseable (fact 8: beyond `Int32` seconds, negative, signed, fractional) is
+  treated as absent by the runtime and retried with the exponential backoff, for every method (*Security review*).
+- A Portainer `POST` answered with 429 and a `Retry-After` of 16–30 s is still retried by the handler and, with the
+  default `RequestTimeoutSeconds` of 15, ends in the timeout rather than the 429 — the behavior of today, not a
+  regression of this change.
+- Follow-up issue (*Challenge* 1): "[Docker] Do not log in again before a login's Retry-After has passed" — body:
+  "After a failed login the Docker Hub client sends `v2/users/login` again with every later authenticated request of
+  the same client instance (`GetAccessTokenAsync` caches no failure and no `Retry-After`), and the Portainer client
+  posts `/api/auth` for every capability check and action (`CreateAuthenticatedClientAsync`, no JWT cache). A server
+  that answered a login with 429 and a `Retry-After` therefore still gets logins inside its window, from the callers
+  rather than from the retry handler (#316). Remember a login's 429 with its `Retry-After` and fail fast until it has
+  passed, in a place that outlives a single client instance. Found while planning #316."
+
 - Related defect found on the way: `GetRetryDelay` reads `DateTimeOffset.UtcNow` directly
   (`TransientHttpRetryHandler.cs:231`) instead of an injected `TimeProvider`, against `docs/UNIT_TESTS.md`; the
   date tests rely on margins (AC2 uses a one-hour margin). Proposed follow-up issue: "[Docker] Read the Retry-After
