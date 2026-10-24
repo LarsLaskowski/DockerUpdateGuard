@@ -16,3 +16,6 @@ are quoted in full.
 | 2026-10-24 11:21 | 6 Implement | squad-dev | DONE: all 45 tests green; coverage 92.5% new/84.5% overall; uncovered: relative branch GetRequestTarget, IsValidScheme false return (sonnet/medium · 102,347 tokens · 13 tool uses · 193 s) |
 | 2026-10-24 11:24 | 6 Coverage | squad-tester | DONE: relative-URI retry test, 1x:// scheme row; deferred AC8 test green (sonnet/medium · 6,340 tokens · 5 tool uses · 159 s · continued) |
 | 2026-10-24 11:26 | 7 Code check | Orchestrator | Format check, Build, Test 570+21 green, Coverage gate PASS (new 100%, overall 84.5%), Analyzer gate PASS, scope-check PASS; Sonar gate NOT CHECKED (no SONAR_TOKEN) -> step 11 |
+| 2026-10-24 11:28 | 8 Review round 1 | squad-reviewer | APPROVE: no blocking, no non-blocking findings (2 style notes not reported: GetRequestTarget summary, region order) (opus/medium · 84,543 tokens · 18 tool uses · 124 s) |
+| 2026-10-24 11:28 | 8 Security diff review | squad-security | APPROVED; non-blocking: Trivy CLI error output not masked (out of scope per 0005) -> follow-up issue as planned (opus/medium · 68,797 tokens · 12 tool uses · 127 s) |
+| 2026-10-24 11:28 | 9 PR approval | Orchestrator | approved by checklist; record 0005 Accepted; follow-up issue #304 (Trivy output) |

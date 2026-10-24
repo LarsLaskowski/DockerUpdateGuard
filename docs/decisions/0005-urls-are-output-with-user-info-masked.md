@@ -1,6 +1,6 @@
 # 0005: URLs are output with their user info masked
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-24
 - **Area:** Telemetry
 - **Source:** Issue #295
