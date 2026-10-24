@@ -231,3 +231,20 @@ Follow-up issue for the orchestrator to create:
   (`RuntimeContainerScanOrchestrator.cs:517`, `:673`, `:681`, `VulnerabilityEnrichmentService.cs:489`,
   `ImageScanOrchestrator.cs:763`). Map transport errors to fixed reasons as record 0009 does for Portainer, keeping
   the exception in the log. Found while fixing #315.
+
+## Challenge notes
+
+Devil's Advocate, round 1 (0 major, 1 minor), verbatim:
+
+1. `minor` (the Tester can fix this in the test setup without changing the plan): the AC4 capability test as specified cannot pass, either before or after the fix.
+   - Why: the plan uses `SequenceHttpMessageHandler` with a caller token cancelled before the call and nothing injected. That handler ignores the token: it returns a canned response or 404 (`src/Tests/DockerUpdateGuard.Tests/Helper/SequenceHttpMessageHandler.cs:95-120`).
+   - Probe: `HttpClient.GetAsync` with an already-cancelled token, through a handler that ignores the token, returns `200 OK` and does not throw. Verified fact 5 holds only for the real `SocketsHttpHandler`.
+   - Effect: with `ApiToken` and `EndpointId = "7"` set, the capability path never reads a body (`PortainerClient.cs:239-276`). The result would be "Portainer connected, endpoint 7" or "HTTP 404", never `cancelled`. The action-side test may only throw by chance, from `ReadFromJsonAsync` at `:123`.
+   - Instruction for the Tester: write both AC4 tests with `RetryProbeHttpMessageHandler`, outcome `[null]`, and `FailureFactory = () => new TaskCanceledException("A task was canceled.", null, cts.Token)`. Cancel `cts` before the call and pass `cts.Token` to the method, so the cancellation happens in a request on purpose rather than depending on the handler.
+
+## Security notes
+
+Security, plan review round 1 (APPROVED), non-blocking findings verbatim:
+
+1. Non-blocking: one statement in the plan is wrong. *Security considerations*, last bullet, says the 3306/3310 log entries "never contained credentials, since `HttpClient` exception messages carry host and port only". The probe shows otherwise. For a `BaseUrl` such as `https://admin#secret@host` the parser takes the user name as the host, and the logged exception says `(admin:443)`. With a proxy configured, the message names the proxy URL. This change leaves the logs as they are, so it is not a defect it introduces. But record 0005 says secrets must never be logged, and this plan should not contain a false security claim. Fix: reword the bullet to "logs unchanged; the logged exception can name the would-be host parsed from a malformed user info (`admin#secret@` -> `admin:443`) or the proxy URL". Add that log path to the proposed follow-up issue, which today only lists result messages.
+2. Non-blocking: *Security considerations* should also say that the change closes the result-message leak of a `#`/`?` user-info fragment and of the proxy URL. That way the Reviewer and the PR see the security effect, not only "hosts and ports".
