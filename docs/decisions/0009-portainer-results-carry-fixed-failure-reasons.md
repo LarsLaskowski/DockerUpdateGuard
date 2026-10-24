@@ -1,6 +1,6 @@
 # 0009: Portainer results carry fixed failure reasons, never exception messages
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-24
 - **Area:** Container actions
 - **Source:** Issue #315
