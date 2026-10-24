@@ -139,6 +139,12 @@ Architecturally relevant points:
   section and one the `Telemetry` section, both wired with
   `.ValidateOnStart()`, so misconfiguration is a startup failure, not a
   runtime surprise.
+- The `DockerUpdateGuard` validator also loads each configured client
+  certificate of an enabled Docker instance through `ClientCertificateLoader`,
+  the same loader `DockerInstanceClient` uses, so a certificate accepted at
+  startup is loaded by the same rules at runtime; it is the validator's only
+  file read
+  ([record 0007](decisions/0007-client-certificates-are-validated-as-pkcs12-at-startup.md)).
 - The background jobs and `TransientHttpRetryHandler` read
   `IOptionsMonitor<DockerUpdateGuardOptions>` on every use, so schedule and
   retry settings follow a configuration reload. Settings consumed while the

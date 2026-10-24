@@ -34,6 +34,11 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
     private static readonly ConcurrentDictionary<string, byte> _certificateValidationWarningInstances = new(StringComparer.Ordinal);
 
     /// <summary>
+    /// Client certificate loader
+    /// </summary>
+    private static readonly ClientCertificateLoader _clientCertificateLoader = new ClientCertificateLoader();
+
+    /// <summary>
     /// Pooled HTTP clients keyed by their connection-relevant configuration to avoid the new-client-per-request anti-pattern
     /// </summary>
     private readonly ConcurrentDictionary<string, Lazy<HttpClient>> _httpClients = new(StringComparer.Ordinal);
@@ -297,10 +302,18 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
         var certificatePath = instanceOptions.CertificatePath;
 
         if (string.IsNullOrWhiteSpace(certificatePath) == false
-            && File.Exists(certificatePath))
+            && engineUri.Scheme == Uri.UriSchemeHttps)
         {
+            var status = _clientCertificateLoader.TryLoad(certificatePath, out var certificate);
+
+            if (status != ClientCertificateLoadStatus.Loaded
+                || certificate is null)
+            {
+                throw new InvalidOperationException($"The client certificate of Docker instance '{instanceOptions.Name}' could not be loaded: {ClientCertificateLoader.DescribeFailure(status)}");
+            }
+
             handler.SslOptions.ClientCertificates ??= new X509CertificateCollection();
-            handler.SslOptions.ClientCertificates.Add(LoadCertificate(certificatePath));
+            handler.SslOptions.ClientCertificates.Add(certificate);
         }
 
         return new HttpClient(handler)
@@ -475,25 +488,6 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
         }
 
         return pipePath;
-    }
-
-    /// <summary>
-    /// Load a client certificate from the configured file path
-    /// </summary>
-    /// <param name="certificatePath">Certificate file path</param>
-    /// <returns>Loaded certificate</returns>
-    private static X509Certificate2 LoadCertificate(string certificatePath)
-    {
-        var extension = Path.GetExtension(certificatePath);
-
-        return string.Equals(extension,
-                             ".pfx",
-                             StringComparison.OrdinalIgnoreCase)
-               || string.Equals(extension,
-                                ".p12",
-                                StringComparison.OrdinalIgnoreCase)
-                   ? X509CertificateLoader.LoadPkcs12FromFile(certificatePath, password: null)
-                   : X509CertificateLoader.LoadCertificateFromFile(certificatePath);
     }
 
     /// <summary>
@@ -1274,7 +1268,16 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
         var cacheKey = BuildHttpClientCacheKey(instanceOptions, engineUri);
         var pooledClient = _httpClients.GetOrAdd(cacheKey, _ => new Lazy<HttpClient>(() => _httpClientFactory(instanceOptions, engineUri)));
 
-        return pooledClient.Value;
+        try
+        {
+            return pooledClient.Value;
+        }
+        catch
+        {
+            _httpClients.TryRemove(KeyValuePair.Create(cacheKey, pooledClient));
+
+            throw;
+        }
     }
 
     #endregion // IDockerInstanceClient

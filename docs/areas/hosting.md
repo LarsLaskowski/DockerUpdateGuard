@@ -26,8 +26,11 @@ every feature area relies on it for validated configuration and a migrated datab
 
 - The whole `DockerUpdateGuard` section is validated as one unit. All rule violations are collected and reported
   together, each naming the offending key (for example `'DockerUpdateGuard:Database:MigrationRetryDelaySeconds' must be
-  greater than zero`). Messages name keys and, at most, configured instance names; they never echo connection
-  strings, passwords or tokens.
+  greater than zero`). Messages name keys and, at most, configured instance names and a configured client-certificate
+  path; they never echo connection strings, passwords, tokens or file contents.
+- Validation reads the configured client-certificate file (`CertificatePath`) of each enabled Docker instance, at
+  startup and on every reload (none when it is blank or its extension is not `.pfx`/`.p12`); it reads no other file.
+  The rules are in [Docker instances](docker-instances.md), *TLS options* and *Limits and errors*.
 - Any violation fails startup: the process exits before the database is contacted and before any request is served.
 - The `Telemetry` section is validated even earlier, while services are registered; see [Telemetry](telemetry.md).
 - Rules owned by this area:
@@ -86,7 +89,9 @@ registry never delays or prevents startup.
     timeout for generic registries and release-metadata feeds) and `DockerUpdateGuard:ReleaseMetadata:*`;
   - the whole `Telemetry` section.
 - A reloaded configuration is validated by the same rules as at startup when it is next read; a reload that fails
-  validation raises an error where it is read (see *Known gaps*).
+  validation raises an error where it is read (see *Known gaps*). Because validation reads the client-certificate
+  files again, a certificate file deleted or broken while the application runs makes the reloaded configuration
+  invalid.
 
 ### HTTP pipeline
 
@@ -158,7 +163,8 @@ These properties hold today and must be provided for by the deployment:
 
 - An invalid configuration reload is not rejected while the last valid configuration stays in use: the background
   jobs read their interval from the reloaded configuration outside their error handling, so a reload that fails
-  validation can stop the host ([Scan engine](scan-engine.md)).
+  validation can stop the host ([Scan engine](scan-engine.md)). Since validation also reads the client-certificate
+  files, this includes a reload while a configured certificate file is missing or unusable.
   Tracked in [#281](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/281).
 - Forwarded headers from a reverse proxy are not supported. Behind a TLS-terminating proxy the application sees
   plain HTTP, so it never sends HSTS and HTTPS redirection cannot determine a port; both are left to the proxy.
@@ -176,7 +182,8 @@ These properties hold today and must be provided for by the deployment:
 
 ## Related decisions
 
-None yet.
+- [0007](../decisions/0007-client-certificates-are-validated-as-pkcs12-at-startup.md): client certificates are
+  validated as PKCS#12 at startup, so validation reads a file.
 
 ## Not here
 

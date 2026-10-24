@@ -46,6 +46,9 @@ on the snapshots and samples it produces.
 - Engine connections never use an HTTP proxy. Connections are pooled per instance and per connection-relevant
   setting (name, `BaseUrl`, TLS, certificate validation, certificate path); pooled TCP connections are renewed after
   at most 5 minutes.
+- A connection whose creation failed (for example because the client certificate could not be loaded) is not kept in
+  the pool; the next operation for that instance tries to create it again. A working pooled connection keeps the
+  certificate it loaded: a file renewed under the same path is read only when that pool entry is rebuilt.
 - Engine requests use the Docker Engine API version `v1.41` path prefix.
 - Engine requests are not retried; a failed request fails that operation (the shared retry of outbound HTTP described
   in [Registries](registries.md) does not apply to Engine connections).
@@ -56,10 +59,19 @@ on the snapshots and samples it produces.
   only. Whenever it is active, a warning saying that the connection is unauthenticated and open to man-in-the-middle
   attacks is logged once per instance name per process lifetime, when the first connection for that instance is
   created.
-- `CertificatePath` names a client certificate presented on `https` and TLS `tcp` connections. A `.pfx` or `.p12`
-  file is loaded as a password-less PKCS#12 bundle; any other extension is loaded as a single certificate file. A path
-  that does not exist is ignored without a warning.
-- Neither option has an effect on `unix` and `npipe` connections.
+- `CertificatePath` names the client certificate presented on `https` and TLS `tcp` connections. It must be a
+  password-less PKCS#12 bundle (no password or the empty password) with the extension `.pfx` or `.p12` (any case)
+  whose certificate has a private key. A PEM, DER or any other file is not accepted; the path is used exactly as
+  configured. A blank `CertificatePath` means no client certificate.
+- At runtime the certificate is loaded only for `https` and TLS `tcp` connections, when the connection is created; on
+  `http`, non-TLS `tcp`, `unix` and `npipe` connections it is never loaded.
+- Startup validation checks `CertificatePath` for every enabled instance that sets it, whatever its transport, so a
+  certificate set on an instance that never presents it (for example a forgotten `UseTls: true`) still has to be
+  usable. Disabled instances are not checked. A configuration reload checks it again (see
+  [Hosting](hosting.md), *Validation*).
+- The file is read whole, without a size limit: a path to a device or a named pipe would make startup or a reload hang
+  or run out of memory. The path is operator configuration and trusted like `BaseUrl`.
+- `SkipCertificateValidation` has no effect on `unix` and `npipe` connections either.
 
 ### Timeouts
 
@@ -142,6 +154,22 @@ on the snapshots and samples it produces.
   trimming, case-insensitive), a missing `BaseUrl`, a `BaseUrl` that is not an absolute URI with scheme `http`,
   `https`, `tcp`, `unix` or `npipe`, or a `RequestTimeoutSeconds` outside 1–300. The shipped `appsettings.json`
   contains one instance with an empty `Name`, so an operator must set a name before the application starts.
+- An unusable `CertificatePath` of an enabled instance fails startup with
+  `'DockerUpdateGuard:DockerInstances:<Name>:CertificatePath' names an unusable client certificate '<path>': <reason>`,
+  where the reason is one of:
+  - `only password-less PKCS#12 files with the extension .pfx or .p12 are supported` — any other extension (or none);
+    the file is not read;
+  - `the file does not exist` — the file or its directory is missing;
+  - `the file cannot be read or is not a password-less PKCS#12 bundle` — access denied or another read error, corrupt
+    content, or a password-protected bundle;
+  - `the bundle contains no certificate with a private key`.
+- At runtime, an `https` or TLS `tcp` connection whose client certificate cannot be loaded (for example because the
+  file was removed after startup) ends the operation *failed* with
+  `The client certificate of Docker instance '<Name>' could not be loaded: <reason>` inside the operation's message,
+  for example
+  `Docker image inspect failed for 'Production': The client certificate of Docker instance 'Production' could not be loaded: the file does not exist`.
+- These messages name the configured path (validation only) and the instance name; they never contain file contents,
+  certificate fields or the underlying error text.
 - Every Engine operation reports its outcome as a status (*succeeded*, *not configured*, *unsupported*, *not found*,
   *failed*) instead of throwing; the shared failure model is described in [Registries](registries.md).
 - A non-success Engine answer is reported as *failed* with the instance name, the HTTP status code and the response
@@ -161,16 +189,14 @@ on the snapshots and samples it produces.
   trimmed stored name, so an instance whose configured name has leading or trailing spaces is stored but always
   skipped as missing from configuration. Tracked in
   [#266](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/266).
-- A `CertificatePath` that is not a `.pfx`/`.p12` file is loaded as a certificate without a private key, which cannot
-  authenticate a TLS client, and a `CertificatePath` file that does not exist is ignored without validation error or
-  warning. Tracked in [#269](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/269).
 - A single timed-out or broken stats request discards the whole round of samples for its instance, while a
   non-success stats answer only drops that container. Tracked in
   [#270](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/270).
 
 ## Related decisions
 
-None yet.
+- [0007](../decisions/0007-client-certificates-are-validated-as-pkcs12-at-startup.md): client certificates are
+  validated as PKCS#12 at startup.
 
 ## Not here
 
