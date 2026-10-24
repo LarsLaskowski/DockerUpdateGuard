@@ -1,7 +1,8 @@
 """Helpers shared by the profiles' analyzer gates (`analyzer-check*.py`): git access with a fixed base, and the
 lint pass over changed files no stack analyzer covers — shell scripts (shellcheck), GitHub workflows
 (actionlint) and Dockerfiles (hadolint), plus two SonarQube Cloud shell rules shellcheck does not report
-(`shelldre:S7679`, `shelldre:S7688`). The SessionStart hook installs the three linters
+(`shelldre:S7679`, `shelldre:S7688`), and the control-character check `scope-check.py` and `plan-check.py`
+share. The SessionStart hook installs the three linters
 (`.claude/hooks/install-linters.sh`); a missing one is reported as NOT RUN, never as a pass.
 
 Written by adopt-template. The gates accept one flag, `--lint-only`, and no value: it runs this lint pass alone,
@@ -13,6 +14,7 @@ import re
 import shutil
 import subprocess
 import sys
+import unicodedata
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import squad_settings as settings  # noqa: E402  (per-repository settings next to this script)
@@ -30,12 +32,21 @@ WORD_END = " \t;|&)<>"
 SINGLE_BRACKET = re.compile(r"(?<![^\s;(!&|])\[\s")
 # `name() {`, `function name {` and `function name() {`; a bare `name {` is not bash, so matching it costs nothing.
 FUNCTION_HEAD = re.compile(r"^\s*(?:function\s+)?[\w.-]+\s*(?:\(\)\s*)?\{")
+CONTROL_CATEGORIES = {"Cc", "Cf", "Zl", "Zp"}
+CONTROL_KEEP = {"\t", "\n", "\r"}
 RULES = {"S7679": "assign this positional parameter to a local variable (shelldre:S7679)",
          "S7688": "use [[ … ]] instead of [ … ] (shelldre:S7688)"}
 
 
 def git(*args):
     return subprocess.run(["git", *args], capture_output=True, text=True, check=True).stdout
+
+
+def control_characters(text):
+    """The control characters in the text (Unicode categories Cc, Cf, Zl, Zp other than tab and line break), as
+    sorted `U+XXXX` names: a Write tool can turn an escape into the character itself."""
+    return sorted({f"U+{ord(ch):04X}" for ch in text if unicodedata.category(ch) in CONTROL_CATEGORIES
+                   and ch not in CONTROL_KEEP})
 
 
 def merge_base():

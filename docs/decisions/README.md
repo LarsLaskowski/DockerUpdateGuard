@@ -19,7 +19,9 @@ once in the [area document](../areas/README.md) of the record's area, and the re
   formats, limits, error texts) belong in the area document and are linked from the record.
 - The `Area:` field names the record's area as listed in [`docs/areas/README.md`](../areas/README.md), or `—`
   for a record about the process or about no area. Once areas are defined, every record needs the field. For a
-  released record it is part of the content: it changes only through a new record.
+  released record it is part of the content: it changes only through a new record. A released record without
+  the field gets its area from an `## Area assignment` table (`| Record | Area |`) in a new record; the
+  released record itself stays unedited.
 - Written by the squad Lead (see [`.claude/agents/squad-lead.md`](../../.claude/agents/squad-lead.md));
   anyone may add one for a change made outside the squad.
 - Committed together with the change it explains.

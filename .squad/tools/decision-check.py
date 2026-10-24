@@ -13,7 +13,10 @@ Checks, run from anywhere inside the repository (it takes no arguments):
   renamed record leaves no stale link behind;
 - once `docs/areas/README.md` lists areas, every area links an existing document in `docs/areas/` and every
   record has an `Area:` field naming a listed area, or `—` for a record about no area (a repository without
-  areas is not checked for this);
+  areas is not checked for this). A released record without the field, which can no longer be edited, takes
+  its area from a `## Area assignment` table (`| Record | Area |`) in a later record instead; it fails when no
+  table names it, two tables disagree or the area is not listed. A table naming a record that has its own
+  `Area:` field, or no record at all, fails as well;
 - a record is *released* once the commit that added it is contained in a release tag (`v*`). A released
   record is never deleted and never changed except for its status becoming `Superseded by NNNN`; an
   unreleased record is never `Superseded` (it is edited in place or deleted instead).
@@ -36,11 +39,13 @@ import sys
 DECISIONS_DIR = os.path.join("docs", "decisions")
 AREAS_DIR = os.path.join("docs", "areas")
 NO_AREA = "\u2014"
+AREA_FIELD = "'- **Area:**' line"
 RECORD_NAME = re.compile(r"^(\d{4})-.+\.md$")
 STATUS_LINE = re.compile(r"^- \*\*Status:\*\*(.*)$", re.MULTILINE)
 SUPERSEDES_LINE = re.compile(r"^- \*\*Supersedes:\*\*(.*)$", re.MULTILINE)
 AREA_LINE = re.compile(r"^- \*\*Area:\*\*(.*)$", re.MULTILINE)
 AREA_INDEX_BLOCK = re.compile(r"<!-- project:begin area-index -->(.*?)<!-- project:end area-index -->", re.DOTALL)
+ASSIGNMENT_SECTION = re.compile(r"^## Area assignment[ \t]*\n((?:(?!^## ).)*)", re.MULTILINE | re.DOTALL)
 AREA_LINK = re.compile(r"^\[([^\]]+)\]\(([^)]+\.md)\)$")
 SUPERSEDED_BY = re.compile(r"^Superseded by (\d{4})$")
 NUMBER = re.compile(r"\b(\d{4})\b")
@@ -89,9 +94,21 @@ def load_records(root, errors):
             errors.append(f"{rel}: number {number} is used twice")
         records[number] = {"rel": rel, "status": status, "text": text,
                            "area": area.group(1).strip() if area else None,
+                           "assigns": parse_assignments(text),
                            "supersedes": list(dict.fromkeys(NUMBER.findall(plain(supersedes.group(1)))))
                            if supersedes else []}
     return records
+
+
+def parse_assignments(text):
+    """(number, area) for every `| NNNN | Area |` row of the record's `## Area assignment` section."""
+    section = ASSIGNMENT_SECTION.search(text)
+    rows = []
+    for line in section.group(1).splitlines() if section else []:
+        cells = [plain(cell) for cell in line.strip().split("|")]
+        if len(cells) == 4 and not cells[0] and not cells[-1] and INDEX_NUMBER.match(cells[1]):
+            rows.append((cells[1], cells[2]))
+    return rows
 
 
 def check_links(records, errors):
@@ -196,16 +213,52 @@ def load_areas(root, errors):
     return areas
 
 
-def check_areas(root, records, errors):
+def collect_assignments(records, errors):
+    """Number -> {area: rel of each record whose `## Area assignment` table gives it that area}."""
+    assigned = {}
+    for record in records.values():
+        for number, area in record["assigns"]:
+            target = records.get(number)
+            if target is None:
+                errors.append(f"{record['rel']}: Area assignment names {number}, which does not exist")
+            elif target["area"] is not None:
+                errors.append(f"{record['rel']}: Area assignment names {number}, which has its own "
+                              f"{AREA_FIELD}")
+            else:
+                assigned.setdefault(number, {}).setdefault(area, []).append(record["rel"])
+    return assigned
+
+
+def assigned_area(number, record, assignments, released, errors):
+    """The area a released record without `Area:` takes from an `## Area assignment` table, or None."""
+    rel = record["rel"]
+    if released is not None and number not in released:
+        errors.append(f"{rel}: no {AREA_FIELD} (an area from {AREAS_DIR}/README.md, or {NO_AREA} for a "
+                      f"record about no area)")
+        return None
+    if not assignments:
+        errors.append(f"{rel}: released without a {AREA_FIELD} and no '## Area assignment' table in a "
+                      f"later record names it")
+        return None
+    if len(assignments) > 1:
+        sources = "; ".join(f"'{area}' in {', '.join(rels)}" for area, rels in assignments.items())
+        errors.append(f"{rel}: Area assignment tables disagree: {sources}")
+        return None
+    return next(iter(assignments))
+
+
+def check_areas(root, records, released, errors):
+    """`released` is the set of released record numbers, or None when it is unknown (no Git
+    history, or release tags not fetched)."""
     areas = load_areas(root, errors)
     if not areas:
         return
-    for record in records.values():
+    assigned = collect_assignments(records, errors)
+    for number, record in records.items():
         area = record["area"]
         if area is None:
-            errors.append(f"{record['rel']}: no '- **Area:**' line (an area from {AREAS_DIR}/README.md, or "
-                          f"{NO_AREA} for a record about no area)")
-        elif area != NO_AREA and area not in areas:
+            area = assigned_area(number, record, assigned.get(number, {}), released, errors)
+        if area is not None and area != NO_AREA and area not in areas:
             errors.append(f"{record['rel']}: area '{area}' is not listed in {AREAS_DIR}/README.md")
 
 
@@ -255,21 +308,25 @@ def check_deleted(root, tags, records, errors):
 
 
 def check_freeze(root, records, errors, warnings):
+    """Checks the released records and returns their numbers; None when that cannot be told."""
     if git(root, "rev-parse", "--git-dir") is None:
         warnings.append("not a Git repository - released records are not checked")
-        return
+        return None
     tags = (git(root, "tag", "--list", RELEASE_TAGS) or "").split()
     if not tags:
         if (git(root, "remote") or "").strip():
             warnings.append(f"no local '{RELEASE_TAGS}' tags although a remote is configured - released records "
                             f"are not checked (run 'git fetch origin main --tags')")
-        return
+            return None
+        return set()
     if (git(root, "rev-parse", "--is-shallow-repository") or "").strip() == "true":
         warnings.append("shallow clone - released records are not checked (fetch the full history and tags)")
-        return
-    for number, tag in find_released(root, records, errors).items():
+        return None
+    released = find_released(root, records, errors)
+    for number, tag in released.items():
         check_released_record(root, records[number], tag, errors)
     check_deleted(root, tags, records, errors)
+    return set(released)
 
 
 def main():
@@ -279,8 +336,8 @@ def main():
     check_links(records, errors)
     check_record_links(root, records, errors)
     check_index(root, records, errors)
-    check_areas(root, records, errors)
-    check_freeze(root, records, errors, warnings)
+    released = check_freeze(root, records, errors, warnings)
+    check_areas(root, records, released, errors)
     for warning in warnings:
         print(f"WARNING: {warning}")
     for error in errors:

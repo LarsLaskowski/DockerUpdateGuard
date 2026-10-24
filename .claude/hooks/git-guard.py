@@ -4,7 +4,7 @@
 Every `.claude/agents/squad-*.md` declares this hook in its front matter, so it runs only while a squad
 member is active - the orchestrator (the session that runs the skill) commits, pushes and posts as before.
 It reads the hook input JSON from stdin and, for a `Bash` call, checks every `git` and `gh` invocation in
-the command (also behind `&&`, `;`, `|`, `$(…)` and `git -C <dir>`):
+the command (also behind `&&`, `;`, `|`, `$(…)`, `git -C <dir>`, and inside `bash -c` / `sh -c` / `eval`):
 
 - allowed: read-only Git (`status`, `diff`, `log`, `show`, `ls-files`, `grep`, `rev-parse`, `merge-base`,
   `fetch`, `tag --list` / `--contains`, `branch --list` / `--show-current`, `ls-remote`, `clone`, …),
@@ -48,6 +48,7 @@ BRANCH_WRITE = {"-d", "-D", "-m", "-M", "-c", "-C", "-f", "--delete", "--move", 
 BRANCH_READ = {"-l", "--list", "-a", "-r", "--all", "--remotes", "--show-current", "--contains", "--merged",
                "--no-merged", "-v", "-vv", "--verbose"}
 CONFIG_READ = {"-l", "--list", "--show-origin", "--show-scope"}
+SHELLS = {"sh", "bash", "zsh", "dash", "ksh"}
 
 
 def git_subcommand(tokens):
@@ -138,6 +139,20 @@ def basename(token):
     return token.rsplit("/", 1)[-1]
 
 
+def nested_command(name, args):
+    """The command string a shell runs with `-c` (also `-lc`, `-ec`, …) or `eval` runs, or None."""
+    if name == "eval":
+        return " ".join(args)
+    if name not in SHELLS:
+        return None
+    for i, option in enumerate(args):
+        if not option.startswith("-") or option.startswith("--"):
+            return None
+        if "c" in option[1:]:
+            return args[i + 1] if i + 1 < len(args) else None
+    return None
+
+
 def check_command(command):
     """The first denied invocation in the command as text, or None."""
     for segment in SEGMENT_SPLIT.split(command):
@@ -147,7 +162,10 @@ def check_command(command):
             tokens = segment.split()
         for i, token in enumerate(tokens):
             name = basename(token)
-            if name == "git":
+            nested = nested_command(name, tokens[i + 1:])
+            if nested is not None:
+                found = check_command(nested)
+            elif name == "git":
                 found = git_verdict(tokens[i + 1:])
             elif name == "gh":
                 found = gh_verdict(tokens[i + 1:])

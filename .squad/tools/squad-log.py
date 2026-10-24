@@ -30,7 +30,10 @@ mechanics out of the orchestrator's hands:
   each in a fresh launch), `--continued-from "<step>"` names the step cell of the fresh launch whose agent was
   continued: only that launch and its own continuations are subtracted, and the trailer records the step
   (`· continued from <step>`), so a later continuation of either agent is computed against the right rows.
-  `--continued` needs an earlier row of that member with usage, `--continued-from` a fresh launch of that step;
+  `--continued` needs an earlier row of that member with usage, `--continued-from` a fresh launch of that step.
+  A continuation logged at another step number than the fresh launch it continues prints a warning, unless its
+  step cell names a fix, delta or revise round: the first launch of another mode (`skeleton` to `implement`,
+  `tests-first` to `coverage`, `approve-pr`, `decide`) is a fresh launch, not a continuation;
 - the usage block often arrives only after the member's hand-back: `--amend-last MEMBER` with the same
   options adds the trailer to the last row of that member afterwards, so the row can be written as soon as
   the report is in. A row gets its trailer once (a pending one is completed); a second amend is refused. When a
@@ -38,8 +41,10 @@ mechanics out of the orchestrator's hands:
   came last), `--step "<step>"` selects the last row of the member whose step cell is that text, so an earlier launch row
   is still amended with the tool, never by hand;
 - a row whose trailer is wrong (a launch logged with made-up numbers before its notification arrived) is
-  corrected with `--replace-last MEMBER` and the same options (`--step` selects an earlier row the same way):
-  the trailer of that row is replaced, so the launch is still counted once;
+  corrected with `--replace-last MEMBER` and the same options (`--step` selects an earlier row the same way,
+  also when other rows of the member follow): the trailer of that row, a pending one too, is replaced, so the
+  launch is still counted once. A notification repeated for one task id is no new launch: only the latest
+  numbers of the id are logged, on the same row;
 - a launch whose notification never arrived is marked with `--amend-last MEMBER --unreported --agent
   squad-<role>` (no numbers): the trailer `(opus/medium · usage not reported)` lets the summary count the
   launch, name it as unreported and exit 0, so the table is posted as the tool prints it instead of being
@@ -54,6 +59,11 @@ mechanics out of the orchestrator's hands:
   arrived yet is written with `--agent` (or `--launch`) alone: its trailer `(opus/medium · usage pending)` keeps
   model and effort, the summary lists it as incomplete, and `--amend-last` with the numbers completes it — the
   only way to add the numbers later.
+
+- `--stdin` reads the log from standard input instead of `specs/<folder>/log.md`, for the rows after step 10
+  of `squad-issue` removed the folder: pipe the log table of the "Squad working record" comment in, the result
+  of the command goes to standard error and the whole updated log to standard output (paste it back into the
+  comment); `--summary --stdin` prints the summary of that log, nothing is written to the repository;
 
 Usage, from anywhere inside the repository:
     python3 .squad/tools/squad-log.py <work folder> <step> <member> <result> [--agent squad-lead
@@ -71,6 +81,8 @@ Usage, from anywhere inside the repository:
     python3 .squad/tools/squad-log.py <work folder> "7 Fix" Dev "fixed" --agent squad-dev --tokens 412000
         --tool-uses 9 --seconds 317 --continued-from "6 Implement (rows 9-14)"
     python3 .squad/tools/squad-log.py <work folder> --summary
+    python3 .squad/tools/squad-log.py <work folder> "11 CI" Dev "fixed" --agent squad-dev --tokens 41200
+        --tool-uses 9 --seconds 80 --stdin < log-from-comment.md > log-updated.md
 
 `<work folder>` is the folder's name under `specs/` (`issue-12`, or `specs/issue-12`); it is matched against the
 folders that exist there, never used as a path, so no argument reaches the file system; `--agent` is matched
@@ -89,11 +101,13 @@ replaced, or `--continued` finds no earlier usage of the member (`--continued-fr
 step), 3 when the summary lists launch rows without usage.
 """
 import argparse
+import contextlib
 import datetime
 import os
 import re
 import subprocess
 import sys
+import tempfile
 import unicodedata
 
 CONTROL_CATEGORIES = {"Cc", "Cf", "Zl", "Zp"}
@@ -113,6 +127,8 @@ STAMP = r"\d{4}-\d{2}-\d{2}(?: \d{2}:\d{2})?"
 ROW = re.compile(rf"^\| (?P<date>{STAMP}) \| (?P<step>(?:[^|\\]|\\\|)*) \| (?P<member>(?:[^|\\]|\\\|)*) \| "
                  r"(?P<result>.*) \|\s*$")
 MIN_TOKENS = 1000
+STEP_NUMBER = re.compile(r"^\s*(\d+)")
+ROUND_OF_SAME_MODE = re.compile(r"\b(?:fix|delta|revis)", re.I)
 FRONT_MATTER_KEY = re.compile(r"^(model|effort):\s*(\S+)\s*$", re.M)
 
 
@@ -181,10 +197,10 @@ def previous_tokens(path, member, skip_last=False, step=None, origin=None):
 
 
 def rows_before(rows, member, step):
-    """The rows before the last row of `member` whose step cell is `step` (both already escaped as cells); all
-    rows when there is no such row."""
+    """The rows before the last row of `member` whose step cell is `step` (both already escaped as cells; with
+    `step` None, the member's last row); all rows when there is no such row."""
     for index in range(len(rows) - 1, -1, -1):
-        if rows[index][2] == member and rows[index][1] == step:
+        if rows[index][2] == member and (step is None or rows[index][1] == step):
             return rows[:index]
     return rows
 
@@ -198,6 +214,32 @@ def continued_launch(path, member, launch, skip_last=False, step=None, origin=No
         return None
     model, tokens, tool_uses, seconds = launch[:4]
     return (model, tokens - earlier if tokens >= earlier else tokens, tool_uses, seconds, True, origin)
+
+
+def mode_change_warning(path, member, own_step, origin=None, amending=False, step=None):
+    """A warning, or None, for a continuation logged at another step number than the fresh launch it continues
+    (`origin`, or else the member's last fresh launch) whose step cell names no fix, delta or revise round: the
+    first launch of another mode is a fresh launch (`.squad/routing.md`, *Continuing a member*). With `amending`,
+    the row being amended (the member's last, or its last of `step`) is left out."""
+    with open(path, encoding="utf-8-sig") as handle:
+        rows = parse_rows(handle.read())
+    wanted = cell(member)
+    if amending:
+        rows = rows_before(rows, wanted, None if step is None else cell(step))
+    fresh = [row_step for _, row_step, row_member, result in rows if row_member == wanted
+             and TRAILER.search(result) and not TRAILER.search(result).group("continued")]
+    if origin is not None:
+        continued = cell(origin)
+    elif fresh:
+        continued = fresh[-1]
+    else:
+        continued = None
+    numbers = [STEP_NUMBER.match(text or "") for text in (continued, own_step)]
+    if None in numbers or numbers[0].group(1) == numbers[1].group(1) or ROUND_OF_SAME_MODE.search(own_step):
+        return None
+    return (f"WARNING: '{own_step}' continues {member}'s launch of step '{continued}': a fix, delta or revise "
+            "round continues, but the first launch of another mode is a fresh launch (.squad/routing.md, "
+            "*Continuing a member*)")
 
 
 def resolve_log(root, folder):
@@ -241,29 +283,29 @@ def agent_launch(root, agent):
 
 def amendable(result, replace):
     """(True, the trailer match or None) when the row may take a new trailer: one without a trailer or with a pending
-    one is amended; one with a full or an unreported trailer is replaced (a pending one is amended, not replaced)."""
+    one is amended; one with any trailer, a pending one included, is replaced."""
     old = ANY_TRAILER.search(result)
     pending = bool(PENDING_TRAILER.search(result))
     if replace:
-        return bool(old) and not pending, old
+        return bool(old), old
     return (not old or pending), old
 
 
-def target_result(path, member, step=None):
-    """The result cell of the row `--amend-last`/`--replace-last` would change, or None."""
+def target_row(path, member, step=None):
+    """(step cell, result cell) of the row `--amend-last`/`--replace-last` would change, or (None, None)."""
     with open(path, encoding="utf-8-sig") as handle:
         rows = parse_rows(handle.read())
     wanted, wanted_step = cell(member), None if step is None else cell(step)
     for _, row_step, row_member, result in reversed(rows):
         if row_member == wanted and (wanted_step is None or row_step == wanted_step):
-            return result
-    return None
+            return row_step, result
+    return None, None
 
 
 def amend_last(path, member, launch, replace=False, step=None):
     """Add the launch trailer to the last row of `member` (with `step`, to its last row of that step); the amended
     row, or None when no such row exists or it already carries a trailer (a pending one is completed). With
-    `replace`, that trailer is replaced instead; a row without one, or with a pending one, is left alone (None)."""
+    `replace`, that trailer is replaced instead; a row without one is left alone (None); a pending one is replaced too."""
     with open(path, "rb") as handle:
         data = handle.read()
     eol = b"\r\n" if b"\r\n" in data else b"\n"
@@ -452,6 +494,8 @@ def build_parser():
     parser.add_argument("--step", dest="at_step", metavar="STEP", help="with --amend-last or --replace-last: the "
                         "member's last row of this step instead of its last row (for a parallel launch whose "
                         "notification arrived after the next row was written)")
+    parser.add_argument("--stdin", action="store_true", help="read the log from standard input instead of "
+                        "specs/<folder>/log.md (step 10 removed the folder): the updated log goes to standard output")
     parser.add_argument("--unreported", action="store_true",
                         help="with --amend-last: the launch's task notification never arrived; the trailer marks "
                              "it as unreported (with --agent or --launch, without numbers)")
@@ -534,17 +578,19 @@ def amend_command(parser, path, folder, member, launch, replace, continued, step
         parser.error(f"{option} needs --agent (or --launch), --tokens, --tool-uses and --seconds (or --unreported)")
     if replace and launch[1] is None:
         parser.error("--unreported marks a row without a trailer: use it with --amend-last")
-    current = target_result(path, member, step) or ""
-    if replace and PENDING_TRAILER.search(current):
-        parser.error("the row's usage is still pending: add it with --amend-last, not --replace-last")
+    own_step, current = target_row(path, member, step)
+    current = current or ""
     # Only a replaced trailer with real numbers is part of the earlier usage a continuation subtracts.
     launch = share_of_round(path, member, launch, continued, replace and bool(TRAILER.search(current)), step, origin)
     if launch is None:
         return 1
+    warning = mode_change_warning(path, member, own_step, origin, True, step) if continued and own_step else None
     row = amend_last(path, member, launch, replace=replace, step=step)
     if row is None:
         print(no_row_message(folder, member, replace, step))
         return 1
+    if warning:
+        print(warning)
     print(row)
     return 0
 
@@ -571,19 +617,15 @@ def row_command(parser, path, args, launch):
     launch = share_of_round(path, args.member, launch, args.continued, origin=args.continued_from)
     if args.continued and launch is None:
         return 1
+    warning = mode_change_warning(path, args.member, cell(args.step), args.continued_from) if args.continued else None
+    if warning:
+        print(warning)
     print(append_row(path, args.step, args.member, args.result, launch=launch))
     return 0
 
 
-def main():
-    parser = build_parser()
-    args = parser.parse_args()
-    toplevel = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, check=False)
-    root = toplevel.stdout.strip() if toplevel.returncode == 0 else os.getcwd()
-    path = resolve_log(root, args.folder)
-    if path is None:
-        print(f"No log.md in {args.folder} (create it from specs/_template/log.md first)")
-        return 1
+def run(parser, args, root, path):
+    """The command the arguments ask for, against the log at `path`; the exit code."""
     if args.summary:
         print(summary(path))
         with open(path, encoding="utf-8-sig") as handle:
@@ -604,6 +646,38 @@ def main():
                              replace=bool(args.replace_last), continued=args.continued, step=args.at_step,
                              origin=args.continued_from)
     return row_command(parser, path, args, launch)
+
+
+def run_on_stdin(parser, args, root):
+    """`--stdin`: the log comes from standard input and lives in a temporary directory only; a command that
+    changes it prints the result to standard error and the whole updated log to standard output."""
+    with tempfile.TemporaryDirectory() as directory:
+        path = os.path.join(directory, "log.md")
+        with open(path, "wb") as handle:
+            handle.write(sys.stdin.buffer.read())
+        if args.summary:
+            return run(parser, args, root, path)
+        with contextlib.redirect_stdout(sys.stderr):
+            code = run(parser, args, root, path)
+        if code == 0:
+            with open(path, "rb") as handle:
+                sys.stdout.buffer.write(handle.read())
+        return code
+
+
+def main():
+    parser = build_parser()
+    args = parser.parse_args()
+    toplevel = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, check=False)
+    root = toplevel.stdout.strip() if toplevel.returncode == 0 else os.getcwd()
+    if args.stdin:
+        return run_on_stdin(parser, args, root)
+    path = resolve_log(root, args.folder)
+    if path is None:
+        print(f"No log.md in {args.folder} (create it from specs/_template/log.md first; after step 10 of the "
+              "squad skills removed the work folder, pipe the working-record comment's log table in with --stdin)")
+        return 1
+    return run(parser, args, root, path)
 
 
 if __name__ == "__main__":

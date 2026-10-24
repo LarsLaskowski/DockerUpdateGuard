@@ -46,11 +46,12 @@ cells in `log.md`); steps 4–12 follow `squad-issue` with the changes listed af
 
 ## Steps 4–12: as in `squad-issue`, with these changes
 
-- **Steps 4–6** run per task group from `tasks.md`, in the order its *Depends on* column allows; tick tasks off
-  as they are done. The Tester's tests first are the tests *Tests per criterion* names for the group's
+- **Steps 4–6** run per task group — the *Group* column of `tasks.md`, in table order; tick tasks off as they
+  are done. The Tester's tests first are the tests *Tests per criterion* names for the group's
   criteria. Continue a member for the fix and delta rounds of its task group; the next task group starts with
   a fresh launch (*Continuing a member*), and a later fix round for an earlier group's agent is logged with
-  `--continued-from "<step cell of that group's launch>"`.
+  `--continued-from "<step cell of that group's launch>"`. A group whose task rows belong to the Lead
+  (documentation) is launched as `squad-lead` in mode `docs`, after the groups it waits for.
 - **Code-free changes:** as *Changes without production or test code*; *Verification without tests* then
   covers each criterion of the spec.
 - **Decision records:** features usually involve real design choices, so expect a record in
@@ -61,4 +62,5 @@ cells in `log.md`); steps 4–12 follow `squad-issue` with the changes listed af
   area documents now say what the spec's *Area documents* section promised.
 - **Step 10:** the working record (`spec.md`, `plan.md`, `tasks.md`, `log.md`) is posted to the feature
   request issue if one exists (`Closes #<n>` in the PR), otherwise as the first comment on the PR right after
-  opening it.
+  opening it; every log row and amend after it goes through `squad-log.py … --stdin` on that comment's log
+  table.

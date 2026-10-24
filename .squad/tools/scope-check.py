@@ -36,10 +36,9 @@ import os
 import re
 import subprocess
 import sys
-import unicodedata
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from analyzer_common import BASE_REF, git, merge_base, settings  # noqa: E402  (shared helpers next to this script)
+from analyzer_common import BASE_REF, control_characters, git, merge_base, settings  # noqa: E402  (shared helpers next to this script)
 
 SQUAD_FILES_ALLOWED = {".squad/stack.md", ".squad/project.md"}
 INSTRUCTION_FILES = {"AGENTS.md", "CLAUDE.md", ".github/copilot-instructions.md"}
@@ -50,8 +49,6 @@ DOCS_TIER = ["README.md", "SECURITY.md", ".squad/stack.md", ".squad/project.md",
 DOCS_TIER_DIRS = ["docs/"]
 DOCS_TIER_EXCLUDED = ["docs/decisions/", "docs/areas/"]
 PROJECT_BLOCK = re.compile(r"<!-- project:begin ([\w-]+) -->\n.*?<!-- project:end \1 -->\n?", re.S)
-CONTROL_CATEGORIES = {"Cc", "Cf", "Zl", "Zp"}
-KEEP = {"\t", "\n", "\r"}
 PATCH_MAX_LINES = getattr(settings, "PATCH_MAX_LINES", 30)
 
 
@@ -95,16 +92,10 @@ def marked_file_changed_outside_blocks(path, base):
     return outside_blocks(before.stdout.lstrip("﻿")) != outside_blocks(read_text(path))
 
 
-def control_characters(path):
-    text = read_text(path)
-    return sorted({f"U+{ord(ch):04X}" for ch in text if unicodedata.category(ch) in CONTROL_CATEGORIES
-                   and ch not in KEEP})
-
-
 def control_character_error(path):
     if not path.endswith(".md") or not os.path.isfile(path):
         return None
-    found = control_characters(path)
+    found = control_characters(read_text(path))
     return f"{path}: control characters {', '.join(found)} (write them as text escapes)" if found else None
 
 
