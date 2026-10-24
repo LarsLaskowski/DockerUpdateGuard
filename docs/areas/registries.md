@@ -166,9 +166,7 @@ retry policy and the failure model.
   and after an `HttpRequestException` whose error shows that no request byte was sent (`NameResolutionError`,
   `ConnectionError`, `SecureConnectionError`, `ProxyTunnelError`). A 5xx, a 408, a timeout or a connection that broke
   after the connection was established ends the request after one attempt: the response is returned or the error
-  raised. The requests concerned are the Docker Hub login and the Portainer login and actions. A request without a
-  body must not be a non-idempotent one: the runtime resends a body-less request on its own when a reused connection
-  closes, so such a request carries an empty body ([0008](../decisions/0008-non-idempotent-requests-retry-only-when-not-processed.md)).
+  raised. The requests concerned are the Docker Hub login and the Portainer login and actions. A non-idempotent request always carries a body, an empty one if it has nothing to send: the runtime resends a body-less request on its own when a reused connection closes after the server read it ([0008](../decisions/0008-non-idempotent-requests-retry-only-when-not-processed.md)).
 - A request body is buffered before the first attempt, so a retry resends the identical body and a body of unknown
   length is sent with a `Content-Length`.
 - When the retries are used up the last response is returned to the caller, or the last error is raised.
