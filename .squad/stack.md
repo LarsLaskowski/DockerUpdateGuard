@@ -163,7 +163,8 @@ without handing back: pass `TestContext.CancellationToken` to every call that ac
 ## Skeleton
 
 New members with their full signature, XML docs and `#region` blocks, bodies
-`throw new NotImplementedException();`, so the solution builds and the tests compile and fail.
+`throw new InvalidOperationException("Skeleton: not implemented");` (never `NotImplementedException`, which
+RH2003 rejects as an error in Release), so the solution builds and the tests compile and fail.
 Constructors store their arguments and never throw: a test harness builds these types, so only member bodies
 fail.
 The `Skeleton` body above is the default. A zero-value stub is allowed only where it would break a test that
