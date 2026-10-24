@@ -400,6 +400,13 @@ it links:
   (Portainer) exist for trusted/self-signed/local setups; how each is
   validated and reported is in [Docker instances](areas/docker-instances.md)
   and [Container actions](areas/container-actions.md).
+- **Pagination stays on its origin.** `DockerHubClient`, `OciRegistryClient`
+  and `DockerScoutVulnerabilityProvider` follow a next-page link only on the
+  origin of the listing (`Infrastructure\PaginationLinkGuard`), so a remote
+  side cannot send the Docker Hub bearer token, or any request, to another
+  host; any other link ends the call *failed*. The rule is in
+  [Registries](areas/registries.md#pagination-links), the reasoning in
+  [0004](decisions/0004-pagination-follows-only-same-origin-links.md).
 
 ## 12. Testing architecture
 
