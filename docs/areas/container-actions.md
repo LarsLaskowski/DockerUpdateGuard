@@ -70,7 +70,11 @@ transport security; the UI is the intended caller of the actions.
 - Actions never throw to the caller; every outcome is a result. Executed, failed and not-found actions are logged with
   the action, the container name and the Docker instance name.
 - Portainer requests go through the shared retry of transient HTTP failures described in
-  [Registries](registries.md). This includes the login and the action request itself.
+  [Registries](registries.md). The login and the action request are `POST`s, which are retried only when they cannot
+  have been processed: after a connection error before anything was sent, and on 429. The action request carries an
+  empty body so the runtime does not resend it on its own either. A requested action therefore reaches Portainer's
+  processing at most once; a 5xx, 408, timeout or broken connection ends it *failed* after one attempt, and the
+  operator repeats it deliberately.
 - `RequestTimeoutSeconds` (1–300, default 15) bounds each Portainer request including its retries.
 
 ### Action runs
@@ -100,9 +104,6 @@ transport security; the UI is the intended caller of the actions.
   actions (`start`, `stop`, `restart`, `kill`, `pause`, `unpause` on containers) do not match the action types of the
   action-run record, and redeploying stacks and updating services are not implemented. Tracked in
   [#280](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/280).
-- The login and the action request are retried on transient answers like any other request, so one requested action
-  can be executed more than once ([Registries](registries.md)). Tracked in
-  [#273](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/273).
 - Without `EndpointId` the first environment Portainer lists is used, which can be an environment other than the one
   that manages the Docker instance; an explicit `EndpointId` is not required when Portainer manages several
   environments. Tracked in [#279](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/279).
@@ -110,6 +111,7 @@ transport security; the UI is the intended caller of the actions.
 ## Related decisions
 
 - [0006 Insecure Portainer HTTP warns at the first request per instance](../decisions/0006-insecure-portainer-http-warns-at-first-request.md)
+- [0008 Non-idempotent requests are retried only when they cannot have been processed](../decisions/0008-non-idempotent-requests-retry-only-when-not-processed.md)
 
 ## Not here
 

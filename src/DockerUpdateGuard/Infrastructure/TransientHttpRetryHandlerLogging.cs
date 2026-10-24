@@ -49,5 +49,20 @@ internal static partial class TransientHttpRetryHandlerLogging
                                                        int retryCount,
                                                        int delayMilliseconds);
 
+    /// <summary>
+    /// Log that a transient outcome of a non-idempotent request was not retried
+    /// </summary>
+    /// <param name="logger">Logger</param>
+    /// <param name="method">HTTP method</param>
+    /// <param name="requestTarget">Request target</param>
+    /// <param name="outcome">Status code number, HTTP request error name or Timeout</param>
+    [LoggerMessage(EventId = 3502,
+                   Level = LogLevel.Debug,
+                   Message = "Transient HTTP outcome {Outcome} for {Method} {RequestTarget} not retried: the method is not idempotent")]
+    public static partial void NonIdempotentRequestNotRetried(this ILogger logger,
+                                                              string method,
+                                                              string requestTarget,
+                                                              string outcome);
+
     #endregion // Methods
 }

@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net;
 
 using DockerUpdateGuard.Configuration;
@@ -91,6 +92,59 @@ public class TransientHttpRetryHandler : DelegatingHandler
     }
 
     /// <summary>
+    /// Determine whether a request method is idempotent, so that repeating it cannot run its effect twice
+    /// </summary>
+    /// <param name="method">HTTP method</param>
+    /// <returns>True for GET, HEAD, OPTIONS, TRACE, PUT and DELETE; false for every other method</returns>
+    private static bool IsIdempotentMethod(HttpMethod method)
+    {
+        return method == HttpMethod.Get
+               || method == HttpMethod.Head
+               || method == HttpMethod.Options
+               || method == HttpMethod.Trace
+               || method == HttpMethod.Put
+               || method == HttpMethod.Delete;
+    }
+
+    /// <summary>
+    /// Determine whether a transient status code proves that the server did not process the request
+    /// </summary>
+    /// <param name="statusCode">HTTP status code</param>
+    /// <returns>True when the server rejected the request without processing it (429)</returns>
+    private static bool IsNotProcessedStatusCode(HttpStatusCode statusCode)
+    {
+        return statusCode == HttpStatusCode.TooManyRequests;
+    }
+
+    /// <summary>
+    /// Determine whether an exception was raised before any byte of the request reached the server
+    /// </summary>
+    /// <param name="exception">Exception</param>
+    /// <returns>True for a connection-phase error of the top-level HTTP request exception</returns>
+    private static bool IsRaisedBeforeSending(Exception exception)
+    {
+        return exception is HttpRequestException
+                         {
+                             HttpRequestError: HttpRequestError.NameResolutionError
+                                               or HttpRequestError.ConnectionError
+                                               or HttpRequestError.SecureConnectionError
+                                               or HttpRequestError.ProxyTunnelError
+                         };
+    }
+
+    /// <summary>
+    /// Describe the outcome of a failed send as a log-safe token without the exception message
+    /// </summary>
+    /// <param name="exception">Exception</param>
+    /// <returns>The HTTP request error name, or Timeout for a timeout</returns>
+    private static string GetExceptionOutcome(Exception exception)
+    {
+        return exception is HttpRequestException httpRequestException
+                   ? httpRequestException.HttpRequestError.ToString()
+                   : "Timeout";
+    }
+
+    /// <summary>
     /// Determine whether an exception represents a transient transport failure
     /// </summary>
     /// <param name="exception">Exception</param>
@@ -140,6 +194,20 @@ public class TransientHttpRetryHandler : DelegatingHandler
     #endregion // Static methods
 
     #region Methods
+
+    /// <summary>
+    /// Log that a transient outcome of a non-idempotent request was not retried
+    /// </summary>
+    /// <param name="request">Request message</param>
+    /// <param name="requestTarget">Log-safe request target</param>
+    /// <param name="outcome">Status code number, HTTP request error name or Timeout</param>
+    private void LogNotRetried(HttpRequestMessage request, string requestTarget, string outcome)
+    {
+        if (_logger.IsEnabled(LogLevel.Debug))
+        {
+            _logger.NonIdempotentRequestNotRetried(request.Method.Method, requestTarget, outcome);
+        }
+    }
 
     /// <summary>
     /// Compute the backoff delay before the next retry attempt, honoring a Retry-After hint when present
@@ -193,6 +261,7 @@ public class TransientHttpRetryHandler : DelegatingHandler
 
         var retryCount = Math.Max(0, _options.CurrentValue.Scanning.RetryCount);
         var requestTarget = GetRequestTarget(request);
+        var isIdempotent = IsIdempotentMethod(request.Method);
         var attempt = 0;
 
         while (true)
@@ -207,6 +276,14 @@ public class TransientHttpRetryHandler : DelegatingHandler
                 }
 
                 var statusCode = (int)response.StatusCode;
+
+                if (isIdempotent == false && IsNotProcessedStatusCode(response.StatusCode) == false)
+                {
+                    LogNotRetried(request, requestTarget, statusCode.ToString(CultureInfo.InvariantCulture));
+
+                    return response;
+                }
+
                 var delay = GetRetryDelay(attempt, response);
 
                 response.Dispose();
@@ -223,6 +300,13 @@ public class TransientHttpRetryHandler : DelegatingHandler
                                               && cancellationToken.IsCancellationRequested == false
                                               && attempt < retryCount)
             {
+                if (isIdempotent == false && IsRaisedBeforeSending(exception) == false)
+                {
+                    LogNotRetried(request, requestTarget, GetExceptionOutcome(exception));
+
+                    throw;
+                }
+
                 var delay = GetRetryDelay(attempt, null);
 
                 _logger.TransientExceptionRetry(exception,
