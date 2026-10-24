@@ -33,5 +33,5 @@ public enum ClientCertificateLoadStatus
     /// <summary>
     /// The bundle contains no certificate with a private key
     /// </summary>
-    NoPrivateKey,
+    NoPrivateKey
 }

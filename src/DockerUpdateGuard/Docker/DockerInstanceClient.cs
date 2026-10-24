@@ -34,6 +34,11 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
     private static readonly ConcurrentDictionary<string, byte> _certificateValidationWarningInstances = new(StringComparer.Ordinal);
 
     /// <summary>
+    /// Client certificate loader
+    /// </summary>
+    private static readonly ClientCertificateLoader _clientCertificateLoader = new ClientCertificateLoader();
+
+    /// <summary>
     /// Pooled HTTP clients keyed by their connection-relevant configuration to avoid the new-client-per-request anti-pattern
     /// </summary>
     private readonly ConcurrentDictionary<string, Lazy<HttpClient>> _httpClients = new(StringComparer.Ordinal);

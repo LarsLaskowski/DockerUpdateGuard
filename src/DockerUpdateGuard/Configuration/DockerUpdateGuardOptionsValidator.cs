@@ -14,6 +14,11 @@ public class DockerUpdateGuardOptionsValidator : IValidateOptions<DockerUpdateGu
     /// </summary>
     private readonly IConfiguration _configuration;
 
+    /// <summary>
+    /// Client certificate loader
+    /// </summary>
+    private readonly ClientCertificateLoader _clientCertificateLoader;
+
     #endregion // Fields
 
     #region Constructors
@@ -23,8 +28,19 @@ public class DockerUpdateGuardOptionsValidator : IValidateOptions<DockerUpdateGu
     /// </summary>
     /// <param name="configuration">Configuration root</param>
     public DockerUpdateGuardOptionsValidator(IConfiguration configuration)
+        : this(configuration, new ClientCertificateLoader())
+    {
+    }
+
+    /// <summary>
+    /// Constructor
+    /// </summary>
+    /// <param name="configuration">Configuration root</param>
+    /// <param name="clientCertificateLoader">Client certificate loader</param>
+    public DockerUpdateGuardOptionsValidator(IConfiguration configuration, ClientCertificateLoader clientCertificateLoader)
     {
         _configuration = configuration;
+        _clientCertificateLoader = clientCertificateLoader;
     }
 
     #endregion // Constructors
@@ -263,33 +279,6 @@ public class DockerUpdateGuardOptionsValidator : IValidateOptions<DockerUpdateGu
     }
 
     /// <summary>
-    /// Validate Docker instances
-    /// </summary>
-    /// <param name="instances">Configured instances</param>
-    /// <param name="failures">Failure list</param>
-    private static void ValidateDockerInstances(IEnumerable<DockerInstanceOptions> instances, List<string> failures)
-    {
-        var knownNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-        foreach (var instance in instances)
-        {
-            if (string.IsNullOrWhiteSpace(instance.Name))
-            {
-                failures.Add($"'{DockerUpdateGuardOptions.SectionName}:DockerInstances:Name' must be configured");
-
-                continue;
-            }
-
-            if (knownNames.Add(instance.Name.Trim()) == false)
-            {
-                failures.Add($"'{DockerUpdateGuardOptions.SectionName}:DockerInstances' contains duplicate instance name '{instance.Name}'");
-            }
-
-            ValidateDockerInstance(instance, failures);
-        }
-    }
-
-    /// <summary>
     /// Validate a single Docker instance
     /// </summary>
     /// <param name="instance">Docker instance</param>
@@ -374,6 +363,47 @@ public class DockerUpdateGuardOptionsValidator : IValidateOptions<DockerUpdateGu
     }
 
     #endregion // Static methods
+
+    #region Methods
+
+    /// <summary>
+    /// Validate Docker instances
+    /// </summary>
+    /// <param name="instances">Configured instances</param>
+    /// <param name="failures">Failure list</param>
+    private void ValidateDockerInstances(IEnumerable<DockerInstanceOptions> instances, List<string> failures)
+    {
+        var knownNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var instance in instances)
+        {
+            if (string.IsNullOrWhiteSpace(instance.Name))
+            {
+                failures.Add($"'{DockerUpdateGuardOptions.SectionName}:DockerInstances:Name' must be configured");
+
+                continue;
+            }
+
+            if (knownNames.Add(instance.Name.Trim()) == false)
+            {
+                failures.Add($"'{DockerUpdateGuardOptions.SectionName}:DockerInstances' contains duplicate instance name '{instance.Name}'");
+            }
+
+            ValidateDockerInstance(instance, failures);
+        }
+    }
+
+    /// <summary>
+    /// Validate the client certificate path of a Docker instance
+    /// </summary>
+    /// <param name="instance">Docker instance</param>
+    /// <param name="failures">Failure list</param>
+    private void ValidateCertificatePath(DockerInstanceOptions instance, List<string> failures)
+    {
+        throw new InvalidOperationException("Skeleton: not implemented");
+    }
+
+    #endregion // Methods
 
     #region IValidateOptions
 
