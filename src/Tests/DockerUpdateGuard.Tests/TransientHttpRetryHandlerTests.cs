@@ -820,6 +820,60 @@ public partial class TransientHttpRetryHandlerTests
     }
 
     /// <summary>
+    /// Verify no not-retried entry is logged when a POST gets a server error after its retries are used up
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task TransientHttpRetryHandlerDoesNotLogNotRetriedWhenPostRetriesAreUsedUpAsync()
+    {
+        var probe = new RetryProbeHttpMessageHandler([HttpStatusCode.TooManyRequests, HttpStatusCode.TooManyRequests, HttpStatusCode.ServiceUnavailable], HttpStatusCode.OK);
+        var logger = new TestLogger<TransientHttpRetryHandler>();
+        using var request = CreatePostRequest();
+
+        using var response = await SendThroughRetryHandlerAsync(2, probe, request: request, logger: logger).ConfigureAwait(false);
+
+        Assert.AreEqual(HttpStatusCode.ServiceUnavailable,
+                        response.StatusCode,
+                        "The last response must be returned once the retries are used up");
+        Assert.AreEqual(3,
+                        probe.AttemptCount,
+                        "A POST must use the initial attempt plus both retries after 429 responses");
+        Assert.DoesNotContain(entry => entry.EventId.Id == 3502,
+                              logger.Entries,
+                              "An outcome that could not be retried anyway must not log a not-retried entry");
+    }
+
+    /// <summary>
+    /// Verify no not-retried entry is logged when a POST fails after its retries are used up
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task TransientHttpRetryHandlerDoesNotLogNotRetriedWhenPostFailsAfterRetriesAreUsedUpAsync()
+    {
+        var failureCount = 0;
+        var probe = new RetryProbeHttpMessageHandler([null, null], HttpStatusCode.OK)
+                    {
+                        FailureFactory = () => new HttpRequestException(++failureCount == 1 ? HttpRequestError.ConnectionError : HttpRequestError.ResponseEnded, "failure"),
+                    };
+        var logger = new TestLogger<TransientHttpRetryHandler>();
+        using var request = CreatePostRequest();
+
+        var exception = await Assert.ThrowsExactlyAsync<HttpRequestException>(() => SendThroughRetryHandlerAsync(1, probe, request: request, logger: logger),
+                                                                              "The failure of the last attempt must reach the caller")
+                                    .ConfigureAwait(false);
+
+        Assert.AreEqual(HttpRequestError.ResponseEnded,
+                        exception.HttpRequestError,
+                        "The exception of the last attempt must reach the caller");
+        Assert.AreEqual(2,
+                        probe.AttemptCount,
+                        "A POST must use the initial attempt plus one retry");
+        Assert.DoesNotContain(entry => entry.EventId.Id == 3502,
+                              logger.Entries,
+                              "A failure that could not be retried anyway must not log a not-retried entry");
+    }
+
+    /// <summary>
     /// Verify no not-retried entry is logged when retries are disabled
     /// </summary>
     /// <returns>Task</returns>
