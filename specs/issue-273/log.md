@@ -6,3 +6,4 @@ are quoted in full.
 | Date | Step | Member | Result |
 | ---- | ---- | ------ | ------ |
 | 2026-10-24 16:16 | 1 Intake | Orchestrator | Issue #273 read (bug, label bug, open, no comments); branch claude/bold-heisenberg-gb0vc6 reset to origin/main fe279e8 |
+| 2026-10-24 16:24 | 2 Plan | squad-lead | DONE: tier standard; plan.md + decision record 0008 (Proposed); follow-up issue proposed: PortainerClient raw ex.Message (opus/medium · usage pending) |
