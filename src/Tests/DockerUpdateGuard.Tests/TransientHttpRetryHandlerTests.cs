@@ -475,5 +475,28 @@ public partial class TransientHttpRetryHandlerTests
                         "The request the inner handler receives must keep its user info and query so that connecting is unchanged");
     }
 
+    /// <summary>
+    /// Verify the retry log of a relative request URI drops the query string and masks user info
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task TransientHttpRetryHandlerRelativeRequestUriLogOmitsUserInfoAndQueryAsync()
+    {
+        var probe = new RetryProbeHttpMessageHandler([HttpStatusCode.ServiceUnavailable, HttpStatusCode.OK], HttpStatusCode.OK);
+        var logger = new TestLogger<TransientHttpRetryHandler>();
+        using var request = new HttpRequestMessage(HttpMethod.Get, new Uri("/user:secret@host/v2/path?token=x#frag", UriKind.Relative));
+
+        using var response = await SendThroughRetryHandlerAsync(2, probe, request: request, logger: logger).ConfigureAwait(false);
+
+        var entry = logger.Entries.Single(candidate => candidate.EventId.Id == 3500);
+
+        Assert.Contains("***@host/v2/path",
+                        entry.Message,
+                        "The retry log of a relative request URI must name the target with its user info masked");
+        Assert.DoesNotContain("secret", entry.Message, "The retry log must not contain the password of a relative request URI");
+        Assert.DoesNotContain("token=x", entry.Message, "The retry log must not contain the query string of a relative request URI");
+        Assert.DoesNotContain("frag", entry.Message, "The retry log must not contain the fragment of a relative request URI");
+    }
+
     #endregion // Methods
 }

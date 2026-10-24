@@ -38,7 +38,7 @@ internal sealed class RetryProbeHttpMessageHandler : HttpMessageHandler
     public int AttemptCount { get; private set; }
 
     /// <summary>
-    /// Absolute URI of the most recent request the handler received
+    /// URI text of the most recent request the handler received
     /// </summary>
     public string? LastRequestUri { get; private set; }
 
@@ -55,7 +55,7 @@ internal sealed class RetryProbeHttpMessageHandler : HttpMessageHandler
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
         AttemptCount++;
-        LastRequestUri = request.RequestUri?.AbsoluteUri;
+        LastRequestUri = request.RequestUri is { IsAbsoluteUri: false } relativeUri ? relativeUri.OriginalString : request.RequestUri?.AbsoluteUri;
 
         var outcome = _outcomes.Count > 0 ? _outcomes.Dequeue() : _fallbackStatusCode;
 

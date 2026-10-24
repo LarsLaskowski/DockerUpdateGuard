@@ -124,6 +124,7 @@ public class UrlRedactionTests
     [DataRow("https://a:b@c:/secret@host", "https://***@host", "a:b", "secret")]
     [DataRow("https:\\\\user:secret@host.example", "***@host.example", "user", "secret")]
     [DataRow("user:secret://x@host", "***@host", "user", "secret")]
+    [DataRow("1x://user:secret@host", "***@host", "user", "secret")]
     public void UrlRedactionRedactUserInfoUnparsableWithUserInfoMasked(string url,
                                                                        string expected,
                                                                        string userPart,
