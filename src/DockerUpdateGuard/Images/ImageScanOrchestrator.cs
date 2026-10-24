@@ -683,8 +683,7 @@ public class ImageScanOrchestrator : IImageScanOrchestrator
 
             observedImageScanLockAcquired = true;
 
-            var observedImage = await _dbContext.ObservedImages.Include(entity => entity.CurrentImageVersion)
-                                                               .ThenInclude(entity => entity.RegistryRepository)
+            var observedImage = await _dbContext.ObservedImages.Include(entity => entity.CurrentImageVersion.RegistryRepository)
                                                                .SingleOrDefaultAsync(entity => entity.Id == observedImageId, cancellationToken)
                                                                .ConfigureAwait(false);
 

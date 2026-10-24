@@ -44,8 +44,7 @@ public class RuntimeContainerTagSelectionService : IRuntimeContainerTagSelection
         ArgumentException.ThrowIfNullOrWhiteSpace(containerId);
         ArgumentException.ThrowIfNullOrWhiteSpace(tag);
 
-        var latestSnapshot = await _dbContext.ContainerSnapshots.Include(entity => entity.ImageVersion)
-                                                                .ThenInclude(entity => entity.RegistryRepository)
+        var latestSnapshot = await _dbContext.ContainerSnapshots.Include(entity => entity.ImageVersion.RegistryRepository)
                                                                 .OrderByDescending(entity => entity.RecordedAtUtc)
                                                                 .FirstOrDefaultAsync(entity => entity.DockerInstanceId == dockerInstanceId
                                                                                                && entity.ContainerId == containerId,

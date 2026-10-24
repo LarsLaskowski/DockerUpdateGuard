@@ -883,10 +883,8 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
         var groupedBaseImageVersionIds = baseImages.SelectMany(entity => entity.BaseImageVersionIds)
                                                    .Distinct()
                                                    .ToList();
-        var baseRelationships = await _dbContext.ImageRelationships.Include(entity => entity.BaseImageVersion)
-                                                                   .ThenInclude(entity => entity.RegistryRepository)
-                                                                   .Include(entity => entity.ChildImageVersion)
-                                                                   .ThenInclude(entity => entity.RegistryRepository)
+        var baseRelationships = await _dbContext.ImageRelationships.Include(entity => entity.BaseImageVersion.RegistryRepository)
+                                                                   .Include(entity => entity.ChildImageVersion.RegistryRepository)
                                                                    .Where(entity => groupedBaseImageVersionIds.Contains(entity.BaseImageVersionId)
                                                                                     && entity.RelationshipType == ImageRelationshipType.BaseImage)
                                                                    .AsNoTracking()
@@ -1106,10 +1104,8 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
         if (targetScanRunByInstance.Count > 0)
         {
             var targetScanRunIds = targetScanRunByInstance.Values.ToList();
-            var runtimeSnapshots = await _dbContext.ContainerSnapshots.Include(entity => entity.DockerInstance)
-                                                                      .ThenInclude(entity => entity.PortainerEndpoint)
-                                                                      .Include(entity => entity.ImageVersion)
-                                                                      .ThenInclude(entity => entity.RegistryRepository)
+            var runtimeSnapshots = await _dbContext.ContainerSnapshots.Include(entity => entity.DockerInstance.PortainerEndpoint)
+                                                                      .Include(entity => entity.ImageVersion.RegistryRepository)
                                                                       .Include(entity => entity.ScanRun)
                                                                       .Where(entity => targetScanRunIds.Contains(entity.ScanRunId))
                                                                       .AsNoTracking()
@@ -1122,10 +1118,8 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
         }
 
         var runtimeInstanceIds = targetScanRunByInstance.Keys.ToList();
-        var fallbackSnapshots = await _dbContext.ContainerSnapshots.Include(entity => entity.DockerInstance)
-                                                                   .ThenInclude(entity => entity.PortainerEndpoint)
-                                                                   .Include(entity => entity.ImageVersion)
-                                                                   .ThenInclude(entity => entity.RegistryRepository)
+        var fallbackSnapshots = await _dbContext.ContainerSnapshots.Include(entity => entity.DockerInstance.PortainerEndpoint)
+                                                                   .Include(entity => entity.ImageVersion.RegistryRepository)
                                                                    .Include(entity => entity.ScanRun)
                                                                    .Where(entity => runtimeInstanceIds.Contains(entity.DockerInstanceId) == false
                                                                                     && _dbContext.ContainerSnapshots.Any(other => other.DockerInstanceId == entity.DockerInstanceId
@@ -1149,8 +1143,7 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
     /// <returns>Observed images by repository</returns>
     private async Task<Dictionary<string, ObservedImage>> LoadOwnImagesByRepositoryAsync(CancellationToken cancellationToken)
     {
-        var observedImages = await _dbContext.ObservedImages.Include(entity => entity.CurrentImageVersion)
-                                                            .ThenInclude(entity => entity.RegistryRepository)
+        var observedImages = await _dbContext.ObservedImages.Include(entity => entity.CurrentImageVersion.RegistryRepository)
                                                             .Where(entity => entity.Source == RegistrationSource.Discovery)
                                                             .AsNoTracking()
                                                             .ToListAsync(cancellationToken)
@@ -1176,8 +1169,7 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
             return [];
         }
 
-        var relationships = await _dbContext.ImageRelationships.Include(entity => entity.BaseImageVersion)
-                                                               .ThenInclude(entity => entity.RegistryRepository)
+        var relationships = await _dbContext.ImageRelationships.Include(entity => entity.BaseImageVersion.RegistryRepository)
                                                                .Where(entity => childImageVersionIds.Contains(entity.ChildImageVersionId)
                                                                                 && entity.RelationshipType == ImageRelationshipType.BaseImage)
                                                                .OrderBy(entity => entity.ChildImageVersionId)
@@ -1539,8 +1531,7 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
     {
         return await ExecuteSerializedAsync(async () =>
                                             {
-                                                var observedImagesQuery = _dbContext.ObservedImages.Include(entity => entity.CurrentImageVersion)
-                                                                                                   .ThenInclude(entity => entity.RegistryRepository)
+                                                var observedImagesQuery = _dbContext.ObservedImages.Include(entity => entity.CurrentImageVersion.RegistryRepository)
                                                                                                    .AsNoTracking();
 
                                                 if (source.HasValue)
@@ -1650,10 +1641,8 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
     /// <returns>Vulnerability overview items grouped by advisory</returns>
     private async Task<IReadOnlyList<VulnerabilityOverviewItemData>> GetVulnerabilityOverviewCoreAsync(CancellationToken cancellationToken)
     {
-        var activeFindings = await _dbContext.VulnerabilityFindings.Include(entity => entity.ImageVersion)
-                                                                   .ThenInclude(entity => entity.RegistryRepository)
-                                                                   .Include(entity => entity.ImageVersion)
-                                                                   .ThenInclude(entity => entity.ObservedImages)
+        var activeFindings = await _dbContext.VulnerabilityFindings.Include(entity => entity.ImageVersion.RegistryRepository)
+                                                                   .Include(entity => entity.ImageVersion.ObservedImages)
                                                                    .Where(entity => entity.IsActive)
                                                                    .AsNoTracking()
                                                                    .ToListAsync(cancellationToken)
@@ -1848,8 +1837,7 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
     {
         return await ExecuteSerializedAsync(async () =>
                                             {
-                                                var observedImage = await _dbContext.ObservedImages.Include(entity => entity.CurrentImageVersion)
-                                                                                                   .ThenInclude(entity => entity.RegistryRepository)
+                                                var observedImage = await _dbContext.ObservedImages.Include(entity => entity.CurrentImageVersion.RegistryRepository)
                                                                                                    .AsNoTracking()
                                                                                                    .SingleOrDefaultAsync(entity => entity.Id == observedImageId, cancellationToken)
                                                                                                    .ConfigureAwait(false);
@@ -1949,10 +1937,8 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                                             {
                                                 ArgumentException.ThrowIfNullOrWhiteSpace(containerId);
 
-                                                var latestSnapshot = await _dbContext.ContainerSnapshots.Include(entity => entity.DockerInstance)
-                                                                                                        .ThenInclude(entity => entity.PortainerEndpoint)
-                                                                                                        .Include(entity => entity.ImageVersion)
-                                                                                                        .ThenInclude(entity => entity.RegistryRepository)
+                                                var latestSnapshot = await _dbContext.ContainerSnapshots.Include(entity => entity.DockerInstance.PortainerEndpoint)
+                                                                                                        .Include(entity => entity.ImageVersion.RegistryRepository)
                                                                                                         .AsNoTracking()
                                                                                                         .OrderByDescending(entity => entity.RecordedAtUtc)
                                                                                                         .FirstOrDefaultAsync(entity => entity.DockerInstanceId == dockerInstanceId

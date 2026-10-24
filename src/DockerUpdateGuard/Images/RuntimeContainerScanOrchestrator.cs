@@ -1154,8 +1154,7 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
     /// <returns>Own repository keys</returns>
     private async Task<IReadOnlySet<string>> LoadOwnRepositoryKeysAsync(CancellationToken cancellationToken)
     {
-        var observedImages = await _dbContext.ObservedImages.Include(entity => entity.CurrentImageVersion)
-                                                            .ThenInclude(entity => entity.RegistryRepository)
+        var observedImages = await _dbContext.ObservedImages.Include(entity => entity.CurrentImageVersion.RegistryRepository)
                                                             .Where(entity => entity.Source == RegistrationSource.Discovery)
                                                             .ToListAsync(cancellationToken)
                                                             .ConfigureAwait(false);
