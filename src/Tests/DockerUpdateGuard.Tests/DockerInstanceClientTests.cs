@@ -607,10 +607,131 @@ public partial class DockerInstanceClientTests
             Assert.AreEqual("https://docker.example.test/",
                             httpClient.BaseAddress?.AbsoluteUri,
                             "TLS Docker endpoints with a client certificate must use the resolved engine URI as base address");
+
+            var clientCertificates = GetClientCertificates(httpClient);
+
+            Assert.IsNotNull(clientCertificates, "A valid client certificate on an https endpoint must be attached to the handler");
+            Assert.HasCount(1, clientCertificates, "Exactly one client certificate must be attached");
+            Assert.IsTrue(((X509Certificate2)clientCertificates[0]).HasPrivateKey,
+                          "The attached client certificate must carry its private key");
         }
         finally
         {
             File.Delete(certificatePath);
+        }
+    }
+
+    /// <summary>
+    /// Verify a plain http endpoint does not load the configured client certificate
+    /// </summary>
+    [TestMethod]
+    public void DockerInstanceClientCreateHttpClientWithPlainHttpEndpointIgnoresCertificatePath()
+    {
+        var createHttpClientMethod = typeof(DockerInstanceClient).GetMethod("CreateHttpClient",
+                                                                            BindingFlags.Static | BindingFlags.NonPublic);
+
+        Assert.IsNotNull(createHttpClientMethod, "The Docker HTTP-client factory must remain discoverable for transport tests");
+
+        var instanceOptions = new DockerInstanceOptions
+                              {
+                                  Name = "Production",
+                                  BaseUrl = "http://docker.example.test",
+                                  Enabled = true,
+                                  CertificatePath = Path.Combine(Path.GetTempPath(), $"dug-missing-{Guid.NewGuid():N}", "client.pfx"),
+                              };
+        var engineUri = new Uri("http://docker.example.test/");
+
+        using var httpClient = (HttpClient?)createHttpClientMethod.Invoke(null, [instanceOptions, engineUri, new TestLogger<DockerInstanceClient>()]);
+
+        Assert.IsNotNull(httpClient, "A plain http endpoint must create a client even when the certificate path does not exist");
+
+        var clientCertificates = GetClientCertificates(httpClient);
+
+        Assert.IsTrue(clientCertificates is null || clientCertificates.Count == 0,
+                      "A plain http endpoint must not attach a client certificate");
+    }
+
+    /// <summary>
+    /// Verify an unusable client certificate on an https endpoint ends the operation as failed with the instance name
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerInstanceClientInspectImageAsyncWithMissingClientCertificateReturnsFailedAsync()
+    {
+        using var client = new DockerInstanceClient(new TestLogger<DockerInstanceClient>());
+        var instanceOptions = new DockerInstanceOptions
+                              {
+                                  Name = "Production",
+                                  BaseUrl = "https://docker.example.test",
+                                  Enabled = true,
+                                  CertificatePath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"), "client.pfx"),
+                              };
+
+        var result = await client.InspectImageAsync(instanceOptions, PooledImageReference, TestContext.CancellationToken)
+                                 .ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Failed,
+                        result.Status,
+                        "A missing client certificate must end the operation as failed");
+        Assert.AreEqual("Docker image inspect failed for 'Production': The client certificate of Docker instance 'Production' could not be loaded: the file does not exist",
+                        result.Message,
+                        "The failure must carry the operation frame, the instance name and the reason");
+    }
+
+    /// <summary>
+    /// Verify a failed HTTP-client creation is not cached in the pool
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerInstanceClientInspectImageAsyncAfterClientCreationFailureCreatesClientAgainAsync()
+    {
+        var handler = new SequenceHttpMessageHandler();
+        var httpClient = new HttpClient(handler)
+                         {
+                             BaseAddress = new Uri("https://docker.example.test/"),
+                         };
+        var factoryInvocationCount = 0;
+
+        try
+        {
+            handler.AddJsonResponse(PooledImageInspectUri, PooledImageInspectJson);
+
+            var client = new DockerInstanceClient(new TestLogger<DockerInstanceClient>(),
+                                                  (_, _) =>
+                                                  {
+                                                      if (Interlocked.Increment(ref factoryInvocationCount) == 1)
+                                                      {
+                                                          throw new InvalidOperationException("Client creation failed");
+                                                      }
+
+                                                      return httpClient;
+                                                  });
+            var instanceOptions = new DockerInstanceOptions
+                                  {
+                                      Name = "Production",
+                                      BaseUrl = "https://docker.example.test",
+                                      Enabled = true,
+                                  };
+
+            var firstResult = await client.InspectImageAsync(instanceOptions, PooledImageReference, TestContext.CancellationToken)
+                                          .ConfigureAwait(false);
+            var secondResult = await client.InspectImageAsync(instanceOptions, PooledImageReference, TestContext.CancellationToken)
+                                           .ConfigureAwait(false);
+
+            Assert.AreEqual(ExternalOperationStatus.Failed,
+                            firstResult.Status,
+                            "The operation whose client creation threw must end as failed");
+            Assert.AreEqual(ExternalOperationStatus.Succeeded,
+                            secondResult.Status,
+                            "The next operation must create the client again instead of replaying the cached failure");
+            Assert.AreEqual(2,
+                            factoryInvocationCount,
+                            "A failed client creation must not stay in the pool");
+        }
+        finally
+        {
+            httpClient.Dispose();
+            handler.Dispose();
         }
     }
 
@@ -806,6 +927,24 @@ public partial class DockerInstanceClientTests
         Assert.DoesNotContain("secret", result.Message, "The failure message must not contain the password");
         Assert.IsNotNull(failure.Exception, "The discovery failure must be logged with its exception");
         Assert.DoesNotContain("secret", failure.Exception.Message, "The logged exception must not contain the password");
+    }
+
+    /// <summary>
+    /// Read the client certificates of the socket handler behind an HTTP client
+    /// </summary>
+    /// <param name="httpClient">HTTP client created by the Docker HTTP-client factory</param>
+    /// <returns>Client certificates, <c>null</c> when none are configured</returns>
+    private static X509CertificateCollection? GetClientCertificates(HttpClient httpClient)
+    {
+        var handlerField = typeof(HttpMessageInvoker).GetField("_handler", BindingFlags.Instance | BindingFlags.NonPublic);
+
+        Assert.IsNotNull(handlerField, "The handler field of the HTTP client must be discoverable for transport tests");
+
+        var handler = handlerField.GetValue(httpClient) as SocketsHttpHandler;
+
+        Assert.IsNotNull(handler, "The Docker HTTP-client factory must create a socket handler for http and https endpoints");
+
+        return handler.SslOptions.ClientCertificates;
     }
 
     #endregion // Methods

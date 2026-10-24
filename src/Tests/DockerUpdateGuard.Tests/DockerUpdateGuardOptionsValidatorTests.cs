@@ -1,5 +1,6 @@
 using DockerUpdateGuard.Configuration;
 using DockerUpdateGuard.Tests.Data;
+using DockerUpdateGuard.Tests.Helper;
 
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
@@ -565,6 +566,212 @@ public class DockerUpdateGuardOptionsValidatorTests
         var validationResult = validator.Validate(Options.DefaultName, options);
 
         Assert.IsFalse(validationResult.Failed, "A Portainer BaseUrl with plaintext http and AllowInsecureHttp=true must pass validation");
+    }
+
+    /// <summary>
+    /// Verify a PEM certificate path fails validation with the exact message and is not read
+    /// </summary>
+    [TestMethod]
+    public void DockerUpdateGuardOptionsValidatorValidateWithPemCertificatePathFails()
+    {
+        var readCount = 0;
+        var validator = CreateCertificateValidator(_ =>
+                                                   {
+                                                       readCount++;
+
+                                                       return [];
+                                                   });
+        var options = CreateOptionsWithCertificate("/certs/client.pem");
+
+        var validationResult = validator.Validate(Options.DefaultName, options);
+        var failures = validationResult.Failures?.ToArray() ?? [];
+
+        Assert.IsTrue(validationResult.Failed, "A PEM client certificate path must fail validation");
+        Assert.Contains("'DockerUpdateGuard:DockerInstances:Production:CertificatePath' names an unusable client certificate '/certs/client.pem': only password-less PKCS#12 files with the extension .pfx or .p12 are supported",
+                        failures,
+                        "The unsupported-format failure must carry the exact message");
+        Assert.AreEqual(0, readCount, "A file with an unsupported extension must not be read");
+    }
+
+    /// <summary>
+    /// Verify a missing certificate file fails validation
+    /// </summary>
+    [TestMethod]
+    public void DockerUpdateGuardOptionsValidatorValidateWithMissingCertificateFileFails()
+    {
+        var validator = CreateCertificateValidator(_ => throw new FileNotFoundException());
+        var options = CreateOptionsWithCertificate("/certs/client.pfx");
+
+        var validationResult = validator.Validate(Options.DefaultName, options);
+        var failures = validationResult.Failures?.ToArray() ?? [];
+
+        Assert.Contains("'DockerUpdateGuard:DockerInstances:Production:CertificatePath' names an unusable client certificate '/certs/client.pfx': the file does not exist",
+                        failures,
+                        "A missing certificate file must fail validation with the exact message");
+    }
+
+    /// <summary>
+    /// Verify a password-protected bundle fails validation
+    /// </summary>
+    [TestMethod]
+    public void DockerUpdateGuardOptionsValidatorValidateWithPasswordProtectedPfxFails()
+    {
+        var bytes = ClientCertificateTestData.CreateBundleWithPrivateKey("secret");
+        var validator = CreateCertificateValidator(_ => bytes);
+        var options = CreateOptionsWithCertificate("/certs/client.pfx");
+
+        var validationResult = validator.Validate(Options.DefaultName, options);
+        var failures = validationResult.Failures?.ToArray() ?? [];
+
+        Assert.Contains("'DockerUpdateGuard:DockerInstances:Production:CertificatePath' names an unusable client certificate '/certs/client.pfx': the file cannot be read or is not a password-less PKCS#12 bundle",
+                        failures,
+                        "A password-protected bundle must fail validation with the exact message");
+    }
+
+    /// <summary>
+    /// Verify a bundle without a private key fails validation
+    /// </summary>
+    [TestMethod]
+    public void DockerUpdateGuardOptionsValidatorValidateWithPfxWithoutPrivateKeyFails()
+    {
+        var bytes = ClientCertificateTestData.CreateBundleWithoutPrivateKey();
+        var validator = CreateCertificateValidator(_ => bytes);
+        var options = CreateOptionsWithCertificate("/certs/client.pfx");
+
+        var validationResult = validator.Validate(Options.DefaultName, options);
+        var failures = validationResult.Failures?.ToArray() ?? [];
+
+        Assert.Contains("'DockerUpdateGuard:DockerInstances:Production:CertificatePath' names an unusable client certificate '/certs/client.pfx': the bundle contains no certificate with a private key",
+                        failures,
+                        "A bundle without private key must fail validation with the exact message");
+    }
+
+    /// <summary>
+    /// Verify a password-less bundle with a private key passes validation and is read
+    /// </summary>
+    [TestMethod]
+    public void DockerUpdateGuardOptionsValidatorValidateWithValidPfxSucceeds()
+    {
+        var bytes = ClientCertificateTestData.CreateBundleWithPrivateKey(null);
+        var readPaths = new List<string>();
+        var validator = CreateCertificateValidator(path =>
+                                                   {
+                                                       readPaths.Add(path);
+
+                                                       return bytes;
+                                                   });
+        var options = CreateOptionsWithCertificate("client.P12");
+
+        var validationResult = validator.Validate(Options.DefaultName, options);
+
+        Assert.IsFalse(validationResult.Failed, "A password-less bundle with a private key must pass validation");
+        Assert.AreSequenceEqual(["client.P12"],
+                                readPaths,
+                                "Validation must read the configured certificate file exactly once");
+    }
+
+    /// <summary>
+    /// Verify a blank certificate path passes validation without a read
+    /// </summary>
+    /// <param name="path">Certificate path</param>
+    [TestMethod]
+    [DataRow(null)]
+    [DataRow("")]
+    [DataRow("   ")]
+    public void DockerUpdateGuardOptionsValidatorValidateWithBlankCertificatePathSucceeds(string? path)
+    {
+        var readCount = 0;
+        var validator = CreateCertificateValidator(_ =>
+                                                   {
+                                                       readCount++;
+
+                                                       return [];
+                                                   });
+        var options = CreateOptionsWithCertificate(path);
+
+        var validationResult = validator.Validate(Options.DefaultName, options);
+
+        Assert.IsFalse(validationResult.Failed, "A blank certificate path must pass validation");
+        Assert.AreEqual(0, readCount, "A blank certificate path must not be read");
+    }
+
+    /// <summary>
+    /// Verify a disabled instance is not checked for its certificate path
+    /// </summary>
+    [TestMethod]
+    public void DockerUpdateGuardOptionsValidatorValidateWithDisabledInstanceSkipsCertificatePath()
+    {
+        var readCount = 0;
+        var validator = CreateCertificateValidator(_ =>
+                                                   {
+                                                       readCount++;
+
+                                                       return [];
+                                                   });
+        var options = CreateOptionsWithCertificate("/certs/client.pem");
+
+        options.DockerInstances[0].Enabled = false;
+
+        var validationResult = validator.Validate(Options.DefaultName, options);
+
+        Assert.IsFalse(validationResult.Failed, "A disabled instance must not be checked for its certificate path");
+        Assert.AreEqual(0, readCount, "A disabled instance must not read its certificate file");
+    }
+
+    /// <summary>
+    /// Verify an enabled instance on a transport that never presents the certificate is still checked
+    /// </summary>
+    [TestMethod]
+    public void DockerUpdateGuardOptionsValidatorValidateWithUnusableCertificateOnUnixInstanceFails()
+    {
+        var validator = CreateCertificateValidator(_ => []);
+        var options = CreateOptionsWithCertificate("/certs/client.pem");
+
+        options.DockerInstances[0].BaseUrl = "unix:///var/run/docker.sock";
+
+        var validationResult = validator.Validate(Options.DefaultName, options);
+        var failures = validationResult.Failures?.ToArray() ?? [];
+
+        Assert.Contains(message => message.Contains("Production:CertificatePath' names an unusable client certificate", StringComparison.Ordinal),
+                        failures,
+                        "An enabled instance must be checked for its certificate path whatever its transport");
+    }
+
+    /// <summary>
+    /// Create a validator whose certificate loader reads through the given delegate
+    /// </summary>
+    /// <param name="readAllBytes">File reader</param>
+    /// <returns>Validator</returns>
+    private static DockerUpdateGuardOptionsValidator CreateCertificateValidator(Func<string, byte[]> readAllBytes)
+    {
+        var configuration = CreateConfiguration(new Dictionary<string, string?>
+                                                {
+                                                    ["ConnectionStrings:DockerUpdateGuard"] = "Host=database;Database=dug",
+                                                });
+
+        return new DockerUpdateGuardOptionsValidator(configuration, new ClientCertificateLoader(readAllBytes));
+    }
+
+    /// <summary>
+    /// Create valid options with one enabled Docker instance that sets a certificate path
+    /// </summary>
+    /// <param name="certificatePath">Certificate path</param>
+    /// <returns>Configured options</returns>
+    private static DockerUpdateGuardOptions CreateOptionsWithCertificate(string? certificatePath)
+    {
+        var options = CreateValidOptions();
+
+        options.DockerInstances = [
+                                      new DockerInstanceOptions
+                                      {
+                                          Name = "Production",
+                                          BaseUrl = "https://docker.example.test",
+                                          Enabled = true,
+                                          CertificatePath = certificatePath,
+                                      },
+                                  ];
+
+        return options;
     }
 
     /// <summary>
