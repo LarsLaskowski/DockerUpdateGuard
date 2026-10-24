@@ -2998,5 +2998,132 @@ public class ApplicationViewServiceTests
         Assert.IsNull(schedule.NextVulnerabilityRefreshUtc, "The next scheduled refresh must stay unset when vulnerability scanning is disabled");
     }
 
+    /// <summary>
+    /// Verify the Docker instance list masks the user info of a stored endpoint written before the masking existed
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task ApplicationViewServiceDockerInstancesMaskStoredEndpointUserInfoAsync()
+    {
+        var options = new DbContextOptionsBuilder<DockerUpdateGuardDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString())
+                                                                               .Options;
+
+        var dbContext = new DockerUpdateGuardDbContext(options);
+
+        await using (dbContext.ConfigureAwait(false))
+        {
+            dbContext.DockerInstances.Add(new DockerInstance
+                                          {
+                                              Name = "Credentialed",
+                                              EndpointUri = "https://user:secret@docker.example.test",
+                                              ConnectionKind = DockerConnectionKind.Https,
+                                          });
+            dbContext.DockerInstances.Add(new DockerInstance
+                                          {
+                                              Name = "Local",
+                                              EndpointUri = "unix:///var/run/docker.sock",
+                                              ConnectionKind = DockerConnectionKind.UnixSocket,
+                                          });
+            await dbContext.SaveChangesAsync(CancellationToken.None)
+                           .ConfigureAwait(false);
+
+            var service = new ApplicationViewService(dbContext,
+                                                     new ImageReferenceParser(),
+                                                     CreateOptionsMonitor(),
+                                                     new SharedBaseImageQueryService(dbContext));
+            var dockerInstances = await service.GetDockerInstancesAsync(CancellationToken.None)
+                                               .ConfigureAwait(false);
+
+            Assert.AreEqual("https://***@docker.example.test/",
+                            dockerInstances.Single(item => item.Name == "Credentialed").EndpointUri,
+                            "A stored endpoint with user info must be listed with the user info masked");
+            Assert.AreEqual("unix:///var/run/docker.sock",
+                            dockerInstances.Single(item => item.Name == "Local").EndpointUri,
+                            "A stored endpoint without user info must be listed unchanged");
+        }
+    }
+
+    /// <summary>
+    /// Verify the Docker instance detail masks the user info of a stored endpoint written before the masking existed
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task ApplicationViewServiceDockerInstanceDetailMasksStoredEndpointUserInfoAsync()
+    {
+        var options = new DbContextOptionsBuilder<DockerUpdateGuardDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString())
+                                                                               .Options;
+
+        var dbContext = new DockerUpdateGuardDbContext(options);
+
+        await using (dbContext.ConfigureAwait(false))
+        {
+            dbContext.DockerInstances.Add(new DockerInstance
+                                          {
+                                              Name = "Credentialed",
+                                              EndpointUri = "https://user:secret@docker.example.test",
+                                              ConnectionKind = DockerConnectionKind.Https,
+                                          });
+            await dbContext.SaveChangesAsync(CancellationToken.None)
+                           .ConfigureAwait(false);
+
+            var service = new ApplicationViewService(dbContext,
+                                                     new ImageReferenceParser(),
+                                                     CreateOptionsMonitor(),
+                                                     new SharedBaseImageQueryService(dbContext));
+            var instanceId = await dbContext.DockerInstances.Select(entity => entity.Id)
+                                                            .SingleAsync(TestContext.CancellationToken)
+                                                            .ConfigureAwait(false);
+            var detail = await service.GetDockerInstanceDetailAsync(instanceId, CancellationToken.None)
+                                      .ConfigureAwait(false);
+
+            Assert.IsNotNull(detail, "The Docker instance detail must be returned");
+            Assert.AreEqual("https://***@docker.example.test/",
+                            detail.EndpointUri,
+                            "A stored endpoint with user info must be shown with the user info masked");
+        }
+    }
+
+    /// <summary>
+    /// Verify an already masked stored endpoint is shown unchanged in the list and the detail
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task ApplicationViewServiceDockerInstancesKeepAlreadyMaskedEndpointAsync()
+    {
+        var options = new DbContextOptionsBuilder<DockerUpdateGuardDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString())
+                                                                               .Options;
+
+        var dbContext = new DockerUpdateGuardDbContext(options);
+
+        await using (dbContext.ConfigureAwait(false))
+        {
+            dbContext.DockerInstances.Add(new DockerInstance
+                                          {
+                                              Name = "Masked",
+                                              EndpointUri = "https://***@docker.example.test/",
+                                              ConnectionKind = DockerConnectionKind.Https,
+                                          });
+            await dbContext.SaveChangesAsync(CancellationToken.None)
+                           .ConfigureAwait(false);
+
+            var service = new ApplicationViewService(dbContext,
+                                                     new ImageReferenceParser(),
+                                                     CreateOptionsMonitor(),
+                                                     new SharedBaseImageQueryService(dbContext));
+            var dockerInstances = await service.GetDockerInstancesAsync(CancellationToken.None)
+                                               .ConfigureAwait(false);
+            var detail = await service.GetDockerInstanceDetailAsync(dockerInstances.Single().Id, CancellationToken.None)
+                                      .ConfigureAwait(false);
+
+            Assert.AreEqual("https://***@docker.example.test/",
+                            dockerInstances.Single().EndpointUri,
+                            "An already masked endpoint must be listed unchanged");
+            Assert.IsNotNull(detail, "The Docker instance detail must be returned");
+            Assert.AreEqual("https://***@docker.example.test/",
+                            detail.EndpointUri,
+                            "An already masked endpoint must be shown unchanged in the detail");
+        }
+    }
+
     #endregion // Methods
 }

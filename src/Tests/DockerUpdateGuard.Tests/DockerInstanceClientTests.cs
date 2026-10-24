@@ -706,5 +706,107 @@ public partial class DockerInstanceClientTests
                               "The Docker HTTP-client factory must not warn about disabled certificate validation when it stays enabled");
     }
 
+    /// <summary>
+    /// Verify an unsupported endpoint with user info is reported and logged with the user info masked
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerInstanceClientDiscoverContainersAsyncWithUnsupportedEndpointUserInfoMasksUserInfoAsync()
+    {
+        var logger = new TestLogger<DockerInstanceClient>();
+        var client = new DockerInstanceClient(logger);
+        var instanceOptions = new DockerInstanceOptions
+                              {
+                                  Name = "Production",
+                                  BaseUrl = "ssh://user:secret@docker.example.test",
+                                  Enabled = true,
+                              };
+
+        var result = await client.DiscoverContainersAsync(instanceOptions, CancellationToken.None)
+                                 .ConfigureAwait(false);
+
+        var warning = logger.Entries.Single(entry => entry.EventId.Id == 3101);
+
+        Assert.AreEqual(ExternalOperationStatus.Unsupported,
+                        result.Status,
+                        "An unsupported endpoint must return an unsupported result");
+        Assert.IsNotNull(result.Message, "An unsupported endpoint must produce a message");
+        Assert.Contains("ssh://***@docker.example.test/",
+                        result.Message,
+                        "The result message must name the endpoint with its user info masked");
+        Assert.DoesNotContain("secret", result.Message, "The result message must not contain the password");
+        Assert.Contains("ssh://***@docker.example.test/",
+                        warning.Message,
+                        "The rejected endpoint log must name the endpoint with its user info masked");
+        Assert.DoesNotContain("secret", warning.Message, "The rejected endpoint log must not contain the password");
+    }
+
+    /// <summary>
+    /// Verify the other operations report an unsupported endpoint with user info masked
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerInstanceClientOperationsWithUnsupportedEndpointUserInfoMaskUserInfoAsync()
+    {
+        var client = new DockerInstanceClient(new TestLogger<DockerInstanceClient>());
+        var instanceOptions = new DockerInstanceOptions
+                              {
+                                  Name = "Production",
+                                  BaseUrl = "ssh://user:secret@docker.example.test",
+                                  Enabled = true,
+                              };
+
+        var usage = await client.CollectContainerResourceUsageAsync(instanceOptions, CancellationToken.None).ConfigureAwait(false);
+        var inspect = await client.InspectImageAsync(instanceOptions, "sha256:image", CancellationToken.None).ConfigureAwait(false);
+        var history = await client.GetImageHistoryAsync(instanceOptions, "sha256:image", CancellationToken.None).ConfigureAwait(false);
+        var memory = await client.GetHostMemoryTotalAsync(instanceOptions, CancellationToken.None).ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Unsupported, usage.Status, "Resource sampling must report an unsupported endpoint");
+        Assert.AreEqual(ExternalOperationStatus.Unsupported, inspect.Status, "Image inspection must report an unsupported endpoint");
+        Assert.AreEqual(ExternalOperationStatus.Unsupported, history.Status, "Image history must report an unsupported endpoint");
+        Assert.AreEqual(ExternalOperationStatus.Unsupported, memory.Status, "Host memory lookup must report an unsupported endpoint");
+        Assert.Contains("ssh://***@docker.example.test/", usage.Message ?? string.Empty, "Resource sampling must mask the user info");
+        Assert.Contains("ssh://***@docker.example.test/", inspect.Message ?? string.Empty, "Image inspection must mask the user info");
+        Assert.Contains("ssh://***@docker.example.test/", history.Message ?? string.Empty, "Image history must mask the user info");
+        Assert.Contains("ssh://***@docker.example.test/", memory.Message ?? string.Empty, "Host memory lookup must mask the user info");
+        Assert.DoesNotContain("secret", usage.Message ?? string.Empty, "Resource sampling must not contain the password");
+        Assert.DoesNotContain("secret", inspect.Message ?? string.Empty, "Image inspection must not contain the password");
+        Assert.DoesNotContain("secret", history.Message ?? string.Empty, "Image history must not contain the password");
+        Assert.DoesNotContain("secret", memory.Message ?? string.Empty, "Host memory lookup must not contain the password");
+    }
+
+    /// <summary>
+    /// Verify a named-pipe endpoint with user info and no pipe name fails with the user info masked
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerInstanceClientDiscoverContainersAsyncWithNamedPipeWithoutPipeNameMasksUserInfoAsync()
+    {
+        var logger = new TestLogger<DockerInstanceClient>();
+        var client = new DockerInstanceClient(logger);
+        var instanceOptions = new DockerInstanceOptions
+                              {
+                                  Name = "Production",
+                                  BaseUrl = "npipe://user:secret@pipehost/",
+                                  Enabled = true,
+                              };
+
+        var result = await client.DiscoverContainersAsync(instanceOptions, CancellationToken.None)
+                                 .ConfigureAwait(false);
+
+        var failure = logger.Entries.Single(entry => entry.EventId.Id == 3104);
+
+        Assert.AreEqual(ExternalOperationStatus.Failed,
+                        result.Status,
+                        "A named-pipe endpoint without a pipe name must fail discovery");
+        Assert.IsNotNull(result.Message, "A failed discovery must produce a message");
+        Assert.Contains("npipe://***@pipehost/",
+                        result.Message,
+                        "The failure message must name the pipe URI with its user info masked");
+        Assert.DoesNotContain("secret", result.Message, "The failure message must not contain the password");
+        Assert.IsNotNull(failure.Exception, "The discovery failure must be logged with its exception");
+        Assert.DoesNotContain("secret", failure.Exception.Message, "The logged exception must not contain the password");
+    }
+
     #endregion // Methods
 }

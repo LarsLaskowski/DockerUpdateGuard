@@ -12,3 +12,4 @@ are quoted in full.
 | 2026-10-24 11:05 | 2 Plan revise | squad-lead | DONE: B1 accepted (fail-closed rule, exactly-one-@ rebuild), N1, N2, DA minor answered (opus/medium · 19,964 tokens · 8 tool uses · 99 s · continued) |
 | 2026-10-24 11:07 | 3 Plan security review (delta) | squad-security | APPROVED; N3 (fallback scheme prefix check) appended as Security note (opus/medium · 16,351 tokens · 4 tool uses · 62 s · continued) |
 | 2026-10-24 11:11 | 4 Skeleton | squad-dev | DONE: UrlRedaction.cs stubs (InvalidOperationException instead of NotImplementedException: RH2003 is an error in Release); build 0 warnings (sonnet/medium · 82,477 tokens · 12 tool uses · 280 s) |
+| 2026-10-24 11:17 | 5 Tests first | squad-tester | DONE: 45 of 134 tests fail on skeleton, 89 pass; deferred: ApplicationViewService...KeepAlreadyMaskedEndpointAsync, already-masked row of DisabledPortainer test (sonnet/medium · 156,772 tokens · 30 tool uses · 312 s) |

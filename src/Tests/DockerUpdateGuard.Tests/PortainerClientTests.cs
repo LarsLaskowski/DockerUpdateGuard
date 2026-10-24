@@ -780,6 +780,112 @@ public class PortainerClientTests
     }
 
     /// <summary>
+    /// Verify a failed login masks the user info of the base URL in the capability message and the logs
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task PortainerClientGetCapabilityAsyncWithUserInfoAndFailedLoginMasksUserInfoAsync()
+    {
+        var handler = new SequenceHttpMessageHandler();
+        var httpClient = new HttpClient(handler);
+        var logger = new TestLogger<PortainerClient>();
+
+        try
+        {
+            handler.AddResponse("https://admin:S3cret@portainer.example.test:9443/api/auth", new HttpResponseMessage(HttpStatusCode.Unauthorized));
+
+            var client = new PortainerClient(CreateHttpClientFactory(httpClient), logger);
+            var instanceOptions = CreateInstanceOptions(InstanceName,
+                                                        options =>
+                                                        {
+                                                            options.BaseUrl = "https://admin:S3cret@portainer.example.test:9443";
+                                                            options.Username = AdminUsername;
+                                                            options.Password = "wrong-password";
+                                                            options.EndpointId = EndpointId;
+                                                        });
+
+            var result = await client.GetCapabilityAsync(instanceOptions, CancellationToken.None)
+                                     .ConfigureAwait(false);
+
+            var authFailedEntry = logger.Entries.Single(entry => entry.EventId.Id == 3303);
+            var exceptionEntry = logger.Entries.Single(entry => entry.EventId.Id == 3306);
+
+            Assert.IsNotNull(result.Message, "A failed login must produce a capability message");
+            Assert.Contains("https://***@portainer.example.test:9443/",
+                            result.Message,
+                            "The capability message must name the base URL with its user info masked");
+            Assert.DoesNotContain("S3cret", result.Message, "The capability message must not contain the password");
+            Assert.Contains("https://***@portainer.example.test:9443/",
+                            authFailedEntry.Message,
+                            "The authentication failure log must name the base URL with its user info masked");
+            Assert.DoesNotContain("S3cret", authFailedEntry.Message, "The authentication failure log must not contain the password");
+            Assert.IsNotNull(exceptionEntry.Exception, "The capability failure must be logged with its exception");
+            Assert.Contains("https://***@portainer.example.test:9443/",
+                            exceptionEntry.Exception.Message,
+                            "The logged exception must name the base URL with its user info masked");
+            Assert.DoesNotContain("S3cret", exceptionEntry.Exception.Message, "The logged exception must not contain the password");
+        }
+        finally
+        {
+            httpClient.Dispose();
+            handler.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Verify a login answer without JWT masks the user info of the base URL in the capability message and the logs
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task PortainerClientGetCapabilityAsyncWithUserInfoAndMissingJwtMasksUserInfoAsync()
+    {
+        var handler = new SequenceHttpMessageHandler();
+        var httpClient = new HttpClient(handler);
+        var logger = new TestLogger<PortainerClient>();
+
+        try
+        {
+            handler.AddJsonResponse("https://admin:S3cret@portainer.example.test:9443/api/auth", "{}");
+
+            var client = new PortainerClient(CreateHttpClientFactory(httpClient), logger);
+            var instanceOptions = CreateInstanceOptions(InstanceName,
+                                                        options =>
+                                                        {
+                                                            options.BaseUrl = "https://admin:S3cret@portainer.example.test:9443";
+                                                            options.Username = AdminUsername;
+                                                            options.Password = "wrong-password";
+                                                            options.EndpointId = EndpointId;
+                                                        });
+
+            var result = await client.GetCapabilityAsync(instanceOptions, CancellationToken.None)
+                                     .ConfigureAwait(false);
+
+            var authFailedEntry = logger.Entries.Single(entry => entry.EventId.Id == 3303);
+            var exceptionEntry = logger.Entries.Single(entry => entry.EventId.Id == 3306);
+
+            Assert.IsNotNull(result.Message, "A login answer without JWT must produce a capability message");
+            Assert.Contains("https://***@portainer.example.test:9443/",
+                            result.Message,
+                            "The capability message must name the base URL with its user info masked");
+            Assert.DoesNotContain("S3cret", result.Message, "The capability message must not contain the password");
+            Assert.Contains("https://***@portainer.example.test:9443/",
+                            authFailedEntry.Message,
+                            "The authentication failure log must name the base URL with its user info masked");
+            Assert.DoesNotContain("S3cret", authFailedEntry.Message, "The authentication failure log must not contain the password");
+            Assert.IsNotNull(exceptionEntry.Exception, "The capability failure must be logged with its exception");
+            Assert.Contains("https://***@portainer.example.test:9443/",
+                            exceptionEntry.Exception.Message,
+                            "The logged exception must name the base URL with its user info masked");
+            Assert.DoesNotContain("S3cret", exceptionEntry.Exception.Message, "The logged exception must not contain the password");
+        }
+        finally
+        {
+            httpClient.Dispose();
+            handler.Dispose();
+        }
+    }
+
+    /// <summary>
     /// Create Docker instance options configured for Portainer integration tests
     /// </summary>
     /// <param name="name">Docker instance display name</param>
