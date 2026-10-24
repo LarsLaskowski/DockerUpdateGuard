@@ -58,4 +58,5 @@ once in the [area document](../areas/README.md) of the record's area, and the re
 | [0003](0003-squad-working-records-off-main.md) | Squad working records stay off main, and product PRs never change the squad | Accepted | 2026-10-03 |
 | [0004](0004-pagination-follows-only-same-origin-links.md) | Pagination follows only same-origin links | Accepted | 2026-10-24 |
 | [0005](0005-urls-are-output-with-user-info-masked.md) | URLs are output with their user info masked | Accepted | 2026-10-24 |
+| [0006](0006-insecure-portainer-http-warns-at-first-request.md) | Insecure Portainer HTTP warns at the first request per instance | Accepted | 2026-10-24 |
 <!-- project:end index -->

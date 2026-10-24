@@ -30,7 +30,12 @@ transport security; the UI is the intended caller of the actions.
 
 - `BaseUrl` must be an absolute `https` URL. A plaintext `http` URL is accepted only with `AllowInsecureHttp: true`;
   without it, startup fails with a message that names the key to set ([Hosting](hosting.md)).
-- `AllowInsecureHttp` is opt-in only. It is a validation switch: no runtime warning is logged while it is active.
+- `AllowInsecureHttp` is opt-in only. While a Docker instance's `BaseUrl` is `http`, the first request to Portainer
+  for that instance logs a warning (EventId 3311) that names the instance only, never the URL or a credential. It is
+  logged once per instance name for the lifetime of the process, before the request is sent, whatever its outcome.
+  No warning appears when Portainer is disabled, has no `BaseUrl`, an action is rejected by the allow-list, or the
+  URL is `https`. The warning only appears once something calls the Portainer client, which no component does today
+  (see the note on action runs and *Known gaps* below).
 - Portainer server certificates are always validated; there is no option to skip validation for Portainer.
 
 ### Authentication
@@ -98,15 +103,13 @@ transport security; the UI is the intended caller of the actions.
 - The login and the action request are retried on transient answers like any other request, so one requested action
   can be executed more than once ([Registries](registries.md)). Tracked in
   [#273](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/273).
-- `AllowInsecureHttp: true` logs no runtime warning, unlike `SkipCertificateValidation` for Docker instances. Tracked
-  in [#276](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/276).
 - Without `EndpointId` the first environment Portainer lists is used, which can be an environment other than the one
   that manages the Docker instance; an explicit `EndpointId` is not required when Portainer manages several
   environments. Tracked in [#279](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/279).
 
 ## Related decisions
 
-None yet.
+- [0006 Insecure Portainer HTTP warns at the first request per instance](../decisions/0006-insecure-portainer-http-warns-at-first-request.md)
 
 ## Not here
 
