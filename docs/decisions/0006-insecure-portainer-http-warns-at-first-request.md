@@ -1,6 +1,6 @@
 # 0006: Insecure Portainer HTTP warns at the first request per instance
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-24
 - **Area:** Container actions
 - **Source:** Issue #276
