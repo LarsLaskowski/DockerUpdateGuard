@@ -53,6 +53,8 @@ read-only check). Otherwise delete this section.
 
 ## Approach
 
+<!-- New user-visible output: its layout, or "layout free for the Tester, approved in step 9" (squad-lead.md). -->
+
 ## Options considered
 
 Each alternative weighed and why it lost — or "one option: <why the fix is the only reasonable one>"

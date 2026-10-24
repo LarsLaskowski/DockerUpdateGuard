@@ -25,3 +25,12 @@ resulting behavior (values, formats, limits) go into the area document, linked h
 
 What becomes easier or harder, accepted limitations, follow-up issues, what would have to change to revisit
 this decision.
+
+## Area assignment
+
+Optional, only once areas are introduced: the area of each released record that has no `Area:` field (the
+released record stays unedited). Delete this section otherwise.
+
+| Record | Area |
+| ------ | ---- |
+| NNNN   | <area from docs/areas/README.md> \| — |

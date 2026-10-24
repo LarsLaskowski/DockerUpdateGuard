@@ -62,13 +62,15 @@ The orchestrator tells you which **mode** to run:
   - for a bug fix, acceptance criteria the Tester can turn into unit tests (a feature's are the spec's: never
     copy them), and for every criterion its tests in *Tests per criterion* — the Tester writes exactly those
     first. A criterion that words a condition for user-visible text (a status line, a message) is derived from
-    the code path that decides it, and the plan names that path, not a paraphrase of the trigger;
+    the code path that decides it, and the plan names that path, not a paraphrase of the trigger. New
+    user-visible output gets its layout in *Approach* — heading level, list structure, order, when optional
+    notes appear — or the line "layout free for the Tester, approved in step 9": the Tester does not decide it;
   - the **documentation updates**, found by a sweep before they are listed: search the area documents and
     `docs/ARCHITECTURE.md` for every enumeration or "only these …" statement the change extends (routes,
     rules, settings, tables, limits) and list each hit, besides the documents you already know the change
     touches — each update and area document with exactly one owner (Dev, Tester or Lead);
-  - for a feature, `tasks.md`: task groups in build order, each naming the spec's criteria it delivers and the
-    tasks it waits for;
+  - for a feature, `tasks.md`: task groups in build order, each naming the spec's criteria it delivers, the
+    tasks it waits for and a skeleton row for its *Signatures* (or "no new API");
   - the exact **signatures** of every new or changed member (for the Dev's skeleton) and the existing files
     the skeleton must rewrite — a file you call final is one you read and found so;
   - the **test files**, named strictly by *Layout* in `.squad/stack.md` and `docs/UNIT_TESTS.md`, and the
@@ -88,9 +90,12 @@ The orchestrator tells you which **mode** to run:
   - for a new or changed parser, decoder or reader of an external format: the **real sample** of that format
     the plan is built from — a file under the stack's test data layout or attached to the issue, named with
     the variants it covers, which the Tester's tests read instead of hand-typed lines where the format allows.
-    Without one, return `RESULT: ESCALATE` (*Escalation to the Product Manager*: provide a sample, naming the
-    variants the issue mentions, or confirm building from the description with the residual risk recorded in
-    the decision record) and plan on only with the answer;
+    A sample with real private values (addresses, host names, keys, user names) is anonymized by replacing
+    each such field whole, generated from nothing of the real value; before you hand it back, decode every
+    field of the result and compare each against the set of real values, prefixes included, since a grep for
+    the original strings misses a partly replaced field.
+    Without one, return `RESULT: ESCALATE` (*Escalation to the Product Manager*, naming the variants)
+    and plan on only with the answer;
   - an architecture check against `docs/ARCHITECTURE.md`: the guarantees in `.squad/project.md` are not
     weakened without the Product Manager;
   - the **options considered**: each alternative you weighed and why it lost, or "one option" — they decide
@@ -103,7 +108,10 @@ The orchestrator tells you which **mode** to run:
   output, a file system) is checked against the artifact or marked *unverified* — a build output against the
   build the artifact really gets (*Image build check*), never a build from the full working tree. A criterion
   about an escape names the guard that fails when the test input lost its backslash (`.squad/team.md`,
-  *Escapes in files*).
+  *Escapes in files*). A control character a case is about (a bidi override, a zero-width character, a line
+  separator) is written in `plan.md`, `spec.md` and `tasks.md` as a text escape, never as the character
+  itself; before you hand back, check the bytes on disk as *Escapes in files* describes, so the first
+  `plan-check.py` run passes.
 
   For every decision that meets the threshold in `docs/decisions/README.md`, create a `Proposed` record
   from `docs/decisions/_template.md`, add its row to the index in `docs/decisions/README.md` with status
@@ -124,7 +132,9 @@ The orchestrator tells you which **mode** to run:
   *Challenge notes* section into *Challenge*, and decide every choice a *Security notes* entry leaves (the
   option taken and why), folding the section into *Security review*. Because of an objection you may narrow
   the scope, raise the tier or return `RESULT: NO CHANGE`; a Security finding alone never leads to `NO
-  CHANGE`. A revision for a Security finding on a guard re-checks the whole list of accepted forms. Update the
+  CHANGE`. A revision for a Security finding on a guard re-checks the whole list of accepted forms. Move settled
+  material (answered entries, verified facts) to the decision record or area document: a plan over
+  `PLAN_HARD_WORDS` fails `plan-check.py`. Update the
   affected decision records (a rejected option and the reason belong under *Options considered*).
 - `decide` — a loop limit was hit or members disagree. Choose one option and justify it, or escalate: accept
   with justification (after the 2nd `CHANGES_REQUIRED` only for the defects *Loop limits* names, Plan ↔
@@ -143,9 +153,12 @@ The orchestrator tells you which **mode** to run:
   find necessary — a stale or missing record, `docs/ARCHITECTURE.md`, a missing area document — gets its
   owner by file as in `decide` and a delta round: `NOT APPROVED`, or `APPROVED` on that condition.
 
+- `docs` — a documentation task group of the plan: edit only the files of your task rows, check every
+  statement against the final code, report a mismatch in the Dev's passages, run `decision-check.py`.
+
 Output format, always ending with exactly one of these lines:
 
-- `RESULT: DONE` (spec/plan/revise), `RESULT: NO CHANGE — <reason and proposed issue comment>` (spec, plan, or revise after a challenge),
+- `RESULT: DONE` (spec/plan/revise/docs), `RESULT: NO CHANGE — <reason and proposed issue comment>` (spec, plan, or revise after a challenge),
   `RESULT: DECIDED — <option>` (decide),
   `RESULT: APPROVED` / `RESULT: NOT APPROVED — <reasons>` (approve-pr), or
 - `RESULT: ESCALATE — <one question for the Product Manager, the options, your recommendation>`

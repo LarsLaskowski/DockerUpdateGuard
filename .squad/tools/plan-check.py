@@ -14,14 +14,22 @@ Checks, in the work folder `specs/<folder>/`:
   another form is reported; every scenario and edge case `E<n>` is named by a criterion or listed under *Out of
   scope*; every open question is answered (`Answered:`) or the section says "none"; `plan.md` defines no
   criterion of its own; every criterion of the spec has a row in the plan's *Tests per criterion* and appears in
-  the *Criteria* column of `tasks.md` (every table of it), and neither names a criterion the spec lacks.
+  the *Criteria* column of `tasks.md` (every table of it), and neither names a criterion the spec lacks; every
+  task row names its *Group* (the unit steps 4–6 run as one launch per member), and a group's rows are
+  consecutive; when the plan's *Signatures* lists any API, every group has a *Skeleton* row (its *Task* cell
+  starts with "Skeleton") or a row saying "no new API", a group the Lead owns alone excepted, and every name in
+  *Signatures* (the identifier of each backticked declaration) appears in a skeleton row of some group.
 - **Bug fix** (no `spec.md`): `plan.md` defines its acceptance criteria, and each has a row in *Tests per
   criterion* (tier `trivial`, which writes no tests first, needs none).
 - **Both:** the *Tier* line names exactly one tier, and the *Security areas touched* line says "none" or lists
   them (it decides the Security plan review); *Verified facts* has at least
   one row, and every row has evidence and a status (`confirmed`, `refuted`, or `unverified` with the measurement
-  that settles it, starting with `to verify:`); no template placeholder is left. A plan longer than `PLAN_MAX_WORDS`
-  (`squad_settings.py`, default 4000) is reported as a warning: a long plan costs every member that reads it.
+  that settles it, starting with `to verify:`); no template placeholder is left; no Markdown file of the work
+  folder contains a control character (`scope-check.py`'s check, here before any member reads the folder). A
+  plan longer than `PLAN_MAX_WORDS` (`squad_settings.py`, default 4000) is reported as a warning, one longer than
+  `PLAN_HARD_WORDS` (default twice that) as a finding: a long plan costs every member that reads it, so the
+  Lead moves settled material (answered challenge entries, facts verified in earlier rounds) into the decision
+  record or the area document.
 
 Ids may be written as ranges (`AC1–AC3`, `S2-S4`); backticks and emphasis around a cell are ignored. A criterion
 without a test, in a plan whose *Verification without tests* section names it, counts as covered.
@@ -39,8 +47,10 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import squad_settings as settings  # noqa: E402  (per-repository settings next to this script)
+from analyzer_common import control_characters  # noqa: E402  (shared helpers next to this script)
 
 PLAN_MAX_WORDS = getattr(settings, "PLAN_MAX_WORDS", 4000)
+PLAN_HARD_WORDS = getattr(settings, "PLAN_HARD_WORDS", 2 * PLAN_MAX_WORDS)
 TIERS = ("trivial", "standard", "security")
 STATUSES = ("confirmed", "refuted", "unverified")
 SPEC_SECTIONS = ["Problem", "Scenarios", "Errors and edge cases", "Non-functional requirements",
@@ -60,6 +70,12 @@ COMMENT = re.compile(r"<!--.*?-->", re.S)
 EMPHASIS = "`*_"
 SPEC = "spec.md"
 NONE = re.compile(r"^\s*(?:[-*]\s+)?none\.?\s*$", re.I)
+SKELETON_ROW = re.compile(r"^skeleton\b", re.I)
+NO_NEW_API = re.compile(r"\bno new API\b", re.I)
+SPAN = re.compile(r"`([^`\n]+)`")
+DECLARATION_KEYWORDS = {"func", "def", "fn", "public", "private", "protected", "internal", "static", "const",
+                        "readonly", "final", "async", "export", "function", "type", "class", "struct", "record",
+                        "interface", "enum", "var", "let", "val", "abstract", "override"}
 TOP_ITEM = re.compile(r"^(?:[-*]|\d+[.)])\s+")
 
 
@@ -237,14 +253,87 @@ def check_facts(plan_parts, errors):
             errors.append(f"plan.md: unverified claim without `to verify:` and its measurement: {claim}")
 
 
-def check_tasks(tasks, criteria, errors):
-    named, found_column = set(), False
+def check_groups(header, rows, errors):
+    """Every task row names its group, and a group's rows are consecutive: steps 4–6 run one group at a time, as
+    one launch per member, in table order."""
+    index = column(header, "group")
+    if index is None:
+        errors.append("tasks.md: a task table without a *Group* column (steps 4–6 run per task group)")
+        return
+    seen, previous = set(), None
+    for row in rows:
+        group = row[index] if len(row) > index else ""
+        if empty(group):
+            errors.append(f"tasks.md: task without a group: | {' | '.join(row)} |")
+            continue
+        if group != previous and group in seen:
+            errors.append(f"tasks.md: the rows of group {group} are not consecutive")
+        seen.add(group)
+        previous = group
+
+
+def signatures_section(plan):
+    parts = sections(plan)
+    return next((body for name, body in parts.items() if name.startswith("Signatures")), "")
+
+
+def signature_names(body):
+    """The identifier of every backticked declaration in the plan's *Signatures* section (`Options.Kernel` and
+    `func (o *Options) Kernel() string` give `Kernel`); a "none" section gives none."""
+    names = []
+    for span in SPAN.findall(COMMENT.sub("", body or "")):
+        call = re.search(r"([A-Za-z_]\w*)\s*\(", span)
+        words = [w for w in re.findall(r"[A-Za-z_][\w.]*", span) if w not in DECLARATION_KEYWORDS]
+        name = words[0].split(".")[-1] if words else ""
+        if call:
+            name = call.group(1)
+        if name and name not in names:
+            names.append(name)
+    return names
+
+
+def group_states(header, rows):
+    """{group: (skeleton or "no new API" stated, owned by the Lead alone)} and the text of the skeleton rows."""
+    group, task, owner = column(header, "group"), column(header, "task"), column(header, "owner")
+    states, skeleton = {}, []
+    for row in rows:
+        if group is None or task is None or len(row) <= max(group, task):
+            continue
+        text = " ".join(row)
+        is_skeleton = bool(SKELETON_ROW.match(row[task]))
+        stated, lead_only = states.get(row[group], (False, True))
+        lead = owner is not None and len(row) > owner and row[owner].lower() == "lead"
+        states[row[group]] = (stated or is_skeleton or bool(NO_NEW_API.search(text)), lead_only and lead)
+        if is_skeleton:
+            skeleton.append(text)
+    return states, "\n".join(skeleton)
+
+
+def check_skeleton(header, rows, signatures, errors):
+    """With API in the plan's *Signatures*, every group has a skeleton row or says "no new API" (a group of the
+    Lead alone writes documentation), and every signature name appears in a skeleton row. Returns the text of the
+    skeleton rows."""
+    states, skeleton = group_states(header, rows)
+    for key, (stated, lead_only) in states.items():
+        if signatures and not (stated or lead_only or empty(key)):
+            errors.append(f"tasks.md: group {key} has no *Skeleton* row and does not say \"no new API\" "
+                          "(the plan's *Signatures* lists API)")
+    return skeleton
+
+
+def check_tasks(tasks, criteria, errors, signatures=()):
+    named, found_column, skeleton = set(), False, ""
     for header, rows in tables(tasks):
         index = column(header, "criteria", "criterion", "tests (ac)", "ac")
         if index is None:
             continue
         found_column = True
         named |= {i for row in rows if len(row) > index for i in ids(row[index], "AC")}
+        check_groups(header, rows, errors)
+        skeleton += check_skeleton(header, rows, signatures, errors)
+    for name in signatures:
+        if not re.search(rf"(?<!\w){re.escape(name)}(?!\w)", skeleton):
+            errors.append(f"tasks.md: the plan's signature `{name}` is named by no skeleton row of any group")
     if not found_column:
         errors.append("tasks.md: no table with a *Criteria* column")
     for criterion in sorted(criteria - named):
@@ -298,12 +387,25 @@ def check_spec_only(folder):
         return ["spec.md is missing"], []
     check_spec(spec, errors)
     check_placeholders(SPEC, spec, errors)
+    check_control_characters(folder, errors)
     return errors, []
+
+
+def check_control_characters(folder, errors):
+    """No Markdown file of the work folder carries a control character: `scope-check.py` would reject it only in
+    the docs step, after every member has read the plan."""
+    for name in sorted(os.listdir(folder)):
+        path = os.path.join(folder, name)
+        if name.endswith(".md") and os.path.isfile(path):
+            found = control_characters(read(path, []) or "")
+            if found:
+                errors.append(f"{name}: control characters {', '.join(found)} (write them as text escapes)")
 
 
 def check(folder):
     """All findings for the work folder, and the warnings."""
     errors, warnings = [], []
+    check_control_characters(folder, errors)
     plan = read(os.path.join(folder, "plan.md"), errors)
     spec = read(os.path.join(folder, SPEC), errors)
     if plan is None:
@@ -317,10 +419,14 @@ def check(folder):
         if tasks is None:
             errors.append("tasks.md is missing")
         else:
-            check_tasks(tasks, criteria, errors)
+            check_tasks(tasks, criteria, errors, signature_names(signatures_section(plan)))
             check_placeholders("tasks.md", tasks, errors)
     words = len(plan.split())
-    if words > PLAN_MAX_WORDS:
+    if words > PLAN_HARD_WORDS:
+        errors.append(f"plan.md has {words} words (PLAN_HARD_WORDS {PLAN_HARD_WORDS}): move settled material "
+                      "(answered challenge entries, facts verified in earlier rounds) into the decision record "
+                      "or the area document")
+    elif words > PLAN_MAX_WORDS:
         warnings.append(f"plan.md has {words} words (PLAN_MAX_WORDS {PLAN_MAX_WORDS}): every member reads it — "
                         "cut what the code, the spec or a decision record already says")
     return errors, warnings

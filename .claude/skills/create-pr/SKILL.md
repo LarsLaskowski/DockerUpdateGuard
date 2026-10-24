@@ -49,7 +49,9 @@ repository.
    change instead of collecting review rounds afterwards.
 7. **Push** the branch: `git push -u origin <branch-name>`.
 8. **Open the PR as a draft** (`draft: true`) using the repository's template at
-   `.github/pull_request_template.md`:
+   `.github/pull_request_template.md`. The GitHub tools can rewrite an inline Markdown link in the body into
+   a broken form: write record references as plain paths and check the body with `pull_request_read` after the
+   first write:
    - base branch `main`, unless the user explicitly requests a different base
    - title `[area] Description` per
      [`CONTRIBUTING.md`](../../../docs/CONTRIBUTING.md) — area is one of the

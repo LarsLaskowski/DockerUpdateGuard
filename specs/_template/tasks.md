@@ -2,10 +2,10 @@
 
 Plan: [plan.md](plan.md) — Status: Draft | Approved
 
-Each task names the acceptance criteria of `spec.md` it delivers (`plan-check.py` reports a criterion no task
-covers) and the tasks it waits for; steps 4–6 run the task groups in this order. Every documentation edit is
-in exactly one row.
+Each task names its criteria, the tasks it waits for and its group (one launch per member in steps 4–6; rows
+consecutive). A group has a "Skeleton" row for its API in *Signatures*, or says "no new API". Each
+documentation edit is in one row.
 
-| # | Task | Files | Criteria | Depends on | Owner | Done |
-| - | ---- | ----- | -------- | ---------- | ----- | ---- |
-| 1 | … | … | AC1 | — | Dev / Tester | [ ] |
+| # | Group | Task | Files | Criteria | Depends on | Owner | Done |
+| - | ----- | ---- | ----- | -------- | ---------- | ----- | ---- |
+| 1 | G1 | … | … | AC1 | — | Dev / Tester | [ ] |

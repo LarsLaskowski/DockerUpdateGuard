@@ -43,8 +43,9 @@ areas, guarantees, integration surface, test doubles), `AGENTS.md` and
   formatting the formatter fixes, or praise is left out of the report.
 - **State a documentation fix verbatim.** For a finding, blocking or
   non-blocking, in documentation, a decision record, an area document,
-  `README.md` or a configuration example, give the file, the sentence as it
-  stands and the sentence as it should read, and mark the finding
+  `README.md` or a configuration example, give the file, the whole sentence
+  as it stands and as it should read (never an insertion point such as
+  "add after '…'"), and mark the finding
   `verbatim` (`.squad/routing.md`, *Verbatim documentation fixes*). When the
   fix changes a behavior statement an acceptance criterion or a guarantee in
   `.squad/project.md` relies on, say so: the Lead decides.

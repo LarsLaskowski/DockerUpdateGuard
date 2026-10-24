@@ -56,12 +56,18 @@ every Git and GitHub action yourself, including follow-up issues the Lead decide
      its task notification arrives, add the usage with `--amend-last "<member>" --agent squad-<role> --tokens …
      --tool-uses … --seconds …` (`--step "<step>"` for a row that is no longer the member's last).
    - **Every number is copied from the usage block of a task notification you have in front of you** —
-     never an estimate, a figure from memory or the member's hand-back. A notification that never comes is
-     marked `--unreported`; a wrong trailer is corrected with `--replace-last`, never with a second row.
+     never an estimate, a figure from memory or the member's hand-back. A notification whose summary says the
+     agent is waiting on its own background work is interim: amend with the numbers of the final notification
+     of the same task id (`--replace-last`, with `--step` if the row is no longer the member's last, if the interim
+     ones are already in). A repeated hand-back message is ignored; only the latest notification of a task id
+     counts. A notification that never comes is marked `--unreported`; a wrong trailer is corrected with
+     `--replace-last`, never with a second row.
    - A continued launch gets `--continued` (or `--continued-from "<step cell of the fresh launch>"` when that
      agent is not the member's last fresh launch) on the call that carries its numbers — the amend of its pending
-     row — with the notification's numbers unchanged.
+     row — with the notification's numbers unchanged. Name a fix, delta or revise round as such in its step
+     cell; a continuation at another step than its fresh launch draws a warning (a new mode is a fresh launch).
    - Rows of the Orchestrator, the Product Manager and the User take no metric option.
+   - After step 10 every call — row, amend, summary — needs `--stdin` (step 10); without it, it fails.
    - Everything else, and what each refusal means: `python3 .squad/tools/squad-log.py --help`.
 
    After every member's report, commit and push the files it left in the work folder.
@@ -98,7 +104,8 @@ every Git and GitHub action yourself, including follow-up issues the Lead decide
    tests it hands back as **deferred**. A fix without a reproducing test is acceptable only when the bug
    genuinely needs a live external system — then the PR says so.
 6. **Implement and cover.** For a change without production or test code this is the Dev's edits alone: no
-   `squad-tester`, no *Test with coverage*, no *Coverage gate*. Otherwise launch `squad-dev` in mode `implement` with the plan and the test names. If the
+   `squad-tester`, no *Test with coverage*, no *Coverage gate*. Otherwise launch `squad-dev` in mode `implement`
+   — a fresh launch, never a continuation of its `skeleton` agent — with the plan and the test names. If the
    Dev disputes a test, launch `squad-lead` in mode `decide`; the Tester changes a test only if the Lead says
    so. Run *Test with coverage* and the *Coverage gate* yourself. Launch `squad-tester` in mode `coverage`,
    with the reason, only when the gate fails, the Dev reports uncovered new lines, a resource bound of the
@@ -126,18 +133,21 @@ every Git and GitHub action yourself, including follow-up issues the Lead decide
    - non-blocking findings: *Non-blocking findings*, collected for step 9.
 
    A reviewer or `squad-security` that stops on an API error (`529 Overloaded`; `429`: once the limit has reset) is relaunched
-   unchanged, at most twice; after that report a blocker to the user.
+   unchanged, at most twice; after that report a blocker to the user. A safeguard stop (`invalid_request`, category
+   `cyber`) is not relaunched: escalate to the Product Manager at once (*Loop limits*, Safeguard stop).
 9. **PR approval.** Run *PR approval* (`.squad/routing.md`): the checklist in full, then the record status
-   and `decision-check.py`. Launch `squad-lead` in mode `approve-pr` — with the base ref, the gate output, the
-   review outcome and the open points (after the PR also the finished check-run list) — only for the open
-   decisions it lists; otherwise log "approved by checklist".
+   and `decision-check.py`. Launch `squad-lead` in mode `approve-pr` as a fresh launch (never a continuation
+   of its plan agent) — with the base ref, the gate output, the review outcome and the open points (after the
+   PR also the finished check-run list) — only for the open decisions it lists; otherwise log "approved by
+   checklist".
 10. **Pull request.** Post `plan.md` (none on tiers `docs` and `patch`) and `log.md` as one comment on the
     issue, headed "Squad working record", each inside a collapsed `<details>` block — or, for a `plan.md` too
     long to re-type, a permalink to the last commit that contains it
     (`https://github.com/<owner>/<repo>/blob/<sha>/specs/issue-<number>/plan.md`) plus a summary of tier,
     criteria, decisions and challenge outcome. Then `git rm -r specs/issue-<number>/`, confirm with
     `python3 .squad/tools/scope-check.py --no-specs`, commit ("Remove squad working record") and push. Later
-    log rows go into that comment. Open the PR as `create-pr` step 8 says, without its review loop; a PR the
+    log rows go into that comment: pipe its log table into `squad-log.py … --stdin` and paste the log it prints
+    back (nothing is restored into the repository). Open the PR as `create-pr` step 8 says, without its review loop; a PR the
     session already has for the branch (`list_pull_requests` with `head: "<owner>:<branch>"`) gets its title
     and body updated instead (`update_pull_request`, `draft: true`). The body describes the bug, the fix and
     the reproducing test (or that the fix is not verifiable without a real external system), `Closes
@@ -164,8 +174,8 @@ every Git and GitHub action yourself, including follow-up issues the Lead decide
     contradictory rule, a misbehaving tool, an agent that could not be launched, a step you had to improvise —
     each with the role it concerns and a concrete proposal, file them as *Squad lessons* says (create the
     labels if missing) and link them from the working-record comment; with nothing to learn, add a `no
-    lessons` row instead. Run `python3 .squad/tools/squad-log.py issue-<number> --summary` (restore the log
-    from the comment if needed); exit code 3 names launch rows still without usage — amend them from their
+    lessons` row instead. Run `python3 .squad/tools/squad-log.py issue-<number> --summary` (`--stdin` with the comment's
+    log table); exit code 3 names launch rows still without usage — amend them from their
     notifications or mark them `--unreported`, and run it again. Append the tables exactly as printed (a run
     without them is not wrapped up) to the comment under "Squad run metrics", and report the branch, the PR
     URL, the tier, the `squad` issues (or "no lessons"), the metrics tables and any escalation or Lead

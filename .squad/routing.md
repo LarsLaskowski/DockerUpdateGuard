@@ -226,7 +226,8 @@ launch with `--continued` or `--continued-from` (`squad-issue`, step 1); what a 
 Commits and pushes to the work branch happen right after intake (`specs/<folder>/log.md`, so a stop hook
 or a crashed session finds no untracked files) and after every further completed step; with *Squash and
 merge* only the PR title and description reach `main`, so intermediate commits may describe the step.
-They never contain secrets. After the PR every push re-triggers CI and the code analysis, so edits are
+They never contain secrets. Before every commit `git symbolic-ref -q HEAD` must name the work branch; a
+detached HEAD is switched back to it first (`git switch <branch>`) and logged with the launch that left it. After the PR every push re-triggers CI and the code analysis, so edits are
 batched and committed once per round.
 
 ### The stop hook
@@ -359,8 +360,10 @@ PR is opened, the branch stays without one, and the user is told so.
   compiling only because of a signature or field change the Dev made itself — mechanically, no assertion touched, listed in
   its report; these are the only cases in which the Dev edits test code. The **Tester** moves them in step 5
   when old and new signature coexist, and checks the Dev's edits in its coverage step.
-- **Dev ↔ Tester disagreements:** if the Dev believes a step-5 test is wrong, the Lead decides (the test
-  is not changed silently). Not counted against a loop limit.
+- **Dev ↔ Tester disagreements:** if the Dev believes a step-5 test's expectation is wrong, the Lead decides
+  (the test is not changed silently). A defect the Dev reproduces without changing the test (a failing fixture
+  or helper, not a disputed expectation) goes to the Tester as a fix round once the orchestrator has verified
+  the reproduction. Not counted against a loop limit.
 - **Code check needs a structural change** (or breaks build/tests): the Code Officer's edit is reverted
   and the item goes to the Dev (or Tester for tests), then the code check runs again. Not counted
   against a loop limit.
@@ -369,12 +372,17 @@ PR is opened, the branch stays without one, and the user is told so.
   cover*) is a plan defect the Lead records with the decision.
 - **After the PR (step 11):** CI or quality-gate failures and review comments are fixed on the same
   branch through steps 7–8 again (delta review), at most 2 fix rounds per failure; then the Lead decides.
+- **Safeguard stop (any member, any step):** an API `invalid_request` of category `cyber` is not an API error:
+  relaunching unchanged loops, and rephrasing the request is a workaround. The orchestrator escalates to the
+  Product Manager at once, naming the finding the member had not reviewed as unverified.
 
 ## Escalation to the Product Manager
 
 The Lead escalates only when it cannot decide responsibly on its own: an ambiguous requirement (a reader of an
 external format without a real sample in the test data or on the issue is one — it asks for the sample, or for the
-confirmation to build from the description with the residual risk recorded in the decision record), a product
+confirmation to build from the description with the residual risk recorded in the decision record; a sample the
+PM supplies stays outside the repository, the Tester builds an anonymized fixture, a test that reads the sample
+from an environment variable checks the fixture against it, and only counts are reported), a product
 decision (behavior change visible to users, breaking a guarantee in `docs/ARCHITECTURE.md` or an accepted decision
 record), or a loop limit where none of its options is clearly right. The escalation is one concise question with
 the options and the Lead's recommendation. Follow-up issues the Lead decides on are created by the orchestrator and
