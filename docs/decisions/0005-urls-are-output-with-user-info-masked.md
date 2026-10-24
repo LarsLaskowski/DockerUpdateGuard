@@ -20,8 +20,10 @@ went into the log and the scan result message as it stood (issue #304). Go, whic
 there: its HTTP client masks only the password (`user:***@`; a user name alone not at all), and its URL parser quotes
 the raw URL in a parse error and adds the offending part after it (`invalid URL escape "%zz"`, up to three characters
 of the user info). For a user info with `#` or `?`, which configuration validation accepts, both the platform and Go
-read the part before it as the host, so Go's resolver error names the would-be user name with no `@` near it
-(`lookup admin: no such host`). Trivy's own output for such a URL was not measured.
+read the part before it as the host, so Go's resolver error names the would-be user name
+(`lookup admin: no such host`). Measured with Trivy v0.58.1, the last line of its error output carries `user:***@` for
+`https://user:secret@…`, `token@` for `https://token@…`, `"https://admin#secret@…"` for `https://admin:#secret@…`
+and the full raw URL with `invalid URL escape "%zz"` for `https://user:p%zz@…`.
 
 ## Options considered
 
