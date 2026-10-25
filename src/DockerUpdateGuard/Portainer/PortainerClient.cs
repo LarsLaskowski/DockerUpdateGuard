@@ -23,6 +23,21 @@ public partial class PortainerClient : IPortainerClient
     public const string HttpClientName = "Portainer";
 
     /// <summary>
+    /// Maximum number of environments listed in an ambiguity message
+    /// </summary>
+    private const int MaxListedEnvironments = 10;
+
+    /// <summary>
+    /// Maximum length of an environment name in an ambiguity message, in UTF-16 units
+    /// </summary>
+    private const int MaxEnvironmentNameLength = 64;
+
+    /// <summary>
+    /// Name of the response header carrying the total number of environments
+    /// </summary>
+    private const string TotalCountHeaderName = "X-Total-Count";
+
+    /// <summary>
     /// Supported container actions
     /// </summary>
     private static readonly HashSet<string> _allowedContainerActions = new(StringComparer.OrdinalIgnoreCase)
@@ -74,23 +89,36 @@ public partial class PortainerClient : IPortainerClient
     #region Static methods
 
     /// <summary>
-    /// Resolve the first available Portainer endpoint identifier
+    /// Read the total environment count Portainer reports in the X-Total-Count header
     /// </summary>
-    /// <param name="client">Authenticated HTTP client</param>
-    /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>Endpoint identifier or null</returns>
-    private static async Task<string?> ResolveEndpointIdAsync(HttpClient client, CancellationToken cancellationToken)
+    /// <param name="response">Environment list response</param>
+    /// <param name="totalCount">Reported count; null when the header is absent or invalid</param>
+    /// <returns>True when the header is absent or valid; false when it is present but invalid</returns>
+    private static bool TryReadTotalCount(HttpResponseMessage response, out int? totalCount)
     {
-        using var response = await client.GetAsync("/api/endpoints", cancellationToken).ConfigureAwait(false);
+        throw new InvalidOperationException("Skeleton: not implemented");
+    }
 
-        if (response.IsSuccessStatusCode == false)
-        {
-            return null;
-        }
+    /// <summary>
+    /// Clean an environment name for display in a message
+    /// </summary>
+    /// <param name="name">Environment name reported by Portainer</param>
+    /// <returns>Trimmed, sanitized and shortened name; empty when there is none</returns>
+    private static string FormatEnvironmentName(string? name)
+    {
+        throw new InvalidOperationException("Skeleton: not implemented");
+    }
 
-        var endpoints = await response.Content.ReadFromJsonAsync<PortainerEndpointItem[]>(cancellationToken: cancellationToken).ConfigureAwait(false);
-
-        return endpoints?.FirstOrDefault()?.Id.ToString();
+    /// <summary>
+    /// Build the message for a Docker instance whose environment cannot be chosen without an EndpointId
+    /// </summary>
+    /// <param name="dockerInstanceName">Docker instance name</param>
+    /// <param name="endpoints">Listed environments</param>
+    /// <param name="environmentCount">Number of environments; null when unknown</param>
+    /// <returns>Failure message</returns>
+    private static string FormatAmbiguousEnvironmentsMessage(string dockerInstanceName, PortainerEndpointItem[] endpoints, int? environmentCount)
+    {
+        throw new InvalidOperationException("Skeleton: not implemented");
     }
 
     /// <summary>
@@ -131,6 +159,38 @@ public partial class PortainerClient : IPortainerClient
     #endregion // Static methods
 
     #region Methods
+
+    /// <summary>
+    /// Resolve the Portainer environment to use for a Docker instance
+    /// </summary>
+    /// <param name="client">Authenticated HTTP client</param>
+    /// <param name="instanceOptions">Docker instance options</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Resolution carrying either the environment identifier or a failure message</returns>
+    private async Task<PortainerEndpointResolution> ResolveEndpointAsync(HttpClient client, DockerInstanceOptions instanceOptions, CancellationToken cancellationToken)
+    {
+        var configuredEndpointId = instanceOptions.Portainer.EndpointId;
+
+        if (string.IsNullOrWhiteSpace(configuredEndpointId) == false)
+        {
+            return new PortainerEndpointResolution(configuredEndpointId, null);
+        }
+
+        using var response = await client.GetAsync("/api/endpoints", cancellationToken).ConfigureAwait(false);
+
+        if (response.IsSuccessStatusCode)
+        {
+            var endpoints = await response.Content.ReadFromJsonAsync<PortainerEndpointItem[]>(cancellationToken: cancellationToken).ConfigureAwait(false);
+            var firstEndpoint = endpoints?.FirstOrDefault();
+
+            if (firstEndpoint is not null)
+            {
+                return new PortainerEndpointResolution(firstEndpoint.Id.ToString(CultureInfo.InvariantCulture), null);
+            }
+        }
+
+        return new PortainerEndpointResolution(null, "No Portainer endpoint found");
+    }
 
     /// <summary>
     /// Create an authenticated HTTP client for the Portainer options of the given Docker instance.
@@ -251,12 +311,8 @@ public partial class PortainerClient : IPortainerClient
                        };
             }
 
-            var endpointId = instanceOptions.Portainer.EndpointId;
-
-            if (string.IsNullOrWhiteSpace(endpointId))
-            {
-                endpointId = await ResolveEndpointIdAsync(client, cancellationToken).ConfigureAwait(false);
-            }
+            var resolution = await ResolveEndpointAsync(client, instanceOptions, cancellationToken).ConfigureAwait(false);
+            var endpointId = resolution.EndpointId;
 
             if (string.IsNullOrWhiteSpace(endpointId))
             {
@@ -264,7 +320,7 @@ public partial class PortainerClient : IPortainerClient
                        {
                            IsConfigured = true,
                            SupportsActions = false,
-                           Message = "No Portainer endpoint found",
+                           Message = resolution.FailureMessage ?? "No Portainer endpoint found",
                        };
             }
 
@@ -320,19 +376,15 @@ public partial class PortainerClient : IPortainerClient
         {
             using var client = await CreateAuthenticatedClientAsync(instanceOptions, cancellationToken).ConfigureAwait(false);
 
-            var endpointId = instanceOptions.Portainer.EndpointId;
-
-            if (string.IsNullOrWhiteSpace(endpointId))
-            {
-                endpointId = await ResolveEndpointIdAsync(client, cancellationToken).ConfigureAwait(false);
-            }
+            var resolution = await ResolveEndpointAsync(client, instanceOptions, cancellationToken).ConfigureAwait(false);
+            var endpointId = resolution.EndpointId;
 
             if (string.IsNullOrWhiteSpace(endpointId))
             {
                 return new PortainerActionResult
                        {
                            Succeeded = false,
-                           Message = "No Portainer endpoint found",
+                           Message = resolution.FailureMessage ?? "No Portainer endpoint found",
                        };
             }
 
