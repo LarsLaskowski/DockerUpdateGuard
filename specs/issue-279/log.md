@@ -6,4 +6,4 @@ are quoted in full.
 | Date | Step | Member | Result |
 | ---- | ---- | ------ | ------ |
 | 2026-10-25 11:32 | 1 Intake | Orchestrator | Issue 279 read: bug (Portainer EndpointId ambiguity); branch claude/dazzling-gauss-szkst4 off main d7e9653 |
-| 2026-10-25 11:39 | 2 Plan | Lead | DONE, tier standard; security area Container actions; record 0010 proposed (opus/medium · usage pending) |
+| 2026-10-25 11:39 | 2 Plan | Lead | DONE, tier standard; security area Container actions; record 0010 proposed (opus/medium · 131,380 tokens · 34 tool uses · 372 s) |
