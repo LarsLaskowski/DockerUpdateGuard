@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Globalization;
 using System.Net;
 using System.Net.Http.Headers;
+using System.Text;
 using System.Text.Json;
 
 using DockerUpdateGuard.DockerHub;
@@ -48,6 +49,26 @@ public partial class OciRegistryClient : IRegistryMetadataClient
     /// Name of the config property in registry payloads
     /// </summary>
     private const string ConfigPropertyName = "config";
+
+    /// <summary>
+    /// Link header scanner state outside quoted parameters and URI targets
+    /// </summary>
+    private const char LinkHeaderDefaultState = '\0';
+
+    /// <summary>
+    /// Link header scanner state inside an angle-bracketed URI target
+    /// </summary>
+    private const char LinkHeaderUriTargetState = '<';
+
+    /// <summary>
+    /// Link header scanner state inside a quoted parameter
+    /// </summary>
+    private const char LinkHeaderQuotedParameterState = '"';
+
+    /// <summary>
+    /// Link header scanner state after an escape character in a quoted parameter
+    /// </summary>
+    private const char LinkHeaderEscapedQuotedParameterState = '\\';
 
     /// <summary>
     /// Assumed bearer token lifetime when the token response omits "expires_in"
@@ -656,27 +677,28 @@ public partial class OciRegistryClient : IRegistryMetadataClient
 
         foreach (var linkValue in linkValues)
         {
-            foreach (var linkEntry in SplitLinkHeaderEntries(linkValue))
+            foreach (var linkEntry in SplitLinkSegments(linkValue, ',', respectUriTargets: true))
             {
-                if (HasNextRelation(linkEntry) == false)
+                var targetStart = linkEntry.IndexOf('<');
+                var targetEnd = linkEntry.IndexOf('>', targetStart + 1);
+                var nestedTargetStart = linkEntry.IndexOf('<', targetStart + 1);
+
+                if (targetStart < 0
+                    || targetEnd <= targetStart
+                    || (nestedTargetStart > targetStart && nestedTargetStart < targetEnd))
                 {
                     continue;
                 }
 
-                var start = linkEntry.IndexOf('<');
-                var end = linkEntry.IndexOf('>');
+                var linkTarget = linkEntry[(targetStart + 1)..targetEnd];
 
-                if (start < 0 || end <= start)
+                if (string.IsNullOrWhiteSpace(linkTarget)
+                    || HasNextRelation(linkEntry[(targetEnd + 1)..]) == false)
                 {
                     continue;
                 }
 
-                var linkTarget = linkEntry[(start + 1)..end];
-
-                if (string.IsNullOrWhiteSpace(linkTarget) == false)
-                {
-                    return linkTarget;
-                }
+                return linkTarget;
             }
         }
 
@@ -684,84 +706,71 @@ public partial class OciRegistryClient : IRegistryMetadataClient
     }
 
     /// <summary>
-    /// Split Link header entries without splitting inside a URI target or quoted parameter
+    /// Split Link header segments without splitting inside quoted parameters or URI targets
     /// </summary>
-    /// <param name="linkValue">Raw Link header value</param>
-    /// <returns>Link entries</returns>
-    private static IEnumerable<string> SplitLinkHeaderEntries(string linkValue)
+    /// <param name="value">Raw Link header value or parameter list</param>
+    /// <param name="separator">Segment delimiter</param>
+    /// <param name="respectUriTargets">Whether separators inside angle-bracketed URI targets are retained</param>
+    /// <returns>Link header segments</returns>
+    private static IEnumerable<string> SplitLinkSegments(string value, char separator, bool respectUriTargets)
     {
-        var current = new List<char>();
-        var inUriTarget = false;
-        var inQuotes = false;
-        var escaped = false;
+        var current = new StringBuilder();
+        var state = LinkHeaderDefaultState;
 
-        foreach (var character in linkValue)
+        foreach (var character in value)
         {
-            UpdateLinkHeaderState(character, ref inUriTarget, ref inQuotes, ref escaped);
-
-            if (character == ',' && inUriTarget == false && inQuotes == false)
+            if (character == separator && state == LinkHeaderDefaultState)
             {
-                if (current.Count > 0)
+                if (current.Length > 0)
                 {
-                    yield return new string([.. current]);
+                    yield return current.ToString();
                     current.Clear();
                 }
 
                 continue;
             }
 
-            current.Add(character);
+            current.Append(character);
+            state = GetNextLinkHeaderScanState(state, character, respectUriTargets);
         }
 
-        if (current.Count > 0)
+        if (current.Length > 0)
         {
-            yield return new string([.. current]);
+            yield return current.ToString();
         }
     }
 
     /// <summary>
-    /// Update the state used while parsing a Link header
+    /// Get the Link header segment scanner state after reading a character
     /// </summary>
+    /// <param name="state">Current scanner state</param>
     /// <param name="character">Current header character</param>
-    /// <param name="inUriTarget">Whether parsing an angle-bracketed URI target</param>
-    /// <param name="inQuotes">Whether parsing a quoted parameter</param>
-    /// <param name="escaped">Whether the previous character escaped the current character</param>
-    private static void UpdateLinkHeaderState(char character,
-                                              ref bool inUriTarget,
-                                              ref bool inQuotes,
-                                              ref bool escaped)
+    /// <param name="respectUriTargets">Whether angle-bracketed URI targets are recognized</param>
+    /// <returns>Updated scanner state</returns>
+    private static char GetNextLinkHeaderScanState(char state, char character, bool respectUriTargets)
     {
-        if (character == '<' && inQuotes == false)
-        {
-            inUriTarget = true;
-        }
-        else if (character == '>' && inQuotes == false)
-        {
-            inUriTarget = false;
-        }
-        else if (character == '"' && inUriTarget == false && escaped == false)
-        {
-            inQuotes = inQuotes == false;
-        }
-
-        escaped = character == '\\' && inQuotes && escaped == false;
+        return state switch
+               {
+                   LinkHeaderEscapedQuotedParameterState => LinkHeaderQuotedParameterState,
+                   LinkHeaderQuotedParameterState when character == '\\' => LinkHeaderEscapedQuotedParameterState,
+                   LinkHeaderQuotedParameterState when character == '"' => LinkHeaderDefaultState,
+                   LinkHeaderQuotedParameterState => LinkHeaderQuotedParameterState,
+                   LinkHeaderUriTargetState when character == '>' => LinkHeaderDefaultState,
+                   LinkHeaderUriTargetState => LinkHeaderUriTargetState,
+                   LinkHeaderDefaultState when respectUriTargets && character == '<' => LinkHeaderUriTargetState,
+                   LinkHeaderDefaultState when character == '"' => LinkHeaderQuotedParameterState,
+                   _ => LinkHeaderDefaultState,
+               };
     }
 
     /// <summary>
     /// Determine whether a Link entry declares the next relation
     /// </summary>
-    /// <param name="linkEntry">Link entry</param>
+    /// <param name="parameterList">Link parameters following the URI target</param>
     /// <returns>True when the entry has an exact next relation</returns>
-    private static bool HasNextRelation(string linkEntry)
+    private static bool HasNextRelation(string parameterList)
     {
-        var end = linkEntry.IndexOf('>');
-
-        if (end < 0)
-        {
-            return false;
-        }
-
-        foreach (var parameter in SplitLinkParameters(linkEntry, end + 1))
+        foreach (var parameter in SplitLinkSegments(parameterList, ';', respectUriTargets: false))
         {
             var separatorIndex = parameter.IndexOf('=');
 
@@ -781,53 +790,6 @@ public partial class OciRegistryClient : IRegistryMetadataClient
         }
 
         return false;
-    }
-
-    /// <summary>
-    /// Split Link parameters without splitting inside a quoted value
-    /// </summary>
-    /// <param name="linkEntry">Link entry</param>
-    /// <param name="start">Parameter start index</param>
-    /// <returns>Link parameters</returns>
-    private static IEnumerable<string> SplitLinkParameters(string linkEntry, int start)
-    {
-        var current = new List<char>();
-        var inQuotes = false;
-        var escaped = false;
-
-        for (var index = start; index < linkEntry.Length; index++)
-        {
-            var character = linkEntry[index];
-
-            if (character == '"' && escaped == false)
-            {
-                inQuotes = inQuotes == false;
-            }
-
-            if (character == '\\' && inQuotes && escaped == false)
-            {
-                escaped = true;
-            }
-            else
-            {
-                escaped = false;
-            }
-
-            if (character == ';' && inQuotes == false)
-            {
-                yield return new string([.. current]);
-                current.Clear();
-
-                continue;
-            }
-
-            current.Add(character);
-        }
-
-        if (current.Count > 0)
-        {
-            yield return new string([.. current]);
-        }
     }
 
     /// <summary>
