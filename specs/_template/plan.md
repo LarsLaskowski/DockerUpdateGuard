@@ -5,7 +5,8 @@ Status: Draft | Revised (n) | Approved by Security
 Tier: trivial | standard | security  (tiers `docs` and `patch` use no plan.md) — <one-sentence justification>
 Security areas touched: none | <areas>
 <!-- Each security area of `.squad/project.md`, Docker/CI or build configuration and dependency the change
-touches, or "none" — in every plan (`.squad/routing.md`, *Tiers*). -->
+touches, or "none" — in every plan (`.squad/routing.md`, *Tiers*). Only a plan over PLAN_MAX_WORDS words adds the
+line "Plan size: <why the scope needs it>" here (`plan-check.py`). -->
 
 ## Problem / root cause
 
@@ -91,8 +92,9 @@ in behavior updates its area document in this pull request.
 ## Documentation updates
 
 `README.md` (configuration table, env vars), `docs/*.md` including the area documents and
-`docs/ARCHITECTURE.md` — or "none". Every documentation edit has exactly one owner (Dev, Tester or Lead); PR
-approval (step 9) only touches status, index rows and bookkeeping.
+`docs/ARCHITECTURE.md` — or "none": each file and what changes in it. The Dev writes them once the code is green,
+against that code (test documentation: the Tester); PR approval (step 9) only touches status, index rows and
+bookkeeping.
 
 ## Architecture check
 

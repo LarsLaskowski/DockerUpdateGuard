@@ -43,7 +43,7 @@ repository.
    staging only the files that belong to this task. Then run the *Sonar gate*
    from `.squad/stack.md` — SonarQube Cloud's analysis of the committed
    branch; fix every finding it lists (and commit again). NOT CHECKED (no
-   `SONAR_TOKEN` in this environment) leaves the check to step 9.
+   SonarQube credential in this environment) leaves the check to step 9.
 6. **Run the internal review loop** (see below) and resolve what it finds.
    This happens *before* the push, so the pull request opens on a reviewed
    change instead of collecting review rounds afterwards.
@@ -67,10 +67,10 @@ repository.
      (`pull_request_read`, method `get`) and compare its links and code spans
      with what you sent; a mangled one is fixed with `update_pull_request`
      before anything else
-9. **Keep it a draft until green** (`.squad/routing.md`, *Draft until green*).
+9. **Keep it a draft until green** (`.squad/orchestration.md`, *Draft until green*).
    Subscribe to the PR's activity (`subscribe_pr_activity` when available;
    otherwise check the results yourself before finishing). A merge conflict
-   comes first (`.squad/routing.md`, *Merge conflicts*). Fix each failing
+   comes first (`.squad/orchestration.md`, *Merge conflicts*). Fix each failing
    check and every new issue `python3 .squad/tools/sonar-check.py pr <number>`
    lists, rerun step 4 on the fix (on merged files: the gates they need),
    commit once per round and push. Mark the PR ready for review
@@ -99,9 +99,8 @@ a round trip through pull request comments. Each pass is delegated to the
 
 1. **Pass 1** — launch `squad-reviewer` (subagent_type `squad-reviewer`).
    Tell it the base ref, the head to review, and that this is round 1. When
-   the diff touches a security area listed in `.squad/project.md` (*Security
-   areas*), launch `squad-security` in mode `diff` alongside it (`AGENTS.md`,
-   golden rules); its findings count like the reviewer's.
+   the diff touches a security area as `AGENTS.md` (golden rules) defines it,
+   launch `squad-security` in mode `diff` alongside it; its findings count like the reviewer's.
 2. **Act on the verdict** (with Security alongside: both verdicts):
    - `APPROVE` (and Security's `APPROVED`) → done, go push.
    - Security's `CHANGES_REQUIRED` → its findings are blocking findings like the reviewer's.
@@ -113,7 +112,7 @@ a round trip through pull request comments. Each pass is delegated to the
      one delta pass. Otherwise open a GitHub issue for it **now** and link it
      under the PR's Next Steps.
 3. **Pass n+1** — continue the reviewer's earlier launch
-   (`.squad/routing.md`, *Continuing a member*) with the round number, the
+   (`.squad/orchestration.md`, *Continuing a member*) with the round number, the
    previous round's findings and the commits that fixed them; it reviews the
    delta only. When Security's findings were fixed, `squad-security` reviews
    that delta too.

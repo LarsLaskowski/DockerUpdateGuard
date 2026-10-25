@@ -40,8 +40,9 @@ or stale claims.
   skills open a PR once it is approved (`.squad/routing.md`, *PR approval*); outside the squad, a PR is
   opened only when the user explicitly asks for one (e.g. by running the `create-pr` skill). Never open a PR
   on your own initiative.
-- **A change made outside the squad that touches a security area** listed in
-  [`.squad/project.md`](/.squad/project.md) (*Security areas*) is reviewed before it is merged: `create-pr` adds
+- **A change made outside the squad that touches a security area** — one listed in
+  [`.squad/project.md`](/.squad/project.md) (*Security areas*), a CI workflow (any change to it: permissions,
+  secrets, triggers, the actions it uses), Docker or build configuration, or a dependency — is reviewed before it is merged: `create-pr` adds
   Security's diff review to its review loop, and a pull request opened another way (by hand, from a plain
   session) gets a `review-pr` run whose findings are worked in that pull request.
 - Run *Format* from [`.squad/stack.md`](/.squad/stack.md) after editing code and before building; CI is
@@ -193,7 +194,7 @@ and the round semantics. The squad's members (`.squad/team.md`) run as subagents
 commits, pushes and posts. The pipeline, its limits and escalations are in [`.squad/routing.md`](/.squad/routing.md),
 the project's guarantees, security areas and integration surface in [`.squad/project.md`](/.squad/project.md).
 Working records stay under `specs/` on the work branch. A product PR never changes the squad or these
-instructions (`.squad/stack.md` and `.squad/project.md` excepted); squad lessons become `squad` issues where they can be fixed (`.squad/routing.md`, *Squad
+instructions (`.squad/stack.md`, `.squad/project.md` and the project blocks of this file excepted); squad lessons become `squad` issues where they can be fixed (`.squad/orchestration.md`, *Squad
 lessons*). The user acts as Product Manager and is asked only when the Lead escalates.
 
 The reasoning behind code decisions — why something was built the way it was — is recorded by the Lead

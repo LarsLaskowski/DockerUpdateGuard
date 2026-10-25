@@ -21,13 +21,14 @@ mechanics out of the orchestrator's hands:
 - one row names one member: a member cell that lists two (`squad-reviewer / squad-security`, a comma, `and`)
   is refused, because the trailer of a parallel launch belongs to one row each, or `--amend-last` cannot tell
   them apart;
-- a continued launch (`SendMessage` to the agent of an earlier round; `.squad/routing.md`, *Continuing a member*)
+- a continued launch (`SendMessage` to the agent of an earlier round; `.squad/orchestration.md`, *Continuing a member*)
   reports the agent's tokens since its first launch, while its tool uses and its duration cover the round alone
   (all three are passed exactly as the task notification reports them): with `--continued` the script subtracts
   the tokens of that member's last fresh launch and of the continuations logged after it, keeps tool uses and
   seconds as reported and marks the trailer `· continued`; a reported token figure below the earlier total can
   only be the round alone and is kept as it is. When the continued agent is not the member's last fresh launch
-  (one member ran several task groups, each in a fresh launch), `--continued-from "<step>"` names the step cell
+  (the Dev's `skeleton` and `implement` agents alternate across task groups, or a fresh launch followed the cap of
+  continuations), `--continued-from "<step>"` names the step cell
   of the fresh launch whose agent was continued: only that launch and its own continuations are subtracted, and
   the trailer records the step (`· continued from <step>`), so a later continuation of either agent is computed
   against the right rows. `--continued` needs an earlier row of that member with usage, `--continued-from` a
@@ -96,10 +97,15 @@ launches; launches that ran in parallel count once, each placed by its row's tim
 number of gate runs (Orchestrator rows of step 7). Every row of a member other than the Orchestrator, the
 Product Manager and the User is a launch: the summary ends with the launch rows that carry no usage yet, so the
 orchestrator amends them before posting and an incomplete table is never posted as complete; launches marked
-`--unreported` are counted and named below the table instead. Exit code 0 when the row was written, amended or
+`--unreported` are counted and named below the table instead. Once step 10 has removed the work folder, the summary
+also reads the commits after that removal (the fixes of step 11, merges of the base branch left out): the last of
+them must be followed by a step-11 row of the Reviewer (the delta review of steps 7–8) or, for a verbatim
+documentation fix, of the Orchestrator naming it verbatim, or the summary names the unreviewed commits on standard
+error. Exit code 0 when the row was written, amended or
 the summary is complete, 1 when the folder has no `log.md`, the agent file is unknown, no row can be amended or
 replaced, or `--continued` finds no earlier usage of the member (`--continued-from`: no fresh launch of that
-step), 3 when the summary lists launch rows without usage.
+step), 3 when the summary lists launch rows without usage, 4 when commits after the pull request have no review
+row after them.
 """
 import argparse
 import contextlib
@@ -130,6 +136,9 @@ ROW = re.compile(rf"^\| (?P<date>{STAMP}) \| (?P<step>(?:[^|\\]|\\\|)*) \| (?P<m
 MIN_TOKENS = 1000
 STEP_NUMBER = re.compile(r"^\s*(\d+)")
 ROUND_OF_SAME_MODE = re.compile(r"\b(?:fix|delta|revis)", re.I)
+SPECS_PREFIX = "specs/"
+FOLDER_NAME = re.compile(r"\w[\w.-]*")
+FIX_STEP = re.compile(r"^\s*11\b")
 FRONT_MATTER_KEY = re.compile(r"^(model|effort):\s*(\S+)\s*$", re.M)
 
 
@@ -220,7 +229,7 @@ def continued_launch(path, member, launch, skip_last=False, step=None, origin=No
 def mode_change_warning(path, member, own_step, origin=None, amending=False, step=None):
     """A warning, or None, for a continuation logged at another step number than the fresh launch it continues
     (`origin`, or else the member's last fresh launch) whose step cell names no fix, delta or revise round: the
-    first launch of another mode is a fresh launch (`.squad/routing.md`, *Continuing a member*). With `amending`,
+    first launch of another mode is a fresh launch (`.squad/orchestration.md`, *Continuing a member*). With `amending`,
     the row being amended (the member's last, or its last of `step`) is left out."""
     with open(path, encoding="utf-8-sig") as handle:
         rows = parse_rows(handle.read())
@@ -239,7 +248,7 @@ def mode_change_warning(path, member, own_step, origin=None, amending=False, ste
     if None in numbers or numbers[0].group(1) == numbers[1].group(1) or ROUND_OF_SAME_MODE.search(own_step):
         return None
     return (f"WARNING: '{own_step}' continues {member}'s launch of step '{continued}': a fix, delta or revise "
-            "round continues, but the first launch of another mode is a fresh launch (.squad/routing.md, "
+            "round continues, but the first launch of another mode is a fresh launch (.squad/orchestration.md, "
             "*Continuing a member*)")
 
 
@@ -247,7 +256,7 @@ def resolve_log(root, folder):
     """The `log.md` of the named work folder under `specs/`, or None. The name is compared with the folders
     that exist there and the path is built from the directory listing, so the argument never becomes a path."""
     wanted = folder.strip().replace("\\", "/").rstrip("/")
-    wanted = wanted[len("specs/"):] if wanted.startswith("specs/") else wanted
+    wanted = wanted.removeprefix(SPECS_PREFIX)
     specs = os.path.join(root, "specs")
     if not os.path.isdir(specs):
         return None
@@ -470,6 +479,52 @@ def summary(path):
     return "\n".join(lines) + (f"\n\n{own}" if own else "") + usage_notes(rows)
 
 
+def fixes_after_pr(root, folder):
+    """(count, time of the last one, UTC) of the branch's own commits after the commit that removed the work folder
+    in step 10 (the first removal; a merge of the base branch and the commits it brings in are left out); None
+    before that removal (or outside a Git repository)."""
+    name = folder.strip().replace("\\", "/").strip("/").removeprefix(SPECS_PREFIX)
+    if not FOLDER_NAME.fullmatch(name):
+        return None
+
+    def git(*args):
+        return subprocess.run(["git", "-C", root, *args], capture_output=True, text=True, check=False).stdout
+
+    removals = git("log", "--diff-filter=D", "--format=%H", "--", f"specs/{name}/log.md",
+                   f":(glob)specs/{name}-*/log.md").split()
+    if not removals:
+        return None
+    stamps = [int(value) for value in
+              git("log", "--first-parent", "--no-merges", "--format=%ct", f"{removals[-1]}..HEAD").split()]
+    last = datetime.datetime.fromtimestamp(max(stamps), datetime.UTC).replace(tzinfo=None) if stamps else None
+    return len(stamps), last
+
+
+def reviewed_after(rows, when):
+    """True when a step-11 row of the Reviewer, or of the Orchestrator for a verbatim fix, has a time of day at or
+    after `when` (rows carry minutes, so `when` is cut to the minute)."""
+    when = when.replace(second=0, microsecond=0)
+    for stamp, step, member, result in rows:
+        if " " not in stamp or not FIX_STEP.match(step):
+            continue
+        reviewer = "review" in member.lower()
+        verbatim = member.strip().lower() == ORCHESTRATOR and "verbatim" in result.lower()
+        if (reviewer or verbatim) and datetime.datetime.strptime(stamp, "%Y-%m-%d %H:%M") >= when:
+            return True
+    return False
+
+
+def unreviewed_fixes(root, folder, rows):
+    """The note on the commits after the pull request that no review row follows, or None."""
+    fixes = fixes_after_pr(root, folder)
+    if not fixes or not fixes[0] or reviewed_after(rows, fixes[1]):
+        return None
+    return (f"Unreviewed after the PR: {fixes[0]} commit(s) after the work folder was removed, the last at "
+            f"{fixes[1]:%Y-%m-%d %H:%M} UTC, and no step-11 row of the Reviewer (or of the Orchestrator for a "
+            "verbatim fix) after it. Run the delta review of steps 7-8 on the head, log it at step 11 and run the "
+            "summary again.")
+
+
 def launches(count, continued):
     return f"{count} ({continued} continued)" if continued else str(count)
 
@@ -626,12 +681,25 @@ def row_command(parser, path, args, launch):
     return 0
 
 
+def summary_command(root, folder, path):
+    """Print the summary; the exit code: 3 with launch rows still without usage, 4 with unreviewed fixes after
+    the pull request."""
+    print(summary(path))
+    with open(path, encoding="utf-8-sig") as handle:
+        rows = parse_rows(handle.read())
+    if missing_usage(rows):
+        return 3
+    note = unreviewed_fixes(root, folder, rows)
+    if note:
+        print(note, file=sys.stderr)
+        return 4
+    return 0
+
+
 def run(parser, args, root, path):
     """The command the arguments ask for, against the log at `path`; the exit code."""
     if args.summary:
-        print(summary(path))
-        with open(path, encoding="utf-8-sig") as handle:
-            return 3 if missing_usage(parse_rows(handle.read())) else 0
+        return summary_command(root, args.folder, path)
     target = args.amend_last or args.replace_last or args.member
     uses_metrics = args.amend_last or args.replace_last or args.unreported or args.agent or args.launch \
         or args.tokens is not None or args.tool_uses is not None or args.seconds is not None or args.continued \

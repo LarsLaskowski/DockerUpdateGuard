@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
 """PreToolUse hook for the squad subagents: no Git write operation and no GitHub write from a member.
 
-Every `.claude/agents/squad-*.md` declares this hook in its front matter, so it runs only while a squad
-member is active - the orchestrator (the session that runs the skill) commits, pushes and posts as before.
-It reads the hook input JSON from stdin and, for a `Bash` call, checks every `git` and `gh` invocation in
-the command (also behind `&&`, `;`, `|`, `$(…)`, `git -C <dir>`, and inside `bash -c` / `sh -c` / `eval`):
+`.claude/settings.json` declares it for `Bash`, so it runs before every Bash call of the session and of its
+subagents; it decides only for a squad member (the hook input's `agent_type` is `squad-…`), so the orchestrator
+(the session that runs the skill) and other agents commit, push and post as before. It is not declared in the
+members' front matter: Claude Code skips a project agent's front-matter hooks in a folder without workspace
+trust, which a cloud or `-p` session never gives. It reads the hook input JSON from stdin and, for a member's
+`Bash` call, checks every `git` and `gh` invocation in the command (also behind `&&`, `;`, `|`, `$(…)`,
+`git -C <dir>`, and inside `bash -c` / `sh -c` / `eval`):
 
 - allowed: read-only Git (`status`, `diff`, `log`, `show`, `ls-files`, `grep`, `rev-parse`, `merge-base`,
   `fetch`, `tag --list` / `--contains`, `branch --list` / `--show-current`, `ls-remote`, `clone`, …),
   `git add` (the coverage gate only counts tracked files) and `git worktree add` / `remove` / `prune` /
-  `list` (scratch worktrees, `.squad/routing.md`, *Concurrency*), and read-only `gh` (`gh api` without a
+  `list` (scratch worktrees, `.squad/orchestration.md`, *Concurrency*), and read-only `gh` (`gh api` without a
   method or field, `gh pr view`, …);
 - denied: `commit`, `push`, `stash`, `reset`, `checkout`, `switch`, `restore`, `rebase`, `merge`,
   `cherry-pick`, `revert`, `rm`, `mv`, `clean`, `pull`, `am`, `apply`, `tag <name>`, `branch -d/-D/-m/…`,
@@ -49,6 +52,7 @@ BRANCH_READ = {"-l", "--list", "-a", "-r", "--all", "--remotes", "--show-current
                "--no-merged", "-v", "-vv", "--verbose"}
 CONFIG_READ = {"-l", "--list", "--show-origin", "--show-scope"}
 SHELLS = {"sh", "bash", "zsh", "dash", "ksh"}
+MEMBER_PREFIX = "squad-"
 
 
 def git_subcommand(tokens):
@@ -181,11 +185,13 @@ def deny_reason(data):
     """The reason to deny the Bash call described by the hook input, or None when it may run."""
     if not isinstance(data, dict) or data.get("tool_name") != "Bash":
         return None
+    agent = data.get("agent_type")
+    if not isinstance(agent, str) or not agent.startswith(MEMBER_PREFIX):
+        return None  # the orchestrator or another agent: not a squad member
     command = (data.get("tool_input") or {}).get("command")
     found = check_command(command) if isinstance(command, str) else None
     if found is None:
         return None
-    agent = data.get("agent_type") or "a squad member"
     return (f"{found} is a Git or GitHub write operation, which {agent} never runs: subagents report, the "
             "orchestrator commits, pushes and posts (.squad/team.md, Shared rules). Scratch worktrees "
             "(git worktree add/remove) and git add stay allowed.")

@@ -36,8 +36,8 @@ threads.
    sweep, the severity model and the round semantics all live in that agent's
    definition (`.claude/agents/squad-reviewer.md`), so they stay
    identical whether the review runs before or after the push. When the diff
-   touches a security area listed in `.squad/project.md` (*Security areas*)
-   and the pull request did not come from the squad (no "Squad working record"
+   touches a security area as `AGENTS.md` (golden rules) defines it, and the
+   pull request did not come from the squad (no "Squad working record"
    on it or its issue), launch `squad-security` in mode `diff` alongside it
    and post its findings with the reviewer's.
 3. Post the result:

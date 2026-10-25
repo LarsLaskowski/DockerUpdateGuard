@@ -15,9 +15,10 @@ Checks, in the work folder `specs/<folder>/`:
   scope*; every open question is answered (`Answered:`) or the section says "none"; `plan.md` defines no
   criterion of its own; every criterion of the spec has a row in the plan's *Tests per criterion* and appears in
   the *Criteria* column of `tasks.md` (every table of it), and neither names a criterion the spec lacks; every
-  task row names its *Group* (the unit steps 4–6 run as one launch per member), and a group's rows are
+  task row names its *Group* (the unit steps 4–6 run per, with one agent per member and mode), and a group's rows are
   consecutive; when the plan's *Signatures* lists any API, every group has a *Skeleton* row (its *Task* cell
-  starts with "Skeleton") or a row saying "no new API", a group the Lead owns alone excepted, and every name in
+  starts with "Skeleton") or a row saying "no new API", a group of documentation rows alone excepted (no row is
+  the Lead's outside `specs/` and `docs/decisions/`), and every name in
   *Signatures* (the identifier of each backticked declaration) appears in a skeleton row of some group.
 - **Bug fix** (no `spec.md`): `plan.md` defines its acceptance criteria, and each has a row in *Tests per
   criterion* (tier `trivial`, which writes no tests first, needs none).
@@ -26,15 +27,18 @@ Checks, in the work folder `specs/<folder>/`:
   one row, and every row has evidence and a status (`confirmed`, `refuted`, or `unverified` with the measurement
   that settles it, starting with `to verify:`); no template placeholder is left; no Markdown file of the work
   folder contains a control character (`scope-check.py`'s check, here before any member reads the folder). A
-  plan longer than `PLAN_MAX_WORDS` (`squad_settings.py`, default 4000) is reported as a warning, one longer than
-  `PLAN_HARD_WORDS` (default twice that) as a finding: a long plan costs every member that reads it, so the
-  Lead moves settled material (answered challenge entries, facts verified in earlier rounds) into the decision
-  record or the area document.
+  plan longer than `PLAN_MAX_WORDS` (`squad_settings.py`, default 4000) is a finding: a long plan costs every
+  member that reads it, so the Lead moves settled material (answered challenge entries, facts verified in earlier
+  rounds) into the decision record, or into *Documentation updates* for the Dev. A plan whose scope really needs
+  more says why in a `Plan size:` line under the header; then up to `PLAN_HARD_WORDS` (default twice the limit) is a warning that
+  quotes the reason, and beyond that the scope is split.
 
 Ids may be written as ranges (`AC1–AC3`, `S2-S4`); backticks and emphasis around a cell are ignored. A criterion
 without a test, in a plan whose *Verification without tests* section names it, counts as covered.
 
-With `--spec` only `spec.md` is checked: after the Lead's mode `spec`, before the spec challenge.
+With `--spec` only `spec.md` is checked: after the Lead's mode `spec`, before the spec challenge. A spec longer
+than `SPEC_MAX_WORDS` (`squad_settings.py`, default 2500; the template's guidance comments do not count) is reported
+as a warning: every later launch reads it, so the Lead sizes it to the feature.
 
 Usage, from the repository root:
     python3 .squad/tools/plan-check.py <work folder name, e.g. feature-12-export or issue-34> [--spec]
@@ -51,6 +55,8 @@ from analyzer_common import control_characters  # noqa: E402  (shared helpers ne
 
 PLAN_MAX_WORDS = getattr(settings, "PLAN_MAX_WORDS", 4000)
 PLAN_HARD_WORDS = getattr(settings, "PLAN_HARD_WORDS", 2 * PLAN_MAX_WORDS)
+PLAN_SIZE = re.compile(r"^Plan size:[ \t]*(\S.*)", re.M)
+SPEC_MAX_WORDS = getattr(settings, "SPEC_MAX_WORDS", 2500)
 TIERS = ("trivial", "standard", "security")
 STATUSES = ("confirmed", "refuted", "unverified")
 SPEC_SECTIONS = ["Problem", "Scenarios", "Errors and edge cases", "Non-functional requirements",
@@ -69,6 +75,8 @@ EMPTY_CELLS = {"", "-", "\u2013", "\u2014", "...", "\u2026", "none", "n/a", "tbd
 COMMENT = re.compile(r"<!--.*?-->", re.S)
 EMPHASIS = "`*_"
 SPEC = "spec.md"
+SPECS_PREFIX = "specs/"
+LEAD_FILES = (SPECS_PREFIX, "docs/decisions/")
 NONE = re.compile(r"^\s*(?:[-*]\s+)?none\.?\s*$", re.I)
 SKELETON_ROW = re.compile(r"^skeleton\b", re.I)
 NO_NEW_API = re.compile(r"\bno new API\b", re.I)
@@ -93,7 +101,7 @@ def read(path, errors):
 def resolve_folder(root, folder):
     """The work folder under `specs/`, found in the directory listing so the argument never becomes a path."""
     wanted = folder.strip().replace("\\", "/").rstrip("/")
-    wanted = wanted[len("specs/"):] if wanted.startswith("specs/") else wanted
+    wanted = wanted.removeprefix(SPECS_PREFIX)
     specs = os.path.join(root, "specs")
     if not os.path.isdir(specs):
         return None
@@ -292,30 +300,56 @@ def signature_names(body):
     return names
 
 
-def group_states(header, rows):
-    """{group: (skeleton or "no new API" stated, owned by the Lead alone)} and the text of the skeleton rows."""
-    group, task, owner = column(header, "group"), column(header, "task"), column(header, "owner")
+def file_list(cell_text):
+    """The paths a *Files* cell names; a note in parentheses and words without a `/` or `.` are left out."""
+    text = re.sub(r"\([^)]*\)", " ", cell_text.replace("`", ""))
+    return [f for f in re.split(r"[,\s]+", text) if "/" in f or "." in f.strip(".")]
+
+
+def documentation_only(cell_text):
+    """True when every file a *Files* cell names is documentation (Markdown or a README)."""
+    files = file_list(cell_text)
+    return bool(files) and all(f.lower().endswith(".md") or f.rsplit("/", 1)[-1].upper().startswith("README")
+                               for f in files)
+
+
+def check_lead_row(row, owner, paths, errors):
+    """A task row of the Lead names only its own files (`specs/`, `docs/decisions/`)."""
+    if owner is None or len(row) <= owner or row[owner].lower() != "lead":
+        return
+    if not all(path.startswith(LEAD_FILES) for path in file_list(paths)):
+        errors.append(f"tasks.md: row {row[0]} is owned by the Lead, which writes only plans and decision records: "
+                      "documentation rows are the Dev's (test documentation: the Tester's)")
+
+
+def group_states(header, rows, errors):
+    """{group: (skeleton or "no new API" stated, documentation rows alone)} and the text of the skeleton rows;
+    a row the Lead owns outside its own files (`specs/`, `docs/decisions/`) is reported."""
+    group, task = column(header, "group"), column(header, "task")
+    owner, files = column(header, "owner"), column(header, "files")
     states, skeleton = {}, []
     for row in rows:
         if group is None or task is None or len(row) <= max(group, task):
             continue
         text = " ".join(row)
         is_skeleton = bool(SKELETON_ROW.match(row[task]))
-        stated, lead_only = states.get(row[group], (False, True))
-        lead = owner is not None and len(row) > owner and row[owner].lower() == "lead"
-        states[row[group]] = (stated or is_skeleton or bool(NO_NEW_API.search(text)), lead_only and lead)
+        paths = row[files] if files is not None and len(row) > files else ""
+        check_lead_row(row, owner, paths, errors)
+        stated, docs_only = states.get(row[group], (False, True))
+        states[row[group]] = (stated or is_skeleton or bool(NO_NEW_API.search(text)),
+                              docs_only and documentation_only(paths))
         if is_skeleton:
             skeleton.append(text)
     return states, "\n".join(skeleton)
 
 
 def check_skeleton(header, rows, signatures, errors):
-    """With API in the plan's *Signatures*, every group has a skeleton row or says "no new API" (a group of the
-    Lead alone writes documentation), and every signature name appears in a skeleton row. Returns the text of the
-    skeleton rows."""
-    states, skeleton = group_states(header, rows)
-    for key, (stated, lead_only) in states.items():
-        if signatures and not (stated or lead_only or empty(key)):
+    """With API in the plan's *Signatures*, every group has a skeleton row or says "no new API" (a group of
+    documentation rows alone needs neither), and every signature name appears in a skeleton row. Returns the text
+    of the skeleton rows."""
+    states, skeleton = group_states(header, rows, errors)
+    for key, (stated, docs_only) in states.items():
+        if signatures and not (stated or docs_only or empty(key)):
             errors.append(f"tasks.md: group {key} has no *Skeleton* row and does not say \"no new API\" "
                           "(the plan's *Signatures* lists API)")
     return skeleton
@@ -388,6 +422,12 @@ def check_spec_only(folder):
     check_spec(spec, errors)
     check_placeholders(SPEC, spec, errors)
     check_control_characters(folder, errors)
+    words = len(COMMENT.sub("", spec).split())
+    if words > SPEC_MAX_WORDS:
+        return errors, [f"spec.md has {words} words (SPEC_MAX_WORDS {SPEC_MAX_WORDS}), and every later launch reads it: "
+                        "keep one scenario per behavior a user can tell apart and only the edge cases that change "
+                        "what the user sees, and link the issue, an area document or a record instead of restating "
+                        "it"]
     return errors, []
 
 
@@ -421,15 +461,28 @@ def check(folder):
         else:
             check_tasks(tasks, criteria, errors, signature_names(signatures_section(plan)))
             check_placeholders("tasks.md", tasks, errors)
-    words = len(plan.split())
-    if words > PLAN_HARD_WORDS:
-        errors.append(f"plan.md has {words} words (PLAN_HARD_WORDS {PLAN_HARD_WORDS}): move settled material "
-                      "(answered challenge entries, facts verified in earlier rounds) into the decision record "
-                      "or the area document")
-    elif words > PLAN_MAX_WORDS:
-        warnings.append(f"plan.md has {words} words (PLAN_MAX_WORDS {PLAN_MAX_WORDS}): every member reads it — "
-                        "cut what the code, the spec or a decision record already says")
+    check_plan_size(plan, errors, warnings)
     return errors, warnings
+
+
+def check_plan_size(plan, errors, warnings):
+    """A plan within PLAN_MAX_WORDS, or up to PLAN_HARD_WORDS with a `Plan size:` line that says why."""
+    words = len(plan.split())
+    if words <= PLAN_MAX_WORDS:
+        return
+    match = PLAN_SIZE.search(plan)
+    reason = match.group(1).strip() if match and not empty(cell(match.group(1))) else None
+    if words > PLAN_HARD_WORDS:
+        errors.append(f"plan.md has {words} words, over PLAN_HARD_WORDS {PLAN_HARD_WORDS}: split the scope into "
+                      "separate issues the plan can describe within the limit")
+    elif reason and "<" not in reason:
+        warnings.append(f"plan.md has {words} words (PLAN_MAX_WORDS {PLAN_MAX_WORDS}), justified: {reason}")
+    else:
+        errors.append(f"plan.md has {words} words (PLAN_MAX_WORDS {PLAN_MAX_WORDS}), and every member reads it: "
+                      "move settled material (answered challenge entries, facts verified in earlier rounds) into the "
+                      "decision record or into Documentation updates for the Dev and cut what the code, the spec or a "
+                      "record already says; "
+                      "a scope that really needs more says why in a `Plan size:` line under the header")
 
 
 def main(argv=None):
