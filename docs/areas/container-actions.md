@@ -28,9 +28,9 @@ transport security; the UI is the intended caller of the actions.
   lists exactly one environment, counting the `X-Total-Count` response header when it is present (the larger of the
   listed number and the header). A header that is present but not a single non-negative integer makes the count
   unknown and the environment unusable; an absent header is ignored.
-  - Otherwise nothing is used and the capability check and every action fail with one message: `Portainer manages
+  - When more than one environment is counted, or the count is unknown and at least one environment is listed, nothing is used and the capability check and every action fail with one message: `Portainer manages
     <n> environments; set Portainer:EndpointId of Docker instance '<instance name>' to one of: <id> (<name>), …`, or
-    `Portainer reported no valid environment count; …` when the count is unknown. The key is named relative to the
+    `Portainer reported no valid environment count; …` when the count is unknown; when none is listed and none is counted, they fail with `No Portainer endpoint found`. The key is named relative to the
     instance because configuration keys address instances by list position. The message lists at most 10
     environments by ascending ID, followed by `, …` when more exist or the count is unknown; with none listed it ends
     after the instance name.

@@ -40,7 +40,7 @@ Manager decided on the issue that no environment is picked silently.
 
 Without a configured `EndpointId`, the capability check and every action use Portainer's environment only when the
 environment list (including a valid total-count header) shows exactly one; with more than one, or with an invalid
-total-count header, they fail before any container lookup with a message naming the key to set relative to the Docker
+total-count header and at least one listed environment, they fail before any container lookup with a message naming the key to set relative to the Docker
 instance and the environments to choose from, and a failed list request reports its HTTP status. The rules — message texts, the listing limit, how names are cleaned — are in
 [Container actions](../areas/container-actions.md#configuration-and-mapping).
 
