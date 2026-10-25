@@ -1784,6 +1784,48 @@ public class PortainerClientTests
     }
 
     /// <summary>
+    /// Verify an empty environment list with an invalid total count header is reported as no endpoint found
+    /// </summary>
+    /// <param name="headerValue">Total count header value</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [DataRow("abc")]
+    [DataRow("-1")]
+    public async Task PortainerClientGetCapabilityAsyncWithEmptyEnvironmentListAndInvalidTotalCountReturnsNoEndpointFoundAsync(string headerValue)
+    {
+        var listResponse = CreateEnvironmentListResponse("[]", headerValue);
+
+        var (result, _) = await RunCapabilityWithoutEndpointIdAsync(listResponse, new TestLogger<PortainerClient>()).ConfigureAwait(false);
+
+        Assert.IsTrue(result.IsConfigured, "An empty environment list must still be reported as configured");
+        Assert.IsFalse(result.SupportsActions, "An empty environment list must not support actions");
+        Assert.AreEqual("No Portainer endpoint found",
+                        result.Message,
+                        $"An empty list with the invalid header '{headerValue}' must not be reported as ambiguous");
+    }
+
+    /// <summary>
+    /// Verify an action without an endpoint identifier fails with no endpoint found for an empty list with an invalid total count header
+    /// </summary>
+    /// <param name="headerValue">Total count header value</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [DataRow("abc")]
+    [DataRow("-1")]
+    public async Task PortainerClientExecuteActionAsyncWithEmptyEnvironmentListAndInvalidTotalCountFailsWithNoEndpointFoundAsync(string headerValue)
+    {
+        var listResponse = CreateEnvironmentListResponse("[]", headerValue);
+
+        var (result, requests) = await RunActionWithoutEndpointIdAsync(listResponse, new TestLogger<PortainerClient>()).ConfigureAwait(false);
+
+        Assert.IsFalse(result.Succeeded, "An action must fail when no environment is listed");
+        Assert.AreEqual("No Portainer endpoint found",
+                        result.Message,
+                        $"An empty list with the invalid header '{headerValue}' must not be reported as ambiguous");
+        Assert.HasCount(1, requests, "Only the environment list may be requested");
+    }
+
+    /// <summary>
     /// Verify environment names are trimmed, cleaned of control, format and separator characters and shortened
     /// </summary>
     /// <returns>Task</returns>
