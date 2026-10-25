@@ -11,8 +11,8 @@ profile and owned by this repository: keep it true when the build changes.
   **Reihitsu.Analyzer** version pinned in `Directory.Packages.props`; otherwise the formatter can revert
   code the analyzer considers correct.
 - Analyzers: **SonarAnalyzer.CSharp** in every project via `Directory.Build.props` (the Sonar C# rules locally,
-  so SonarQube issues surface before the push), **Reihitsu.Analyzer** referenced by each project file, both
-  configured by the rulesets in `rules/`; the MSTest analyzers come with the MSTest package in the test projects.
+  so SonarQube issues surface before the push), **Reihitsu.Analyzer** likewise via `Directory.Build.props`, both
+  configured by the rulesets in `rules/`, with warnings treated as errors; the MSTest analyzers come with the MSTest package in the test projects.
 - The SessionStart hook `.claude/hooks/session-start.sh` installs the formatter, sets `DOTNET_ROOT` and
   restores the solution in remote sessions.
 
