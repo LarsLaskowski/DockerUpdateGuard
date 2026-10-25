@@ -28,7 +28,8 @@ Mode `tests-first`:
    list it in the hand-back as **deferred**, with its name and criterion; the orchestrator launches mode
    `coverage` for it even when the *Coverage gate* already passes. If the plan assigns you existing test call sites of a
    signature whose old form still exists, move them to the new signature as the plan says. For a bug, use
-   the input reported in the issue. A plan's claim of a bound (memory, size, time) gets a test that fails
+   the input reported in the issue. For each existing test the plan keeps unchanged, check its input and
+   expectation against every new criterion and report a contradiction in the hand-back. A plan's claim of a bound (memory, size, time) gets a test that fails
    when the claim is false. A time bound that cannot be expressed as a count (allocations, iterations) is
    tested as the ratio of two durations measured in the same test (for example a doubled input against the
    base input), never as an absolute duration; the limit is at least three times the highest ratio you

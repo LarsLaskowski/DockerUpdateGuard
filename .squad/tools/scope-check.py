@@ -24,18 +24,29 @@ When BASE_REF is not an ancestor of HEAD (a stale local copy in a fresh session,
 script prints a warning above the result: the file list may then include changes that are not this branch's, so
 fetch the base (`git fetch origin main`) and merge it first. The warning does not change the exit code.
 
-The script takes only these two options, so nothing user-supplied reaches git or the filesystem.
+With `--pull-request NUMBER` (the fork-scope workflow, which never checks out the pull request) the changed files
+and their contents come from the GitHub API instead of a working tree: `GITHUB_REPOSITORY` and `GITHUB_TOKEN`
+from the environment, the file list of the pull request (a rename counts under both names), the text before at the
+merge base and the text after at the head commit, in the head repository. Every check above applies except
+`--tier`, which needs a working tree and is refused with it.
+
+The script takes only these options, and `NUMBER` is an integer, so nothing user-supplied reaches git, the shell
+or the filesystem; the API paths are quoted and the repositories checked against `owner/name`.
 
 Usage, from the repository root:
     python3 .squad/tools/scope-check.py [--tier docs|patch|trivial|standard|security] [--no-specs]
+    python3 .squad/tools/scope-check.py --pull-request NUMBER [--no-specs]
 
 Exit code 0 when the diff is in scope, 1 otherwise.
 """
 import argparse
+import http.client
+import json
 import os
 import re
 import subprocess
 import sys
+import urllib.parse
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from analyzer_common import BASE_REF, control_characters, git, merge_base, settings  # noqa: E402  (shared helpers next to this script)
@@ -50,6 +61,10 @@ DOCS_TIER_DIRS = ["docs/"]
 DOCS_TIER_EXCLUDED = ["docs/decisions/", "docs/areas/"]
 PROJECT_BLOCK = re.compile(r"<!-- project:begin ([\w-]+) -->\n.*?<!-- project:end \1 -->\n?", re.S)
 PATCH_MAX_LINES = getattr(settings, "PATCH_MAX_LINES", 30)
+GITHUB_API_HOST = "api.github.com"
+REPOSITORY = re.compile(r"^[\w.-]+/[\w.-]+$")
+FILES_PER_PAGE = 100
+MAX_FILE_PAGES = 30  # the API lists at most 3000 files of a pull request
 
 
 def changed_files(base):
@@ -84,27 +99,110 @@ def read_text(path):
         return handle.read()
 
 
-def marked_file_changed_outside_blocks(path, base):
-    before = subprocess.run(["git", "show", f"{base}:{path}"], capture_output=True, text=True, encoding="utf-8",
-                            errors="replace", check=False)
-    if before.returncode != 0 or not os.path.isfile(path):
-        return False  # added or deleted: a different kind of finding, not an edit outside the blocks
-    return outside_blocks(before.stdout.lstrip("﻿")) != outside_blocks(read_text(path))
+class LocalSource:
+    """The text of a file before (at the merge base) and after (in the working tree); None when it does not exist."""
+
+    def __init__(self, base):
+        self.base = base
+
+    def before(self, path):
+        result = subprocess.run(["git", "show", f"{self.base}:{path}"], capture_output=True, text=True,
+                                encoding="utf-8", errors="replace", check=False)
+        return result.stdout.lstrip("\ufeff") if result.returncode == 0 else None
+
+    def after(self, path):
+        return read_text(path) if os.path.isfile(path) else None
 
 
-def control_character_error(path):
-    if not path.endswith(".md") or not os.path.isfile(path):
+def api_get(path, token, raw=False):
+    """The body of a GitHub API GET (the raw file text with `raw`), None on 404; any other failure ends the run."""
+    accept = "application/vnd.github.raw+json" if raw else "application/vnd.github+json"
+    connection = http.client.HTTPSConnection(GITHUB_API_HOST, timeout=30)
+    try:
+        connection.request("GET", path, headers={"Authorization": f"Bearer {token}", "Accept": accept,
+                                                 "User-Agent": "scope-check", "X-GitHub-Api-Version": "2022-11-28"})
+        response = connection.getresponse()
+        body = response.read().decode("utf-8-sig", errors="replace")
+    except OSError as error:
+        sys.exit(f"GitHub API {path}: {error}")
+    finally:
+        connection.close()
+    if response.status == 404:
         return None
-    found = control_characters(read_text(path))
+    if response.status != 200:
+        sys.exit(f"GitHub API {path}: HTTP {response.status}")
+    return body
+
+
+def api_json(path, token):
+    body = api_get(path, token)
+    if body is None:
+        sys.exit(f"GitHub API {path}: not found")
+    return json.loads(body)
+
+
+def checked_repository(name):
+    if not REPOSITORY.match(name):
+        sys.exit(f"Unexpected repository name from the GitHub API: {name!r}")
+    return name
+
+
+class PullRequestSource:
+    """The files of a pull request and their text before (merge base, base repository) and after (head commit,
+    head repository), read through the GitHub API; the pull request is never checked out."""
+
+    def __init__(self, repository, number, token):
+        self.token = token
+        self.number = number
+        self.repository = checked_repository(repository)
+        pull = api_json(f"/repos/{self.repository}/pulls/{number}", token)
+        head_repository = (pull["head"].get("repo") or {}).get("full_name") or self.repository
+        self.head_repository = checked_repository(head_repository)
+        self.head_sha = pull["head"]["sha"]
+        compare = api_json(f"/repos/{self.repository}/compare/{pull['base']['sha']}...{self.head_sha}", token)
+        self.merge_base = compare["merge_base_commit"]["sha"]
+
+    def changed_files(self):
+        names = set()
+        for page in range(1, MAX_FILE_PAGES + 1):
+            rows = api_json(f"/repos/{self.repository}/pulls/{self.number}/files?per_page={FILES_PER_PAGE}"
+                            f"&page={page}", self.token)
+            for row in rows:
+                names.update(name for name in (row["filename"], row.get("previous_filename")) if name)
+            if len(rows) < FILES_PER_PAGE:
+                return sorted(names)
+        sys.exit(f"Pull request {self.number} lists more than {FILES_PER_PAGE * MAX_FILE_PAGES} files")
+
+    def contents(self, repository, path, ref):
+        return api_get(f"/repos/{repository}/contents/{urllib.parse.quote(path, safe='/')}?ref={ref}", self.token,
+                       raw=True)
+
+    def before(self, path):
+        return self.contents(self.repository, path, self.merge_base)
+
+    def after(self, path):
+        return self.contents(self.head_repository, path, self.head_sha)
+
+
+def marked_file_changed_outside_blocks(path, source):
+    before, after = source.before(path), source.after(path)
+    if before is None or after is None:
+        return False  # added or deleted: a different kind of finding, not an edit outside the blocks
+    return outside_blocks(before) != outside_blocks(after)
+
+
+def control_character_error(path, source):
+    text = source.after(path) if path.endswith(".md") else None
+    found = control_characters(text) if text else None
     return f"{path}: control characters {', '.join(found)} (write them as text escapes)" if found else None
 
 
-def file_errors(path, base, tier, no_specs):
+def file_errors(path, source, tier, no_specs):
     """Every scope finding for one changed file."""
     findings = [
         (is_squad_file(path), f"{path}: squad or instruction file changed in a product change "
                               "(file a squad issue instead, .squad/routing.md *Squad lessons*)"),
-        (path in MARKED and marked_file_changed_outside_blocks(path, base),
+        (path in MARKED and marked_file_changed_outside_blocks(path, source),
          f"{path}: changed outside its <!-- project:… --> blocks (the rest is template-managed)"),
         (no_specs and is_working_record(path),
          f"{path}: working record still in the diff (squad step 10 removes specs/<folder>/)"),
@@ -112,7 +210,7 @@ def file_errors(path, base, tier, no_specs):
          f"{path}: not product documentation - tier docs allows no such file (raise the tier)"),
     ]
     errors = [message for applies, message in findings if applies]
-    control = control_character_error(path)
+    control = control_character_error(path, source)
     return errors + ([control] if control else [])
 
 
@@ -137,8 +235,9 @@ def patch_errors(base):
     return errors
 
 
-def check(files, base, tier, no_specs):
-    errors = [error for path in files for error in file_errors(path, base, tier, no_specs)]
+def check(files, base, tier, no_specs, source=None):
+    source = source or LocalSource(base)
+    errors = [error for path in files for error in file_errors(path, source, tier, no_specs)]
     return errors + (patch_errors(base) if tier == "patch" else [])
 
 
@@ -148,16 +247,32 @@ def base_is_stale():
     return result.returncode == 1
 
 
+def pull_request_source(number):
+    repository, token = os.environ.get("GITHUB_REPOSITORY"), os.environ.get("GITHUB_TOKEN")
+    if not repository or not token:
+        sys.exit("--pull-request needs GITHUB_REPOSITORY and GITHUB_TOKEN in the environment")
+    return PullRequestSource(repository, number, token)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--tier", choices=["docs", "patch", "trivial", "standard", "security"])
     parser.add_argument("--no-specs", action="store_true", help="no working record may be left under specs/")
+    parser.add_argument("--pull-request", type=int, metavar="NUMBER",
+                        help="check this pull request through the GitHub API instead of the working tree")
     args = parser.parse_args()
+    if args.pull_request is not None and args.tier:
+        parser.error("--tier needs a working tree and cannot be combined with --pull-request")
     os.chdir(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
-    base = merge_base()
-    files = changed_files(base)
-    errors = check(files, base, args.tier, args.no_specs)
-    if base_is_stale():
+    if args.pull_request is not None:
+        source = pull_request_source(args.pull_request)
+        base, files = source.merge_base, source.changed_files()
+    else:
+        source = None
+        base = merge_base()
+        files = changed_files(base)
+    errors = check(files, base, args.tier, args.no_specs, source)
+    if source is None and base_is_stale():
         print(f"WARNING: {BASE_REF} is not an ancestor of HEAD: fetch it (git fetch origin main) and merge it, or "
               "the changed files below may include changes of the base branch")
     for error in errors:
