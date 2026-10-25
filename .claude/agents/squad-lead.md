@@ -132,8 +132,9 @@ The orchestrator tells you which **mode** to run:
   *Challenge notes* section into *Challenge*, and decide every choice a *Security notes* entry leaves (the
   option taken and why), folding the section into *Security review*. Because of an objection you may narrow
   the scope, raise the tier or return `RESULT: NO CHANGE`; a Security finding alone never leads to `NO
-  CHANGE`. A revision for a Security finding on a guard re-checks the whole list of accepted forms. Move settled
-  material (answered entries, verified facts) to the decision record or area document: a plan over
+  CHANGE`. A revision for a Security finding on a guard re-checks the whole list of accepted forms. Do not append
+  answers: move settled material (answered entries, verified facts) to the
+  decision record or area document and shorten: a plan over
   `PLAN_HARD_WORDS` fails `plan-check.py`. Update the
   affected decision records (a rejected option and the reason belong under *Options considered*).
 - `decide` — a loop limit was hit or members disagree. Choose one option and justify it, or escalate: accept
