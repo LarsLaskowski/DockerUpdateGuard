@@ -173,8 +173,10 @@ on the snapshots and samples it produces.
 - Every Engine operation reports its outcome as a status (*succeeded*, *not configured*, *unsupported*, *not found*,
   *failed*) instead of throwing; the shared failure model is described in [Registries](registries.md).
 - A non-success Engine answer is reported as *failed* with the instance name, the HTTP status code and the response
-  body. Unexpected errors are reported with the instance name and the error message. These messages can end up in a
-  scan run's error message and are shown in the UI.
+  body. Unexpected errors are reported with the instance name and a fixed reason
+  ([Registries](registries.md#failure-model-of-integrations)), except the composed certificate and named-pipe
+  messages; every failure is logged with its error. These messages can end up in a scan run's error message and are
+  shown in the UI.
 - A message or log entry that names an endpoint shows its URL with the user info replaced by `***`; connecting still
   uses the configured URL.
 - A resource collection that fails for an instance (list request failed or timed out, or any stats request timed out

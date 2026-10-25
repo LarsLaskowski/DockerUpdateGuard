@@ -309,7 +309,7 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
             if (status != ClientCertificateLoadStatus.Loaded
                 || certificate is null)
             {
-                throw new InvalidOperationException($"The client certificate of Docker instance '{instanceOptions.Name}' could not be loaded: {ClientCertificateLoader.DescribeFailure(status)}");
+                throw new ReportableException($"The client certificate of Docker instance '{instanceOptions.Name}' could not be loaded: {ClientCertificateLoader.DescribeFailure(status)}");
             }
 
             handler.SslOptions.ClientCertificates ??= new X509CertificateCollection();
@@ -484,7 +484,7 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
 
         if (string.IsNullOrWhiteSpace(pipePath))
         {
-            throw new InvalidOperationException($"The Docker named pipe URI '{UrlRedaction.RedactUserInfo(pipeUri)}' does not contain a pipe name");
+            throw new ReportableException($"The Docker named pipe URI '{UrlRedaction.RedactUserInfo(pipeUri)}' does not contain a pipe name");
         }
 
         return pipePath;
@@ -1038,7 +1038,7 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
         {
             _logger.DockerInstanceDiscoveryFailed(exception, instanceOptions.Name);
 
-            return ExternalOperationResult<IReadOnlyList<RuntimeContainerDescriptor>>.Failed($"Docker container discovery failed for '{instanceOptions.Name}': {exception.Message}");
+            return ExternalOperationResult<IReadOnlyList<RuntimeContainerDescriptor>>.Failed($"Docker container discovery failed for '{instanceOptions.Name}': {FailureReason.FromException(exception, TimeSpan.FromSeconds(instanceOptions.RequestTimeoutSeconds), cancellationToken)}");
         }
     }
 
@@ -1124,7 +1124,9 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
         }
         catch (Exception exception)
         {
-            return ExternalOperationResult<IReadOnlyList<RuntimeContainerResourceDescriptor>>.Failed($"Docker container resource sampling failed for '{instanceOptions.Name}': {exception.Message}");
+            _logger.DockerInstanceResourceSamplingFailed(exception, instanceOptions.Name);
+
+            return ExternalOperationResult<IReadOnlyList<RuntimeContainerResourceDescriptor>>.Failed($"Docker container resource sampling failed for '{instanceOptions.Name}': {FailureReason.FromException(exception, TimeSpan.FromSeconds(instanceOptions.RequestTimeoutSeconds), cancellationToken)}");
         }
     }
 
@@ -1161,7 +1163,9 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
         }
         catch (Exception exception)
         {
-            return ExternalOperationResult<DockerImageInspectData>.Failed($"Docker image inspect failed for '{instanceOptions.Name}': {exception.Message}");
+            _logger.DockerInstanceImageInspectFailed(exception, instanceOptions.Name);
+
+            return ExternalOperationResult<DockerImageInspectData>.Failed($"Docker image inspect failed for '{instanceOptions.Name}': {FailureReason.FromException(exception, TimeSpan.FromSeconds(instanceOptions.RequestTimeoutSeconds), cancellationToken)}");
         }
     }
 
@@ -1198,7 +1202,9 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
         }
         catch (Exception exception)
         {
-            return ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>.Failed($"Docker image history failed for '{instanceOptions.Name}': {exception.Message}");
+            _logger.DockerInstanceImageHistoryFailed(exception, instanceOptions.Name);
+
+            return ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>.Failed($"Docker image history failed for '{instanceOptions.Name}': {FailureReason.FromException(exception, TimeSpan.FromSeconds(instanceOptions.RequestTimeoutSeconds), cancellationToken)}");
         }
     }
 
@@ -1253,7 +1259,9 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
         }
         catch (Exception exception)
         {
-            return ExternalOperationResult<long>.Failed($"Docker host info request failed for '{instanceOptions.Name}': {exception.Message}");
+            _logger.DockerInstanceHostInfoFailed(exception, instanceOptions.Name);
+
+            return ExternalOperationResult<long>.Failed($"Docker host info request failed for '{instanceOptions.Name}': {FailureReason.FromException(exception, TimeSpan.FromSeconds(instanceOptions.RequestTimeoutSeconds), cancellationToken)}");
         }
     }
 

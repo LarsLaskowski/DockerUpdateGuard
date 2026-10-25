@@ -99,7 +99,8 @@ transport security; the UI is the intended caller of the actions.
   the authentication error as described in *Authentication*; `cancelled` when the caller cancelled; `timed out after
   <n> seconds` (`RequestTimeoutSeconds`); `connection failed` for any transport failure; `invalid response` for an
   answer that is not the expected JSON; `unexpected error` otherwise. The error itself is logged with the failure
-  (EventIds 3306, 3310).
+  (EventIds 3306, 3310). These are the shared reasons of
+  [Registries](registries.md#failure-model-of-integrations).
 - Error messages and log entries name the Docker instance, the Portainer base URL (user info masked as `***`), the action, the container name and
   HTTP status codes. They never contain the password, the API token or the JWT.
 

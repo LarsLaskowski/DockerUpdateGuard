@@ -176,7 +176,8 @@ may scan the same image at the same time. This is wasteful but does not corrupt 
 - The smallest possible interval of every job is one minute; there is no sub-minute schedule and no cron-style
   schedule.
 - A step that reports a failure or an unexpected error turns the run `Failed`; the error message of the run carries
-  the step's message as returned by the integration, or the error's own message. Integrations report expected
+  the step's message as returned by the integration, or, for an unexpected error, `<scan> failed: <reason>` (`Runtime container scan failed`, `Observed image scan
+  failed`, `Vulnerability refresh failed`) with a fixed reason ([Registries](registries.md#failure-model-of-integrations)). Integrations report expected
   failures as results, not errors ([Registries](registries.md)).
 - A run that cannot be saved at its end (for example because the database became unreachable) stays `Running` until
   the stale-run repair marks it `Failed`. A vulnerability refresh retries this final save once on a fresh state

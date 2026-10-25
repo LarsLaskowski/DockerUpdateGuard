@@ -1,3 +1,6 @@
+using System.Globalization;
+using System.Text.Json;
+
 namespace DockerUpdateGuard.Infrastructure;
 
 /// <summary>
@@ -47,7 +50,37 @@ internal static class FailureReason
                                        TimeSpan? timeout,
                                        CancellationToken cancellationToken)
     {
-        throw new InvalidOperationException("Skeleton: not implemented");
+        if (exception is ReportableException)
+        {
+            return exception.Message;
+        }
+
+        if (exception is OperationCanceledException && cancellationToken.IsCancellationRequested)
+        {
+            return Cancelled;
+        }
+
+        if (exception is OperationCanceledException or TimeoutException)
+        {
+            if (timeout.HasValue && timeout.Value > TimeSpan.Zero && timeout.Value != Timeout.InfiniteTimeSpan)
+            {
+                return string.Create(CultureInfo.InvariantCulture, $"{TimedOut} after {(long)timeout.Value.TotalSeconds} seconds");
+            }
+
+            return TimedOut;
+        }
+
+        if (exception is HttpRequestException or IOException)
+        {
+            return ConnectionFailed;
+        }
+
+        if (exception is JsonException)
+        {
+            return InvalidResponse;
+        }
+
+        return UnexpectedError;
     }
 
     #endregion // Methods

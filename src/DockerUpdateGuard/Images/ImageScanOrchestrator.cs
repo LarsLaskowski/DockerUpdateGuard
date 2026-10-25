@@ -760,7 +760,7 @@ public class ImageScanOrchestrator : IImageScanOrchestrator
             {
                 finalStatus = ScanRunStatus.Failed;
 
-                statusMessages.Add(exception.Message);
+                statusMessages.Add($"Observed image scan failed: {FailureReason.FromException(exception, null, cancellationToken)}");
 
                 _logger.ObservedImageScanFailed(exception, observedImage.Name);
             }
