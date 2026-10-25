@@ -9,9 +9,11 @@ it. This script checks, without arguments:
 - every `.claude/agents/*.md` and every `SKILL.md` under `.claude/skills/` has front matter that parses as
   YAML, with a non-empty `name` and `description`;
 - an agent's `name` equals its file name, a skill's `name` equals its folder name;
-- every squad agent (`squad-*.md`) declares the `PreToolUse` hook `.claude/hooks/git-guard.py` for `Bash`, and
-  that hook exists: it keeps Git and GitHub write operations out of the members' hands; it also names its
-  `model` as an alias (`haiku`, `sonnet`, `opus`) and an explicit `effort`;
+- `.claude/settings.json` declares the `PreToolUse` hook `.claude/hooks/git-guard.py` for `Bash`, and that hook
+  exists: it keeps Git and GitHub write operations out of the squad members' hands (declared in the project
+  settings, because Claude Code skips a project agent's front-matter hooks without workspace trust, as in a cloud
+  session); every squad agent (`squad-*.md`) names its `model` as an alias (`haiku`, `sonnet`, `opus`) and an
+  explicit `effort`;
 - `AGENTS.md` (the rules every agent reads) and its GitHub Copilot mirror `.github/copilot-instructions.md` exist
   and are identical from their first `## ` heading on (only the title and introduction differ; Claude Code `@path`
   import lines on a line of their own are left out of the comparison, Copilot reads
@@ -43,6 +45,7 @@ GITHUB_DIR = ".github"
 SQUAD_DIR = ".squad"
 AGENTS_DIR = os.path.join(CLAUDE_DIR, "agents")
 GIT_GUARD = os.path.join(CLAUDE_DIR, "hooks", "git-guard.py")
+CLAUDE_SETTINGS = os.path.join(CLAUDE_DIR, "settings.json")
 MODELS = ("haiku", "sonnet", "opus")
 EFFORTS = ("low", "medium", "high", "xhigh", "max")
 SKILLS_DIR = os.path.join(CLAUDE_DIR, "skills")
@@ -100,9 +103,7 @@ def check(path, expected_name, errors, agent=False):
 
 
 def check_squad_agent(path, data, errors):
-    """A squad member declares the git-guard hook, an alias as model and an explicit effort."""
-    if not declares_git_guard(data):
-        errors.append(f"{path}: no PreToolUse hook for Bash running {GIT_GUARD} (squad members never run Git writes)")
+    """A squad member names an alias as model and an explicit effort."""
     if str(data.get("model") or "") not in MODELS:
         errors.append(f"{path}: 'model' must be one of {', '.join(MODELS)} (an alias, so a model change rolls out "
                       "with the template)")
@@ -111,7 +112,7 @@ def check_squad_agent(path, data, errors):
 
 
 def declares_git_guard(data):
-    """True when the front matter's hooks.PreToolUse has a Bash matcher with a command that runs git-guard.py."""
+    """True when the settings' hooks.PreToolUse has a Bash matcher with a command that runs git-guard.py."""
     groups = (data.get("hooks") or {}).get("PreToolUse") if isinstance(data.get("hooks"), dict) else None
     for group in groups or []:
         if not isinstance(group, dict) or "Bash" not in str(group.get("matcher", "")):
@@ -120,6 +121,21 @@ def declares_git_guard(data):
             if isinstance(hook, dict) and os.path.basename(GIT_GUARD) in str(hook.get("command", "")):
                 return True
     return False
+
+
+def check_git_guard(errors):
+    """The members' Git guard exists and the project settings run it before every Bash call."""
+    if not os.path.isfile(GIT_GUARD):
+        errors.append(f"{GIT_GUARD} is missing (written by adopt-template)")
+    try:
+        with open(CLAUDE_SETTINGS, encoding="utf-8-sig") as handle:
+            settings = json.load(handle)
+    except (OSError, ValueError) as error:
+        errors.append(f"{CLAUDE_SETTINGS} cannot be read ({error}); a refresh with adopt-template adds the git-guard hook")
+        return
+    if not isinstance(settings, dict) or not declares_git_guard(settings):
+        errors.append(f"{CLAUDE_SETTINGS}: no PreToolUse hook for Bash running {GIT_GUARD} (squad members never run "
+                      "Git writes; a refresh with adopt-template adds it)")
 
 
 def check_skills(errors):
@@ -241,8 +257,8 @@ def main():
     agents = sorted(glob.glob(os.path.join(AGENTS_DIR, "*.md")))
     for path in agents:
         check(path, os.path.splitext(os.path.basename(path))[0], errors, agent=True)
-    if agents and not os.path.isfile(GIT_GUARD):
-        errors.append(f"{GIT_GUARD} is missing (written by adopt-template)")
+    if agents:
+        check_git_guard(errors)
     skills = check_skills(errors)
     check_instructions(errors)
     check_template_record(errors)

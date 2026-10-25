@@ -4,12 +4,6 @@ description: Squad Reviewer. Reviews a change in this repository against its sta
 model: opus
 effort: medium
 tools: Read, Grep, Glob, Bash
-hooks:
-  PreToolUse:
-    - matcher: Bash
-      hooks:
-        - type: command
-          command: python3 "$CLAUDE_PROJECT_DIR/.claude/hooks/git-guard.py"
 ---
 
 # Squad Reviewer
@@ -48,7 +42,7 @@ areas, guarantees, integration surface, test doubles), `AGENTS.md` and
   `README.md` or a configuration example, give the file, the whole sentence
   as it stands and as it should read (never an insertion point such as
   "add after '…'"), and mark the finding
-  `verbatim` (`.squad/routing.md`, *Verbatim documentation fixes*). When the
+  `verbatim` (`.squad/orchestration.md`, *Verbatim documentation fixes*). When the
   fix changes a behavior statement an acceptance criterion or a guarantee in
   `.squad/project.md` relies on, say so: the Lead decides.
 
@@ -81,7 +75,7 @@ is blocking), and report as findings:
   (the first `log.md` row holds tier, exact edits and criteria) the diff holds only the named edits, no logic
   change, no new dependency, permission or schema, each edit covered by the check the row names. A security
   area the diff touches that *Security areas touched* does not list is a finding *unlisted security area*
-  (*Unlisted security areas* in `.squad/routing.md`; tiers with a `plan.md` — `patch/security` goes to Security
+  (*Unlisted security areas* in `.squad/orchestration.md`; tiers with a `plan.md` — `patch/security` goes to Security
   anyway); a touch that changes nothing an attacker could use you clear yourself. Below the `security` tier you are the security review of the diff: the
   security areas, secrets reaching logs, input safety and new dependencies in the checklist below are yours;
 - a *Challenge notes* or *Security notes* entry the diff ignores without a reported deviation (blocking when

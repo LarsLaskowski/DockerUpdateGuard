@@ -18,7 +18,7 @@ cells in `log.md`); steps 4–12 follow `squad-issue` with the changes listed af
 1. **Intake.** With a GitHub issue, read it in full, including comments and labels, and decide bug or feature
    (`.squad/routing.md`, *Bug or feature*) — the user calling it a feature or invoking this skill settles
    it; a bug fix switches to `squad-issue` now. A closed issue: stop and report that. A run that waits for
-   an outside author's agreement continues on its work branch (`.squad/routing.md`, *Outside authors*). Run
+   an outside author's agreement continues on its work branch (`.squad/orchestration.md`, *Outside authors*). Run
    `git fetch origin main --tags`, create the branch off the latest `main` (or the branch the session
    prescribes) and the work folder `specs/feature-<short-slug>/` (from an issue
    `specs/feature-<number>-<short-slug>/`) with `log.md` from `specs/_template/log.md`; commit and push. Log
@@ -28,7 +28,8 @@ cells in `log.md`); steps 4–12 follow `squad-issue` with the changes listed af
    (the feature exists already or contradicts an accepted decision: with an issue, as *Outcome "no change"*;
    otherwise report it to the user) or `RESULT: ESCALATE` (relay the question verbatim, then continue the Lead
    with the answer). Run `python3 .squad/tools/plan-check.py <folder> --spec` after every Lead write; findings
-   as *Loop limits* (Plan check) says.
+   as *Loop limits* (Plan check) says. Its size warning goes back to the Lead once (mode `revise`): it shortens
+   the spec, or keeps it and gives the reason in its result, which you log.
 
    **Spec challenge.** Launch `squad-devils-advocate` in mode `spec` with the issue text and the work folder,
    for every feature. Minor objections only: append them verbatim to `spec.md` as a *Challenge notes*
@@ -50,10 +51,10 @@ cells in `log.md`); steps 4–12 follow `squad-issue` with the changes listed af
 
 - **Steps 4–6** run per task group — the *Group* column of `tasks.md`, in table order; tick tasks off as they
   are done. The Tester's tests first are the tests *Tests per criterion* names for the group's
-  criteria. Continue a member for the fix and delta rounds of its task group; the next task group starts with
-  a fresh launch (*Continuing a member*), and a later fix round for an earlier group's agent is logged with
-  `--continued-from "<step cell of that group's launch>"`. A group whose task rows belong to the Lead
-  (documentation) is launched as `squad-lead` in mode `docs`, after the groups it waits for.
+  criteria. The next task group continues each member's last agent of the same mode, as do the fix and delta
+  rounds (*Continuing a member*); log such a launch with `--continued-from "<step cell of that agent's fresh
+  launch>"`. The documentation rows are the Dev's, done once the last group's *Coverage gate* passes (`squad-issue`
+  step 6; *Documentation* in `squad-dev.md`).
 - **Code-free changes:** as *Changes without production or test code*; *Verification without tests* then
   covers each criterion of the spec.
 - **Decision records:** features usually involve real design choices, so expect a record in

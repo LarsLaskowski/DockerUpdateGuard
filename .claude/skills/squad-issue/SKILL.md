@@ -8,11 +8,13 @@ description: Use when the user asks to fix a bug reported in a specific GitHub i
 Fix a bug reported in a GitHub issue with the squad defined in `.squad/`. A feature runs through
 `squad-spec` instead (`.squad/routing.md`, *Bug or feature*). You are the **orchestrator**: you launch the
 members as subagents, pass their outputs on (they cannot talk to each other), enforce the tiers and loop
-limits of [`.squad/routing.md`](../../../.squad/routing.md) — the rules this procedure points to — and perform
+limits of [`.squad/routing.md`](../../../.squad/routing.md) and follow the procedures of
+[`.squad/orchestration.md`](../../../.squad/orchestration.md) — the rules this procedure points to — and perform
 every Git and GitHub action yourself, including follow-up issues the Lead decides on.
 
 - **You never do a member's work.** Production code, tests and the documentation the plan assigns go to their
-  owner (production code → `squad-dev`, tests → `squad-tester`, analyzer-only edits → `squad-code-officer`),
+  owner (production code and documentation → `squad-dev`, tests → `squad-tester`, analyzer-only edits →
+  `squad-code-officer`),
   whatever your own checks find. Besides read-only checks you write only:
   - `log.md`, through `squad-log.py` (step 1), and `tasks.md` check marks (features);
   - in `plan.md` (for a feature also `spec.md`): the *Challenge notes* and *Security notes* you append
@@ -27,7 +29,8 @@ every Git and GitHub action yourself, including follow-up issues the Lead decide
   previous member handed back is enough.
 - **Continue members** for their next round as *Continuing a member* says; keep the agent id of each member's
   last launch.
-- **Scope:** a product PR never touches the squad or the instruction files (*Scope of a product PR*);
+- **Scope:** a product PR touches neither the squad nor the instruction files outside their project blocks
+  (*Scope of a product PR*);
   `scope-check.py` enforces it, and squad lessons are filed in step 12.
 - **One build at a time:** launch the members that build or test one after another (*Concurrency*).
 - **Commits:** commit and push as *Commits* and *The stop hook* say; never commit to `main`. Stage with plain
@@ -109,8 +112,11 @@ every Git and GitHub action yourself, including follow-up issues the Lead decide
    Dev disputes a test, launch `squad-lead` in mode `decide`; the Tester changes a test only if the Lead says
    so. Run *Test with coverage* and the *Coverage gate* yourself. Launch `squad-tester` in mode `coverage`,
    with the reason, only when the gate fails, the Dev reports uncovered new lines, a resource bound of the
-   plan has no test yet, a deferred test is open (also when the gate passes) or a reviewer asks for a test;
-   otherwise log why the pass is skipped. Repeat until the gate passes. Before step 7, `grep` the test files
+   plan has no test yet, a deferred test or test documentation is open (also when the gate passes) or a reviewer
+   asks for a test;
+   otherwise log why the pass is skipped. Repeat until the gate passes. Then, when the plan lists documentation
+   updates not written yet, continue the Dev's `implement` agent for them (*Documentation* in `squad-dev.md`;
+   test documentation: the Tester in mode `coverage`), logged as a step-6 continuation, and run *Test* again. Before step 7, `grep` the test files
    for every test the plan names; a name without a match goes to `squad-tester` in mode `coverage`. Lines
    reported as not unit-testable go to `squad-lead` in mode `decide`.
 7. **Code check.** `git fetch origin main` and merge `main` first when it moved (*Merge conflicts*). Run the gates of step 7 (*Pipeline*;
@@ -127,7 +133,7 @@ every Git and GitHub action yourself, including follow-up issues the Lead decide
    report for another code head is a stale round. Then:
    - a tier raise: *Tiers*; an *unlisted security area*: *Unlisted security areas*; a fix marked `verbatim`:
      *Verbatim documentation fixes*;
-   - blocking findings → their owner (`squad-dev`, `squad-tester`) → steps 6 and 7 again (tiers `docs` and
+   - blocking findings → their owner (`squad-dev` for code and documentation, `squad-tester`) → steps 6 and 7 again (tiers `docs` and
      `patch`: you fix them and rerun the checks of step 2) → **a delta round, mandatory**, continuing the
      reviewer; at most 2 fix rounds, then `squad-lead` in mode `decide` (*Loop limits*);
    - non-blocking findings: *Non-blocking findings*, collected for step 9.
@@ -162,8 +168,8 @@ every Git and GitHub action yourself, including follow-up issues the Lead decide
     - failing build or tests → `squad-dev` (test defects → `squad-tester`);
     - review comments (human, automated, `review-pr`) → `squad-dev`, worked in this PR, blocking or not.
 
-    Each fix goes through steps 7–8 again (delta review; `scope-check.py --no-specs` from now on), continuing
-    the member and the last round's reviewer, at most 2 fix rounds per failure before the Lead decides, and
+    Each fix goes through steps 7–8 again (delta review; `scope-check.py --no-specs` from now on), logged at
+    step 11 like every launch, continuing the member and the last round's reviewer, at most 2 fix rounds per failure before the Lead decides, and
     gets the re-approval of step 9. A red CI on a criterion the plan verifies only in CI is a normal outcome
     here (*Criteria verified only in CI*). The work folder is gone: give the Reviewer, Security and the Lead
     the plan (tiers `docs` and `patch`: the first log row; for a feature also `spec.md`, `tasks.md`) from the
@@ -176,7 +182,9 @@ every Git and GitHub action yourself, including follow-up issues the Lead decide
     labels if missing) and link them from the working-record comment; with nothing to learn, add a `no
     lessons` row instead. Run `python3 .squad/tools/squad-log.py issue-<number> --summary` (`--stdin` with the comment's
     log table); exit code 3 names launch rows still without usage — amend them from their
-    notifications or mark them `--unreported`, and run it again. Append the tables exactly as printed (a run
+    notifications or mark them `--unreported`, and run it again; exit code 4 names commits after the PR that
+    no step-11 review row follows — run their delta review (step 11), or log a verbatim fix as such, and run it
+    again. Append the tables exactly as printed (a run
     without them is not wrapped up) to the comment under "Squad run metrics", and report the branch, the PR
     URL, the tier, the `squad` issues (or "no lessons"), the metrics tables and any escalation or Lead
     decision to the user.

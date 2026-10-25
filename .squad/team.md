@@ -2,7 +2,8 @@
 
 Squad for this repository, used for both bug reports (`squad-issue` skill) and new features, with or
 without a GitHub issue (`squad-spec` skill; `routing.md`, *Bug or feature*). The idea follows [bradygaster/squad](https://github.com/bradygaster/squad): this
-file names the members and the rules they share, `routing.md` holds the pipeline and its limits, and each
+file names the members and the rules they share, `routing.md` holds the pipeline and its limits,
+`orchestration.md` the orchestrator's own procedures, and each
 role's charter is the Claude Code subagent file under `.claude/agents/` (all changed only in squad-maintenance
 PRs). The roles run as subagents, driven by the invoking session (the orchestrator).
 
@@ -18,11 +19,11 @@ specific to this repository lives in two files the members read first:
 
 | Role             | Subagent (charter)                                                    | Writes                                                           |
 | ---------------- | --------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| Lead             | [`squad-lead`](../.claude/agents/squad-lead.md)                       | plans, decision records, the doc edits the plan assigns to it    |
+| Lead             | [`squad-lead`](../.claude/agents/squad-lead.md)                       | plans, decision records                                          |
 | Devil's Advocate | [`squad-devils-advocate`](../.claude/agents/squad-devils-advocate.md) | nothing (read-only)                                              |
 | Security         | [`squad-security`](../.claude/agents/squad-security.md)               | nothing (read-only)                                              |
-| Tester           | [`squad-tester`](../.claude/agents/squad-tester.md)                   | test code, the doc edits the plan assigns to it                  |
-| Dev              | [`squad-dev`](../.claude/agents/squad-dev.md)                         | production code, the doc edits the plan assigns to it            |
+| Tester           | [`squad-tester`](../.claude/agents/squad-tester.md)                   | test code, the test documentation the plan lists                 |
+| Dev              | [`squad-dev`](../.claude/agents/squad-dev.md)                         | production code, the doc updates the plan lists, after the code  |
 | Code Officer     | [`squad-code-officer`](../.claude/agents/squad-code-officer.md)       | production and test code (format, analyzer and style fixes only); *Analyzer gate* notes in `stack.md` |
 | Reviewer         | [`squad-reviewer`](../.claude/agents/squad-reviewer.md)               | nothing (read-only)                                              |
 | Product Manager  | —                                                                     | answers escalations (the human user)                             |
@@ -48,8 +49,8 @@ runs *Format* from `stack.md` before handing back and keeps its result to those 
 formatter touched is reported as "formatted outside the change", not edited, and the orchestrator restores it.
 
 **Git and GitHub.** Members never run Git write operations and never post to GitHub (no GitHub MCP write tool
-either); the `PreToolUse` hook `.claude/hooks/git-guard.py`, declared in every `squad-*.md`, denies such Bash
-commands. Read-only Git, `git add` and a scratch `git worktree` stay allowed; a member that needs
+either); the `PreToolUse` hook `.claude/hooks/git-guard.py`, declared in `.claude/settings.json`, denies such Bash
+commands to every `squad-*` agent. Read-only Git, `git add` and a scratch `git worktree` stay allowed; a member that needs
 anything else reports it. The orchestrator checks `git status` after each report and restores any index or tree change. Another revision is read with `git show <sha>:<path>` or in a scratch worktree
 (`git worktree add --detach`), never by checking it out in the repository working tree.
 Session-management tools (`create_session`, `send_message`, `archive_session` and the other remote-session
@@ -57,7 +58,7 @@ tools) belong to the orchestrator alone, also for "handing over" work. Experimen
 edits, baselines) run in a scratch `git worktree` (`git stash` is a Git write, too). The orchestrator commits, pushes and opens the pull request (`routing.md`, *Pipeline*).
 
 **Reporting against a SHA.** Before the PR the orchestrator may commit your edits as work in progress while
-you work (`routing.md`, *The stop hook*), so a clean `git status` at hand-back is expected: report your
+you work (`orchestration.md`, *The stop hook*), so a clean `git status` at hand-back is expected: report your
 changes against the head SHA you were given (`git diff <sha>`).
 
 **A real check before "done".** A change to code that can be run, built or type-checked is exercised by a
@@ -66,7 +67,7 @@ itself. A syntax-only check, or a check command that failed to start, does not c
 run here, say which one you did not run and why.
 
 **Continued members.** The orchestrator may continue a member's earlier launch for a fix or delta round
-(`routing.md`, *Continuing a member*). A continued member keeps its role and its limits, works on or reviews
+(`orchestration.md`, *Continuing a member*). A continued member keeps its role and its limits, works on or reviews
 only the delta since the SHA of its last round, and nothing it remembers from an earlier round replaces
 reading that delta.
 

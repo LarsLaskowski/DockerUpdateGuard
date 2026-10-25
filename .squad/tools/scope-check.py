@@ -6,17 +6,19 @@ Checks, over every file changed since the merge base with BASE_REF (working tree
 included; BASE_REF from `.squad/tools/squad_settings.py`, default origin/main):
 
 - no squad or instruction file is changed: `.squad/` except `stack.md` and `project.md`, `.claude/`,
-  `AGENTS.md`, `CLAUDE.md`, `.github/copilot-instructions.md` (`.squad/routing.md`, *Scope of a product PR*; squad
-  lessons become issues);
-- a marked file (`docs/CONTRIBUTING.md`, `docs/ARCHITECTURE.md`, the bug report and pull request templates,
-  the decision and area index) is changed only inside its `<!-- project:… -->` blocks;
+  `CLAUDE.md` (`.squad/routing.md`, *Scope of a product PR*; squad lessons become issues);
+- a marked file (`AGENTS.md` and its Copilot mirror `.github/copilot-instructions.md`, `docs/CONTRIBUTING.md`,
+  `docs/ARCHITECTURE.md`, the bug report and pull request templates, the decision and area index) is changed only
+  inside its `<!-- project:… -->` blocks; `AGENTS.md` and its mirror are neither added nor deleted, and a project
+  block they share is the same in both (a pull request from a fork changes neither file at all);
 - no changed Markdown file contains a control character (Unicode categories Cc, Cf, Zl, Zp other than tab
   and line break);
 - with `--no-specs` (after squad step 10, and in every review after the PR is open): no working record
   under `specs/` is left in the diff, only `specs/README.md` and `specs/_template/` may change;
 - with `--tier docs`: every changed file is product documentation as the `docs` tier defines it
   (`README.md`, `SECURITY.md`, `docs/` except `docs/decisions/` and `docs/areas/`, `.squad/stack.md`,
-  `.squad/project.md`, the bug report and pull request templates) or a working record under `specs/`;
+  `.squad/project.md`, the project blocks of `AGENTS.md` and its mirror, the bug report and pull request
+  templates) or a working record under `specs/`;
 - with `--tier patch`: the files outside `specs/` change by at most PATCH_MAX_LINES lines in all (added plus
   removed, an untracked file with every line; default 30, `squad_settings.py`), and no binary file changes.
 
@@ -52,10 +54,16 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from analyzer_common import BASE_REF, control_characters, git, merge_base, settings  # noqa: E402  (shared helpers next to this script)
 
 SQUAD_FILES_ALLOWED = {".squad/stack.md", ".squad/project.md"}
-INSTRUCTION_FILES = {"AGENTS.md", "CLAUDE.md", ".github/copilot-instructions.md"}
-MARKED = ["docs/CONTRIBUTING.md", "docs/ARCHITECTURE.md", ".github/ISSUE_TEMPLATE/bug_report.md",
+INSTRUCTION_FILES = {"CLAUDE.md"}
+RULES, MIRROR = "AGENTS.md", ".github/copilot-instructions.md"
+# The rules every agent reads: a product PR of the squad may change their project blocks (identically in both), a
+# pull request from a fork never touches them.
+RULE_FILES = (RULES, MIRROR)
+IMPORT_LINE = re.compile(r"^@[^\s@]\S*[ \t]*\n", re.M)
+MARKED = [RULES, MIRROR, "docs/CONTRIBUTING.md", "docs/ARCHITECTURE.md",
+          ".github/ISSUE_TEMPLATE/bug_report.md",
           ".github/pull_request_template.md", "docs/decisions/README.md", "docs/areas/README.md"]
-DOCS_TIER = ["README.md", "SECURITY.md", ".squad/stack.md", ".squad/project.md",
+DOCS_TIER = ["README.md", "SECURITY.md", ".squad/stack.md", ".squad/project.md", RULES, MIRROR,
              ".github/ISSUE_TEMPLATE/bug_report.md", ".github/pull_request_template.md"]
 DOCS_TIER_DIRS = ["docs/"]
 DOCS_TIER_EXCLUDED = ["docs/decisions/", "docs/areas/"]
@@ -73,10 +81,10 @@ def changed_files(base):
     return sorted({n.strip() for n in names if n.strip()})
 
 
-def is_squad_file(path):
+def is_squad_file(path, fork=False):
     if path in SQUAD_FILES_ALLOWED:
         return False
-    return path.startswith((".squad/", ".claude/")) or path in INSTRUCTION_FILES
+    return path.startswith((".squad/", ".claude/")) or path in INSTRUCTION_FILES or (fork and path in RULE_FILES)
 
 
 def is_working_record(path):
@@ -197,11 +205,17 @@ def control_character_error(path, source):
     return f"{path}: control characters {', '.join(found)} (write them as text escapes)" if found else None
 
 
-def file_errors(path, source, tier, no_specs):
+def rule_file_added_or_deleted(path, source):
+    return path in RULE_FILES and (source.before(path) is None or source.after(path) is None)
+
+
+def file_errors(path, source, tier, no_specs, fork=False):
     """Every scope finding for one changed file."""
     findings = [
-        (is_squad_file(path), f"{path}: squad or instruction file changed in a product change "
-                              "(file a squad issue instead, .squad/routing.md *Squad lessons*)"),
+        (is_squad_file(path, fork), f"{path}: squad or instruction file changed in a product change "
+                                    "(file a squad issue instead, .squad/orchestration.md *Squad lessons*)"),
+        (not fork and rule_file_added_or_deleted(path, source),
+         f"{path}: instruction file added or deleted in a product change"),
         (path in MARKED and marked_file_changed_outside_blocks(path, source),
          f"{path}: changed outside its <!-- project:… --> blocks (the rest is template-managed)"),
         (no_specs and is_working_record(path),
@@ -235,9 +249,30 @@ def patch_errors(base):
     return errors
 
 
+def project_blocks(text):
+    """{block name: content} of a text's project blocks, Claude Code import lines left out (the Copilot mirror has
+    none)."""
+    return {match.group(1): IMPORT_LINE.sub("", match.group(0)) for match in PROJECT_BLOCK.finditer(
+        (text or "").replace("\r\n", "\n"))}
+
+
+def rule_block_errors(files, source):
+    """A project block changed in AGENTS.md or its Copilot mirror is the same in both."""
+    if not any(path in RULE_FILES for path in files):
+        return []
+    texts = [source.after(path) for path in RULE_FILES]
+    if None in texts:
+        return []  # a deleted file is its own finding
+    rules, mirror = (project_blocks(text) for text in texts)
+    return [f"{RULE_FILES[0]} and {RULE_FILES[1]} differ in the project block '{name}' - make the same change in "
+            "both" for name in sorted(set(rules) | set(mirror)) if rules.get(name) != mirror.get(name)]
+
+
 def check(files, base, tier, no_specs, source=None):
+    fork = source is not None  # the pull-request mode checks a fork's pull request
     source = source or LocalSource(base)
-    errors = [error for path in files for error in file_errors(path, source, tier, no_specs)]
+    errors = [error for path in files for error in file_errors(path, source, tier, no_specs, fork)]
+    errors += [] if fork else rule_block_errors(files, source)
     return errors + (patch_errors(base) if tier == "patch" else [])
 
 

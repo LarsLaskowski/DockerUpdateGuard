@@ -4,18 +4,22 @@ instead of a surprise after the pull request, and a rule the local analyzers do 
 
 Two modes:
 
-- `branch -- <scan command>` (step 7, before the pull request): needs `SONAR_TOKEN` in the environment and a
+- `branch -- <scan command>` (step 7, before the pull request): needs a SonarQube credential and a
   committed work branch (the scanner uploads the working tree; an uncommitted scratch file would be published
   with a public project) — only the coverage reports of *Test with coverage* may lie around untracked. Runs
   the scan command (*Sonar gate* in `.squad/stack.md`: the stack's scanner, analysing the work branch as a
   branch of the project), waits for SonarQube to process the report, and lists every open issue and security
-  hotspot on a line the branch added or changed since the merge base with BASE_REF. Without a token, or when
-  the scan fails (a network policy that blocks the scanner's download hosts, for example), the result is NOT
+  hotspot on a line the branch added or changed since the merge base with BASE_REF. Without a credential, or
+  when the scan fails (a network policy that blocks the scanner's download hosts, for example), the result is NOT
   CHECKED, and the pull request mode runs on the draft pull request.
 - `pr <number>` (step 11, on the draft pull request): reads the analysis of that pull request (with
   `SONAR_TOKEN` when it is set, which a private project needs) and checks that it belongs to the current head
   (`HEAD`, or `--head <sha>`); an analysis of an earlier head, or one without a quality gate yet, is PENDING,
   never a pass. Then lists the quality gate status, the open issues and the security hotspots to review.
+
+The credential is a network secret of the cloud environment for the SonarQube hosts (the agent proxy attaches
+it to every request to them, so the session never sees the token; `api/users/current` tells whether one is
+attached), or else `SONAR_TOKEN` in the environment, which every process of the session can read.
 
 The project comes from `SONAR_PROJECT_KEY` in `.squad/tools/squad_settings.py`, else `sonar.projectKey` in
 `sonar-project.properties`, else the `/k:` argument of the scanner in a workflow under `.github/workflows/`; the
@@ -30,7 +34,7 @@ Usage, from anywhere in the repository:
     python3 .squad/tools/sonar-check.py branch -- <scan command and arguments>
     python3 .squad/tools/sonar-check.py pr <number> [--head <sha>]
 
-Exit code 0 clean, 1 findings or a failed quality gate, 2 NOT CHECKED (no token, no project key, a dirty tree,
+Exit code 0 clean, 1 findings or a failed quality gate, 2 NOT CHECKED (no credential, no project key, a dirty tree,
 the scan or SonarQube failed), 3 PENDING (the analysis of this head is not there yet: wait and run again),
 4 wrong usage (a mistyped command line never reads as a skipped gate).
 """
@@ -101,6 +105,15 @@ def api(path, params, token=None):
         request.add_unredirected_header("Authorization", "Basic " + base64.b64encode(f"{token}:".encode()).decode())
     with urllib.request.urlopen(request, timeout=60) as response:  # noqa: S310  # nosec B310
         return json.load(response)
+
+
+def proxy_credential():
+    """True when SonarQube accepts requests that carry no token of their own: a network secret the agent proxy
+    attaches to the requests for the SonarQube hosts."""
+    try:
+        return api("users/current", {}).get("isLoggedIn") is True  # `authentication/validate` is true anonymously too
+    except (OSError, ValueError):  # URLError is an OSError
+        return False
 
 
 def paged(path, params, field, token=None):
@@ -283,7 +296,7 @@ def check_branch(key, command, token):
 def parse(argv):
     parser = Usage(prog="sonar-check.py", description="SonarQube Cloud findings as a gate result.")
     modes = parser.add_subparsers(dest="mode", required=True, parser_class=Usage)
-    branch = modes.add_parser("branch", help="scan the work branch (needs SONAR_TOKEN)")
+    branch = modes.add_parser("branch", help="scan the work branch (needs a SonarQube credential)")
     branch.add_argument("command", nargs=argparse.REMAINDER, help="-- followed by the *Sonar gate* scan command")
     pr = modes.add_parser("pr", help="check the analysis of a pull request")
     pr.add_argument("number", type=int)
@@ -304,11 +317,12 @@ def run(args):
         if not args.head and ahead not in ("", "0"):
             print("Note: HEAD has commits that are not pushed; the pull request cannot have been analysed at it.")
         return check_pr(key, args.number, head, token or None)
-    if not token:
-        raise NotChecked("SONAR_TOKEN is not set in this environment; check the draft pull request with "
+    if not token and not proxy_credential():
+        raise NotChecked("no SonarQube credential: neither a network secret for the SonarQube hosts nor "
+                         "SONAR_TOKEN in this environment; check the draft pull request with "
                          "`sonar-check.py pr <number>` in step 11 instead")
     command = args.command[1:] if args.command[:1] == ["--"] else args.command
-    return check_branch(key, command, token)
+    return check_branch(key, command, token or None)
 
 
 def main(argv=None):
