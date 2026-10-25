@@ -192,7 +192,7 @@ Portainer settings are optional and are only needed when Portainer-backed action
 | `Username` | none | Conditional | Username for Portainer login |
 | `Password` | none | Conditional | Password for Portainer login |
 | `ApiToken` | none | Conditional | Portainer API token; takes precedence over username/password |
-| `EndpointId` | none | No | Explicit Portainer endpoint ID; auto-discovered when omitted |
+| `EndpointId` | none | No | Portainer environment ID; required when Portainer manages more than one environment — without it the only listed environment is used, and actions are refused when there are several |
 | `RequestTimeoutSeconds` | `15` | No | Timeout for Portainer requests |
 
 When Portainer is enabled, either:

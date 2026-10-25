@@ -130,5 +130,31 @@ internal static partial class PortainerClientLogging
                    Message = "Portainer for Docker instance {DockerInstanceName} uses plaintext HTTP (AllowInsecureHttp); the API token, credentials and session token are transmitted unencrypted")]
     public static partial void PortainerInsecureHttpInUse(this ILogger logger, string dockerInstanceName);
 
+    /// <summary>
+    /// Log that Portainer lists several environments and no EndpointId is configured
+    /// </summary>
+    /// <param name="logger">Logger</param>
+    /// <param name="dockerInstanceName">Docker instance name</param>
+    /// <param name="listedEnvironmentCount">Number of listed environments</param>
+    /// <param name="reportedEnvironmentCount">Valid total reported by Portainer, or null</param>
+    [LoggerMessage(EventId = 3312,
+                   Level = LogLevel.Warning,
+                   Message = "Portainer for Docker instance {DockerInstanceName} lists {ListedEnvironmentCount} environments (reported total {ReportedEnvironmentCount}) and no EndpointId is configured; no environment is used")]
+    public static partial void PortainerEnvironmentAmbiguous(this ILogger logger,
+                                                             string dockerInstanceName,
+                                                             int listedEnvironmentCount,
+                                                             int? reportedEnvironmentCount);
+
+    /// <summary>
+    /// Log that the Portainer environment list request failed
+    /// </summary>
+    /// <param name="logger">Logger</param>
+    /// <param name="dockerInstanceName">Docker instance name</param>
+    /// <param name="statusCode">HTTP status code</param>
+    [LoggerMessage(EventId = 3313,
+                   Level = LogLevel.Warning,
+                   Message = "Portainer environment list failed for Docker instance {DockerInstanceName}: HTTP {StatusCode}")]
+    public static partial void PortainerEnvironmentListFailed(this ILogger logger, string dockerInstanceName, int statusCode);
+
     #endregion // Methods
 }
