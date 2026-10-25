@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text;
 
 using DockerUpdateGuard.Configuration;
 using DockerUpdateGuard.Infrastructure;
@@ -100,6 +101,21 @@ public class PortainerClientTests
     /// Event identifier of the plaintext HTTP warning
     /// </summary>
     private const int InsecureHttpEventId = 3311;
+
+    /// <summary>
+    /// Event identifier of the ambiguous environment warning
+    /// </summary>
+    private const int AmbiguousEventId = 3312;
+
+    /// <summary>
+    /// Event identifier of the failed environment list warning
+    /// </summary>
+    private const int ListFailedEventId = 3313;
+
+    /// <summary>
+    /// Name of the response header carrying the total number of environments
+    /// </summary>
+    private const string TotalCountHeaderName = "X-Total-Count";
 
     /// <summary>
     /// Host name marker injected into exception texts that must never reach a result message
@@ -1470,6 +1486,354 @@ public class PortainerClientTests
     }
 
     /// <summary>
+    /// Verify a capability lookup without an endpoint identifier refuses to pick one of several environments and lists them by identifier
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task PortainerClientGetCapabilityAsyncWithMultipleEnvironmentsAndNoEndpointIdReportsAmbiguousAsync()
+    {
+        var logger = new TestLogger<PortainerClient>();
+        var listResponse = CreateEnvironmentListResponse("""[{"Id":5,"Name":"edge"},{"Id":1,"Name":"local"},{"Id":2,"Name":"nas"}]""");
+
+        var (result, _) = await RunCapabilityWithoutEndpointIdAsync(listResponse, logger).ConfigureAwait(false);
+
+        Assert.IsTrue(result.IsConfigured, "An ambiguous environment list must still be reported as configured");
+        Assert.IsFalse(result.SupportsActions, "An ambiguous environment list must not support actions");
+        Assert.AreEqual("Portainer manages 3 environments; set Portainer:EndpointId of Docker instance 'Production' to one of: 1 (local), 2 (nas), 5 (edge)",
+                        result.Message,
+                        "The message must name the key relative to the instance and list the environments by ascending identifier");
+        Assert.Contains(entry => entry.EventId.Id == AmbiguousEventId
+                                 && entry.LogLevel == LogLevel.Warning
+                                 && entry.Message.Contains(InstanceName, StringComparison.Ordinal)
+                                 && entry.Message.Contains("lists 3 environments", StringComparison.Ordinal)
+                                 && entry.Message.Contains("edge", StringComparison.Ordinal) == false
+                                 && entry.Message.Contains("local", StringComparison.Ordinal) == false
+                                 && entry.Message.Contains("nas", StringComparison.Ordinal) == false,
+                        logger.Entries,
+                        "The ambiguity warning must name the instance and the listed count but no environment name");
+        Assert.DoesNotContain(entry => entry.EventId.Id == 3304,
+                              logger.Entries,
+                              "No environment may be reported as resolved when none is chosen");
+    }
+
+    /// <summary>
+    /// Verify an action without an endpoint identifier fails before any container lookup when Portainer lists several environments
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task PortainerClientExecuteActionAsyncWithMultipleEnvironmentsAndNoEndpointIdFailsWithoutActionAsync()
+    {
+        var logger = new TestLogger<PortainerClient>();
+        var listResponse = CreateEnvironmentListResponse("""[{"Id":2,"Name":"nas"},{"Id":1,"Name":"local"}]""");
+
+        var (result, requests) = await RunActionWithoutEndpointIdAsync(listResponse, logger).ConfigureAwait(false);
+
+        Assert.IsFalse(result.Succeeded, "An action must fail when several environments are listed and none is configured");
+        Assert.AreEqual("Portainer manages 2 environments; set Portainer:EndpointId of Docker instance 'Production' to one of: 1 (local), 2 (nas)",
+                        result.Message,
+                        "The action message must use the same format as the capability message");
+        Assert.HasCount(1, requests, "Only the environment list may be requested");
+        Assert.AreEqual(EndpointsUrl, requests[0].RequestUri, "The only request must be the environment list");
+        Assert.AreEqual("GET", requests[0].Method, "The only request must be the environment list read, not an action");
+    }
+
+    /// <summary>
+    /// Verify an action without an endpoint identifier runs against the only listed environment
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task PortainerClientExecuteActionAsyncWithSingleEnvironmentAndNoEndpointIdUsesItAsync()
+    {
+        var logger = new TestLogger<PortainerClient>();
+        var listResponse = CreateEnvironmentListResponse("""[{"Id":7,"Name":"local"}]""");
+
+        var (result, requests) = await RunActionWithoutEndpointIdAsync(listResponse, logger).ConfigureAwait(false);
+
+        Assert.IsTrue(result.Succeeded, "An action must run when exactly one environment is listed");
+        Assert.Contains(request => request.RequestUri == RestartActionUrl && request.Method == "POST",
+                        requests,
+                        "The action must be sent to the only listed environment");
+    }
+
+    /// <summary>
+    /// Verify a null environment list body is reported as no endpoint found
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task PortainerClientGetCapabilityAsyncWhenEnvironmentListIsNullReturnsNoEndpointFoundAsync()
+    {
+        var listResponse = CreateEnvironmentListResponse("null");
+
+        var (result, _) = await RunCapabilityWithoutEndpointIdAsync(listResponse, new TestLogger<PortainerClient>()).ConfigureAwait(false);
+
+        Assert.IsTrue(result.IsConfigured, "A null environment list must still be reported as configured");
+        Assert.IsFalse(result.SupportsActions, "A null environment list must not support actions");
+        Assert.AreEqual("No Portainer endpoint found",
+                        result.Message,
+                        "A null environment list must be reported like an empty one");
+    }
+
+    /// <summary>
+    /// Verify a failing environment list request is reported with its status code and logged
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task PortainerClientGetCapabilityAsyncWhenEnvironmentListFailsReportsStatusCodeAsync()
+    {
+        var logger = new TestLogger<PortainerClient>();
+        var listResponse = new HttpResponseMessage(HttpStatusCode.InternalServerError);
+
+        var (result, _) = await RunCapabilityWithoutEndpointIdAsync(listResponse, logger).ConfigureAwait(false);
+
+        Assert.IsTrue(result.IsConfigured, "A failing environment list must still be reported as configured");
+        Assert.IsFalse(result.SupportsActions, "A failing environment list must not support actions");
+        Assert.AreEqual("Portainer environment list failed: HTTP 500",
+                        result.Message,
+                        "The message must carry the status code of the environment list");
+        Assert.Contains(entry => entry.EventId.Id == ListFailedEventId
+                                 && entry.LogLevel == LogLevel.Warning
+                                 && entry.Message.Contains(InstanceName, StringComparison.Ordinal)
+                                 && entry.Message.Contains("500", StringComparison.Ordinal),
+                        logger.Entries,
+                        "A failing environment list must log a warning naming the instance and the status code");
+    }
+
+    /// <summary>
+    /// Verify an action fails with the status code of a failing environment list before any container lookup
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task PortainerClientExecuteActionAsyncWhenEnvironmentListFailsReportsStatusCodeWithoutActionAsync()
+    {
+        var logger = new TestLogger<PortainerClient>();
+        var listResponse = new HttpResponseMessage(HttpStatusCode.InternalServerError);
+
+        var (result, requests) = await RunActionWithoutEndpointIdAsync(listResponse, logger).ConfigureAwait(false);
+
+        Assert.IsFalse(result.Succeeded, "An action must fail when the environment list fails");
+        Assert.AreEqual("Portainer environment list failed: HTTP 500",
+                        result.Message,
+                        "The action message must carry the status code of the environment list");
+        Assert.HasCount(1, requests, "No container lookup or action may follow a failed environment list");
+        Assert.Contains(entry => entry.EventId.Id == ListFailedEventId
+                                 && entry.LogLevel == LogLevel.Warning
+                                 && entry.Message.Contains(InstanceName, StringComparison.Ordinal)
+                                 && entry.Message.Contains("500", StringComparison.Ordinal),
+                        logger.Entries,
+                        "A failing environment list must log a warning naming the instance and the status code");
+    }
+
+    /// <summary>
+    /// Verify a capability lookup with a configured endpoint identifier never requests the environment list
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task PortainerClientGetCapabilityAsyncWithEndpointIdDoesNotRequestEnvironmentListAsync()
+    {
+        var handler = new SequenceHttpMessageHandler();
+        var logger = new TestLogger<PortainerClient>();
+
+        try
+        {
+            handler.AddResponse(StatusUrl, new HttpResponseMessage(HttpStatusCode.OK));
+            handler.AddResponse(EndpointsUrl, CreateEnvironmentListResponse("""[{"Id":1,"Name":"local"},{"Id":2,"Name":"nas"}]"""));
+
+            var client = new PortainerClient(CreateHttpClientFactory(handler), logger);
+            var instanceOptions = CreateInstanceOptions(InstanceName,
+                                                        options =>
+                                                        {
+                                                            options.ApiToken = PatToken;
+                                                            options.EndpointId = EndpointId;
+                                                        });
+
+            var result = await client.GetCapabilityAsync(instanceOptions, TestContext.CancellationToken)
+                                     .ConfigureAwait(false);
+
+            Assert.IsTrue(result.SupportsActions, "A configured endpoint identifier must support actions");
+            Assert.DoesNotContain(request => request.RequestUri == EndpointsUrl,
+                                  handler.Requests,
+                                  "A configured endpoint identifier must not trigger the environment list request");
+        }
+        finally
+        {
+            handler.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Verify an action with a configured endpoint identifier never requests the environment list
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task PortainerClientExecuteActionAsyncWithEndpointIdDoesNotRequestEnvironmentListAsync()
+    {
+        var handler = new SequenceHttpMessageHandler();
+        var logger = new TestLogger<PortainerClient>();
+
+        try
+        {
+            handler.AddResponse(EndpointsUrl, CreateEnvironmentListResponse("""[{"Id":1,"Name":"local"},{"Id":2,"Name":"nas"}]"""));
+            handler.AddJsonResponse(ContainersUrl, ContainerFoundJson);
+            handler.AddResponse(RestartActionUrl, new HttpResponseMessage(HttpStatusCode.NoContent));
+
+            var client = new PortainerClient(CreateHttpClientFactory(handler), logger);
+            var instanceOptions = CreateInstanceOptions(InstanceName,
+                                                        options =>
+                                                        {
+                                                            options.ApiToken = PatToken;
+                                                            options.EndpointId = EndpointId;
+                                                        });
+            var actionRequest = CreateRestartRequest();
+
+            var result = await client.ExecuteActionAsync(instanceOptions, actionRequest, TestContext.CancellationToken)
+                                     .ConfigureAwait(false);
+
+            Assert.IsTrue(result.Succeeded, "An action with a configured endpoint identifier must run");
+            Assert.DoesNotContain(request => request.RequestUri == EndpointsUrl,
+                                  handler.Requests,
+                                  "A configured endpoint identifier must not trigger the environment list request");
+        }
+        finally
+        {
+            handler.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Verify at most ten environments are listed, by ascending identifier, followed by an ellipsis
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task PortainerClientGetCapabilityAsyncWithMoreThanTenEnvironmentsListsFirstTenAsync()
+    {
+        var listResponse = CreateEnvironmentListResponse("""
+                                                         [{"Id":12,"Name":"e12"},{"Id":3,"Name":"e3"},{"Id":11,"Name":"e11"},{"Id":1,"Name":"e1"},
+                                                          {"Id":9,"Name":"e9"},{"Id":2,"Name":"e2"},{"Id":10,"Name":"e10"},{"Id":4,"Name":"e4"},
+                                                          {"Id":8,"Name":"e8"},{"Id":5,"Name":"e5"},{"Id":7,"Name":"e7"},{"Id":6,"Name":"e6"}]
+                                                         """);
+
+        var (result, _) = await RunCapabilityWithoutEndpointIdAsync(listResponse, new TestLogger<PortainerClient>()).ConfigureAwait(false);
+
+        Assert.AreEqual("Portainer manages 12 environments; set Portainer:EndpointId of Docker instance 'Production' to one of: 1 (e1), 2 (e2), 3 (e3), 4 (e4), 5 (e5), 6 (e6), 7 (e7), 8 (e8), 9 (e9), 10 (e10), …",
+                        result.Message,
+                        "Only the first ten environments by ascending identifier must be listed, followed by an ellipsis");
+    }
+
+    /// <summary>
+    /// Verify a reported total above the listed environments makes the list ambiguous even when one environment is listed
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task PortainerClientGetCapabilityAsyncWithTotalCountAboveListedEnvironmentsReportsAmbiguousAsync()
+    {
+        var logger = new TestLogger<PortainerClient>();
+        var listResponse = CreateEnvironmentListResponse("""[{"Id":7,"Name":"local"}]""", "3");
+
+        var (result, _) = await RunCapabilityWithoutEndpointIdAsync(listResponse, logger).ConfigureAwait(false);
+
+        Assert.IsFalse(result.SupportsActions, "A truncated list must not make its only environment usable");
+        Assert.AreEqual("Portainer manages 3 environments; set Portainer:EndpointId of Docker instance 'Production' to one of: 7 (local), …",
+                        result.Message,
+                        "The message must use the reported total and mark the list as incomplete");
+        Assert.Contains(entry => entry.EventId.Id == AmbiguousEventId
+                                 && entry.Message.Contains("lists 1 environments", StringComparison.Ordinal)
+                                 && entry.Message.Contains("reported total 3", StringComparison.Ordinal),
+                        logger.Entries,
+                        "The ambiguity warning must carry the listed count and the reported total");
+    }
+
+    /// <summary>
+    /// Verify an empty list with a reported total fails the action with a message that lists no environment
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task PortainerClientExecuteActionAsyncWithEmptyListAndTotalCountReportsAmbiguousWithoutActionAsync()
+    {
+        var listResponse = CreateEnvironmentListResponse("[]", "3");
+
+        var (result, requests) = await RunActionWithoutEndpointIdAsync(listResponse, new TestLogger<PortainerClient>()).ConfigureAwait(false);
+
+        Assert.IsFalse(result.Succeeded, "An action must fail when Portainer reports environments but lists none");
+        Assert.AreEqual("Portainer manages 3 environments; set Portainer:EndpointId of Docker instance 'Production'",
+                        result.Message,
+                        "The message must end after the instance name when no environment is listed");
+        Assert.HasCount(1, requests, "No container lookup may follow an ambiguous resolution");
+    }
+
+    /// <summary>
+    /// Verify a present but invalid total count header never makes a single listed environment usable
+    /// </summary>
+    /// <param name="firstValue">First header value</param>
+    /// <param name="secondValue">Second header value; null when the header carries one value</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [DataRow("abc", null)]
+    [DataRow("-1", null)]
+    [DataRow("1", "1")]
+    public async Task PortainerClientGetCapabilityAsyncWithInvalidTotalCountAndSingleEnvironmentReportsUnknownCountAsync(string firstValue, string? secondValue)
+    {
+        var listResponse = CreateEnvironmentListResponse("""[{"Id":7,"Name":"local"}]""", firstValue, secondValue);
+
+        var (result, _) = await RunCapabilityWithoutEndpointIdAsync(listResponse, new TestLogger<PortainerClient>()).ConfigureAwait(false);
+
+        Assert.IsTrue(result.IsConfigured, "An invalid total count must still be reported as configured");
+        Assert.IsFalse(result.SupportsActions, "An invalid total count must fail closed");
+        Assert.AreEqual("Portainer reported no valid environment count; set Portainer:EndpointId of Docker instance 'Production' to one of: 7 (local), …",
+                        result.Message,
+                        $"The header value '{firstValue}' / '{secondValue}' must be reported as an unknown count");
+    }
+
+    /// <summary>
+    /// Verify environment names are trimmed, cleaned of control, format and separator characters and shortened
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task PortainerClientGetCapabilityAsyncWithAmbiguousEnvironmentsSanitizesEnvironmentNamesAsync()
+    {
+        var longName = new string('n', 100);
+        var prefix = new string('p', 63);
+        var json = $$"""
+                     [{"Id":1,"Name":"a\u202Eb"},{"Id":2,"Name":"x\u2028y"},{"Id":3,"Name":"t\tu"},
+                      {"Id":4,"Name":"{{longName}}"},{"Id":5,"Name":"{{prefix}}\uD83D\uDE00"},{"Id":6,"Name":null},
+                      {"Id":7,"Name":"  "},{"Id":8,"Name":"  pad  "},{"Id":9,"Name":"q\u2029r"}]
+                     """;
+
+        Assert.Contains("""\u202E""", json, "The input must still carry the escape of the bidirectional override");
+        Assert.Contains("""\u2028""", json, "The input must still carry the escape of the line separator");
+        Assert.Contains("""\u2029""", json, "The input must still carry the escape of the paragraph separator");
+        Assert.Contains("""\t""", json, "The input must still carry the escape of the tab");
+        Assert.Contains("""\uD83D\uDE00""", json, "The input must still carry the escape of the surrogate pair");
+
+        var (result, _) = await RunCapabilityWithoutEndpointIdAsync(CreateEnvironmentListResponse(json), new TestLogger<PortainerClient>()).ConfigureAwait(false);
+
+        Assert.AreEqual($"Portainer manages 9 environments; set Portainer:EndpointId of Docker instance 'Production' to one of: 1 (a?b), 2 (x?y), 3 (t?u), 4 ({new string('n', 64)}…), 5 ({prefix}…), 6, 7, 8 (pad), 9 (q?r)",
+                        result.Message,
+                        "Names must be trimmed, cleaned, cut to 64 UTF-16 units without splitting a surrogate pair, and omitted when empty");
+    }
+
+    /// <summary>
+    /// Create a successful environment list response
+    /// </summary>
+    /// <param name="json">Response body</param>
+    /// <param name="totalCountValues">Values of the total count header; none leaves the header out</param>
+    /// <returns>Response</returns>
+    private static HttpResponseMessage CreateEnvironmentListResponse(string json, params string?[] totalCountValues)
+    {
+        var response = new HttpResponseMessage(HttpStatusCode.OK)
+                       {
+                           Content = new StringContent(json, Encoding.UTF8, "application/json"),
+                       };
+        var values = totalCountValues.OfType<string>().ToArray();
+
+        if (values.Length > 0)
+        {
+            response.Headers.TryAddWithoutValidation(TotalCountHeaderName, values);
+        }
+
+        return response;
+    }
+
+    /// <summary>
     /// Create the exception of a request that timed out in the HTTP client
     /// </summary>
     /// <returns>Exception</returns>
@@ -1612,6 +1976,65 @@ public class PortainerClientTests
         httpClientFactory.CreateClient(PortainerClient.HttpClientName).Returns(httpClient);
 
         return httpClientFactory;
+    }
+
+    /// <summary>
+    /// Run a capability lookup of an instance without an endpoint identifier against the given environment list response
+    /// </summary>
+    /// <param name="listResponse">Response of the environment list request</param>
+    /// <param name="logger">Logger collecting the entries</param>
+    /// <returns>Capability and the observed requests</returns>
+    private async Task<(PortainerCapabilityData Result, IReadOnlyList<ObservedRequest> Requests)> RunCapabilityWithoutEndpointIdAsync(HttpResponseMessage listResponse, TestLogger<PortainerClient> logger)
+    {
+        var handler = new SequenceHttpMessageHandler();
+
+        try
+        {
+            handler.AddResponse(StatusUrl, new HttpResponseMessage(HttpStatusCode.OK));
+            handler.AddResponse(EndpointsUrl, listResponse);
+
+            var client = new PortainerClient(CreateHttpClientFactory(handler), logger);
+            var instanceOptions = CreateInstanceOptions(InstanceName, options => options.ApiToken = PatToken);
+
+            var result = await client.GetCapabilityAsync(instanceOptions, TestContext.CancellationToken)
+                                     .ConfigureAwait(false);
+
+            return (result, handler.Requests);
+        }
+        finally
+        {
+            handler.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Run a restart action of an instance without an endpoint identifier against the given environment list response
+    /// </summary>
+    /// <param name="listResponse">Response of the environment list request</param>
+    /// <param name="logger">Logger collecting the entries</param>
+    /// <returns>Action result and the observed requests</returns>
+    private async Task<(PortainerActionResult Result, IReadOnlyList<ObservedRequest> Requests)> RunActionWithoutEndpointIdAsync(HttpResponseMessage listResponse, TestLogger<PortainerClient> logger)
+    {
+        var handler = new SequenceHttpMessageHandler();
+
+        try
+        {
+            handler.AddResponse(EndpointsUrl, listResponse);
+            handler.AddJsonResponse(ContainersUrl, ContainerFoundJson);
+            handler.AddResponse(RestartActionUrl, new HttpResponseMessage(HttpStatusCode.NoContent));
+
+            var client = new PortainerClient(CreateHttpClientFactory(handler), logger);
+            var instanceOptions = CreateInstanceOptions(InstanceName, options => options.ApiToken = PatToken);
+
+            var result = await client.ExecuteActionAsync(instanceOptions, CreateRestartRequest(), TestContext.CancellationToken)
+                                     .ConfigureAwait(false);
+
+            return (result, handler.Requests);
+        }
+        finally
+        {
+            handler.Dispose();
+        }
     }
 
     #endregion // Methods
