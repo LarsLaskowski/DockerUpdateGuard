@@ -28,13 +28,20 @@ Manager decided on the issue that no environment is picked silently.
 4. **Resolve once and persist the resolved ID in `PortainerEndpoint.ExternalEndpointId`** — fewer requests, but the
    stored value then no longer reflects configuration, and an environment added later would not be noticed.
 5. **Keep the first environment and only warn** — the action still runs on the wrong host.
+6. **Ignore a present but invalid total-count header** — the header check exists to notice a list that is not the full
+   list; an unparseable, negative or repeated header is such an unexpected answer, and ignoring it would let a single
+   listed environment be used again. An invalid header therefore counts as an unknown total and refuses; an absent
+   header (a proxy, an older Portainer) is still ignored.
+7. **Name the full configuration key with the instance name in the message** — configuration addresses Docker
+   instances by list position, not by name, so a copied key would add a stray list entry; the client does not know
+   the position. The message names the key relative to the named instance instead.
 
 ## Decision
 
 Without a configured `EndpointId`, the capability check and every action use Portainer's environment only when the
-environment list (including its total-count header) shows exactly one; with more than one they fail before any
-container lookup with a message naming the key to set and the environments to choose from, and a failed list request
-reports its HTTP status. The rules — message texts, the listing limit, how names are cleaned — are in
+environment list (including a valid total-count header) shows exactly one; with more than one, or with an invalid
+total-count header, they fail before any container lookup with a message naming the key to set relative to the Docker
+instance and the environments to choose from, and a failed list request reports its HTTP status. The rules — message texts, the listing limit, how names are cleaned — are in
 [Container actions](../areas/container-actions.md#configuration-and-mapping).
 
 ## Consequences
@@ -43,6 +50,9 @@ reports its HTTP status. The rules — message texts, the listing limit, how nam
   too), needs `EndpointId` before actions work; the capability message tells the operator which value to set.
 - Portainer lists only the environments the authenticating user may see, so a restricted API user that sees exactly
   one environment still works without `EndpointId`.
+- A single listed environment is trusted, not checked against the Docker instance; `EndpointId` is the only way to
+  bind an instance to a specific host.
 - The environment list is requested on every call without `EndpointId`, as before; a configured `EndpointId` skips it.
 - Environment names are Portainer data shown in a message: they are cleaned of control and format characters and
-  shortened, and the list is capped, so a large or hostile list cannot flood the UI.
+  shortened, and the list is capped, so a large or hostile list cannot flood the UI; the message is never logged and
+  is rendered encoded wherever it is shown.

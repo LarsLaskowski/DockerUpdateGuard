@@ -30,7 +30,7 @@ several environments the first one can be another host. A non-success list answe
 | 10 | The JSON field names are `Id` and `Name` | Portainer `api/portainer.go`, `Endpoint` struct tags `json:"Id"`, `json:"Name"` | confirmed |
 | 11 | With `EndpointId` configured the list is not requested today | `PortainerClient.cs:256`, `:325` guard the call | confirmed |
 | 12 | No existing test relies on an unregistered `/api/endpoints` (404) mapping to "No Portainer endpoint found" | Every `PortainerClientTests` case without `EndpointId` registers `EndpointsUrl` (`:252`, `:292`, `:640`) or never reaches resolution (disabled, allow-list) | confirmed |
-| 13 | Configuration error messages name keys as `DockerUpdateGuard:DockerInstances:<instance name>:Portainer:<key>` in quotes | `DockerUpdateGuardOptionsValidator.cs:318-342` | confirmed |
+| 13 | Configuration keys of a Docker instance are list positions (`DockerInstances:0:…`), not instance names; `PortainerClient` receives only the `DockerInstanceOptions`, not its position | `DockerUpdateGuardOptions.cs:57` (`IList<DockerInstanceOptions>`), `README.md:161`, `:179-183`, `docs/areas/container-actions.md:14`; the validator's messages (`DockerUpdateGuardOptionsValidator.cs:318-342`) put the instance name into the key and are therefore wrong too (related defect, follow-up) | confirmed |
 | 14 | `SequenceHttpMessageHandler` copies response headers into the returned clone, so a test can set `X-Total-Count` | `src/Tests/DockerUpdateGuard.Tests/Helper/SequenceHttpMessageHandler.cs`, `CloneResponse` copies `response.Headers` | confirmed |
 | 15 | EventIds 3312 and 3313 are free | `grep "EventId = 331[2-9]" src` finds none | confirmed |
 
@@ -40,16 +40,18 @@ the integer header of fact 8, so no new sample of the format is needed.
 ## Acceptance criteria
 
 The decision path for every message below is the new `ResolveEndpointAsync`; `GetCapabilityAsync` and
-`ExecuteActionAsync` pass its `FailureMessage` through unchanged. *Count* is the larger of the number of listed
-environments and a valid `X-Total-Count` header.
+`ExecuteActionAsync` pass its `FailureMessage` through unchanged. *Count* is the number of listed environments when
+`X-Total-Count` is absent, the larger of that number and the header when the header is valid, and *unknown* when the
+header is present but invalid (Approach step 3). The test instance is named `Production`.
 
-- [ ] AC1: `GetCapabilityAsync` without `EndpointId`, list `[{"Id":5,"Name":"edge"},{"Id":1,"Name":"local"},{"Id":2,"Name":"nas"}]` → `IsConfigured = true`, `SupportsActions = false`, `Message` exactly `Portainer manages 3 environments; set 'DockerUpdateGuard:DockerInstances:Production:Portainer:EndpointId' to one of: 1 (local), 2 (nas), 5 (edge)`; one warning with EventId 3312 naming the instance and the count, not containing any environment name; no 3304 entry.
+- [ ] AC1: `GetCapabilityAsync` without `EndpointId`, list `[{"Id":5,"Name":"edge"},{"Id":1,"Name":"local"},{"Id":2,"Name":"nas"}]` → `IsConfigured = true`, `SupportsActions = false`, `Message` exactly `Portainer manages 3 environments; set Portainer:EndpointId of Docker instance 'Production' to one of: 1 (local), 2 (nas), 5 (edge)`; one warning with EventId 3312 naming the instance and the listed count, not containing any environment name; no 3304 entry.
 - [ ] AC2: `ExecuteActionAsync` (restart) without `EndpointId` and two listed environments → `Succeeded = false`, `Message` equal to the AC1 format for those two; the only requests are the list request (no container list, no `POST`).
 - [ ] AC3: exactly one listed environment (Count 1) → it is used: capability "Portainer connected, endpoint 7", and an action runs against environment 7.
 - [ ] AC4: an empty list (`[]`), or a body `null`, → "No Portainer endpoint found", as today, for both calls.
 - [ ] AC5: the list request answering 500 → capability `IsConfigured = true`, `SupportsActions = false`, `Message` exactly `Portainer environment list failed: HTTP 500`; the action fails with the same message and sends no container-list request; one warning with EventId 3313 naming the instance and the status code.
 - [ ] AC6: with `EndpointId` configured, the list is never requested, for both calls.
-- [ ] AC7: Count above 10 → the message lists the first 10 environments by ascending `Id`, followed by `, …`; and a list with one environment plus `X-Total-Count: 3` → ambiguous, not used: `Message` exactly `Portainer manages 3 environments; set 'DockerUpdateGuard:DockerInstances:Production:Portainer:EndpointId' to one of: 7 (local), …`.
+- [ ] AC7: Count above 10 → the message lists the first 10 environments by ascending `Id`, followed by `, …`; a list with one environment plus `X-Total-Count: 3` → ambiguous, not used: `Message` exactly `Portainer manages 3 environments; set Portainer:EndpointId of Docker instance 'Production' to one of: 7 (local), …`; an empty list (`[]`) plus `X-Total-Count: 3` → `ExecuteActionAsync` fails with `Message` exactly `Portainer manages 3 environments; set Portainer:EndpointId of Docker instance 'Production'` and sends no container-list request.
+- [ ] AC9: `X-Total-Count` present but invalid (`abc`, `-1`, or the two values `1` and `1`) with one listed environment `{"Id":7,"Name":"local"}` → not used: `Message` exactly `Portainer reported no valid environment count; set Portainer:EndpointId of Docker instance 'Production' to one of: 7 (local), …`; an absent header with the same list → environment 7 is used (AC3).
 - [ ] AC8: environment names are trimmed; every character of Unicode category Control, Format, LineSeparator or ParagraphSeparator becomes `?`; a name longer than 64 UTF-16 units is cut to 64 (63 when the 64th is a high surrogate) plus `…`; an empty or missing name lists the ID alone (`3` instead of `3 ()`).
 
 ## Tests per criterion
@@ -65,7 +67,8 @@ step 5); "existing" tests stay unchanged.
 | AC4 | existing `PortainerClientGetCapabilityAsyncWhenNoEndpointFoundReturnsUnsupportedResultAsync`, `PortainerClientExecuteActionAsyncWhenNoEndpointFoundReturnsFailureResultAsync`; new `PortainerClientGetCapabilityAsyncWhenEnvironmentListIsNullReturnsNoEndpointFoundAsync` (deferred) | `src/Tests/DockerUpdateGuard.Tests/PortainerClientTests.cs` |
 | AC5 | `PortainerClientGetCapabilityAsyncWhenEnvironmentListFailsReportsStatusCodeAsync`, `PortainerClientExecuteActionAsyncWhenEnvironmentListFailsReportsStatusCodeWithoutActionAsync` | `src/Tests/DockerUpdateGuard.Tests/PortainerClientTests.cs` |
 | AC6 | `PortainerClientGetCapabilityAsyncWithEndpointIdDoesNotRequestEnvironmentListAsync`, `PortainerClientExecuteActionAsyncWithEndpointIdDoesNotRequestEnvironmentListAsync` (both deferred) | `src/Tests/DockerUpdateGuard.Tests/PortainerClientTests.cs` |
-| AC7 | `PortainerClientGetCapabilityAsyncWithMoreThanTenEnvironmentsListsFirstTenAsync`, `PortainerClientGetCapabilityAsyncWithTotalCountAboveListedEnvironmentsReportsAmbiguousAsync` | `src/Tests/DockerUpdateGuard.Tests/PortainerClientTests.cs` |
+| AC7 | `PortainerClientGetCapabilityAsyncWithMoreThanTenEnvironmentsListsFirstTenAsync`, `PortainerClientGetCapabilityAsyncWithTotalCountAboveListedEnvironmentsReportsAmbiguousAsync`, `PortainerClientExecuteActionAsyncWithEmptyListAndTotalCountReportsAmbiguousWithoutActionAsync` | `src/Tests/DockerUpdateGuard.Tests/PortainerClientTests.cs` |
+| AC9 | `PortainerClientGetCapabilityAsyncWithInvalidTotalCountAndSingleEnvironmentReportsUnknownCountAsync` (`[DataRow]` per invalid form: `abc`, `-1`, two values) | `src/Tests/DockerUpdateGuard.Tests/PortainerClientTests.cs` |
 | AC8 | `PortainerClientGetCapabilityAsyncWithAmbiguousEnvironmentsSanitizesEnvironmentNamesAsync` (cases in one list: a name with U+202E, one with U+2028, one with a tab, a 100-character name, a 63-character prefix followed by a surrogate pair, `"Name":null`, `"Name":"  "`) | `src/Tests/DockerUpdateGuard.Tests/PortainerClientTests.cs` |
 
 AC8 input: the JSON body carries each special character as a JSON escape (`\u202E`, `\u2028`, `\t`, a surrogate
@@ -81,24 +84,30 @@ lost is that assertion; with the escape present, the category replacement is wha
 1. `EndpointId` configured (not whitespace) → `EndpointId` as configured, no request.
 2. `GET /api/endpoints` (unchanged URL, no paging parameters). Non-success → log 3313, failure
    `Portainer environment list failed: HTTP <status>`.
-3. Body read as `PortainerEndpointItem[]` (a `null` body counts as empty). `X-Total-Count`: read only when exactly one
-   value parses as a non-negative `int` (`CultureInfo.InvariantCulture`); otherwise ignored. Count = max(listed, header).
-4. Count greater than 1 → log 3312, failure message (format below). Listed exactly 1 and Count 1 → its `Id`
-   (`ToString(CultureInfo.InvariantCulture)`). Otherwise → failure `No Portainer endpoint found`.
+3. Body read as `PortainerEndpointItem[]` (a `null` body counts as empty). `X-Total-Count` (response headers only):
+   absent → Count = listed; present with exactly one value that parses with `int.TryParse(value, NumberStyles.None,
+   CultureInfo.InvariantCulture, …)` → Count = max(listed, header); present otherwise (no parse, a sign, several
+   values) → Count unknown. An invalid header fails closed: it never makes a single listed environment usable.
+4. Count greater than 1, or Count unknown with at least one listed environment → log 3312, failure message (format
+   below). Listed exactly 1 and Count 1 → its `Id` (`ToString(CultureInfo.InvariantCulture)`). Otherwise (nothing
+   listed, Count 0, 1 or unknown) → failure `No Portainer endpoint found`.
 
-Message layout (one line, plain text): `Portainer manages <Count> environments; set
-'DockerUpdateGuard:DockerInstances:<instance name>:Portainer:EndpointId' to one of: <entries>`. The section name comes
-from `DockerUpdateGuardOptions.SectionName`. Entries: the listed environments ordered by `Id` ascending, at most 10,
-each `<Id> (<name>)` or `<Id>` when the cleaned name is empty, joined by `, `; when Count exceeds the number of entries
-shown, `, …` is appended (`…` alone when none is shown). Name cleaning as AC8, applied in this order: trim, replace,
-cut. IDs and names only — never an environment URL.
+Message layout (one line, plain text): `<count clause>; set Portainer:EndpointId of Docker instance '<instance name>'`
+followed, when at least one entry is shown, by ` to one of: <entries>`. The key is named relative to the instance
+because configuration keys address instances by list position, which the client does not know (fact 13). Count
+clause: `Portainer manages <Count> environments`, or `Portainer reported no valid environment count` when Count is
+unknown. Entries: the listed environments ordered by `Id` ascending, at most 10, each `<Id> (<name>)` or `<Id>` when
+the cleaned name is empty, joined by `, `; `, …` is appended when Count is unknown or exceeds the number of entries
+shown. With no entry shown the message ends after the instance name (no `to one of:`, no `…`). Name cleaning as AC8,
+applied in this order: trim, replace, cut. IDs and names only — never an environment URL.
 
 Callers: both map a failure to their existing result shape (`IsConfigured = true, SupportsActions = false` /
 `Succeeded = false`) with `FailureMessage` as `Message`; the success path is unchanged (3304 log, "Portainer connected,
 endpoint <id>", container lookup). Exceptions keep flowing into the existing `catch` blocks (decision 0009).
 
-Logs: 3312 Warning `Portainer for Docker instance {DockerInstanceName} manages {EnvironmentCount} environments and no
-EndpointId is configured; no environment is used`; 3313 Warning `Portainer environment list failed for Docker instance
+Logs: 3312 Warning `Portainer for Docker instance {DockerInstanceName} lists {ListedEnvironmentCount} environments
+(reported total {ReportedEnvironmentCount}) and no EndpointId is configured; no environment is used` — the reported
+total is the valid header value, empty when the header is absent or invalid; 3313 Warning `Portainer environment list failed for Docker instance
 {DockerInstanceName}: HTTP {StatusCode}`. Neither carries environment names or URLs.
 
 ## Options considered
@@ -140,9 +149,10 @@ New file `src/DockerUpdateGuard/Portainer/Data/PortainerEndpointResolution.cs` (
 
 New, in *Static methods*:
 
-- `private static int? ReadTotalCount(HttpResponseMessage response)`
+- `private static bool TryReadTotalCount(HttpResponseMessage response, out int? totalCount)` — `true` with `null` when
+  the header is absent, `true` with the value when valid, `false` (and `null`) when present but invalid
 - `private static string FormatEnvironmentName(string? name)`
-- `private static string FormatAmbiguousEnvironmentsMessage(string dockerInstanceName, PortainerEndpointItem[] endpoints, int environmentCount)`
+- `private static string FormatAmbiguousEnvironmentsMessage(string dockerInstanceName, PortainerEndpointItem[] endpoints, int? environmentCount)` — `null` means Count unknown
 
 New, in *Methods*:
 
@@ -150,7 +160,7 @@ New, in *Methods*:
 
 `PortainerClientLogging`, in *Methods*:
 
-- `public static partial void PortainerEnvironmentAmbiguous(this ILogger logger, string dockerInstanceName, int environmentCount);` (EventId 3312, Warning)
+- `public static partial void PortainerEnvironmentAmbiguous(this ILogger logger, string dockerInstanceName, int listedEnvironmentCount, int? reportedEnvironmentCount);` (EventId 3312, Warning)
 - `public static partial void PortainerEnvironmentListFailed(this ILogger logger, string dockerInstanceName, int statusCode);` (EventId 3313, Warning)
 
 Skeleton note: `GetCapabilityAsync` and `ExecuteActionAsync` keep their public signatures and already call
@@ -158,8 +168,8 @@ Skeleton note: `GetCapabilityAsync` and `ExecuteActionAsync` keep their public s
 `EndpointId` test, and the three without it at `PortainerClientTests.cs:243`, `:283`, `:632`), so its skeleton body
 is today's logic in the new shape: configured `EndpointId` returned, else the first listed `Id`, else
 `No Portainer endpoint found` (also for a non-success answer). The three static helpers throw the *Skeleton*
-exception. The Dev reports this as the allowed deviation (`.squad/stack.md`, *Skeleton*); the new AC1, AC2, AC5, AC7
-and AC8 tests still fail on it.
+exception. The Dev reports this as the allowed deviation (`.squad/stack.md`, *Skeleton*); the new AC1, AC2, AC5, AC7,
+AC8 and AC9 tests still fail on it.
 
 ## Test files
 
@@ -178,8 +188,13 @@ Files no unit test can cover: none.
 
 - *Configuration and mapping*, last bullet: replace "When it is empty, the first environment … resolved again on every
   call" with the rule — without `EndpointId` the environment is used only when Portainer lists exactly one (counting
-  `X-Total-Count`), resolved on every call; the ambiguous message format, the 10-entry limit and the name cleaning;
-  that Portainer lists only environments the user may see, of every type; link record 0010.
+  `X-Total-Count`; a present but invalid header makes it unusable), resolved on every call; the ambiguous message
+  format (key named relative to the instance), the 10-entry limit and the name cleaning; that Portainer lists only
+  environments the user may see, of every type; plainly, that a single listed environment is trusted and not checked
+  against the Docker instance, so `EndpointId` is the only way to bind an instance to a specific host; link record
+  0010.
+- *Limits and errors*: the capability and action `Message` can carry Portainer environment names (external data): it
+  is never written to logs or telemetry and must be rendered HTML-encoded by any UI that shows it (#280).
 - *Capability check*: the ambiguous case and the list-failure case (both configured, no actions, with their messages).
 - *Actions*: the failure reasons gain "several environments without `EndpointId`" and "environment list failed with
   HTTP status", both before any container lookup.
@@ -222,8 +237,37 @@ validation change; `PortainerEndpoint.ExternalEndpointId` still stores the confi
 
 - `docs/decisions/0010-portainer-environment-is-used-only-when-unambiguous.md` (Proposed), indexed.
 
+## Challenge
+
+1. MAJOR, name-based key in the message — accepted. Keys address instances by list position (fact 13) and the client
+   does not know the position; the message now names the key relative to the instance (`set Portainer:EndpointId of
+   Docker instance 'Production'`). AC1, AC2, AC7, the message layout and the area-document item changed. The issue's
+   product decision ("a clear message naming the key") is met, so no escalation. The validator's messages share the
+   defect: follow-up issue (below).
+2. MINOR, empty body with `X-Total-Count: 3` produced `to one of:` with no IDs — accepted: with no entry shown the
+   message ends after the instance name; new AC7 case and test asserting the message and that no container-list
+   request is sent.
+
+## Security review
+
+1. Present but invalid `X-Total-Count` with one listed environment failed open — option taken: fail closed. Count is
+   *unknown*, the environment is not used, message `Portainer reported no valid environment count; …` (AC9, Approach
+   step 3–4). Reason: the header check exists to catch a list that is not the full list; an invalid header is exactly
+   such an unexpected response, and ignoring it would reopen the case the check guards. An absent header is still
+   ignored (proxies and older Portainer versions), recorded in 0010.
+2. Single listed environment trusted, not matched against the instance — stated in the area document (*Areas*, first
+   item) and in 0010's consequences.
+3. `Message` carries environment names — area document *Limits and errors* states it is never logged and must be
+   rendered encoded (#280); the plan's logs already carry no names (Approach, *Logs*).
+
 ## Out of scope / follow-ups
 
+- Follow-up issue for the orchestrator: title "Configuration error messages name Docker instance keys by name instead
+  of list position"; body: "`DockerUpdateGuardOptionsValidator.ValidatePortainerOptions` (and the other instance
+  messages there) write keys as `DockerUpdateGuard:DockerInstances:<instance name>:Portainer:<key>`, but
+  `DockerInstances` is a list (`DockerUpdateGuardOptions.cs:57`), so the real key is
+  `DockerUpdateGuard:DockerInstances:<n>:Portainer:<key>`. An operator copying the key adds a stray list entry. Name
+  the key by position or relative to the named instance. Found while planning #279."
 - Requesting the list with `excludeSnapshots=true` and a size cap on its body — a separate improvement, not needed to
   stop the wrong-host action.
 - Wiring the capability check and actions into the UI: #280.

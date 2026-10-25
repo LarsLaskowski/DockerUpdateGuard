@@ -9,3 +9,4 @@ are quoted in full.
 | 2026-10-25 11:39 | 2 Plan | Lead | DONE, tier standard; security area Container actions; record 0010 proposed (opus/medium · 131,380 tokens · 34 tool uses · 372 s) |
 | 2026-10-25 11:41 | 2 Plan challenge | Devil's Advocate | OBJECTIONS 1 major (message uses instance name where config key needs list position), 1 minor (empty body with X-Total-Count>1) (opus/medium · 47,923 tokens · 6 tool uses · 64 s) |
 | 2026-10-25 11:41 | 3 Plan security review | Security | APPROVED; 3 non-blocking notes (malformed X-Total-Count fails open; single visible env trusted; #280 must not log Message) (opus/medium · 54,136 tokens · 8 tool uses · 125 s) |
+| 2026-10-25 11:43 | 2 Plan revise | Lead | DONE: DA major accepted (relative key + instance name), minor accepted, invalid X-Total-Count fails closed (AC9); follow-up issue for validator key messages (opus/medium · usage pending) |
