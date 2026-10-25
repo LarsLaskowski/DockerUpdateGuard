@@ -12,3 +12,4 @@ are quoted in full.
 | 2026-10-25 08:52 | 4 Skeleton | squad-dev | DONE: ReportableException, FailureReason stub, log methods 3107-3110/3212; build clean (sonnet/medium · 97,083 tokens · 18 tool uses · 263 s) |
 | 2026-10-25 09:02 | 5 Tests first | squad-tester | DONE: 12 test files, 29 of new tests fail on skeleton (confirmed by orchestrator), none deferred (sonnet/medium · 213,766 tokens · 48 tool uses · 577 s) |
 | 2026-10-25 09:06 | 6 Implement | squad-dev | DONE: production + docs, no deviations (sonnet/medium · 111,780 tokens · 18 tool uses · 219 s) |
+| 2026-10-25 09:08 | 7 Code check | Orchestrator | Format, build, 703+21 tests, coverage 91.3%/85.5%, analyzer 0, scope-check PASS; Sonar gate NOT CHECKED (no SONAR_TOKEN) |
