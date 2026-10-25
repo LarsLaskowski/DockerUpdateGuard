@@ -636,6 +636,113 @@ public partial class OciRegistryClientTests
     }
 
     /// <summary>
+    /// Verify OCI tag listing preserves a comma in a Link target
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task OciRegistryClientGetTagsAsyncCommaInLinkTargetFollowsCompleteLinkAsync()
+    {
+        var handler = new SequenceHttpMessageHandler();
+        var httpClient = new HttpClient(handler);
+
+        try
+        {
+            handler.AddResponse("https://mcr.microsoft.com/v2/mssql/server/tags/list?n=100",
+                                CreateTagListResponse("""{ "name": "mssql/server", "tags": [] }""",
+                                                      "</v2/mssql/server/tags/list?last=tag1,tag2&n=100>; rel=\"next\""));
+            handler.AddResponse("https://mcr.microsoft.com/v2/mssql/server/tags/list?last=tag1,tag2&n=100",
+                                CreateTagListResponse("""{ "name": "mssql/server", "tags": [ "2.0.0" ] }""", null));
+            handler.AddResponse("https://mcr.microsoft.com/v2/mssql/server/manifests/2.0.0",
+                                CreateManifestResponse("sha256:200",
+                                                       """
+                                                       {
+                                                         "schemaVersion": 2,
+                                                         "config": {
+                                                           "digest": "sha256:config200"
+                                                         }
+                                                       }
+                                                       """));
+
+            var client = new OciRegistryClient(httpClient, new TestLogger<OciRegistryClient>());
+
+            var result = await client.GetTagsAsync("mcr.microsoft.com",
+                                                   "mssql/server",
+                                                   cancellationToken: CancellationToken.None)
+                                     .ConfigureAwait(false);
+
+            Assert.AreEqual(ExternalOperationStatus.Succeeded,
+                            result.Status,
+                            "A comma-bearing Link target must allow the tag listing to complete");
+            Assert.IsNotNull(result.Data, "OCI registry tag lookup must return tag data");
+            Assert.AreSequenceEqual(["2.0.0"],
+                                    result.Data.Select(entity => entity.Tag).ToArray(),
+                                    "The page selected by the complete Link target must contribute its tags");
+            Assert.ContainsSingle(handler.Requests.Where(request => request.RequestUri == "https://mcr.microsoft.com/v2/mssql/server/tags/list?last=tag1,tag2&n=100"),
+                                  "The complete comma-bearing continuation URI must be requested");
+        }
+        finally
+        {
+            httpClient.Dispose();
+            handler.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Verify OCI tag listing selects the next relation across entries and header values
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task OciRegistryClientGetTagsAsyncMultipleLinkEntriesAndQuotedCommaSelectNextAsync()
+    {
+        var handler = new SequenceHttpMessageHandler();
+        var httpClient = new HttpClient(handler);
+
+        try
+        {
+            var response = CreateTagListResponse("""{ "name": "mssql/server", "tags": [] }""",
+                                                 "</v2/mssql/server/tags/list?last=previous&n=100>; rel=\"prev\", </v2/mssql/server/tags/list?last=ignored&n=100>; title=\"fake; rel=next\"; rel=\"prev\", </v2/mssql/server/tags/list?last=tag1,tag2&n=100>; title=\"page, two\"; rel=\"next\"");
+
+            response.Headers.TryAddWithoutValidation("Link", "</v2/mssql/server/tags/list?last=ignored&n=100>; rel=\"other\"");
+
+            handler.AddResponse("https://mcr.microsoft.com/v2/mssql/server/tags/list?n=100", response);
+            handler.AddResponse("https://mcr.microsoft.com/v2/mssql/server/tags/list?last=tag1,tag2&n=100",
+                                CreateTagListResponse("""{ "name": "mssql/server", "tags": [ "2.0.0" ] }""", null));
+            handler.AddResponse("https://mcr.microsoft.com/v2/mssql/server/manifests/2.0.0",
+                                CreateManifestResponse("sha256:200",
+                                                       """
+                                                       {
+                                                         "schemaVersion": 2,
+                                                         "config": {
+                                                           "digest": "sha256:config200"
+                                                         }
+                                                       }
+                                                       """));
+
+            var client = new OciRegistryClient(httpClient, new TestLogger<OciRegistryClient>());
+
+            var result = await client.GetTagsAsync("mcr.microsoft.com",
+                                                   "mssql/server",
+                                                   cancellationToken: CancellationToken.None)
+                                     .ConfigureAwait(false);
+
+            Assert.AreEqual(ExternalOperationStatus.Succeeded,
+                            result.Status,
+                            "Multiple Link entries and header values must still produce a successful tag listing");
+            Assert.IsNotNull(result.Data, "OCI registry tag lookup must return tag data");
+            Assert.AreSequenceEqual(["2.0.0"],
+                                    result.Data.Select(entity => entity.Tag).ToArray(),
+                                    "Only the exact next relation must select the continuation page");
+            Assert.ContainsSingle(handler.Requests.Where(request => request.RequestUri == "https://mcr.microsoft.com/v2/mssql/server/tags/list?last=tag1,tag2&n=100"),
+                                  "The next relation must preserve its complete URI when other entries and quoted commas exist");
+        }
+        finally
+        {
+            httpClient.Dispose();
+            handler.Dispose();
+        }
+    }
+
+    /// <summary>
     /// Verify OCI tag listing ends at a Link header whose target is not enclosed in angle brackets
     /// </summary>
     /// <returns>Task</returns>

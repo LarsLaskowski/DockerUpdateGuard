@@ -654,26 +654,180 @@ public partial class OciRegistryClient : IRegistryMetadataClient
             return null;
         }
 
-        var nextLink = linkValues.SelectMany(value => value.Split(',', StringSplitOptions.RemoveEmptyEntries))
-                                 .Select(value => value.Trim())
-                                 .FirstOrDefault(value => value.Contains("rel=\"next\"", StringComparison.OrdinalIgnoreCase));
-
-        if (string.IsNullOrWhiteSpace(nextLink))
+        foreach (var linkValue in linkValues)
         {
-            return null;
+            foreach (var linkEntry in SplitLinkHeaderEntries(linkValue))
+            {
+                if (HasNextRelation(linkEntry) == false)
+                {
+                    continue;
+                }
+
+                var start = linkEntry.IndexOf('<');
+                var end = linkEntry.IndexOf('>');
+
+                if (start < 0 || end <= start)
+                {
+                    continue;
+                }
+
+                var linkTarget = linkEntry[(start + 1)..end];
+
+                if (string.IsNullOrWhiteSpace(linkTarget) == false)
+                {
+                    return linkTarget;
+                }
+            }
         }
 
-        var start = nextLink.IndexOf('<');
-        var end = nextLink.IndexOf('>');
+        return null;
+    }
 
-        if (start < 0 || end <= start)
+    /// <summary>
+    /// Split Link header entries without splitting inside a URI target or quoted parameter
+    /// </summary>
+    /// <param name="linkValue">Raw Link header value</param>
+    /// <returns>Link entries</returns>
+    private static IEnumerable<string> SplitLinkHeaderEntries(string linkValue)
+    {
+        var current = new List<char>();
+        var inUriTarget = false;
+        var inQuotes = false;
+        var escaped = false;
+
+        foreach (var character in linkValue)
         {
-            return null;
+            UpdateLinkHeaderState(character, ref inUriTarget, ref inQuotes, ref escaped);
+
+            if (character == ',' && inUriTarget == false && inQuotes == false)
+            {
+                if (current.Count > 0)
+                {
+                    yield return new string([.. current]);
+                    current.Clear();
+                }
+
+                continue;
+            }
+
+            current.Add(character);
         }
 
-        var linkTarget = nextLink[(start + 1)..end];
+        if (current.Count > 0)
+        {
+            yield return new string([.. current]);
+        }
+    }
 
-        return string.IsNullOrWhiteSpace(linkTarget) ? null : linkTarget;
+    /// <summary>
+    /// Update the state used while parsing a Link header
+    /// </summary>
+    /// <param name="character">Current header character</param>
+    /// <param name="inUriTarget">Whether parsing an angle-bracketed URI target</param>
+    /// <param name="inQuotes">Whether parsing a quoted parameter</param>
+    /// <param name="escaped">Whether the previous character escaped the current character</param>
+    private static void UpdateLinkHeaderState(char character,
+                                              ref bool inUriTarget,
+                                              ref bool inQuotes,
+                                              ref bool escaped)
+    {
+        if (character == '<' && inQuotes == false)
+        {
+            inUriTarget = true;
+        }
+        else if (character == '>' && inQuotes == false)
+        {
+            inUriTarget = false;
+        }
+        else if (character == '"' && inUriTarget == false && escaped == false)
+        {
+            inQuotes = inQuotes == false;
+        }
+
+        escaped = character == '\\' && inQuotes && escaped == false;
+    }
+
+    /// <summary>
+    /// Determine whether a Link entry declares the next relation
+    /// </summary>
+    /// <param name="linkEntry">Link entry</param>
+    /// <returns>True when the entry has an exact next relation</returns>
+    private static bool HasNextRelation(string linkEntry)
+    {
+        var end = linkEntry.IndexOf('>');
+
+        if (end < 0)
+        {
+            return false;
+        }
+
+        foreach (var parameter in SplitLinkParameters(linkEntry, end + 1))
+        {
+            var separatorIndex = parameter.IndexOf('=');
+
+            if (separatorIndex <= 0
+                || string.Equals(parameter[..separatorIndex].Trim(), "rel", StringComparison.OrdinalIgnoreCase) == false)
+            {
+                continue;
+            }
+
+            var relationValue = parameter[(separatorIndex + 1)..].Trim().Trim('"');
+
+            if (relationValue.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)
+                             .Any(relation => string.Equals(relation, "next", StringComparison.OrdinalIgnoreCase)))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Split Link parameters without splitting inside a quoted value
+    /// </summary>
+    /// <param name="linkEntry">Link entry</param>
+    /// <param name="start">Parameter start index</param>
+    /// <returns>Link parameters</returns>
+    private static IEnumerable<string> SplitLinkParameters(string linkEntry, int start)
+    {
+        var current = new List<char>();
+        var inQuotes = false;
+        var escaped = false;
+
+        for (var index = start; index < linkEntry.Length; index++)
+        {
+            var character = linkEntry[index];
+
+            if (character == '"' && escaped == false)
+            {
+                inQuotes = inQuotes == false;
+            }
+
+            if (character == '\\' && inQuotes && escaped == false)
+            {
+                escaped = true;
+            }
+            else
+            {
+                escaped = false;
+            }
+
+            if (character == ';' && inQuotes == false)
+            {
+                yield return new string([.. current]);
+                current.Clear();
+
+                continue;
+            }
+
+            current.Add(character);
+        }
+
+        if (current.Count > 0)
+        {
+            yield return new string([.. current]);
+        }
     }
 
     /// <summary>
