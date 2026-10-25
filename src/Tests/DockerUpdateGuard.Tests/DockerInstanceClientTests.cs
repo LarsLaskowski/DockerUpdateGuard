@@ -1,3 +1,4 @@
+using System.Net;
 using System.Reflection;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
@@ -927,6 +928,112 @@ public partial class DockerInstanceClientTests
         Assert.DoesNotContain("secret", result.Message, "The failure message must not contain the password");
         Assert.IsNotNull(failure.Exception, "The discovery failure must be logged with its exception");
         Assert.DoesNotContain("secret", failure.Exception.Message, "The logged exception must not contain the password");
+    }
+
+    /// <summary>
+    /// Verify a transport failure in a Docker Engine operation reports the fixed connection-failed reason and logs the exception
+    /// </summary>
+    /// <param name="operation">Name of the operation</param>
+    /// <param name="expectedMessage">Expected failure message</param>
+    /// <param name="eventId">Expected event id of the logged failure</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [DataRow("Discovery", "Docker container discovery failed for 'Production': connection failed", 3104)]
+    [DataRow("Sampling", "Docker container resource sampling failed for 'Production': connection failed", 3107)]
+    [DataRow("Inspect", "Docker image inspect failed for 'Production': connection failed", 3108)]
+    [DataRow("History", "Docker image history failed for 'Production': connection failed", 3109)]
+    [DataRow("HostInfo", "Docker host info request failed for 'Production': connection failed", 3110)]
+    public async Task DockerInstanceClientOperationWhenTransportFailsReportsConnectionFailedAsync(string operation, string expectedMessage, int eventId)
+    {
+        var injected = new HttpRequestException(HttpRequestError.ConnectionError, "Connection refused (docker.internal.test:2376)");
+        var logger = new TestLogger<DockerInstanceClient>();
+
+        using var handler = new RetryProbeHttpMessageHandler([null], HttpStatusCode.OK)
+                            {
+                                FailureFactory = () => injected,
+                            };
+        using var httpClient = new HttpClient(handler)
+                               {
+                                   BaseAddress = new Uri("https://docker.example.test/"),
+                               };
+
+        var client = new DockerInstanceClient(logger, (_, _) => httpClient);
+
+        var message = await RunOperationAsync(client, operation, TestContext.CancellationToken).ConfigureAwait(false);
+
+        Assert.AreEqual(expectedMessage, message, "A transport failure must report the operation frame and the fixed connection-failed reason");
+        Assert.DoesNotContain("internal.test", message, "The exception text must not reach the result message");
+        Assert.Contains(entry => entry.EventId.Id == eventId && ReferenceEquals(entry.Exception, injected),
+                        logger.Entries,
+                        "The transport failure must be logged with the exception");
+    }
+
+    /// <summary>
+    /// Verify an unexpected exception while creating the HTTP client reports the fixed unexpected-error reason
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerInstanceClientInspectImageAsyncWhenClientCreationThrowsReportsUnexpectedErrorAsync()
+    {
+        var injected = new InvalidOperationException("Client creation failed for docker.internal.test");
+        var logger = new TestLogger<DockerInstanceClient>();
+        var client = new DockerInstanceClient(logger, (_, _) => throw injected);
+        var instanceOptions = new DockerInstanceOptions
+                              {
+                                  Name = "Production",
+                                  BaseUrl = "https://docker.example.test",
+                                  Enabled = true,
+                              };
+
+        var result = await client.InspectImageAsync(instanceOptions, PooledImageReference, TestContext.CancellationToken)
+                                 .ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Failed, result.Status, "A failed client creation must end the operation as failed");
+        Assert.AreEqual("Docker image inspect failed for 'Production': unexpected error", result.Message, "An unknown exception must report the fixed unexpected-error reason");
+        Assert.Contains(entry => entry.EventId.Id == 3108 && ReferenceEquals(entry.Exception, injected),
+                        logger.Entries,
+                        "The failure must be logged with the exception");
+    }
+
+    /// <summary>
+    /// Run one Docker Engine operation and return its result message
+    /// </summary>
+    /// <param name="client">Client under test</param>
+    /// <param name="operation">Name of the operation</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Result message</returns>
+    private static async Task<string> RunOperationAsync(DockerInstanceClient client, string operation, CancellationToken cancellationToken)
+    {
+        var instanceOptions = new DockerInstanceOptions
+                              {
+                                  Name = "Production",
+                                  BaseUrl = "https://docker.example.test",
+                                  Enabled = true,
+                              };
+
+        var (status, message) = operation switch
+                                {
+                                    "Discovery" => Summarize(await client.DiscoverContainersAsync(instanceOptions, cancellationToken).ConfigureAwait(false)),
+                                    "Sampling" => Summarize(await client.CollectContainerResourceUsageAsync(instanceOptions, cancellationToken).ConfigureAwait(false)),
+                                    "Inspect" => Summarize(await client.InspectImageAsync(instanceOptions, PooledImageReference, cancellationToken).ConfigureAwait(false)),
+                                    "History" => Summarize(await client.GetImageHistoryAsync(instanceOptions, PooledImageReference, cancellationToken).ConfigureAwait(false)),
+                                    _ => Summarize(await client.GetHostMemoryTotalAsync(instanceOptions, cancellationToken).ConfigureAwait(false)),
+                                };
+
+        Assert.AreEqual(ExternalOperationStatus.Failed, status, "A transport failure must end the operation as failed");
+
+        return message;
+    }
+
+    /// <summary>
+    /// Reduce an operation result to its status and message
+    /// </summary>
+    /// <typeparam name="T">Result data type</typeparam>
+    /// <param name="result">Operation result</param>
+    /// <returns>Status and message</returns>
+    private static (ExternalOperationStatus Status, string Message) Summarize<T>(ExternalOperationResult<T> result)
+    {
+        return (result.Status, result.Message ?? string.Empty);
     }
 
     /// <summary>

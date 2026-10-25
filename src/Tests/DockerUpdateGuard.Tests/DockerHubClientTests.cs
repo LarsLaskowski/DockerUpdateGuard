@@ -1,3 +1,5 @@
+using System.Net;
+
 using DockerUpdateGuard.Configuration;
 using DockerUpdateGuard.DockerHub;
 using DockerUpdateGuard.Images.Data;
@@ -921,6 +923,72 @@ public partial class DockerHubClientTests
     }
 
     /// <summary>
+    /// Verify a transport failure during Docker Hub base-image resolution reports the fixed connection-failed reason
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerHubClientResolveBaseImagesAsyncWhenTransportFailsReportsConnectionFailedAsync()
+    {
+        var injected = new HttpRequestException(HttpRequestError.ConnectionError, "Connection refused (auth.internal.test:443)");
+        var logger = new TestLogger<DockerHubClient>();
+        var imageReference = CreateTransportFailureReference();
+
+        using var handler = new RetryProbeHttpMessageHandler([null], HttpStatusCode.OK)
+                            {
+                                FailureFactory = () => injected,
+                            };
+        using var httpClient = new HttpClient(handler);
+
+        var client = CreateClient(httpClient, logger: logger);
+
+        var result = await client.ResolveBaseImagesAsync(imageReference, CancellationToken.None)
+                                 .ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Failed, result.Status, "A transport failure must fail the base-image resolution");
+        Assert.AreEqual($"Base image chain resolution failed for '{imageReference.FullReference}': connection failed",
+                        result.Message,
+                        "A transport failure must report the fixed connection-failed reason");
+        Assert.IsNotNull(result.Message, "A failed result must carry a message");
+        Assert.DoesNotContain("internal.test", result.Message, "The exception text must not reach the result message");
+        Assert.Contains(entry => ReferenceEquals(entry.Exception, injected),
+                        logger.Entries,
+                        "The transport failure must still be logged with the exception");
+    }
+
+    /// <summary>
+    /// Verify a transport failure during an image configuration lookup reports the fixed connection-failed reason and logs the exception
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerHubClientGetImageConfigurationAsyncWhenTransportFailsReportsConnectionFailedAsync()
+    {
+        var injected = new HttpRequestException(HttpRequestError.ConnectionError, "Connection refused (auth.internal.test:443)");
+        var logger = new TestLogger<DockerHubClient>();
+        var imageReference = CreateTransportFailureReference();
+
+        using var handler = new RetryProbeHttpMessageHandler([null], HttpStatusCode.OK)
+                            {
+                                FailureFactory = () => injected,
+                            };
+        using var httpClient = new HttpClient(handler);
+
+        var client = CreateClient(httpClient, logger: logger);
+
+        var result = await client.GetImageConfigurationAsync(imageReference, CancellationToken.None)
+                                 .ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Failed, result.Status, "A transport failure must fail the configuration lookup");
+        Assert.AreEqual($"Image configuration lookup failed for '{imageReference.FullReference}': connection failed",
+                        result.Message,
+                        "A transport failure must report the fixed connection-failed reason");
+        Assert.IsNotNull(result.Message, "A failed result must carry a message");
+        Assert.DoesNotContain("internal.test", result.Message, "The exception text must not reach the result message");
+        Assert.Contains(entry => entry.EventId.Id == 3212 && ReferenceEquals(entry.Exception, injected),
+                        logger.Entries,
+                        "The transport failure must be logged with the exception");
+    }
+
+    /// <summary>
     /// Assert no request went to the rejected origin and no credential left Docker Hub
     /// </summary>
     /// <param name="handler">Observing handler</param>
@@ -950,6 +1018,20 @@ public partial class DockerHubClientTests
         Assert.Contains(rejectedOrigin,
                         warning.Message,
                         "The warning must name the rejected origin");
+    }
+
+    /// <summary>
+    /// Create the Docker Hub image reference used by the transport-failure tests
+    /// </summary>
+    /// <returns>Image reference</returns>
+    private static ImageReference CreateTransportFailureReference()
+    {
+        return new ImageReference
+               {
+                   Registry = "docker.io",
+                   Repository = "acme/app",
+                   Tag = "1.0",
+               };
     }
 
     /// <summary>

@@ -536,6 +536,76 @@ public class ImageScanOrchestratorTests
     }
 
     /// <summary>
+    /// Verify an exception from the registry reports a fixed reason in the scan run
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task ImageScanOrchestratorScanAsyncWhenRegistryThrowsReportsFixedReasonAsync()
+    {
+        using (var database = new SqliteTestDatabase())
+        {
+            var dbContext = database.CreateDbContext();
+
+            await using (dbContext.ConfigureAwait(false))
+            {
+                var imageCatalogRepository = new ImageCatalogRepository(dbContext);
+                var currentImageVersion = await imageCatalogRepository.GetOrCreateImageVersionAsync("docker.io",
+                                                                                                    "company/app",
+                                                                                                    "1.0.0",
+                                                                                                    "sha256:app",
+                                                                                                    cancellationToken: CancellationToken.None)
+                                                                      .ConfigureAwait(false);
+                var observedImage = new ObservedImage
+                                    {
+                                        Name = "Company App",
+                                        CurrentImageVersionId = currentImageVersion.Id,
+                                    };
+                var injected = new HttpRequestException(HttpRequestError.ConnectionError, "Connection refused (registry.internal.test:443)");
+                var logger = new TestLogger<ImageScanOrchestrator>();
+                var registryMetadataService = Substitute.For<IRegistryMetadataService>();
+
+                dbContext.ObservedImages.Add(observedImage);
+
+                await dbContext.SaveChangesAsync(TestContext.CancellationToken)
+                               .ConfigureAwait(false);
+
+                registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), cancellationToken: Arg.Any<CancellationToken>())
+                                       .Returns(Task.FromException<ExternalOperationResult<DockerHubTagData>>(injected));
+
+                var orchestrator = new ImageScanOrchestrator(new ApplicationTelemetry(),
+                                                             Substitute.For<IBaseImageResolver>(),
+                                                             dbContext,
+                                                             Substitute.For<IDerivedBaseRuntimeDetector>(),
+                                                             Substitute.For<IDotNetReleaseMetadataService>(),
+                                                             Substitute.For<INginxReleaseMetadataService>(),
+                                                             imageCatalogRepository,
+                                                             new ImageReferenceParser(),
+                                                             logger,
+                                                             registryMetadataService);
+
+                await orchestrator.ScanAsync(observedImage.Id,
+                                             ScanTriggerSource.Manual,
+                                             CancellationToken.None)
+                                  .ConfigureAwait(false);
+
+                dbContext.ChangeTracker.Clear();
+
+                var scanRun = await dbContext.ScanRuns.SingleAsync(TestContext.CancellationToken).ConfigureAwait(false);
+
+                Assert.AreEqual(ScanRunStatus.Failed, scanRun.Status, "An exception from the registry must fail the scan run");
+                Assert.AreEqual("Observed image scan failed: connection failed",
+                                scanRun.ErrorMessage,
+                                "The scan run must carry the fixed reason instead of the exception text");
+                Assert.IsNotNull(scanRun.ErrorMessage, "A failed result must carry a message");
+                Assert.DoesNotContain("internal.test", scanRun.ErrorMessage, "The exception text must not reach the scan run");
+                Assert.Contains(entry => ReferenceEquals(entry.Exception, injected),
+                                logger.Entries,
+                                "The failure must still be logged with the exception");
+            }
+        }
+    }
+
+    /// <summary>
     /// Verify observed image scans remain Succeeded when base image resolution returns no results
     /// </summary>
     /// <returns>Task</returns>
