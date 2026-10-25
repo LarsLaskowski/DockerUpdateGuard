@@ -13,4 +13,4 @@ are quoted in full.
 | 2026-10-25 11:44 | 3 Plan security review (round 2) | Security | APPROVED; revision confirmed, earlier notes resolved (opus/medium · 11,404 tokens · 3 tool uses · 29 s · continued) |
 | 2026-10-25 11:44 | 3 Follow-up | Orchestrator | Opened follow-up issue #330 (validator key messages) |
 | 2026-10-25 11:44 | 4 Skeleton | Orchestrator | Launching squad-dev skeleton |
-| 2026-10-25 11:50 | 4 Skeleton | Dev | Skeleton built; build 0 errors, existing tests green (703+21); allowed deviation: ResolveEndpointAsync keeps today's logic; 12 Sonar warnings from unused stubs until implement (sonnet/medium · usage pending) |
+| 2026-10-25 11:50 | 4 Skeleton | Dev | Skeleton built; build 0 errors, existing tests green (703+21); allowed deviation: ResolveEndpointAsync keeps today's logic; 12 Sonar warnings from unused stubs until implement (sonnet/medium · 89,896 tokens · 11 tool uses · 319 s) |
