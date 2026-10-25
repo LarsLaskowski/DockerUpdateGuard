@@ -1,6 +1,6 @@
 # 0010: A Portainer environment is used without EndpointId only when it is unambiguous
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-25
 - **Area:** Container actions
 - **Source:** Issue #279

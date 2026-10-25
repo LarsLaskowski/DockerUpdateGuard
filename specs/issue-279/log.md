@@ -22,3 +22,5 @@ are quoted in full.
 | 2026-10-25 12:09 | 8 Verbatim fix | Orchestrator | Applied reviewer's verbatim doc fix to docs/areas/container-actions.md and docs/decisions/0010 (git diff: only those sentences; Format check, scope-check, decision-check PASS); commit e780f1b |
 | 2026-10-25 12:13 | 8 Non-blocking fix | Tester | Added empty-list + invalid X-Total-Count tests (2 tests x 2 rows); mutation-checked, production unchanged (sonnet/medium · 75,100 tokens · 12 tool uses · 87 s) |
 | 2026-10-25 12:15 | 7 Code check (after non-blocking fix) | Orchestrator | Format check 0 files; Build 0 warnings; tests 722+21 green; Coverage PASS (100% new/changed, 85.6% overall); Analyzer 0 diagnostics; scope-check PASS; head d4a8e2f |
+| 2026-10-25 12:15 | 8 Review round 2 (delta) | Reviewer | APPROVE; both round-1 findings resolved, no new defects (opus/medium · 4,165 tokens · 3 tool uses · 26 s · continued) |
+| 2026-10-25 12:15 | 9 PR approval | Orchestrator | Approved by checklist: latest round clean (delta round 2 APPROVE), gates pass on head, main not moved, area docs/README in diff; record 0010 set to Accepted; decision-check PASS |
