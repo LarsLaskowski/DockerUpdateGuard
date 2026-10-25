@@ -16,3 +16,4 @@ are quoted in full.
 | 2026-10-25 09:12 | 8 Review | squad-reviewer | Round 1: 1 blocking (scan-engine.md wording), 2 non-blocking; all verbatim doc fixes applied by orchestrator (opus/medium · 95,755 tokens · 17 tool uses · 121 s) |
 | 2026-10-25 09:12 | 8 Review | squad-security | Diff: APPROVED, no blocking findings (opus/medium · 47,199 tokens · 10 tool uses · 61 s) |
 | 2026-10-25 09:12 | 9 PR approval | Orchestrator | Approved by checklist; record 0009 set Accepted, decision-check PASS; format/scope/plan checks PASS after verbatim fixes |
+| 2026-10-25 09:12 | 9 PR approval | Orchestrator | Follow-up issues #323, #324, #325 created |
