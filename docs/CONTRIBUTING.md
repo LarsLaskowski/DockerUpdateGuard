@@ -84,6 +84,27 @@ PR automatically and closes when the PR is merged.
 
 Follow the PR template in [`.github/pull_request_template.md`](../.github/pull_request_template.md).
 
+## Contributions from outside
+
+Issues and pull requests from forks are welcome. Changes in this repository are spec-driven: what a feature does
+is agreed as acceptance criteria before it is built, and the maintainers own those criteria.
+
+- **Bug fixes and documentation** may come as a pull request directly. Describe how to reproduce the bug, or
+  link an issue that does.
+- **Features and changes of behavior start with an issue** (the feature request template). A maintainer answers
+  with the proposed scenarios and acceptance criteria; open a pull request once you agree on them, and link the
+  issue with `Closes #…`. A feature pull request without an agreed issue is put on hold until there is one.
+- **Out of scope for an outside pull request:** the AI squad and agent instructions (`.squad/` except
+  `stack.md` and `project.md`, `.claude/`, `AGENTS.md`, `CLAUDE.md`, `.github/copilot-instructions.md`), the
+  text outside the `<!-- project:… -->` blocks of the template's marked files, and the workflows under
+  `.github/workflows/`. They come from a shared template and are changed there; the *Fork scope* check fails
+  on the first two. Open an issue instead.
+- **Checks on a fork:** pull requests from forks run without repository secrets, so the analysis that needs one
+  (e.g. SonarQube Cloud) does not run there; a maintainer runs it before merging. Run the quality gates below
+  locally so the pull request arrives clean.
+- Maintainers may push to your branch ("Allow edits by maintainers") or carry the change on in a branch of their
+  own; you stay credited as co-author of the squashed commit.
+
 ## Quality gates
 
 Code-style rules are documented in [`AGENTS.md`](../AGENTS.md) and in

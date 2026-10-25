@@ -17,7 +17,8 @@ cells in `log.md`); steps 4–12 follow `squad-issue` with the changes listed af
 
 1. **Intake.** With a GitHub issue, read it in full, including comments and labels, and decide bug or feature
    (`.squad/routing.md`, *Bug or feature*) — the user calling it a feature or invoking this skill settles
-   it; a bug fix switches to `squad-issue` now. A closed issue: stop and report that. Run
+   it; a bug fix switches to `squad-issue` now. A closed issue: stop and report that. A run that waits for
+   an outside author's agreement continues on its work branch (`.squad/routing.md`, *Outside authors*). Run
    `git fetch origin main --tags`, create the branch off the latest `main` (or the branch the session
    prescribes) and the work folder `specs/feature-<short-slug>/` (from an issue
    `specs/feature-<number>-<short-slug>/`) with `log.md` from `specs/_template/log.md`; commit and push. Log
@@ -33,7 +34,8 @@ cells in `log.md`); steps 4–12 follow `squad-issue` with the changes listed af
    for every feature. Minor objections only: append them verbatim to `spec.md` as a *Challenge notes*
    section; the Lead answers them while it plans. A major objection: continue `squad-lead` in mode `revise`
    on the spec with all objections; it answers each in the spec's *Challenge* section and may narrow the
-   scope, escalate or return `RESULT: NO CHANGE`. One round, no veto (*Loop limits*).
+   scope, escalate or return `RESULT: NO CHANGE`. One round, no veto (*Loop limits*). An issue by an outside
+   author: its spec is agreed on the issue now (*Outside authors*).
 2b. **Plan.** Continue the Lead's last launch in mode `plan` with the work folder (*Continuing a member*): it
    closes the spec (answers its *Challenge notes*, sets its status) and writes `plan.md` and `tasks.md`. A
    feature is never `docs` or `patch`. Run `python3 .squad/tools/plan-check.py <folder>` after every Lead

@@ -74,7 +74,8 @@ The orchestrator tells you which **mode** to run:
   - the exact **signatures** of every new or changed member (for the Dev's skeleton) and the existing files
     the skeleton must rewrite — a file you call final is one you read and found so;
   - the **test files**, named strictly by *Layout* in `.squad/stack.md` and `docs/UNIT_TESTS.md`, and the
-    existing test call sites a changed signature affects, with who adapts them (*Loop limits*);
+    existing test call sites a changed signature affects, with who adapts them (*Loop limits*); a test kept
+    unchanged has no input a new criterion handles differently, else it is adapted, with owner;
   - for a change that only a CI run can exercise (a workflow, an external API the session cannot reach): the
     runtime details no one can verify beforehand, each named up front, with a design that fails closed as the
     default;
@@ -92,8 +93,7 @@ The orchestrator tells you which **mode** to run:
     the variants it covers, which the Tester's tests read instead of hand-typed lines where the format allows.
     A sample with real private values (addresses, host names, keys, user names) is anonymized by replacing
     each such field whole, generated from nothing of the real value; before you hand it back, decode every
-    field of the result and compare each against the set of real values, prefixes included, since a grep for
-    the original strings misses a partly replaced field.
+    field of the result and compare each against the set of real values, prefixes included.
     Without one, return `RESULT: ESCALATE` (*Escalation to the Product Manager*, naming the variants)
     and plan on only with the answer;
   - an architecture check against `docs/ARCHITECTURE.md`: the guarantees in `.squad/project.md` are not
@@ -116,11 +116,11 @@ The orchestrator tells you which **mode** to run:
   For every decision that meets the threshold in `docs/decisions/README.md`, create a `Proposed` record
   from `docs/decisions/_template.md`, add its row to the index in `docs/decisions/README.md` with status
   `Proposed` right away, and list it in the plan; extend an existing unreleased record on the same topic
-  instead of adding one. Confirm that a record is unreleased with `git ls-remote --tags origin` (a local
-  `git tag --list` may lack the tags) before you edit it in place. A record you delete takes its index row
-  with it. Keep the record to the why: the behavior it leads to is written once in the area document, which
-  the record links and names in its `Area:` field. If a guarantee or flow changes, the plan names the
-  `docs/ARCHITECTURE.md` update with its owner, and the record is linked from it.
+  instead of adding one. Confirm that a record is unreleased with `git ls-remote --tags origin` before
+  you edit it in place. A record you delete takes its index row with it. Keep the record to the why: the
+  behavior it leads to is written once in the area document, which the record links and names in its
+  `Area:` field. If a guarantee or flow changes, the plan names the `docs/ARCHITECTURE.md` update with its
+  owner, and the record is linked from it.
   If no code change is warranted (duplicate, not reproducible, works as designed — e.g. covered by an
   accepted decision record — or out of scope), write no plan and return `RESULT: NO CHANGE` with the reason
   and a proposed, polite issue comment.
