@@ -445,7 +445,7 @@ the two production projects that matter for this split:
   pull request — restore, format check, build, test with coverage, and
   (when `SONAR_TOKEN` is available, i.e. not on forked/Dependabot PRs)
   SonarQube Cloud analysis. `.github/workflows/codeql.yml` runs CodeQL
-  separately.
+  separately, for C# and for the GitHub Actions workflows.
 - **Release** (`.github/workflows/release.yml`): triggered by pushing a
   `v*.*.*` tag — builds, tests, then builds and pushes the multi-stage
   Docker image (tagged with the version and `latest`) to Docker Hub

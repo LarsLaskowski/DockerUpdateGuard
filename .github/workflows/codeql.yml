@@ -10,12 +10,14 @@ on:
 
 permissions:
   contents: read
-  security-events: write
 
 jobs:
   analyze:
     name: Analyze (csharp)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -40,3 +42,24 @@ jobs:
         uses: github/codeql-action/analyze@v4.39.1
         with:
           category: /language:csharp
+
+  analyze-actions:
+    name: Analyze (actions)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4.39.1
+        with:
+          languages: actions
+          build-mode: none
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@v4.39.1
+        with:
+          category: /language:actions
