@@ -92,5 +92,57 @@ internal static partial class DockerInstanceClientLogging
                    Message = "Server certificate validation is disabled for Docker instance {DockerInstanceName}; TLS connections are not authenticated and are vulnerable to man-in-the-middle attacks")]
     public static partial void DockerInstanceCertificateValidationDisabled(this ILogger logger, string dockerInstanceName);
 
+    /// <summary>
+    /// Log that Docker container resource sampling failed with an exception
+    /// </summary>
+    /// <param name="logger">Logger</param>
+    /// <param name="exception">Failure exception</param>
+    /// <param name="dockerInstanceName">Docker instance name</param>
+    [LoggerMessage(EventId = 3107,
+                   Level = LogLevel.Warning,
+                   Message = "Docker container resource sampling failed for {DockerInstanceName}")]
+    public static partial void DockerInstanceResourceSamplingFailed(this ILogger logger,
+                                                                    Exception exception,
+                                                                    string dockerInstanceName);
+
+    /// <summary>
+    /// Log that a Docker image inspect failed with an exception
+    /// </summary>
+    /// <param name="logger">Logger</param>
+    /// <param name="exception">Failure exception</param>
+    /// <param name="dockerInstanceName">Docker instance name</param>
+    [LoggerMessage(EventId = 3108,
+                   Level = LogLevel.Warning,
+                   Message = "Docker image inspect failed for {DockerInstanceName}")]
+    public static partial void DockerInstanceImageInspectFailed(this ILogger logger,
+                                                                Exception exception,
+                                                                string dockerInstanceName);
+
+    /// <summary>
+    /// Log that a Docker image history request failed with an exception
+    /// </summary>
+    /// <param name="logger">Logger</param>
+    /// <param name="exception">Failure exception</param>
+    /// <param name="dockerInstanceName">Docker instance name</param>
+    [LoggerMessage(EventId = 3109,
+                   Level = LogLevel.Warning,
+                   Message = "Docker image history failed for {DockerInstanceName}")]
+    public static partial void DockerInstanceImageHistoryFailed(this ILogger logger,
+                                                                Exception exception,
+                                                                string dockerInstanceName);
+
+    /// <summary>
+    /// Log that a Docker host info request failed with an exception
+    /// </summary>
+    /// <param name="logger">Logger</param>
+    /// <param name="exception">Failure exception</param>
+    /// <param name="dockerInstanceName">Docker instance name</param>
+    [LoggerMessage(EventId = 3110,
+                   Level = LogLevel.Warning,
+                   Message = "Docker host info request failed for {DockerInstanceName}")]
+    public static partial void DockerInstanceHostInfoFailed(this ILogger logger,
+                                                            Exception exception,
+                                                            string dockerInstanceName);
+
     #endregion // Methods
 }
