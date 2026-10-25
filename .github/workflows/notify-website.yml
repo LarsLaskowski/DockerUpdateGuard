@@ -9,6 +9,9 @@ on:
   release:
     types: [published]
 
+# The dispatch uses its own token, so the GITHUB_TOKEN needs no permission.
+permissions: {}
+
 jobs:
   dispatch:
     runs-on: ubuntu-latest
