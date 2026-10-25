@@ -514,7 +514,7 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
         {
             finalStatus = ScanRunStatus.Failed;
 
-            statusMessages.Add(exception.Message);
+            statusMessages.Add($"Runtime container scan failed: {FailureReason.FromException(exception, null, cancellationToken)}");
 
             _logger.RuntimeContainerScanFailed(exception, dockerInstance.Name);
         }
@@ -667,10 +667,12 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
         }
         catch (Exception exception)
         {
+            var failureMessage = $"Container '{container.Name}' could not be processed: {FailureReason.FromException(exception, null, cancellationToken)}";
+
             if (snapshot is not null)
             {
                 snapshot.UpdateAssessmentStatus = UpdateAssessmentStatus.Failed;
-                snapshot.UpdateAssessmentMessage = exception.Message;
+                snapshot.UpdateAssessmentMessage = failureMessage;
             }
 
             _logger.RuntimeContainerProcessingFailed(exception,
@@ -678,7 +680,7 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
                                                      container.Name,
                                                      container.ImageReference);
 
-            return $"Container '{container.Name}' could not be processed: {exception.Message}";
+            return failureMessage;
         }
     }
 

@@ -205,7 +205,7 @@ public partial class DotNetReleaseMetadataService : IDotNetReleaseMetadataServic
         {
             _logger.LogWarning(exception, "Loading .NET release metadata failed");
 
-            return ExternalOperationResult<bool>.Failed($"Loading .NET release metadata failed: {exception.Message}");
+            return ExternalOperationResult<bool>.Failed($"Loading .NET release metadata failed: {FailureReason.FromException(exception, _httpClient.Timeout, cancellationToken)}");
         }
     }
 

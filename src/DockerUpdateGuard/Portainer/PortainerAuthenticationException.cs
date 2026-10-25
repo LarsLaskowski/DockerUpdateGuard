@@ -1,9 +1,11 @@
+using DockerUpdateGuard.Infrastructure;
+
 namespace DockerUpdateGuard.Portainer;
 
 /// <summary>
 /// Portainer login failure composed by the client, whose message is safe to show to users
 /// </summary>
-public sealed class PortainerAuthenticationException : Exception
+public sealed class PortainerAuthenticationException : ReportableException
 {
     #region Constructors
 

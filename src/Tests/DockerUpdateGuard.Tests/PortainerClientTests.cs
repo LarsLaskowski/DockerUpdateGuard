@@ -1312,6 +1312,25 @@ public class PortainerClientTests
     }
 
     /// <summary>
+    /// Verify a response that breaks off while it is read during an action reports the fixed connection-failed reason
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task PortainerClientExecuteActionAsyncWhenResponseBreaksOffReportsConnectionFailedAsync()
+    {
+        var injected = new HttpIOException(HttpRequestError.ResponseEnded, "The response ended prematurely. portainer.internal.test");
+        var logger = new TestLogger<PortainerClient>();
+        var result = await RunFailingActionAsync(() => injected, logger, CancellationToken.None).ConfigureAwait(false);
+
+        Assert.IsFalse(result.Succeeded, "A response that breaks off must fail the action");
+        Assert.AreEqual("Action 'restart' failed: connection failed", result.Message, "A response that breaks off must report the fixed connection-failed reason");
+        Assert.DoesNotContain(HostMarker, result.Message, "The exception text must not reach the action message");
+        Assert.Contains(entry => entry.EventId.Id == 3310 && ReferenceEquals(entry.Exception, injected),
+                        logger.Entries,
+                        "The failure must still be logged with the exception");
+    }
+
+    /// <summary>
     /// Verify a transport failure during a capability check reports the fixed connection-failed reason without the exception text
     /// </summary>
     /// <returns>Task</returns>

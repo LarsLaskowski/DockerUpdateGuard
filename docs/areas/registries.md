@@ -28,6 +28,13 @@ retry policy and the failure model.
 - A *failed* outcome from a registry names the HTTP status code and includes the response body the remote side sent.
   The exception is a listing stopped by a rejected next-page link: it has neither a status code nor a body and names the
   rejected origin instead ([Pagination links](#pagination-links)).
+- An outcome caused by an error rather than by an answer carries a fixed reason, never the error's own text:
+  `cancelled`, `timed out after <n> seconds` (or `timed out` when the call has no timeout of its own), `connection
+  failed` (transport failures and responses that break off), `invalid response` (malformed JSON) or `unexpected
+  error`. A message the application composed itself from fixed text, configuration names and masked URLs is passed on:
+  it is raised as a `ReportableException`, a type whose message must never interpolate an error's message, a response
+  body or an unmasked URL (a reviewer treats such a use as blocking). The error is logged with the failure
+  ([record 0009](../decisions/0009-integration-results-carry-fixed-failure-reasons.md)).
 
 ### Choice of client per registry
 
@@ -200,8 +207,9 @@ retry policy and the failure model.
   to another origin also gives *failed*, with the message of [Pagination links](#pagination-links).
 - Some failures still surface as errors instead of outcomes: transport errors and timeouts that remain after the
   retries, and malformed JSON, during tag lookups, tag listings and the account listing (both clients) and during
-  image configuration lookups on other registries. A Docker Hub configuration lookup turns them into *failed*. The
-  scan that made the call records such an error as a failed scan.
+  image configuration lookups on other registries. A Docker Hub configuration lookup turns them into *failed* with a fixed reason
+  ([failure model](#failure-model-of-integrations)). The scan that made the call records such an error as a failed
+  scan: `Container '<name>' could not be processed: <reason>` or `Observed image scan failed: <reason>`.
 - The PAT is never written to logs or messages. The user name appears in the log entry and the message of a failed
   Docker Hub login.
 - Registry responses are untrusted: missing or mistyped JSON fields are treated as unknown values. An unbounded
@@ -230,6 +238,8 @@ retry policy and the failure model.
 - [0004](../decisions/0004-pagination-follows-only-same-origin-links.md): pagination follows only same-origin links.
 - [0008](../decisions/0008-non-idempotent-requests-retry-only-when-not-processed.md): non-idempotent requests are
   retried only when they cannot have been processed.
+- [0009](../decisions/0009-integration-results-carry-fixed-failure-reasons.md): integration results carry fixed
+  failure reasons, never an error's own text.
 
 ## Not here
 

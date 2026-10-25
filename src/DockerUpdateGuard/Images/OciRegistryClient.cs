@@ -1344,7 +1344,7 @@ public partial class OciRegistryClient : IRegistryMetadataClient
                                "OCI base image chain resolution failed for {ImageReference}",
                                imageReference.FullReference);
 
-            return ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>.Failed($"Base image chain resolution failed for '{imageReference.FullReference}': {exception.Message}");
+            return ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>.Failed($"Base image chain resolution failed for '{imageReference.FullReference}': {FailureReason.FromException(exception, null, cancellationToken)}");
         }
 
         return ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>.Succeeded(results);

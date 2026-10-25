@@ -410,6 +410,10 @@ it links:
   contains an `@`, and the Trivy server address reaches the Trivy process in its environment (`TRIVY_SERVER`), not
   on its command line
   ([Telemetry](areas/telemetry.md), [record 0005](decisions/0005-urls-are-output-with-user-info-masked.md)).
+- **Failure messages carry fixed reasons.** Integration clients and the scan orchestrators never put an exception's
+  message into a result or a scan run; they report a fixed reason and log the exception
+  ([Registries](areas/registries.md#failure-model-of-integrations),
+  [record 0009](decisions/0009-integration-results-carry-fixed-failure-reasons.md)).
 - **Pagination stays on its origin.** `DockerHubClient`, `OciRegistryClient`
   and `DockerScoutVulnerabilityProvider` follow a next-page link only on the
   origin of the listing (`Infrastructure\PaginationLinkGuard`), so a remote

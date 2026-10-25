@@ -155,13 +155,15 @@ The dashboard shows at most one hint about the vulnerability configuration:
 
 - Providers never raise errors for expected failures; they report *not configured*, *unsupported*, *not found* or
   *failed* with a message ([Registries](registries.md)). An unexpected error inside a provider call becomes *failed*
-  with "Trivy scan failed: …" or "Docker Scout scan failed: …". Cancellation is not converted.
-- An unexpected error during a refresh ends the scan run *failed* with the error message; work saved before stays
-  saved. If saving the final run state fails, it is retried once.
+  with `Trivy scan failed: <reason>` or `Docker Scout scan failed: <reason>`, where `<reason>` is a fixed reason
+  ([Registries](registries.md#failure-model-of-integrations)); a Trivy process that cannot be started reads `Trivy
+  scan failed: the Trivy executable could not be started`. Cancellation is not converted.
+- An unexpected error during a refresh ends the scan run *failed* with `Vulnerability refresh failed: <reason>`; work
+  saved before stays saved. If saving the final run state fails, it is retried once.
 - Stored lengths: advisory id 100 characters, title 300, affected package 200, installed and fixed version 100 each,
   package class and type 50 each, CVSS score 5 digits with 2 decimals, assessment message 2000; summary and reference
   URL are unlimited.
-- Messages are built from the image reference and the provider's error text; no credentials or tokens are put into
+- Messages are built from the image reference and the provider's error output (Trivy's excerpt) or a fixed reason; no credentials or tokens are put into
   them.
 
 ### Known gaps

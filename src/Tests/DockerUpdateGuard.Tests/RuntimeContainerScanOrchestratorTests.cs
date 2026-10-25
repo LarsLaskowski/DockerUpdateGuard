@@ -1,4 +1,5 @@
 using DockerUpdateGuard.Configuration;
+using DockerUpdateGuard.Data;
 using DockerUpdateGuard.Data.Entities;
 using DockerUpdateGuard.Data.Repositories;
 using DockerUpdateGuard.Docker;
@@ -2032,6 +2033,150 @@ public class RuntimeContainerScanOrchestratorTests
                 }
             }
         }
+    }
+
+    /// <summary>
+    /// Verify an exception while discovering containers reports a fixed reason in the scan run
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task RuntimeContainerScanOrchestratorScanAllAsyncWhenDiscoveryThrowsReportsFixedReasonAsync()
+    {
+        using (var database = new SqliteTestDatabase())
+        {
+            var dbContext = database.CreateDbContext();
+
+            await using (dbContext.ConfigureAwait(false))
+            {
+                var dockerInstanceClient = Substitute.For<IDockerInstanceClient>();
+                var registryMetadataService = Substitute.For<IRegistryMetadataService>();
+                var logger = new TestLogger<RuntimeContainerScanOrchestrator>();
+                var orchestrator = CreateFailureOrchestrator(dbContext, dockerInstanceClient, registryMetadataService, logger);
+
+                dockerInstanceClient.DiscoverContainersAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<CancellationToken>())
+                                    .Returns(Task.FromException<ExternalOperationResult<IReadOnlyList<RuntimeContainerDescriptor>>>(new HttpRequestException(HttpRequestError.ConnectionError, "Connection refused (docker.internal.test:2376)")));
+
+                await orchestrator.ScanAllAsync(ScanTriggerSource.Scheduled, CancellationToken.None)
+                                  .ConfigureAwait(false);
+
+                var scanRun = await dbContext.ScanRuns.SingleAsync(TestContext.CancellationToken).ConfigureAwait(false);
+
+                Assert.AreEqual(ScanRunStatus.Failed, scanRun.Status, "An exception during discovery must fail the scan run");
+                Assert.AreEqual("Runtime container scan failed: connection failed",
+                                scanRun.ErrorMessage,
+                                "The scan run must carry the fixed reason instead of the exception text");
+                Assert.IsNotNull(scanRun.ErrorMessage, "A failed result must carry a message");
+                Assert.DoesNotContain("internal.test", scanRun.ErrorMessage, "The exception text must not reach the scan run");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Verify an exception while processing one container reports a fixed reason in the scan run and in the snapshot
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task RuntimeContainerScanOrchestratorScanAllAsyncWhenContainerProcessingThrowsReportsFixedReasonAsync()
+    {
+        using (var database = new SqliteTestDatabase())
+        {
+            var dbContext = database.CreateDbContext();
+
+            await using (dbContext.ConfigureAwait(false))
+            {
+                var dockerInstanceClient = Substitute.For<IDockerInstanceClient>();
+                var registryMetadataService = Substitute.For<IRegistryMetadataService>();
+                var logger = new TestLogger<RuntimeContainerScanOrchestrator>();
+                var orchestrator = CreateFailureOrchestrator(dbContext, dockerInstanceClient, registryMetadataService, logger);
+                var injected = new HttpRequestException(HttpRequestError.ConnectionError, "Connection refused (registry.internal.test:443)");
+
+                dockerInstanceClient.DiscoverContainersAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<CancellationToken>())
+                                    .Returns(ExternalOperationResult<IReadOnlyList<RuntimeContainerDescriptor>>.Succeeded([
+                                                                                                                              new RuntimeContainerDescriptor
+                                                                                                                              {
+                                                                                                                                  ContainerId = "container-1",
+                                                                                                                                  Name = "web-1",
+                                                                                                                                  ImageReference = "docker.io/library/nginx:1.0.0",
+                                                                                                                                  RuntimeStatus = ContainerRuntimeStatus.Running,
+                                                                                                                                  IsRunning = true,
+                                                                                                                              },
+                                                                                                                          ]));
+                dockerInstanceClient.InspectImageAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+                                    .Returns(ExternalOperationResult<DockerImageInspectData>.NotFound("The local image inspect payload is not available"));
+                dockerInstanceClient.GetImageHistoryAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+                                    .Returns(ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>.NotFound("The local image history payload is not available"));
+                registryMetadataService.GetTagsAsync("docker.io",
+                                                     "library/nginx",
+                                                     cancellationToken: Arg.Any<CancellationToken>())
+                                       .Returns(Task.FromException<ExternalOperationResult<IReadOnlyList<DockerHubTagData>>>(injected));
+                registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), cancellationToken: Arg.Any<CancellationToken>())
+                                       .Returns(Task.FromException<ExternalOperationResult<DockerHubTagData>>(injected));
+
+                await orchestrator.ScanAllAsync(ScanTriggerSource.Scheduled, CancellationToken.None)
+                                  .ConfigureAwait(false);
+
+                var scanRun = await dbContext.ScanRuns.SingleAsync(TestContext.CancellationToken).ConfigureAwait(false);
+                var snapshot = await dbContext.ContainerSnapshots.SingleAsync(TestContext.CancellationToken).ConfigureAwait(false);
+
+                Assert.AreEqual("Container 'web-1' could not be processed: connection failed",
+                                scanRun.ErrorMessage,
+                                "The scan run must carry the fixed reason instead of the exception text");
+                Assert.AreEqual("Container 'web-1' could not be processed: connection failed",
+                                snapshot.UpdateAssessmentMessage,
+                                "The snapshot must carry the fixed reason instead of the exception text");
+                Assert.AreEqual(UpdateAssessmentStatus.Failed, snapshot.UpdateAssessmentStatus, "A failed container must be marked as failed");
+                Assert.IsNotNull(scanRun.ErrorMessage, "A failed result must carry a message");
+                Assert.DoesNotContain("internal.test", scanRun.ErrorMessage, "The exception text must not reach the scan run");
+                Assert.IsNotNull(snapshot.UpdateAssessmentMessage, "A failed result must carry a message");
+                Assert.DoesNotContain("internal.test", snapshot.UpdateAssessmentMessage, "The exception text must not reach the snapshot");
+                Assert.Contains(entry => entry.EventId.Id == 2098 && ReferenceEquals(entry.Exception, injected),
+                                logger.Entries,
+                                "The failure must still be logged with the exception");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Create an orchestrator for a single configured Docker instance
+    /// </summary>
+    /// <param name="dbContext">Database context</param>
+    /// <param name="dockerInstanceClient">Docker instance client</param>
+    /// <param name="registryMetadataService">Registry metadata service</param>
+    /// <param name="logger">Logger that captures the entries</param>
+    /// <returns>Orchestrator</returns>
+    private static RuntimeContainerScanOrchestrator CreateFailureOrchestrator(DockerUpdateGuardDbContext dbContext,
+                                                                              IDockerInstanceClient dockerInstanceClient,
+                                                                              IRegistryMetadataService registryMetadataService,
+                                                                              TestLogger<RuntimeContainerScanOrchestrator> logger)
+    {
+        var optionsMonitor = new TestOptionsMonitor<DockerUpdateGuardOptions>(new DockerUpdateGuardOptions
+                                                                              {
+                                                                                  DockerInstances = [
+                                                                                                        new DockerInstanceOptions
+                                                                                                        {
+                                                                                                            Name = "Production",
+                                                                                                            BaseUrl = "https://docker.example.test",
+                                                                                                            Enabled = true,
+                                                                                                        },
+                                                                                                    ],
+                                                                              });
+        var instanceDiscoveryService = new InstanceDiscoveryService(dbContext,
+                                                                    new TestLogger<InstanceDiscoveryService>(),
+                                                                    optionsMonitor);
+
+        return new RuntimeContainerScanOrchestrator(new ApplicationTelemetry(),
+                                                    dbContext,
+                                                    dockerInstanceClient,
+                                                    Substitute.For<IDerivedBaseRuntimeDetector>(),
+                                                    Substitute.For<IDotNetReleaseMetadataService>(),
+                                                    Substitute.For<INginxReleaseMetadataService>(),
+                                                    new ImageCatalogRepository(dbContext),
+                                                    new ImageReferenceParser(),
+                                                    instanceDiscoveryService,
+                                                    logger,
+                                                    optionsMonitor,
+                                                    registryMetadataService,
+                                                    new UpdateDetectionService(optionsMonitor));
     }
 
     #endregion // Methods

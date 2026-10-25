@@ -1417,7 +1417,7 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
         {
             _logger.DockerHubBaseImageResolutionFailed(exception, imageReference.FullReference);
 
-            return ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>.Failed($"Base image chain resolution failed for '{imageReference.FullReference}': {exception.Message}");
+            return ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>.Failed($"Base image chain resolution failed for '{imageReference.FullReference}': {FailureReason.FromException(exception, null, cancellationToken)}");
         }
 
         _logger.DockerHubBaseImageChainResolved(imageReference.FullReference, results.Count);
@@ -1474,7 +1474,9 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
-            return ExternalOperationResult<RegistryImageConfigurationData>.Failed($"Image configuration lookup failed for '{imageReference.FullReference}': {exception.Message}");
+            _logger.DockerHubImageConfigurationLookupFailed(exception, imageReference.FullReference);
+
+            return ExternalOperationResult<RegistryImageConfigurationData>.Failed($"Image configuration lookup failed for '{imageReference.FullReference}': {FailureReason.FromException(exception, null, cancellationToken)}");
         }
     }
 

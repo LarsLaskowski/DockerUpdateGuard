@@ -74,45 +74,6 @@ public partial class PortainerClient : IPortainerClient
     #region Static methods
 
     /// <summary>
-    /// Map an exception caught by the client to a fixed, user-safe failure reason
-    /// </summary>
-    /// <param name="exception">Caught exception</param>
-    /// <param name="requestTimeoutSeconds">Configured request timeout in seconds</param>
-    /// <param name="cancellationToken">Cancellation token of the call</param>
-    /// <returns>Fixed failure reason</returns>
-    private static string GetFailureReason(Exception exception,
-                                           int requestTimeoutSeconds,
-                                           CancellationToken cancellationToken)
-    {
-        if (exception is PortainerAuthenticationException)
-        {
-            return exception.Message;
-        }
-
-        if (exception is OperationCanceledException && cancellationToken.IsCancellationRequested)
-        {
-            return "cancelled";
-        }
-
-        if (exception is OperationCanceledException or TimeoutException)
-        {
-            return string.Create(CultureInfo.InvariantCulture, $"timed out after {requestTimeoutSeconds} seconds");
-        }
-
-        if (exception is HttpRequestException)
-        {
-            return "connection failed";
-        }
-
-        if (exception is JsonException)
-        {
-            return "invalid response";
-        }
-
-        return "unexpected error";
-    }
-
-    /// <summary>
     /// Resolve the first available Portainer endpoint identifier
     /// </summary>
     /// <param name="client">Authenticated HTTP client</param>
@@ -324,7 +285,7 @@ public partial class PortainerClient : IPortainerClient
                    {
                        IsConfigured = true,
                        SupportsActions = false,
-                       Message = $"Portainer connection error: {GetFailureReason(ex, instanceOptions.Portainer.RequestTimeoutSeconds, cancellationToken)}",
+                       Message = $"Portainer connection error: {FailureReason.FromException(ex, TimeSpan.FromSeconds(instanceOptions.Portainer.RequestTimeoutSeconds), cancellationToken)}",
                    };
         }
     }
@@ -420,7 +381,7 @@ public partial class PortainerClient : IPortainerClient
             return new PortainerActionResult
                    {
                        Succeeded = false,
-                       Message = $"Action '{actionRequest.ActionName}' failed: {GetFailureReason(ex, instanceOptions.Portainer.RequestTimeoutSeconds, cancellationToken)}",
+                       Message = $"Action '{actionRequest.ActionName}' failed: {FailureReason.FromException(ex, TimeSpan.FromSeconds(instanceOptions.Portainer.RequestTimeoutSeconds), cancellationToken)}",
                    };
         }
     }

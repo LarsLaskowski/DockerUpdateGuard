@@ -1,3 +1,5 @@
+using System.Net;
+
 using DockerUpdateGuard.Images;
 using DockerUpdateGuard.Infrastructure;
 using DockerUpdateGuard.Tests.Data;
@@ -93,6 +95,39 @@ public partial class NginxReleaseMetadataServiceTests
             httpClient.Dispose();
             handler.Dispose();
         }
+    }
+
+    /// <summary>
+    /// Verify an unreachable download listing reports the fixed connection-failed reason
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task NginxReleaseMetadataServiceGetChannelReleaseAsyncWhenTransportFailsReportsConnectionFailedAsync()
+    {
+        var injected = new HttpRequestException(HttpRequestError.ConnectionError, "Connection refused (nginx.internal.test:443)");
+        var logger = new TestLogger<NginxReleaseMetadataService>();
+
+        using var handler = new RetryProbeHttpMessageHandler([null], HttpStatusCode.OK)
+                            {
+                                FailureFactory = () => injected,
+                            };
+        using var httpClient = new HttpClient(handler)
+                               {
+                                   BaseAddress = new Uri("https://nginx.example.test/"),
+                               };
+
+        var service = new NginxReleaseMetadataService(httpClient, logger);
+
+        var result = await service.GetChannelReleaseAsync("1.29", CancellationToken.None)
+                                  .ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Failed, result.Status, "An unreachable download listing must fail the lookup");
+        Assert.AreEqual("Loading NGINX release metadata failed: connection failed", result.Message, "A transport failure must report the fixed connection-failed reason");
+        Assert.IsNotNull(result.Message, "A failed result must carry a message");
+        Assert.DoesNotContain("internal.test", result.Message, "The exception text must not reach the result message");
+        Assert.Contains(entry => ReferenceEquals(entry.Exception, injected),
+                        logger.Entries,
+                        "The transport failure must still be logged with the exception");
     }
 
     #endregion // Methods

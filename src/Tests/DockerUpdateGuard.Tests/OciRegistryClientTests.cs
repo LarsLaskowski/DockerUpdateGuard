@@ -426,6 +426,44 @@ public partial class OciRegistryClientTests
     }
 
     /// <summary>
+    /// Verify a transport failure during OCI base-image resolution reports the fixed connection-failed reason
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task OciRegistryClientResolveBaseImagesAsyncWhenTransportFailsReportsConnectionFailedAsync()
+    {
+        var injected = new HttpRequestException(HttpRequestError.ConnectionError, "Connection refused (registry.internal.test:443)");
+        var logger = new TestLogger<OciRegistryClient>();
+        var imageReference = new ImageReference
+                             {
+                                 Registry = "mcr.microsoft.com",
+                                 Repository = "dotnet/aspnet",
+                                 Tag = "8.0",
+                             };
+
+        using var handler = new RetryProbeHttpMessageHandler([null], HttpStatusCode.OK)
+                            {
+                                FailureFactory = () => injected,
+                            };
+        using var httpClient = new HttpClient(handler);
+
+        var client = new OciRegistryClient(httpClient, logger);
+
+        var result = await client.ResolveBaseImagesAsync(imageReference, CancellationToken.None)
+                                 .ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Failed, result.Status, "A transport failure must fail the base-image resolution");
+        Assert.AreEqual($"Base image chain resolution failed for '{imageReference.FullReference}': connection failed",
+                        result.Message,
+                        "A transport failure must report the fixed connection-failed reason");
+        Assert.IsNotNull(result.Message, "A failed result must carry a message");
+        Assert.DoesNotContain("internal.test", result.Message, "The exception text must not reach the result message");
+        Assert.Contains(entry => ReferenceEquals(entry.Exception, injected),
+                        logger.Entries,
+                        "The transport failure must still be logged with the exception");
+    }
+
+    /// <summary>
     /// Verify OCI tag listing refuses a Link header on another origin
     /// </summary>
     /// <returns>Task</returns>
