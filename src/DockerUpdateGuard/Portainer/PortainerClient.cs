@@ -96,7 +96,23 @@ public partial class PortainerClient : IPortainerClient
     /// <returns>True when the header is absent or valid; false when it is present but invalid</returns>
     private static bool TryReadTotalCount(HttpResponseMessage response, out int? totalCount)
     {
-        throw new InvalidOperationException("Skeleton: not implemented");
+        totalCount = null;
+
+        if (response.Headers.TryGetValues(TotalCountHeaderName, out var values) == false)
+        {
+            return true;
+        }
+
+        var valueList = values.ToList();
+
+        if (valueList.Count == 1 && int.TryParse(valueList[0], NumberStyles.None, CultureInfo.InvariantCulture, out var parsed))
+        {
+            totalCount = parsed;
+
+            return true;
+        }
+
+        return false;
     }
 
     /// <summary>
@@ -106,7 +122,36 @@ public partial class PortainerClient : IPortainerClient
     /// <returns>Trimmed, sanitized and shortened name; empty when there is none</returns>
     private static string FormatEnvironmentName(string? name)
     {
-        throw new InvalidOperationException("Skeleton: not implemented");
+        var cleaned = (name ?? string.Empty).Trim();
+
+        if (cleaned.Length == 0)
+        {
+            return string.Empty;
+        }
+
+        var characters = cleaned.ToCharArray();
+
+        for (var index = 0; index < characters.Length; index++)
+        {
+            var category = char.GetUnicodeCategory(characters[index]);
+
+            if (category is UnicodeCategory.Control
+                         or UnicodeCategory.Format
+                         or UnicodeCategory.LineSeparator
+                         or UnicodeCategory.ParagraphSeparator)
+            {
+                characters[index] = '?';
+            }
+        }
+
+        if (characters.Length <= MaxEnvironmentNameLength)
+        {
+            return new string(characters);
+        }
+
+        var keep = char.IsHighSurrogate(characters[MaxEnvironmentNameLength - 1]) ? MaxEnvironmentNameLength - 1 : MaxEnvironmentNameLength;
+
+        return new string(characters, 0, keep) + "…";
     }
 
     /// <summary>
@@ -118,7 +163,36 @@ public partial class PortainerClient : IPortainerClient
     /// <returns>Failure message</returns>
     private static string FormatAmbiguousEnvironmentsMessage(string dockerInstanceName, PortainerEndpointItem[] endpoints, int? environmentCount)
     {
-        throw new InvalidOperationException("Skeleton: not implemented");
+        var countClause = environmentCount is null
+                              ? "Portainer reported no valid environment count"
+                              : $"Portainer manages {environmentCount.Value.ToString(CultureInfo.InvariantCulture)} environments";
+        var message = $"{countClause}; set Portainer:EndpointId of Docker instance '{dockerInstanceName}'";
+        var shown = endpoints.OrderBy(e => e.Id)
+                             .Take(MaxListedEnvironments)
+                             .ToList();
+
+        if (shown.Count == 0)
+        {
+            return message;
+        }
+
+        var entries = shown.Select(e =>
+                                   {
+                                       var name = FormatEnvironmentName(e.Name);
+
+                                       return name.Length == 0
+                                                  ? e.Id.ToString(CultureInfo.InvariantCulture)
+                                                  : $"{e.Id.ToString(CultureInfo.InvariantCulture)} ({name})";
+                                   })
+                           .ToList();
+        var list = string.Join(", ", entries);
+
+        if (environmentCount is null || environmentCount.Value > shown.Count)
+        {
+            list += ", …";
+        }
+
+        return $"{message} to one of: {list}";
     }
 
     /// <summary>
@@ -178,15 +252,27 @@ public partial class PortainerClient : IPortainerClient
 
         using var response = await client.GetAsync("/api/endpoints", cancellationToken).ConfigureAwait(false);
 
-        if (response.IsSuccessStatusCode)
+        if (response.IsSuccessStatusCode == false)
         {
-            var endpoints = await response.Content.ReadFromJsonAsync<PortainerEndpointItem[]>(cancellationToken: cancellationToken).ConfigureAwait(false);
-            var firstEndpoint = endpoints?.FirstOrDefault();
+            _logger.PortainerEnvironmentListFailed(instanceOptions.Name, (int)response.StatusCode);
 
-            if (firstEndpoint is not null)
-            {
-                return new PortainerEndpointResolution(firstEndpoint.Id.ToString(CultureInfo.InvariantCulture), null);
-            }
+            return new PortainerEndpointResolution(null, $"Portainer environment list failed: HTTP {(int)response.StatusCode}");
+        }
+
+        var endpoints = await response.Content.ReadFromJsonAsync<PortainerEndpointItem[]>(cancellationToken: cancellationToken).ConfigureAwait(false) ?? [];
+        var headerIsValid = TryReadTotalCount(response, out var totalCount);
+        int? environmentCount = headerIsValid ? Math.Max(endpoints.Length, totalCount ?? endpoints.Length) : null;
+
+        if (environmentCount > 1 || (environmentCount is null && endpoints.Length > 0))
+        {
+            _logger.PortainerEnvironmentAmbiguous(instanceOptions.Name, endpoints.Length, headerIsValid ? totalCount : null);
+
+            return new PortainerEndpointResolution(null, FormatAmbiguousEnvironmentsMessage(instanceOptions.Name, endpoints, environmentCount));
+        }
+
+        if (endpoints.Length == 1 && environmentCount == 1)
+        {
+            return new PortainerEndpointResolution(endpoints[0].Id.ToString(CultureInfo.InvariantCulture), null);
         }
 
         return new PortainerEndpointResolution(null, "No Portainer endpoint found");

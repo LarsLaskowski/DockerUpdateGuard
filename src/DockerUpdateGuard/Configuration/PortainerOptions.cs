@@ -33,7 +33,7 @@ public class PortainerOptions
     public string? ApiToken { get; set; }
 
     /// <summary>
-    /// Optional endpoint identifier — auto-resolved from the first available endpoint when not set
+    /// Optional Portainer environment identifier — required when Portainer lists more than one environment
     /// </summary>
     public string? EndpointId { get; set; }
 
