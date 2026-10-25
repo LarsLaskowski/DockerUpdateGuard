@@ -337,3 +337,14 @@ Follow-up issues for the orchestrator to create:
    `https://admin#secret@portainer.example:9443` (or `?` instead of `#`) passes validation; the client connects to
    host `admin`, sends the Portainer API key there, and log entries (3306, 3310, 3104, …) name `admin:443`. Reject a
    configured URL whose text contains `@` that its parsed user info does not account for. Found while fixing #318.
+
+
+## Challenge notes
+
+- minor: AC10 says Portainer results are "unchanged", but AC1 adds an `IOException` -> `connection failed` branch that `PortainerClient.GetFailureReason` does not have (`PortainerClient.cs:83-113`, plan *Verified facts* 17). A Portainer `HttpIOException` from a response that breaks off while being read changes from `unexpected error` to `connection failed`. Instruction: reword AC10 to "Portainer results are unchanged except that an `IOException`/`HttpIOException` now reads `connection failed`, as `container-actions.md` already documents", and leave the #315 pins as they are.
+
+## Security notes
+
+1. AC10 overstates "unchanged". The shared mapping adds an `IOException` branch. A Portainer `HttpIOException` that read "unexpected error" under `PortainerClient.GetFailureReason` will now read "connection failed". This is safe, but AC10 and the Portainer text in `container-actions.md` should say so. Alternatively, add one Portainer pin test that shows the new reason.
+2. The marker contract has no guard against misuse. `ReportableException` is public and not sealed, and its whole guarantee is that its message is composed only from fixed text, configuration names and masked URLs. Put that rule in the type's XML summary and in the `registries.md` failure-model bullet. Have the Reviewer treat as blocking any future `new ReportableException(...)` (or subtype) whose message interpolates `.Message`, a response body or an unmasked URL.
+3. Residual exposure stays in results, already accepted by record 0009 and tracked as follow-ups 1-3 (remote response bodies, Trivy's stderr excerpt, the UI catch blocks). All three follow-up issues should be created in the same run.
