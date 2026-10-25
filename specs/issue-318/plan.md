@@ -98,7 +98,7 @@ marker `internal.test` and asserts `Assert.AreEqual` on the full message plus `A
   processed: <reason>` in the scan-run message and in that snapshot's `UpdateAssessmentMessage`.
 - [ ] AC9: An exception in an observed-image scan gives the scan-run message `Observed image scan failed: <reason>`;
   in a vulnerability refresh `Vulnerability refresh failed: <reason>`.
-- [ ] AC10: Portainer results are unchanged by the move to the shared mapping (the #315 tests stay green).
+- [ ] AC10: Portainer results are unchanged by the move to the shared mapping (the #315 tests stay green), except that an `IOException`/`HttpIOException` now reads `connection failed`, as `container-actions.md` already documents.
 
 ## Tests per criterion
 

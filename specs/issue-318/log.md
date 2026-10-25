@@ -13,3 +13,6 @@ are quoted in full.
 | 2026-10-25 09:02 | 5 Tests first | squad-tester | DONE: 12 test files, 29 of new tests fail on skeleton (confirmed by orchestrator), none deferred (sonnet/medium · 213,766 tokens · 48 tool uses · 577 s) |
 | 2026-10-25 09:06 | 6 Implement | squad-dev | DONE: production + docs, no deviations (sonnet/medium · 111,780 tokens · 18 tool uses · 219 s) |
 | 2026-10-25 09:08 | 7 Code check | Orchestrator | Format, build, 703+21 tests, coverage 91.3%/85.5%, analyzer 0, scope-check PASS; Sonar gate NOT CHECKED (no SONAR_TOKEN) |
+| 2026-10-25 09:12 | 8 Review | squad-reviewer | Round 1: 1 blocking (scan-engine.md wording), 2 non-blocking; all verbatim doc fixes applied by orchestrator (opus/medium · 95,755 tokens · 17 tool uses · 121 s) |
+| 2026-10-25 09:12 | 8 Review | squad-security | Diff: APPROVED, no blocking findings (opus/medium · 47,199 tokens · 10 tool uses · 61 s) |
+| 2026-10-25 09:12 | 9 PR approval | Orchestrator | Approved by checklist; record 0009 set Accepted, decision-check PASS; format/scope/plan checks PASS after verbatim fixes |

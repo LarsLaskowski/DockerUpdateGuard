@@ -1,6 +1,6 @@
 # 0009: Integration results carry fixed failure reasons, never exception messages
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-25
 - **Area:** Registries
 - **Source:** Issue #315, issue #318
