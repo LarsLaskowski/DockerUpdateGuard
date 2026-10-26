@@ -19,7 +19,7 @@ areas*). The clients still have to connect with the URL as configured.
 went into the log and the scan result message as it stood (issue #304). Go, which Trivy is written in, echoes the URL
 there: its HTTP client masks only the password (`user:***@`; a user name alone not at all), and its URL parser quotes
 the raw URL in a parse error and adds the offending part after it (`invalid URL escape "%zz"`, up to three characters
-of the user info). For a user info with `#` or `?`, which configuration validation accepts, both the platform and Go
+of the user info). For a user info with `#` or `?`, which configuration validation accepted until [0012](0012-configured-urls-are-rejected-when-an-at-sign-is-not-their-user-info-separator.md), both the platform and Go
 read the part before it as the host, so Go's resolver error names the would-be user name
 (`lookup admin: no such host`). Measured with Trivy v0.58.1, the last line of its error output carries `user:***@` for
 `https://user:secret@…`, `token@` for `https://token@…`, `"https://admin#secret@…"` for `https://admin:#secret@…`

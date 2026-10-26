@@ -102,8 +102,9 @@ bounded length by one shared helper ([Registries](../areas/registries.md#failure
 - Caller cancellation is reported as "cancelled" where a call reported it before (Portainer, the release feeds, the
   orchestrators) and still thrown where it was thrown before; #280 decides what an action run records for it.
 - Log entries keep the exception, and its runtime message can name a would-be host that a malformed URL produced (a
-  `#` or `?` in the user info, `https://admin#secret@host` connects to `admin`). Rejecting such URLs at configuration
-  validation is a follow-up issue; it also stops requests to that wrong host. Proxy URLs taken from the environment
+  `#` or `?` in the user info, `https://admin#secret@host` connects to `admin`). Configuration validation rejects such URLs
+  since [0012](0012-configured-urls-are-rejected-when-an-at-sign-is-not-their-user-info-separator.md), which also
+  stops requests to that wrong host. Proxy URLs taken from the environment
   appear in these messages without their user info.
 - Response bodies the remote side sent and the error output of Trivy are not exception messages; they stay in results.
   A body is cut to its first characters, so a message no longer shows the end of a long answer; the operator who needs
