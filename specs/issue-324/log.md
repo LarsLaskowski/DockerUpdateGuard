@@ -14,4 +14,4 @@ are quoted in full.
 | 2026-10-26 21:09 | 4 Skeleton | squad-dev | Skeleton done: ResponseBodyExcerpt (stubs), PaginationLinkGuard.MaxOriginDescriptionLength; Build passes, 0 warnings; ReadAsync non-async stub (CS1998) (sonnet/medium · 80,283 tokens · 12 tool uses · 185 s) |
 | 2026-10-26 21:23 | 5 Tests first | squad-tester | Tests for AC1-AC9 written; confirmed 26 fail / 729 pass on skeleton (own run); AC7 at-limit test deferred (passes already) (sonnet/medium · 191,772 tokens · 42 tool uses · 778 s) |
 | 2026-10-26 21:26 | 6 Implement | squad-dev | Implemented helper and 10 call sites; Dev reports tests green, coverage new lines 100% (sonnet/medium · 83,323 tokens · 11 tool uses · 185 s) |
-| 2026-10-26 21:29 | 6 Coverage | squad-tester | Deferred AC7 at-limit test added, passes; all plan-named tests present; 756 pass (sonnet/medium · usage pending) |
+| 2026-10-26 21:29 | 6 Coverage | squad-tester | Deferred AC7 at-limit test added, passes; all plan-named tests present; 756 pass (sonnet/medium · 75,282 tokens · 11 tool uses · 142 s) |
