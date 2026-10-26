@@ -44,10 +44,10 @@ evident from the text — the host is what follows the `@` — but the parser ha
 
 ## Decision
 
-Option 1, for every configured URL validated at startup (and, for the `DockerUpdateGuard` section, on reload): the
-URL keys of the `DockerUpdateGuard` section, `DockerHub:Registry` when it is an absolute URI, and `Telemetry:OtlpEndpoint`. A violation fails
-validation with a fixed message that names the key and how to encode the user info, never the value. The rule and its message
-are in [Hosting and configuration](../areas/hosting.md#validation) and, for the OTLP endpoint,
+Option 1, for every configured URL validated at startup (and, for the `DockerUpdateGuard` section, on reload): the URL
+keys of the `DockerUpdateGuard` section, `DockerHub:Registry` when it is an absolute URI, and `Telemetry:OtlpEndpoint`.
+A violation fails validation with a fixed message that names the key and how to encode the user info, never the value.
+The rule and its message are in [Hosting and configuration](../areas/hosting.md#validation) and, for the OTLP endpoint,
 [Telemetry](../areas/telemetry.md#limits-and-errors).
 
 ## Consequences
