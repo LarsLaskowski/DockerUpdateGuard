@@ -1,6 +1,7 @@
 using DockerUpdateGuard.Data.Entities;
 using DockerUpdateGuard.Images;
 using DockerUpdateGuard.Images.Data;
+using DockerUpdateGuard.Infrastructure;
 using DockerUpdateGuard.Tests.Data;
 using DockerUpdateGuard.Tests.Helper;
 
@@ -77,6 +78,57 @@ public partial class ImageRegistrationServiceTests
                 Assert.AreEqual(1,
                                 imageVersionCount,
                                 "Registering an image must create exactly one image version for the supplied reference");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Verify a reference without a repository name is rejected with a reportable error that wraps the parser error and saves nothing
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task ImageRegistrationServiceRegisterAsyncReferenceWithoutRepositoryThrowsReportableExceptionAsync()
+    {
+        using (var database = new SqliteTestDatabase())
+        {
+            var dbContext = database.CreateDbContext();
+
+            await using (dbContext.ConfigureAwait(false))
+            {
+                var imageVersion = new ImageVersion
+                                   {
+                                       RegistryRepository = new RegistryRepository
+                                                            {
+                                                                Registry = "docker.io",
+                                                                Repository = "company/api",
+                                                            },
+                                       Tag = "1.0.0",
+                                   };
+                var service = new ImageRegistrationService(dbContext,
+                                                           new TestImageCatalogRepository(imageVersion),
+                                                           new ImageReferenceParser());
+                var request = new ObservedImageRegistrationRequest
+                              {
+                                  Name = "Company API",
+                                  ImageReference = ":latest",
+                              };
+
+                var exception = await Assert.ThrowsExactlyAsync<ReportableException>(() => service.RegisterAsync(request, CancellationToken.None),
+                                                                                     "A reference without a repository name must raise a reportable error")
+                                            .ConfigureAwait(false);
+
+                Assert.AreEqual("The image reference does not contain a repository name",
+                                exception.Message,
+                                "The reportable error must carry the fixed message");
+                Assert.IsInstanceOfType<ArgumentException>(exception.InnerException,
+                                                           "The reportable error must wrap the parser error");
+
+                var observedImageCountTask = dbContext.ObservedImages.CountAsync(CancellationToken.None);
+                var observedImageCount = await observedImageCountTask.ConfigureAwait(false);
+
+                Assert.AreEqual(0,
+                                observedImageCount,
+                                "A rejected reference must not save an observed image");
             }
         }
     }
