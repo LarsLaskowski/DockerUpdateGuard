@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-10-25
 - **Area:** Registries
-- **Source:** Issue #315, issue #318, issue #323
+- **Source:** Issue #315, issue #318, issue #323, issue #324
 - **Supersedes:** —
 
 ## Context
@@ -25,6 +25,11 @@ vulnerability refresh, the registration of an observed image and the manual tag 
 escaped a service (a database error, a failure outside the clients' own handling) and showed its message on the page,
 without logging it. One message there is the application's own and useful: the image reference without a repository
 name, which the reference parser raises as an `ArgumentException`.
+
+A non-success answer is not an exception: the Docker Engine client, both registry clients and the two release-feed
+readers appended the whole response body the remote side sent to the failure message (#324). A body has no size limit,
+so a long one made the message longer than the 2000 characters a container's stored assessment message holds, and the
+save of the scan failed; the same text went unbounded into logs and scan-run errors.
 
 ## Options considered
 
@@ -54,6 +59,17 @@ name, which the reference parser raises as an `ArgumentException`.
 11. **For the pages: let the reference parser raise the marker type** — changes the exception type for every caller
     of the parser (the Docker Engine client catches its `ArgumentException`); the registration service, the one
     caller whose failure reaches a page, wraps it instead.
+12. **For response bodies: one shared excerpt of bounded length, read from the response instead of the whole body,
+    and the same bound on the reason phrase** — every result, log entry and scan-run error stays short, and a streamed
+    error response is no longer read to its end. Chosen.
+13. **For response bodies: cut the message where it is stored** — fixes the one column the issue names, but logs and
+    scan-run errors still carry the whole body, the body is still read in full, and every new stored message needs its
+    own cut.
+14. **For response bodies: drop the body** — the body is often the only explanation of a registry or Engine refusal
+    (an error code, a rate-limit note); it is the remote side's answer, not runtime text, so a bounded part of it is
+    kept.
+15. **For response bodies: decode with the charset the response declares** — the remote sides here answer UTF-8 JSON
+    or ASCII pages; an unknown charset name would need its own fallback for a text that is only an excerpt.
 
 ## Decision
 
@@ -63,7 +79,9 @@ dedicated exception type, keeps its text. The exception itself is logged with th
 [Registries](../areas/registries.md#failure-model-of-integrations); the Portainer specifics in
 [Container actions](../areas/container-actions.md#limits-and-errors). A failed user action on a page shows the action
 and the same fixed reason and logs the exception ([Web UI](../areas/web-ui.md#limits-and-errors)); the registration
-service raises the parser's rejection of a reference without a repository name as the marker type.
+service raises the parser's rejection of a reference without a repository name as the marker type. A response body
+and a reason phrase the remote side sent reach a failure message only as a bounded excerpt, read by one shared helper
+([Registries](../areas/registries.md#failure-model-of-integrations)).
 
 ## Consequences
 
@@ -82,8 +100,9 @@ service raises the parser's rejection of a reference without a repository name a
   `#` or `?` in the user info, `https://admin#secret@host` connects to `admin`). Rejecting such URLs at configuration
   validation is a follow-up issue; it also stops requests to that wrong host. Proxy URLs taken from the environment
   appear in these messages without their user info.
-- Response bodies the remote side sent and the error output of Trivy are not exception messages; they stay in results
-  as before.
+- Response bodies the remote side sent and the error output of Trivy are not exception messages; they stay in results.
+  A body is cut to its first characters, so a message no longer shows the end of a long answer; the operator who needs
+  it reproduces the request. The excerpt is decoded as UTF-8 whatever charset the response declares.
 - A page no longer tells a user why an action failed beyond the fixed reason; a registration with a value longer than
   the stored limits, or a tag selection for a container whose snapshots were just cleaned up, reads "unexpected
   error", and the operator reads the cause in the log entry of the failure.
