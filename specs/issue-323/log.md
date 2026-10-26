@@ -14,3 +14,7 @@ are quoted in full.
 | 2026-10-26 19:30 | 6 Implement | Dev | Six catch sites + registration wrap fixed; 750 tests green; coverage gate PASS (new lines 22/22, overall 86.4%); analyzer 0 (sonnet/medium · 90,353 tokens · 11 tool uses · 109 s) |
 | 2026-10-26 19:31 | 6 Implement | Dev | Documentation updates written (web-ui, image-catalog, ARCHITECTURE) (sonnet/medium · 7,624 tokens · 16 tool uses · 156 s · continued) |
 | 2026-10-26 19:35 | 7 Code check | Orchestrator | Format check, Build, Test (729+21), Coverage gate (22/22 new, 86.4% overall), Analyzer gate (0), scope-check PASS; Sonar gate NOT CHECKED (branch data unreadable: org not allowed non-main branches); read on the PR in step 11 |
+| 2026-10-26 19:38 | 8 Review round 1 | Reviewer | APPROVE, 0 blocking; 1 non-blocking verbatim doc fix (telemetry.md) (opus/medium · 68,375 tokens · 11 tool uses · 76 s) |
+| 2026-10-26 19:38 | 8 Review round 1 | Security | APPROVED (diff) (opus/medium · 41,535 tokens · 6 tool uses · 37 s) |
+| 2026-10-26 19:38 | 8 Review round 1 | Orchestrator | verbatim: docs/areas/telemetry.md exception-in-logs sentence, applied as proposed; format check, scope-check, decision-check pass |
+| 2026-10-26 19:38 | 9 PR approval | Orchestrator | approved by checklist: no plan deviation, no open decision; decision-check PASS (record 0009 extended in place) |
