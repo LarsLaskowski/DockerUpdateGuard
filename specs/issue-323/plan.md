@@ -213,3 +213,25 @@ extended, not weakened.
   failure handler can throw from its list reload", body: "`ObservedImages.RegisterAsync` calls `LoadAsync()` inside
   its `catch` block; when the reload fails too (the database is unreachable), that exception escapes the submit
   handler unhandled instead of being shown as the page's error message."
+
+## Challenge notes
+
+Devil's Advocate, plan round: 0 major, 2 minor (verbatim).
+
+1. **minor:** Some prefixes name the wrong step when a later step in the same `try` fails. Each `try` also runs follow-up steps:
+   - `ObservedImages.RegisterAsync` calls `ImageScanOrchestrator.ScanAsync` after `RegisterAsync` succeeded (ObservedImages.razor.cs:179-190). `ScanAsync` can throw outside its inner catch, for example on the scan run's `SaveChangesAsync` (ImageScanOrchestrator.cs:714-716, 771-772).
+   - `RuntimeContainerDetail.SaveSelectionAsync` and `ClearSelectionAsync` call `LoadAsync()` after the save or clear (RuntimeContainerDetail.razor.cs:221-224 and around 255-258).
+
+   So "Registration failed: ..." or "Saving the tag selection failed: ..." can appear although the image was registered or the selection was saved.
+   - Instruction to the Dev: either keep these prefixes and have the web-ui.md text say that the prefix names the user action, not the step that failed, or use a neutral prefix for Observed Images (e.g. `Registering or scanning the image failed`). The Lead picks.
+   - Instruction to the Tester: in the AC1 tests, make only the collaborator the prefix names throw (the registration service double, the tag-selection double), so the test does not depend on this ambiguity.
+
+2. **minor:** The planned `catch (ArgumentException)` around `_imageReferenceParser.Parse` also catches the `ThrowIfNullOrWhiteSpace` path (ImageReferenceParser.cs:104). A blank or whitespace reference would then also read "The image reference does not contain a repository name". The form's `[Required]` makes that unreachable from the page, so this is acceptable as planned.
+   - Instruction to the Dev: say this in a one-line XML-doc or code comment, or put the `ArgumentNullException` and whitespace guard before the `try`. Do not add a second message.
+
+## Security notes
+
+Security, plan review: APPROVED, 0 blocking, 2 non-blocking (verbatim).
+
+- **Wrap is wider than the error it targets.** The AC4 wrap catches every `ArgumentException` from `Parse`. That includes the blank-value throw at `ImageReferenceParser.cs:104`, which would show "does not contain a repository name". The form cannot send that value (fact 6), and the shown text is still fixed, so nothing leaks. Wording is up to the Lead.
+- **Diff check for the Dev.** The six catch blocks must assign only the composed text and must not also pass `exception.Message` or `InnerException?.Message` anywhere that renders. I will check this in the diff review.
