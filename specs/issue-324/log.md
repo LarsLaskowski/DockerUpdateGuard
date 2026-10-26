@@ -16,3 +16,4 @@ are quoted in full.
 | 2026-10-26 21:26 | 6 Implement | squad-dev | Implemented helper and 10 call sites; Dev reports tests green, coverage new lines 100% (sonnet/medium · 83,323 tokens · 11 tool uses · 185 s) |
 | 2026-10-26 21:29 | 6 Coverage | squad-tester | Deferred AC7 at-limit test added, passes; all plan-named tests present; 756 pass (sonnet/medium · 75,282 tokens · 11 tool uses · 142 s) |
 | 2026-10-26 21:31 | 6 Documentation (continuation) | squad-dev | Area documents written: registries, vulnerabilities, docker-instances, base-images, telemetry (sonnet/medium · 6,500 tokens · 5 tool uses · 108 s · continued from 6 Implement) |
+| 2026-10-26 21:33 | 7 Code check | Orchestrator | Format check, Analyzer gate (0 diagnostics), Test (756+21 pass), Coverage gate (new 100% 36/36, overall 86.8%), scope-check, decision-check PASS; main not moved; Sonar gate NOT CHECKED (no dotnet-sonarscanner, no token): left to step 11 |
