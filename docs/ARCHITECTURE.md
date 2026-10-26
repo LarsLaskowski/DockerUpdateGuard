@@ -455,11 +455,10 @@ the two production projects that matter for this split:
   `v*.*.*` tag — builds, tests, then builds and pushes the multi-stage
   Docker image (tagged with the version and `latest`) to Docker Hub
   (`networlddev/dockerupdateguard`) and creates a GitHub Release with
-  auto-generated notes. The workflow passes the digest of
-  `mcr.microsoft.com/dotnet/runtime:10.0-alpine` into the image's
-  `org.opencontainers.image.base.digest` label, while the runtime stage
-  builds on `mcr.microsoft.com/dotnet/aspnet:10.0-alpine`
-  ([#37](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/37)).
+  auto-generated notes. It reads the runtime base image from the
+  Dockerfile's `BASE_RUNTIME` default, pulls it for its digest and passes
+  both as build arguments, so the `org.opencontainers.image.base.name` and
+  `org.opencontainers.image.base.digest` labels name the same image.
 - **Container image**
   (`src/DockerUpdateGuard/Dockerfile`): multi-stage — SDK build stage,
   a `trivy` CLI stage copied in from the official Trivy image (so the
