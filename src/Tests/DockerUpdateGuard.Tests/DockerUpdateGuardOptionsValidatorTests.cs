@@ -738,6 +738,166 @@ public class DockerUpdateGuardOptionsValidatorTests
     }
 
     /// <summary>
+    /// Verify a Portainer base URL with an at sign outside its user info fails with the fixed text only
+    /// </summary>
+    /// <param name="baseUrl">Configured Portainer base URL</param>
+    [TestMethod]
+    [DataRow("https://admin#secret@portainer.example:9443")]
+    [DataRow("https://admin?secret@portainer.example:9443")]
+    [DataRow("https://admin/secret@portainer.example:9443")]
+    [DataRow("https://admin:#secret@portainer.example:9443")]
+    [DataRow("https://user:secret@portainer.example:9443#x@y")]
+    [DataRow("https://portainer.example/@scope")]
+    [DataRow("https://@portainer.example")]
+    [DataRow("http://admin#secret@portainer.local")]
+    public void DockerUpdateGuardOptionsValidatorPortainerBaseUrlWithAtSignOutsideUserInfoReturnsFailure(string baseUrl)
+    {
+        const string key = "DockerUpdateGuard:DockerInstances:Production:Portainer:BaseUrl";
+
+        var validator = CreateAtSignValidator();
+        var options = CreateValidOptions();
+
+        options.DockerInstances = [
+                                      new DockerInstanceOptions
+                                      {
+                                          Name = "Production",
+                                          BaseUrl = "https://docker.example.test",
+                                          Portainer = new PortainerOptions
+                                                      {
+                                                          Enabled = true,
+                                                          BaseUrl = baseUrl,
+                                                          ApiToken = "token-value",
+                                                          AllowInsecureHttp = false,
+                                                      },
+                                      },
+                                  ];
+
+        var validationResult = validator.Validate(Options.DefaultName, options);
+        var failures = validationResult.Failures?.ToArray() ?? [];
+        var keyFailures = failures.Where(message => message.Contains($"'{key}'", StringComparison.Ordinal))
+                                  .ToArray();
+
+        Assert.IsTrue(validationResult.Failed, "A Portainer base URL with an at sign outside its user info must fail validation");
+        Assert.AreSequenceEqual([CreateAtSignFailure(key)],
+                                keyFailures,
+                                "The at sign failure must be the only failure naming the Portainer base URL key, replacing the plaintext HTTP failure");
+        Assert.DoesNotContain(message => message.Contains("secret", StringComparison.Ordinal),
+                              failures,
+                              "No failure may repeat any part of the configured value");
+    }
+
+    /// <summary>
+    /// Verify a Docker instance base URL with an at sign outside its user info fails with the fixed text only
+    /// </summary>
+    /// <param name="baseUrl">Configured Docker instance base URL</param>
+    [TestMethod]
+    [DataRow("https://admin#secret@docker.example:2376")]
+    [DataRow("tcp://admin#secret@docker.example:2376")]
+    [DataRow("npipe://admin#secret@./pipe/docker_engine")]
+    [DataRow("tcp:admin@docker.example:2376")]
+    public void DockerUpdateGuardOptionsValidatorDockerInstanceBaseUrlWithAtSignOutsideUserInfoReturnsFailure(string baseUrl)
+    {
+        const string key = "DockerUpdateGuard:DockerInstances:Production:BaseUrl";
+
+        var validator = CreateAtSignValidator();
+        var options = CreateValidOptions();
+
+        options.DockerInstances = [
+                                      new DockerInstanceOptions
+                                      {
+                                          Name = "Production",
+                                          BaseUrl = baseUrl,
+                                      },
+                                  ];
+
+        var validationResult = validator.Validate(Options.DefaultName, options);
+        var failures = validationResult.Failures?.ToArray() ?? [];
+        var keyFailures = failures.Where(message => message.Contains($"'{key}'", StringComparison.Ordinal))
+                                  .ToArray();
+
+        Assert.IsTrue(validationResult.Failed, "A Docker instance base URL with an at sign outside its user info must fail validation");
+        Assert.AreSequenceEqual([CreateAtSignFailure(key)],
+                                keyFailures,
+                                "The at sign failure must be the only failure naming the Docker instance base URL key");
+        Assert.DoesNotContain(message => message.Contains("secret", StringComparison.Ordinal),
+                              failures,
+                              "No failure may repeat any part of the configured value");
+    }
+
+    /// <summary>
+    /// Verify every configured HTTP URL key rejects an at sign outside its user info
+    /// </summary>
+    [TestMethod]
+    public void DockerUpdateGuardOptionsValidatorHttpUrlsWithAtSignOutsideUserInfoReturnFailures()
+    {
+        var validator = CreateAtSignValidator();
+        var options = CreateValidOptions();
+
+        options.DockerHub.ApiBaseUrl = "https://admin#secret@hub.example";
+        options.DockerHub.Registry = "https://admin#secret@registry.example";
+        options.ReleaseMetadata.DotNetBaseUrl = "https://admin#secret@dotnet.example";
+        options.ReleaseMetadata.NginxBaseUrl = "https://admin#secret@nginx.example";
+        options.Vulnerabilities.Enabled = true;
+        options.Vulnerabilities.Provider = VulnerabilityProviderKind.Trivy;
+        options.Vulnerabilities.TrivyBaseUrl = "https://admin#secret@trivy.example";
+        options.Vulnerabilities.DockerScoutLoginUrl = "https://admin#secret@login.example";
+        options.Vulnerabilities.DockerScoutBaseUrl = "https://admin#secret@scout.example";
+
+        var validationResult = validator.Validate(Options.DefaultName, options);
+        var failures = validationResult.Failures?.ToArray() ?? [];
+
+        Assert.IsTrue(validationResult.Failed, "URLs with an at sign outside their user info must fail validation");
+        Assert.Contains(CreateAtSignFailure("DockerUpdateGuard:DockerHub:ApiBaseUrl"),
+                        failures,
+                        "The Docker Hub API base URL must be rejected with the fixed text");
+        Assert.Contains(CreateAtSignFailure("DockerUpdateGuard:DockerHub:Registry"),
+                        failures,
+                        "An absolute Docker Hub registry must be rejected with the fixed text");
+        Assert.Contains(CreateAtSignFailure("DockerUpdateGuard:ReleaseMetadata:DotNetBaseUrl"),
+                        failures,
+                        "The .NET release feed URL must be rejected with the fixed text");
+        Assert.Contains(CreateAtSignFailure("DockerUpdateGuard:ReleaseMetadata:NginxBaseUrl"),
+                        failures,
+                        "The nginx release feed URL must be rejected with the fixed text");
+        Assert.Contains(CreateAtSignFailure("DockerUpdateGuard:Vulnerabilities:TrivyBaseUrl"),
+                        failures,
+                        "The Trivy base URL must be rejected with the fixed text");
+        Assert.Contains(CreateAtSignFailure("DockerUpdateGuard:Vulnerabilities:DockerScoutLoginUrl"),
+                        failures,
+                        "The Docker Scout login URL must be rejected with the fixed text");
+        Assert.Contains(CreateAtSignFailure("DockerUpdateGuard:Vulnerabilities:DockerScoutBaseUrl"),
+                        failures,
+                        "The Docker Scout base URL must be rejected with the fixed text");
+        Assert.DoesNotContain(message => message.Contains("secret", StringComparison.Ordinal),
+                              failures,
+                              "No failure may repeat any part of a configured value");
+    }
+
+    /// <summary>
+    /// Create a validator with a resolvable connection string
+    /// </summary>
+    /// <returns>Validator</returns>
+    private static DockerUpdateGuardOptionsValidator CreateAtSignValidator()
+    {
+        var configuration = CreateConfiguration(new Dictionary<string, string?>
+                                                {
+                                                    ["ConnectionStrings:DockerUpdateGuard"] = "Host=database;Database=dug",
+                                                });
+
+        return new DockerUpdateGuardOptionsValidator(configuration);
+    }
+
+    /// <summary>
+    /// Create the failure text the plan fixes for an at sign outside the user info of a key
+    /// </summary>
+    /// <param name="key">Full configuration path</param>
+    /// <returns>Failure text</returns>
+    private static string CreateAtSignFailure(string key)
+    {
+        return $"'{key}' has an '@' that does not end its user info; percent-encode '@', '#', '?' and '/' in a user name or password";
+    }
+
+    /// <summary>
     /// Create a validator whose certificate loader reads through the given delegate
     /// </summary>
     /// <param name="readAllBytes">File reader</param>
