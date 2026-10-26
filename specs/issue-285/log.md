@@ -15,3 +15,4 @@ are quoted in full.
 | 2026-10-26 06:17 | 6 Implement | squad-dev | DONE: entrypoint.sh rewrite, Dockerfile comments, docs; AC1-10,12 verified in real Docker (build used scratch Dockerfile without apk step: proxy blocks dl-cdn); AC5 used --scanners secret; real ca-certificates package and real app start not verified (sonnet/medium · 126,541 tokens · 39 tool uses · 406 s) |
 | 2026-10-26 06:20 | 7 Code check | squad-code-officer | DL3018 hadolint finding on pre-existing line cleared by ignore comment; analyzer gate passes (haiku/medium · 65,354 tokens · 5 tool uses · 52 s) |
 | 2026-10-26 06:23 | 7 Code check | Orchestrator | Format check, analyzer gate, tests (722 passed), scope-check, decision-check pass; coverage gate n/a (no C#) |
+| 2026-10-26 06:25 | 7 Sonar gate | Orchestrator | NOT CHECKED: scan uploaded, results API HTTP 403; left to step 11 (sonar-check.py pr) |
