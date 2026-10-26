@@ -1,3 +1,5 @@
+using System.Text;
+
 namespace DockerUpdateGuard.Infrastructure;
 
 /// <summary>
@@ -22,6 +24,11 @@ internal static class ResponseBodyExcerpt
     /// </summary>
     public const string TruncationMarker = "…";
 
+    /// <summary>
+    /// Buffer size in bytes of the reader that decodes the body
+    /// </summary>
+    private const int ReadBufferSize = 1024;
+
     #endregion // Constants
 
     #region Methods
@@ -32,9 +39,20 @@ internal static class ResponseBodyExcerpt
     /// <param name="content">Response content</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Body, or its first characters followed by the truncation marker</returns>
-    public static Task<string> ReadAsync(HttpContent content, CancellationToken cancellationToken)
+    public static async Task<string> ReadAsync(HttpContent content, CancellationToken cancellationToken)
     {
-        throw new InvalidOperationException("Skeleton: not implemented");
+        var stream = await content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+
+        await using (stream.ConfigureAwait(false))
+        {
+            using (var reader = new StreamReader(stream, Encoding.UTF8, true, ReadBufferSize))
+            {
+                var buffer = new char[MaxBodyLength + 1];
+                var count = await reader.ReadBlockAsync(buffer.AsMemory(), cancellationToken).ConfigureAwait(false);
+
+                return Truncate(new string(buffer, 0, count), MaxBodyLength);
+            }
+        }
     }
 
     /// <summary>
@@ -45,7 +63,26 @@ internal static class ResponseBodyExcerpt
     /// <returns>Empty string for null, the text when it fits, otherwise its prefix followed by the truncation marker</returns>
     public static string Truncate(string? text, int maxLength)
     {
-        throw new InvalidOperationException("Skeleton: not implemented");
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxLength);
+
+        if (text is null)
+        {
+            return string.Empty;
+        }
+
+        if (text.Length <= maxLength)
+        {
+            return text;
+        }
+
+        var cut = maxLength;
+
+        if (char.IsHighSurrogate(text[cut - 1]))
+        {
+            cut--;
+        }
+
+        return string.Concat(text.AsSpan(0, cut), TruncationMarker);
     }
 
     #endregion // Methods

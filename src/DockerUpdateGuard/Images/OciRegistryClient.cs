@@ -678,9 +678,9 @@ public partial class OciRegistryClient : IRegistryMetadataClient
                                                                                       string messagePrefix,
                                                                                       CancellationToken cancellationToken)
     {
-        var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+        var body = await ResponseBodyExcerpt.ReadAsync(response.Content, cancellationToken).ConfigureAwait(false);
 
-        return ExternalOperationResult<T>.Failed($"{messagePrefix}: {(int)response.StatusCode} {response.ReasonPhrase}{(string.IsNullOrWhiteSpace(body) ? string.Empty : $" - {body}")}");
+        return ExternalOperationResult<T>.Failed($"{messagePrefix}: {(int)response.StatusCode} {ResponseBodyExcerpt.Truncate(response.ReasonPhrase, ResponseBodyExcerpt.MaxReasonPhraseLength)}{(string.IsNullOrWhiteSpace(body) ? string.Empty : $" - {body}")}");
     }
 
     /// <summary>

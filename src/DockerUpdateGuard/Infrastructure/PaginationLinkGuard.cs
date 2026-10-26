@@ -70,7 +70,7 @@ internal static class PaginationLinkGuard
             origin = $"{origin}:{resolved.Port}";
         }
 
-        return origin;
+        return ResponseBodyExcerpt.Truncate(origin, MaxOriginDescriptionLength);
     }
 
     /// <summary>
