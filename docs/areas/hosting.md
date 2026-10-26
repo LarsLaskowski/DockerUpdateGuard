@@ -210,7 +210,6 @@ These properties hold today and must be provided for by the deployment:
   validated as PKCS#12 at startup, so validation reads a file.
 - [0011](../decisions/0011-mounted-ca-certificates-use-a-private-cert-dir.md): mounted CA certificates are trusted
   through a private directory appended to `SSL_CERT_DIR`, so no write access to the system trust store is needed.
-
 - [0012](../decisions/0012-configured-urls-are-rejected-when-an-at-sign-is-not-their-user-info-separator.md):
   configured URLs are rejected when an `@` is not their user-info separator.
 

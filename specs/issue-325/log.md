@@ -14,3 +14,6 @@ are quoted in full.
 | 2026-10-26 22:10 | 6 Implement | squad-dev | Validator + telemetry guard, docs written; build clean, 792 tests green, new-line coverage 100% (sonnet/medium · 92,816 tokens · 15 tool uses · 358 s) |
 | 2026-10-26 22:12 | 6 Coverage (deferred tests) | squad-tester | AC4/AC5 pass tests added (8 rows), green (sonnet/medium · 84,431 tokens · 10 tool uses · 127 s) |
 | 2026-10-26 22:15 | 7 Code check | Orchestrator | Format check, build (0 warnings), 800 tests, coverage gate (new 100%, overall 86.9%), analyzer gate (0), scope-check PASS on e0418b1; Sonar gate NOT CHECKED (no SONAR_TOKEN, no sonarscanner) - left to step 11 |
+| 2026-10-26 22:18 | 8 Review (round 1) | squad-reviewer | APPROVE, 0 blocking, 2 non-blocking doc findings (verbatim) (opus/medium · 76,643 tokens · 14 tool uses · 104 s) |
+| 2026-10-26 22:18 | 8 Review (round 1) | squad-security | APPROVED, no findings (opus/medium · 53,845 tokens · 7 tool uses · 55 s) |
+| 2026-10-26 22:18 | 8 Review (verbatim fixes) | Orchestrator | verbatim: record 0012 'validated at startup (and, for the DockerUpdateGuard section, on reload)' (rewrapped to 120 cols); hosting.md blank line before 0012 bullet removed; format/scope/decision checks PASS |
