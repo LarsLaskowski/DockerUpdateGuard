@@ -48,6 +48,8 @@ ENV DockerUpdateGuard__DisplayVersion="$APP_VERSION"
 # Install CA certificates to enable secure outbound connections (e.g., for telemetry)
 # apt-get is not available in Alpine, so we use apk to install ca-certificates
 #RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
+# DL3018: the Alpine package is deliberately unpinned; its version follows the base image's Alpine repository.
+# hadolint ignore=DL3018
 RUN apk add --no-cache ca-certificates
 
 # Trivy CLI for client-mode vulnerability scans against a remote Trivy server.
