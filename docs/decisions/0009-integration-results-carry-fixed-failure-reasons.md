@@ -1,9 +1,9 @@
-# 0009: Integration results carry fixed failure reasons, never exception messages
+# 0009: Integration results and page actions carry fixed failure reasons, never exception messages
 
 - **Status:** Accepted
 - **Date:** 2026-10-25
 - **Area:** Registries
-- **Source:** Issue #315, issue #318
+- **Source:** Issue #315, issue #318, issue #323
 - **Supersedes:** —
 
 ## Context
@@ -19,6 +19,12 @@ and the application has no login (`.squad/project.md`, *Guarantees*), so whateve
 who reaches the UI. A few exception messages are composed by the application itself — the Portainer authentication
 failure (masked base URL, HTTP status, [0005](0005-urls-are-output-with-user-info-masked.md)), the unusable client
 certificate and the named-pipe URI without a pipe name of a Docker instance — and are safe and useful.
+
+The pages had the same defect one level up (#323): the user actions — the per-image rescan, the update check, the
+vulnerability refresh, the registration of an observed image and the manual tag selection — caught every exception that
+escaped a service (a database error, a failure outside the clients' own handling) and showed its message on the page,
+without logging it. One message there is the application's own and useful: the image reference without a repository
+name, which the reference parser raises as an `ArgumentException`.
 
 ## Options considered
 
@@ -41,6 +47,13 @@ certificate and the named-pipe URI without a pipe name of a Docker instance — 
 8. **Drop the exception from the error log entries as well** — the log is the operator's only way to learn why a
    connection failed; a would-be host from a malformed URL is better rejected where the URL is configured (follow-up
    below).
+9. **For the pages: a generic text without a reason ("The action failed")** — hides the distinction between a
+   connection failure and an unexpected error that the shared mapping gives for free.
+10. **For the pages: the shared mapping alone** — the invalid image reference would read "unexpected error", the one
+    page error a user can fix by changing the input.
+11. **For the pages: let the reference parser raise the marker type** — changes the exception type for every caller
+    of the parser (the Docker Engine client catches its `ArgumentException`); the registration service, the one
+    caller whose failure reaches a page, wraps it instead.
 
 ## Decision
 
@@ -48,7 +61,9 @@ Every exception an integration client or a scan orchestrator turns into a failur
 set of reasons by its type; only an exception the application raises with a message it composed itself, marked by a
 dedicated exception type, keeps its text. The exception itself is logged with the failure. The reasons are listed in
 [Registries](../areas/registries.md#failure-model-of-integrations); the Portainer specifics in
-[Container actions](../areas/container-actions.md#limits-and-errors).
+[Container actions](../areas/container-actions.md#limits-and-errors). A failed user action on a page shows the action
+and the same fixed reason and logs the exception ([Web UI](../areas/web-ui.md#limits-and-errors)); the registration
+service raises the parser's rejection of a reference without a repository name as the marker type.
 
 ## Consequences
 
@@ -69,3 +84,6 @@ dedicated exception type, keeps its text. The exception itself is logged with th
   appear in these messages without their user info.
 - Response bodies the remote side sent and the error output of Trivy are not exception messages; they stay in results
   as before.
+- A page no longer tells a user why an action failed beyond the fixed reason; a registration with a value longer than
+  the stored limits, or a tag selection for a container whose snapshots were just cleaned up, reads "unexpected
+  error", and the operator reads the cause in the log entry of the failure.
