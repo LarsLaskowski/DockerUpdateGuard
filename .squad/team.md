@@ -29,7 +29,8 @@ specific to this repository lives in two files the members read first:
 | Product Manager  | —                                                                     | answers escalations (the human user)                             |
 
 Model and effort are set per role in each agent file's front matter. The orchestrator may override a single
-launch through its own `model` and `effort` parameters, but no step does so by default, and `xhigh` is not
+launch through its own `model` and `effort` parameters; the one override by default is that every `squad-tester`
+launch of a tier-`security` run gets `model: opus` (a continued agent keeps its model), and `xhigh` is not
 used. A change of model or effort for a role is made in the template, on the evidence of the runs'
 `squad-log.py --summary` tables. Where production and test code live is defined in `stack.md` (*Layout*).
 
