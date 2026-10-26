@@ -26,11 +26,9 @@ retry policy and the failure model.
   how a scan turns outcomes into scan-run statuses is described with each scan
   ([Base images](base-images.md), [Update detection](update-detection.md), [Scan engine](scan-engine.md)).
 - A *failed* outcome from a registry names the HTTP status code and includes an excerpt of the response body the remote side sent:
-  its first 500 characters (decoded as UTF-8), followed by `…` when the body was longer; an OCI reason phrase is cut to
+  its first 500 characters (decoded as UTF-8 unless a byte-order mark names another encoding), followed by `…` when the body was longer; an OCI reason phrase is cut to
   100 characters the same way. The message length is bounded everywhere, but the read is bounded (about 8 KiB) only for
-  the streamed OCI and Docker Hub responses; Docker Engine and feed responses are buffered by `HttpClient` first. After
-  a failed OCI or Docker Hub token exchange the excerpt is of the token failure message, which starts with the token
-  request URI, so the token endpoint's own body may be cut away.
+  the streamed OCI and Docker Hub responses; Docker Engine and feed responses are buffered by `HttpClient` first. After a failed OCI or Docker Hub token exchange the excerpt is of the token failure message, which names the token request URI (OCI) or the Docker Hub user name before the token endpoint's own body excerpt, so that body may be cut away.
   The exception is a listing stopped by a rejected next-page link: it has neither a status code nor a body and names the
   rejected origin instead ([Pagination links](#pagination-links)).
 - An outcome caused by an error rather than by an answer carries a fixed reason, never the error's own text:

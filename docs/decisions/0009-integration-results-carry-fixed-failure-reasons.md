@@ -107,12 +107,11 @@ bounded length by one shared helper ([Registries](../areas/registries.md#failure
   appear in these messages without their user info.
 - Response bodies the remote side sent and the error output of Trivy are not exception messages; they stay in results.
   A body is cut to its first characters, so a message no longer shows the end of a long answer; the operator who needs
-  it reproduces the request. The excerpt is decoded as UTF-8 whatever charset the response declares.
+  it reproduces the request. The excerpt is decoded as UTF-8, or as the encoding a byte-order mark names, whatever charset the response declares.
 - The message length is bounded for every client; the bytes read are bounded only where the response is streamed (the
   registry clients). Docker Engine and release-feed responses are still buffered whole by `HttpClient` before the
   excerpt is taken.
-- After a failed registry token exchange the excerpt is taken of the token failure message, which starts with the
-  token request URI, so the token endpoint's own body may be cut away.
+- After a failed registry token exchange the excerpt is taken of the token failure message, which names the token request URI (OCI) or the Docker Hub user name before the token endpoint's own body excerpt, so that body may be cut away.
 - A page no longer tells a user why an action failed beyond the fixed reason; a registration with a value longer than
   the stored limits, or a tag selection for a container whose snapshots were just cleaned up, reads "unexpected
   error", and the operator reads the cause in the log entry of the failure.
