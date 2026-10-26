@@ -3,6 +3,7 @@ using DockerUpdateGuard.Data.Entities;
 using DockerUpdateGuard.Data.Repositories;
 using DockerUpdateGuard.Images.Data;
 using DockerUpdateGuard.Images.Interfaces;
+using DockerUpdateGuard.Infrastructure;
 
 using Microsoft.EntityFrameworkCore;
 
@@ -67,7 +68,19 @@ public class ImageRegistrationService : IImageRegistrationService
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        var parsedReference = _imageReferenceParser.Parse(request.ImageReference);
+        ArgumentException.ThrowIfNullOrWhiteSpace(request.ImageReference);
+
+        ImageReference parsedReference;
+
+        try
+        {
+            parsedReference = _imageReferenceParser.Parse(request.ImageReference);
+        }
+        catch (ArgumentException exception)
+        {
+            throw new ReportableException(ReferenceWithoutRepositoryMessage, exception);
+        }
+
         var imageVersion = await _imageCatalogRepository.GetOrCreateImageVersionAsync(parsedReference.Registry,
                                                                                       parsedReference.Repository,
                                                                                       parsedReference.Tag,

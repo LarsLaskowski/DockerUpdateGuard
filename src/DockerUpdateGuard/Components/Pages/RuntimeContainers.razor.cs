@@ -3,6 +3,7 @@ using System.Text;
 
 using DockerUpdateGuard.Data.Entities;
 using DockerUpdateGuard.Images.Interfaces;
+using DockerUpdateGuard.Infrastructure;
 using DockerUpdateGuard.UI;
 
 using Microsoft.AspNetCore.Components;
@@ -390,9 +391,11 @@ public sealed partial class RuntimeContainers : IDisposable
         }
         catch (Exception exception)
         {
+            Logger.UserActionFailed("UpdateCheck", exception);
+
             await InvokeAsync(() =>
                               {
-                                  _errorMessage = exception.Message;
+                                  _errorMessage = $"Update check failed: {FailureReason.FromException(exception, null, CancellationToken.None)}";
                               }).ConfigureAwait(false);
         }
         finally

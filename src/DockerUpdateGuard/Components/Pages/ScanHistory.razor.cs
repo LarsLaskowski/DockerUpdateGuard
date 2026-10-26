@@ -1,6 +1,7 @@
 using DockerUpdateGuard.Configuration;
 using DockerUpdateGuard.Data.Entities;
 using DockerUpdateGuard.Images.Interfaces;
+using DockerUpdateGuard.Infrastructure;
 using DockerUpdateGuard.UI;
 
 using Microsoft.AspNetCore.Components;
@@ -207,9 +208,11 @@ public sealed partial class ScanHistory : IDisposable
         }
         catch (Exception exception)
         {
+            Logger.UserActionFailed("VulnerabilityRefresh", exception);
+
             await InvokeAsync(() =>
                               {
-                                  _errorMessage = exception.Message;
+                                  _errorMessage = $"Vulnerability refresh failed: {FailureReason.FromException(exception, null, CancellationToken.None)}";
                               }).ConfigureAwait(false);
         }
         finally

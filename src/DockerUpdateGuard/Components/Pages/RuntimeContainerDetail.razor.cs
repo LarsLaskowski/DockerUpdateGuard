@@ -1,3 +1,4 @@
+using DockerUpdateGuard.Infrastructure;
 using DockerUpdateGuard.UI;
 
 using Microsoft.AspNetCore.Components;
@@ -230,9 +231,11 @@ public sealed partial class RuntimeContainerDetail : IDisposable
         }
         catch (Exception exception)
         {
+            Logger.UserActionFailed("SaveTagSelection", exception);
+
             await InvokeAsync(() =>
                               {
-                                  _errorMessage = exception.Message;
+                                  _errorMessage = $"Saving the tag selection failed: {FailureReason.FromException(exception, null, CancellationToken.None)}";
                               }).ConfigureAwait(false);
         }
         finally
@@ -264,9 +267,11 @@ public sealed partial class RuntimeContainerDetail : IDisposable
         }
         catch (Exception exception)
         {
+            Logger.UserActionFailed("ClearTagSelection", exception);
+
             await InvokeAsync(() =>
                               {
-                                  _errorMessage = exception.Message;
+                                  _errorMessage = $"Clearing the tag selection failed: {FailureReason.FromException(exception, null, CancellationToken.None)}";
                               }).ConfigureAwait(false);
         }
         finally
