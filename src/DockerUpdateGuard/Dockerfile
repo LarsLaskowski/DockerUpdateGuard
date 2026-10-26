@@ -57,14 +57,15 @@ ENV TRIVY_CACHE_DIR=/tmp/trivy
 
 COPY --from=build /app/publish .
 
-# Copy startup script that imports any mounted CA certificates and starts the app
+# Copy startup script that adds any mounted CA certificates (via a private directory and SSL_CERT_DIR) and starts the app
 COPY src/DockerUpdateGuard/entrypoint.sh .
 # Make the entrypoint executable and run as a dedicated non-root user (UID 64000) in the
 # root group (GID 0) to reduce the container blast radius. The root group keeps a host
 # Docker socket owned by root:root readable without extra privileges (e.g. on Synology DSM)
 # while still avoiding a root UID. /app is group-owned and group permissions mirror the
-# owner so the arbitrary UID retains read/write access. The optional CA import in
-# entrypoint.sh degrades gracefully when the trust store is not writable.
+# owner so the arbitrary UID retains read/write access. The entrypoint adds mounted CA
+# certificates through a private directory under /tmp and SSL_CERT_DIR, so no write access
+# to the system trust store is needed.
 RUN chmod +x /app/entrypoint.sh \
  && adduser -u 64000 -S -G root -H -h /app dockerupdateguard \
  && chown -R 64000:0 /app \

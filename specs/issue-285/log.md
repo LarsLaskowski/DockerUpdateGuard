@@ -12,3 +12,4 @@ are quoted in full.
 | 2026-10-26 06:09 | 2 Plan revise | squad-lead | DONE: revision 1; switched to per-block SSL_CERT_DIR dir; all Security/DA findings accepted; plan-check passes (opus/medium · 32,777 tokens · 11 tool uses · 179 s · continued) |
 | 2026-10-26 06:10 | 4-5 Skeleton, tests first | Orchestrator | skipped: plan declares no production/test C# code (Verification without tests) |
 | 2026-10-26 06:10 | 3 Plan security review | squad-security | APPROVED on revision 58587f5 (delta confirmation, all 4 findings resolved) (opus/medium · 12,623 tokens · 3 tool uses · 45 s · continued) |
+| 2026-10-26 06:17 | 6 Implement | squad-dev | DONE: entrypoint.sh rewrite, Dockerfile comments, docs; AC1-10,12 verified in real Docker (build used scratch Dockerfile without apk step: proxy blocks dl-cdn); AC5 used --scanners secret; real ca-certificates package and real app start not verified (sonnet/medium · 126,541 tokens · 39 tool uses · 406 s) |

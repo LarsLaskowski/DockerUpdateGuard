@@ -124,9 +124,22 @@ registry never delays or prevents startup.
   1. checks that `/app/appsettings.json` and `/app/appsettings.{Environment}.json`, if present, are readable by the
      running user; if one exists but is not readable, it prints the UID/GID and how to fix the host permissions,
      and exits with code `1`;
-  2. if `/app/certs` contains files, imports every `.crt` and `.pem` file into the system trust store, but only when
-     running as root or when the trust store is writable; otherwise, or when the import fails, it prints a message
-     and continues. Certificate import never stops the container.
+  2. trusts the CA certificates mounted into `/app/certs`, for any UID, root included: every complete PEM
+     certificate block of the `.crt` and `.pem` files (other file names are skipped with a message; files in
+     subdirectories and dotfiles are ignored) is written to its own file in a new private directory under `/tmp`
+     (mode `0700`, owned by the running user), and that directory is appended to `SSL_CERT_DIR`, after a pre-set
+     value (a message names it) or else after `/etc/ssl/certs`. The application, its database driver and the bundled
+     Trivy read `SSL_CERT_DIR`, so they trust the mounted certificates in addition to the system CA certificates. The
+     system trust store, `SSL_CERT_FILE` and `update-ca-certificates` are never used or changed. Only blocks whose
+     marker lines are exactly `-----BEGIN CERTIFICATE-----` and `-----END CERTIFICATE-----` (not indented, label
+     `CERTIFICATE` only, so neither `TRUSTED CERTIFICATE` nor DER files are accepted) around at least one base64
+     body line are taken; a byte order mark and CRLF line endings are tolerated, and the files written hold the
+     standard markers and the body lines only, so a private key in the same file is never copied. A block that is
+     well-formed PEM but no certificate is counted and then ignored by the TLS libraries without affecting the
+     other files. When no file yields a block, or `/tmp` is not writable, a message is printed, only the system CA
+     certificates apply and the container starts; certificate handling never stops the container. A read-only root
+     filesystem therefore needs a writable `/tmp` (for example `--tmpfs /tmp`). `/tmp` should not be shared between
+     containers, and the directories of earlier starts are not removed.
 
 ### Security posture
 
@@ -155,7 +168,8 @@ These properties hold today and must be provided for by the deployment:
 | Migration fails | Logged; startup fails. |
 | Advisory lock cannot be released | Logged; the migration outcome stands. |
 | Mounted settings file not readable by the container user | Entrypoint exits with code `1` and a fix-it message. |
-| Certificate import not possible | A message is printed; the container starts anyway. |
+| No usable certificate in `/app/certs` (missing directory, no files, nothing that is a PEM certificate block) | A message is printed; only the system CA certificates apply; the container starts. |
+| `/tmp` not writable when certificates are mounted | A message is printed; the mounted certificates are not used; the container starts. |
 | Unhandled exception in a request (non-Development) | The `/error` page with a generic message. |
 | Unknown URL or bodyless error status | The `/not-found` page. |
 
@@ -169,9 +183,6 @@ These properties hold today and must be provided for by the deployment:
 - Forwarded headers from a reverse proxy are not supported. Behind a TLS-terminating proxy the application sees
   plain HTTP, so it never sends HSTS and HTTPS redirection cannot determine a port; both are left to the proxy.
   Tracked in [#283](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/283).
-- Certificates in `/app/certs` are not imported for the default user: in the shipped image the system trust store is
-  owned by root and not writable by group `0`, so the import is skipped unless the container runs as root.
-  Tracked in [#285](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/285).
 - Waiting for the migration advisory lock is bounded by the 30-second database command timeout and then retried like
   any transient database failure (see *Database connection*), so an instance that starts while another one runs a
   long migration can fail its startup after several minutes.
@@ -184,6 +195,8 @@ These properties hold today and must be provided for by the deployment:
 
 - [0007](../decisions/0007-client-certificates-are-validated-as-pkcs12-at-startup.md): client certificates are
   validated as PKCS#12 at startup, so validation reads a file.
+- [0011](../decisions/0011-mounted-ca-certificates-use-a-private-cert-dir.md): mounted CA certificates are trusted
+  through a private directory appended to `SSL_CERT_DIR`, so no write access to the system trust store is needed.
 
 ## Not here
 

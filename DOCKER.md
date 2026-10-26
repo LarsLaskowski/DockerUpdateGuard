@@ -94,7 +94,7 @@ Common mounts for containerized deployments:
 | --- | --- |
 | `/var/run/docker.sock` | Required for Linux host Docker Engine access through the Unix socket |
 | `/app/appsettings.json` (mount file) | Application configuration (appsettings.json) |
-| `/app/certs` (directory) | Optional: client certificates for TLS-secured Docker engine access |
+| `/app/certs` (directory) | Optional: CA certificates to trust (`.crt`/`.pem`) and client certificates for TLS-secured Docker engine access |
 
 Client certificates
 
@@ -108,13 +108,16 @@ When a Docker Engine endpoint requires TLS client authentication, mount the cert
 
 - Use a stable in-container path (for example `/app/certs`) and reference that path from `CertificatePath`.
 
-Automatic CA import on startup
+Automatic CA trust on startup
 
-The published image now includes a small entrypoint script that will import any PEM/CRT files found under `/app/certs` into the container's system trust store at startup (it copies them into `/usr/local/share/ca-certificates` and runs `update-ca-certificates`). The image also ensures the `ca-certificates` package is available. Behavior:
+The published image includes a small entrypoint script that trusts the CA certificates found under `/app/certs` at startup. It does not touch the system trust store: every complete PEM certificate block of the `*.crt`/`*.pem` files is written to its own file in a private directory under `/tmp`, and that directory is appended to `SSL_CERT_DIR`. The application, Npgsql and the bundled Trivy read `SSL_CERT_DIR`, so they trust these certificates in addition to the system CA certificates. Behavior:
 
-- If `/app/certs` contains one or more `*.crt`/`*.pem` files and the container has permission to write the system trust store, the root certificates are imported automatically and become trusted by HttpClient, Npgsql, and other system TLS consumers.
-- If no certificates are provided, the import step is skipped and the container starts normally.
-- The image runs as a non-root user (UID `64000`) by default and therefore cannot write the system trust store, so this automatic import is skipped. To use it, run the container as root for the trust-store import (for example `--user 0`) or bake the CA into a derived image at build time; the application still runs as non-root otherwise.
+- It works for the default user (UID `64000`) and for any other user, including root; no `--user 0` and no derived image is needed.
+- Certificates must be PEM with unindented `-----BEGIN CERTIFICATE-----` and `-----END CERTIFICATE-----` lines. DER files and `-----BEGIN TRUSTED CERTIFICATE-----` blocks are not accepted; the entrypoint prints a message for a file without an accepted block and skips it. A byte order mark and CRLF line endings are tolerated.
+- Private keys are never copied: only the certificate blocks are written, so a `.pem` holding a certificate and a key contributes the certificate only.
+- If `SSL_CERT_DIR` is already set, the private directory is appended after the existing value (the entrypoint says so); `SSL_CERT_FILE` is never read or changed.
+- If no certificates are provided, or none is usable, a message is printed and the container starts with the system CA certificates only.
+- With a read-only root filesystem (`--read-only`), provide a writable `/tmp` (for example `--tmpfs /tmp`); otherwise a message is printed and the mounted certificates are not used. Do not share `/tmp` between containers; directories of earlier starts are not removed.
 
 Certificate formats and usage
 
@@ -165,8 +168,8 @@ Permissions and security
 
 Notes
 
-- The automatic import is optional; the image works without any mounted certificates.
-- The image runs as the non-root user `64000` (root group, GID `0`) by default. If the environment requires importing certificates, bake the CA into a derived image or run the container as root (for example `--user 0`) so the script can update the trust store.
+- The automatic CA trust is optional; the image works without any mounted certificates.
+- The image runs as the non-root user `64000` (root group, GID `0`) by default; mounted CA certificates are trusted without root (see *Automatic CA trust on startup*).
 ## Troubleshooting
 
 ### UnauthorizedAccessException / "Permission denied" reading appsettings.json
