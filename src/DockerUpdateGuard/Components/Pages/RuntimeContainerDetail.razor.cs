@@ -81,6 +81,12 @@ public sealed partial class RuntimeContainerDetail : IDisposable
     [Inject]
     public PersistentComponentState PersistentState { get; set; } = null!;
 
+    /// <summary>
+    /// Logger
+    /// </summary>
+    [Inject]
+    public ILogger<RuntimeContainerDetail> Logger { get; set; } = null!;
+
     #endregion // Properties
 
     #region Static methods

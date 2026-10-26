@@ -91,6 +91,12 @@ public sealed partial class ScanHistory : IDisposable
     public PersistentComponentState PersistentState { get; set; } = null!;
 
     /// <summary>
+    /// Logger
+    /// </summary>
+    [Inject]
+    public ILogger<ScanHistory> Logger { get; set; } = null!;
+
+    /// <summary>
     /// Indicates whether vulnerability refresh is enabled
     /// </summary>
     private bool VulnerabilitiesEnabled => OptionsMonitor.CurrentValue.Vulnerabilities.Enabled;

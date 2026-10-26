@@ -90,6 +90,12 @@ public sealed partial class ObservedImages : IDisposable
     [Inject]
     public PersistentComponentState PersistentState { get; set; } = null!;
 
+    /// <summary>
+    /// Logger
+    /// </summary>
+    [Inject]
+    public ILogger<ObservedImages> Logger { get; set; } = null!;
+
     #endregion // Properties
 
     #region Static methods

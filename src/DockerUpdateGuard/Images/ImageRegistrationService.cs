@@ -13,6 +13,15 @@ namespace DockerUpdateGuard.Images;
 /// </summary>
 public class ImageRegistrationService : IImageRegistrationService
 {
+    #region Constants
+
+    /// <summary>
+    /// Message of the error raised when the image reference does not name a repository
+    /// </summary>
+    internal const string ReferenceWithoutRepositoryMessage = "The image reference does not contain a repository name";
+
+    #endregion // Constants
+
     #region Fields
 
     /// <summary>
