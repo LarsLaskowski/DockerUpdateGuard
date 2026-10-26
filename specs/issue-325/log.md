@@ -11,4 +11,4 @@ are quoted in full.
 | 2026-10-26 21:58 | 3 Plan security review | squad-security | APPROVED (opus/medium · 65,921 tokens · 11 tool uses · 128 s) |
 | 2026-10-26 22:01 | 4 Skeleton | Orchestrator | skipped: plan adds only private helpers |
 | 2026-10-26 22:04 | 5 Tests first | squad-tester | 15 rejection test cases (AC1,2,3,5) written; confirmed failing on f4a04fb; AC4 pass cases and AC5 pass test deferred to step 6 (sonnet/medium · 112,188 tokens · 15 tool uses · 147 s) |
-| 2026-10-26 22:10 | 6 Implement | squad-dev | Validator + telemetry guard, docs written; build clean, 792 tests green, new-line coverage 100% (sonnet/medium · usage pending) |
+| 2026-10-26 22:10 | 6 Implement | squad-dev | Validator + telemetry guard, docs written; build clean, 792 tests green, new-line coverage 100% (sonnet/medium · 92,816 tokens · 15 tool uses · 358 s) |
