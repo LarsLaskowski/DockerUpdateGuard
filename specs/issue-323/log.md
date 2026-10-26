@@ -12,3 +12,4 @@ are quoted in full.
 | 2026-10-26 19:19 | 4 Skeleton | Dev | Skeleton done; build/test green; fact 11 confirmed (no NullLogger needed) (sonnet/medium · 85,217 tokens · 9 tool uses · 239 s) |
 | 2026-10-26 19:28 | 5 Tests first | Tester | 9 tests written, all confirmed failing on current code; none deferred (sonnet/medium · 133,734 tokens · 26 tool uses · 485 s) |
 | 2026-10-26 19:30 | 6 Implement | Dev | Six catch sites + registration wrap fixed; 750 tests green; coverage gate PASS (new lines 22/22, overall 86.4%); analyzer 0 (sonnet/medium · 90,353 tokens · 11 tool uses · 109 s) |
+| 2026-10-26 19:31 | 6 Implement | Dev | Documentation updates written (web-ui, image-catalog, ARCHITECTURE) (sonnet/medium · 7,624 tokens · 16 tool uses · 156 s · continued) |
