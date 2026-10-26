@@ -12,6 +12,11 @@ internal static class PaginationLinkGuard
     /// </summary>
     public const string UnparseableLinkDescription = "unparseable link";
 
+    /// <summary>
+    /// Maximum number of characters of a described origin
+    /// </summary>
+    public const int MaxOriginDescriptionLength = 300;
+
     #endregion // Constants
 
     #region Methods
