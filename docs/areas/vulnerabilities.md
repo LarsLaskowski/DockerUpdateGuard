@@ -18,10 +18,10 @@ All keys live under `DockerUpdateGuard:Vulnerabilities`:
 | --- | --- | --- |
 | `Enabled` | `false` | Switches vulnerability refresh on |
 | `Provider` | `None` | `None`, `DockerScout` or `Trivy`; must not be `None` when `Enabled` is `true` |
-| `TrivyBaseUrl` | none | Absolute `http`/`https` URI; required when `Enabled` is `true` and `Provider` is `Trivy` |
+| `TrivyBaseUrl` | none | Absolute `http`/`https` URI without an `@` outside its user info ([Hosting](hosting.md)); required when `Enabled` is `true` and `Provider` is `Trivy` |
 | `TrivyExecutablePath` | `trivy` | Executable to start; resolved through `PATH`; an empty value means `trivy` |
-| `DockerScoutLoginUrl` | `https://hub.docker.com/v2/users/login` | Absolute `http`/`https` URI, always validated |
-| `DockerScoutBaseUrl` | `https://api.scout.docker.com` | Absolute `http`/`https` URI, always validated |
+| `DockerScoutLoginUrl` | `https://hub.docker.com/v2/users/login` | Absolute `http`/`https` URI without an `@` outside its user info, always validated |
+| `DockerScoutBaseUrl` | `https://api.scout.docker.com` | Absolute `http`/`https` URI without an `@` outside its user info, always validated |
 | `RequestTimeoutSeconds` | `120` | `1`–`300` |
 | `MaxParallelScans` | `1` | `1`–`8` |
 
@@ -103,7 +103,7 @@ scan run:
   `not found` (any case) means the image is gone from the registry: *unavailable*, "The image is no longer available
   in the registry. The tag was likely re-published with a newer digest, leaving this version orphaned." Any other
   non-zero exit code is *failed*, "Trivy exited with code X: <last line of the error output cut to 500 characters followed by `…`, or 'no error output'>".
-  When `TrivyBaseUrl` contains an `@` (user info, or an `@` anywhere else in it), a non-empty error output is
+  When `TrivyBaseUrl` contains an `@` (which validation allows only as the end of its user info), a non-empty error output is
   replaced by "error output withheld because TrivyBaseUrl may carry credentials" in the message and the log, because
   Trivy may repeat parts of the URL's user info there (measured with Trivy v0.58.1: the password masked but the user
   name kept, a user name alone in full, the raw URL for an invalid escape).

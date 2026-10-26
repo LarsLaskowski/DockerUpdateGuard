@@ -415,6 +415,9 @@ it links:
   contains an `@`, and the Trivy server address reaches the Trivy process in its environment (`TRIVY_SERVER`), not
   on its command line
   ([Telemetry](areas/telemetry.md), [record 0005](decisions/0005-urls-are-output-with-user-info-masked.md)).
+  A configured URL whose `@` is not the separator of a non-empty user info fails validation, so credentials cannot
+  be sent to a different host than the one written after the `@`
+  ([record 0012](decisions/0012-configured-urls-are-rejected-when-an-at-sign-is-not-their-user-info-separator.md)).
 - **Failure messages carry fixed reasons.** Integration clients and the scan orchestrators never put an exception's
   message into a result or a scan run, and the pages never show one for a failed user action
   ([Web UI](areas/web-ui.md#limits-and-errors)); they report a fixed reason and log the exception

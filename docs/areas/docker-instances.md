@@ -152,7 +152,8 @@ on the snapshots and samples it produces.
 
 - Invalid instance configuration fails startup ([Hosting](hosting.md)): a missing `Name`, a duplicate name (after
   trimming, case-insensitive), a missing `BaseUrl`, a `BaseUrl` that is not an absolute URI with scheme `http`,
-  `https`, `tcp`, `unix` or `npipe`, or a `RequestTimeoutSeconds` outside 1–300. The shipped `appsettings.json`
+  `https`, `tcp`, `unix` or `npipe`, a `BaseUrl` with an `@` outside its user info ([Hosting](hosting.md), *Validation*), or a
+  `RequestTimeoutSeconds` outside 1–300. The shipped `appsettings.json`
   contains one instance with an empty `Name`, so an operator must set a name before the application starts.
 - An unusable `CertificatePath` of an enabled instance fails startup with
   `'DockerUpdateGuard:DockerInstances:<Name>:CertificatePath' names an unusable client certificate '<path>': <reason>`,

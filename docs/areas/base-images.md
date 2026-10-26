@@ -100,7 +100,7 @@ a base-image update or vulnerability reaches; vulnerability refreshes and the da
   runtime (`latest-runtime`) and whether that release is a security release (`security`).
 - **nginx:** the `download/` page under `DockerUpdateGuard:ReleaseMetadata:NginxBaseUrl` (default
   `https://nginx.org/`). Every `nginx-x.y.z.tar.gz` link counts; a channel's latest is its highest version.
-- Both URLs are fixed at startup and must be absolute `http`/`https` URLs ([Hosting](hosting.md)). A feed is loaded at
+- Both URLs are fixed at startup and must be absolute `http`/`https` URLs without an `@` outside their user info ([Hosting](hosting.md)). A feed is loaded at
   most once per scan and not kept between scans. A channel missing from the feed gives no finding.
 - A runtime is outdated when the feed's latest version of the same channel is higher than the detected one. Only
   patch updates within the channel are reported; a newer channel is never suggested.

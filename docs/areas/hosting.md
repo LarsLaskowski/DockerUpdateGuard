@@ -37,6 +37,18 @@ every feature area relies on it for validated configuration and a migrated datab
   - a connection string must resolve to a non-blank value (see *Database connection*);
   - `DockerUpdateGuard:Database:MaxConnectionRetryCount`, `MaxConnectionRetryDelaySeconds`,
     `MigrationStartupTimeoutSeconds` and `MigrationRetryDelaySeconds` must each be greater than zero.
+- A configured URL must not have an `@` outside its user info. A value has one when it contains `@` and either
+  contains more than one `@` or parses with an empty user info; a user info that is present must therefore be the
+  one `@`-terminated part of the authority. The rule applies to the URL keys of the `DockerUpdateGuard` section
+  (Docker instance `BaseUrl`, Portainer `BaseUrl`, `DockerHub:ApiBaseUrl`, `ReleaseMetadata:DotNetBaseUrl` and
+  `NginxBaseUrl`, `Vulnerabilities:TrivyBaseUrl`, `DockerScoutLoginUrl` and `DockerScoutBaseUrl`) and to
+  `DockerHub:Registry` when it is an absolute URI (a plain registry name such as `docker.io` is not checked); the
+  `Telemetry:OtlpEndpoint` rule is in [Telemetry](telemetry.md). It is checked after the existing configured,
+  absolute and scheme rules, so a value gets at most one of these failures, and it replaces the Portainer
+  plaintext-HTTP failure. The failure is exactly `'<key>' has an '@' that does not end its user info; percent-encode '@', '#', '?' and '/' in a user name or password`, with the full configuration path as key and never the
+  value. The reason: the URI parser ends the authority at the first `/`, `?` or `#`, so
+  `https://admin#secret@portainer.example` would send the credentials to host `admin`. Percent-encode `@`, `#`, `?`
+  and `/` in a user name or password to keep such a URL working.
 - The rules for feature keys (Docker Hub, release metadata, vulnerabilities, scanning, Docker instances, Portainer)
   are part of the respective area documents; they are enforced by the same validation step.
 
@@ -198,6 +210,9 @@ These properties hold today and must be provided for by the deployment:
   validated as PKCS#12 at startup, so validation reads a file.
 - [0011](../decisions/0011-mounted-ca-certificates-use-a-private-cert-dir.md): mounted CA certificates are trusted
   through a private directory appended to `SSL_CERT_DIR`, so no write access to the system trust store is needed.
+
+- [0012](../decisions/0012-configured-urls-are-rejected-when-an-at-sign-is-not-their-user-info-separator.md):
+  configured URLs are rejected when an `@` is not their user-info separator.
 
 ## Not here
 

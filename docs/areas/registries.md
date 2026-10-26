@@ -198,7 +198,8 @@ retry policy and the failure model.
 - Fixed at startup, a change needs a restart: `DockerHub:ApiBaseUrl` and `DockerHub:RequestTimeoutSeconds`. The
   origin of `ApiBaseUrl` (or of an absolute `DockerHub:Registry` that replaces it), fixed at startup like `ApiBaseUrl`, is the only one Docker Hub pagination follows ([Pagination links](#pagination-links)).
 - Validation of these keys at startup (an invalid value fails startup, see [Hosting](hosting.md)): `Registry`
-  non-empty, `ApiBaseUrl` an absolute `http`/`https` URL, and the ranges above.
+  non-empty, `ApiBaseUrl` an absolute `http`/`https` URL, neither `ApiBaseUrl` nor an absolute `Registry` with an `@`
+  outside its user info ([Hosting](hosting.md), *Validation*), and the ranges above.
 
 ## Limits and errors
 

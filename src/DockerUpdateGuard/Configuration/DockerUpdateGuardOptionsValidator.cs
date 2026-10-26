@@ -1,3 +1,5 @@
+using System.Diagnostics.CodeAnalysis;
+
 using Microsoft.Extensions.Options;
 
 namespace DockerUpdateGuard.Configuration;
@@ -86,6 +88,11 @@ public class DockerUpdateGuardOptionsValidator : IValidateOptions<DockerUpdateGu
         {
             failures.Add($"'{DockerUpdateGuardOptions.SectionName}:DockerHub:Registry' must be configured");
         }
+        else if (Uri.TryCreate(options.Registry, UriKind.Absolute, out var registryUri)
+                 && HasAtSignOutsideUserInfo(options.Registry, registryUri))
+        {
+            failures.Add(CreateAtSignFailure($"{DockerUpdateGuardOptions.SectionName}:DockerHub:Registry"));
+        }
 
         if (options.RequestTimeoutSeconds is <= 0 or > 300)
         {
@@ -137,6 +144,10 @@ public class DockerUpdateGuardOptionsValidator : IValidateOptions<DockerUpdateGu
                 && uri.Scheme != Uri.UriSchemeHttps))
         {
             failures.Add($"'{propertyPath}' must be an absolute http or https URI");
+        }
+        else if (HasAtSignOutsideUserInfo(value, uri))
+        {
+            failures.Add(CreateAtSignFailure(propertyPath));
         }
     }
 
@@ -289,9 +300,13 @@ public class DockerUpdateGuardOptionsValidator : IValidateOptions<DockerUpdateGu
         {
             failures.Add($"'{DockerUpdateGuardOptions.SectionName}:DockerInstances:{instance.Name}:BaseUrl' must be configured");
         }
-        else if (TryValidateDockerUri(instance.BaseUrl) == false)
+        else if (TryValidateDockerUri(instance.BaseUrl, out var dockerUri) == false)
         {
             failures.Add($"'{DockerUpdateGuardOptions.SectionName}:DockerInstances:{instance.Name}:BaseUrl' must use http, https, tcp, unix or npipe");
+        }
+        else if (HasAtSignOutsideUserInfo(instance.BaseUrl, dockerUri))
+        {
+            failures.Add(CreateAtSignFailure($"{DockerUpdateGuardOptions.SectionName}:DockerInstances:{instance.Name}:BaseUrl"));
         }
 
         if (instance.RequestTimeoutSeconds is <= 0 or > 300)
@@ -323,6 +338,10 @@ public class DockerUpdateGuardOptionsValidator : IValidateOptions<DockerUpdateGu
         {
             failures.Add($"'{DockerUpdateGuardOptions.SectionName}:DockerInstances:{instanceName}:Portainer:BaseUrl' must be an absolute http or https URI");
         }
+        else if (HasAtSignOutsideUserInfo(portainer.BaseUrl, portainerUri))
+        {
+            failures.Add(CreateAtSignFailure($"{DockerUpdateGuardOptions.SectionName}:DockerInstances:{instanceName}:Portainer:BaseUrl"));
+        }
         else if (portainerUri.Scheme == Uri.UriSchemeHttp && portainer.AllowInsecureHttp == false)
         {
             failures.Add($"'{DockerUpdateGuardOptions.SectionName}:DockerInstances:{instanceName}:Portainer:BaseUrl' uses plaintext HTTP; API keys, passwords and tokens will be transmitted unencrypted — set '{DockerUpdateGuardOptions.SectionName}:DockerInstances:{instanceName}:Portainer:AllowInsecureHttp: true' to explicitly allow it");
@@ -347,10 +366,11 @@ public class DockerUpdateGuardOptionsValidator : IValidateOptions<DockerUpdateGu
     /// Validate a Docker endpoint URI candidate
     /// </summary>
     /// <param name="value">Endpoint value</param>
+    /// <param name="uri">Parsed endpoint</param>
     /// <returns>True when valid</returns>
-    private static bool TryValidateDockerUri(string value)
+    private static bool TryValidateDockerUri(string value, [NotNullWhen(true)] out Uri? uri)
     {
-        if (Uri.TryCreate(value, UriKind.Absolute, out var uri) == false)
+        if (Uri.TryCreate(value, UriKind.Absolute, out uri) == false)
         {
             return false;
         }
@@ -360,6 +380,29 @@ public class DockerUpdateGuardOptionsValidator : IValidateOptions<DockerUpdateGu
                || uri.Scheme == "tcp"
                || uri.Scheme == "unix"
                || uri.Scheme == "npipe";
+    }
+
+    /// <summary>
+    /// Check whether an already parsed absolute URI value contains an '@' that is not the separator of a non-empty user info
+    /// </summary>
+    /// <param name="value">Configured value</param>
+    /// <param name="uri">Parsed value</param>
+    /// <returns>True when the value has an '@' outside its user info</returns>
+    private static bool HasAtSignOutsideUserInfo(string value, Uri uri)
+    {
+        return value.Contains('@')
+               && (value.IndexOf('@') != value.LastIndexOf('@')
+                   || string.IsNullOrEmpty(uri.UserInfo));
+    }
+
+    /// <summary>
+    /// Create the failure text for a value with an '@' outside its user info
+    /// </summary>
+    /// <param name="propertyPath">Fully qualified configuration path</param>
+    /// <returns>Failure text</returns>
+    private static string CreateAtSignFailure(string propertyPath)
+    {
+        return $"'{propertyPath}' has an '@' that does not end its user info; percent-encode '@', '#', '?' and '/' in a user name or password";
     }
 
     #endregion // Static methods
