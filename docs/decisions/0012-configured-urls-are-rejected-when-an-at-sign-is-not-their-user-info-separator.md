@@ -1,6 +1,6 @@
 # 0012: Configured URLs are rejected when an `@` is not their user-info separator
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-26
 - **Area:** Hosting and configuration
 - **Source:** Issue #325
