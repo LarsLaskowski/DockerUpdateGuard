@@ -17,3 +17,4 @@ are quoted in full.
 | 2026-10-26 22:18 | 8 Review (round 1) | squad-reviewer | APPROVE, 0 blocking, 2 non-blocking doc findings (verbatim) (opus/medium · 76,643 tokens · 14 tool uses · 104 s) |
 | 2026-10-26 22:18 | 8 Review (round 1) | squad-security | APPROVED, no findings (opus/medium · 53,845 tokens · 7 tool uses · 55 s) |
 | 2026-10-26 22:18 | 8 Review (verbatim fixes) | Orchestrator | verbatim: record 0012 'validated at startup (and, for the DockerUpdateGuard section, on reload)' (rewrapped to 120 cols); hosting.md blank line before 0012 bullet removed; format/scope/decision checks PASS |
+| 2026-10-26 22:20 | 9 PR approval | squad-lead | RESULT: APPROVED; plan deviation (private TryValidateDockerUri signature) accepted; plan.md Signatures/Challenge updated; record 0012 Accepted (opus/medium · usage pending) |

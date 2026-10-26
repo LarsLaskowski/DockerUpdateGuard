@@ -132,12 +132,15 @@ belong in the observability layer, and the rule is a few lines.
 
 In `DockerUpdateGuardOptionsValidator`, region `Static methods`:
 
-- `private static bool HasAtSignOutsideUserInfo(string value)` — `true` per the rule in *Acceptance criteria*.
+- `private static bool HasAtSignOutsideUserInfo(string value, Uri uri)` — `true` per the rule in *Acceptance
+  criteria*, on the URI the call site already parsed.
 - `private static string CreateAtSignFailure(string propertyPath)` — returns the failure text for that key.
+- `private static bool TryValidateDockerUri(string value, [NotNullWhen(true)] out Uri? uri)` — changed so the parsed
+  URI reaches the helper (*Challenge*).
 
 In `TelemetryOptionsValidator`, region `Methods`, after `TryCreateEndpoint` (private static after public static):
 
-- `private static bool HasAtSignOutsideUserInfo(string value)` — same rule.
+- `private static bool HasAtSignOutsideUserInfo(string value, Uri uri)` — same rule.
 
 No public or internal API changes, so step 4 (*Skeleton*) does not apply; the tests call `Validate`.
 
@@ -206,9 +209,12 @@ validator still reads only the certificate file, integration clients are untouch
 - Rejecting user info altogether (record 0005, option 3).
 - How Trivy reads an accepted `TrivyBaseUrl` (record 0005 covers its output).
 
-## Challenge notes
+## Challenge
 
-- **minor** (Devil's Advocate): An unreachable branch in the rule. At every call site the helper runs only after `Uri.TryCreate(..., UriKind.Absolute)` has already succeeded, so the "does not parse as an absolute URI" clause can never be true there; that is dead code, the value is parsed twice, and the branch gets no coverage. Instruction for the Dev: give the helper the parsed URI along with the text, e.g. `HasAtSignOutsideUserInfo(string value, Uri uri)` returning `value.Contains('@') && (value.IndexOf('@') != value.LastIndexOf('@') || string.IsNullOrEmpty(uri.UserInfo))`. Do the same in `TelemetryOptionsValidator`, passing the `Uri` that `TryCreateEndpoint` puts out. The `ValidateDockerHubOptions` call site already has the parsed `Registry` URI from its own `TryCreate`. Keep the rule's wording in the plan and in hosting.md the same, but leave out the parse clause, since it cannot happen at the point where the rule runs.
+- **minor** (Devil's Advocate), dead parse clause in the helper — accepted: the helper takes the URI the call site
+  parsed (`HasAtSignOutsideUserInfo(string value, Uri uri)`, both validators), and `TryValidateDockerUri` puts out its
+  parsed URI for that. A value that does not parse still gets the existing scheme failure, so the rule's outcome is
+  unchanged; `hosting.md` words it without the parse clause. Confirmed against the built code in step 9.
 
 ## Security notes
 
