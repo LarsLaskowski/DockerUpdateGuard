@@ -152,8 +152,8 @@ public partial class DotNetReleaseMetadataService : IDotNetReleaseMetadataServic
 
             if (response.IsSuccessStatusCode == false)
             {
-                var body = await response.Content.ReadAsStringAsync(cancellationToken)
-                                                 .ConfigureAwait(false);
+                var body = await ResponseBodyExcerpt.ReadAsync(response.Content, cancellationToken)
+                                                    .ConfigureAwait(false);
 
                 return ExternalOperationResult<bool>.Failed($"The .NET release index returned {(int)response.StatusCode}: {body}");
             }

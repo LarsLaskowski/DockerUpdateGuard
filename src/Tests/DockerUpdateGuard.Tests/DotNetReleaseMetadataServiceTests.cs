@@ -203,5 +203,32 @@ public partial class DotNetReleaseMetadataServiceTests
         Assert.DoesNotContain("internal.test", result.Message, "The exception text must not reach the result message");
     }
 
+    /// <summary>
+    /// Verify a failed release feed answer with a long body reports an excerpt of the body
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DotNetReleaseMetadataServiceGetChannelReleaseAsyncWhenErrorBodyIsLongReturnsBoundedExcerptAsync()
+    {
+        using var handler = new DelegateHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.BadRequest)
+                                                                {
+                                                                    Content = new StringContent(new string('x', OversizedRemoteText.BodyLength)),
+                                                                });
+        using var httpClient = new HttpClient(handler)
+                               {
+                                   BaseAddress = new Uri("https://feed.example.test/"),
+                               };
+
+        var service = new DotNetReleaseMetadataService(httpClient, new TestLogger<DotNetReleaseMetadataService>());
+
+        var result = await service.GetChannelReleaseAsync("9.0", TestContext.CancellationToken)
+                                  .ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Failed, result.Status, "A Bad Request answer must fail the lookup");
+        Assert.AreEqual($"The .NET release index returned 400: {OversizedRemoteText.CreateExpectedExcerpt()}",
+                        result.Message,
+                        "The failure message must keep its text and carry the first 500 characters of the body followed by the ellipsis");
+    }
+
     #endregion // Methods
 }

@@ -13,6 +13,15 @@ namespace DockerUpdateGuard.Tests;
 [TestClass]
 public partial class NginxReleaseMetadataServiceTests
 {
+    #region Properties
+
+    /// <summary>
+    /// Context for the tests
+    /// </summary>
+    public TestContext TestContext { get; set; }
+
+    #endregion // Properties
+
     #region Methods
 
     /// <summary>
@@ -128,6 +137,33 @@ public partial class NginxReleaseMetadataServiceTests
         Assert.Contains(entry => ReferenceEquals(entry.Exception, injected),
                         logger.Entries,
                         "The transport failure must still be logged with the exception");
+    }
+
+    /// <summary>
+    /// Verify a failed release feed answer with a long body reports an excerpt of the body
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task NginxReleaseMetadataServiceGetChannelReleaseAsyncWhenErrorBodyIsLongReturnsBoundedExcerptAsync()
+    {
+        using var handler = new DelegateHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.BadRequest)
+                                                                {
+                                                                    Content = new StringContent(new string('x', OversizedRemoteText.BodyLength)),
+                                                                });
+        using var httpClient = new HttpClient(handler)
+                               {
+                                   BaseAddress = new Uri("https://feed.example.test/"),
+                               };
+
+        var service = new NginxReleaseMetadataService(httpClient, new TestLogger<NginxReleaseMetadataService>());
+
+        var result = await service.GetChannelReleaseAsync("1.29", TestContext.CancellationToken)
+                                  .ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Failed, result.Status, "A Bad Request answer must fail the lookup");
+        Assert.AreEqual($"The NGINX download listing returned 400: {OversizedRemoteText.CreateExpectedExcerpt()}",
+                        result.Message,
+                        "The failure message must keep its text and carry the first 500 characters of the body followed by the ellipsis");
     }
 
     #endregion // Methods

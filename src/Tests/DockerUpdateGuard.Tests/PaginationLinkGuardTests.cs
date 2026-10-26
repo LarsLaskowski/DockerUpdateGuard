@@ -1,4 +1,5 @@
 using DockerUpdateGuard.Infrastructure;
+using DockerUpdateGuard.Tests.Helper;
 
 namespace DockerUpdateGuard.Tests;
 
@@ -187,6 +188,43 @@ public class PaginationLinkGuardTests
         Assert.AreEqual("Docker Hub tag listing for 'acme/api' stopped: the next-page link pointed to a different origin (https://attacker.example)",
                         message,
                         "The rejection message must use the documented wording");
+    }
+
+    /// <summary>
+    /// Verify an oversized host is described as a bounded origin
+    /// </summary>
+    [TestMethod]
+    public void PaginationLinkGuardDescribeOriginOversizedHostReturnsBoundedOrigin()
+    {
+        var fullOrigin = $"https://{OversizedRemoteText.CreateOversizedHost()}";
+
+        var origin = PaginationLinkGuard.DescribeOrigin(new Uri(CurrentRequest), $"{fullOrigin}/collect?token=leak");
+
+        Assert.AreEqual($"{fullOrigin[..PaginationLinkGuard.MaxOriginDescriptionLength]}\u2026",
+                        origin,
+                        "An origin longer than 300 characters must be cut to its first 300 characters followed by the ellipsis");
+    }
+
+    /// <summary>
+    /// Verify an origin of exactly the maximum length is returned whole, without the ellipsis
+    /// </summary>
+    [TestMethod]
+    public void PaginationLinkGuardDescribeOriginOriginAtLimitReturnsOriginUnchanged()
+    {
+        const string scheme = "https://";
+
+        var label = new string('a', 63);
+        var host = $"{label}.{label}.{label}.{label}.{new string('b', PaginationLinkGuard.MaxOriginDescriptionLength - scheme.Length - (4 * 64))}";
+        var fullOrigin = $"{scheme}{host}";
+
+        var origin = PaginationLinkGuard.DescribeOrigin(new Uri(CurrentRequest), $"{fullOrigin}/collect?token=leak");
+
+        Assert.AreEqual(PaginationLinkGuard.MaxOriginDescriptionLength,
+                        fullOrigin.Length,
+                        "The test origin must be exactly at the limit");
+        Assert.AreEqual(fullOrigin,
+                        origin,
+                        "An origin of exactly 300 characters must come back whole, without the ellipsis");
     }
 
     #endregion // Methods

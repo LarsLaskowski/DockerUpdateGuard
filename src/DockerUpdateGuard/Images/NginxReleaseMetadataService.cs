@@ -121,8 +121,8 @@ public partial class NginxReleaseMetadataService : INginxReleaseMetadataService
 
             if (response.IsSuccessStatusCode == false)
             {
-                var body = await response.Content.ReadAsStringAsync(cancellationToken)
-                                                 .ConfigureAwait(false);
+                var body = await ResponseBodyExcerpt.ReadAsync(response.Content, cancellationToken)
+                                                    .ConfigureAwait(false);
 
                 return ExternalOperationResult<bool>.Failed($"The NGINX download listing returned {(int)response.StatusCode}: {body}");
             }

@@ -103,7 +103,7 @@ Every exported signal carries the same resource:
 - Database statements are logged without parameter values.
 - What logs and spans may carry about external systems: configured instance names, image references, configured base
   URLs with any user info replaced by `***`, the Docker Hub account name, HTTP methods and status codes, the scheme,
-  host and port of a rejected next-page link, counts, durations, error messages from external tools (Trivy's only
+  host and port of a rejected next-page link (cut to 300 characters), the bounded excerpt of a remote error response ([Registries](registries.md#failure-model-of-integrations)), counts, durations, error messages from external tools (Trivy's only
   for a `TrivyBaseUrl` without `@`, [Vulnerabilities](vulnerabilities.md#trivy)) and, on the error entries of failed
   integration calls, scan steps and user actions, the exception with its message, which can name a registry, Docker or
   database host. Retry log

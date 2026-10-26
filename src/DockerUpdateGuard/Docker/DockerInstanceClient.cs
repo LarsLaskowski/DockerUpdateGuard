@@ -870,8 +870,8 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
 
             if (response.IsSuccessStatusCode == false)
             {
-                var body = await response.Content.ReadAsStringAsync(requestTimeoutSource.Token)
-                                                 .ConfigureAwait(false);
+                var body = await ResponseBodyExcerpt.ReadAsync(response.Content, requestTimeoutSource.Token)
+                                                    .ConfigureAwait(false);
 
                 return ExternalOperationResult<DockerImageInspectData>.Failed($"Docker image inspect for '{imageReferenceOrId}' returned {(int)response.StatusCode}: {body}");
             }
@@ -923,8 +923,8 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
 
             if (response.IsSuccessStatusCode == false)
             {
-                var body = await response.Content.ReadAsStringAsync(requestTimeoutSource.Token)
-                                                 .ConfigureAwait(false);
+                var body = await ResponseBodyExcerpt.ReadAsync(response.Content, requestTimeoutSource.Token)
+                                                    .ConfigureAwait(false);
 
                 return ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>.Failed($"Docker image history for '{imageReferenceOrId}' returned {(int)response.StatusCode}: {body}");
             }
@@ -992,8 +992,8 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
 
             if (response.IsSuccessStatusCode == false)
             {
-                var body = await response.Content.ReadAsStringAsync(requestTimeoutSource.Token)
-                                                 .ConfigureAwait(false);
+                var body = await ResponseBodyExcerpt.ReadAsync(response.Content, requestTimeoutSource.Token)
+                                                    .ConfigureAwait(false);
 
                 _logger.DockerInstanceDiscoveryResponseFailed(instanceOptions.Name, (int)response.StatusCode);
 
@@ -1066,8 +1066,8 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
 
             if (response.IsSuccessStatusCode == false)
             {
-                var body = await response.Content.ReadAsStringAsync(requestTimeoutSource.Token)
-                                                 .ConfigureAwait(false);
+                var body = await ResponseBodyExcerpt.ReadAsync(response.Content, requestTimeoutSource.Token)
+                                                    .ConfigureAwait(false);
 
                 return ExternalOperationResult<IReadOnlyList<RuntimeContainerResourceDescriptor>>.Failed($"Docker instance '{instanceOptions.Name}' returned {(int)response.StatusCode}: {body}");
             }
@@ -1232,8 +1232,8 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
 
             if (response.IsSuccessStatusCode == false)
             {
-                var body = await response.Content.ReadAsStringAsync(requestTimeoutSource.Token)
-                                                 .ConfigureAwait(false);
+                var body = await ResponseBodyExcerpt.ReadAsync(response.Content, requestTimeoutSource.Token)
+                                                    .ConfigureAwait(false);
 
                 return ExternalOperationResult<long>.Failed($"Docker instance '{instanceOptions.Name}' returned {(int)response.StatusCode}: {body}");
             }

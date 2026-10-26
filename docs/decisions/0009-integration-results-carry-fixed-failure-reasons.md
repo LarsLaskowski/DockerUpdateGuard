@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-10-25
 - **Area:** Registries
-- **Source:** Issue #315, issue #318, issue #323
+- **Source:** Issue #315, issue #318, issue #323, issue #324
 - **Supersedes:** —
 
 ## Context
@@ -25,6 +25,13 @@ vulnerability refresh, the registration of an observed image and the manual tag 
 escaped a service (a database error, a failure outside the clients' own handling) and showed its message on the page,
 without logging it. One message there is the application's own and useful: the image reference without a repository
 name, which the reference parser raises as an `ArgumentException`.
+
+A non-success answer is not an exception: the Docker Engine client, both registry clients and the two release-feed
+readers appended the whole response body the remote side sent to the failure message (#324). Other remote text went in
+just as unbounded: the OCI reason phrase, the origin of a rejected next-page link (registries and Docker Scout) and the
+last line of Trivy's error output. None has a size limit, so a long one made the message longer than the 2000
+characters a container's update assessment or an image's vulnerability assessment holds, and the save of the scan
+failed; the same text went unbounded into logs and scan-run errors.
 
 ## Options considered
 
@@ -54,6 +61,20 @@ name, which the reference parser raises as an `ArgumentException`.
 11. **For the pages: let the reference parser raise the marker type** — changes the exception type for every caller
     of the parser (the Docker Engine client catches its `ArgumentException`); the registration service, the one
     caller whose failure reaches a page, wraps it instead.
+12. **For remote text: one shared bound applied where the text enters a message — a body excerpt read from the
+    response instead of the whole body, and the same cut on the reason phrase, a rejected link's origin and Trivy's
+    error line** — every result, log entry and scan-run error stays short, and a streamed error response is no longer
+    read to its end. Chosen.
+13. **For remote text: cut the message where it is stored, alone or in addition** — logs and scan-run errors still
+    carry the whole text, a body is still read in full, and each of the stores needs its own cut. A first sweep of the
+    sources missed the rejected origin and Trivy's line, so the sources of each stored message are enumerated part by
+    part and their sum is tested at the client instead; a cut at the store would also hide a future unbounded source
+    that the log should show.
+14. **For response bodies: drop the body** — the body is often the only explanation of a registry or Engine refusal
+    (an error code, a rate-limit note); it is the remote side's answer, not runtime text, so a bounded part of it is
+    kept.
+15. **For response bodies: decode with the charset the response declares** — the remote sides here answer UTF-8 JSON
+    or ASCII pages; an unknown charset name would need its own fallback for a text that is only an excerpt.
 
 ## Decision
 
@@ -63,7 +84,9 @@ dedicated exception type, keeps its text. The exception itself is logged with th
 [Registries](../areas/registries.md#failure-model-of-integrations); the Portainer specifics in
 [Container actions](../areas/container-actions.md#limits-and-errors). A failed user action on a page shows the action
 and the same fixed reason and logs the exception ([Web UI](../areas/web-ui.md#limits-and-errors)); the registration
-service raises the parser's rejection of a reference without a repository name as the marker type.
+service raises the parser's rejection of a reference without a repository name as the marker type. A response body,
+a reason phrase, the origin of a rejected next-page link and Trivy's error line reach a failure message only cut to a
+bounded length by one shared helper ([Registries](../areas/registries.md#failure-model-of-integrations)).
 
 ## Consequences
 
@@ -82,8 +105,13 @@ service raises the parser's rejection of a reference without a repository name a
   `#` or `?` in the user info, `https://admin#secret@host` connects to `admin`). Rejecting such URLs at configuration
   validation is a follow-up issue; it also stops requests to that wrong host. Proxy URLs taken from the environment
   appear in these messages without their user info.
-- Response bodies the remote side sent and the error output of Trivy are not exception messages; they stay in results
-  as before.
+- Response bodies the remote side sent and the error output of Trivy are not exception messages; they stay in results.
+  A body is cut to its first characters, so a message no longer shows the end of a long answer; the operator who needs
+  it reproduces the request. The excerpt is decoded as UTF-8, or as the encoding a byte-order mark names, whatever charset the response declares.
+- The message length is bounded for every client; the bytes read are bounded only where the response is streamed (the
+  registry clients). Docker Engine and release-feed responses are still buffered whole by `HttpClient` before the
+  excerpt is taken.
+- After a failed registry token exchange the excerpt is taken of the token failure message, which names the token request URI (OCI) or the Docker Hub user name before the token endpoint's own body excerpt, so that body may be cut away.
 - A page no longer tells a user why an action failed beyond the fixed reason; a registration with a value longer than
   the stored limits, or a tag selection for a container whose snapshots were just cleaned up, reads "unexpected
   error", and the operator reads the cause in the log entry of the failure.

@@ -227,8 +227,8 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
                                                                                       string message,
                                                                                       CancellationToken cancellationToken)
     {
-        var errorBody = await response.Content.ReadAsStringAsync(cancellationToken)
-                                              .ConfigureAwait(false);
+        var errorBody = await ResponseBodyExcerpt.ReadAsync(response.Content, cancellationToken)
+                                                 .ConfigureAwait(false);
 
         return ExternalOperationResult<T>.Failed($"{message}. Status code: {(int)response.StatusCode}. Body: {errorBody}");
     }
