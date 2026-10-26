@@ -16,3 +16,6 @@ are quoted in full.
 | 2026-10-26 06:20 | 7 Code check | squad-code-officer | DL3018 hadolint finding on pre-existing line cleared by ignore comment; analyzer gate passes (haiku/medium · 65,354 tokens · 5 tool uses · 52 s) |
 | 2026-10-26 06:23 | 7 Code check | Orchestrator | Format check, analyzer gate, tests (722 passed), scope-check, decision-check pass; coverage gate n/a (no C#) |
 | 2026-10-26 06:25 | 7 Sonar gate | Orchestrator | NOT CHECKED: scan uploaded, results API HTTP 403; left to step 11 (sonar-check.py pr) |
+| 2026-10-26 06:28 | 8 Review | squad-reviewer | Round 1 on 4ae9d9e: BLOCKING 0, NON-BLOCKING 1 (DOCKER.md:124 says PEM or CRT; DER not accepted) (opus/medium · 63,685 tokens · 10 tool uses · 118 s) |
+| 2026-10-26 06:28 | 8 Review | squad-security | diff review on 4ae9d9e: APPROVED (no key material reaches cert dir, 0700 temp dir, SSL_CERT_DIR handling, fail-safe) (opus/medium · 39,072 tokens · 6 tool uses · 58 s) |
+| 2026-10-26 06:28 | 8 Review | Orchestrator | verbatim: DOCKER.md:124 PEM-only wording applied as proposed; format, scope, decision checks pass |

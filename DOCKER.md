@@ -121,7 +121,7 @@ The published image includes a small entrypoint script that trusts the CA certif
 
 Certificate formats and usage
 
-- Root CA: provide the CA as a PEM or CRT file (e.g. `ca-root.crt` or `ca-root.pem`). This is sufficient for the runtime to validate HTTPS servers for PostgreSQL, Portainer, Trivy, etc.
+- Root CA: provide the CA as a PEM-encoded file named `*.crt` or `*.pem` (e.g. `ca-root.crt` or `ca-root.pem`); a DER-encoded file is not accepted. This is sufficient for the runtime to validate HTTPS servers for PostgreSQL, Portainer, Trivy, etc.
 - Wildcard/server cert (.crt): not required for client‑side trust; the Root CA that signed the server certificate is what must be trusted.
 - Client certificate (for mutual TLS to a Docker engine): store the client certificate as a password-less PKCS#12 bundle (`.pfx` or `.p12`) with certificate and private key in `/app/certs` (readable by UID `64000`) and set the Docker instance `CertificatePath` to the in-container file path (e.g. `/app/certs/client.pfx`). PEM or DER files are not supported and the application refuses to start when an enabled instance names a missing, unreadable, non-PKCS#12 or password-protected file. Convert a PEM pair with `openssl pkcs12 -export -in cert.pem -inkey key.pem -out client.pfx -passout pass:`. Keep `cert.pem` and `key.pem` out of `/app/certs`: the entrypoint treats every `*.pem` file there as a CA certificate.
 
