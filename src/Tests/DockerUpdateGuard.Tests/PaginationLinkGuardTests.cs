@@ -1,4 +1,5 @@
 using DockerUpdateGuard.Infrastructure;
+using DockerUpdateGuard.Tests.Helper;
 
 namespace DockerUpdateGuard.Tests;
 
@@ -187,6 +188,21 @@ public class PaginationLinkGuardTests
         Assert.AreEqual("Docker Hub tag listing for 'acme/api' stopped: the next-page link pointed to a different origin (https://attacker.example)",
                         message,
                         "The rejection message must use the documented wording");
+    }
+
+    /// <summary>
+    /// Verify an oversized host is described as a bounded origin
+    /// </summary>
+    [TestMethod]
+    public void PaginationLinkGuardDescribeOriginOversizedHostReturnsBoundedOrigin()
+    {
+        var fullOrigin = $"https://{OversizedRemoteText.CreateOversizedHost()}";
+
+        var origin = PaginationLinkGuard.DescribeOrigin(new Uri(CurrentRequest), $"{fullOrigin}/collect?token=leak");
+
+        Assert.AreEqual($"{fullOrigin[..PaginationLinkGuard.MaxOriginDescriptionLength]}\u2026",
+                        origin,
+                        "An origin longer than 300 characters must be cut to its first 300 characters followed by the ellipsis");
     }
 
     #endregion // Methods

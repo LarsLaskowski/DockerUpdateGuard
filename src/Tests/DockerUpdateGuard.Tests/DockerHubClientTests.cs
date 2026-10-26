@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text;
 
 using DockerUpdateGuard.Configuration;
 using DockerUpdateGuard.DockerHub;
@@ -989,6 +990,88 @@ public partial class DockerHubClientTests
     }
 
     /// <summary>
+    /// Verify a Docker Hub tag lookup answered with a long error body reports an excerpt of the body
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerHubClientGetTagsAsyncWhenErrorBodyIsLongReturnsBoundedExcerptAsync()
+    {
+        using var handler = new DelegateHttpMessageHandler(request => CreateHubResponse(request, CreateLongErrorResponse));
+        using var httpClient = new HttpClient(handler)
+                               {
+                                   BaseAddress = new Uri("https://hub.docker.com/"),
+                               };
+
+        var client = CreateClient(httpClient);
+
+        var result = await client.GetTagsAsync("docker.io", "acme/api", cancellationToken: CancellationToken.None)
+                                 .ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Failed, result.Status, "A Bad Request answer must fail the tag lookup");
+        Assert.AreEqual($"Tag lookup failed for 'acme/api'. Status code: 400. Body: {OversizedRemoteText.CreateExpectedExcerpt()}",
+                        result.Message,
+                        "The failure message must keep its text and carry the first 500 characters of the body followed by the ellipsis");
+    }
+
+    /// <summary>
+    /// Verify the tag lookup message of the longest stored repository stays within the assessment message limit
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerHubClientGetTagsAsyncWhenRepositoryIsAtStoredLimitKeepsMessageWithinAssessmentLimitAsync()
+    {
+        var repository = $"acme/{new string('r', 295)}";
+
+        using var handler = new DelegateHttpMessageHandler(request => CreateHubResponse(request, CreateLongErrorResponse));
+        using var httpClient = new HttpClient(handler)
+                               {
+                                   BaseAddress = new Uri("https://hub.docker.com/"),
+                               };
+
+        var client = CreateClient(httpClient);
+
+        var result = await client.GetTagsAsync("docker.io", repository, cancellationToken: CancellationToken.None)
+                                 .ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Failed, result.Status, "A Bad Request answer must fail the tag lookup");
+        Assert.IsNotNull(result.Message, "A failed result must carry a message");
+        Assert.StartsWith($"Tag lookup failed for '{repository}'", result.Message, "The failure message must name the repository");
+        Assert.EndsWith(OversizedRemoteText.CreateExpectedExcerpt(), result.Message, "The failure message must end with the bounded body excerpt");
+        Assert.IsLessThanOrEqualTo(OversizedRemoteText.AssessmentMessageLimit,
+                                   result.Message.Length,
+                                   "The message is stored in a 2000-character column and must not exceed it");
+    }
+
+    /// <summary>
+    /// Verify the rejection message for an oversized foreign link host stays within the assessment message limit
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerHubClientGetTagsAsyncWhenForeignLinkHostIsOversizedKeepsMessageWithinAssessmentLimitAsync()
+    {
+        var repository = $"acme/{new string('r', 295)}";
+        var nextLink = $"https://{OversizedRemoteText.CreateOversizedHost()}/collect?page=2";
+
+        using var handler = new DelegateHttpMessageHandler(request => CreateHubResponse(request, () => CreateTagPageResponse(nextLink)));
+        using var httpClient = new HttpClient(handler)
+                               {
+                                   BaseAddress = new Uri("https://hub.docker.com/"),
+                               };
+
+        var client = CreateClient(httpClient);
+
+        var result = await client.GetTagsAsync("docker.io", repository, cancellationToken: CancellationToken.None)
+                                 .ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Failed, result.Status, "A next-page link on another origin must fail the tag lookup");
+        Assert.IsNotNull(result.Message, "A failed result must carry a message");
+        Assert.EndsWith("…)", result.Message, "The rejected origin must be cut and end with the ellipsis");
+        Assert.IsLessThanOrEqualTo(OversizedRemoteText.AssessmentMessageLimit,
+                                   result.Message.Length,
+                                   "The message is stored in a 2000-character column and must not exceed it");
+    }
+
+    /// <summary>
     /// Assert no request went to the rejected origin and no credential left Docker Hub
     /// </summary>
     /// <param name="handler">Observing handler</param>
@@ -1061,6 +1144,52 @@ public partial class DockerHubClientTests
         return new DockerHubClient(httpClient,
                                    logger ?? new TestLogger<DockerHubClient>(),
                                    new TestOptionsMonitor<DockerUpdateGuardOptions>(options));
+    }
+
+    /// <summary>
+    /// Answer the Docker Hub login with a token and every other request with the given response
+    /// </summary>
+    /// <param name="request">Request</param>
+    /// <param name="otherResponse">Factory of the response to every other request</param>
+    /// <returns>Response</returns>
+    private static HttpResponseMessage CreateHubResponse(HttpRequestMessage request, Func<HttpResponseMessage> otherResponse)
+    {
+        if (request.RequestUri!.AbsolutePath.EndsWith("/users/login", StringComparison.Ordinal))
+        {
+            return new HttpResponseMessage(HttpStatusCode.OK)
+                   {
+                       Content = new StringContent(LoginResponseJson, Encoding.UTF8, "application/json"),
+                   };
+        }
+
+        return otherResponse();
+    }
+
+    /// <summary>
+    /// Create a Bad Request response with an oversized body
+    /// </summary>
+    /// <returns>Response</returns>
+    private static HttpResponseMessage CreateLongErrorResponse()
+    {
+        return new HttpResponseMessage(HttpStatusCode.BadRequest)
+               {
+                   Content = new StringContent(new string('x', OversizedRemoteText.BodyLength)),
+               };
+    }
+
+    /// <summary>
+    /// Create a tag page response with a next-page link
+    /// </summary>
+    /// <param name="nextLink">Next-page link</param>
+    /// <returns>Response</returns>
+    private static HttpResponseMessage CreateTagPageResponse(string nextLink)
+    {
+        return new HttpResponseMessage(HttpStatusCode.OK)
+               {
+                   Content = new StringContent($$"""{ "next": "{{nextLink}}", "results": [ { "name": "latest", "digest": "sha256:latest", "last_pushed": "2025-04-02T10:00:00Z" } ] }""",
+                                               Encoding.UTF8,
+                                               "application/json"),
+               };
     }
 
     #endregion // Methods

@@ -694,6 +694,102 @@ public partial class OciRegistryClientTests
         }
     }
 
+    /// <summary>
+    /// Verify an OCI tag lookup answered with a long error body reports an excerpt of the body
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task OciRegistryClientGetTagsAsyncWhenErrorBodyIsLongReturnsBoundedExcerptAsync()
+    {
+        using var handler = new DelegateHttpMessageHandler(_ => CreateLongErrorResponse(reasonPhrase: null));
+        using var httpClient = new HttpClient(handler);
+
+        var client = new OciRegistryClient(httpClient, new TestLogger<OciRegistryClient>());
+
+        var result = await client.GetTagsAsync("mcr.microsoft.com", "mssql/server", cancellationToken: CancellationToken.None)
+                                 .ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Failed, result.Status, "A Bad Request answer must fail the tag lookup");
+        Assert.AreEqual($"Tag lookup failed for 'mcr.microsoft.com/mssql/server': 400 Bad Request - {OversizedRemoteText.CreateExpectedExcerpt()}",
+                        result.Message,
+                        "The failure message must keep its text and carry the first 500 characters of the body followed by the ellipsis");
+    }
+
+    /// <summary>
+    /// Verify an OCI tag lookup answered with a long reason phrase reports a bounded reason phrase
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task OciRegistryClientGetTagsAsyncWhenReasonPhraseIsLongReturnsBoundedReasonAsync()
+    {
+        using var handler = new DelegateHttpMessageHandler(_ => CreateLongErrorResponse(new string('r', OversizedRemoteText.ReasonPhraseLength)));
+        using var httpClient = new HttpClient(handler);
+
+        var client = new OciRegistryClient(httpClient, new TestLogger<OciRegistryClient>());
+
+        var result = await client.GetTagsAsync("mcr.microsoft.com", "mssql/server", cancellationToken: CancellationToken.None)
+                                 .ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Failed, result.Status, "A Bad Request answer must fail the tag lookup");
+        Assert.AreEqual($"Tag lookup failed for 'mcr.microsoft.com/mssql/server': 400 {new string('r', 100)}\u2026 - {OversizedRemoteText.CreateExpectedExcerpt()}",
+                        result.Message,
+                        "The failure message must carry the first 100 characters of the reason phrase followed by the ellipsis");
+    }
+
+    /// <summary>
+    /// Verify the tag lookup message of the longest stored registry and repository stays within the assessment message limit
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task OciRegistryClientGetTagsAsyncWhenNamesAreAtStoredLimitsKeepsMessageWithinAssessmentLimitAsync()
+    {
+        var registry = OversizedRemoteText.CreateRegistryOfStoredLimit();
+        var repository = new string('r', 300);
+
+        using var handler = new DelegateHttpMessageHandler(_ => CreateLongErrorResponse(new string('r', OversizedRemoteText.ReasonPhraseLength)));
+        using var httpClient = new HttpClient(handler);
+
+        var client = new OciRegistryClient(httpClient, new TestLogger<OciRegistryClient>());
+
+        var result = await client.GetTagsAsync(registry, repository, cancellationToken: CancellationToken.None)
+                                 .ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Failed, result.Status, "A Bad Request answer must fail the tag lookup");
+        Assert.IsNotNull(result.Message, "A failed result must carry a message");
+        Assert.StartsWith($"Tag lookup failed for '{registry}/{repository}'", result.Message, "The failure message must name the registry and repository");
+        Assert.EndsWith(OversizedRemoteText.CreateExpectedExcerpt(), result.Message, "The failure message must end with the bounded body excerpt");
+        Assert.IsLessThanOrEqualTo(OversizedRemoteText.AssessmentMessageLimit,
+                                   result.Message.Length,
+                                   "The message is stored in a 2000-character column and must not exceed it");
+    }
+
+    /// <summary>
+    /// Verify the rejection message for an oversized foreign link host stays within the assessment message limit
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task OciRegistryClientGetTagsAsyncWhenForeignLinkHostIsOversizedKeepsMessageWithinAssessmentLimitAsync()
+    {
+        var registry = OversizedRemoteText.CreateRegistryOfStoredLimit();
+        var repository = new string('r', 300);
+        var foreignLink = $"<https://{OversizedRemoteText.CreateOversizedHost()}/collect?last=1.0.0>; rel=\"next\"";
+
+        using var handler = new DelegateHttpMessageHandler(_ => CreateTagListResponse("""{ "name": "app", "tags": [] }""", foreignLink));
+        using var httpClient = new HttpClient(handler);
+
+        var client = new OciRegistryClient(httpClient, new TestLogger<OciRegistryClient>());
+
+        var result = await client.GetTagsAsync(registry, repository, cancellationToken: CancellationToken.None)
+                                 .ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Failed, result.Status, "A next-page link on another origin must fail the tag lookup");
+        Assert.IsNotNull(result.Message, "A failed result must carry a message");
+        Assert.EndsWith("\u2026)", result.Message, "The rejected origin must be cut and end with the ellipsis");
+        Assert.IsLessThanOrEqualTo(OversizedRemoteText.AssessmentMessageLimit,
+                                   result.Message.Length,
+                                   "The message is stored in a 2000-character column and must not exceed it");
+    }
+
     #endregion // Methods
 
     #region Static methods
@@ -776,6 +872,20 @@ public partial class OciRegistryClientTests
         response.Headers.TryAddWithoutValidation("Docker-Content-Digest", digest);
 
         return response;
+    }
+
+    /// <summary>
+    /// Create a Bad Request response with an oversized body
+    /// </summary>
+    /// <param name="reasonPhrase">Reason phrase, null for the default one</param>
+    /// <returns>Response</returns>
+    private static HttpResponseMessage CreateLongErrorResponse(string? reasonPhrase)
+    {
+        return new HttpResponseMessage(HttpStatusCode.BadRequest)
+               {
+                   ReasonPhrase = reasonPhrase,
+                   Content = new StringContent(new string('x', OversizedRemoteText.BodyLength)),
+               };
     }
 
     #endregion // Static methods

@@ -996,6 +996,133 @@ public partial class DockerInstanceClientTests
     }
 
     /// <summary>
+    /// Verify container discovery bounds the error body of a failed response to an excerpt
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerInstanceClientDiscoverContainersAsyncWhenErrorBodyIsLongReturnsBoundedExcerptAsync()
+    {
+        using var handler = new DelegateHttpMessageHandler(_ => CreateLongErrorBodyResponse());
+        using var httpClient = new HttpClient(handler)
+                               {
+                                   BaseAddress = new Uri("https://docker.example.test/"),
+                               };
+
+        var client = new DockerInstanceClient(new TestLogger<DockerInstanceClient>(), (_, _) => httpClient);
+
+        var message = await RunOperationAsync(client, "Discovery", TestContext.CancellationToken).ConfigureAwait(false);
+
+        Assert.AreEqual($"Docker instance 'Production' returned 400: {OversizedRemoteText.CreateExpectedExcerpt()}",
+                        message,
+                        "The failure message must keep its text and carry the first 500 characters of the body followed by the ellipsis");
+        Assert.DoesNotContain(new string('x', 501), message, "The failure message must not carry more than 500 characters of the body");
+    }
+
+    /// <summary>
+    /// Verify resource sampling bounds the error body of a failed response to an excerpt
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerInstanceClientCollectContainerResourceUsageAsyncWhenErrorBodyIsLongReturnsBoundedExcerptAsync()
+    {
+        using var handler = new DelegateHttpMessageHandler(_ => CreateLongErrorBodyResponse());
+        using var httpClient = new HttpClient(handler)
+                               {
+                                   BaseAddress = new Uri("https://docker.example.test/"),
+                               };
+
+        var client = new DockerInstanceClient(new TestLogger<DockerInstanceClient>(), (_, _) => httpClient);
+
+        var message = await RunOperationAsync(client, "Sampling", TestContext.CancellationToken).ConfigureAwait(false);
+
+        Assert.AreEqual($"Docker instance 'Production' returned 400: {OversizedRemoteText.CreateExpectedExcerpt()}",
+                        message,
+                        "The failure message must keep its text and carry the first 500 characters of the body followed by the ellipsis");
+        Assert.DoesNotContain(new string('x', 501), message, "The failure message must not carry more than 500 characters of the body");
+    }
+
+    /// <summary>
+    /// Verify image inspect bounds the error body of a failed response to an excerpt
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerInstanceClientInspectImageAsyncWhenErrorBodyIsLongReturnsBoundedExcerptAsync()
+    {
+        using var handler = new DelegateHttpMessageHandler(_ => CreateLongErrorBodyResponse());
+        using var httpClient = new HttpClient(handler)
+                               {
+                                   BaseAddress = new Uri("https://docker.example.test/"),
+                               };
+
+        var client = new DockerInstanceClient(new TestLogger<DockerInstanceClient>(), (_, _) => httpClient);
+
+        var message = await RunOperationAsync(client, "Inspect", TestContext.CancellationToken).ConfigureAwait(false);
+
+        Assert.AreEqual($"Docker image inspect for 'sha256:local-image' returned 400: {OversizedRemoteText.CreateExpectedExcerpt()}",
+                        message,
+                        "The failure message must keep its text and carry the first 500 characters of the body followed by the ellipsis");
+        Assert.DoesNotContain(new string('x', 501), message, "The failure message must not carry more than 500 characters of the body");
+    }
+
+    /// <summary>
+    /// Verify image history bounds the error body of a failed response to an excerpt
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerInstanceClientGetImageHistoryAsyncWhenErrorBodyIsLongReturnsBoundedExcerptAsync()
+    {
+        using var handler = new DelegateHttpMessageHandler(_ => CreateLongErrorBodyResponse());
+        using var httpClient = new HttpClient(handler)
+                               {
+                                   BaseAddress = new Uri("https://docker.example.test/"),
+                               };
+
+        var client = new DockerInstanceClient(new TestLogger<DockerInstanceClient>(), (_, _) => httpClient);
+
+        var message = await RunOperationAsync(client, "History", TestContext.CancellationToken).ConfigureAwait(false);
+
+        Assert.AreEqual($"Docker image history for 'sha256:local-image' returned 400: {OversizedRemoteText.CreateExpectedExcerpt()}",
+                        message,
+                        "The failure message must keep its text and carry the first 500 characters of the body followed by the ellipsis");
+        Assert.DoesNotContain(new string('x', 501), message, "The failure message must not carry more than 500 characters of the body");
+    }
+
+    /// <summary>
+    /// Verify host info bounds the error body of a failed response to an excerpt
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerInstanceClientGetHostMemoryTotalAsyncWhenErrorBodyIsLongReturnsBoundedExcerptAsync()
+    {
+        using var handler = new DelegateHttpMessageHandler(_ => CreateLongErrorBodyResponse());
+        using var httpClient = new HttpClient(handler)
+                               {
+                                   BaseAddress = new Uri("https://docker.example.test/"),
+                               };
+
+        var client = new DockerInstanceClient(new TestLogger<DockerInstanceClient>(), (_, _) => httpClient);
+
+        var message = await RunOperationAsync(client, "HostInfo", TestContext.CancellationToken).ConfigureAwait(false);
+
+        Assert.AreEqual($"Docker instance 'Production' returned 400: {OversizedRemoteText.CreateExpectedExcerpt()}",
+                        message,
+                        "The failure message must keep its text and carry the first 500 characters of the body followed by the ellipsis");
+        Assert.DoesNotContain(new string('x', 501), message, "The failure message must not carry more than 500 characters of the body");
+    }
+
+    /// <summary>
+    /// Create a Bad Request response with an oversized body
+    /// </summary>
+    /// <returns>Response</returns>
+    private static HttpResponseMessage CreateLongErrorBodyResponse()
+    {
+        return new HttpResponseMessage(HttpStatusCode.BadRequest)
+               {
+                   Content = new StringContent(new string('x', OversizedRemoteText.BodyLength)),
+               };
+    }
+
+    /// <summary>
     /// Run one Docker Engine operation and return its result message
     /// </summary>
     /// <param name="client">Client under test</param>
