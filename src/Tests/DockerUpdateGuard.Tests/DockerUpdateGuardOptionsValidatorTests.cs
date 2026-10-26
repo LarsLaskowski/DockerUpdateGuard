@@ -874,6 +874,72 @@ public class DockerUpdateGuardOptionsValidatorTests
     }
 
     /// <summary>
+    /// Verify URLs whose only at sign ends a non-empty user info keep passing validation
+    /// </summary>
+    /// <param name="url">Configured URL</param>
+    [TestMethod]
+    [DataRow("https://user:secret@portainer.example:9443")]
+    [DataRow("https://token@portainer.example")]
+    [DataRow("https://user%23x:se%40cret@portainer.example")]
+    [DataRow("https://portainer.example@other.example")]
+    public void DockerUpdateGuardOptionsValidatorUrlsWithUserInfoReturnSuccess(string url)
+    {
+        var validator = CreateAtSignValidator();
+        var options = CreateValidOptions();
+
+        options.DockerInstances = [
+                                      new DockerInstanceOptions
+                                      {
+                                          Name = "Production",
+                                          BaseUrl = "https://docker.example.test",
+                                          Portainer = new PortainerOptions
+                                                      {
+                                                          Enabled = true,
+                                                          BaseUrl = url,
+                                                          ApiToken = "token-value",
+                                                          AllowInsecureHttp = false,
+                                                      },
+                                      },
+                                  ];
+        options.DockerHub.ApiBaseUrl = url;
+        options.Vulnerabilities.DockerScoutBaseUrl = url;
+
+        var validationResult = validator.Validate(Options.DefaultName, options);
+        var failures = validationResult.Failures?.ToArray() ?? [];
+
+        Assert.IsTrue(validationResult.Succeeded, $"A URL whose only at sign ends its user info must pass validation: {string.Join("; ", failures)}");
+        Assert.IsEmpty(failures, "A URL with a non-empty user info must produce no failure for the Portainer, Docker Hub API or Docker Scout key");
+    }
+
+    /// <summary>
+    /// Verify Docker instance base URLs and the Docker Hub registry name without a misplaced at sign pass validation
+    /// </summary>
+    /// <param name="baseUrl">Configured Docker instance base URL</param>
+    [TestMethod]
+    [DataRow("tcp://user:secret@docker.example:2376")]
+    [DataRow("unix:///var/run/docker.sock")]
+    public void DockerUpdateGuardOptionsValidatorDockerInstanceBaseUrlWithUserInfoReturnsSuccess(string baseUrl)
+    {
+        var validator = CreateAtSignValidator();
+        var options = CreateValidOptions();
+
+        options.DockerInstances = [
+                                      new DockerInstanceOptions
+                                      {
+                                          Name = "Production",
+                                          BaseUrl = baseUrl,
+                                      },
+                                  ];
+        options.DockerHub.Registry = "docker.io";
+
+        var validationResult = validator.Validate(Options.DefaultName, options);
+        var failures = validationResult.Failures?.ToArray() ?? [];
+
+        Assert.IsTrue(validationResult.Succeeded, $"A Docker instance base URL without a misplaced at sign must pass validation: {string.Join("; ", failures)}");
+        Assert.IsEmpty(failures, "The Docker instance base URL and the docker.io registry name must produce no failure");
+    }
+
+    /// <summary>
     /// Create a validator with a resolvable connection string
     /// </summary>
     /// <returns>Validator</returns>

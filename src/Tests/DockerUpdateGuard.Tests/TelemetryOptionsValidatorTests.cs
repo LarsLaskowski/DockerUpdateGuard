@@ -43,5 +43,27 @@ public class TelemetryOptionsValidatorTests
                               "No failure may repeat any part of the configured value");
     }
 
+    /// <summary>
+    /// Verify an OTLP endpoint with a user info or without an at sign passes validation
+    /// </summary>
+    /// <param name="endpoint">Configured OTLP endpoint</param>
+    [TestMethod]
+    [DataRow("http://user:secret@collector.example:4317")]
+    [DataRow("http://collector.example:4317")]
+    public void TelemetryOptionsValidatorOtlpEndpointWithUserInfoReturnsSuccess(string endpoint)
+    {
+        var validator = new TelemetryOptionsValidator();
+        var options = new TelemetryOptions
+                      {
+                          OtlpEndpoint = endpoint,
+                      };
+
+        var validationResult = validator.Validate(Options.DefaultName, options);
+        var failures = validationResult.Failures?.ToArray() ?? [];
+
+        Assert.IsTrue(validationResult.Succeeded, $"An OTLP endpoint with a proper user info or none must pass validation: {string.Join("; ", failures)}");
+        Assert.IsEmpty(failures, "No failure may be reported for a valid OTLP endpoint");
+    }
+
     #endregion // Methods
 }
