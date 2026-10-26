@@ -55,11 +55,17 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Extract base runtime digest
+      - name: Resolve base runtime image and digest
         id: basedigest
         run: |
-          docker pull mcr.microsoft.com/dotnet/runtime:10.0-alpine
-          DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' mcr.microsoft.com/dotnet/runtime:10.0-alpine)
+          BASE_RUNTIME=$(sed -n 's/^ARG BASE_RUNTIME="\([^"]*\)".*$/\1/p' "$DOCKERFILE_PATH")
+          if [[ -z "$BASE_RUNTIME" ]]; then
+            echo "::error::No ARG BASE_RUNTIME default found in $DOCKERFILE_PATH"
+            exit 1
+          fi
+          docker pull "$BASE_RUNTIME"
+          DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' "$BASE_RUNTIME")
+          echo "name=$BASE_RUNTIME" >> "$GITHUB_OUTPUT"
           echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
@@ -73,6 +79,7 @@ jobs:
           push: true
           build-args: |
             APP_VERSION=${{ steps.version.outputs.version }}
+            BASE_RUNTIME=${{ steps.basedigest.outputs.name }}
             BASE_RUNTIME_DIGEST=${{ steps.basedigest.outputs.digest }}
           tags: |
             ${{ env.DOCKER_REPOSITORY }}:${{ steps.version.outputs.version }}

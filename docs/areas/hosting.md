@@ -111,7 +111,8 @@ registry never delays or prevents startup.
 
 - The runtime image is based on the Alpine variant of the ASP.NET Core runtime (`mcr.microsoft.com/dotnet/aspnet`,
   `10.0-alpine` by default). The base image name and digest are recorded as the OCI labels
-  `org.opencontainers.image.base.name` and `org.opencontainers.image.base.digest`.
+  `org.opencontainers.image.base.name` and `org.opencontainers.image.base.digest`; a release build fills both from the
+  same image, the Dockerfile's `BASE_RUNTIME` default.
 - The application listens on plain HTTP on port `8080` on all interfaces. TLS is not terminated inside the container.
 - The process runs as UID `64000` in the root group (GID `0`), never as UID `0`. `/app` is owned by `64000:0` with
   group permissions equal to owner permissions, so the application also works when started with another UID in
