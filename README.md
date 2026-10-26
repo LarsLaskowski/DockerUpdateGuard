@@ -296,6 +296,7 @@ See the JSON example above for the exact keys and structure.
 - The image sets `DockerUpdateGuard:DisplayVersion` from the image build argument
 - For Linux host monitoring, bind-mount `/var/run/docker.sock`
 - For TLS-secured remote engines, also mount the client certificate (a password-less `.pfx`/`.p12` bundle readable by UID `64000`) if `CertificatePath` is used
+- To trust an internal CA, mount its PEM file into `/app/certs` (read-only); it is trusted by the default non-root user too, without root or a derived image (see [DOCKER.md](DOCKER.md))
 - The application needs outbound network access to the configured registry, optional Portainer endpoint, optional Trivy server, and optional OTLP collector
 
 ## License

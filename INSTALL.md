@@ -130,6 +130,8 @@ covered by the tiers above — TLS-secured Docker engines, client
 certificates, Portainer integration, DockerScout instead of Trivy, custom
 scan intervals — mount an `appsettings.json` instead and see the full
 configuration reference in [DOCKER.md](DOCKER.md) and the [README](README.md#configuration-reference).
+An internal CA is trusted by mounting its PEM file into `/app/certs` (read-only), also with the default
+non-root user; see [DOCKER.md](DOCKER.md).
 
 ## Security notes
 

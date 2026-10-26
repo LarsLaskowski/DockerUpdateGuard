@@ -399,7 +399,12 @@ it links:
   running the process as root; see
   [src/DockerUpdateGuard/Dockerfile](../src/DockerUpdateGuard/Dockerfile).
   Mounting the host's Docker socket is nonetheless root-equivalent on the
-  host and inherent to the feature.
+  host and inherent to the feature. CA certificates mounted at `/app/certs`
+  are trusted through a private directory under `/tmp` appended to
+  `SSL_CERT_DIR`, so the import needs neither root nor write access to the
+  system trust store; see
+  [0011](decisions/0011-mounted-ca-certificates-use-a-private-cert-dir.md) and
+  [Hosting and configuration](areas/hosting.md).
 - **Secrets in configuration.** Docker Hub PAT, Portainer credentials/API
   token, and the database password are plain configuration values.
   `SkipCertificateValidation` (Docker instances) and `AllowInsecureHttp`
