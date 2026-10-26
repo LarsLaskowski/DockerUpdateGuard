@@ -72,6 +72,12 @@ download, for example). The gate itself checks two SonarQube Cloud shell rules s
 local variable first) and `shelldre:S7688` (`[ … ]` instead of `[[ … ]]`). Other `shelldre:*` findings are first
 reported by the *Sonar gate* below.
 
+A changed Dockerfile is linted as a whole, not only on its changed lines. `src/DockerUpdateGuard/Dockerfile` carries
+the one deliberate exception: `RUN apk add --no-cache ca-certificates` is unpinned on purpose (an Alpine package
+version follows the base image's repository and a pin breaks the build when it moves on), so it has a
+`# hadolint ignore=DL3018` line above it, with the reason. Keep that line when the Dockerfile changes; any other
+hadolint finding is fixed, not ignored.
+
 *Sonar gate* runs SonarQube Cloud's own analysis on the work branch before the pull request (squad step 7):
 `sonar-check.py` runs the scanner with the branch name, waits for the analysis and fails on every open issue or
 security hotspot on a line the branch changed, so the rules no local analyzer has stop surfacing only after the
