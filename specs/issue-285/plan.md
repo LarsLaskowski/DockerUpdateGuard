@@ -1,7 +1,7 @@
 # Plan: Trust certificates in /app/certs for the default non-root container user
 
 Source: Issue #285
-Status: Draft
+Status: Revised (1)
 Tier: security — the change replaces the way the container establishes the trust anchors of all outbound TLS (a cryptography control: which CAs the application and Trivy trust), for every runtime UID.
 Security areas touched: Container image and runtime user (`src/DockerUpdateGuard/Dockerfile` comment, `src/DockerUpdateGuard/entrypoint.sh`); TLS and transport relaxations (which certificates outbound TLS trusts; `SkipCertificateValidation` and `AllowInsecureHttp` are not touched); Docker/build configuration (Dockerfile)
 
@@ -24,10 +24,10 @@ permission (record 0011).
 | 4 | The issue's line numbers for the entrypoint (`:104-129`, settings check `:85-94`) | The file has 61 lines; the import is `:23-58`, the settings check `:10-19` (the quoted code itself is accurate) | refuted |
 | 5 | The Dockerfile comment at `:62-67` says the import "degrades gracefully when the trust store is not writable" | `Dockerfile:66-67` | confirmed |
 | 6 | The entrypoint prints nothing when `/app/certs` does not exist (issue: "missing directory ... produce a message") | `entrypoint.sh:24` has no `else`; the fix adds message M1 (AC4) | confirmed |
-| 7 | Trivy inherits the application's environment, so an exported `SSL_CERT_FILE` reaches it | `Infrastructure/ProcessRunner.cs:23-40` (`UseShellExecute = false`, variables only added to `startInfo.Environment`); `IProcessRunner.cs:15` "added to the inherited environment" | confirmed |
-| 8 | .NET on Linux loads root certificates from the file named by `SSL_CERT_FILE` (and its default directory) when the process starts | to verify: Dev, step 6 — HttpClient GET to a local TLS server signed by a test CA succeeds with `SSL_CERT_FILE` set to the bundle and fails without it (AC1 check) | unverified |
-| 9 | Go programs (Trivy 0.58.1) read their roots from `SSL_CERT_FILE` on Linux | to verify: Dev, step 6 — the AC5 check (bundled `trivy` against the test server, with and without the bundle); basis: Go `crypto/x509` documentation of `SystemCertPool` (SSL_CERT_FILE / SSL_CERT_DIR override the defaults on Unix) | unverified |
-| 10 | The Alpine runtime image has `/etc/ssl/certs/ca-certificates.crt`, BusyBox `sh`, `awk` and `mktemp -d`, and no `openssl` CLI | to verify: Dev, step 6 — `ls`/`command -v` in the built image or an Alpine minirootfs of the base image's release | unverified |
+| 7 | Trivy inherits the application's environment, so an exported `SSL_CERT_DIR` reaches it | `Infrastructure/ProcessRunner.cs:23-40` (`UseShellExecute = false`, variables only added to `startInfo.Environment`); `IProcessRunner.cs:15` "added to the inherited environment" | confirmed |
+| 8 | .NET 10 stops reading an `SSL_CERT_FILE` bundle at the first undecodable block (base64-valid non-DER, or truncated with an END line), so later CAs in it are untrusted; Go keeps them | Security's measurement, plan review round 1: `X509Chain` probe and Go `x509.Verify` probe over `bundle_bad.crt` / `bundle_trunc.crt` (leaf of the later CA: `PartialChain` in .NET, trusted in Go) | confirmed |
+| 9 | .NET 10 and Go read every file of every directory in a colon-separated `SSL_CERT_DIR`, any file name, each file on its own (a bad file next to a good one costs only itself) | Security's measurement, plan review round 1: directories `dirB` (`a-bad.crt` before `z-caB.crt`) and `dirC`, both probes trust the later CA (glibc sandbox; the Alpine image is fact 10) | confirmed |
+| 10 | In the Alpine runtime image: `/etc/ssl/certs` is the default certificate directory of OpenSSL and Go, the system CAs stay trusted with `SSL_CERT_DIR=/etc/ssl/certs:<dir>`, and BusyBox `sh`, `awk` (output redirection to files, `close`) and `mktemp -d` exist; no `openssl` CLI | to verify: Dev, step 6 — in the built image or an Alpine minirootfs of the base image's release: `command -v`, the AC1 system-CA probe and the AC1/AC5 runs | unverified |
 | 11 | The *Analyzer gate* checks every line of a changed shell script: `[ … ]` fails `shelldre:S7688`, and `[[ … ]]` under `#!/bin/sh` fails shellcheck SC3010; `test …` passes shellcheck | `.squad/tools/analyzer_common.py:32,150-161` (whole file); shellcheck run on a scratch file: SC3010 for `[[`, no finding for `test` | confirmed |
 | 12 | Whether SonarQube Cloud's `shelldre:S7688` also reports the `test` command | to verify: orchestrator, step 7 *Sonar gate* (or step 11) | unverified |
 | 13 | No `docs/ARCHITECTURE.md` passage mentions the certificate import | `grep -n -i "cert" docs/ARCHITECTURE.md` hits only `:143-144` (client certificates) | confirmed |
@@ -36,37 +36,48 @@ permission (record 0011).
 
 ## Acceptance criteria
 
-All criteria on the built image use a test CA generated for the check, a local HTTPS server whose certificate it
-signed, and the default entrypoint.
+All criteria on the built image use test CAs generated for the check, a local HTTPS server whose certificate one of
+them signed, and the default entrypoint. "Trusted by .NET" means the in-container .NET probe of *Verification without
+tests* succeeds.
 
 - [ ] AC1: Default user (UID `64000`, GID `0`), `/app/certs` holding one `.crt` and one `.pem` CA file: the entrypoint
-  prints the success message of *Approach* with count `2` and no skip or warning message, `SSL_CERT_FILE` in the
-  application's environment names the bundle, and an HTTPS request from .NET `HttpClient` in the container to the
-  test server succeeds (and fails with the same server when `/app/certs` is not mounted).
+  prints M9 with `2` certificates from `2` files and no other certificate message, `SSL_CERT_DIR` in the
+  application's environment is `/etc/ssl/certs:<private dir>`, an HTTPS request from .NET `HttpClient` to the test
+  server succeeds (and fails when `/app/certs` is not mounted), and a CA taken from the system bundle is still
+  trusted by .NET.
 - [ ] AC2: As AC1 with `--user 12345:0`.
 - [ ] AC3: As AC1 with `--user 0`; `/usr/local/share/ca-certificates` and `/etc/ssl/certs` are unchanged afterwards
   (no `update-ca-certificates` run).
 - [ ] AC4: No `/app/certs`; an empty `/app/certs`; `/app/certs` holding only a `.txt`, a `.pfx`, a `.pem` with a
-  private key and no certificate, an unreadable `.crt` and a `.crt` with a truncated certificate block: each case
-  prints its message of *Approach*, the container starts (the application process runs), and `SSL_CERT_FILE` is not
-  set, so the system CA bundle applies unchanged; in the mixed case (these files beside one valid `.crt`) only the
-  valid file is counted.
-- [ ] AC5: The bundled Trivy CLI, started by the application or by hand with the application's environment, trusts
-  the mounted CA: against the test server its error is no longer `x509: certificate signed by unknown authority`
-  (it is with `/app/certs` empty).
-- [ ] AC6: The bundle holds the system bundle first, unchanged, followed by exactly the complete PEM certificate
-  blocks of the accepted files; a `.pem` holding a certificate and a private key contributes the certificate only,
-  and no `PRIVATE KEY` line reaches the bundle; the bundle's directory is mode `0700` and owned by the running UID.
-- [ ] AC7: `SSL_CERT_FILE` pre-set to a readable file: the bundle starts with that file instead of the system bundle
-  and the pre-set message is printed; pre-set to a missing file: the warning of *Approach* is printed and
-  `SSL_CERT_FILE` keeps its pre-set value.
-- [ ] AC8: An unwritable `/tmp` (`--read-only` without a tmpfs): the bundle warning is printed, the container starts,
-  `SSL_CERT_FILE` is not set; with `--read-only --tmpfs /tmp` AC1 holds.
-- [ ] AC9: The settings readability check is unchanged: a mounted, unreadable `appsettings.json` still exits with
-  code `1` and the same message; no other path of the entrypoint exits non-zero before `exec`.
+  private key and no certificate, an unreadable `.crt`, a `.crt` with a block missing its END line, a `.crt` whose
+  block has no body line and a `.crt` with indented marker lines: each case prints its messages of *Approach* (the
+  `.txt` and `.pfx` M5, the unreadable file M6, the others M7, then M8), the container starts (the application
+  process runs), and `SSL_CERT_DIR` is not set; in the mixed case (these files beside one valid `.crt`) only the
+  valid file is counted in M9.
+- [ ] AC5: Trivy trusts the mounted CA: the bundled `trivy`, with the environment the entrypoint exported, runs
+  `trivy image --image-src remote <test server host:port>/probe:latest` so that the test server is the first TLS
+  endpoint it contacts; with the CA mounted its error is not `x509: certificate signed by unknown authority`, with
+  `/app/certs` empty it is.
+- [ ] AC6: The private directory is mode `0700`, owned by the running UID, and holds one file per accepted block,
+  each exactly the line `-----BEGIN CERTIFICATE-----`, the block's body lines without carriage return or trailing
+  whitespace, and the line `-----END CERTIFICATE-----`. Cases: a `.pem` with a certificate and a private key gives
+  the certificate only; a line `-----BEGIN CERTIFICATE----------BEGIN PRIVATE KEY-----` is no marker (that block is
+  not accepted); a CRLF file and a file starting with a UTF-8 byte order mark are accepted; a `.crt` with two
+  certificates gives two files. No file in the directory contains `PRIVATE KEY`.
+- [ ] AC7: `SSL_CERT_DIR` pre-set: M3 is printed and the exported value is the pre-set value followed by
+  `:<private dir>`. `SSL_CERT_FILE` pre-set (also to a file without a final newline): it is never read, copied or
+  changed, and a CA present only in it stays trusted by .NET next to the mounted CA.
+- [ ] AC8: An unwritable `/tmp` (`--read-only` without a tmpfs): M4 is printed, the container starts, `SSL_CERT_DIR`
+  is not set; with `--read-only --tmpfs /tmp` AC1 holds.
+- [ ] AC9: The settings readability check keeps its behavior: a mounted, unreadable `appsettings.json` still exits with
+  code `1` and the same messages; no other path of the entrypoint exits non-zero before `exec`.
 - [ ] AC10: The image still ends in `USER 64000:0`; the Dockerfile diff changes comments only (no new `chown`,
   `chmod`, package or permission).
 - [ ] AC11: The documentation updates below are in the diff and match the built behavior.
+- [ ] AC12: `/app/certs` holding `a-bad.crt` (a complete block whose body is valid base64 but no certificate),
+  `b-trunc.crt` (a certificate cut short in the middle of its body, with its END line) and `z-ca.crt` (the test CA):
+  the container starts, M9 counts all three files, and the test CA is trusted by .NET (AC1's request succeeds) and
+  by Trivy (AC5's check).
 
 ## Tests per criterion
 
@@ -74,97 +85,101 @@ No criterion has a unit test: no C# production or test code changes (see *Verifi
 
 | AC | Test(s) | Test file |
 | -- | ------- | --------- |
-| AC1–AC11 | none — verified as in *Verification without tests* | none |
+| AC1–AC12 | none — verified as in *Verification without tests* | none |
 
 ## Verification without tests
 
 The change touches no C# production or test code: steps 4 (*Skeleton*), 5 (*Tests first*) and the *Coverage gate*
 are not applicable. `entrypoint.sh` is startup glue without a shell test harness (*Test files*). Owner of every
 check below is the **Dev in step 6**, reporting each case with its output; the Reviewer checks the report in step 8.
+Security's probes and test material in the session scratchpad (`m/probe`, `m/gop`, `m/*.crt`) may be reused.
 
 - **Where Docker runs** (the sandbox has the Docker CLI but no daemon; the Dev tries to start one): *Image build
-  check* (`docker build`), then AC1–AC10 against the built image. Test material in a scratch directory: a test CA
-  and a server certificate made with `openssl`, the server `openssl s_server -www` on the host network. The
-  HTTPS request of AC1–AC4 runs inside the container in .NET: the published app has no request command, so the Dev
-  builds a scratch derived image `FROM` the built image (never committed) that adds a framework-dependent probe
-  (`/probe/Probe.dll`, `net10.0`, `HttpClient` GET of its argument, exit `0` on success) and a wrapper `dotnet`
-  earlier on `PATH` that prints `SSL_CERT_FILE` and runs the real `dotnet` with the probe; `/app/entrypoint.sh`
-  runs unchanged in it, under the same `USER`. AC5: the bundled `trivy` in that container, with the environment the
-  entrypoint exported, against the test server. AC9 and AC10 run against the built image itself (`docker inspect`
-  for the user).
+  check* (`docker build`), then AC1–AC10 and AC12 against the built image. Test material in a scratch directory: test
+  CAs and a server certificate made with `openssl`, the server `openssl s_server -www` on the host network. The
+  .NET check runs inside the container: the Dev builds a scratch derived image `FROM` the built image (never
+  committed) that adds a framework-dependent probe (`net10.0`, `HttpClient` GET of a URL and `X509Chain` build of a
+  certificate file, exit `0` on success) and a wrapper `dotnet` earlier on `PATH` that prints `SSL_CERT_DIR` and
+  `SSL_CERT_FILE` and runs the real `dotnet` with the probe; `/app/entrypoint.sh` runs unchanged in it, under the same
+  `USER`. AC5/AC12: the bundled `trivy` in that container with the exported environment. AC9 and AC10 run against
+  the built image itself (`docker inspect` for the user).
 - **Where Docker does not run:** *Image build check* by the restore-order reproduction of `.squad/stack.md`
   (Dockerfile input changed); the entrypoint runs in a chroot of the Alpine minirootfs of the base image's Alpine
   release (real BusyBox `sh`, `awk`, `mktemp`; `apk add ca-certificates` if the bundle is missing) under
   `setpriv --reuid <uid> --regid 0 --clear-groups` for UIDs `64000`, `12345` and `0`, with a stub `dotnet` on `PATH`
-  that prints `SSL_CERT_FILE` and copies the bundle out. AC1–AC4: the sandbox's .NET SDK runs the same probe with
-  `SSL_CERT_FILE` set to that bundle (fact 8). AC5: a Trivy `0.58.1` release binary downloaded with its checksum, if
-  the network allows. AC8: a read-only bind of `/tmp` in the chroot. AC10: read-only check of the Dockerfile diff.
-  Any criterion that cannot run here is reported as **not run** with the reason; the orchestrator names it in the PR
-  description as a manual check before merging, never as passed.
-- **Every case:** `shellcheck`, `hadolint` and the shell rules through the *Analyzer gate* (step 7); `sh -n` on the
-  script before the runs. AC11: the Reviewer, step 8.
+  that prints the environment and copies the private directory out. AC1–AC4, AC7, AC12: the sandbox's .NET runs the
+  probe with `SSL_CERT_DIR` set to `/etc/ssl/certs:<copied directory>`. AC5/AC12: a Trivy `0.58.1` release binary
+  downloaded with its checksum, if the network allows. AC8: a read-only bind of `/tmp` in the chroot. AC10: read-only
+  check of the Dockerfile diff. Any criterion that cannot run here is reported as **not run** with the reason; the
+  orchestrator names it in the PR description as a manual check before merging, never as passed.
+- **Every case:** `sh -n` before the runs; `shellcheck`, `hadolint` and the shell rules through the *Analyzer gate*
+  (step 7). AC11: the Reviewer, step 8.
 
 ## Approach
 
-Rewrite the certificate block of `entrypoint.sh` (`:21-58`) and its header comment (`:3-8`); keep the settings check
-`:10-19` behaviorally identical. Write every condition with `test …` (fact 11), no `[ … ]`, no `[[ … ]]`, no shell
-functions, no `local`; quote every path. No `set -e`: nothing in the certificate block may end the script.
+Rewrite the certificate block of `entrypoint.sh` (`:21-58`) and its header comment (`:3-8`). The settings check
+`:10-19` keeps its messages, exit code and conditions; only its line 12 is rewritten as
+`if test -f "$config_file" && test ! -r "$config_file"; then`, so the whole file passes the *Analyzer gate*. Write
+every condition with `test …` (fact 11), no `[ … ]`, no `[[ … ]]`, no shell functions, no `local`; quote every path.
+No `set -e`: nothing in the certificate block may end the script.
 
-1. `certs_dir=/app/certs`. Not a directory → message M1, skip to `exec`.
+1. `certs_dir=/app/certs`. Not a directory → M1, skip.
 2. Collect regular files `"$certs_dir"/*` (glob; `test -f` follows symlinks, as Kubernetes secret mounts need;
    dotfiles and subdirectories are ignored as today). None → M2, skip.
-3. Base bundle: `SSL_CERT_FILE` when set and not empty (print M3), otherwise `/etc/ssl/certs/ca-certificates.crt`.
-   Not a readable file → M4, skip (never build a bundle without the system CAs).
-4. `rm -rf /tmp/dockerupdateguard-ca.*` (errors ignored; removes this container's bundles of earlier starts), then
-   `bundle_dir=$(mktemp -d /tmp/dockerupdateguard-ca.XXXXXX)` (mode `0700`), bundle `"$bundle_dir/ca-certificates.crt"`.
-   `mktemp` or the copy of the base fails → M5, skip.
-5. For each file in glob order: not `*.crt`/`*.pem` → M6 (unchanged text); not readable → M7; otherwise extract with
-   `awk` only **complete** blocks from a line starting `-----BEGIN CERTIFICATE-----` to a line starting
-   `-----END CERTIFICATE-----`, emitting a block only at its END line and only when every line between holds base64
-   characters (`A-Za-z0-9+/=`, a trailing carriage return allowed); a new BEGIN discards an open block, an open
-   block at end of file is dropped. No block → M8; otherwise append the blocks to the bundle (append failure → M5,
-   skip) and count the file.
-6. Count `0` → remove `bundle_dir`, M9, skip. Otherwise `export SSL_CERT_FILE="$bundle"` and print M10.
-7. `exec dotnet DockerUpdateGuard.dll "$@"` unchanged.
+3. `cert_dir=$(mktemp -d /tmp/dockerupdateguard-ca.XXXXXX)` (mode `0700`); failure → M4, skip. No cleanup of
+   earlier directories (record 0011).
+4. For each file in glob order, numbered `n`: not `*.crt`/`*.pem` → M5; not readable → M6; otherwise one `awk` run
+   over the file writes each accepted block to `"$cert_dir/$n-<k>.pem"` (closing each file) and prints the number of
+   blocks. Line rules, after removing a UTF-8 byte order mark from line 1 and a trailing carriage return and
+   trailing spaces or tabs from every line:
+   - a marker is a line **exactly** `-----BEGIN CERTIFICATE-----` or `-----END CERTIFICATE-----` (no prefix match,
+     no leading whitespace);
+   - after BEGIN, every line up to END must be non-empty and consist only of `A-Za-z0-9+/=`; any other line
+     discards the open block; a new BEGIN restarts it;
+   - at END, a block with at least one body line is written as the standard BEGIN line, its body lines, the
+     standard END line; an END without open block and an open block at end of file are dropped.
+   `0` blocks → M7. `awk` exits non-zero → remove `cert_dir`, M4, skip. Otherwise add the file and its blocks to the
+   counts.
+5. Block count `0` → remove `cert_dir`, M8, skip. Otherwise `SSL_CERT_DIR` set and not empty → print M3 and export
+   `SSL_CERT_DIR="$SSL_CERT_DIR:$cert_dir"`; unset or empty → export `SSL_CERT_DIR="/etc/ssl/certs:$cert_dir"`. Print M9.
+6. `exec dotnet DockerUpdateGuard.dll "$@"` unchanged.
 
-"Skip" means: leave `SSL_CERT_FILE` as it was and continue to `exec`. The system bundle is copied as-is first, so a
-bad mounted block can only affect mounted certificates after it. `update-ca-certificates` and
-`/usr/local/share/ca-certificates` are no longer used, for root too.
+"Skip" means: leave `SSL_CERT_DIR` as it was and continue to step 6. `SSL_CERT_FILE`, the system bundle,
+`update-ca-certificates` and `/usr/local/share/ca-certificates` are not used, for root too. A block that passes the
+line rules but is no certificate is written and counted; .NET and Go ignore that file alone (facts 8, 9; AC12).
 
-Messages, to standard output, exact text (`<…>` filled in; paths only, never file contents):
+Messages, to standard output, exact text (`<…>` filled in; paths and counts only, never file contents), in this
+order: M1/M2 alone, or the per-file messages M5–M7 in file order, then M8, or M3 followed by M9; M4 ends the block:
 
 - M1 `No /app/certs directory; using the system CA certificates only`
 - M2 `No certificate files found in /app/certs; using the system CA certificates only`
-- M3 `SSL_CERT_FILE is set; building the CA bundle from <base> instead of the system CA certificates`
-- M4 `Warning: CA bundle <base> is not readable; certificates in /app/certs are not used`
-- M5 `Warning: cannot write a CA bundle under /tmp; certificates in /app/certs are not used`
-- M6 `Skipping non-certificate file: <path>` (today's text)
-- M7 `Warning: cannot read <path>; skipping it`
-- M8 `Warning: <path> contains no complete PEM certificate; skipping it`
-- M9 `No usable certificates in /app/certs; using the system CA certificates only`
-- M10 `Added certificates from <n> file(s) in /app/certs to <bundle>; SSL_CERT_FILE=<bundle>`
+- M3 `SSL_CERT_DIR is set; adding the certificates from /app/certs after <previous value>`
+- M4 `Warning: cannot write the certificates under /tmp; certificates in /app/certs are not used`
+- M5 `Skipping non-certificate file: <path>` (today's text)
+- M6 `Warning: cannot read <path>; skipping it`
+- M7 `Warning: <path> contains no complete PEM block "-----BEGIN CERTIFICATE-----" (other labels, such as TRUSTED CERTIFICATE, and indented markers are not accepted); skipping it`
+- M8 `No usable certificates in /app/certs; using the system CA certificates only`
+- M9 `Added <k> certificate(s) from <n> file(s) in /app/certs; SSL_CERT_DIR=<exported value>`
 
-M1/M2/M9 replace today's "Found certificate files ... attempting import into system trust store..." and
-"No permission to write system trust store; skipping certificate import", which disappear. Order: M3 before the
-per-file messages, M10 or M9 last.
+Today's "Found certificate files ... attempting import into system trust store..." and "No permission to write
+system trust store; skipping certificate import" disappear.
 
-Dockerfile: comment changes only — `:48` ("CA certificates ... e.g., for telemetry") may stay; `:60` and `:62-67`
-say that the entrypoint adds mounted CA certificates through a bundle under `/tmp` and `SSL_CERT_FILE`, so no
-write access to the system trust store is needed. No functional line changes.
+Dockerfile: comment changes only — `:60` and `:62-67` say that the entrypoint adds mounted CA certificates through
+a private directory under `/tmp` and `SSL_CERT_DIR`, so no write access to the system trust store is needed. No
+functional line changes.
 
 ## Options considered
 
-Group-writable trust store with `update-ca-certificates` (issue option 1); bundle plus `SSL_CERT_FILE` (chosen,
-issue option 2); `SSL_CERT_DIR` with a directory of mounted certificates; loading the certificates in C# per
-`HttpClient`; keeping `update-ca-certificates` for root beside the bundle; and a bundle of the mounted certificates
-alone, relying on .NET and Go also reading the default directory (rejected: depends on facts 8 and 9 for the
-directory too, while a combined bundle needs only the file). Reasons in record 0011.
+Group-writable trust store with `update-ca-certificates` (issue option 1); one combined bundle plus `SSL_CERT_FILE`
+(issue option 2, the first plan; rejected after fact 8); one file per block in a private directory appended to
+`SSL_CERT_DIR` (chosen); loading the certificates in C# per `HttpClient`; keeping `update-ca-certificates` for root
+beside the directory. Reasons in record 0011.
 
 ## Affected projects and types
 
 | Project | Type / file | Change |
 | ------- | ----------- | ------ |
-| DockerUpdateGuard | `src/DockerUpdateGuard/entrypoint.sh` | certificate block and header comment rewritten (*Approach*) |
+| DockerUpdateGuard | `src/DockerUpdateGuard/entrypoint.sh` | certificate block, header comment and settings-check line 12 rewritten (*Approach*) |
 | DockerUpdateGuard | `src/DockerUpdateGuard/Dockerfile` | comments `:60`, `:62-67` only |
 
 ## Signatures (for the Dev's skeleton)
@@ -190,27 +205,31 @@ coverage of C#, so no coverage exclusion is added. Recorded in 0011, *Consequenc
 
 Owner: the Dev, after the checks of *Verification without tests* pass, against the built behavior.
 
-- `docs/areas/hosting.md`: *Container image* — entrypoint step 2 rewritten: `.crt`/`.pem` files in `/app/certs`
-  are added, as their complete PEM certificate blocks, to a copy of the system CA bundle (or of the file a pre-set
-  `SSL_CERT_FILE` names) under `/tmp`, and `SSL_CERT_FILE` points the application and Trivy at it, for any UID,
-  root included; the system trust store is never written; when nothing is usable or `/tmp` is not writable, a
-  message is printed, the system CAs alone apply and the container starts; a read-only root filesystem needs a
-  writable `/tmp`. The bullet "CA certificates are installed ..." stays. *Limits and errors*: the row
-  "Certificate import not possible" becomes rows for "no usable certificate in `/app/certs`" and "`/tmp` not
-  writable" (message, system CAs only, container starts). *Known gaps*: remove the #285 entry. *Related
-  decisions*: add 0011.
+- `docs/areas/hosting.md`: *Container image* — entrypoint step 2 rewritten: every complete PEM certificate block of
+  the `.crt`/`.pem` files in `/app/certs` is written to its own file in a new private directory under `/tmp`, which
+  is appended to `SSL_CERT_DIR` (after a pre-set value, else after `/etc/ssl/certs`), so the application, its
+  database driver and Trivy trust them in addition to the system CAs, for any UID, root included; the system trust
+  store and `SSL_CERT_FILE` are never touched; the accepted form (unindented `CERTIFICATE` markers, base64 body,
+  byte order mark and CRLF tolerated; DER and other labels not accepted); a block that is valid PEM but no
+  certificate is counted and then ignored without affecting the others; when nothing is usable or `/tmp` is not
+  writable, a message is printed, the system CAs alone apply and the container starts; a read-only root filesystem
+  needs a writable `/tmp`; `/tmp` should not be shared between containers, and directories of earlier starts are not
+  removed. *Limits and errors*: the row "Certificate import not possible" becomes rows for "no usable certificate in
+  `/app/certs`" and "`/tmp` not writable" (message, system CAs only, container starts). *Known gaps*: remove the #285
+  entry. *Related decisions*: add 0011.
 - `DOCKER.md`: mounts table `:97` — `/app/certs` holds CA certificates and client certificates; section
-  *Automatic CA import on startup* `:113-117` rewritten for the bundle (works for the default user, no `--user 0`,
-  PEM only, private keys never copied, pre-set `SSL_CERT_FILE`, read-only root filesystem needs a writable `/tmp`);
-  *Notes* `:169` — drop the advice to run as root or bake the CA into a derived image for the import; keep the
-  warning at `:123` that every `*.pem` in `/app/certs` is treated as a CA file (its certificate blocks are trusted).
+  *Automatic CA import on startup* `:113-117` rewritten (works for the default user, no `--user 0`, PEM only with
+  unindented markers, DER and `TRUSTED CERTIFICATE` not accepted, private keys never copied, pre-set `SSL_CERT_DIR`
+  extended, read-only root filesystem needs a writable `/tmp`); *Notes* `:169` — drop the advice to run as root or
+  bake the CA into a derived image for the import; keep the warning at `:123` that every `*.pem` in `/app/certs` is
+  treated as a CA file (its certificate blocks are trusted).
 - `INSTALL.md` *Beyond the quick start* (`:124-131`): one sentence that an internal CA is trusted by mounting its
   PEM file into `/app/certs` (read-only), also with the default user, linking `DOCKER.md`.
 - `README.md` *Notes for Docker-based deployments* (`:293-299`): one bullet, the same statement.
 - `docs/ARCHITECTURE.md` §11 *Security posture*, bullet "Container runs as a non-root user" (`:397-402`): one
-  sentence that CA certificates mounted at `/app/certs` are trusted through a bundle under `/tmp` and `SSL_CERT_FILE`,
-  so the import needs neither root nor write access to the system trust store, linking record 0011 and
-  [Hosting and configuration](areas/hosting.md).
+  sentence that CA certificates mounted at `/app/certs` are trusted through a private directory under `/tmp` and
+  `SSL_CERT_DIR`, so the import needs neither root nor write access to the system trust store, linking record 0011
+  and [Hosting and configuration](areas/hosting.md).
 - `src/DockerUpdateGuard/entrypoint.sh` header comment and Dockerfile comments: part of the code change (*Approach*).
 
 Sweep done: `grep -rn -i "app/certs\|trust store\|ca-certificates\|update-ca\|64000"` over `*.md`, `*.yml`,
@@ -225,20 +244,48 @@ guarantees are not touched. `docs/ARCHITECTURE.md` gains one sentence (*Document
 
 ## Security considerations
 
-- [ ] No limits: `/app/certs` is operator-controlled (a mount); its size is not bounded, and the bundle under `/tmp`
-  is about the size of the system bundle plus the mounted certificates.
-- [ ] Exceptions reaching a user-visible message: none (no C#). The entrypoint messages carry paths and a count,
-  never file contents; `awk`/`cp` error output is discarded or replaced by M5/M7.
-- [ ] Trust: whoever can write `/app/certs` can add trust anchors — as today for root; the bundle directory is
-  private (`0700`) to the running UID; no private-key line is copied (AC6); the system bundle is never replaced
-  (step 3 skips when it is unreadable).
+- [ ] No limits: `/app/certs` is operator-controlled (a mount); its size is not bounded, and the private directory
+  holds no more than the mounted certificate blocks.
+- [ ] Exceptions reaching a user-visible message: none (no C#). The entrypoint messages carry paths and counts,
+  never file contents; `awk`/`mktemp` error output is discarded or replaced by M4/M6.
+- [ ] Trust: whoever can write `/app/certs` can add trust anchors — as today for root; the directory is private
+  (`0700`) to the running UID; only standard marker lines and base64 lines are written, so no private-key line can
+  be copied (AC6); the system CAs and a pre-set `SSL_CERT_FILE`/`SSL_CERT_DIR` stay in force (AC1, AC7); an
+  undecodable block costs only itself (AC12).
 
 ## Decision records
 
-- `docs/decisions/0011-mounted-ca-certificates-use-a-combined-bundle.md` (Proposed), index row added.
+- `docs/decisions/0011-mounted-ca-certificates-use-a-private-cert-dir.md` (Proposed), index row updated (renamed from
+  the combined-bundle record of the first plan; unreleased, edited in place).
+
+## Challenge
+
+- **DA 1 (newline before append to a pre-set `SSL_CERT_FILE`):** accepted in effect — the design no longer copies or
+  appends to any bundle; `SSL_CERT_FILE` is never read. AC7 keeps a pre-set file without final newline as a case.
+- **DA 2 (cleanup on shared `/tmp`):** accepted — the cleanup is dropped (step 3); `hosting.md` states that `/tmp`
+  should not be shared and that earlier directories stay; record 0011, *Consequences*.
+- **DA 3 (AC5 target):** accepted — AC5 scans `<test server>/probe:latest` with `--image-src remote`, so the test
+  server is the first TLS endpoint, and compares the error text with and without the CA.
+- **DA 4 (settings check line 12):** accepted — rewritten with `test` (*Approach*), AC9 reworded to "keeps its
+  behavior".
+
+## Security review
+
+- **Finding 1 (blocking, undecodable block drops later CAs in .NET):** resolved by switching to per-block files in a
+  private directory appended to `SSL_CERT_DIR` (fact 8, fact 9, record 0011 rewritten: the former option 3
+  rationale was wrong and is now the decision). AC12 covers a base64-valid non-DER block and a truncated block with
+  END before a valid `.crt`. Residual: such a block is counted in M9 and ignored without a message, since the image
+  has no certificate decoder (record 0011, *Consequences*; `hosting.md`).
+- **Finding 2 (blocking, prefix-matched markers):** resolved — markers match exactly after removing only trailing
+  carriage return and whitespace, and only the standard marker lines are written (step 4); AC6 has the glued-marker
+  case.
+- **Finding 3 (BOM, empty body, indented PEM, labels):** taken in — BOM removed on line 1, at least one body line
+  required, indented markers rejected and named in M7 and `DOCKER.md`, M7 names unsupported labels; AC4 and AC6
+  cases added.
+- **Finding 4 (cleanup on shared `/tmp`):** resolved with DA 2.
 
 ## Out of scope / follow-ups
 
-- DER-encoded certificate files: not accepted (M8), as before in practice; documented in `DOCKER.md`.
-- `SSL_CERT_DIR` and other trust consumers that ignore `SSL_CERT_FILE`: none in the image.
+- DER-encoded certificate files: not accepted (M7); documented in `DOCKER.md`.
+- Trust consumers that ignore `SSL_CERT_DIR`: none in the image.
 - #171 (Trivy private registries) benefits from this fix; no change there.
