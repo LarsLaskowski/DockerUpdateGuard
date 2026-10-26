@@ -120,7 +120,7 @@ a base-image update or vulnerability reaches; vulnerability refreshes and the da
 
 - Chain depth is capped at 5; base-tag resolution searches at most 150 tags.
 - Registry outcomes other than *succeeded* never abort the scan; they set *partial* or *failed* and add the registry's
-  message (status code and response body, see [Registries](registries.md)).
+  message (status code and an excerpt of the response body, see [Registries](registries.md)).
 - Feed failures (non-success status, missing `releases-index` array, unreadable content) only suppress the runtime
   finding; they do not change the scan status. Unreadable content is logged as a warning.
 

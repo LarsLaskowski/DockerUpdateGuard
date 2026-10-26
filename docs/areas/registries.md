@@ -25,7 +25,12 @@ retry policy and the failure model.
 - Every outcome other than *succeeded* carries a human-readable message. Callers decide on the outcome, not on errors;
   how a scan turns outcomes into scan-run statuses is described with each scan
   ([Base images](base-images.md), [Update detection](update-detection.md), [Scan engine](scan-engine.md)).
-- A *failed* outcome from a registry names the HTTP status code and includes the response body the remote side sent.
+- A *failed* outcome from a registry names the HTTP status code and includes an excerpt of the response body the remote side sent:
+  its first 500 characters (decoded as UTF-8), followed by `…` when the body was longer; an OCI reason phrase is cut to
+  100 characters the same way. The message length is bounded everywhere, but the read is bounded (about 8 KiB) only for
+  the streamed OCI and Docker Hub responses; Docker Engine and feed responses are buffered by `HttpClient` first. After
+  a failed OCI or Docker Hub token exchange the excerpt is of the token failure message, which starts with the token
+  request URI, so the token endpoint's own body may be cut away.
   The exception is a listing stopped by a rejected next-page link: it has neither a status code nor a body and names the
   rejected origin instead ([Pagination links](#pagination-links)).
 - An outcome caused by an error rather than by an answer carries a fixed reason, never the error's own text:
@@ -99,7 +104,7 @@ retry policy and the failure model.
   `Docker Hub tag listing for 'acme/api' stopped: the next-page link pointed to a different origin (https://attacker.example)`;
   the same origin is logged as a warning. The origin text is the scheme, host (in punycode) and, unless it is the
   default, the port; user info, path and query of the link are never written. A link that cannot be parsed is
-  described as `unparseable link`.
+  described as `unparseable link`. The origin text is cut to 300 characters followed by `…`.
 - The guard applies only where a listing would follow the link: a listing that stops on its own condition (a Docker
   Hub bound, the maximum tag count) does not look at it, and an empty link ends the listing as before.
 - Not covered: the token service a `WWW-Authenticate` challenge names, and HTTP redirects.
@@ -203,7 +208,7 @@ retry policy and the failure model.
 - *Not found*: HTTP 404 for an account, repository, tag, manifest or configuration blob; an image whose manifest names
   no configuration blob.
 - *Failed*: any other non-success status, a token that cannot be obtained, a PAT without user name, a multi-platform
-  index without a usable entry. The message contains the status code and the remote response body. A next-page link
+  index without a usable entry. The message contains the status code and the bounded excerpt of the remote response body ([failure model](#failure-model-of-integrations)). A next-page link
   to another origin also gives *failed*, with the message of [Pagination links](#pagination-links).
 - Some failures still surface as errors instead of outcomes: transport errors and timeouts that remain after the
   retries, and malformed JSON, during tag lookups, tag listings and the account listing (both clients) and during

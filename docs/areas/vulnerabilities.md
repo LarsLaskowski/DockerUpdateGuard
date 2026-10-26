@@ -102,7 +102,7 @@ scan run:
 - A non-zero exit code whose error output contains `MANIFEST_UNKNOWN`, `manifest unknown`, or both `manifest` and
   `not found` (any case) means the image is gone from the registry: *unavailable*, "The image is no longer available
   in the registry. The tag was likely re-published with a newer digest, leaving this version orphaned." Any other
-  non-zero exit code is *failed*, "Trivy exited with code X: <last line of the error output, or 'no error output'>".
+  non-zero exit code is *failed*, "Trivy exited with code X: <last line of the error output cut to 500 characters followed by `…`, or 'no error output'>".
   When `TrivyBaseUrl` contains an `@` (user info, or an `@` anywhere else in it), a non-empty error output is
   replaced by "error output withheld because TrivyBaseUrl may carry credentials" in the message and the log, because
   Trivy may repeat parts of the URL's user info there (measured with Trivy v0.58.1: the password masked but the user
@@ -130,7 +130,7 @@ scan run:
 - The `next` link is followed only on the origin of `DockerScoutBaseUrl` (same scheme, host and port); a root-relative
   link is resolved against the current request. A link to another origin is not requested, so the bearer token never
   leaves that origin: the provider answers *failed*, "Docker Scout vulnerability listing for '<reference>' stopped: the
-  next-page link pointed to a different origin (<origin>)", with only scheme, host and non-default port of the link in
+  next-page link pointed to a different origin (<origin>)", with only scheme, host and non-default port of the link (cut to 300 characters followed by `…`, as in [Registries](registries.md#pagination-links)) in
   the message and the log; the stored findings stay untouched. A proxy in front of Docker Scout must rewrite next-page
   links to its own origin ([Registries](registries.md#pagination-links)).
 - HTTP 401 discards the cached token, logs in once more and reads again from the first page; a second 401 gives

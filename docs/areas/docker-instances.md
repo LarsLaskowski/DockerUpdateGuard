@@ -172,8 +172,8 @@ on the snapshots and samples it produces.
   certificate fields or the underlying error text.
 - Every Engine operation reports its outcome as a status (*succeeded*, *not configured*, *unsupported*, *not found*,
   *failed*) instead of throwing; the shared failure model is described in [Registries](registries.md).
-- A non-success Engine answer is reported as *failed* with the instance name, the HTTP status code and the response
-  body. Unexpected errors are reported with the instance name and a fixed reason
+- A non-success Engine answer is reported as *failed* with the instance name, the HTTP status code and the bounded excerpt of the
+  response body ([Registries](registries.md#failure-model-of-integrations)). Unexpected errors are reported with the instance name and a fixed reason
   ([Registries](registries.md#failure-model-of-integrations)), except the composed certificate and named-pipe
   messages; every failure is logged with its error. These messages can end up in a scan run's error message and are
   shown in the UI.
