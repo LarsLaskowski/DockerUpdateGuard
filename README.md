@@ -301,4 +301,4 @@ See the JSON example above for the exact keys and structure.
 
 ## License
 
-This repository is distributed under the proprietary terms described in LICENSE.md. See LICENSE.md for the full license text.
+This repository is distributed under the MIT License. See [LICENSE.md](LICENSE.md) for the full license text.
