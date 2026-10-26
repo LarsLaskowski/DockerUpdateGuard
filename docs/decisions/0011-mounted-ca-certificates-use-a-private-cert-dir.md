@@ -1,6 +1,6 @@
 # 0011: Mounted CA certificates are trusted through a private SSL_CERT_DIR
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-26
 - **Area:** Hosting and configuration
 - **Source:** Issue #285

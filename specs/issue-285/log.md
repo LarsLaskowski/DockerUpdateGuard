@@ -19,3 +19,4 @@ are quoted in full.
 | 2026-10-26 06:28 | 8 Review | squad-reviewer | Round 1 on 4ae9d9e: BLOCKING 0, NON-BLOCKING 1 (DOCKER.md:124 says PEM or CRT; DER not accepted) (opus/medium · 63,685 tokens · 10 tool uses · 118 s) |
 | 2026-10-26 06:28 | 8 Review | squad-security | diff review on 4ae9d9e: APPROVED (no key material reaches cert dir, 0700 temp dir, SSL_CERT_DIR handling, fail-safe) (opus/medium · 39,072 tokens · 6 tool uses · 58 s) |
 | 2026-10-26 06:28 | 8 Review | Orchestrator | verbatim: DOCKER.md:124 PEM-only wording applied as proposed; format, scope, decision checks pass |
+| 2026-10-26 06:30 | 9 PR approval | squad-lead | APPROVED: deviations accepted as manual checks (unmodified-Dockerfile build, real app start, Sonar S7688 read); record 0011 set to Accepted (opus/medium · 53,069 tokens · 4 tool uses · 61 s) |

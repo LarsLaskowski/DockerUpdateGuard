@@ -63,5 +63,5 @@ once in the [area document](../areas/README.md) of the record's area, and the re
 | [0008](0008-non-idempotent-requests-retry-only-when-not-processed.md) | Non-idempotent requests are retried only when they cannot have been processed | Accepted | 2026-10-24 |
 | [0009](0009-integration-results-carry-fixed-failure-reasons.md) | Integration results carry fixed failure reasons, never exception messages | Accepted | 2026-10-25 |
 | [0010](0010-portainer-environment-is-used-only-when-unambiguous.md) | A Portainer environment is used without EndpointId only when it is unambiguous | Accepted | 2026-10-25 |
-| [0011](0011-mounted-ca-certificates-use-a-private-cert-dir.md) | Mounted CA certificates are trusted through a private SSL_CERT_DIR | Proposed | 2026-10-26 |
+| [0011](0011-mounted-ca-certificates-use-a-private-cert-dir.md) | Mounted CA certificates are trusted through a private SSL_CERT_DIR | Accepted | 2026-10-26 |
 <!-- project:end index -->
