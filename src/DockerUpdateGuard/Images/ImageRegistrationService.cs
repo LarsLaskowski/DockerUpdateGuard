@@ -3,6 +3,7 @@ using DockerUpdateGuard.Data.Entities;
 using DockerUpdateGuard.Data.Repositories;
 using DockerUpdateGuard.Images.Data;
 using DockerUpdateGuard.Images.Interfaces;
+using DockerUpdateGuard.Infrastructure;
 
 using Microsoft.EntityFrameworkCore;
 
@@ -13,6 +14,15 @@ namespace DockerUpdateGuard.Images;
 /// </summary>
 public class ImageRegistrationService : IImageRegistrationService
 {
+    #region Constants
+
+    /// <summary>
+    /// Message of the error raised when the image reference does not name a repository
+    /// </summary>
+    internal const string ReferenceWithoutRepositoryMessage = "The image reference does not contain a repository name";
+
+    #endregion // Constants
+
     #region Fields
 
     /// <summary>
@@ -58,7 +68,19 @@ public class ImageRegistrationService : IImageRegistrationService
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        var parsedReference = _imageReferenceParser.Parse(request.ImageReference);
+        ArgumentException.ThrowIfNullOrWhiteSpace(request.ImageReference);
+
+        ImageReference parsedReference;
+
+        try
+        {
+            parsedReference = _imageReferenceParser.Parse(request.ImageReference);
+        }
+        catch (ArgumentException exception)
+        {
+            throw new ReportableException(ReferenceWithoutRepositoryMessage, exception);
+        }
+
         var imageVersion = await _imageCatalogRepository.GetOrCreateImageVersionAsync(parsedReference.Registry,
                                                                                       parsedReference.Repository,
                                                                                       parsedReference.Tag,

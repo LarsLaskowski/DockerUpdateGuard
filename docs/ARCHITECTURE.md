@@ -416,7 +416,8 @@ it links:
   on its command line
   ([Telemetry](areas/telemetry.md), [record 0005](decisions/0005-urls-are-output-with-user-info-masked.md)).
 - **Failure messages carry fixed reasons.** Integration clients and the scan orchestrators never put an exception's
-  message into a result or a scan run; they report a fixed reason and log the exception
+  message into a result or a scan run, and the pages never show one for a failed user action
+  ([Web UI](areas/web-ui.md#limits-and-errors)); they report a fixed reason and log the exception
   ([Registries](areas/registries.md#failure-model-of-integrations),
   [record 0009](decisions/0009-integration-results-carry-fixed-failure-reasons.md)).
 - **Pagination stays on its origin.** `DockerHubClient`, `OciRegistryClient`

@@ -83,9 +83,10 @@ refer to the same image the same way.
 
 ## Limits and errors
 
-- A blank name or reference is rejected by the registration form. A reference without a repository name, or a value
-  longer than the stored limits, makes the registration fail; the form shows the error message and the observed image
-  is not saved (an image version created before the failure remains in the catalog).
+- A blank name or reference is rejected by the registration form. A reference without a repository name makes the
+  registration fail and the form shows `Registration failed: The image reference does not contain a repository name`;
+  a value longer than the stored limits makes it fail with `Registration failed: unexpected error`. In both cases the
+  observed image is not saved (an image version created before the failure remains in the catalog).
 - A name entered with leading or trailing whitespace does not match the stored, trimmed name and creates a further
   observed image.
 - The catalog rejects a blank registry, repository or tag.

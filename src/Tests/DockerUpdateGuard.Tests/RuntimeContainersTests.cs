@@ -1,6 +1,18 @@
 using System.Reflection;
 
+using Bunit;
+
 using DockerUpdateGuard.Components.Pages;
+using DockerUpdateGuard.Data.Entities;
+using DockerUpdateGuard.Images.Interfaces;
+using DockerUpdateGuard.Tests.Data;
+using DockerUpdateGuard.Tests.Helper;
+using DockerUpdateGuard.UI;
+
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+
+using NSubstitute;
 
 namespace DockerUpdateGuard.Tests;
 
@@ -64,6 +76,41 @@ public class RuntimeContainersTests
         Assert.AreEqual(string.Empty,
                         path,
                         "An empty sparkline series must not render any SVG path data");
+    }
+
+    /// <summary>
+    /// Verify a failed update check shows a fixed reason instead of the exception message and logs the exception
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task RuntimeContainersFailedUpdateCheckShowsFixedReasonAndLogsAsync()
+    {
+        var testContext = BlazorTestContextFactory.Create();
+
+        await using (testContext)
+        {
+            var viewService = Substitute.For<IApplicationViewService>();
+            var orchestrator = Substitute.For<IRuntimeContainerScanOrchestrator>();
+            var logger = new TestLogger<RuntimeContainers>();
+            var exception = new InvalidOperationException("connection to db.internal.test:5432 refused");
+
+            viewService.GetRuntimeContainersAsync(Arg.Any<CancellationToken>())
+                       .Returns(new List<RuntimeContainerListItemData>());
+            orchestrator.ScanAllAsync(Arg.Any<ScanTriggerSource>(), Arg.Any<CancellationToken>())
+                        .Returns(Task.FromException(exception));
+
+            testContext.Services.AddSingleton(viewService);
+            testContext.Services.AddSingleton(orchestrator);
+            testContext.Services.AddSingleton(new DashboardRefreshState());
+            testContext.Services.AddSingleton<ILogger<RuntimeContainers>>(logger);
+
+            var component = testContext.Render<RuntimeContainers>();
+
+            await component.Find("button").ClickAsync().ConfigureAwait(false);
+
+            UserActionFailureAssert.AssertShown(component.Markup, "Update check failed: unexpected error", "db.internal.test", "refused");
+            UserActionFailureAssert.AssertLogged(logger, "UpdateCheck", exception);
+        }
     }
 
     /// <summary>
