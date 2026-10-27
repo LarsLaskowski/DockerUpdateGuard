@@ -137,7 +137,7 @@ scan run:
   *failed*, "Docker Scout rejected the authentication token". HTTP 404 gives *unavailable*, "Image <reference> not
   found in Docker Scout". Any other unsuccessful status gives *failed*, "Docker Scout request failed with status X".
 - Each HTTP request is limited to `RequestTimeoutSeconds`.
-- Mapping: advisory id and title from `id`, severity from `severity` (as for Trivy), summary from `description`,
+- Mapping: advisory id and title from `id`, severity from `severity` (as for Trivy; an unknown value maps to *not set* and is logged cut to 100 characters, followed by `…` when it was longer, with its control characters replaced), summary from `description`,
   reference URL from the first of `links`. Docker Scout supplies no package, versions, fix status or CVSS score.
 
 ### Configuration hints

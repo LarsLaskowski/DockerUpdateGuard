@@ -721,7 +721,7 @@ public partial class OciRegistryClient : IRegistryMetadataClient
             {
                 var tagName = tagElement.GetString();
 
-                if (string.IsNullOrWhiteSpace(tagName) == false)
+                if (RegistryReferenceValidator.IsValidTag(tagName))
                 {
                     tagNames.Add(tagName);
                 }
@@ -1212,6 +1212,11 @@ public partial class OciRegistryClient : IRegistryMetadataClient
             return ExternalOperationResult<DockerHubTagData>.Unsupported($"Registry '{imageReference.Registry}' is not supported by the OCI registry adapter");
         }
 
+        if (RegistryReferenceValidator.IsValidTag(imageReference.Tag) == false)
+        {
+            return ExternalOperationResult<DockerHubTagData>.NotFound(RegistryReferenceValidator.InvalidTagMessage);
+        }
+
         var manifestResult = await GetManifestMetadataAsync(imageReference,
                                                             imageReference.Tag,
                                                             cancellationToken,
@@ -1233,7 +1238,7 @@ public partial class OciRegistryClient : IRegistryMetadataClient
         return ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
                                                                    {
                                                                        Tag = imageReference.Tag,
-                                                                       Digest = manifestResult.Data.Digest,
+                                                                       Digest = RegistryReferenceValidator.ValidDigestOrNull(manifestResult.Data.Digest),
                                                                        PublishedAtUtc = manifestResult.Data.PublishedAtUtc,
                                                                    });
     }

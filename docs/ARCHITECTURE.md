@@ -423,7 +423,7 @@ it links:
   ([Web UI](areas/web-ui.md#limits-and-errors)); they report a fixed reason and log the exception
   ([Registries](areas/registries.md#failure-model-of-integrations),
   [record 0009](decisions/0009-integration-results-carry-fixed-failure-reasons.md)). Remote text a message
-  carries (body excerpts, reason phrase, rejected origin, Trivy's last error line) passes one helper,
+  carries (body excerpts, reason phrase, rejected origin, Trivy's last error line, Docker Scout's unknown severity) passes one helper,
   `Infrastructure\ResponseBodyExcerpt`, which bounds it and replaces its control characters
   ([record 0009](decisions/0009-integration-results-carry-fixed-failure-reasons.md)).
 - **Pagination stays on its origin.** `DockerHubClient`, `OciRegistryClient`
