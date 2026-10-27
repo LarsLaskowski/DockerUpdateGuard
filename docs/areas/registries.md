@@ -27,8 +27,8 @@ retry policy and the failure model.
   ([Base images](base-images.md), [Update detection](update-detection.md), [Scan engine](scan-engine.md)).
 - A *failed* outcome from a registry names the HTTP status code and includes an excerpt of the response body the remote side sent:
   its first 500 characters (decoded as UTF-8 unless a byte-order mark names another encoding), followed by `…` when the body was longer; an OCI reason phrase is cut to
-  100 characters the same way. In every such excerpt (response body, reason phrase, rejected origin and Trivy's error
-  line) each control character is replaced by one space after the cut: the characters of the Unicode categories
+  100 characters the same way. In every such excerpt (response body, reason phrase, rejected origin, Trivy's error
+  line and Docker Scout's unknown severity value) each control character is replaced by one space after the cut: the characters of the Unicode categories
   Cc, Cf, Zl and Zp, that is line breaks, tabs, escape characters, bidirectional marks and zero-width characters
   including the joiners U+200C and U+200D (so an emoji sequence or a joined word in an excerpt can come out split by
   spaces), and a code point outside the Basic Multilingual Plane is replaced by a single space. A lone surrogate becomes U+FFFD.
@@ -67,6 +67,11 @@ retry policy and the failure model.
   - Other registries: a manifest request for the tag. The digest is the `Docker-Content-Digest` of the first response
     (for a multi-platform index, the index digest). The publication time is known only when the manifest carries a
     top-level `created` timestamp; otherwise it is unknown.
+  - Both clients accept only a requested tag that matches the OCI tag grammar (1 to 128 characters of
+    `[A-Za-z0-9_][A-Za-z0-9_.-]*`, ASCII only); for any other tag the lookup is answered *not found*, "Requested tag
+    is not a valid registry tag", without a request. Docker Hub reports the requested tag, not the `name` of the
+    record. A digest is accepted only when it matches the digest grammar of the OCI image specification
+    (`algorithm:encoded`, ASCII only) and has at most 255 characters; any other digest is unknown (no digest).
 - **Image configuration** — environment variables, labels (keys compared case-insensitively), creation time, operating
   system and architecture, read from the image's configuration blob. For a multi-platform index one platform manifest
   is chosen:
@@ -79,6 +84,9 @@ retry policy and the failure model.
     the `next` link of each page ([Pagination links](#pagination-links)).
   - Other registries: `tags/list` pages of 100 names following the `Link: rel="next"` header ([Pagination links](#pagination-links)); every tag is then
     inspected with a tag lookup. A tag whose lookup does not succeed is still listed, by name only.
+  - A name outside the tag grammar is skipped without a log entry: a Docker Hub record with such a `name` is left out,
+    and a name of an other registry's `tags/list` is neither listed nor inspected. A digest outside its grammar leaves
+    the tag listed without a digest. A skipped name does not count toward the maximum count.
 
 ### Bounded tag listings
 
@@ -225,7 +233,9 @@ retry policy and the failure model.
 - The PAT is never written to logs or messages. The user name appears in the log entry and the message of a failed
   Docker Hub login.
 - Registry responses are untrusted: missing or mistyped JSON fields are treated as unknown values. An unbounded
-  listing (account discovery) reads every page the registry offers.
+  listing (account discovery) reads every page the registry offers. Tag names and digests leave the clients only when
+  they fit their grammars and lengths (see *What can be read*), so they fit every column they reach
+  ([0014](../decisions/0014-registry-tag-names-and-digests-are-validated-where-they-are-read.md)).
 
 ### Known gaps
 
@@ -244,6 +254,10 @@ retry policy and the failure model.
   attestation manifest, and publication times come only from a top-level `created` field of the manifest, which most
   registries do not send, so their tags usually have no publication time. Tracked in
   [#277](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/277).
+- Other remote values are not checked against their stored lengths: the parts of a base-image label reference (the
+  repository, the digest, the source reference, and the tag where no lookup resolves one), the repository names of the
+  Docker Hub account listing and the values read from the Docker Engine. Tracked in
+  [#355](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/355).
 
 ## Related decisions
 
@@ -252,6 +266,8 @@ retry policy and the failure model.
   retried only when they cannot have been processed.
 - [0009](../decisions/0009-integration-results-carry-fixed-failure-reasons.md): integration results carry fixed
   failure reasons, never an error's own text.
+- [0014](../decisions/0014-registry-tag-names-and-digests-are-validated-where-they-are-read.md): registry tag names
+  and digests are validated where a client reads them.
 
 ## Not here
 

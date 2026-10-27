@@ -58,7 +58,9 @@ internal static partial class RegistryReferenceValidator
     /// <returns>True when the tag is valid</returns>
     public static bool IsValidTag([NotNullWhen(true)] string? tag)
     {
-        throw new InvalidOperationException("Skeleton: not implemented");
+        return string.IsNullOrEmpty(tag) == false
+               && tag.Length <= MaxTagLength
+               && TagExpression().IsMatch(tag);
     }
 
     /// <summary>
@@ -68,7 +70,14 @@ internal static partial class RegistryReferenceValidator
     /// <returns>The digest or null</returns>
     public static string? ValidDigestOrNull(string? digest)
     {
-        throw new InvalidOperationException("Skeleton: not implemented");
+        if (string.IsNullOrEmpty(digest)
+            || digest.Length > MaxDigestLength
+            || DigestExpression().IsMatch(digest) == false)
+        {
+            return null;
+        }
+
+        return digest;
     }
 
     #endregion // Methods

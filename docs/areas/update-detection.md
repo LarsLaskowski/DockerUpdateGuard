@@ -58,7 +58,8 @@ inventory metrics rely on the stored assessments and findings.
 ### Input of an evaluation
 
 - A runtime container is evaluated against at most 250 repository tags requested from its registry for the image's
-  operating system and architecture ([Registries](registries.md)).
+  operating system and architecture ([Registries](registries.md)). Registry tags reach an evaluation only with names
+  that are valid under the tag grammar ([Registries](registries.md#what-can-be-read)).
 - Before evaluation, tags are dropped that were published before the current tag or that order below the current
   version (or, for `latest`, below the version `latest` resolves to), unless they carry the running digest. The
   current tag itself is always kept, with the metadata of the direct lookup of the current tag when that succeeded.

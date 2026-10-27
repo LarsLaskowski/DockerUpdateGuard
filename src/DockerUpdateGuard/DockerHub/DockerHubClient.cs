@@ -240,7 +240,14 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
     /// <returns>Tag data or null</returns>
     private static DockerHubTagData? ParseTag(JsonElement element)
     {
-        return CreateTagData(element, TryGetString(element, "name") ?? string.Empty);
+        var name = TryGetString(element, "name");
+
+        if (RegistryReferenceValidator.IsValidTag(name) == false)
+        {
+            return null;
+        }
+
+        return CreateTagData(element, name);
     }
 
     /// <summary>
@@ -254,7 +261,7 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
         return new DockerHubTagData
                {
                    Tag = tag,
-                   Digest = ResolveDockerHubDigest(element),
+                   Digest = RegistryReferenceValidator.ValidDigestOrNull(ResolveDockerHubDigest(element)),
                    PublishedAtUtc = TryGetDateTimeOffset(element, "last_pushed"),
                };
     }
@@ -437,6 +444,21 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
     }
 
     /// <summary>
+    /// Check whether a tag is a concrete version tag of the current digest
+    /// </summary>
+    /// <param name="tagData">Tag metadata</param>
+    /// <param name="queryOptions">Tag query options</param>
+    /// <returns>True when the tag is a displayable specific version tag with the current digest</returns>
+    private static bool IsResolvedCurrentVersionTag(DockerHubTagData tagData, RegistryTagQueryOptions? queryOptions)
+    {
+        return string.IsNullOrWhiteSpace(queryOptions?.CurrentDigest) == false
+               && string.Equals(tagData.Digest,
+                                queryOptions.CurrentDigest,
+                                StringComparison.OrdinalIgnoreCase)
+               && VersionTagResolutionHelper.IsDisplayableSpecificVersionTag(tagData.Tag);
+    }
+
+    /// <summary>
     /// Append the tags of a Docker Hub tag listing page to the collected results
     /// </summary>
     /// <param name="rootElement">Root element of the tag listing page</param>
@@ -457,16 +479,14 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
 
         foreach (var resultElement in resultsElement.EnumerateArray())
         {
-            var tagData = ParseTag(resultElement)!;
+            var tagData = ParseTag(resultElement);
 
-            if (string.IsNullOrWhiteSpace(queryOptions?.CurrentDigest) == false
-                && string.Equals(tagData.Digest,
-                                 queryOptions.CurrentDigest,
-                                 StringComparison.OrdinalIgnoreCase)
-                && VersionTagResolutionHelper.IsDisplayableSpecificVersionTag(tagData.Tag))
+            if (tagData is null)
             {
-                resolvedCurrentVersionTag = true;
+                continue;
             }
+
+            resolvedCurrentVersionTag |= IsResolvedCurrentVersionTag(tagData, queryOptions);
 
             if (RegistryTagQueryHelper.ShouldKeepTag(tagData, queryOptions))
             {
@@ -1281,6 +1301,11 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
             return ExternalOperationResult<DockerHubTagData>.Unsupported($"Registry '{imageReference.Registry}' is not supported by the Docker Hub adapter");
         }
 
+        if (RegistryReferenceValidator.IsValidTag(imageReference.Tag) == false)
+        {
+            return ExternalOperationResult<DockerHubTagData>.NotFound(RegistryReferenceValidator.InvalidTagMessage);
+        }
+
         var (namespaceName, repositoryName) = SplitRepository(imageReference.Repository);
 
         using var activity = DockerUpdateGuardTelemetry.ActivitySource.StartActivity(TelemetryActivityNames.DockerHubRequest, ActivityKind.Client);
@@ -1315,7 +1340,7 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
             using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: cancellationToken)
                                                        .ConfigureAwait(false);
 
-            return ExternalOperationResult<DockerHubTagData>.Succeeded(CreateTagData(jsonDocument.RootElement, TryGetString(jsonDocument.RootElement, "name") ?? string.Empty));
+            return ExternalOperationResult<DockerHubTagData>.Succeeded(CreateTagData(jsonDocument.RootElement, imageReference.Tag));
         }
     }
 
