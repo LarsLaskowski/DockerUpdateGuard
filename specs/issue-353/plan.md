@@ -238,3 +238,12 @@ the field enumerations; the hits are the lines above. `README.md`: no change (no
   orchestrator may note on #355.
 - #271 (advisory value truncation): unchanged and independent; the replacement does not change lengths it bounds.
 - Portainer environment names keep their `?` rule; user-entered values (registration) are not remote text.
+
+## Challenge notes
+
+- minor: Trivy's title fallback no longer works when the title is only replaced characters. Approach 4 cleans "the title after its fallback" (`TrivyVulnerabilityProvider.cs:110`: `Title ?? VulnerabilityId ?? string.Empty`). A `Title` made only of replaced characters, such as `"\\u001B"`, is not null, so it never falls back to the ID and is stored as blanks. Instruction for the Dev and Tester: clean `Title` first, and fall back to the cleaned `VulnerabilityId` when the cleaned title is null or whitespace. In the AC7 Trivy test, add a vulnerability whose `Title` is only `\\u001B` and expect its advisory id as the title.
+
+## Security notes
+
+- Trimming after cleaning changes what a value resolves to (`ImageReferenceParser.Parse` trims value, tag and digest; `DockerHubClient.ParseRepository` trims namespace and name): a reference whose replaced characters sit only at its edges now resolves to the reference without them (for example `nginx:1.25\\u001b` becomes `nginx:1.25`). The Dev adds one sentence on this to the consequences of record 0009.
+- Lone surrogate escapes make `GetString()` / `Deserialize` throw before the cleaning runs; not a defect of this change, a separate hardening issue (the orchestrator files it).
