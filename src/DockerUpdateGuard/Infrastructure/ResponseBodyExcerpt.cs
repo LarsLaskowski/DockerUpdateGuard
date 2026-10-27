@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Text;
 
@@ -69,14 +70,15 @@ internal static class ResponseBodyExcerpt
     /// <summary>
     /// Replace every control, format, line or paragraph separator character of a text with a space and every lone surrogate with U+FFFD
     /// </summary>
-    /// <param name="text">Text to clean</param>
-    /// <returns>The text itself when nothing is replaced, otherwise the cleaned copy</returns>
-    public static string ReplaceControlCharacters(string text)
+    /// <param name="text">Text to clean, or null</param>
+    /// <returns>Null for null, the text itself when nothing is replaced, otherwise the cleaned copy</returns>
+    [return: NotNullIfNotNull(nameof(text))]
+    public static string? ReplaceControlCharacters(string? text)
     {
         StringBuilder? builder = null;
         var index = 0;
 
-        foreach (var rune in text.EnumerateRunes())
+        foreach (var rune in text!.EnumerateRunes())
         {
             var length = rune.Utf16SequenceLength;
             var isControl = IsControlCategory(Rune.GetUnicodeCategory(rune));
