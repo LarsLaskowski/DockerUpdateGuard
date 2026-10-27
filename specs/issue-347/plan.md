@@ -246,3 +246,13 @@ fixed-reason model of record 0009 is unchanged and extended. The posture bullet 
     logged, stored or shown. Security area: Logging and telemetry of external data."
 - Collapsing whitespace runs, and stripping the printable rest of an escape sequence (`[2K`): not needed for the
   guard.
+
+## Challenge notes
+
+1. **minor.** *Why:* the fast path in Approach step 2 can be built so that a lone surrogate never counts as a change; AC1's lone-surrogate test would catch that, but only after a wasted round. *Instruction for the Dev:* in `ReplaceControlCharacters`, a text with no control character but with a lone surrogate must not return `text` itself. `EnumerateRunes` gives `Rune.ReplacementChar` for both a lone surrogate and a real U+FFFD in the input. Decide "nothing replaced" by checking whether the source code unit at the rune's position is a surrogate (`char.IsSurrogate`), not from the rune value alone.
+2. **minor.** *Why:* Cf also contains U+200C (ZWNJ) and U+200D (ZWJ), which legitimate text uses in emoji sequences and in Persian and Indic scripts, so the rule changes some harmless text. That is acceptable for a failure excerpt but is not stated anywhere. *Instruction for the Dev, in the Documentation updates:* the rule sentence in `docs/areas/registries.md` (*Failure model of integrations*) should say that joiners (U+200C, U+200D) are replaced too, so a reader is not surprised when an emoji sequence or a joined word in an excerpt is split by spaces.
+
+## Security notes
+
+- non-blocking, implementation pitfall for the Dev. Plan step 2 says `ReplaceControlCharacters` returns `text` itself when no rune is replaced. A lone surrogate arrives as a `Rune` that cannot be told apart from a real U+FFFD in the input (same value, same `Utf16SequenceLength` 1; measured above). So that "nothing replaced" check has to test the source chars (`char.IsSurrogate`), not the rune value. Otherwise the function returns the original string with the lone surrogate still in it. The AC1 lone-surrogate rows (`a` D800 `b`, with no other replaced character) catch this, so it is already pinned. I flag it only so the Dev gets it right the first time.
+- non-blocking. `TrivyCommandFailed` also logs `imageReference.FullReference`, which comes from the Docker Engine and is not cleaned. That is already covered by the proposed follow-up issue on structured fields. No change is needed in this plan.
