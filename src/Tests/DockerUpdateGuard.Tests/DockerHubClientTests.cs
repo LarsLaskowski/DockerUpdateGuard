@@ -1072,6 +1072,164 @@ public partial class DockerHubClientTests
     }
 
     /// <summary>
+    /// Verify the Docker Hub tag listing leaves out records whose name is not a valid tag
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerHubClientGetTagsAsyncOmitsInvalidTagNamesAsync()
+    {
+        var oversizedName = new string('a', 129);
+        var json = $$"""
+                     {
+                       "next": null,
+                       "results": [
+                         { "name": "1.0", "digest": "sha256:aaa", "last_pushed": "2025-04-04T10:00:00Z" },
+                         { "name": "{{oversizedName}}", "digest": "sha256:bbb", "last_pushed": "2025-04-03T10:00:00Z" },
+                         { "name": "bad\u000A", "digest": "sha256:ccc", "last_pushed": "2025-04-02T10:00:00Z" },
+                         { "name": "2.0", "digest": "sha256:ddd", "last_pushed": "2025-04-01T10:00:00Z" }
+                       ]
+                     }
+                     """;
+
+        Assert.Contains("\\u000A", json, "The test input must carry the escaped line feed");
+
+        using var handler = new DelegateHttpMessageHandler(request => CreateHubResponse(request, () => CreateJsonResponse(json)));
+        using var httpClient = new HttpClient(handler)
+                               {
+                                   BaseAddress = new Uri("https://hub.docker.com/"),
+                               };
+
+        var client = CreateClient(httpClient);
+
+        var result = await client.GetTagsAsync("docker.io", "acme/api", cancellationToken: CancellationToken.None)
+                                 .ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "The listing must succeed when some records have invalid names");
+        Assert.IsNotNull(result.Data, "The listing must return the valid records");
+        Assert.AreSequenceEqual(["1.0", "2.0"],
+                                result.Data.Select(entity => entity.Tag)
+                                           .ToArray(),
+                                "The listing must leave out records with invalid names and keep the others in order");
+    }
+
+    /// <summary>
+    /// Verify the Docker Hub tag listing keeps a tag whose digest is invalid and reports the digest as unknown
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerHubClientGetTagsAsyncInvalidDigestIsUnknownAsync()
+    {
+        var oversizedDigest = "sha256:" + new string('a', 10000);
+        var json = $$"""
+                     {
+                       "next": null,
+                       "results": [
+                         { "name": "1.0", "digest": "{{oversizedDigest}}", "last_pushed": "2025-04-04T10:00:00Z" }
+                       ]
+                     }
+                     """;
+
+        using var handler = new DelegateHttpMessageHandler(request => CreateHubResponse(request, () => CreateJsonResponse(json)));
+        using var httpClient = new HttpClient(handler)
+                               {
+                                   BaseAddress = new Uri("https://hub.docker.com/"),
+                               };
+
+        var client = CreateClient(httpClient);
+
+        var result = await client.GetTagsAsync("docker.io", "acme/api", cancellationToken: CancellationToken.None)
+                                 .ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "The listing must succeed when a digest is invalid");
+        Assert.IsNotNull(result.Data, "The listing must return the record");
+
+        var tag = Assert.ContainsSingle(result.Data, "The record with the invalid digest must be kept");
+
+        Assert.AreEqual("1.0", tag.Tag, "The record must keep its tag");
+        Assert.IsNull(tag.Digest, "An invalid digest must be reported as unknown");
+    }
+
+    /// <summary>
+    /// Verify the Docker Hub tag lookup reports the requested tag and no digest for an oversized record
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerHubClientGetTagAsyncOversizedNameAndDigestReturnsRequestedTagWithoutDigestAsync()
+    {
+        var json = $$"""
+                     {
+                       "name": "{{new string('n', 10000)}}",
+                       "digest": "sha256:{{new string('a', 10000)}}",
+                       "last_pushed": "2025-04-02T10:00:00Z"
+                     }
+                     """;
+
+        using var handler = new DelegateHttpMessageHandler(request => CreateHubResponse(request, () => CreateJsonResponse(json)));
+        using var httpClient = new HttpClient(handler)
+                               {
+                                   BaseAddress = new Uri("https://hub.docker.com/"),
+                               };
+
+        var client = CreateClient(httpClient);
+
+        var result = await client.GetTagAsync(new ImageReference
+                                              {
+                                                  Registry = "docker.io",
+                                                  Repository = "acme/api",
+                                                  Tag = "latest",
+                                              },
+                                              "linux",
+                                              "arm64",
+                                              CancellationToken.None)
+                                 .ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "The lookup must succeed for an oversized record");
+        Assert.IsNotNull(result.Data, "The lookup must return tag data");
+        Assert.AreEqual("latest", result.Data.Tag, "The lookup must report the requested tag, not the record's name");
+        Assert.IsNull(result.Data.Digest, "An oversized digest must be reported as unknown");
+    }
+
+    /// <summary>
+    /// Verify the Docker Hub tag lookup answers not found without a request or a log entry for an invalid requested tag
+    /// </summary>
+    /// <param name="tag">Requested tag</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [DataRow("..")]
+    [DataRow("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")]
+    public async Task DockerHubClientGetTagAsyncInvalidRequestedTagReturnsNotFoundWithoutRequestAsync(string tag)
+    {
+        using var handler = new StubHttpMessageHandler();
+        using var httpClient = new HttpClient(handler)
+                               {
+                                   BaseAddress = new Uri("https://hub.docker.com/"),
+                               };
+
+        var logger = new TestLogger<DockerHubClient>();
+        var client = CreateClient(httpClient, logger: logger);
+
+        Assert.IsGreaterThan(0, tag.Length, "The requested tag must not be empty");
+
+        var result = await client.GetTagAsync(new ImageReference
+                                              {
+                                                  Registry = "docker.io",
+                                                  Repository = "acme/api",
+                                                  Tag = tag,
+                                              },
+                                              "linux",
+                                              "arm64",
+                                              CancellationToken.None)
+                                 .ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.NotFound, result.Status, "An invalid requested tag must be answered as not found");
+        Assert.AreEqual("Requested tag is not a valid registry tag",
+                        result.Message,
+                        "The message must be the fixed text and quote nothing of the tag");
+        Assert.IsEmpty(handler.Requests, "No HTTP request may be sent for an invalid requested tag");
+        Assert.IsEmpty(logger.Entries, "Nothing may be logged for an invalid requested tag");
+    }
+
+    /// <summary>
     /// Assert no request went to the rejected origin and no credential left Docker Hub
     /// </summary>
     /// <param name="handler">Observing handler</param>
@@ -1085,6 +1243,19 @@ public partial class DockerHubClientTests
                                          && request.RequestUri.StartsWith("https://hub.docker.com/", StringComparison.OrdinalIgnoreCase) == false,
                               handler.Requests,
                               "A request carrying an Authorization header must never go anywhere but Docker Hub");
+    }
+
+    /// <summary>
+    /// Create a JSON response
+    /// </summary>
+    /// <param name="json">JSON content</param>
+    /// <returns>Response</returns>
+    private static HttpResponseMessage CreateJsonResponse(string json)
+    {
+        return new HttpResponseMessage(HttpStatusCode.OK)
+               {
+                   Content = new StringContent(json, Encoding.UTF8, "application/json"),
+               };
     }
 
     /// <summary>

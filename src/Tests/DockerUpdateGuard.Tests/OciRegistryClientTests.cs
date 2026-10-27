@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
 
+using DockerUpdateGuard.DockerHub;
 using DockerUpdateGuard.Images;
 using DockerUpdateGuard.Images.Data;
 using DockerUpdateGuard.Infrastructure;
@@ -823,9 +824,151 @@ public partial class OciRegistryClientTests
                         "The control characters of the reason phrase and the body must be replaced by spaces");
     }
 
+    /// <summary>
+    /// Verify the OCI tag listing neither lists nor inspects names that are not valid tags
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task OciRegistryClientGetTagsAsyncSkipsInvalidTagNamesAsync()
+    {
+        using var handler = new SequenceHttpMessageHandler();
+        using var httpClient = new HttpClient(handler);
+
+        var oversizedName = new string('a', 129);
+
+        handler.AddJsonResponse("https://mcr.microsoft.com/v2/mssql/server/tags/list?n=100",
+                                $$"""
+                                  {
+                                    "name": "mssql/server",
+                                    "tags": [ "1.0", "{{oversizedName}}", "..", "2.0" ]
+                                  }
+                                  """);
+        handler.AddResponse("https://mcr.microsoft.com/v2/mssql/server/manifests/1.0",
+                            CreateManifestResponse("sha256:100", """{ "schemaVersion": 2, "config": { "digest": "sha256:config100" } }"""));
+        handler.AddResponse("https://mcr.microsoft.com/v2/mssql/server/manifests/2.0",
+                            CreateManifestResponse("sha256:200", """{ "schemaVersion": 2, "config": { "digest": "sha256:config200" } }"""));
+
+        var client = new OciRegistryClient(httpClient, new TestLogger<OciRegistryClient>());
+        var result = await client.GetTagsAsync("mcr.microsoft.com", "mssql/server", cancellationToken: CancellationToken.None)
+                                 .ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "The listing must succeed when some names are invalid");
+        Assert.IsNotNull(result.Data, "The listing must return the valid tags");
+        Assert.AreSequenceEqual(["1.0", "2.0"],
+                                result.Data.Select(entity => entity.Tag)
+                                           .ToArray(),
+                                "The listing must contain only the valid names of the page");
+        Assert.AreSequenceEqual([
+                                    "https://mcr.microsoft.com/v2/mssql/server/tags/list?n=100",
+                                    "https://mcr.microsoft.com/v2/mssql/server/manifests/1.0",
+                                    "https://mcr.microsoft.com/v2/mssql/server/manifests/2.0"
+                                ],
+                                handler.Requests.Select(request => request.RequestUri)
+                                                .ToArray(),
+                                "No manifest request may be sent for a name that is not a valid tag");
+    }
+
+    /// <summary>
+    /// Verify the OCI tag lookup reports no digest for an oversized digest header
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task OciRegistryClientGetTagAsyncOversizedDigestHeaderReturnsNoDigestAsync()
+    {
+        var digest = "sha256:" + new string('a', 249);
+
+        Assert.AreEqual(256, digest.Length, "The header must be one character over the maximum");
+
+        var result = await LookUpTagWithDigestHeaderAsync(digest).ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "The lookup must succeed when the digest header is oversized");
+        Assert.IsNotNull(result.Data, "The lookup must return tag data");
+        Assert.IsNull(result.Data.Digest, "An oversized digest header must be reported as unknown");
+    }
+
+    /// <summary>
+    /// Verify the OCI tag lookup keeps a digest header of the maximum length
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task OciRegistryClientGetTagAsyncMaximumLengthDigestHeaderIsKeptAsync()
+    {
+        var digest = "sha256:" + new string('a', 248);
+
+        Assert.AreEqual(255, digest.Length, "The header must have exactly the maximum length");
+
+        var result = await LookUpTagWithDigestHeaderAsync(digest).ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "The lookup must succeed for a digest of the maximum length");
+        Assert.IsNotNull(result.Data, "The lookup must return tag data");
+        Assert.AreEqual(digest, result.Data.Digest, "A valid digest of the maximum length must be kept");
+    }
+
+    /// <summary>
+    /// Verify the OCI tag lookup answers not found without a request or a log entry for an invalid requested tag
+    /// </summary>
+    /// <param name="tag">Requested tag</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [DataRow("..")]
+    [DataRow("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")]
+    public async Task OciRegistryClientGetTagAsyncInvalidRequestedTagReturnsNotFoundWithoutRequestAsync(string tag)
+    {
+        using var handler = new SequenceHttpMessageHandler();
+        using var httpClient = new HttpClient(handler);
+
+        var logger = new TestLogger<OciRegistryClient>();
+        var client = new OciRegistryClient(httpClient, logger);
+
+        var result = await client.GetTagAsync(new ImageReference
+                                              {
+                                                  Registry = "mcr.microsoft.com",
+                                                  Repository = "mssql/server",
+                                                  Tag = tag,
+                                              },
+                                              "linux",
+                                              "arm64",
+                                              CancellationToken.None)
+                                 .ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.NotFound, result.Status, "An invalid requested tag must be answered as not found");
+        Assert.AreEqual("Requested tag is not a valid registry tag",
+                        result.Message,
+                        "The message must be the fixed text and quote nothing of the tag");
+        Assert.IsEmpty(handler.Requests, "No token or manifest request may be sent for an invalid requested tag");
+        Assert.IsEmpty(logger.Entries, "Nothing may be logged for an invalid requested tag");
+    }
+
     #endregion // Methods
 
     #region Static methods
+
+    /// <summary>
+    /// Look up the tag <c>latest</c> of a registry whose manifest answer carries the given digest header
+    /// </summary>
+    /// <param name="digestHeader">Value of the Docker-Content-Digest header</param>
+    /// <returns>Lookup result</returns>
+    private static async Task<ExternalOperationResult<DockerHubTagData>> LookUpTagWithDigestHeaderAsync(string digestHeader)
+    {
+        using var handler = new SequenceHttpMessageHandler();
+        using var httpClient = new HttpClient(handler);
+
+        handler.AddResponse("https://mcr.microsoft.com/v2/mssql/server/manifests/latest",
+                            CreateManifestResponse(digestHeader, """{ "schemaVersion": 2, "config": { "digest": "sha256:config" } }"""));
+
+        var client = new OciRegistryClient(httpClient, new TestLogger<OciRegistryClient>());
+
+        return await client.GetTagAsync(new ImageReference
+                                        {
+                                            Registry = "mcr.microsoft.com",
+                                            Repository = "mssql/server",
+                                            Tag = "latest",
+                                        },
+                                        "linux",
+                                        "arm64",
+                                        CancellationToken.None)
+                           .ConfigureAwait(false);
+    }
 
     /// <summary>
     /// Create a tag list response with an optional Link header
