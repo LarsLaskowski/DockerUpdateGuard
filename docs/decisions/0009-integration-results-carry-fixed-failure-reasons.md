@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-10-25
 - **Area:** Registries
-- **Source:** Issue #315, issue #318, issue #323, issue #324, issue #347
+- **Source:** Issue #315, issue #318, issue #323, issue #324, issue #347, issue #353
 - **Supersedes:** —
 
 ## Context
@@ -37,6 +37,12 @@ Bounding the length left the content as the remote side sent it (#347): a line b
 sequence in a body, a reason phrase or Trivy's error line went into plain-text log output, where it can start what
 reads as a new log entry or rewrite the terminal line, and a bidirectional override or a zero-width character went into
 the messages the pages show, where it reorders or hides the text around it.
+
+The same characters arrive in the text fields of remote answers (#353), which never passed that helper: container
+labels, environment variables and history entries a Docker image's author writes, Docker Hub repository descriptions,
+the base-image label of an image configuration, and the package names, versions, titles and summaries a vulnerability
+scanner reports for an image. They are logged (container names and image references, repository names, base-image
+references), stored and shown on the pages.
 
 ## Options considered
 
@@ -95,6 +101,25 @@ the messages the pages show, where it reorders or hides the text around it.
     distort a terminal or a page without breaking a line.
 21. **Replace before the cut** — a removed character outside the Basic Multilingual Plane shortens the text by one,
     so a body one character over the limit could lose its `…` and look complete.
+22. **For text fields of remote answers: the same replacement, without a cut, where each client reads a field it
+    passes on to its callers** — every log entry, stored value and page built from the field is covered, whoever reads
+    it later, as [0014](0014-registry-tag-names-and-digests-are-validated-where-they-are-read.md) validates tag names
+    where they are read; the length stays as received, so the bounds of #348 and #355 are unaffected. Chosen.
+23. **Clean in the data types that carry the fields (their setters)** — catches every constructor, but hides the rule
+    in plain data classes and also rewrites values a test or the application sets itself.
+24. **Clean only the fields whose source can carry such characters** (labels, environment, history, descriptions,
+    advisory texts), trusting the grammars Docker applies to container names, image references and IDs — the clients
+    do not check those grammars, and an endpoint that is not a genuine Docker Engine is not held to them; the
+    replacement costs nothing on a clean value.
+25. **Clean every string a client reads, the bearer tokens and next-page links it consumes itself included** —
+    changes the input of the pagination guard ([0004](0004-pagination-follows-only-same-origin-links.md)) and of a
+    credential, neither of which leaves the client as data.
+26. **Validate the fields and drop a value with such characters** — only names and references have a grammar; labels,
+    descriptions and advisory texts are free text, and validating lengths and grammars is #355.
+27. **Keep line breaks in multi-line advisory summaries** — a second rule for one field, which the pages show only as a
+    tooltip; a line break there is harmless, but the other characters are not.
+28. **Clean label names as well as values** — the labels are looked up by fixed names only, and two names that differ
+    only in such a character would collide.
 
 ## Decision
 
@@ -107,7 +132,10 @@ and the same fixed reason and logs the exception ([Web UI](../areas/web-ui.md#li
 service raises the parser's rejection of a reference without a repository name as the marker type. A response body,
 a reason phrase, the origin of a rejected next-page link and Trivy's error line reach a failure message only cut to a
 bounded length by one shared helper ([Registries](../areas/registries.md#failure-model-of-integrations)), which also
-replaces every control character in them with a space after the cut.
+replaces every control character in them with a space after the cut. Every other text field a client takes from a
+remote answer and passes on gets the same replacement, without a cut, where the client reads it; exempt are the values
+a client consumes itself (tokens, next-page links) and those already held to a grammar without such characters (tag
+names and digests). The fields are listed in [Registries](../areas/registries.md#remote-text-fields).
 
 ## Consequences
 
@@ -134,9 +162,17 @@ replaces every control character in them with a space after the cut.
   registry clients). Docker Engine and release-feed responses are still buffered whole by `HttpClient` before the
   excerpt is taken.
 - A remote text loses its line structure and its formatting characters: a multi-line body reads as one line, and an
-  error text whose meaning depends on a tab or a zero-width joiner is shown with a space there. Text the remote side
-  sends in structured fields (container names, image references, labels, tag names, advisory texts) does not pass the
-  helper and is not cleaned by this decision.
+  error text whose meaning depends on a tab or a zero-width joiner is shown with a space there. The same holds for the
+  remote text fields: a multi-line advisory summary reads as one line in its tooltip, and an environment variable or
+  label value keeps its length but not its formatting characters.
+- Values stored before #353 keep their characters until they are written again: container snapshots at the next
+  runtime scan, findings at the next vulnerability refresh, discovered images' descriptions at the next account
+  discovery; catalog entries and base-image relationships created from such a value stay as they are. A value that
+  differs from another only in such a character now equals it, so the two collapse into one catalog entry or finding.
+- A cleaned image reference or ID no longer names what the remote side named, so a follow-up request with it (an image
+  inspect) answers *not found*; a genuine Docker Engine does not report such values.
+- Portainer environment names keep their own rule from
+  [0010](0010-portainer-environment-is-used-only-when-unambiguous.md) (`?` instead of a space, cut to 64 UTF-16 units).
 - After a failed registry token exchange the excerpt is taken of the token failure message, which names the token request URI (OCI) or the Docker Hub user name before the token endpoint's own body excerpt, so that body may be cut away.
 - A page no longer tells a user why an action failed beyond the fixed reason; a registration with a value longer than
   the stored limits, or a tag selection for a container whose snapshots were just cleaned up, reads "unexpected
