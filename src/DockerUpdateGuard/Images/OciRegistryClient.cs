@@ -575,7 +575,7 @@ public partial class OciRegistryClient : IRegistryMetadataClient
         }
 
         return envElement.EnumerateArray()
-                         .Select(element => element.GetString())
+                         .Select(element => ResponseBodyExcerpt.ReplaceControlCharacters(element.GetString()))
                          .Where(value => string.IsNullOrWhiteSpace(value) == false)
                          .Cast<string>()
                          .ToArray();
@@ -599,7 +599,7 @@ public partial class OciRegistryClient : IRegistryMetadataClient
         return labelsElement.EnumerateObject()
                             .Where(property => property.Value.ValueKind == JsonValueKind.String)
                             .ToDictionary(property => property.Name,
-                                          property => property.Value.GetString() ?? string.Empty,
+                                          property => ResponseBodyExcerpt.ReplaceControlCharacters(property.Value.GetString()) ?? string.Empty,
                                           StringComparer.OrdinalIgnoreCase);
     }
 
@@ -615,8 +615,8 @@ public partial class OciRegistryClient : IRegistryMetadataClient
                    EnvironmentVariables = TryReadEnvironmentVariables(rootElement),
                    Labels = TryReadLabels(rootElement),
                    CreatedAtUtc = TryReadCreatedAtUtc(rootElement),
-                   OperatingSystem = TryGetString(rootElement, "os"),
-                   Architecture = TryGetString(rootElement, "architecture"),
+                   OperatingSystem = ResponseBodyExcerpt.ReplaceControlCharacters(TryGetString(rootElement, "os")),
+                   Architecture = ResponseBodyExcerpt.ReplaceControlCharacters(TryGetString(rootElement, "architecture")),
                };
     }
 
@@ -956,7 +956,7 @@ public partial class OciRegistryClient : IRegistryMetadataClient
                 return null;
             }
 
-            var baseImageName = TryGetString(labelsElement, OciBaseImageNameLabel);
+            var baseImageName = ResponseBodyExcerpt.ReplaceControlCharacters(TryGetString(labelsElement, OciBaseImageNameLabel));
 
             if (string.IsNullOrWhiteSpace(baseImageName))
             {
@@ -964,7 +964,7 @@ public partial class OciRegistryClient : IRegistryMetadataClient
             }
 
             var parsedReference = new ImageReferenceParser().Parse(baseImageName);
-            var baseImageDigest = TryGetString(labelsElement, OciBaseImageDigestLabel);
+            var baseImageDigest = ResponseBodyExcerpt.ReplaceControlCharacters(TryGetString(labelsElement, OciBaseImageDigestLabel));
 
             if (string.IsNullOrWhiteSpace(parsedReference.Digest)
                 && string.IsNullOrWhiteSpace(baseImageDigest) == false)

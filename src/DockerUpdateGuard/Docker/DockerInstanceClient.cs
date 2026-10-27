@@ -551,7 +551,7 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
             && namesElement.ValueKind == JsonValueKind.Array)
         {
             var firstName = namesElement.EnumerateArray()
-                                        .Select(nameElement => nameElement.GetString())
+                                        .Select(nameElement => ResponseBodyExcerpt.ReplaceControlCharacters(nameElement.GetString()))
                                         .FirstOrDefault(name => string.IsNullOrWhiteSpace(name) == false);
 
             if (string.IsNullOrWhiteSpace(firstName) == false)
@@ -579,7 +579,7 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
         if (element.TryGetProperty(propertyName, out var property)
             && property.ValueKind == JsonValueKind.String)
         {
-            return property.GetString();
+            return ResponseBodyExcerpt.ReplaceControlCharacters(property.GetString());
         }
 
         return null;
@@ -597,7 +597,7 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
             && labelsElement.TryGetProperty(name, out var property)
             && property.ValueKind == JsonValueKind.String)
         {
-            return property.GetString();
+            return ResponseBodyExcerpt.ReplaceControlCharacters(property.GetString());
         }
 
         return null;
@@ -778,7 +778,7 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
             && envElement.ValueKind == JsonValueKind.Array)
         {
             environmentVariables.AddRange(envElement.EnumerateArray()
-                                                    .Select(item => item.GetString())
+                                                    .Select(item => ResponseBodyExcerpt.ReplaceControlCharacters(item.GetString()))
                                                     .Where(value => string.IsNullOrWhiteSpace(value) == false)
                                                     .Cast<string>());
         }
@@ -789,7 +789,7 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
             && layersElement.ValueKind == JsonValueKind.Array)
         {
             rootFsLayers.AddRange(layersElement.EnumerateArray()
-                                               .Select(item => item.GetString())
+                                               .Select(item => ResponseBodyExcerpt.ReplaceControlCharacters(item.GetString()))
                                                .Where(value => string.IsNullOrWhiteSpace(value) == false)
                                                .Cast<string>());
         }
@@ -838,7 +838,7 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
         }
 
         return property.EnumerateArray()
-                       .Select(item => item.GetString())
+                       .Select(item => ResponseBodyExcerpt.ReplaceControlCharacters(item.GetString()))
                        .Where(value => string.IsNullOrWhiteSpace(value) == false)
                        .Cast<string>()
                        .ToArray();

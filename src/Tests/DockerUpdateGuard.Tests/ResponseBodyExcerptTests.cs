@@ -274,5 +274,16 @@ public class ResponseBodyExcerptTests
         Assert.AreEqual("line1  line2 [31m", excerpt, "Each control character of the body must be replaced by one space");
     }
 
+    /// <summary>
+    /// Verify a missing text is returned as null instead of failing
+    /// </summary>
+    [TestMethod]
+    public void ResponseBodyExcerptReplaceControlCharactersWhenTextIsNullReturnsNull()
+    {
+        var cleaned = ResponseBodyExcerpt.ReplaceControlCharacters(null);
+
+        Assert.IsNull(cleaned, "A missing remote text must stay missing so the callers can keep their null handling");
+    }
+
     #endregion // Methods
 }

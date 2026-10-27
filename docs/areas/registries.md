@@ -33,9 +33,9 @@ retry policy and the failure model.
   including the joiners U+200C and U+200D (so an emoji sequence or a joined word in an excerpt can come out split by
   spaces), and a code point outside the Basic Multilingual Plane is replaced by a single space. A lone surrogate becomes U+FFFD.
   The cut is decided on the text as received, before the replacement, so `…` follows exactly when the received text was
-  longer than the limit. An excerpt therefore never spans lines in a log or reorders a page; remote text a message
-  carries outside an excerpt, such as an image reference or a container name, is not cleaned. This is the one place
-  that states the rule. The message length is bounded everywhere, but the read is bounded (about 8 KiB) only for
+  longer than the limit. An excerpt therefore never spans lines in a log or reorders a page; the text fields of remote
+  answers get the same replacement without a cut ([Remote text fields](#remote-text-fields)). This subsection and that
+  one together state the rule. The message length is bounded everywhere, but the read is bounded (about 8 KiB) only for
   the streamed OCI and Docker Hub responses; Docker Engine and feed responses are buffered by `HttpClient` first. After a failed OCI or Docker Hub token exchange the excerpt is of the token failure message, which names the token request URI (OCI) or the Docker Hub user name before the token endpoint's own body excerpt, so that body may be cut away.
   The exception is a listing stopped by a rejected next-page link: it has neither a status code nor a body and names the
   rejected origin instead ([Pagination links](#pagination-links)).
@@ -46,6 +46,39 @@ retry policy and the failure model.
   it is raised as a `ReportableException`, a type whose message must never interpolate an error's message, a response
   body or an unmasked URL (a reviewer treats such a use as blocking). The error is logged with the failure
   ([record 0009](../decisions/0009-integration-results-carry-fixed-failure-reasons.md)).
+
+### Remote text fields
+
+The text fields a client reads from a remote answer and passes on to its callers get the same replacement as an excerpt
+(the characters of the Unicode categories Cc, Cf, Zl and Zp become one space each, a lone surrogate becomes U+FFFD),
+where the client reads the field and without a cut: the length stays as received, a field without such a character is
+unchanged, and the replacement runs on the decoded string, so a JSON escape cannot bypass it. Logs, stored values and
+pages therefore never carry them from these fields:
+
+- **Docker Engine** ([Docker instances](docker-instances.md)): of a listed container the ID, name, image reference,
+  local image ID and the compose project, stack name and swarm service name labels, and the ID and name of a resource
+  sample; of an image inspect the ID, repo tags, repo digests, environment variables, root file-system layers,
+  operating system and architecture; of a history entry the created-by command, comment and tags. An item of a list
+  that consists only of such characters is dropped like a blank one.
+- **Registries** (OCI and Docker Hub clients): of an image configuration the environment variables, the label values
+  (the label names stay as received, they are only looked up by fixed names), operating system and architecture; the
+  values of `org.opencontainers.image.base.name` and `org.opencontainers.image.base.digest`, before they are parsed
+  ([Base images](base-images.md)); of Docker Hub the repository name built from namespace and name, the description of
+  a listed or a single repository, and the current user's name, in the result and in its log entry.
+- **Vulnerability providers** ([Vulnerabilities](vulnerabilities.md)): of Trivy the advisory id, title, package,
+  installed and fixed version, package class and type, summary and reference URL; of Docker Scout the advisory id,
+  title, summary and reference URL.
+
+The replacement happens before any trimming, so a reference whose replaced characters sit only at its edges resolves to
+the reference without them (`nginx:1.25` followed by an escape character reads as `nginx:1.25`).
+
+Not cleaned: tag names and digests (held to a grammar without such characters,
+[Bounded tag listings](#bounded-tag-listings) and [What can be read](#what-can-be-read)), bearer tokens and next-page
+links (consumed by the client, and the guard of [Pagination links](#pagination-links) keeps its input),
+manifest-list platforms (used only to select a digest), Portainer text (environment names have their own rule,
+[Container actions](container-actions.md)), release-feed text (never reaches a log, a message or a stored value), and
+values stored before the replacement existed, which stay until they are written again
+([record 0009](../decisions/0009-integration-results-carry-fixed-failure-reasons.md)).
 
 ### Choice of client per registry
 

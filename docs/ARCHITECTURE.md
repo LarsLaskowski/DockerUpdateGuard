@@ -424,7 +424,8 @@ it links:
   ([Registries](areas/registries.md#failure-model-of-integrations),
   [record 0009](decisions/0009-integration-results-carry-fixed-failure-reasons.md)). Remote text a message
   carries (body excerpts, reason phrase, rejected origin, Trivy's last error line, Docker Scout's unknown severity) passes one helper,
-  `Infrastructure\ResponseBodyExcerpt`, which bounds it and replaces its control characters
+  `Infrastructure\ResponseBodyExcerpt`, which bounds it and replaces its control characters; the text fields the
+  clients read from remote answers get the same replacement, without a cut, where they are read
   ([record 0009](decisions/0009-integration-results-carry-fixed-failure-reasons.md)).
 - **Pagination stays on its origin.** `DockerHubClient`, `OciRegistryClient`
   and `DockerScoutVulnerabilityProvider` follow a next-page link only on the
