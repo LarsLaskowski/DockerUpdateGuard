@@ -14,3 +14,4 @@ are quoted in full.
 | 2026-10-27 21:00 | 6 Implement | squad-dev | implemented + docs; 842 tests pass, coverage 100% new / 87.9% overall (sonnet/medium · 102,761 tokens · 19 tool uses · 237 s) |
 | 2026-10-27 21:00 | 7 Code check | Orchestrator | format, build, test, coverage, analyzer, scope-check pass; coverage tester pass skipped: gate passes |
 | 2026-10-27 21:00 | 7 Sonar gate | Orchestrator | NOT CHECKED: dotnet-sonarscanner not installed; left to step 11 |
+| 2026-10-27 21:01 | 8 Review | squad-security | diff: APPROVED, 2 non-blocking (Trivy ReferenceUrl fallback, empty title) (opus/medium · 53,581 tokens · 7 tool uses · 47 s) |
