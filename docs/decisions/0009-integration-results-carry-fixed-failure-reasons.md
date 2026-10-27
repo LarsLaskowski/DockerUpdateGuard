@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-10-25
 - **Area:** Registries
-- **Source:** Issue #315, issue #318, issue #323, issue #324
+- **Source:** Issue #315, issue #318, issue #323, issue #324, issue #347
 - **Supersedes:** —
 
 ## Context
@@ -32,6 +32,11 @@ just as unbounded: the OCI reason phrase, the origin of a rejected next-page lin
 last line of Trivy's error output. None has a size limit, so a long one made the message longer than the 2000
 characters a container's update assessment or an image's vulnerability assessment holds, and the save of the scan
 failed; the same text went unbounded into logs and scan-run errors.
+
+Bounding the length left the content as the remote side sent it (#347): a line break, a carriage return or an escape
+sequence in a body, a reason phrase or Trivy's error line went into plain-text log output, where it can start what
+reads as a new log entry or rewrite the terminal line, and a bidirectional override or a zero-width character went into
+the messages the pages show, where it reorders or hides the text around it.
 
 ## Options considered
 
@@ -75,6 +80,21 @@ failed; the same text went unbounded into logs and scan-run errors.
     kept.
 15. **For response bodies: decode with the charset the response declares** — the remote sides here answer UTF-8 JSON
     or ASCII pages; an unknown charset name would need its own fallback for a text that is only an excerpt.
+16. **For control characters in remote text: replace each one with a space in the shared helper that already bounds
+    every such text, after the cut** — one place covers the body excerpts, the reason phrase, a rejected link's origin
+    and Trivy's line, and every log entry, result, stored message and page that carries them; the length never grows,
+    so the bounds of #324 hold unchanged. Chosen.
+17. **Remove the characters instead** — joins the words on both sides of a line break and leaves no trace that
+    something was there.
+18. **Write them as visible escapes (`\u000A`)** — keeps the information, but one character becomes six, so the
+    text has to be bounded again after the escaping, and a pretty-printed JSON body becomes hard to read.
+19. **Clean the text where it is written (a log processor, the console formatter, the pages)** — a log processor
+    sees the formatted message only in some providers, the stored messages and scan-run errors need a cut of their own
+    each, and every new sink has to remember it; the sources are few and already pass one helper.
+20. **Replace only line breaks** — leaves escape sequences, bidirectional overrides and zero-width characters, which
+    distort a terminal or a page without breaking a line.
+21. **Replace before the cut** — a removed character outside the Basic Multilingual Plane shortens the text by one,
+    so a body one character over the limit could lose its `…` and look complete.
 
 ## Decision
 
@@ -86,7 +106,8 @@ dedicated exception type, keeps its text. The exception itself is logged with th
 and the same fixed reason and logs the exception ([Web UI](../areas/web-ui.md#limits-and-errors)); the registration
 service raises the parser's rejection of a reference without a repository name as the marker type. A response body,
 a reason phrase, the origin of a rejected next-page link and Trivy's error line reach a failure message only cut to a
-bounded length by one shared helper ([Registries](../areas/registries.md#failure-model-of-integrations)).
+bounded length by one shared helper ([Registries](../areas/registries.md#failure-model-of-integrations)), which also
+replaces every control character in them with a space after the cut.
 
 ## Consequences
 
@@ -112,6 +133,10 @@ bounded length by one shared helper ([Registries](../areas/registries.md#failure
 - The message length is bounded for every client; the bytes read are bounded only where the response is streamed (the
   registry clients). Docker Engine and release-feed responses are still buffered whole by `HttpClient` before the
   excerpt is taken.
+- A remote text loses its line structure and its formatting characters: a multi-line body reads as one line, and an
+  error text whose meaning depends on a tab or a zero-width joiner is shown with a space there. Text the remote side
+  sends in structured fields (container names, image references, labels, tag names, advisory texts) does not pass the
+  helper and is not cleaned by this decision.
 - After a failed registry token exchange the excerpt is taken of the token failure message, which names the token request URI (OCI) or the Docker Hub user name before the token endpoint's own body excerpt, so that body may be cut away.
 - A page no longer tells a user why an action failed beyond the fixed reason; a registration with a value longer than
   the stored limits, or a tag selection for a container whose snapshots were just cleaned up, reads "unexpected

@@ -790,6 +790,39 @@ public partial class OciRegistryClientTests
                                    "The message is stored in a 2000-character column and must not exceed it");
     }
 
+    /// <summary>
+    /// Verify an OCI tag lookup replaces control characters of the reason phrase and the body
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task OciRegistryClientGetTagsAsyncWhenReasonAndBodyHaveControlCharactersReplacesThemAsync()
+    {
+        var escape = char.ConvertFromUtf32(0x001B);
+        var lineSeparator = char.ConvertFromUtf32(0x2028);
+        var reasonPhrase = $"Server{escape}Error";
+        var body = $"oops{lineSeparator}forged";
+
+        Assert.Contains(escape, reasonPhrase, "The reason phrase must contain the escape character");
+        Assert.Contains(lineSeparator, body, "The body must contain the line separator");
+
+        using var handler = new DelegateHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.BadRequest)
+                                                                {
+                                                                    ReasonPhrase = reasonPhrase,
+                                                                    Content = new StringContent(body),
+                                                                });
+        using var httpClient = new HttpClient(handler);
+
+        var client = new OciRegistryClient(httpClient, new TestLogger<OciRegistryClient>());
+
+        var result = await client.GetTagsAsync("mcr.microsoft.com", "mssql/server", cancellationToken: CancellationToken.None)
+                                 .ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Failed, result.Status, "A Bad Request answer must fail the tag lookup");
+        Assert.AreEqual("Tag lookup failed for 'mcr.microsoft.com/mssql/server': 400 Server Error - oops forged",
+                        result.Message,
+                        "The control characters of the reason phrase and the body must be replaced by spaces");
+    }
+
     #endregion // Methods
 
     #region Static methods
