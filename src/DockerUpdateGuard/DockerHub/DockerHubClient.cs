@@ -237,12 +237,23 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
     /// Parse a Docker Hub tag payload
     /// </summary>
     /// <param name="element">JSON element</param>
+    /// <returns>Tag data or null</returns>
+    private static DockerHubTagData? ParseTag(JsonElement element)
+    {
+        return CreateTagData(element, TryGetString(element, "name") ?? string.Empty);
+    }
+
+    /// <summary>
+    /// Create the tag data of a Docker Hub tag payload
+    /// </summary>
+    /// <param name="element">JSON element</param>
+    /// <param name="tag">Tag name</param>
     /// <returns>Tag data</returns>
-    private static DockerHubTagData ParseTag(JsonElement element)
+    private static DockerHubTagData CreateTagData(JsonElement element, string tag)
     {
         return new DockerHubTagData
                {
-                   Tag = TryGetString(element, "name") ?? string.Empty,
+                   Tag = tag,
                    Digest = ResolveDockerHubDigest(element),
                    PublishedAtUtc = TryGetDateTimeOffset(element, "last_pushed"),
                };
@@ -446,7 +457,7 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
 
         foreach (var resultElement in resultsElement.EnumerateArray())
         {
-            var tagData = ParseTag(resultElement);
+            var tagData = ParseTag(resultElement)!;
 
             if (string.IsNullOrWhiteSpace(queryOptions?.CurrentDigest) == false
                 && string.Equals(tagData.Digest,
@@ -1304,7 +1315,7 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
             using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: cancellationToken)
                                                        .ConfigureAwait(false);
 
-            return ExternalOperationResult<DockerHubTagData>.Succeeded(ParseTag(jsonDocument.RootElement));
+            return ExternalOperationResult<DockerHubTagData>.Succeeded(CreateTagData(jsonDocument.RootElement, TryGetString(jsonDocument.RootElement, "name") ?? string.Empty));
         }
     }
 
