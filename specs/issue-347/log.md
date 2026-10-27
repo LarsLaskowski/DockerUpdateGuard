@@ -11,3 +11,4 @@ are quoted in full.
 | 2026-10-27 17:51 | 3 Plan security review | Security | APPROVED, 2 non-blocking notes (opus/medium · 61,613 tokens · 13 tool uses · 129 s) |
 | 2026-10-27 17:51 | 3 Plan security review | Orchestrator | challenge and security notes appended to plan.md |
 | 2026-10-27 17:56 | 4 Skeleton | Dev | ReplaceControlCharacters + constant skeleton, build clean (sonnet/medium · 67,784 tokens · 7 tool uses · 128 s) |
+| 2026-10-27 17:58 | 5 Tests first | Tester | 10 tests (AC1-AC6), 27 fail on current code, none deferred (sonnet/medium · 99,878 tokens · 11 tool uses · 99 s) |

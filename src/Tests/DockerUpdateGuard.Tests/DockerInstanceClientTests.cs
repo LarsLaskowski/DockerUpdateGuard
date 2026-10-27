@@ -1019,6 +1019,34 @@ public partial class DockerInstanceClientTests
     }
 
     /// <summary>
+    /// Verify container discovery replaces a line break of the error body by a space
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerInstanceClientDiscoverContainersAsyncWhenErrorBodyHasLineBreakReplacesItAsync()
+    {
+        var lineFeed = char.ConvertFromUtf32(0x000A);
+        var body = $"{{\"message\":\"bad{lineFeed}request\"}}";
+
+        Assert.Contains(lineFeed, body, "The body must contain the line feed");
+
+        using var handler = new DelegateHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.BadRequest)
+                                                                {
+                                                                    Content = new StringContent(body),
+                                                                });
+        using var httpClient = new HttpClient(handler)
+                               {
+                                   BaseAddress = new Uri("https://docker.example.test/"),
+                               };
+
+        var client = new DockerInstanceClient(new TestLogger<DockerInstanceClient>(), (_, _) => httpClient);
+
+        var message = await RunOperationAsync(client, "Discovery", TestContext.CancellationToken).ConfigureAwait(false);
+
+        Assert.AreEqual("Docker instance 'Production' returned 400: {\"message\":\"bad request\"}", message, "The line break of the body must become one space");
+    }
+
+    /// <summary>
     /// Verify resource sampling bounds the error body of a failed response to an excerpt
     /// </summary>
     /// <returns>Task</returns>
