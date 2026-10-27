@@ -171,6 +171,8 @@ names and digests). The fields are listed in [Registries](../areas/registries.md
   differs from another only in such a character now equals it, so the two collapse into one catalog entry or finding.
 - A cleaned image reference or ID no longer names what the remote side named, so a follow-up request with it (an image
   inspect) answers *not found*; a genuine Docker Engine does not report such values.
+- The replacement runs before any trimming, so a reference whose replaced characters sit only at its edges now
+  resolves to the reference without them (`nginx:1.25` followed by an escape character becomes `nginx:1.25`).
 - Portainer environment names keep their own rule from
   [0010](0010-portainer-environment-is-used-only-when-unambiguous.md) (`?` instead of a space, cut to 64 UTF-16 units).
 - After a failed registry token exchange the excerpt is taken of the token failure message, which names the token request URI (OCI) or the Docker Hub user name before the token endpoint's own body excerpt, so that body may be cut away.

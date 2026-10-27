@@ -103,7 +103,9 @@ Every exported signal carries the same resource:
   Portainer password or API token, the bearer tokens obtained from Docker Hub, registries, Docker Scout or Portainer,
   nor the database connection string. Credentials travel only in request headers, and headers are not recorded.
 - Database statements are logged without parameter values.
-- What logs and spans may carry about external systems: configured instance names, image references, configured base
+- What logs and spans may carry about external systems: configured instance names, image references (and container
+  and repository names and the Docker Hub account name taken from remote answers, with their control characters
+  replaced, [Registries](registries.md#remote-text-fields)), configured base
   URLs with any user info replaced by `***`, the Docker Hub account name, HTTP methods and status codes, the scheme,
   host and port of a rejected next-page link (cut to 300 characters), the bounded excerpt of a remote error response (like the rejected origin, Docker Scout's unknown severity value and Trivy's error messages, with its control characters replaced; [Registries](registries.md#failure-model-of-integrations)), counts, durations, error messages from external tools (Trivy's only
   for a `TrivyBaseUrl` without `@`, [Vulnerabilities](vulnerabilities.md#trivy)) and, on the error entries of failed

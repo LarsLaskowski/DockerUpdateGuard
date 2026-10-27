@@ -112,7 +112,9 @@ scan run:
   `CRITICAL`, any case, everything else *not set*); affected package, installed and fixed version from `PkgName`,
   `InstalledVersion`, `FixedVersion`; fix status from `Status` (`fixed`, `affected`, `will_not_fix`, `fix_deferred`,
   `end_of_life`, any case, everything else *not set*); package class and type from the result block's `Class` and
-  `Type`; summary from `Description`; reference URL from `PrimaryURL`, else the first of `References`.
+  `Type`; summary from `Description`; reference URL from `PrimaryURL`, else the first of `References`. Every text value
+  has its control characters replaced by spaces ([Registries](registries.md#remote-text-fields)); a title that is then
+  blank falls back to the advisory id, and a class or type that is then blank is *none*.
 - The CVSS score is the NVD v3 score, else the first v3 score of any source, else the NVD v2 score, else the first v2
   score of any source, else none.
 
@@ -138,7 +140,8 @@ scan run:
   found in Docker Scout". Any other unsuccessful status gives *failed*, "Docker Scout request failed with status X".
 - Each HTTP request is limited to `RequestTimeoutSeconds`.
 - Mapping: advisory id and title from `id`, severity from `severity` (as for Trivy; an unknown value maps to *not set* and is logged cut to 100 characters, followed by `…` when it was longer, with its control characters replaced), summary from `description`,
-  reference URL from the first of `links`. Docker Scout supplies no package, versions, fix status or CVSS score.
+  reference URL from the first of `links`; the text values have their control characters replaced by spaces
+  ([Registries](registries.md#remote-text-fields)). Docker Scout supplies no package, versions, fix status or CVSS score.
 
 ### Configuration hints
 

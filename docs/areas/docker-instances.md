@@ -86,7 +86,8 @@ on the snapshots and samples it produces.
 - Per container it records: the container ID; the name (the first listed name without its leading `/`, or the
   container ID when it has no name); the image reference as the Engine reports it; the local image ID; the compose
   project (`com.docker.compose.project` label), the stack name (`com.docker.stack.namespace`) and the swarm service
-  name (`com.docker.swarm.service.name`).
+  name (`com.docker.swarm.service.name`). These values arrive with control characters replaced by spaces
+  ([Registries](registries.md#remote-text-fields)).
 - The runtime status is one of Running, Paused, Restarting, Exited, Dead; any other Engine state (for example
   `created`) is *not set*. A container counts as running only in state `running`.
 - The image digest of each container is taken from the repository digests of its local image (one image inspect per
@@ -100,7 +101,8 @@ on the snapshots and samples it produces.
 
 - Other areas can read the inspect data of a local image (ID, repo tags, repo digests, environment variables, root
   file-system layers, creation time, operating system, architecture) and its history (creation time, created-by
-  command, comment, tags per layer) from an instance, addressed by image ID or reference.
+  command, comment, tags per layer) from an instance, addressed by image ID or reference. The text values arrive with
+  control characters replaced by spaces ([Registries](registries.md#remote-text-fields)).
 - An image the Engine does not know answers *not found*; any other non-success answer *failed*. How the data is used
   belongs to [Base images](base-images.md) and [Update detection](update-detection.md).
 

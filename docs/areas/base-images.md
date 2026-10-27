@@ -30,7 +30,8 @@ a base-image update or vulnerability reaches; vulnerability refreshes and the da
   A container on another digest of the same tag has no base images.
 - The source is the image configuration's labels: `org.opencontainers.image.base.name` names the base image (parsed as
   an image reference, see [Image catalog](image-catalog.md)); `org.opencontainers.image.base.digest` supplies its
-  digest (lowercased) when the name carries none. The same rule applies to Docker Hub and to every other registry.
+  digest (lowercased) when the name carries none. Both values have their control characters replaced by spaces before
+  they are parsed ([Registries](registries.md#remote-text-fields)). The same rule applies to Docker Hub and to every other registry.
 - The chain is followed by reading each base image's own configuration and labels. Depth 1 is the direct base; the
   chain ends at depth 5, at an image without the label, or at a base whose configuration cannot be read (the chain
   found so far is kept).

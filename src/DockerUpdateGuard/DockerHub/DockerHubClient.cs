@@ -329,8 +329,8 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
     /// <returns>Repository data</returns>
     private static DockerHubRepositoryData ParseRepository(JsonElement element)
     {
-        var namespaceName = TryGetString(element, "namespace");
-        var repositoryName = TryGetString(element, "name");
+        var namespaceName = ResponseBodyExcerpt.ReplaceControlCharacters(TryGetString(element, "namespace"));
+        var repositoryName = ResponseBodyExcerpt.ReplaceControlCharacters(TryGetString(element, "name"));
         var normalizedRepository = string.IsNullOrWhiteSpace(namespaceName) || string.IsNullOrWhiteSpace(repositoryName)
                                        ? string.Empty
                                        : $"{namespaceName.Trim().ToLowerInvariant()}/{repositoryName.Trim().ToLowerInvariant()}";
@@ -339,7 +339,7 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
                {
                    Registry = "docker.io",
                    Repository = normalizedRepository,
-                   Description = TryGetString(element, "description"),
+                   Description = ResponseBodyExcerpt.ReplaceControlCharacters(TryGetString(element, "description")),
                    LastUpdatedAtUtc = TryGetDateTimeOffset(element, "last_updated"),
                };
     }
@@ -785,14 +785,14 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
                 return null;
             }
 
-            var baseImageName = TryGetString(labelsElement, OciBaseImageNameLabel);
+            var baseImageName = ResponseBodyExcerpt.ReplaceControlCharacters(TryGetString(labelsElement, OciBaseImageNameLabel));
 
             if (string.IsNullOrWhiteSpace(baseImageName))
             {
                 return null;
             }
 
-            var baseImageDigest = TryGetString(labelsElement, OciBaseImageDigestLabel);
+            var baseImageDigest = ResponseBodyExcerpt.ReplaceControlCharacters(TryGetString(labelsElement, OciBaseImageDigestLabel));
             var parser = new ImageReferenceParser();
             var parsedRef = parser.Parse(baseImageName);
 
@@ -845,7 +845,7 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
                                        && configElement.TryGetProperty("Env", out var envElement)
                                        && envElement.ValueKind == JsonValueKind.Array
                                            ? envElement.EnumerateArray()
-                                                       .Select(element => element.GetString())
+                                                       .Select(element => ResponseBodyExcerpt.ReplaceControlCharacters(element.GetString()))
                                                        .Where(value => string.IsNullOrWhiteSpace(value) == false)
                                                        .Cast<string>()
                                                        .ToArray()
@@ -857,7 +857,7 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
                              ? labelsElement.EnumerateObject()
                                             .Where(property => property.Value.ValueKind == JsonValueKind.String)
                                             .ToDictionary(property => property.Name,
-                                                          property => property.Value.GetString() ?? string.Empty,
+                                                          property => ResponseBodyExcerpt.ReplaceControlCharacters(property.Value.GetString()) ?? string.Empty,
                                                           StringComparer.OrdinalIgnoreCase)
                              : new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
@@ -866,8 +866,8 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
                        EnvironmentVariables = environmentVariables,
                        Labels = labels,
                        CreatedAtUtc = DateTimeOffset.TryParse(TryGetString(rootElement, "created"), CultureInfo.InvariantCulture, out var createdAtUtc) ? createdAtUtc : null,
-                       OperatingSystem = TryGetString(rootElement, "os"),
-                       Architecture = TryGetString(rootElement, "architecture"),
+                       OperatingSystem = ResponseBodyExcerpt.ReplaceControlCharacters(TryGetString(rootElement, "os")),
+                       Architecture = ResponseBodyExcerpt.ReplaceControlCharacters(TryGetString(rootElement, "architecture")),
                    };
         }
     }
@@ -1137,7 +1137,7 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
         {
             using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: cancellationToken)
                                                        .ConfigureAwait(false);
-            var userName = TryGetString(jsonDocument.RootElement, "username");
+            var userName = ResponseBodyExcerpt.ReplaceControlCharacters(TryGetString(jsonDocument.RootElement, "username"));
 
             if (string.IsNullOrWhiteSpace(userName))
             {
@@ -1280,7 +1280,7 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
                                  {
                                      Registry = imageReference.Registry,
                                      Repository = imageReference.Repository,
-                                     Description = TryGetString(root, "description"),
+                                     Description = ResponseBodyExcerpt.ReplaceControlCharacters(TryGetString(root, "description")),
                                      LastUpdatedAtUtc = TryGetDateTimeOffset(root, "last_updated"),
                                  };
 

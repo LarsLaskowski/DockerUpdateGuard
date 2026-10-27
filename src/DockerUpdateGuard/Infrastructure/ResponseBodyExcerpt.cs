@@ -75,10 +75,15 @@ internal static class ResponseBodyExcerpt
     [return: NotNullIfNotNull(nameof(text))]
     public static string? ReplaceControlCharacters(string? text)
     {
+        if (text is null)
+        {
+            return null;
+        }
+
         StringBuilder? builder = null;
         var index = 0;
 
-        foreach (var rune in text!.EnumerateRunes())
+        foreach (var rune in text.EnumerateRunes())
         {
             var length = rune.Utf16SequenceLength;
             var isControl = IsControlCategory(Rune.GetUnicodeCategory(rune));
