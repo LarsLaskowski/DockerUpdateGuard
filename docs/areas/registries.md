@@ -31,9 +31,11 @@ retry policy and the failure model.
   line) each control character is replaced by one space after the cut: the characters of the Unicode categories
   Cc, Cf, Zl and Zp, that is line breaks, tabs, escape characters, bidirectional marks and zero-width characters
   including the joiners U+200C and U+200D (so an emoji sequence or a joined word in an excerpt can come out split by
-  spaces), and a supplementary code point counts as one character. A lone surrogate becomes U+FFFD. The cut is decided
-  on the text as received, so a remote text never spans lines in a log or reorders a page; this is the one place that
-  states the rule. The message length is bounded everywhere, but the read is bounded (about 8 KiB) only for
+  spaces), and a code point outside the Basic Multilingual Plane is replaced by a single space. A lone surrogate becomes U+FFFD.
+  The cut is decided on the text as received, before the replacement, so `…` follows exactly when the received text was
+  longer than the limit. An excerpt therefore never spans lines in a log or reorders a page; remote text a message
+  carries outside an excerpt, such as an image reference or a container name, is not cleaned. This is the one place
+  that states the rule. The message length is bounded everywhere, but the read is bounded (about 8 KiB) only for
   the streamed OCI and Docker Hub responses; Docker Engine and feed responses are buffered by `HttpClient` first. After a failed OCI or Docker Hub token exchange the excerpt is of the token failure message, which names the token request URI (OCI) or the Docker Hub user name before the token endpoint's own body excerpt, so that body may be cut away.
   The exception is a listing stopped by a rejected next-page link: it has neither a status code nor a body and names the
   rejected origin instead ([Pagination links](#pagination-links)).
