@@ -45,7 +45,7 @@ every feature area relies on it for validated configuration and a migrated datab
   `DockerHub:Registry` when it is an absolute URI (a plain registry name such as `docker.io` is not checked); the
   `Telemetry:OtlpEndpoint` rule is in [Telemetry](telemetry.md). It is checked after the existing configured,
   absolute and scheme rules, so a value gets at most one of these failures, and it replaces the Portainer
-  plaintext-HTTP failure. The failure is exactly `'<key>' has an '@' that does not end its user info; percent-encode '@', '#', '?' and '/' in a user name or password`, naming the key as the other validation failures do (a Docker instance key relative to its instance), and never the
+  plaintext-HTTP failure. The failure is exactly `<subject> has an '@' that does not end its user info; percent-encode '@', '#', '?' and '/' in a user name or password`, where the subject is `'<key>'` with the full configuration path as key, or `'<key>' of Docker instance '<Name>'` for a key inside a Docker instance, and never the
   value. The reason: the URI parser ends the authority at the first `/`, `?` or `#`, so
   `https://admin#secret@portainer.example` would send the credentials to host `admin`. Percent-encode `@`, `#`, `?`
   and `/` in a user name or password to keep such a URL working.
