@@ -18,3 +18,6 @@ are quoted in full.
 | 2026-10-27 18:23 | 8 Review round 1 | Security | diff: APPROVED, 2 non-blocking (opus/medium · 49,401 tokens · 7 tool uses · 45 s) |
 | 2026-10-27 18:23 | 8 Review round 1 | Reviewer | 1 blocking (registries.md wording overclaims coverage) (opus/medium · 64,134 tokens · 10 tool uses · 99 s) |
 | 2026-10-27 18:24 | 8 Fix round 1 | Dev | registries.md wording corrected (sonnet/medium · 2,073 tokens · 2 tool uses · 80 s · continued) |
+| 2026-10-27 18:25 | 8 Review round 2 | Reviewer | delta: APPROVE (opus/medium · 2,314 tokens · 2 tool uses · 17 s · continued) |
+| 2026-10-27 18:25 | 9 PR approval | Orchestrator | approved by checklist (record 0009 Accepted, main unmoved, review clean) |
+| 2026-10-27 18:25 | 10 Follow-up | Orchestrator | follow-up issue #353 for structured fields |
