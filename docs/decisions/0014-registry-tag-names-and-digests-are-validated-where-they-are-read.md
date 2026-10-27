@@ -1,6 +1,6 @@
 # 0014: Registry tag names and digests are validated where a client reads them
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-27
 - **Area:** Registries
 - **Source:** Issue #348

@@ -66,5 +66,5 @@ once in the [area document](../areas/README.md) of the record's area, and the re
 | [0011](0011-mounted-ca-certificates-use-a-private-cert-dir.md) | Mounted CA certificates are trusted through a private SSL_CERT_DIR | Accepted | 2026-10-26 |
 | [0012](0012-configured-urls-are-rejected-when-an-at-sign-is-not-their-user-info-separator.md) | Configured URLs are rejected when an `@` is not their user-info separator | Accepted | 2026-10-26 |
 | [0013](0013-docker-instance-keys-are-named-relative-to-the-instance.md) | Validation messages name Docker instance keys relative to the instance | Accepted | 2026-10-27 |
-| [0014](0014-registry-tag-names-and-digests-are-validated-where-they-are-read.md) | Registry tag names and digests are validated where a client reads them | Proposed | 2026-10-27 |
+| [0014](0014-registry-tag-names-and-digests-are-validated-where-they-are-read.md) | Registry tag names and digests are validated where read it | Accepted | 2026-10-27 |
 <!-- project:end index -->
