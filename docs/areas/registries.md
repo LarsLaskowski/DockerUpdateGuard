@@ -27,7 +27,13 @@ retry policy and the failure model.
   ([Base images](base-images.md), [Update detection](update-detection.md), [Scan engine](scan-engine.md)).
 - A *failed* outcome from a registry names the HTTP status code and includes an excerpt of the response body the remote side sent:
   its first 500 characters (decoded as UTF-8 unless a byte-order mark names another encoding), followed by `…` when the body was longer; an OCI reason phrase is cut to
-  100 characters the same way. The message length is bounded everywhere, but the read is bounded (about 8 KiB) only for
+  100 characters the same way. In every such excerpt (response body, reason phrase, rejected origin and Trivy's error
+  line) each control character is replaced by one space after the cut: the characters of the Unicode categories
+  Cc, Cf, Zl and Zp, that is line breaks, tabs, escape characters, bidirectional marks and zero-width characters
+  including the joiners U+200C and U+200D (so an emoji sequence or a joined word in an excerpt can come out split by
+  spaces), and a supplementary code point counts as one character. A lone surrogate becomes U+FFFD. The cut is decided
+  on the text as received, so a remote text never spans lines in a log or reorders a page; this is the one place that
+  states the rule. The message length is bounded everywhere, but the read is bounded (about 8 KiB) only for
   the streamed OCI and Docker Hub responses; Docker Engine and feed responses are buffered by `HttpClient` first. After a failed OCI or Docker Hub token exchange the excerpt is of the token failure message, which names the token request URI (OCI) or the Docker Hub user name before the token endpoint's own body excerpt, so that body may be cut away.
   The exception is a listing stopped by a rejected next-page link: it has neither a status code nor a body and names the
   rejected origin instead ([Pagination links](#pagination-links)).
@@ -102,7 +108,7 @@ retry policy and the failure model.
   `Docker Hub tag listing for 'acme/api' stopped: the next-page link pointed to a different origin (https://attacker.example)`;
   the same origin is logged as a warning. The origin text is the scheme, host (in punycode) and, unless it is the
   default, the port; user info, path and query of the link are never written. A link that cannot be parsed is
-  described as `unparseable link`. The origin text is cut to 300 characters followed by `…`.
+  described as `unparseable link`. The origin text is cut to 300 characters followed by `…` and cleaned like an excerpt ([Failure model](#failure-model-of-integrations)).
 - The guard applies only where a listing would follow the link: a listing that stops on its own condition (a Docker
   Hub bound, the maximum tag count) does not look at it, and an empty link ends the listing as before.
 - Not covered: the token service a `WWW-Authenticate` challenge names, and HTTP redirects.

@@ -1,9 +1,10 @@
+using System.Globalization;
 using System.Text;
 
 namespace DockerUpdateGuard.Infrastructure;
 
 /// <summary>
-/// Bounds remote-derived text before it reaches a failure message
+/// Bounds remote-derived text and replaces its control characters before it reaches a failure message
 /// </summary>
 internal static class ResponseBodyExcerpt
 {
@@ -33,6 +34,11 @@ internal static class ResponseBodyExcerpt
     /// Buffer size in bytes of the reader that decodes the body
     /// </summary>
     private const int ReadBufferSize = 1024;
+
+    /// <summary>
+    /// Character that replaces a lone surrogate (U+FFFD)
+    /// </summary>
+    private const char LoneSurrogateReplacement = (char)0xFFFD;
 
     #endregion // Constants
 
@@ -67,7 +73,31 @@ internal static class ResponseBodyExcerpt
     /// <returns>The text itself when nothing is replaced, otherwise the cleaned copy</returns>
     public static string ReplaceControlCharacters(string text)
     {
-        throw new InvalidOperationException("Skeleton: not implemented");
+        StringBuilder? builder = null;
+        var index = 0;
+
+        foreach (var rune in text.EnumerateRunes())
+        {
+            var length = rune.Utf16SequenceLength;
+            var isControl = IsControlCategory(Rune.GetUnicodeCategory(rune));
+            var isLoneSurrogate = isControl == false
+                                  && rune.Value == Rune.ReplacementChar.Value
+                                  && char.IsSurrogate(text[index]);
+
+            if (isControl || isLoneSurrogate)
+            {
+                builder ??= new StringBuilder(text.Length).Append(text, 0, index);
+                builder.Append(isControl ? ControlCharacterReplacement : LoneSurrogateReplacement);
+            }
+            else
+            {
+                builder?.Append(text, index, length);
+            }
+
+            index += length;
+        }
+
+        return builder is null ? text : builder.ToString();
     }
 
     /// <summary>
@@ -75,7 +105,7 @@ internal static class ResponseBodyExcerpt
     /// </summary>
     /// <param name="text">Text to cut</param>
     /// <param name="maxLength">Maximum number of characters before the truncation marker</param>
-    /// <returns>Empty string for null, the text when it fits, otherwise its prefix followed by the truncation marker</returns>
+    /// <returns>Empty string for null, the text when it fits, otherwise its prefix followed by the truncation marker, with its control characters replaced</returns>
     public static string Truncate(string? text, int maxLength)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxLength);
@@ -87,7 +117,7 @@ internal static class ResponseBodyExcerpt
 
         if (text.Length <= maxLength)
         {
-            return text;
+            return ReplaceControlCharacters(text);
         }
 
         var cut = maxLength;
@@ -97,7 +127,20 @@ internal static class ResponseBodyExcerpt
             cut--;
         }
 
-        return string.Concat(text.AsSpan(0, cut), TruncationMarker);
+        return string.Concat(ReplaceControlCharacters(text.Substring(0, cut)), TruncationMarker);
+    }
+
+    /// <summary>
+    /// Check whether a Unicode category is replaced (control, format, line or paragraph separator)
+    /// </summary>
+    /// <param name="category">Unicode category</param>
+    /// <returns>True when characters of the category are replaced</returns>
+    private static bool IsControlCategory(UnicodeCategory category)
+    {
+        return category is UnicodeCategory.Control
+                        or UnicodeCategory.Format
+                        or UnicodeCategory.LineSeparator
+                        or UnicodeCategory.ParagraphSeparator;
     }
 
     #endregion // Methods

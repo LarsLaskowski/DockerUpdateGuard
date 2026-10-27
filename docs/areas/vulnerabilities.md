@@ -102,7 +102,7 @@ scan run:
 - A non-zero exit code whose error output contains `MANIFEST_UNKNOWN`, `manifest unknown`, or both `manifest` and
   `not found` (any case) means the image is gone from the registry: *unavailable*, "The image is no longer available
   in the registry. The tag was likely re-published with a newer digest, leaving this version orphaned." Any other
-  non-zero exit code is *failed*, "Trivy exited with code X: <last line of the error output cut to 500 characters followed by `…`, or 'no error output'>".
+  non-zero exit code is *failed*, "Trivy exited with code X: <last line of the error output cut to 500 characters followed by `…`, with control characters replaced ([Registries](registries.md#failure-model-of-integrations)), or 'no error output'>".
   When `TrivyBaseUrl` contains an `@` (which validation allows only as the end of its user info), a non-empty error output is
   replaced by "error output withheld because TrivyBaseUrl may carry credentials" in the message and the log, because
   Trivy may repeat parts of the URL's user info there (measured with Trivy v0.58.1: the password masked but the user

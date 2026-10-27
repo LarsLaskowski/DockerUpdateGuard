@@ -422,7 +422,10 @@ it links:
   message into a result or a scan run, and the pages never show one for a failed user action
   ([Web UI](areas/web-ui.md#limits-and-errors)); they report a fixed reason and log the exception
   ([Registries](areas/registries.md#failure-model-of-integrations),
-  [record 0009](decisions/0009-integration-results-carry-fixed-failure-reasons.md)).
+  [record 0009](decisions/0009-integration-results-carry-fixed-failure-reasons.md)). Remote text a message
+  carries (body excerpts, reason phrase, rejected origin, Trivy's last error line) passes one helper,
+  `Infrastructure\ResponseBodyExcerpt`, which bounds it and replaces its control characters
+  ([record 0009](decisions/0009-integration-results-carry-fixed-failure-reasons.md)).
 - **Pagination stays on its origin.** `DockerHubClient`, `OciRegistryClient`
   and `DockerScoutVulnerabilityProvider` follow a next-page link only on the
   origin of the listing (`Infrastructure\PaginationLinkGuard`), so a remote
