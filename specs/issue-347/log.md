@@ -15,3 +15,5 @@ are quoted in full.
 | 2026-10-27 18:00 | 6 Implement | Dev | fix in Truncate + docs; tests green, coverage 100% changed lines (sonnet/medium · 84,947 tokens · 9 tool uses · 104 s) |
 | 2026-10-27 18:11 | 7 Code check | Orchestrator | format, build, tests 813+21, coverage 100%/86.9%, analyzer: PASS |
 | 2026-10-27 18:21 | 7 Sonar gate | Orchestrator | NOT CHECKED (HTTP 400 reading result); step 11 reads the PR analysis |
+| 2026-10-27 18:23 | 8 Review round 1 | Security | diff: APPROVED, 2 non-blocking (opus/medium · 49,401 tokens · 7 tool uses · 45 s) |
+| 2026-10-27 18:23 | 8 Review round 1 | Reviewer | 1 blocking (registries.md wording overclaims coverage) (opus/medium · 64,134 tokens · 10 tool uses · 99 s) |
