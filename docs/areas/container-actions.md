@@ -113,7 +113,8 @@ transport security; the UI is the intended caller of the actions.
 ## Limits and errors
 
 - Validation, applied only when `Enabled` is `true`, fails startup when: `BaseUrl` is missing; `BaseUrl` is not an
-  absolute `http`/`https` URI; `BaseUrl` is `http` without `AllowInsecureHttp: true`; neither `ApiToken` nor both
+  absolute `http`/`https` URI; `BaseUrl` has an `@` outside its user info ([Hosting](hosting.md), *Validation*); `BaseUrl` is `http` without
+  `AllowInsecureHttp: true`; neither `ApiToken` nor both
   `Username` and `Password` are set; `RequestTimeoutSeconds` is outside 1–300.
 - A disabled Portainer section is not validated at all; its values may be incomplete.
 - An error during a capability check or an action is reported with one fixed reason, never with the error's own text:

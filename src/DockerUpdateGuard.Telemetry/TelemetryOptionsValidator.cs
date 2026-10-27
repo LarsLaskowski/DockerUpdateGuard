@@ -42,6 +42,19 @@ public class TelemetryOptionsValidator : IValidateOptions<TelemetryOptions>
         return true;
     }
 
+    /// <summary>
+    /// Check whether an already parsed absolute URI value contains an '@' that is not the separator of a non-empty user info
+    /// </summary>
+    /// <param name="value">Configured value</param>
+    /// <param name="uri">Parsed value</param>
+    /// <returns>True when the value has an '@' outside its user info</returns>
+    private static bool HasAtSignOutsideUserInfo(string value, Uri uri)
+    {
+        return value.Contains('@')
+               && (value.IndexOf('@') != value.LastIndexOf('@')
+                   || string.IsNullOrEmpty(uri.UserInfo));
+    }
+
     #endregion // Methods
 
     #region IValidateOptions
@@ -66,11 +79,15 @@ public class TelemetryOptionsValidator : IValidateOptions<TelemetryOptions>
 
         if (string.IsNullOrWhiteSpace(options.OtlpEndpoint) == false)
         {
-            var hasValidEndpoint = TryCreateEndpoint(options.OtlpEndpoint, out _);
+            var hasValidEndpoint = TryCreateEndpoint(options.OtlpEndpoint, out var endpoint);
 
             if (hasValidEndpoint == false)
             {
                 failures.Add($"'{TelemetryOptions.SectionName}:{nameof(TelemetryOptions.OtlpEndpoint)}' must be an absolute http or https URI");
+            }
+            else if (HasAtSignOutsideUserInfo(options.OtlpEndpoint, endpoint!))
+            {
+                failures.Add($"'{TelemetryOptions.SectionName}:{nameof(TelemetryOptions.OtlpEndpoint)}' has an '@' that does not end its user info; percent-encode '@', '#', '?' and '/' in a user name or password");
             }
         }
 

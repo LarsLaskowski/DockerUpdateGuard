@@ -90,6 +90,10 @@ For example:
 
 ## Configuration reference
 
+A configured URL whose `@` is not the end of a non-empty user info fails validation at startup (for example
+`https://admin#secret@host`, which would send the credentials to host `admin`); percent-encode `@`, `#`, `?` and `/`
+in a user name or password.
+
 ### Connection and host settings
 
 | Key | Default | Required | Description |
@@ -165,7 +169,7 @@ Each entry describes one Docker Engine endpoint.
 | Key | Default | Required | Description |
 | --- | --- | --- | --- |
 | `Name` | none | Yes | Display name of the Docker instance |
-| `BaseUrl` | none | Yes | Docker endpoint URI; validation allows `http`, `https`, `tcp`, `unix`, and `npipe` |
+| `BaseUrl` | none | Yes | Docker endpoint URI; validation allows `http`, `https`, `tcp`, `unix`, and `npipe` and rejects an `@` outside its user info |
 | `Enabled` | `true` | No | Enables or disables this Docker instance |
 | `UseTls` | `false` | No | For `tcp://` endpoints, upgrade the connection to HTTPS |
 | `SkipCertificateValidation` | `false` | No | Skip server certificate validation for TLS endpoints. **Insecure:** disables TLS authentication and exposes the connection to man-in-the-middle attacks; a warning is logged at runtime whenever it is active. Use only for trusted endpoints with self-signed certificates. |
@@ -187,7 +191,7 @@ Portainer settings are optional and are only needed when Portainer-backed action
 | Key | Default | Required | Description |
 | --- | --- | --- | --- |
 | `Enabled` | `false` | No | Enables Portainer integration for the Docker instance |
-| `BaseUrl` | none | Required when enabled | Absolute `https` Portainer URL (strongly recommended); see `AllowInsecureHttp` |
+| `BaseUrl` | none | Required when enabled | Absolute `https` Portainer URL (strongly recommended), no `@` outside its user info; see `AllowInsecureHttp` |
 | `AllowInsecureHttp` | `false` | No | Allow plaintext `http` for `BaseUrl`; credentials are transmitted unencrypted — only use on localhost or trusted private networks; a warning is logged at runtime, once per Docker instance, while it is in use |
 | `Username` | none | Conditional | Username for Portainer login |
 | `Password` | none | Conditional | Password for Portainer login |

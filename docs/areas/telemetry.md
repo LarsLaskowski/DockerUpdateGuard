@@ -24,7 +24,9 @@ names and attributes stated here.
 
 - All enabled signals are exported over OTLP to one endpoint, `Telemetry:OtlpEndpoint`. It must be an absolute `http`
   or `https` URI. No transport protocol is configured by the application, so the OTLP exporter's default (gRPC, for
-  example `http://collector:4317`) applies.
+  example `http://collector:4317`) applies. An `@` in it must end a non-empty user info (as in
+  [Hosting](hosting.md), *Validation*): `http://user:secret@collector:4317` is accepted,
+  `http://admin#secret@collector:4317` is not.
 - Without `Telemetry:OtlpEndpoint`, enabled signals are collected in-process but nothing is exported. There is no
   fallback exporter (no console or Prometheus exporter).
 - An unreachable or failing collector affects only the export; scanning, the UI and the database are unaffected.
@@ -114,6 +116,8 @@ Every exported signal carries the same resource:
 
 ## Limits and errors
 
+- `Telemetry:OtlpEndpoint` with an `@` outside its user info: startup fails with
+  `'Telemetry:OtlpEndpoint' has an '@' that does not end its user info; percent-encode '@', '#', '?' and '/' in a user name or password`.
 - `Telemetry:OtlpEndpoint` set but not an absolute `http`/`https` URI: startup fails with
   `'Telemetry:OtlpEndpoint' must be an absolute http or https URI`.
 - `Telemetry:ServiceName` blank while any signal is enabled: startup fails with
