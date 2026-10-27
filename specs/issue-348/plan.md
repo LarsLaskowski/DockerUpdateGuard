@@ -266,3 +266,4 @@ Security approved the plan; its two notes are taken:
 - The area documents describe the check as what the clients accept, not as a URL guard (*Documentation updates*).
 - Invalid OCI names skipped by AC5 do not count toward `MaximumTags`: accepted, not a regression (an invalid name
   never was a usable candidate).
+- Round 2 (AC8), non-blocking: AC8 promises "without logging", but its two tests check only the status, that no request was sent, and the message. A Tester who has a logger fake available should also assert that no log entry is written.
