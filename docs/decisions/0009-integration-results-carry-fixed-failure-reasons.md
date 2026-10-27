@@ -173,6 +173,9 @@ names and digests). The fields are listed in [Registries](../areas/registries.md
   inspect) answers *not found*; a genuine Docker Engine does not report such values.
 - The replacement runs before any trimming, so a reference whose replaced characters sit only at its edges now
   resolves to the reference without them (`nginx:1.25` followed by an escape character becomes `nginx:1.25`).
+- Only Trivy's title falls back when its cleaned value is blank. A `PrimaryURL` made only of control characters is kept
+  as blanks instead of falling back to `References`: the pages show no link for a blank URL, nothing is exposed, and
+  before #353 such a value did not fall back either.
 - Portainer environment names keep their own rule from
   [0010](0010-portainer-environment-is-used-only-when-unambiguous.md) (`?` instead of a space, cut to 64 UTF-16 units).
 - After a failed registry token exchange the excerpt is taken of the token failure message, which names the token request URI (OCI) or the Docker Hub user name before the token endpoint's own body excerpt, so that body may be cut away.
