@@ -1139,6 +1139,218 @@ public partial class DockerInstanceClientTests
     }
 
     /// <summary>
+    /// Verify discovery replaces control characters in the identifiers, names, image fields and labels of a container
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerInstanceClientDiscoverContainersAsyncWhenFieldsHaveControlCharactersReplacesThemAsync()
+    {
+        var containersJson = """
+                             [
+                               {
+                                 "Id": "c\u000Aid\u202E1",
+                                 "Names": ["/na\u000Ame\u202Ex"],
+                                 "Image": "docker.io/net\u001Bworld/app:1\u200B0",
+                                 "ImageID": "sha256:img\u001B\u200Bx",
+                                 "State": "running",
+                                 "Labels": {
+                                   "com.docker.compose.project": "pro\u000Aj\u202Ex",
+                                   "com.docker.stack.namespace": "sta\u000Ack\u202Ex",
+                                   "com.docker.swarm.service.name": "ser\u000Avice\u202Ex"
+                                 }
+                               }
+                             ]
+                             """;
+        var inspectJson = """
+                          { "Id": "sha256:img", "RepoDigests": ["acme/app@sha256:ab\u202Ecd"] }
+                          """;
+
+        Assert.Contains("\\u202E", containersJson, "The container input must carry the escaped format character");
+        Assert.Contains("\\u000A", containersJson, "The container input must carry the escaped line feed");
+        Assert.Contains("\\u202E", inspectJson, "The inspect input must carry the escaped format character");
+
+        using var handler = new SequenceHttpMessageHandler();
+        using var httpClient = new HttpClient(handler)
+                               {
+                                   BaseAddress = new Uri("https://docker.example.test/"),
+                               };
+
+        handler.AddJsonResponse("https://docker.example.test/v1.41/containers/json?all=1", containersJson);
+        handler.AddJsonResponse("https://docker.example.test/v1.41/images/sha256%3Aimg%20%20x/json", inspectJson);
+
+        var client = new DockerInstanceClient(new TestLogger<DockerInstanceClient>(), (_, _) => httpClient);
+        var instanceOptions = new DockerInstanceOptions
+                              {
+                                  Name = "Production",
+                                  BaseUrl = "https://docker.example.test",
+                                  Enabled = true,
+                              };
+
+        var result = await client.DiscoverContainersAsync(instanceOptions, TestContext.CancellationToken).ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "Discovery must succeed for a well-formed answer");
+        Assert.IsNotNull(result.Data, "Discovery must return the containers");
+
+        var container = Assert.ContainsSingle(result.Data, "Discovery must return the one container");
+
+        Assert.AreEqual("c id 1", container.ContainerId, "The container ID must carry a space for each replaced character");
+        Assert.AreEqual("na me x", container.Name, "The name must be cleaned");
+        Assert.AreEqual("docker.io/net world/app:1 0", container.ImageReference, "The image reference must carry a space for each replaced character");
+        Assert.AreEqual("sha256:img  x", container.LocalImageId, "The local image ID must carry a space for each replaced character");
+        Assert.AreEqual("pro j x", container.ComposeProject, "The compose project label must be cleaned");
+        Assert.AreEqual("sta ck x", container.StackName, "The stack namespace label must be cleaned");
+        Assert.AreEqual("ser vice x", container.ServiceName, "The swarm service name label must be cleaned");
+        Assert.Contains(request => request.RequestUri == "https://docker.example.test/v1.41/images/sha256%3Aimg%20%20x/json",
+                        handler.Requests,
+                        "The image inspect request must name the cleaned local image ID");
+        Assert.AreEqual("sha256:ab cd", container.ImageDigest, "The resolved digest must come from the cleaned repository digest");
+    }
+
+    /// <summary>
+    /// Verify resource sampling replaces control characters in the identifier and name of a container
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerInstanceClientCollectContainerResourceUsageAsyncWhenFieldsHaveControlCharactersReplacesThemAsync()
+    {
+        var containersJson = """
+                             [
+                               { "Id": "c\u000Aid\u202E1", "Names": ["/na\u000Ame\u202Ex"] }
+                             ]
+                             """;
+
+        Assert.Contains("\\u202E", containersJson, "The container input must carry the escaped format character");
+        Assert.Contains("\\u000A", containersJson, "The container input must carry the escaped line feed");
+
+        using var handler = new SequenceHttpMessageHandler();
+        using var httpClient = new HttpClient(handler)
+                               {
+                                   BaseAddress = new Uri("https://docker.example.test/"),
+                               };
+
+        handler.AddJsonResponse("https://docker.example.test/v1.41/containers/json", containersJson);
+        handler.AddJsonResponse("https://docker.example.test/v1.41/containers/c%20id%201/stats?stream=false", """{ "read": "2025-06-01T12:00:00Z" }""");
+
+        var client = new DockerInstanceClient(new TestLogger<DockerInstanceClient>(), (_, _) => httpClient);
+        var instanceOptions = new DockerInstanceOptions
+                              {
+                                  Name = "Production",
+                                  BaseUrl = "https://docker.example.test",
+                                  Enabled = true,
+                              };
+
+        var result = await client.CollectContainerResourceUsageAsync(instanceOptions, TestContext.CancellationToken).ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "Sampling must succeed for a well-formed answer");
+        Assert.IsNotNull(result.Data, "Sampling must return the samples");
+
+        var sample = Assert.ContainsSingle(result.Data, "Sampling must return the sample of the one container whose stats were requested under the cleaned ID");
+
+        Assert.AreEqual("c id 1", sample.ContainerId, "The sample must carry the cleaned container ID");
+        Assert.AreEqual("na me x", sample.ContainerName, "The sample must carry the cleaned container name");
+    }
+
+    /// <summary>
+    /// Verify image inspect replaces control characters in every text field it exposes
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerInstanceClientInspectImageAsyncWhenFieldsHaveControlCharactersReplacesThemAsync()
+    {
+        var json = """
+                   {
+                     "Id": "sha256:lo\u000Acal\u202E1",
+                     "Os": "li\u000Anux\u202Ex",
+                     "Architecture": "am\u000Ad\u202E64",
+                     "RepoTags": ["docker.io/co\u000Amp\u202Eany/api:1.0.0"],
+                     "RepoDigests": ["docker.io/company/api@sha256:cu\u000Arr\u202Eent"],
+                     "Config": { "Env": ["DOTNET_VERSION=9.\u000A0\u202E.13", "\u001B"] },
+                     "RootFS": { "Layers": ["sha256:lay\u000Aer\u202E-1", "\u200B"] }
+                   }
+                   """;
+
+        Assert.Contains("\\u202E", json, "The test input must carry the escaped format character");
+        Assert.Contains("\\u000A", json, "The test input must carry the escaped line feed");
+
+        using var handler = new SequenceHttpMessageHandler();
+        using var httpClient = new HttpClient(handler)
+                               {
+                                   BaseAddress = new Uri("https://docker.example.test/"),
+                               };
+
+        handler.AddJsonResponse("https://docker.example.test/v1.41/images/sha256%3Alocal-image/json", json);
+
+        var client = new DockerInstanceClient(new TestLogger<DockerInstanceClient>(), (_, _) => httpClient);
+        var instanceOptions = new DockerInstanceOptions
+                              {
+                                  Name = "Production",
+                                  BaseUrl = "https://docker.example.test",
+                                  Enabled = true,
+                              };
+
+        var result = await client.InspectImageAsync(instanceOptions, "sha256:local-image", TestContext.CancellationToken).ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "Image inspect must succeed for a well-formed answer");
+        Assert.IsNotNull(result.Data, "Image inspect must expose the parsed payload");
+        Assert.AreEqual("sha256:lo cal 1", result.Data.Id, "The image ID must be cleaned");
+        Assert.AreEqual("li nux x", result.Data.OperatingSystem, "The operating system must be cleaned");
+        Assert.AreEqual("am d 64", result.Data.Architecture, "The architecture must be cleaned");
+        Assert.AreSequenceEqual(["docker.io/co mp any/api:1.0.0"], result.Data.RepoTags.ToArray(), "The repo tags must be cleaned");
+        Assert.AreSequenceEqual(["docker.io/company/api@sha256:cu rr ent"], result.Data.RepoDigests.ToArray(), "The repo digests must be cleaned");
+        Assert.AreSequenceEqual(["DOTNET_VERSION=9. 0 .13"], result.Data.EnvironmentVariables.ToArray(), "The environment variables must be cleaned and one that is only replaced characters must be dropped like a blank one");
+        Assert.AreSequenceEqual(["sha256:lay er -1"], result.Data.RootFsLayers.ToArray(), "The layers must be cleaned and one that is only replaced characters must be dropped like a blank one");
+    }
+
+    /// <summary>
+    /// Verify image history replaces control characters in the created-by command, comment and tags
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerInstanceClientGetImageHistoryAsyncWhenFieldsHaveControlCharactersReplacesThemAsync()
+    {
+        var json = """
+                   [
+                     {
+                       "Created": "2025-06-02T12:00:00Z",
+                       "CreatedBy": "/bin/sh -c #(nop)\u000A ENV A=1\u202E2",
+                       "Comment": "fi\u000Anal\u202E stage",
+                       "Tags": ["docker.io/co\u000Amp\u202Eany/api:1.0.0"]
+                     }
+                   ]
+                   """;
+
+        Assert.Contains("\\u202E", json, "The test input must carry the escaped format character");
+        Assert.Contains("\\u000A", json, "The test input must carry the escaped line feed");
+
+        using var handler = new SequenceHttpMessageHandler();
+        using var httpClient = new HttpClient(handler)
+                               {
+                                   BaseAddress = new Uri("https://docker.example.test/"),
+                               };
+
+        handler.AddJsonResponse("https://docker.example.test/v1.41/images/sha256%3Alocal-image/history", json);
+
+        var client = new DockerInstanceClient(new TestLogger<DockerInstanceClient>(), (_, _) => httpClient);
+        var instanceOptions = new DockerInstanceOptions
+                              {
+                                  Name = "Production",
+                                  BaseUrl = "https://docker.example.test",
+                                  Enabled = true,
+                              };
+
+        var result = await client.GetImageHistoryAsync(instanceOptions, "sha256:local-image", TestContext.CancellationToken).ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "Image history must succeed for a well-formed answer");
+        Assert.IsNotNull(result.Data, "Image history must expose the parsed entries");
+
+        var entry = Assert.ContainsSingle(result.Data, "Image history must expose the one entry");
+
+        Assert.AreEqual("/bin/sh -c #(nop)  ENV A=1 2", entry.CreatedBy, "The created-by command must be cleaned");
+        Assert.AreEqual("fi nal  stage", entry.Comment, "The comment must be cleaned");
+        Assert.AreSequenceEqual(["docker.io/co mp any/api:1.0.0"], entry.Tags.ToArray(), "The tags must be cleaned");
+    }
+
+    /// <summary>
     /// Create a Bad Request response with an oversized body
     /// </summary>
     /// <returns>Response</returns>

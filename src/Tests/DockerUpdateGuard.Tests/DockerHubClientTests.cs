@@ -1230,6 +1230,217 @@ public partial class DockerHubClientTests
     }
 
     /// <summary>
+    /// Verify the Docker Hub image configuration replaces control characters in environment variables, label values, operating system and architecture
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerHubClientGetImageConfigurationAsyncWhenFieldsHaveControlCharactersReplacesThemAsync()
+    {
+        var blobJson = """
+                       {
+                         "os": "li\u000Anux\u202Ex",
+                         "architecture": "am\u000Ad\u202E64",
+                         "config": {
+                           "Env": ["A=1\u000A2\u202E3", "\u001B"],
+                           "Labels": {
+                             "org.example.ver\u202Esion": "1\u000A.0\u200B.2",
+                             "plain": "unchanged"
+                           }
+                         }
+                       }
+                       """;
+
+        Assert.Contains("\\u202E", blobJson, "The test input must carry the escaped format character");
+        Assert.Contains("\\u000A", blobJson, "The test input must carry the escaped line feed");
+
+        using var handler = new DelegateHttpMessageHandler(request => CreateBaseImageChainResponse(request, blobJson));
+        using var httpClient = new HttpClient(handler);
+
+        var client = CreateClient(httpClient);
+
+        var result = await client.GetImageConfigurationAsync(new ImageReference
+                                                             {
+                                                                 Registry = "docker.io",
+                                                                 Repository = "library/app",
+                                                                 Tag = "latest",
+                                                             },
+                                                             CancellationToken.None)
+                                 .ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "The configuration lookup must succeed for a well-formed blob");
+        Assert.IsNotNull(result.Data, "The configuration lookup must return the configuration");
+        Assert.AreEqual("li nux x", result.Data.OperatingSystem, "The operating system must be cleaned");
+        Assert.AreEqual("am d 64", result.Data.Architecture, "The architecture must be cleaned");
+        Assert.AreSequenceEqual(["A=1 2 3"], result.Data.EnvironmentVariables.ToArray(), "The environment variables must be cleaned and one that is only replaced characters must be dropped like a blank one");
+        Assert.AreEqual("1 .0 .2", result.Data.Labels["org.example.ver\u202Esion"], "The label value must be cleaned while the label name stays as received");
+        Assert.AreEqual("unchanged", result.Data.Labels["plain"], "A label value without such a character must stay unchanged");
+    }
+
+    /// <summary>
+    /// Verify the Docker Hub base-image resolution replaces control characters in the base-image labels before it parses them
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerHubClientResolveBaseImagesAsyncWhenBaseImageLabelsHaveControlCharactersReplacesThemAsync()
+    {
+        var blobJson = """
+                       {
+                         "config": {
+                           "Labels": {
+                             "org.opencontainers.image.base.name": "docker.io/library/de\u001Bbian:1\u202E2",
+                             "org.opencontainers.image.base.digest": "sha256:ab\u200Bcd"
+                           }
+                         }
+                       }
+                       """;
+
+        Assert.Contains("\\u202E", blobJson, "The test input must carry the escaped format character");
+        Assert.Contains("\\u001B", blobJson, "The test input must carry the escaped escape character");
+
+        using var handler = new DelegateHttpMessageHandler(request => CreateBaseImageChainResponse(request, blobJson));
+        using var httpClient = new HttpClient(handler);
+
+        var client = CreateClient(httpClient);
+
+        var result = await client.ResolveBaseImagesAsync(new ImageReference
+                                                         {
+                                                             Registry = "docker.io",
+                                                             Repository = "library/app",
+                                                             Tag = "latest",
+                                                         },
+                                                         CancellationToken.None)
+                                 .ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "The base-image resolution must succeed for well-formed blobs");
+        Assert.IsNotNull(result.Data, "The base-image resolution must return the base images");
+
+        var baseImage = Assert.ContainsSingle(result.Data, "The base-image resolution must return the one base image of the chain");
+
+        Assert.AreEqual("docker.io", baseImage.Registry, "The registry of the base image must be kept");
+        Assert.AreEqual("library/de bian", baseImage.Repository, "The repository of the base image must be cleaned");
+        Assert.AreEqual("1 2", baseImage.Tag, "The tag of the base image must be cleaned");
+        Assert.AreEqual("sha256:ab cd", baseImage.Digest, "The digest of the base image must be cleaned");
+    }
+
+    /// <summary>
+    /// Verify the Docker Hub repository listing replaces control characters in the repository name and the description
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerHubClientGetRepositoriesAsyncWhenFieldsHaveControlCharactersReplacesThemAsync()
+    {
+        var json = """
+                   {
+                     "next": null,
+                     "results": [
+                       {
+                         "namespace": "ac\u000Ame",
+                         "name": "ap\u202Ei",
+                         "description": "De\u001Bsc\u200Bription",
+                         "last_updated": "2025-04-01T10:00:00Z"
+                       }
+                     ]
+                   }
+                   """;
+
+        Assert.Contains("\\u202E", json, "The test input must carry the escaped format character");
+        Assert.Contains("\\u000A", json, "The test input must carry the escaped line feed");
+
+        using var handler = new DelegateHttpMessageHandler(request => CreateHubResponse(request, () => CreateJsonResponse(json)));
+        using var httpClient = new HttpClient(handler)
+                               {
+                                   BaseAddress = new Uri("https://hub.docker.com/"),
+                               };
+
+        var client = CreateClient(httpClient);
+
+        var result = await client.GetRepositoriesAsync("acme", CancellationToken.None)
+                                 .ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "The listing must succeed for a well-formed answer");
+        Assert.IsNotNull(result.Data, "The listing must return the repositories");
+
+        var repository = Assert.ContainsSingle(result.Data, "The listing must return the one repository");
+
+        Assert.AreEqual("ac me/ap i", repository.Repository, "The repository name built from namespace and name must be cleaned");
+        Assert.AreEqual("De sc ription", repository.Description, "The description must be cleaned");
+    }
+
+    /// <summary>
+    /// Verify the Docker Hub repository lookup replaces control characters in the description
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerHubClientGetRepositoryAsyncWhenDescriptionHasControlCharactersReplacesThemAsync()
+    {
+        var json = """
+                   { "description": "De\u001Bsc\u200Bription\u202Ex", "last_updated": "2025-04-01T10:00:00Z" }
+                   """;
+
+        Assert.Contains("\\u202E", json, "The test input must carry the escaped format character");
+        Assert.Contains("\\u001B", json, "The test input must carry the escaped escape character");
+
+        using var handler = new DelegateHttpMessageHandler(request => CreateHubResponse(request, () => CreateJsonResponse(json)));
+        using var httpClient = new HttpClient(handler)
+                               {
+                                   BaseAddress = new Uri("https://hub.docker.com/"),
+                               };
+
+        var client = CreateClient(httpClient);
+
+        var result = await client.GetRepositoryAsync(new ImageReference
+                                                     {
+                                                         Registry = "docker.io",
+                                                         Repository = "acme/api",
+                                                         Tag = "latest",
+                                                     },
+                                                     CancellationToken.None)
+                                 .ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "The lookup must succeed for a well-formed answer");
+        Assert.IsNotNull(result.Data, "The lookup must return the repository");
+        Assert.AreEqual("De sc ription x", result.Data.Description, "The description must be cleaned");
+    }
+
+    /// <summary>
+    /// Verify the Docker Hub account lookup replaces control characters in the user name of the result and of the log entry
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerHubClientGetCurrentUserAsyncWhenUserNameHasControlCharactersReplacesThemInResultAndLogAsync()
+    {
+        var json = """
+                   { "username": "ac\u000Am\u202Ee" }
+                   """;
+
+        Assert.Contains("\\u202E", json, "The test input must carry the escaped format character");
+        Assert.Contains("\\u000A", json, "The test input must carry the escaped line feed");
+
+        var logger = new TestLogger<DockerHubClient>();
+
+        using var handler = new DelegateHttpMessageHandler(request => CreateHubResponse(request, () => CreateJsonResponse(json)));
+        using var httpClient = new HttpClient(handler)
+                               {
+                                   BaseAddress = new Uri("https://hub.docker.com/"),
+                               };
+
+        var client = CreateClient(httpClient, logger: logger);
+
+        var result = await client.GetCurrentUserAsync(CancellationToken.None)
+                                 .ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "The lookup must succeed for a well-formed answer");
+        Assert.IsNotNull(result.Data, "The lookup must return the account");
+        Assert.AreEqual("ac m e", result.Data.UserName, "The user name of the result must be cleaned");
+
+        var entry = Assert.ContainsSingle(logEntry => logEntry.EventId.Id == 3204, logger.Entries, "The resolved account must be logged once as event 3204");
+
+        Assert.Contains("ac m e", entry.Message, "The log entry must name the cleaned user name");
+        Assert.DoesNotContain("\n", entry.Message, "The log entry must carry no line feed from the remote user name");
+        Assert.DoesNotContain("\u202E", entry.Message, "The log entry must carry no bidirectional control character from the remote user name");
+    }
+
+    /// <summary>
     /// Assert no request went to the rejected origin and no credential left Docker Hub
     /// </summary>
     /// <param name="handler">Observing handler</param>
@@ -1361,6 +1572,36 @@ public partial class DockerHubClientTests
                                                Encoding.UTF8,
                                                "application/json"),
                };
+    }
+
+    /// <summary>
+    /// Answer the requests of a registry lookup: the first image carries the given config blob, every further image has no labels
+    /// </summary>
+    /// <param name="request">Request</param>
+    /// <param name="firstBlobJson">Config blob of library/app</param>
+    /// <returns>Response</returns>
+    private static HttpResponseMessage CreateBaseImageChainResponse(HttpRequestMessage request, string firstBlobJson)
+    {
+        var uri = request.RequestUri!;
+
+        if (string.Equals(uri.Host, "auth.docker.io", StringComparison.Ordinal))
+        {
+            return CreateJsonResponse("""{ "token": "registry-token" }""");
+        }
+
+        if (uri.AbsolutePath.Contains("/manifests/", StringComparison.Ordinal))
+        {
+            return CreateJsonResponse("""{ "schemaVersion": 2, "config": { "digest": "sha256:config" } }""");
+        }
+
+        if (uri.AbsolutePath.Contains("/blobs/", StringComparison.Ordinal))
+        {
+            return CreateJsonResponse(uri.AbsolutePath.Contains("/library/app/", StringComparison.Ordinal)
+                                          ? firstBlobJson
+                                          : """{ "config": { "Labels": {} } }""");
+        }
+
+        return new HttpResponseMessage(HttpStatusCode.NotFound);
     }
 
     #endregion // Methods

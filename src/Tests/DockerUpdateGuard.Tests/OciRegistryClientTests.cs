@@ -939,6 +939,138 @@ public partial class OciRegistryClientTests
         Assert.IsEmpty(logger.Entries, "Nothing may be logged for an invalid requested tag");
     }
 
+    /// <summary>
+    /// Verify the OCI image configuration replaces control characters in environment variables, label values, operating system and architecture
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task OciRegistryClientGetImageConfigurationAsyncWhenFieldsHaveControlCharactersReplacesThemAsync()
+    {
+        var blobJson = """
+                       {
+                         "os": "li\u000Anux\u202Ex",
+                         "architecture": "am\u000Ad\u202E64",
+                         "config": {
+                           "Env": ["A=1\u000A2\u202E3", "\u001B"],
+                           "Labels": {
+                             "org.example.ver\u202Esion": "1\u000A.0\u200B.2",
+                             "plain": "unchanged"
+                           }
+                         }
+                       }
+                       """;
+
+        Assert.Contains("\\u202E", blobJson, "The test input must carry the escaped format character");
+        Assert.Contains("\\u000A", blobJson, "The test input must carry the escaped line feed");
+
+        using var handler = new SequenceHttpMessageHandler();
+        using var httpClient = new HttpClient(handler);
+
+        handler.AddResponse("https://mcr.microsoft.com/v2/dotnet/aspnet/manifests/8.0",
+                            CreateManifestResponse("sha256:aspnet",
+                                                   """
+                                                   { "schemaVersion": 2, "config": { "digest": "sha256:aspnet-config" } }
+                                                   """));
+        handler.AddJsonResponse("https://mcr.microsoft.com/v2/dotnet/aspnet/blobs/sha256%3Aaspnet-config", blobJson);
+
+        var client = new OciRegistryClient(httpClient, new TestLogger<OciRegistryClient>());
+
+        var result = await client.GetImageConfigurationAsync(new ImageReference
+                                                             {
+                                                                 Registry = "mcr.microsoft.com",
+                                                                 Repository = "dotnet/aspnet",
+                                                                 Tag = "8.0",
+                                                             },
+                                                             CancellationToken.None)
+                                 .ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "The configuration lookup must succeed for a well-formed blob");
+        Assert.IsNotNull(result.Data, "The configuration lookup must return the configuration");
+        Assert.AreEqual("li nux x", result.Data.OperatingSystem, "The operating system must be cleaned");
+        Assert.AreEqual("am d 64", result.Data.Architecture, "The architecture must be cleaned");
+        Assert.AreSequenceEqual(["A=1 2 3"], result.Data.EnvironmentVariables.ToArray(), "The environment variables must be cleaned and one that is only replaced characters must be dropped like a blank one");
+        Assert.AreEqual("1 .0 .2", result.Data.Labels["org.example.ver\u202Esion"], "The label value must be cleaned while the label name stays as received");
+        Assert.AreEqual("unchanged", result.Data.Labels["plain"], "A label value without such a character must stay unchanged");
+    }
+
+    /// <summary>
+    /// Verify the OCI base-image resolution replaces control characters in the base-image labels before it parses them
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task OciRegistryClientResolveBaseImagesAsyncWhenBaseImageLabelsHaveControlCharactersReplacesThemAsync()
+    {
+        var blobJson = """
+                       {
+                         "config": {
+                           "Labels": {
+                             "org.opencontainers.image.base.name": "mcr.microsoft.com/dotnet/run\u001Btime:8.\u202E0",
+                             "org.opencontainers.image.base.digest": "sha256:ab\u200Bcd"
+                           }
+                         }
+                       }
+                       """;
+
+        Assert.Contains("\\u202E", blobJson, "The test input must carry the escaped format character");
+        Assert.Contains("\\u001B", blobJson, "The test input must carry the escaped escape character");
+
+        using var handler = new DelegateHttpMessageHandler(request => CreateBaseImageChainResponse(request, blobJson));
+        using var httpClient = new HttpClient(handler);
+
+        var client = new OciRegistryClient(httpClient, new TestLogger<OciRegistryClient>());
+
+        var result = await client.ResolveBaseImagesAsync(new ImageReference
+                                                         {
+                                                             Registry = "mcr.microsoft.com",
+                                                             Repository = "dotnet/aspnet",
+                                                             Tag = "8.0",
+                                                         },
+                                                         CancellationToken.None)
+                                 .ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "The base-image resolution must succeed for well-formed blobs");
+        Assert.IsNotNull(result.Data, "The base-image resolution must return the base images");
+
+        var baseImage = Assert.ContainsSingle(result.Data, "The base-image resolution must return the one base image of the chain");
+
+        Assert.AreEqual("mcr.microsoft.com", baseImage.Registry, "The registry of the base image must be kept");
+        Assert.AreEqual("dotnet/run time", baseImage.Repository, "The repository of the base image must be cleaned");
+        Assert.AreEqual("8. 0", baseImage.Tag, "The tag of the base image must be cleaned");
+        Assert.AreEqual("sha256:ab cd", baseImage.Digest, "The digest of the base image must be cleaned");
+    }
+
+    /// <summary>
+    /// Answer the requests of a base-image chain: the first image carries the given config blob, every further image has no labels
+    /// </summary>
+    /// <param name="request">Request</param>
+    /// <param name="firstBlobJson">Config blob of dotnet/aspnet</param>
+    /// <returns>Response</returns>
+    private static HttpResponseMessage CreateBaseImageChainResponse(HttpRequestMessage request, string firstBlobJson)
+    {
+        var path = request.RequestUri!.AbsolutePath;
+        var isFirstImage = path.Contains("/dotnet/aspnet/", StringComparison.Ordinal);
+
+        if (path.Contains("/manifests/", StringComparison.Ordinal))
+        {
+            return CreateManifestResponse("sha256:manifest",
+                                          """
+                                          { "schemaVersion": 2, "config": { "digest": "sha256:config" } }
+                                          """);
+        }
+
+        if (path.Contains("/blobs/", StringComparison.Ordinal))
+        {
+            return new HttpResponseMessage(HttpStatusCode.OK)
+                   {
+                       Content = new StringContent(isFirstImage ? firstBlobJson : """{ "config": { "Labels": {} } }""",
+                                                   Encoding.UTF8,
+                                                   "application/json"),
+                   };
+        }
+
+        return new HttpResponseMessage(HttpStatusCode.NotFound);
+    }
+
     #endregion // Methods
 
     #region Static methods
