@@ -91,7 +91,7 @@ public class DockerUpdateGuardOptionsValidator : IValidateOptions<DockerUpdateGu
         else if (Uri.TryCreate(options.Registry, UriKind.Absolute, out var registryUri)
                  && HasAtSignOutsideUserInfo(options.Registry, registryUri))
         {
-            failures.Add(CreateAtSignFailure($"{DockerUpdateGuardOptions.SectionName}:DockerHub:Registry"));
+            failures.Add(CreateAtSignFailure($"'{DockerUpdateGuardOptions.SectionName}:DockerHub:Registry'"));
         }
 
         if (options.RequestTimeoutSeconds is <= 0 or > 300)
@@ -147,7 +147,7 @@ public class DockerUpdateGuardOptionsValidator : IValidateOptions<DockerUpdateGu
         }
         else if (HasAtSignOutsideUserInfo(value, uri))
         {
-            failures.Add(CreateAtSignFailure(propertyPath));
+            failures.Add(CreateAtSignFailure($"'{propertyPath}'"));
         }
     }
 
@@ -298,20 +298,20 @@ public class DockerUpdateGuardOptionsValidator : IValidateOptions<DockerUpdateGu
     {
         if (string.IsNullOrWhiteSpace(instance.BaseUrl))
         {
-            failures.Add($"'{DockerUpdateGuardOptions.SectionName}:DockerInstances:{instance.Name}:BaseUrl' must be configured");
+            failures.Add($"{DescribeInstanceKey(instance.Name, "BaseUrl")} must be configured");
         }
         else if (TryValidateDockerUri(instance.BaseUrl, out var dockerUri) == false)
         {
-            failures.Add($"'{DockerUpdateGuardOptions.SectionName}:DockerInstances:{instance.Name}:BaseUrl' must use http, https, tcp, unix or npipe");
+            failures.Add($"{DescribeInstanceKey(instance.Name, "BaseUrl")} must use http, https, tcp, unix or npipe");
         }
         else if (HasAtSignOutsideUserInfo(instance.BaseUrl, dockerUri))
         {
-            failures.Add(CreateAtSignFailure($"{DockerUpdateGuardOptions.SectionName}:DockerInstances:{instance.Name}:BaseUrl"));
+            failures.Add(CreateAtSignFailure(DescribeInstanceKey(instance.Name, "BaseUrl")));
         }
 
         if (instance.RequestTimeoutSeconds is <= 0 or > 300)
         {
-            failures.Add($"'{DockerUpdateGuardOptions.SectionName}:DockerInstances:{instance.Name}:RequestTimeoutSeconds' must be between 1 and 300");
+            failures.Add($"{DescribeInstanceKey(instance.Name, "RequestTimeoutSeconds")} must be between 1 and 300");
         }
 
         if (instance.Portainer.Enabled)
@@ -330,21 +330,21 @@ public class DockerUpdateGuardOptionsValidator : IValidateOptions<DockerUpdateGu
     {
         if (string.IsNullOrWhiteSpace(portainer.BaseUrl))
         {
-            failures.Add($"'{DockerUpdateGuardOptions.SectionName}:DockerInstances:{instanceName}:Portainer:BaseUrl' must be configured when Portainer is enabled");
+            failures.Add($"{DescribeInstanceKey(instanceName, "Portainer:BaseUrl")} must be configured when Portainer is enabled");
         }
         else if (Uri.TryCreate(portainer.BaseUrl, UriKind.Absolute, out var portainerUri) == false
                  || (portainerUri.Scheme != Uri.UriSchemeHttp
                      && portainerUri.Scheme != Uri.UriSchemeHttps))
         {
-            failures.Add($"'{DockerUpdateGuardOptions.SectionName}:DockerInstances:{instanceName}:Portainer:BaseUrl' must be an absolute http or https URI");
+            failures.Add($"{DescribeInstanceKey(instanceName, "Portainer:BaseUrl")} must be an absolute http or https URI");
         }
         else if (HasAtSignOutsideUserInfo(portainer.BaseUrl, portainerUri))
         {
-            failures.Add(CreateAtSignFailure($"{DockerUpdateGuardOptions.SectionName}:DockerInstances:{instanceName}:Portainer:BaseUrl"));
+            failures.Add(CreateAtSignFailure(DescribeInstanceKey(instanceName, "Portainer:BaseUrl")));
         }
         else if (portainerUri.Scheme == Uri.UriSchemeHttp && portainer.AllowInsecureHttp == false)
         {
-            failures.Add($"'{DockerUpdateGuardOptions.SectionName}:DockerInstances:{instanceName}:Portainer:BaseUrl' uses plaintext HTTP; API keys, passwords and tokens will be transmitted unencrypted — set '{DockerUpdateGuardOptions.SectionName}:DockerInstances:{instanceName}:Portainer:AllowInsecureHttp: true' to explicitly allow it");
+            failures.Add($"{DescribeInstanceKey(instanceName, "Portainer:BaseUrl")} uses plaintext HTTP; API keys, passwords and tokens will be transmitted unencrypted — set {DescribeInstanceKey(instanceName, "Portainer:AllowInsecureHttp")} to true to explicitly allow it");
         }
 
         var hasApiToken = string.IsNullOrWhiteSpace(portainer.ApiToken) == false;
@@ -353,12 +353,12 @@ public class DockerUpdateGuardOptionsValidator : IValidateOptions<DockerUpdateGu
 
         if (hasApiToken == false && hasUsernamePassword == false)
         {
-            failures.Add($"'{DockerUpdateGuardOptions.SectionName}:DockerInstances:{instanceName}:Portainer' must have either ApiToken or Username+Password configured");
+            failures.Add($"{DescribeInstanceKey(instanceName, "Portainer")} must have either ApiToken or Username+Password configured");
         }
 
         if (portainer.RequestTimeoutSeconds is <= 0 or > 300)
         {
-            failures.Add($"'{DockerUpdateGuardOptions.SectionName}:DockerInstances:{instanceName}:Portainer:RequestTimeoutSeconds' must be between 1 and 300");
+            failures.Add($"{DescribeInstanceKey(instanceName, "Portainer:RequestTimeoutSeconds")} must be between 1 and 300");
         }
     }
 
@@ -398,11 +398,22 @@ public class DockerUpdateGuardOptionsValidator : IValidateOptions<DockerUpdateGu
     /// <summary>
     /// Create the failure text for a value with an '@' outside its user info
     /// </summary>
-    /// <param name="propertyPath">Fully qualified configuration path</param>
+    /// <param name="subject">Quoted subject the failure names</param>
     /// <returns>Failure text</returns>
-    private static string CreateAtSignFailure(string propertyPath)
+    private static string CreateAtSignFailure(string subject)
     {
-        return $"'{propertyPath}' has an '@' that does not end its user info; percent-encode '@', '#', '?' and '/' in a user name or password";
+        return $"{subject} has an '@' that does not end its user info; percent-encode '@', '#', '?' and '/' in a user name or password";
+    }
+
+    /// <summary>
+    /// Describe a key inside a Docker instance relative to that instance
+    /// </summary>
+    /// <param name="instanceName">Docker instance name as configured</param>
+    /// <param name="relativeKey">Key relative to the Docker instance entry</param>
+    /// <returns>Quoted key with the instance it belongs to</returns>
+    private static string DescribeInstanceKey(string instanceName, string relativeKey)
+    {
+        return $"'{relativeKey}' of Docker instance '{instanceName}'";
     }
 
     #endregion // Static methods
@@ -422,7 +433,7 @@ public class DockerUpdateGuardOptionsValidator : IValidateOptions<DockerUpdateGu
         {
             if (string.IsNullOrWhiteSpace(instance.Name))
             {
-                failures.Add($"'{DockerUpdateGuardOptions.SectionName}:DockerInstances:Name' must be configured");
+                failures.Add($"'Name' must be configured for every entry of '{DockerUpdateGuardOptions.SectionName}:DockerInstances'");
 
                 continue;
             }
@@ -459,7 +470,7 @@ public class DockerUpdateGuardOptionsValidator : IValidateOptions<DockerUpdateGu
             return;
         }
 
-        failures.Add($"'{DockerUpdateGuardOptions.SectionName}:DockerInstances:{instance.Name}:CertificatePath' names an unusable client certificate '{instance.CertificatePath}': {ClientCertificateLoader.DescribeFailure(status)}");
+        failures.Add($"{DescribeInstanceKey(instance.Name, "CertificatePath")} names an unusable client certificate '{instance.CertificatePath}': {ClientCertificateLoader.DescribeFailure(status)}");
     }
 
     #endregion // Methods
