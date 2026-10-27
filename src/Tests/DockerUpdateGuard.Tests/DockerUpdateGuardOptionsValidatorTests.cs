@@ -124,13 +124,13 @@ public class DockerUpdateGuardOptionsValidatorTests
         Assert.Contains(message => message.Contains("duplicate instance name", StringComparison.OrdinalIgnoreCase),
                         failures,
                         "Duplicate Docker instance names must be reported");
-        Assert.Contains(message => message.Contains("BaseUrl' must use http, https, tcp, unix or npipe", StringComparison.Ordinal),
+        Assert.Contains("'BaseUrl' of Docker instance 'Production' must use http, https, tcp, unix or npipe",
                         failures,
                         "Unsupported Docker endpoint schemes must be reported");
-        Assert.Contains(message => message.Contains("Portainer:BaseUrl' must be an absolute http or https URI", StringComparison.Ordinal),
+        Assert.Contains("'Portainer:BaseUrl' of Docker instance 'Production' must be an absolute http or https URI",
                         failures,
                         "Invalid Portainer endpoints must be reported");
-        Assert.Contains(message => message.Contains("Portainer' must have either ApiToken or Username+Password configured", StringComparison.Ordinal),
+        Assert.Contains("'Portainer' of Docker instance 'Production' must have either ApiToken or Username+Password configured",
                         failures,
                         "Missing Portainer authentication credentials must be reported");
     }
@@ -338,10 +338,10 @@ public class DockerUpdateGuardOptionsValidatorTests
         Assert.Contains(message => message.Contains("Scanning:RetainScanRunsDays", StringComparison.Ordinal),
                         failures,
                         "A scan retention period above the upper bound must be reported");
-        Assert.Contains(message => message.Contains("DockerInstances:Production:RequestTimeoutSeconds", StringComparison.Ordinal),
+        Assert.Contains("'RequestTimeoutSeconds' of Docker instance 'Production' must be between 1 and 300",
                         failures,
                         "A Docker instance timeout above the upper bound must be reported");
-        Assert.Contains(message => message.Contains("DockerInstances:Production:Portainer:RequestTimeoutSeconds", StringComparison.Ordinal),
+        Assert.Contains("'Portainer:RequestTimeoutSeconds' of Docker instance 'Production' must be between 1 and 300",
                         failures,
                         "A Portainer timeout above the upper bound must be reported");
     }
@@ -497,6 +497,87 @@ public class DockerUpdateGuardOptionsValidatorTests
     }
 
     /// <summary>
+    /// Verify every invalid key of a Docker instance is reported relative to the instance
+    /// </summary>
+    [TestMethod]
+    public void DockerUpdateGuardOptionsValidatorInvalidDockerInstanceReturnsFailuresRelativeToInstance()
+    {
+        var validator = CreateAtSignValidator();
+        var options = CreateValidOptions();
+
+        options.DockerInstances = [
+                                      new DockerInstanceOptions
+                                      {
+                                          Name = "Production",
+                                          BaseUrl = string.Empty,
+                                          RequestTimeoutSeconds = 0,
+                                          Portainer = new PortainerOptions
+                                                      {
+                                                          Enabled = true,
+                                                          BaseUrl = string.Empty,
+                                                          RequestTimeoutSeconds = 0,
+                                                      },
+                                      },
+                                  ];
+
+        var validationResult = validator.Validate(Options.DefaultName, options);
+        var failures = validationResult.Failures?.ToArray() ?? [];
+
+        Assert.IsTrue(validationResult.Failed, "An invalid Docker instance must fail validation");
+        Assert.AreSequenceEqual([
+                                    "'BaseUrl' of Docker instance 'Production' must be configured",
+                                    "'RequestTimeoutSeconds' of Docker instance 'Production' must be between 1 and 300",
+                                    "'Portainer:BaseUrl' of Docker instance 'Production' must be configured when Portainer is enabled",
+                                    "'Portainer' of Docker instance 'Production' must have either ApiToken or Username+Password configured",
+                                    "'Portainer:RequestTimeoutSeconds' of Docker instance 'Production' must be between 1 and 300"
+                                ],
+                                failures,
+                                "Every failure of the instance must name its key relative to the instance, in check order");
+        Assert.DoesNotContain(message => message.Contains("DockerInstances:Production", StringComparison.Ordinal),
+                              failures,
+                              "No failure may place the instance name where the list position belongs");
+    }
+
+    /// <summary>
+    /// Verify a Docker instance without a name is reported naming the section
+    /// </summary>
+    [TestMethod]
+    public void DockerUpdateGuardOptionsValidatorDockerInstanceWithoutNameReturnsFailureNamingSection()
+    {
+        var validator = CreateAtSignValidator();
+        var options = CreateValidOptions();
+
+        options.DockerInstances = [
+                                      new DockerInstanceOptions
+                                      {
+                                          Name = string.Empty,
+                                          BaseUrl = "unix:///var/run/docker.sock",
+                                      },
+                                      new DockerInstanceOptions
+                                      {
+                                          Name = "   ",
+                                          BaseUrl = "unix:///var/run/docker.sock",
+                                      },
+                                  ];
+
+        var validationResult = validator.Validate(Options.DefaultName, options);
+        var failures = validationResult.Failures?.ToArray() ?? [];
+        var nameFailures = failures.Where(message => message.Contains("'Name' must be configured", StringComparison.Ordinal))
+                                   .ToArray();
+
+        Assert.IsTrue(validationResult.Failed, "Docker instances without a name must fail validation");
+        Assert.AreSequenceEqual([
+                                    "'Name' must be configured for every entry of 'DockerUpdateGuard:DockerInstances'",
+                                    "'Name' must be configured for every entry of 'DockerUpdateGuard:DockerInstances'"
+                                ],
+                                nameFailures,
+                                "Every entry without a name must be reported once with the exact text");
+        Assert.DoesNotContain(message => message.Contains("'DockerUpdateGuard:DockerInstances:Name'", StringComparison.Ordinal),
+                              failures,
+                              "No failure may name the non-key DockerInstances:Name");
+    }
+
+    /// <summary>
     /// Verify that a Portainer BaseUrl using http without AllowInsecureHttp fails validation
     /// </summary>
     [TestMethod]
@@ -529,9 +610,9 @@ public class DockerUpdateGuardOptionsValidatorTests
         var failures = validationResult.Failures?.ToArray() ?? [];
 
         Assert.IsTrue(validationResult.Failed, "A Portainer BaseUrl with plaintext http and AllowInsecureHttp=false must fail validation");
-        Assert.Contains(message => message.Contains("AllowInsecureHttp", StringComparison.Ordinal),
+        Assert.Contains("'Portainer:BaseUrl' of Docker instance 'Production' uses plaintext HTTP; API keys, passwords and tokens will be transmitted unencrypted — set 'Portainer:AllowInsecureHttp' of Docker instance 'Production' to true to explicitly allow it",
                         failures,
-                        "The plaintext HTTP failure must reference AllowInsecureHttp");
+                        "The plaintext HTTP failure must carry the exact text naming the opt-in key relative to the instance");
     }
 
     /// <summary>
@@ -587,7 +668,7 @@ public class DockerUpdateGuardOptionsValidatorTests
         var failures = validationResult.Failures?.ToArray() ?? [];
 
         Assert.IsTrue(validationResult.Failed, "A PEM client certificate path must fail validation");
-        Assert.Contains("'DockerUpdateGuard:DockerInstances:Production:CertificatePath' names an unusable client certificate '/certs/client.pem': only password-less PKCS#12 files with the extension .pfx or .p12 are supported",
+        Assert.Contains("'CertificatePath' of Docker instance 'Production' names an unusable client certificate '/certs/client.pem': only password-less PKCS#12 files with the extension .pfx or .p12 are supported",
                         failures,
                         "The unsupported-format failure must carry the exact message");
         Assert.AreEqual(0, readCount, "A file with an unsupported extension must not be read");
@@ -605,7 +686,7 @@ public class DockerUpdateGuardOptionsValidatorTests
         var validationResult = validator.Validate(Options.DefaultName, options);
         var failures = validationResult.Failures?.ToArray() ?? [];
 
-        Assert.Contains("'DockerUpdateGuard:DockerInstances:Production:CertificatePath' names an unusable client certificate '/certs/client.pfx': the file does not exist",
+        Assert.Contains("'CertificatePath' of Docker instance 'Production' names an unusable client certificate '/certs/client.pfx': the file does not exist",
                         failures,
                         "A missing certificate file must fail validation with the exact message");
     }
@@ -623,7 +704,7 @@ public class DockerUpdateGuardOptionsValidatorTests
         var validationResult = validator.Validate(Options.DefaultName, options);
         var failures = validationResult.Failures?.ToArray() ?? [];
 
-        Assert.Contains("'DockerUpdateGuard:DockerInstances:Production:CertificatePath' names an unusable client certificate '/certs/client.pfx': the file cannot be read or is not a password-less PKCS#12 bundle",
+        Assert.Contains("'CertificatePath' of Docker instance 'Production' names an unusable client certificate '/certs/client.pfx': the file cannot be read or is not a password-less PKCS#12 bundle",
                         failures,
                         "A password-protected bundle must fail validation with the exact message");
     }
@@ -641,7 +722,7 @@ public class DockerUpdateGuardOptionsValidatorTests
         var validationResult = validator.Validate(Options.DefaultName, options);
         var failures = validationResult.Failures?.ToArray() ?? [];
 
-        Assert.Contains("'DockerUpdateGuard:DockerInstances:Production:CertificatePath' names an unusable client certificate '/certs/client.pfx': the bundle contains no certificate with a private key",
+        Assert.Contains("'CertificatePath' of Docker instance 'Production' names an unusable client certificate '/certs/client.pfx': the bundle contains no certificate with a private key",
                         failures,
                         "A bundle without private key must fail validation with the exact message");
     }
@@ -732,7 +813,7 @@ public class DockerUpdateGuardOptionsValidatorTests
         var validationResult = validator.Validate(Options.DefaultName, options);
         var failures = validationResult.Failures?.ToArray() ?? [];
 
-        Assert.Contains(message => message.Contains("Production:CertificatePath' names an unusable client certificate", StringComparison.Ordinal),
+        Assert.Contains("'CertificatePath' of Docker instance 'Production' names an unusable client certificate '/certs/client.pem': only password-less PKCS#12 files with the extension .pfx or .p12 are supported",
                         failures,
                         "An enabled instance must be checked for its certificate path whatever its transport");
     }
@@ -752,7 +833,7 @@ public class DockerUpdateGuardOptionsValidatorTests
     [DataRow("http://admin#secret@portainer.local")]
     public void DockerUpdateGuardOptionsValidatorPortainerBaseUrlWithAtSignOutsideUserInfoReturnsFailure(string baseUrl)
     {
-        const string key = "DockerUpdateGuard:DockerInstances:Production:Portainer:BaseUrl";
+        const string key = "Portainer:BaseUrl";
 
         var validator = CreateAtSignValidator();
         var options = CreateValidOptions();
@@ -774,11 +855,11 @@ public class DockerUpdateGuardOptionsValidatorTests
 
         var validationResult = validator.Validate(Options.DefaultName, options);
         var failures = validationResult.Failures?.ToArray() ?? [];
-        var keyFailures = failures.Where(message => message.Contains($"'{key}'", StringComparison.Ordinal))
+        var keyFailures = failures.Where(message => message.Contains($"'{key}' of Docker instance 'Production'", StringComparison.Ordinal))
                                   .ToArray();
 
         Assert.IsTrue(validationResult.Failed, "A Portainer base URL with an at sign outside its user info must fail validation");
-        Assert.AreSequenceEqual([CreateAtSignFailure(key)],
+        Assert.AreSequenceEqual([CreateInstanceAtSignFailure(key, "Production")],
                                 keyFailures,
                                 "The at sign failure must be the only failure naming the Portainer base URL key, replacing the plaintext HTTP failure");
         Assert.DoesNotContain(message => message.Contains("secret", StringComparison.Ordinal),
@@ -797,7 +878,7 @@ public class DockerUpdateGuardOptionsValidatorTests
     [DataRow("tcp:admin@docker.example:2376")]
     public void DockerUpdateGuardOptionsValidatorDockerInstanceBaseUrlWithAtSignOutsideUserInfoReturnsFailure(string baseUrl)
     {
-        const string key = "DockerUpdateGuard:DockerInstances:Production:BaseUrl";
+        const string key = "BaseUrl";
 
         var validator = CreateAtSignValidator();
         var options = CreateValidOptions();
@@ -812,11 +893,11 @@ public class DockerUpdateGuardOptionsValidatorTests
 
         var validationResult = validator.Validate(Options.DefaultName, options);
         var failures = validationResult.Failures?.ToArray() ?? [];
-        var keyFailures = failures.Where(message => message.Contains($"'{key}'", StringComparison.Ordinal))
+        var keyFailures = failures.Where(message => message.Contains($"'{key}' of Docker instance 'Production'", StringComparison.Ordinal))
                                   .ToArray();
 
         Assert.IsTrue(validationResult.Failed, "A Docker instance base URL with an at sign outside its user info must fail validation");
-        Assert.AreSequenceEqual([CreateAtSignFailure(key)],
+        Assert.AreSequenceEqual([CreateInstanceAtSignFailure(key, "Production")],
                                 keyFailures,
                                 "The at sign failure must be the only failure naming the Docker instance base URL key");
         Assert.DoesNotContain(message => message.Contains("secret", StringComparison.Ordinal),
@@ -961,6 +1042,17 @@ public class DockerUpdateGuardOptionsValidatorTests
     private static string CreateAtSignFailure(string key)
     {
         return $"'{key}' has an '@' that does not end its user info; percent-encode '@', '#', '?' and '/' in a user name or password";
+    }
+
+    /// <summary>
+    /// Create the failure text the plan fixes for an at sign outside the user info of a key inside a Docker instance
+    /// </summary>
+    /// <param name="key">Key relative to the Docker instance</param>
+    /// <param name="instanceName">Configured instance name</param>
+    /// <returns>Failure text</returns>
+    private static string CreateInstanceAtSignFailure(string key, string instanceName)
+    {
+        return $"'{key}' of Docker instance '{instanceName}' has an '@' that does not end its user info; percent-encode '@', '#', '?' and '/' in a user name or password";
     }
 
     /// <summary>

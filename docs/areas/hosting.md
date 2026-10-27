@@ -45,10 +45,15 @@ every feature area relies on it for validated configuration and a migrated datab
   `DockerHub:Registry` when it is an absolute URI (a plain registry name such as `docker.io` is not checked); the
   `Telemetry:OtlpEndpoint` rule is in [Telemetry](telemetry.md). It is checked after the existing configured,
   absolute and scheme rules, so a value gets at most one of these failures, and it replaces the Portainer
-  plaintext-HTTP failure. The failure is exactly `'<key>' has an '@' that does not end its user info; percent-encode '@', '#', '?' and '/' in a user name or password`, with the full configuration path as key and never the
+  plaintext-HTTP failure. The failure is exactly `<subject> has an '@' that does not end its user info; percent-encode '@', '#', '?' and '/' in a user name or password`, where the subject is `'<key>'` with the full configuration path as key, or `'<key>' of Docker instance '<Name>'` for a key inside a Docker instance, and never the
   value. The reason: the URI parser ends the authority at the first `/`, `?` or `#`, so
   `https://admin#secret@portainer.example` would send the credentials to host `admin`. Percent-encode `@`, `#`, `?`
   and `/` in a user name or password to keep such a URL working.
+- A failure about a key inside a Docker instance entry names the key relative to the entry and the instance by its
+  configured name, as `'<key>' of Docker instance '<Name>'`, for example `'Portainer:BaseUrl' of Docker instance
+  'Production' must be configured when Portainer is enabled`, because configuration addresses the entries by list
+  position, not by name. An entry without a name is reported as `'Name' must be configured for every entry of
+  'DockerUpdateGuard:DockerInstances'`. See [decision 0013](../decisions/0013-docker-instance-keys-are-named-relative-to-the-instance.md).
 - The rules for feature keys (Docker Hub, release metadata, vulnerabilities, scanning, Docker instances, Portainer)
   are part of the respective area documents; they are enforced by the same validation step.
 

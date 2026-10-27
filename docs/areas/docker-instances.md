@@ -156,7 +156,7 @@ on the snapshots and samples it produces.
   `RequestTimeoutSeconds` outside 1–300. The shipped `appsettings.json`
   contains one instance with an empty `Name`, so an operator must set a name before the application starts.
 - An unusable `CertificatePath` of an enabled instance fails startup with
-  `'DockerUpdateGuard:DockerInstances:<Name>:CertificatePath' names an unusable client certificate '<path>': <reason>`,
+  `'CertificatePath' of Docker instance '<Name>' names an unusable client certificate '<path>': <reason>`,
   where the reason is one of:
   - `only password-less PKCS#12 files with the extension .pfx or .p12 are supported` — any other extension (or none);
     the file is not read;

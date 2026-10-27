@@ -180,9 +180,9 @@ Recommended Linux socket configuration:
 
 | Key | Example value |
 | --- | --- |
-| `DockerUpdateGuard:DockerInstances[0]:Name` | `Local Docker` |
-| `DockerUpdateGuard:DockerInstances[0]:BaseUrl` | `unix:///var/run/docker.sock` |
-| `DockerUpdateGuard:DockerInstances[0]:Enabled` | `true` |
+| `DockerUpdateGuard:DockerInstances:0:Name` | `Local Docker` |
+| `DockerUpdateGuard:DockerInstances:0:BaseUrl` | `unix:///var/run/docker.sock` |
+| `DockerUpdateGuard:DockerInstances:0:Enabled` | `true` |
 
 ### `DockerUpdateGuard:DockerInstances[].Portainer`
 
