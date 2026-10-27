@@ -1,6 +1,6 @@
 # 0013: Validation messages name Docker instance keys relative to the instance
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-27
 - **Area:** Hosting and configuration
 - **Source:** Issue #330
