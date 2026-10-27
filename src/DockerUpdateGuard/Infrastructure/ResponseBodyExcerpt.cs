@@ -10,6 +10,11 @@ internal static class ResponseBodyExcerpt
     #region Constants
 
     /// <summary>
+    /// Character that replaces every control, format, line or paragraph separator character
+    /// </summary>
+    public const char ControlCharacterReplacement = ' ';
+
+    /// <summary>
     /// Maximum number of characters of a response body excerpt
     /// </summary>
     public const int MaxBodyLength = 500;
@@ -53,6 +58,16 @@ internal static class ResponseBodyExcerpt
                 return Truncate(new string(buffer, 0, count), MaxBodyLength);
             }
         }
+    }
+
+    /// <summary>
+    /// Replace every control, format, line or paragraph separator character of a text with a space and every lone surrogate with U+FFFD
+    /// </summary>
+    /// <param name="text">Text to clean</param>
+    /// <returns>The text itself when nothing is replaced, otherwise the cleaned copy</returns>
+    public static string ReplaceControlCharacters(string text)
+    {
+        throw new InvalidOperationException("Skeleton: not implemented");
     }
 
     /// <summary>
