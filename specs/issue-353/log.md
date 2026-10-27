@@ -16,4 +16,5 @@ are quoted in full.
 | 2026-10-27 21:00 | 7 Sonar gate | Orchestrator | NOT CHECKED: dotnet-sonarscanner not installed; left to step 11 |
 | 2026-10-27 21:01 | 8 Review | squad-security | diff: APPROVED, 2 non-blocking (Trivy ReferenceUrl fallback, empty title) (opus/medium · 53,581 tokens · 7 tool uses · 47 s) |
 | 2026-10-27 21:02 | 8 Review | squad-reviewer | round 1: APPROVE, no findings (opus/medium · 71,711 tokens · 11 tool uses · 74 s) |
-| 2026-10-27 21:04 | 9 PR approval | squad-lead | approve-pr: APPROVED; Security finding 1 accepted unfixed (record 0009 bullet), finding 2 no action (opus/medium · usage pending) |
+| 2026-10-27 21:04 | 9 PR approval | squad-lead | approve-pr: APPROVED; Security finding 1 accepted unfixed (record 0009 bullet), finding 2 no action (opus/medium · 38,900 tokens · 7 tool uses · 47 s) |
+| 2026-10-27 21:05 | 8 Review delta | squad-reviewer | delta on record bullet: APPROVE (opus/medium · 2,827 tokens · 3 tool uses · 15 s · continued) |
