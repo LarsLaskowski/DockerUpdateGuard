@@ -64,7 +64,12 @@ jobs:
             exit 1
           fi
           docker pull "$BASE_RUNTIME"
-          DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' "$BASE_RUNTIME")
+          REPO_DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' "$BASE_RUNTIME")
+          DIGEST="${REPO_DIGEST#*@}"
+          if [[ ! "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::Unexpected base image digest '$REPO_DIGEST' for $BASE_RUNTIME"
+            exit 1
+          fi
           echo "name=$BASE_RUNTIME" >> "$GITHUB_OUTPUT"
           echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
 

@@ -460,9 +460,9 @@ the two production projects that matter for this split:
   Docker image (tagged with the version and `latest`) to Docker Hub
   (`networlddev/dockerupdateguard`) and creates a GitHub Release with
   auto-generated notes. It reads the runtime base image from the
-  Dockerfile's `BASE_RUNTIME` default, pulls it for its digest and passes
-  both as build arguments, so the `org.opencontainers.image.base.name` and
-  `org.opencontainers.image.base.digest` labels name the same image.
+  Dockerfile's `BASE_RUNTIME` default, pulls it for its bare digest (`sha256:…`,
+  with the repository prefix of the `RepoDigests` entry stripped) and passes both as build arguments, so the
+  `org.opencontainers.image.base.name` and `org.opencontainers.image.base.digest` labels name the same image.
 - **Container image**
   (`src/DockerUpdateGuard/Dockerfile`): multi-stage — SDK build stage,
   a `trivy` CLI stage copied in from the official Trivy image (so the
