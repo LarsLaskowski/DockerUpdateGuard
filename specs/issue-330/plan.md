@@ -163,3 +163,8 @@ values (`docs/areas/hosting.md`, *Validation*).
 - Naming which nameless entry failed (its position in key order): the shipped configuration has one entry; record
   0013, *Consequences*.
 - Cleaning control characters from the echoed instance name: unchanged behavior, not part of this issue.
+
+## Security notes
+
+- `CreateAtSignFailure` changes from taking a bare path to taking an already-quoted subject. If the Dev misses the quotes at either top-level caller (lines 94 and 150), the top-level `@` messages would silently change. The AC4 tests as planned (`DockerUpdateGuardOptionsValidatorHttpUrlsWithAtSignOutsideUserInfoReturnFailures`, unchanged) catch this; they just need to stay exact-match.
+- The instance name is still echoed without cleaning out control characters. That is today's behavior and correctly listed as out of scope.
