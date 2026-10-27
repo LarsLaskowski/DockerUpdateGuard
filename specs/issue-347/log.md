@@ -17,3 +17,4 @@ are quoted in full.
 | 2026-10-27 18:21 | 7 Sonar gate | Orchestrator | NOT CHECKED (HTTP 400 reading result); step 11 reads the PR analysis |
 | 2026-10-27 18:23 | 8 Review round 1 | Security | diff: APPROVED, 2 non-blocking (opus/medium · 49,401 tokens · 7 tool uses · 45 s) |
 | 2026-10-27 18:23 | 8 Review round 1 | Reviewer | 1 blocking (registries.md wording overclaims coverage) (opus/medium · 64,134 tokens · 10 tool uses · 99 s) |
+| 2026-10-27 18:24 | 8 Fix round 1 | Dev | registries.md wording corrected (sonnet/medium · 2,073 tokens · 2 tool uses · 80 s · continued) |
