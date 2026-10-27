@@ -9,6 +9,15 @@ namespace DockerUpdateGuard.Configuration;
 /// </summary>
 public class DockerUpdateGuardOptionsValidator : IValidateOptions<DockerUpdateGuardOptions>
 {
+    #region Constants
+
+    /// <summary>
+    /// Key of the Portainer base URL relative to a Docker instance
+    /// </summary>
+    private const string PortainerBaseUrlKey = "Portainer:BaseUrl";
+
+    #endregion // Constants
+
     #region Fields
 
     /// <summary>
@@ -330,21 +339,21 @@ public class DockerUpdateGuardOptionsValidator : IValidateOptions<DockerUpdateGu
     {
         if (string.IsNullOrWhiteSpace(portainer.BaseUrl))
         {
-            failures.Add($"{DescribeInstanceKey(instanceName, "Portainer:BaseUrl")} must be configured when Portainer is enabled");
+            failures.Add($"{DescribeInstanceKey(instanceName, PortainerBaseUrlKey)} must be configured when Portainer is enabled");
         }
         else if (Uri.TryCreate(portainer.BaseUrl, UriKind.Absolute, out var portainerUri) == false
                  || (portainerUri.Scheme != Uri.UriSchemeHttp
                      && portainerUri.Scheme != Uri.UriSchemeHttps))
         {
-            failures.Add($"{DescribeInstanceKey(instanceName, "Portainer:BaseUrl")} must be an absolute http or https URI");
+            failures.Add($"{DescribeInstanceKey(instanceName, PortainerBaseUrlKey)} must be an absolute http or https URI");
         }
         else if (HasAtSignOutsideUserInfo(portainer.BaseUrl, portainerUri))
         {
-            failures.Add(CreateAtSignFailure(DescribeInstanceKey(instanceName, "Portainer:BaseUrl")));
+            failures.Add(CreateAtSignFailure(DescribeInstanceKey(instanceName, PortainerBaseUrlKey)));
         }
         else if (portainerUri.Scheme == Uri.UriSchemeHttp && portainer.AllowInsecureHttp == false)
         {
-            failures.Add($"{DescribeInstanceKey(instanceName, "Portainer:BaseUrl")} uses plaintext HTTP; API keys, passwords and tokens will be transmitted unencrypted — set {DescribeInstanceKey(instanceName, "Portainer:AllowInsecureHttp")} to true to explicitly allow it");
+            failures.Add($"{DescribeInstanceKey(instanceName, PortainerBaseUrlKey)} uses plaintext HTTP; API keys, passwords and tokens will be transmitted unencrypted — set {DescribeInstanceKey(instanceName, "Portainer:AllowInsecureHttp")} to true to explicitly allow it");
         }
 
         var hasApiToken = string.IsNullOrWhiteSpace(portainer.ApiToken) == false;
