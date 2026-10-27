@@ -14,3 +14,4 @@ are quoted in full.
 | 2026-10-27 17:58 | 5 Tests first | Tester | 10 tests (AC1-AC6), 27 fail on current code, none deferred (sonnet/medium · 99,878 tokens · 11 tool uses · 99 s) |
 | 2026-10-27 18:00 | 6 Implement | Dev | fix in Truncate + docs; tests green, coverage 100% changed lines (sonnet/medium · 84,947 tokens · 9 tool uses · 104 s) |
 | 2026-10-27 18:11 | 7 Code check | Orchestrator | format, build, tests 813+21, coverage 100%/86.9%, analyzer: PASS |
+| 2026-10-27 18:21 | 7 Sonar gate | Orchestrator | NOT CHECKED (HTTP 400 reading result); step 11 reads the PR analysis |
