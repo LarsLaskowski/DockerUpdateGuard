@@ -46,7 +46,8 @@ these grammars, so such a value is never a usable update target.
 
 The registry clients accept a tag name only when it matches the tag grammar of the OCI distribution specification and
 a digest only when it matches the digest grammar of the OCI image specification and has at most 255 characters; a
-listed tag with another name is skipped, another digest is unknown. The rules are in
+listed tag with another name is skipped, another digest is unknown, and a lookup for another requested tag finds
+nothing. The rules are in
 [Registries](../areas/registries.md#what-can-be-read).
 
 ## Consequences
@@ -54,7 +55,9 @@ listed tag with another name is skipped, another digest is unknown. The rules ar
 - A registry that publishes a tag Docker cannot pull no longer shows it as a candidate or a recommendation, and the
   skip is not logged, so an operator does not learn of it.
 - A tag whose digest is invalid is listed without a digest and therefore never becomes a stored tag candidate.
-- Values that reach the catalog outside the tag data — image references in base-image labels, repository names of
-  the Docker Hub account listing, Docker Engine container names and labels — are not covered and are tracked
-  separately. Vulnerability advisory fields are handled by
+- A single-tag lookup for a requested tag outside the tag grammar is answered *not found* without a request, so a tag
+  taken from a base-image label, which is parsed unchecked, no longer reaches the tag metadata or a manifest URL.
+- Values that reach the catalog outside the tag data — the other parts of base-image label references, repository
+  names of the Docker Hub account listing, Docker Engine container names and labels — are not covered and are tracked
+  in [#355](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/355). Vulnerability advisory fields are handled by
   [#271](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/271).

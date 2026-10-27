@@ -43,10 +43,12 @@ decisions (truncation before deduplication, isolating each image version) and fi
 | 7 | OCI tag grammar: at most 128 characters, `[a-zA-Z0-9_][a-zA-Z0-9._-]{0,127}` | distribution-spec `spec.md` lines 158-160 (main) | confirmed |
 | 8 | OCI digest grammar: `algorithm ":" encoded`, components `[a-z0-9]+`, separators `[+._-]`, encoded `[a-zA-Z0-9=_-]+` | image-spec `descriptor.md` lines 81-85 (main) | confirmed |
 | 9 | Every `DockerHubTagData` is created in the two clients only | `grep "new DockerHubTagData" src/DockerUpdateGuard`: `DockerHubClient.cs:243`, `OciRegistryClient.cs:756,1233` | confirmed |
-| 10 | After the fix `MetadataJson` stays under 4000: System.Text.Json writes at most 6 characters per UTF-16 unit (`\uXXXX`), and a stored tag is at most 200 and a digest at most 255 characters: 6 × 455 + about 75 ≈ 2805 | the arithmetic; the OCI single lookup reports the requested tag, which comes from a stored `ImageVersion.Tag` (200) | confirmed |
+| 10 | After the fix `MetadataJson` stays under 4000: System.Text.Json writes at most 6 characters per UTF-16 unit (`\uXXXX`); every tag a client reports is valid (at most 128) and a digest at most 255 characters: 6 × 383 + about 75 ≈ 2373 | the arithmetic; both single lookups report the requested tag (`OciRegistryClient.cs:1235`, AC4), which AC8 bounds; the listing's names are bounded by AC3/AC5 | confirmed |
 | 11 | The test fixtures already satisfy both grammars (digests `sha256:<lowercase, digits, ->`, tags such as `1.2.3`, `latest`) | sweep of `Digest = "…"`, `"digest": "…"`, `Tag = "…"` in `src/Tests`; the full suite run in step 6 is the final check | confirmed |
 | 12 | `MetadataJson` is never read | only writes and two test assertions (`grep MetadataJson src`) | confirmed |
 | 13 | A tag `..` from an OCI listing is escaped by `Uri.EscapeDataString` (unchanged) and then removed as a dot segment, so the manifest request goes to `/v2/<repo>/` on the same origin; the grammar now drops it | `OciRegistryClient.cs:396`; a side effect only | confirmed |
+| 14 | The base-image single lookup requests a tag parsed unchecked from the `org.opencontainers.image.base.name` label; its result is serialized into `MetadataJson` (`ImageScanOrchestrator.cs:602`) even when `ResolveStoredBaseImageTagAsync` (`:264-311`) stores a different, valid tag; `failureMessage` takes the lookup's `Message` (`:608`) | `ImageScanOrchestrator.cs:575-608`, `OciRegistryClient.cs:959-972`, `DockerHubClient.cs:764-771`, `OciRegistryClient.cs:1213-1218` → `CreateManifestUri` (`:396`) | confirmed |
+| 15 | `CanStopDockerHubScan` (`RegistryTagQueryHelper.cs:21-39`) runs per record in `AppendTagPage` (`DockerHubClient.cs:470`); skipping an invalid record before it means an invalid record older than `PublishedSinceUtc` no longer ends the scan | `DockerHubClient.cs:449-472` | confirmed |
 
 ## Acceptance criteria
 
@@ -66,6 +68,10 @@ decisions (truncation before deduplication, isolating each image version) and fi
 - [ ] AC7: an unknown Docker Scout severity is logged as `ResponseBodyExcerpt.Truncate(severity,
   ResponseBodyExcerpt.MaxReasonPhraseLength)`: at most 100 characters plus `…`, control characters replaced. The
   severity still maps to *not set*.
+- [ ] AC8: both single lookups (`DockerHubClient.GetTagAsync`, `OciRegistryClient.GetTagAsync`) answer *not found*
+  without sending any HTTP request and without logging when the requested tag is not a valid tag (AC1); the result's
+  message is the fixed text `Requested tag is not a valid registry tag` and quotes no part of the tag. An unsupported
+  registry is still answered *unsupported* first.
 
 ## Tests per criterion
 
@@ -78,6 +84,12 @@ decisions (truncation before deduplication, isolating each image version) and fi
 | AC5 | `OciRegistryClientGetTagsAsyncSkipsInvalidTagNamesAsync` (`tags/list` with `1.0`, a 129-character name, `..`, `2.0`; assert listed tags and that no manifest request named an invalid name) | `src/Tests/DockerUpdateGuard.Tests/OciRegistryClientTests.cs` |
 | AC6 | `OciRegistryClientGetTagAsyncOversizedDigestHeaderReturnsNoDigestAsync` (256-character valid-grammar header → null); `OciRegistryClientGetTagAsyncMaximumLengthDigestHeaderIsKeptAsync` (255 characters → kept) | same |
 | AC7 | `DockerScoutVulnerabilityProviderGetVulnerabilitiesAsyncUnknownSeverityIsLoggedBoundedAsync` (severity of 1 000 characters with a U+000A inside the first 100 → the logged value is 101 characters, ends with `…`, contains no U+000A; the finding is *not set*) | `src/Tests/DockerUpdateGuard.Tests/DockerScoutVulnerabilityProviderTests.cs` |
+| AC8 | `DockerHubClientGetTagAsyncInvalidRequestedTagReturnsNotFoundWithoutRequestAsync` (DataRows: 129 × `a`, `..`; status *not found*, the handler saw no request, message equals the fixed text) | `src/Tests/DockerUpdateGuard.Tests/DockerHubClientTests.cs` |
+| AC8 | `OciRegistryClientGetTagAsyncInvalidRequestedTagReturnsNotFoundWithoutRequestAsync` (same DataRows and assertions; no token or manifest request) | `src/Tests/DockerUpdateGuard.Tests/OciRegistryClientTests.cs` |
+
+For AC3, the skip comes before `CanStopDockerHubScan` (fact 15): an invalid record older than `PublishedSinceUtc` does
+not end the scan, paging continues to the next valid record. This is intended; no AC3 test expects the scan to stop
+on an invalid record.
 
 Oversized strings are generated in the test, for example `new string('a', n)`. A test whose case is a control
 character builds it with `(char)0x0A` or a `\u000A` literal, and asserts that its input contains that character.
@@ -96,9 +108,13 @@ character builds it with `(char)0x0A` or a `\u000A` literal, and asserts that it
    - `CreateTagData` sets `Digest = ValidDigestOrNull(<top-level digest>)` and `PublishedAtUtc` as today.
    - `AppendTagPage` skips a null record before any other check (current-digest tracking, keep, stop).
    - `GetTagAsync` returns `CreateTagData(root, imageReference.Tag)`.
+   - `GetTagAsync`, right after the registry support check and before the activity, the request and any log: when
+     `IsValidTag(imageReference.Tag)` is false, return `NotFound("Requested tag is not a valid registry tag")` (AC8).
 3. `OciRegistryClient`:
    - `ReadTagNamesAsync` adds a name only when `IsValidTag`.
+   - `GetTagAsync`: the same guard and message as Docker Hub, after `CanHandle`, before `GetManifestMetadataAsync`.
    - `GetTagAsync` sets `Digest = ValidDigestOrNull(manifestResult.Data.Digest)`.
+   - The message text is one shared constant on `RegistryReferenceValidator`.
 4. `DockerScoutVulnerabilityProvider.MapSeverity` logs
    `ResponseBodyExcerpt.Truncate(severity, ResponseBodyExcerpt.MaxReasonPhraseLength)`.
 5. Skipped names and dropped digests are not logged, so the rejected remote value never reaches a log.
@@ -126,7 +142,7 @@ The severity log has one option: the shared helper already bounds remote text in
 | ------- | ----------- | ------ |
 | DockerUpdateGuard | `Images/Helper/RegistryReferenceValidator.cs` | new |
 | DockerUpdateGuard | `DockerHub/DockerHubClient.cs` | `ParseTag`, new `CreateTagData`, `AppendTagPage`, `GetTagAsync` |
-| DockerUpdateGuard | `Images/OciRegistryClient.cs` | `ReadTagNamesAsync`, `GetTagAsync` |
+| DockerUpdateGuard | `Images/OciRegistryClient.cs` | `ReadTagNamesAsync`, `GetTagAsync` (guard, digest) |
 | DockerUpdateGuard | `Vulnerabilities/DockerScoutVulnerabilityProvider.cs` | `MapSeverity` |
 
 ## Signatures (for the Dev's skeleton)
@@ -134,6 +150,7 @@ The severity log has one option: the shared helper already bounds remote text in
 - `internal static partial class RegistryReferenceValidator` (namespace `DockerUpdateGuard.Images.Helper`)
   - `public const int MaxTagLength = 128;`
   - `public const int MaxDigestLength = 255;`
+  - `public const string InvalidTagMessage = "Requested tag is not a valid registry tag";`
   - `public static bool IsValidTag([NotNullWhen(true)] string? tag)`
   - `public static string? ValidDigestOrNull(string? digest)`
   - `[GeneratedRegex(@"\A[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}\z", RegexOptions.CultureInvariant, 100)] private static partial Regex TagExpression();`
@@ -170,7 +187,12 @@ Dev, against the code as built:
 
 - `docs/areas/registries.md`:
   - *What can be read*, tag lookup: Docker Hub reports the requested tag, and a digest outside the grammar or over 255
-    characters is unknown (both clients).
+    characters is unknown (both clients); a requested tag outside the tag grammar is *not found* without a request.
+    Describe the check as what the clients accept, not as a URL or request guard.
+  - *Known gaps*: one entry for the follow-up issue
+    ([#355](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/355)): the base-image label
+    reference is stored unchecked (repository, digest, source reference, the tag where no lookup resolves one),
+    repository names of the Docker Hub account listing and Docker Engine values are not checked against their columns.
   - *What can be read*, tag listing: names outside the tag grammar are skipped, by OCI before any inspection.
   - *Failure model of integrations*: add Docker Scout's unknown severity to the list of remote texts that are cut and
     cleaned ("response body, reason phrase, rejected origin and Trivy's error line").
@@ -216,8 +238,11 @@ Sweep, no edit needed:
   - Body: Found while planning #348, which validates registry tag names and digests (record 0014). Other remote values
     still reach length-limited columns unchecked:
     - the base-image reference of an image's labels (`OciRegistryClient.cs:963-972`, the Docker Hub
-      `ExtractBaseImageFromConfigAsync`), parsed without checks into registry, repository (300), tag (200), digest
-      (255) and `ImageRelationship.SourceReference` (500);
+      `ExtractBaseImageFromConfigAsync`), parsed without checks. #348 makes the single lookup answer *not found* for
+      an invalid requested tag, so its tag no longer reaches `MetadataJson`, but the parsed values are still stored
+      unchecked: registry and repository (300), the tag (200) where `ResolveStoredBaseImageTagAsync` keeps the
+      requested one, digest (255), `ImageRelationship.SourceReference` (500), and the full reference in the
+      base-image refresh log entry (`ImageScanOrchestrator.cs:610-613`);
     - repository names of the Docker Hub account listing (`DockerHubAccountImageDiscoveryService`,
       `ObservedImage.Name` 200);
     - container names and Compose labels from the Docker Engine (`ContainerSnapshot`, 200 each; not traced in
@@ -225,3 +250,19 @@ Sweep, no edit needed:
     - a U+0000 in any remote string, which PostgreSQL refuses in `text` columns (unverified).
   - Expected: decide per value whether to validate, cut or drop it before it is stored.
   - Security area: Registry and Docker Hub calls, Docker Engine access.
+## Challenge
+
+- MAJOR 1 (fact 10 wrong; the base-image label tag reaches `MetadataJson` at `ImageScanOrchestrator.cs:602` and the
+  manifest URI): accepted. Fact 10 now rests on a 128-character bound for every reported tag; fact 14 records the
+  base-image path; AC8 adds the guard to both single lookups with two tests; 0014 has a Consequences line.
+- MINOR 1 (*Known gaps* and the follow-up link): accepted. *Documentation updates* adds the `registries.md` entry;
+  0014 links #355; the follow-up body names what AC8 now covers and what stays unchecked.
+- MINOR 2 (skip before `CanStopDockerHubScan`): accepted as intended behavior; fact 15 and the note under *Tests per
+  criterion* tell the Tester.
+
+## Security review
+
+Security approved the plan; its two notes are taken:
+- The area documents describe the check as what the clients accept, not as a URL guard (*Documentation updates*).
+- Invalid OCI names skipped by AC5 do not count toward `MaximumTags`: accepted, not a regression (an invalid name
+  never was a usable candidate).
