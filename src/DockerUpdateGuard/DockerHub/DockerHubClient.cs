@@ -54,6 +54,16 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
     /// </summary>
     private const string BearerScheme = "Bearer";
 
+    /// <summary>
+    /// Registry resource of manifests
+    /// </summary>
+    private const string ManifestsResource = "manifests";
+
+    /// <summary>
+    /// Registry resource of blobs
+    /// </summary>
+    private const string BlobsResource = "blobs";
+
     #endregion // Constants
 
     #region Fields
@@ -414,6 +424,62 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
     }
 
     /// <summary>
+    /// Create the escaped namespace and repository path of a Docker Hub repository
+    /// </summary>
+    /// <param name="repository">Repository path</param>
+    /// <returns>Escaped path or null when the repository has a dot segment</returns>
+    private static string? CreateRepositoryPath(string repository)
+    {
+        if (RegistryReferenceValidator.HasDotSegment(repository))
+        {
+            return null;
+        }
+
+        var (namespaceName, repositoryName) = SplitRepository(repository);
+
+        return $"{Uri.EscapeDataString(namespaceName)}/{EscapeRepository(repositoryName)}";
+    }
+
+    /// <summary>
+    /// Create the web API path segment pair of a repository, namespace and repositories keyword included
+    /// </summary>
+    /// <param name="repositoryPath">Escaped namespace and repository path</param>
+    /// <returns>Path below the namespaces resource</returns>
+    private static string CreateRepositoryApiPath(string repositoryPath)
+    {
+        return repositoryPath.Insert(repositoryPath.IndexOf('/', StringComparison.Ordinal) + 1, "repositories/");
+    }
+
+    /// <summary>
+    /// Get the tag or, when present, the digest to request the manifest with
+    /// </summary>
+    /// <param name="imageReference">Image reference</param>
+    /// <returns>Digest or tag</returns>
+    private static string GetManifestReference(ImageReference imageReference)
+    {
+        return string.IsNullOrWhiteSpace(imageReference.Digest) ? imageReference.Tag : imageReference.Digest;
+    }
+
+    /// <summary>
+    /// Create a Docker Registry request URI for a manifest or blob
+    /// </summary>
+    /// <param name="repository">Repository path</param>
+    /// <param name="resource">Resource kind, manifests or blobs</param>
+    /// <param name="reference">Tag or digest</param>
+    /// <returns>Request URI or null when the repository or reference has a dot segment</returns>
+    private static Uri? CreateRegistryRequestUri(string repository, string resource, string reference)
+    {
+        var repositoryPath = CreateRepositoryPath(repository);
+
+        if (repositoryPath is null || RegistryReferenceValidator.HasDotSegment(reference))
+        {
+            return null;
+        }
+
+        return new Uri($"https://registry-1.docker.io/v2/{repositoryPath}/{resource}/{Uri.EscapeDataString(reference)}");
+    }
+
+    /// <summary>
     /// Read an optional string from JSON
     /// </summary>
     /// <param name="element">JSON element</param>
@@ -555,6 +621,13 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
             return;
         }
 
+        var manifestUri = CreateRegistryRequestUri(imageReference.Repository, ManifestsResource, GetManifestReference(imageReference));
+
+        if (manifestUri is null)
+        {
+            return;
+        }
+
         var registryToken = await GetRegistryTokenAsync(imageReference, cancellationToken).ConfigureAwait(false);
 
         if (registryToken is null)
@@ -562,7 +635,7 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
             return;
         }
 
-        var configDigest = await GetImageConfigDigestAsync(imageReference, registryToken, cancellationToken).ConfigureAwait(false);
+        var configDigest = await GetImageConfigDigestAsync(imageReference, manifestUri, registryToken, cancellationToken).ConfigureAwait(false);
 
         if (configDigest is null)
         {
@@ -638,18 +711,15 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
     /// Fetch the image manifest and return the config blob digest
     /// </summary>
     /// <param name="imageReference">Image reference</param>
+    /// <param name="manifestUri">Manifest request URI</param>
     /// <param name="registryToken">Registry bearer token</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Config digest or null when the manifest cannot be resolved</returns>
     private async Task<string?> GetImageConfigDigestAsync(ImageReference imageReference,
+                                                          Uri manifestUri,
                                                           string registryToken,
                                                           CancellationToken cancellationToken)
     {
-        var (namespaceName, repositoryName) = SplitRepository(imageReference.Repository);
-
-        var reference = string.IsNullOrWhiteSpace(imageReference.Digest) ? imageReference.Tag : imageReference.Digest;
-        var manifestUri = new Uri($"https://registry-1.docker.io/v2/{Uri.EscapeDataString(namespaceName)}/{EscapeRepository(repositoryName)}/manifests/{Uri.EscapeDataString(reference)}");
-
         using var request = new HttpRequestMessage(HttpMethod.Get, manifestUri);
 
         request.Headers.Authorization = new AuthenticationHeaderValue(BearerScheme, registryToken);
@@ -715,9 +785,12 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
             return null;
         }
 
-        var (namespaceName, repositoryName) = SplitRepository(imageReference.Repository);
+        var singleManifestUri = CreateRegistryRequestUri(imageReference.Repository, ManifestsResource, targetDigest);
 
-        var singleManifestUri = new Uri($"https://registry-1.docker.io/v2/{Uri.EscapeDataString(namespaceName)}/{EscapeRepository(repositoryName)}/manifests/{Uri.EscapeDataString(targetDigest)}");
+        if (singleManifestUri is null)
+        {
+            return null;
+        }
 
         using var request = new HttpRequestMessage(HttpMethod.Get, singleManifestUri);
 
@@ -762,9 +835,12 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
                                                                         string registryToken,
                                                                         CancellationToken cancellationToken)
     {
-        var (namespaceName, repositoryName) = SplitRepository(imageReference.Repository);
+        var blobUri = CreateRegistryRequestUri(imageReference.Repository, BlobsResource, configDigest);
 
-        var blobUri = new Uri($"https://registry-1.docker.io/v2/{Uri.EscapeDataString(namespaceName)}/{EscapeRepository(repositoryName)}/blobs/{Uri.EscapeDataString(configDigest)}");
+        if (blobUri is null)
+        {
+            return null;
+        }
 
         using var request = new HttpRequestMessage(HttpMethod.Get, blobUri);
 
@@ -816,9 +892,12 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
                                                                                        string registryToken,
                                                                                        CancellationToken cancellationToken)
     {
-        var (namespaceName, repositoryName) = SplitRepository(imageReference.Repository);
+        var blobUri = CreateRegistryRequestUri(imageReference.Repository, BlobsResource, configDigest);
 
-        var blobUri = new Uri($"https://registry-1.docker.io/v2/{Uri.EscapeDataString(namespaceName)}/{EscapeRepository(repositoryName)}/blobs/{Uri.EscapeDataString(configDigest)}");
+        if (blobUri is null)
+        {
+            return null;
+        }
 
         using var request = new HttpRequestMessage(HttpMethod.Get, blobUri);
 
@@ -1238,13 +1317,18 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
             return ExternalOperationResult<DockerHubRepositoryData>.Unsupported($"Registry '{imageReference.Registry}' is not supported by the Docker Hub adapter");
         }
 
-        var (namespaceName, repositoryName) = SplitRepository(imageReference.Repository);
+        var repositoryPath = CreateRepositoryPath(imageReference.Repository);
+
+        if (repositoryPath is null)
+        {
+            return ExternalOperationResult<DockerHubRepositoryData>.NotFound(RegistryReferenceValidator.DotSegmentMessage);
+        }
 
         using var activity = DockerUpdateGuardTelemetry.ActivitySource.StartActivity(TelemetryActivityNames.DockerHubRequest, ActivityKind.Client);
 
         activity?.SetTag(TelemetryTagNames.ImageReference, imageReference.FullReference);
 
-        using var response = await SendGetAsync($"v2/namespaces/{Uri.EscapeDataString(namespaceName)}/repositories/{EscapeRepository(repositoryName)}", cancellationToken).ConfigureAwait(false);
+        using var response = await SendGetAsync($"v2/namespaces/{CreateRepositoryApiPath(repositoryPath)}", cancellationToken).ConfigureAwait(false);
 
         if (response.StatusCode == HttpStatusCode.NotFound)
         {
@@ -1303,13 +1387,18 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
             return ExternalOperationResult<DockerHubTagData>.NotFound(RegistryReferenceValidator.InvalidTagMessage);
         }
 
-        var (namespaceName, repositoryName) = SplitRepository(imageReference.Repository);
+        var repositoryPath = CreateRepositoryPath(imageReference.Repository);
+
+        if (repositoryPath is null)
+        {
+            return ExternalOperationResult<DockerHubTagData>.NotFound(RegistryReferenceValidator.DotSegmentMessage);
+        }
 
         using var activity = DockerUpdateGuardTelemetry.ActivitySource.StartActivity(TelemetryActivityNames.DockerHubRequest, ActivityKind.Client);
 
         activity?.SetTag(TelemetryTagNames.ImageReference, imageReference.FullReference);
 
-        using var response = await SendGetAsync($"v2/namespaces/{Uri.EscapeDataString(namespaceName)}/repositories/{EscapeRepository(repositoryName)}/tags/{Uri.EscapeDataString(imageReference.Tag)}", cancellationToken).ConfigureAwait(false);
+        using var response = await SendGetAsync($"v2/namespaces/{CreateRepositoryApiPath(repositoryPath)}/tags/{Uri.EscapeDataString(imageReference.Tag)}", cancellationToken).ConfigureAwait(false);
 
         if (response.StatusCode == HttpStatusCode.NotFound)
         {
@@ -1356,10 +1445,15 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
             return ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Unsupported($"Registry '{registry}' is not supported by the Docker Hub adapter");
         }
 
-        var (namespaceName, repositoryName) = SplitRepository(repository);
+        var repositoryPath = CreateRepositoryPath(repository);
+
+        if (repositoryPath is null)
+        {
+            return ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.NotFound(RegistryReferenceValidator.DotSegmentMessage);
+        }
 
         var apiBaseUri = GetApiBaseUri();
-        Uri? requestUri = new Uri(apiBaseUri, $"v2/namespaces/{Uri.EscapeDataString(namespaceName)}/repositories/{EscapeRepository(repositoryName)}/tags?page_size=100");
+        Uri? requestUri = new Uri(apiBaseUri, $"v2/namespaces/{CreateRepositoryApiPath(repositoryPath)}/tags?page_size=100");
         var results = new List<DockerHubTagData>();
         var resolvedCurrentVersionTag = false;
 
@@ -1436,6 +1530,11 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
             return ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>.Unsupported($"Registry '{imageReference.Registry}' is not supported by the Docker Hub adapter");
         }
 
+        if (CreateRegistryRequestUri(imageReference.Repository, ManifestsResource, GetManifestReference(imageReference)) is null)
+        {
+            return ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>.Succeeded([]);
+        }
+
         using var activity = DockerUpdateGuardTelemetry.ActivitySource.StartActivity(TelemetryActivityNames.DockerHubRequest, ActivityKind.Client);
 
         activity?.SetTag(TelemetryTagNames.ImageReference, imageReference.FullReference);
@@ -1480,6 +1579,13 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
             return ExternalOperationResult<RegistryImageConfigurationData>.Unsupported($"Registry '{imageReference.Registry}' is not supported by the Docker Hub adapter");
         }
 
+        var manifestUri = CreateRegistryRequestUri(imageReference.Repository, ManifestsResource, GetManifestReference(imageReference));
+
+        if (manifestUri is null)
+        {
+            return ExternalOperationResult<RegistryImageConfigurationData>.NotFound(RegistryReferenceValidator.DotSegmentMessage);
+        }
+
         try
         {
             var registryToken = await GetRegistryTokenAsync(imageReference, cancellationToken).ConfigureAwait(false);
@@ -1489,7 +1595,7 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
                 return ExternalOperationResult<RegistryImageConfigurationData>.Failed($"Registry token acquisition failed for '{imageReference.FullReference}'");
             }
 
-            var configDigest = await GetImageConfigDigestAsync(imageReference, registryToken, cancellationToken).ConfigureAwait(false);
+            var configDigest = await GetImageConfigDigestAsync(imageReference, manifestUri, registryToken, cancellationToken).ConfigureAwait(false);
 
             if (string.IsNullOrWhiteSpace(configDigest))
             {

@@ -93,7 +93,9 @@ internal static partial class RegistryReferenceValidator
     /// <returns>True when the path contains a dot segment</returns>
     public static bool HasDotSegment(string path)
     {
-        return false;
+        return path.Split('/')
+                   .Any(segment => string.Equals(segment, ".", StringComparison.Ordinal)
+                                   || string.Equals(segment, "..", StringComparison.Ordinal));
     }
 
     /// <summary>

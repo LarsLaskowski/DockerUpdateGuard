@@ -390,9 +390,15 @@ public partial class OciRegistryClient : IRegistryMetadataClient
     /// <param name="registry">Registry host</param>
     /// <param name="repository">Repository path</param>
     /// <param name="reference">Tag or digest</param>
-    /// <returns>Manifest URI</returns>
-    private static Uri CreateManifestUri(string registry, string repository, string reference)
+    /// <returns>Manifest URI or null when the repository or reference has a dot segment</returns>
+    private static Uri? CreateManifestUri(string registry, string repository, string reference)
     {
+        if (RegistryReferenceValidator.HasDotSegment(repository)
+            || RegistryReferenceValidator.HasDotSegment(reference))
+        {
+            return null;
+        }
+
         return CreateRegistryUri(registry, $"v2/{EscapeRepository(repository)}/manifests/{Uri.EscapeDataString(reference)}");
     }
 
@@ -402,9 +408,15 @@ public partial class OciRegistryClient : IRegistryMetadataClient
     /// <param name="registry">Registry host</param>
     /// <param name="repository">Repository path</param>
     /// <param name="digest">Blob digest</param>
-    /// <returns>Blob URI</returns>
-    private static Uri CreateBlobUri(string registry, string repository, string digest)
+    /// <returns>Blob URI or null when the repository or digest has a dot segment</returns>
+    private static Uri? CreateBlobUri(string registry, string repository, string digest)
     {
+        if (RegistryReferenceValidator.HasDotSegment(repository)
+            || RegistryReferenceValidator.HasDotSegment(digest))
+        {
+            return null;
+        }
+
         return CreateRegistryUri(registry, $"v2/{EscapeRepository(repository)}/blobs/{Uri.EscapeDataString(digest)}");
     }
 
@@ -414,9 +426,14 @@ public partial class OciRegistryClient : IRegistryMetadataClient
     /// <param name="registry">Registry host</param>
     /// <param name="repository">Repository path</param>
     /// <param name="lastTag">Optional pagination marker</param>
-    /// <returns>Tags URI</returns>
-    private static Uri CreateTagsUri(string registry, string repository, string? lastTag)
+    /// <returns>Tags URI or null when the repository has a dot segment</returns>
+    private static Uri? CreateTagsUri(string registry, string repository, string? lastTag)
     {
+        if (RegistryReferenceValidator.HasDotSegment(repository))
+        {
+            return null;
+        }
+
         var relativePath = $"v2/{EscapeRepository(repository)}/tags/list?n=100";
 
         if (string.IsNullOrWhiteSpace(lastTag) == false)
@@ -829,8 +846,15 @@ public partial class OciRegistryClient : IRegistryMetadataClient
                                                                                            string? operatingSystem = null,
                                                                                            string? architecture = null)
     {
-        using var response = await SendManifestRequestAsync(imageReference,
-                                                            reference,
+        var manifestUri = CreateManifestUri(imageReference.Registry, imageReference.Repository, reference);
+
+        if (manifestUri is null)
+        {
+            return ExternalOperationResult<ManifestMetadata>.NotFound(RegistryReferenceValidator.DotSegmentMessage);
+        }
+
+        using var response = await SendManifestRequestAsync(manifestUri,
+                                                            imageReference.Repository,
                                                             HttpMethod.Get,
                                                             cancellationToken).ConfigureAwait(false);
 
@@ -932,6 +956,11 @@ public partial class OciRegistryClient : IRegistryMetadataClient
     {
         var blobUri = CreateBlobUri(imageReference.Registry, imageReference.Repository, configDigest);
 
+        if (blobUri is null)
+        {
+            return null;
+        }
+
         using var response = await SendRegistryRequestAsync(blobUri,
                                                             imageReference.Repository,
                                                             HttpMethod.Get,
@@ -972,20 +1001,18 @@ public partial class OciRegistryClient : IRegistryMetadataClient
     /// <summary>
     /// Send a manifest request with the OCI accept headers
     /// </summary>
-    /// <param name="imageReference">Image reference</param>
-    /// <param name="reference">Tag or digest reference</param>
+    /// <param name="manifestUri">Manifest URI</param>
+    /// <param name="repository">Repository path</param>
     /// <param name="method">HTTP method</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>HTTP response</returns>
-    private Task<HttpResponseMessage> SendManifestRequestAsync(ImageReference imageReference,
-                                                               string reference,
+    private Task<HttpResponseMessage> SendManifestRequestAsync(Uri manifestUri,
+                                                               string repository,
                                                                HttpMethod method,
                                                                CancellationToken cancellationToken)
     {
-        var manifestUri = CreateManifestUri(imageReference.Registry, imageReference.Repository, reference);
-
         return SendRegistryRequestAsync(manifestUri,
-                                        imageReference.Repository,
+                                        repository,
                                         method,
                                         request =>
                                         {
@@ -1251,6 +1278,12 @@ public partial class OciRegistryClient : IRegistryMetadataClient
 
         var normalizedRegistry = NormalizeRegistry(registry);
         var allowedOrigin = CreateTagsUri(normalizedRegistry, repository, lastTag: null);
+
+        if (allowedOrigin is null)
+        {
+            return ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.NotFound(RegistryReferenceValidator.DotSegmentMessage);
+        }
+
         Uri? requestUri = allowedOrigin;
         var tags = new List<DockerHubTagData>();
         var inspectedTagCount = 0;
@@ -1380,6 +1413,11 @@ public partial class OciRegistryClient : IRegistryMetadataClient
         }
 
         var blobUri = CreateBlobUri(imageReference.Registry, imageReference.Repository, manifestResult.Data.ConfigDigest);
+
+        if (blobUri is null)
+        {
+            return ExternalOperationResult<RegistryImageConfigurationData>.NotFound(RegistryReferenceValidator.DotSegmentMessage);
+        }
 
         using var response = await SendRegistryRequestAsync(blobUri,
                                                             imageReference.Repository,
