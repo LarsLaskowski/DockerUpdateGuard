@@ -16,3 +16,5 @@ are quoted in full.
 | 2026-10-28 19:48 | 6 Plan revise | squad-lead | Plan revised to match implementation (port 0 refused, DockerHubClient.IsSupportedRegistry guard); record 0014 extended (opus/medium · 18,366 tokens · 8 tool uses · 60 s · continued from 2 Plan) |
 | 2026-10-28 19:49 | 6 Coverage | squad-tester | Added localhost:0 AC1 row and DockerHubClient SupportsRegistry test (6 rows); filtered run green (sonnet/medium · 74,597 tokens · 12 tool uses · 176 s) |
 | 2026-10-28 19:55 | 7 Code check | Orchestrator | Format, Build 0 warn, Test 991+21 passed, Coverage gate PASS (28/28, overall 88.2%), Analyzer gate PASS, scope-check PASS; Sonar gate NOT CHECKED (HTTP 400 reading branch result; scan uploaded) - re-check on PR in step 11. Code SHA b7c15db |
+| 2026-10-28 19:57 | 8 Review | squad-reviewer | Round 1 APPROVE, no findings (opus/medium · 67,121 tokens · 9 tool uses · 64 s) |
+| 2026-10-28 19:57 | 8 Review | squad-security | Diff APPROVED, 1 non-blocking note (GetTagsAsync validates the normalized, not the raw registry; Kelvin sign/whitespace pass) (opus/medium · 54,171 tokens · 11 tool uses · 80 s) |
