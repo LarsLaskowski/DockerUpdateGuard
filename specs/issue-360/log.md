@@ -18,3 +18,4 @@ are quoted in full.
 | 2026-10-28 17:11 | 6 Decide | Lead | DECIDED (a): keep defensive null guard at DockerHubClient.cs:628, accept uncovered line; noted in plan.md, record 0014 unchanged (opus/medium · 29,326 tokens · 7 tool uses · 29 s) |
 | 2026-10-28 17:12 | 6 Documentation | Dev | Docs written: registries.md Request paths, vulnerabilities.md, image-catalog.md, ARCHITECTURE.md; decision-check PASS; follow-up issues #363 (DockerHub:UserName) and #364 (registry host) created (sonnet/medium · 6,315 tokens · 5 tool uses · 30 s · continued from 6 Implement) |
 | 2026-10-28 17:15 | 7 Code check | Orchestrator | main unchanged; Format check, Build 0 warnings, 941+21 tests, Coverage 98.7% new / 88.1% overall, Analyzer gate 0 diagnostics, scope-check PASS |
+| 2026-10-28 17:15 | 6 Documentation links | Dev | Follow-up issue #363 linked in registries.md and record 0014; decision-check PASS (sonnet/medium · 2,360 tokens · 9 tool uses · 60 s · continued from 6 Implement) |
