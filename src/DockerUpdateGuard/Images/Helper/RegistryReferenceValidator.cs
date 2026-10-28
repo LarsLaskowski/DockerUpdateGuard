@@ -42,6 +42,11 @@ internal static partial class RegistryReferenceValidator
     /// </summary>
     public const string DotSegmentMessage = "Registry request path would contain a '.' or '..' segment";
 
+    /// <summary>
+    /// Message of a lookup whose registry is not a valid host with an optional port
+    /// </summary>
+    public const string InvalidRegistryMessage = "Registry is not a valid host with an optional port";
+
     #endregion // Const fields
 
     #region Regular expressions
