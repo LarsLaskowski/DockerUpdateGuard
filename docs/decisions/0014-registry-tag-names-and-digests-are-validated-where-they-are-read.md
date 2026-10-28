@@ -51,7 +51,10 @@ request was sent and nothing resolved relatively. `a.`, `-a.com` and `a_b.com` w
 `evil.com#x` were requested from `evil.com` with the request path replaced by `/` and the rest moved into the query or
 fragment. Every registry of a host name with a port (`localhost:5000`, `registry.example.com:5000`) parses as an absolute URI whose scheme is the host name, so `SocketsHttpHandler` refused it with `NotSupportedException`,
 and the tag listing normalized it to an empty host. `https://<registry>/` parsed as a URI keeps host and port for every
-registry of the grammar and rejects a port above 65535 and a bracketed value that is no IPv6 address.
+registry of the grammar and rejects a port above 65535 and a bracketed value that is no IPv6 address; it accepts port
+0, to which no connection can be made. Before the OCI client was even chosen, the Docker Hub client's host check, which
+both clients' `CanHandle` use, threw `ArgumentException` for a value that parses as an absolute URI without a host
+(`localhost:5000`, `user:pw`), because it compared the empty host.
 
 ## Options considered
 
@@ -135,8 +138,9 @@ Hub account listing, are accepted only when they match Docker's reference gramma
 names and the source reference are cut to their columns, a container whose ID exceeds its column is left out, and
 the request builders of both registry clients and of the Docker Scout provider refuse a path with a segment that is
 exactly `.` or `..`, answered as a 404 of that request would be, without sending it; Docker Scout escapes each segment.
-The OCI client addresses only a registry that is a host with an optional port by that grammar and refuses any other
-registry the same way. The rules are in
+The OCI client addresses only a registry that is a host with an optional port from 1 to 65535 by that grammar and
+refuses any other registry the same way; the Docker Hub host check compares a value that has no URI host as a plain
+host. The rules are in
 [Registries](../areas/registries.md#what-can-be-read) and [its request paths](../areas/registries.md#request-paths),
 [Image catalog](../areas/image-catalog.md#image-references), [Vulnerabilities](../areas/vulnerabilities.md#docker-scout) and
 [Docker instances](../areas/docker-instances.md).
@@ -162,7 +166,8 @@ registry the same way. The rules are in
 - A registered reference whose registry is not a host with an optional port is answered *not found* without a request
   or log entry instead of failing its scan with an unexpected error; it can still be registered and stays in the
   catalog. Registries with a port (`localhost:5000`) are reached for the first time. A registry given to the OCI client
-  as an absolute URL is no longer accepted.
+  as an absolute URL is no longer accepted, and port 0 is refused. Choosing the client no longer throws for a registry
+  with a port; which hosts the Docker Hub client serves is unchanged.
 - Vulnerability advisory fields are handled by [#271](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/271);
   references entered by a user at registration are not remote and keep the behavior of
   [0009](0009-integration-results-carry-fixed-failure-reasons.md).

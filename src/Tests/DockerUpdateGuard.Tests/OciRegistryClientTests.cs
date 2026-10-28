@@ -1368,6 +1368,7 @@ public partial class OciRegistryClientTests
     [DataRow("localhost:")]
     [DataRow("localhost:abc")]
     [DataRow("localhost:99999")]
+    [DataRow("localhost:0")]
     [DataRow("evil.com:5000:6000")]
     [DataRow("evil.com?x")]
     [DataRow("evil.com#x")]

@@ -3,7 +3,7 @@
 Source: Issue #364
 Status: Draft
 Tier: security — the change creates a guard that confines the OCI client's requests to a registry that is a host with an optional port, keeping the path of the request where the client composed it (`.squad/routing.md`, *Tiers*: a check that confines what a URL reaches).
-Security areas touched: Registry and Docker Hub calls (`OciRegistryClient`)
+Security areas touched: Registry and Docker Hub calls (`OciRegistryClient`, `DockerHubClient.IsSupportedRegistry`)
 
 ## Problem / root cause
 
@@ -52,6 +52,7 @@ listing. Only bracketed IPv6 with a port works today. The area document claims t
 | 8 | `new UriBuilder(baseUri) { Path = path, Query = query }.Uri` gives the same URI as today's `new UriBuilder("https", registry) { Path, Query }` for hosts without a port, so existing request URIs stay unchanged | measured on 5 paths incl. `%252E%252E`, `sha256%3Aabc`, `x%20y`, query `n=100&last=1.0%2B2`: identical `AbsoluteUri` and `Authority` | confirmed |
 | 9 | `RegistryReferenceValidator.IsValidRegistry` is Docker's host grammar (DNS labels or bracketed hex/colons, optional digits port), ASCII only, at most 200 characters | `RegistryReferenceValidator.cs:71,106-111` | confirmed |
 | 10 | No production source hands the OCI client a registry in absolute-URL form | parser splits at `/` (`ImageReferenceParser.cs:120`); remote references pass `ValidReferenceOrNull` (`BaseImageLabelReader.cs:42`, `RuntimeContainerScanOrchestrator.cs:590`); Docker Hub URLs go to `DockerHubClient` (`CanHandle`, line 1216-1220); no OCI test uses one (grep `Registry = "http` in `src/Tests`) | confirmed |
+| 11a | `DockerHubClient.IsSupportedRegistry`, called by both clients' `CanHandle`, threw `ArgumentException` for a value that parses as an absolute URI without a host (`localhost:5000`, `user:pw`, `localhost:`, `localhost:abc`, `localhost:99999`, `evil.com:5000:6000`): it passed the empty `Uri.Host` to `IsSupportedDockerHubHost`, which calls `ThrowIfNullOrWhiteSpace` | found by the Dev in step 6, `DockerHubClient.cs:374,389`; fixed by taking the absolute-URI branch only for a non-empty host | confirmed |
 | 11 | Only the OCI client puts a registered registry into a request URI | `DockerHubClient` serves fixed hosts; `DockerScoutVulnerabilityProvider.cs:439` docker.io only; Trivy passes it as a CLI argument (`TrivyVulnerabilityProvider.cs:218-231`) | confirmed |
 | 12 | Record 0014 is unreleased | `git ls-remote --tags origin`: latest `v1.3.7`; `git tag --contains 4477ce7` (commit adding 0014) is empty | confirmed |
 
@@ -64,7 +65,7 @@ and `CreateTagsUri` through their `refusalMessage`; the registry is checked befo
   *not found* with the message `RegistryReferenceValidator.InvalidRegistryMessage` (exactly
   `Registry is not a valid host with an optional port`), sends no request (no token request either) and logs nothing:
   `.`, `..`, `...`, `.a`, `a..b`, `a.`, `-a.com`, `a_b.com`, `http:`, `http:evil.com`, `mailto:x`, `user:pw`,
-  `localhost:`, `localhost:abc`, `localhost:99999`, `evil.com:5000:6000`, `evil.com?x`, `evil.com#x`, `evil.com\x`
+  `localhost:`, `localhost:abc`, `localhost:99999`, `localhost:0`, `evil.com:5000:6000`, `evil.com?x`, `evil.com#x`, `evil.com\x`
   (one backslash), `evil.com%2Fx`, `a b.com`, `ex\u00e4mple.com` (the escape stands for U+00E4), `[::1`, `[a]`,
   `https://ghcr.io`.
 - [ ] AC2: For registry `.`, `..`, `evil.com?x` and `localhost:99999`, `GetTagsAsync` and `GetImageConfigurationAsync`
@@ -82,7 +83,7 @@ Registries without a port keep their request URIs: the existing `OciRegistryClie
 
 | AC | Test(s) | Test file |
 | -- | ------- | --------- |
-| AC1 | `OciRegistryClientGetTagAsyncInvalidRegistryReturnsNotFoundWithoutRequestAsync(string registry)` — one `DataRow` per form of AC1, C# literals `"evil.com\\x"` and `"ex\u00e4mple.com"` | `src/Tests/DockerUpdateGuard.Tests/OciRegistryClientTests.cs` |
+| AC1 | `OciRegistryClientGetTagAsyncInvalidRegistryReturnsNotFoundWithoutRequestAsync(string registry)` — one `DataRow` per form of AC1 (the `localhost:0` row added by the Tester), C# literals `"evil.com\\x"` and `"ex\u00e4mple.com"` | `src/Tests/DockerUpdateGuard.Tests/OciRegistryClientTests.cs` |
 | AC2 | `OciRegistryClientGetTagsAsyncInvalidRegistryReturnsNotFoundWithoutRequestAsync(string registry)`, `OciRegistryClientGetImageConfigurationAsyncInvalidRegistryReturnsNotFoundWithoutRequestAsync(string registry)`, `OciRegistryClientResolveBaseImagesAsyncInvalidRegistryReturnsNoBaseImagesWithoutRequestAsync(string registry)` — `DataRow`s of AC2 | `src/Tests/DockerUpdateGuard.Tests/OciRegistryClientTests.cs` |
 | AC3 | `OciRegistryClientGetTagAsyncRegistryWithPortRequestsHostAndPortAsync(string registry)` (4 `DataRow`s), `OciRegistryClientGetTagsAsyncRegistryWithPortKeepsPortAsync` (tag list `{"name":"corp/api","tags":[]}`) | `src/Tests/DockerUpdateGuard.Tests/OciRegistryClientTests.cs` |
 
@@ -99,7 +100,8 @@ written as the C# escape `\u00e4`, not as the letter.
 1. `RegistryReferenceValidator`: add the constant `InvalidRegistryMessage = "Registry is not a valid host with an
    optional port"` beside `DotSegmentMessage`.
 2. `OciRegistryClient.CreateRegistryUri`: return `null` unless `RegistryReferenceValidator.IsValidRegistry(registry)`
-   and `Uri.TryCreate($"https://{registry}/", UriKind.Absolute, out var baseUri)` both hold; otherwise return
+   and `Uri.TryCreate($"https://{registry}/", UriKind.Absolute, out var baseUri)` both hold and `baseUri.Port` is not 0;
+   otherwise return
    `new UriBuilder(baseUri) { Path = path, Query = query }.Uri` (path/query split unchanged). The absolute-URL branch
    (line 459-467) and `EnsureTrailingSlash` (line 483-493, then unused) are removed.
 3. `CreateManifestUri`, `CreateBlobUri`, `CreateTagsUri` get `out string refusalMessage`: the existing dot-segment
@@ -110,7 +112,10 @@ written as the C# escape `\u00e4`, not as the letter.
    1417-1420) return `NotFound(refusalMessage)`; `GetTagsAsync` (line 1282-1285) likewise; `ExtractBaseImageFromConfigAsync`
    (line 959-962) keeps returning `null`, so the base-image chain ends as for a dot segment.
 5. `NormalizeRegistry`: drop the absolute-URI branch; return `registry.Trim().ToLowerInvariant()` (keeps a port).
-6. No log entry, no change to `CanHandle`, the parser, registration, `DockerHubClient` or Docker Scout.
+6. `DockerHubClient.IsSupportedRegistry` (plan deviation, step 6): use the absolute-URI branch only when the parsed
+   `Host` is non-empty, otherwise compare the value as a plain host, so `CanHandle` no longer throws for `localhost:5000`
+   and the other host-less URI forms of fact 11a and the OCI guard is reached. Which hosts Docker Hub serves is unchanged.
+7. No log entry, no change to the parser, registration or Docker Scout.
 
 No new user-visible output beyond the fixed message, which appears where the dot-segment message does today (the scan
 run's message of an observed image, the update assessment message).
@@ -129,7 +134,8 @@ do not throw and the port defect).
 | Project | Type / file | Change |
 | ------- | ----------- | ------ |
 | DockerUpdateGuard | `Images/Helper/RegistryReferenceValidator.cs` | new constant `InvalidRegistryMessage` |
-| DockerUpdateGuard | `Images/OciRegistryClient.cs` | `CreateRegistryUri` guard, three builders report the refusal, callers use it, `NormalizeRegistry` keeps the port, `EnsureTrailingSlash` removed |
+| DockerUpdateGuard | `Images/OciRegistryClient.cs` | `CreateRegistryUri` guard (port 0 refused), three builders report the refusal, callers use it, `NormalizeRegistry` keeps the port, `EnsureTrailingSlash` removed |
+| DockerUpdateGuard | `DockerHub/DockerHubClient.cs` | `IsSupportedRegistry`: absolute-URI branch only for a non-empty `Host` (one condition) |
 | DockerUpdateGuard.Tests | `OciRegistryClientTests.cs` | tests of AC1-AC3 |
 
 ## Signatures (for the Dev's skeleton)
@@ -163,7 +169,7 @@ Files no unit test can cover: none.
 
 - `docs/areas/registries.md` — *Choice of client per registry*: the OCI client addresses the registry as host and
   optional port, the absolute-URL sentence goes; *Request paths*: a bullet on the registry check (grammar, 200
-  characters, port at most 65535, checked before the path, the message, base-image chain ends and succeeds);
+  characters, ports 1-65535 reachable and port 0 refused, checked before the path, the message, base-image chain ends and succeeds);
   *Limits and errors*, *Not found*: add the invalid registry.
 - `docs/areas/image-catalog.md` — *Image references*, last sentence on user-entered references: registry requests also
   refuse a registry that is not a host with an optional port.
@@ -179,7 +185,7 @@ Owner: Dev, after the code is green, against the code.
 - Sweep done: `grep -n "absolute URL|dot segment|registry host|non-default port"` over `docs/ARCHITECTURE.md`,
   `docs/areas/*.md`, `README.md`, `SECURITY.md`, `.squad/project.md`; the hits above are the ones the change makes
   untrue. `registries.md:87` (Docker Hub matches an absolute URL by host) and `:306` (`DockerHub:Registry`) concern the
-  Docker Hub client and stay. `vulnerabilities.md:131` (Docker Scout, docker.io only) stays.
+  Docker Hub client and stay; `registries.md` *Request paths* says the Docker Hub client matches an absolute URL by its host. `vulnerabilities.md:131` (Docker Scout, docker.io only) stays.
 
 ## Architecture check
 
@@ -197,14 +203,15 @@ origin of the first request, unchanged).
   `NotSupportedException` disappear for these inputs; the user sees the fixed `InvalidRegistryMessage`.
 - [ ] Guard forms: the consumer is `System.Uri`; the forms it accepts or rejects for a host are the measured lists in
   *Problem / root cause* and *Verified facts* 6-7. Every form either fails the grammar or the `https://<registry>/`
-  parse (refused) or is a DNS name, IPv4 or bracketed IPv6 with an optional port in 0-65535 (addressed as that host).
+  parse (refused) or is a DNS name, IPv4 or bracketed IPv6 with an optional port in 1-65535 (addressed as that host); port 0 is refused.
   Numeric shorthands such as `0x7f.1` match the grammar and reach `127.0.0.1` — the user names that host; unchanged
   by design.
 
 ## Decision records
 
 - `docs/decisions/0014-registry-tag-names-and-digests-are-validated-where-they-are-read.md` (unreleased, extended in
-  place: source #364, context paragraph, options 20-24, decision sentence, one consequence; status and index row stay
+  place: source #364, context paragraph (port 0 and the `CanHandle` exception included), options 20-24, decision
+  sentence, one consequence; status and index row stay
   `Accepted`).
 
 ## Out of scope / follow-ups
