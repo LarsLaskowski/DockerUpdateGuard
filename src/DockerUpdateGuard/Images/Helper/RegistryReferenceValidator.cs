@@ -1,6 +1,8 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Text.RegularExpressions;
 
+using DockerUpdateGuard.Images.Data;
+
 namespace DockerUpdateGuard.Images.Helper;
 
 /// <summary>
@@ -14,6 +16,16 @@ internal static partial class RegistryReferenceValidator
     /// Maximum length of a tag
     /// </summary>
     public const int MaxTagLength = 128;
+
+    /// <summary>
+    /// Maximum length of a registry host with its port
+    /// </summary>
+    public const int MaxRegistryLength = 200;
+
+    /// <summary>
+    /// Maximum length of a repository path
+    /// </summary>
+    public const int MaxRepositoryLength = 255;
 
     /// <summary>
     /// Maximum length of a digest
@@ -47,9 +59,57 @@ internal static partial class RegistryReferenceValidator
                     100)]
     private static partial Regex DigestExpression();
 
+    /// <summary>
+    /// Registry grammar pattern
+    /// </summary>
+    /// <returns>Compiled regular expression</returns>
+    [GeneratedRegex(@"\A(?:(?:[a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9-]*[a-zA-Z0-9])(?:\.(?:[a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9-]*[a-zA-Z0-9]))*|\[[a-fA-F0-9:]+\])(?::[0-9]+)?\z",
+                    RegexOptions.CultureInvariant,
+                    100)]
+    private static partial Regex RegistryExpression();
+
+    /// <summary>
+    /// Repository grammar pattern
+    /// </summary>
+    /// <returns>Compiled regular expression</returns>
+    [GeneratedRegex(@"\A[a-z0-9]+(?:(?:[._]|__|-+)[a-z0-9]+)*(?:/[a-z0-9]+(?:(?:[._]|__|-+)[a-z0-9]+)*)*\z",
+                    RegexOptions.CultureInvariant,
+                    100)]
+    private static partial Regex RepositoryExpression();
+
     #endregion // Regular expressions
 
     #region Methods
+
+    /// <summary>
+    /// Check whether a string is a valid registry host with an optional port
+    /// </summary>
+    /// <param name="registry">Registry to check</param>
+    /// <returns>True when the registry is valid</returns>
+    public static bool IsValidRegistry([NotNullWhen(true)] string? registry)
+    {
+        throw new InvalidOperationException("Skeleton: not implemented");
+    }
+
+    /// <summary>
+    /// Check whether a string is a valid repository path
+    /// </summary>
+    /// <param name="repository">Repository to check</param>
+    /// <returns>True when the repository is valid</returns>
+    public static bool IsValidRepository([NotNullWhen(true)] string? repository)
+    {
+        throw new InvalidOperationException("Skeleton: not implemented");
+    }
+
+    /// <summary>
+    /// Return the reference when registry, repository and tag are valid, with an invalid digest removed; the given instance is changed
+    /// </summary>
+    /// <param name="reference">Reference to check</param>
+    /// <returns>The same reference or null</returns>
+    public static ImageReference? ValidReferenceOrNull(ImageReference reference)
+    {
+        throw new InvalidOperationException("Skeleton: not implemented");
+    }
 
     /// <summary>
     /// Check whether a string is a valid tag
