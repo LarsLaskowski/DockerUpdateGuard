@@ -124,7 +124,9 @@ empty `logger.Entries` where no request was sent.
    constructions. `GetImageConfigurationAsync` and `ResolveBaseImageChainAsync` build the manifest URI before the token
    request: `null` answers `NotFound(DotSegmentMessage)` or ends the chain without a request; `GetImageConfigDigestAsync`
    takes that `Uri`. `GetConfigDigestFromManifestListAsync`, `ExtractBaseImageFromConfigAsync` and
-   `ExtractImageConfigurationAsync` return `null` on a `null` URI. The token scope (a query value) stays as it is.
+   `ExtractImageConfigurationAsync` return `null` on a `null` URI. `ResolveBaseImagesAsync` returns `Succeeded([])`
+   before its activity when the root manifest URI is `null`, so the refusal skips the "chain resolved" log entry (AC6,
+   no log). The token scope (a query value) stays as it is.
 4. **Docker Scout.** `CreateVulnerabilitiesUri(scoutBaseUrl, imageReference)` returns `null` when
    `HasDotSegment(imageReference.Repository)` or `HasDotSegment(imageReference.Tag)` (the namespace is the first
    segment of the repository, so one check covers both), else
