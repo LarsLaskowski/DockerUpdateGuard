@@ -11,3 +11,4 @@ are quoted in full.
 | 2026-10-28 16:32 | 3 Plan security review | Security | CHANGES_REQUIRED: B1 DockerScoutVulnerabilityProvider.cs:306 builds unescaped path (dot segments, ?/# in tag) with Bearer token, not in plan; N1, N2 non-blocking (opus/medium · 76,711 tokens · 22 tool uses · 178 s) |
 | 2026-10-28 16:35 | 3 Plan revise | Lead | RESULT: DONE, Docker Scout provider taken into scope (AC9, AC10, CreateVulnerabilitiesUri), record 0014 updated, 2 follow-up issues proposed (opus/medium · 66,124 tokens · 16 tool uses · 145 s) |
 | 2026-10-28 16:42 | 3 Plan security review (2nd) | Security | APPROVED: B1 resolved, Verified fact 16 confirmed by measurement, no blocking findings (opus/medium · usage pending) |
+| 2026-10-28 16:45 | 4 Skeleton | Dev | RegistryReferenceValidator.DotSegmentMessage and stub HasDotSegment; format 0 changes, build 0 warnings (sonnet/medium · usage pending) |
