@@ -96,8 +96,8 @@ backslash, escaped as `%5C`, stay as they are).
     user can register, which [0009](0009-integration-results-carry-fixed-failure-reasons.md) and this record leave to
     plain parsing.
 19. **Check the configured Docker Hub user name, the path segment of the account listing, here as well** — a
-    configured value is checked at startup with the other options ([Hosting](../areas/hosting.md)), so it is a
-    follow-up issue.
+    configured value is checked at startup with the other options ([Hosting](../areas/hosting.md)), so it is the follow-up
+    [#363](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/363).
 
 ## Decision
 
@@ -129,7 +129,7 @@ exactly `.` or `..`, answered as a 404 of that request would be, without sending
 - No reference, remote or entered by the user, and no digest a manifest names can steer a registry, Docker Hub or
   Docker Scout request to another path of the host, and a tag no longer reaches Scout's query. A registered reference with such a segment is answered *not found* without a
   log entry, so its scan reports it like an image the registry does not have. The configured Docker Hub user name
-  still reaches the path of the account listing unchecked (follow-up issue); the Docker Engine requests are not
+  still reaches the path of the account listing unchecked ([#363](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/363)); the Docker Engine requests are not
   covered: their container and image IDs come from the configured endpoint.
 - Vulnerability advisory fields are handled by [#271](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/271);
   references entered by a user at registration are not remote and keep the behavior of

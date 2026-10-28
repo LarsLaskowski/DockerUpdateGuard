@@ -311,7 +311,8 @@ values stored before the replacement existed, which stay until they are written 
   registries do not send, so their tags usually have no publication time. Tracked in
   [#277](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/277).
 - The configured `DockerHub:UserName` reaches the path of the account listing without a check, so `.` or `..` would
-  address another path of the Docker Hub web API. A follow-up issue validates it at startup.
+  address another path of the Docker Hub web API. Tracked in
+  [#363](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/363).
 
 ## Related decisions
 
