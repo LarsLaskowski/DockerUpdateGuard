@@ -12,3 +12,4 @@ are quoted in full.
 | 2026-10-28 19:36 | 2 Plan | Orchestrator | Follow-up issue #367 (Trivy scan target can begin with a dash) filed |
 | 2026-10-28 19:39 | 4 Skeleton | squad-dev | Added InvalidRegistryMessage constant; build 0 warnings (sonnet/medium · 73,429 tokens · 10 tool uses · 168 s) |
 | 2026-10-28 19:42 | 5 Tests first | squad-tester | Tests AC1-AC3 + 201-char row; orchestrator confirmed 42 of 83 fail on current code; [::1]:5000 row passes already (not deferred); port 0 left to Dev (sonnet/medium · 107,349 tokens · 17 tool uses · 178 s) |
+| 2026-10-28 19:47 | 6 Implement | squad-dev | Fix + docs done; suite 984 passed, coverage gate PASS (new 100%, overall 88.2%); port 0 refused (Tester to add localhost:0 row); deviation: DockerHubClient.IsSupportedRegistry empty-host guard (sonnet/medium · 128,382 tokens · 15 tool uses · 229 s) |
