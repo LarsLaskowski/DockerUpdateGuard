@@ -1405,5 +1405,112 @@ public class ImageScanOrchestratorTests
         }
     }
 
+    /// <summary>
+    /// Verify a source reference over the stored length is cut to 500 characters ending in the truncation marker
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task ImageScanOrchestratorScanAsyncWhenSourceReferenceExceedsStoredLengthCutsItAsync()
+    {
+        var longText = new string('x', 501);
+        var longReference = new ImageReference
+                            {
+                                Registry = new string('a', 200),
+                                Repository = new string('b', 255),
+                                Tag = "1.0.0",
+                                Digest = "sha256:" + new string('c', 64),
+                            }.FullReference;
+
+        var cutText = await ScanAndReadSourceReferenceAsync(longText).ConfigureAwait(false);
+        var cutReference = await ScanAndReadSourceReferenceAsync(longReference).ConfigureAwait(false);
+
+        Assert.IsGreaterThan(500, longReference.Length, "The valid reference must exceed the stored length");
+        Assert.AreEqual(500, cutText!.Length, "A source reference of 501 characters must be stored with 500 characters");
+        Assert.EndsWith("…", cutText, StringComparison.Ordinal, "The cut source reference must end with the truncation marker");
+        Assert.StartsWith(new string('x', 499), cutText, StringComparison.Ordinal, "The cut source reference must keep its first 499 characters");
+        Assert.AreEqual(500, cutReference!.Length, "A valid reference over the stored length must be stored with 500 characters");
+        Assert.EndsWith("…", cutReference, StringComparison.Ordinal, "The cut reference must end with the truncation marker");
+        Assert.StartsWith(longReference[..499], cutReference, StringComparison.Ordinal, "The cut reference must keep its first 499 characters");
+    }
+
+    /// <summary>
+    /// Scan an observed image whose resolved base image carries the given source reference and read the stored value
+    /// </summary>
+    /// <param name="sourceReference">Source reference of the resolved base image</param>
+    /// <returns>Stored source reference of the relationship</returns>
+    private async Task<string?> ScanAndReadSourceReferenceAsync(string sourceReference)
+    {
+        using (var database = new SqliteTestDatabase())
+        {
+            var dbContext = database.CreateDbContext();
+
+            await using (dbContext.ConfigureAwait(false))
+            {
+                var imageCatalogRepository = new ImageCatalogRepository(dbContext);
+                var currentImageVersion = await imageCatalogRepository.GetOrCreateImageVersionAsync("docker.io",
+                                                                                                    "company/app",
+                                                                                                    "1.0.0",
+                                                                                                    "sha256:app",
+                                                                                                    cancellationToken: CancellationToken.None)
+                                                                      .ConfigureAwait(false);
+                var observedImage = new ObservedImage
+                                    {
+                                        Name = "Company App",
+                                        CurrentImageVersionId = currentImageVersion.Id,
+                                    };
+                var baseImageResolver = Substitute.For<IBaseImageResolver>();
+                var registryMetadataService = Substitute.For<IRegistryMetadataService>();
+
+                dbContext.ObservedImages.Add(observedImage);
+                await dbContext.SaveChangesAsync(TestContext.CancellationToken)
+                               .ConfigureAwait(false);
+
+                baseImageResolver.ResolveAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
+                                 .Returns(ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>.Succeeded([
+                                                                                                                    new BaseImageDescriptor
+                                                                                                                    {
+                                                                                                                        Registry = "docker.io",
+                                                                                                                        Repository = "library/debian",
+                                                                                                                        Tag = "12.0.0",
+                                                                                                                        Digest = "sha256:base-old",
+                                                                                                                        Depth = 1,
+                                                                                                                        SourceReference = sourceReference,
+                                                                                                                    },
+                                                                                                                ]));
+                registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), cancellationToken: Arg.Any<CancellationToken>())
+                                       .Returns(ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
+                                                                                                    {
+                                                                                                        Tag = "1.0.0",
+                                                                                                        Digest = "sha256:app",
+                                                                                                        PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
+                                                                                                    }));
+                registryMetadataService.GetImageConfigurationAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
+                                       .Returns(ExternalOperationResult<RegistryImageConfigurationData>.NotFound("No registry config"));
+
+                var orchestrator = new ImageScanOrchestrator(new ApplicationTelemetry(),
+                                                             baseImageResolver,
+                                                             dbContext,
+                                                             Substitute.For<IDerivedBaseRuntimeDetector>(),
+                                                             Substitute.For<IDotNetReleaseMetadataService>(),
+                                                             Substitute.For<INginxReleaseMetadataService>(),
+                                                             imageCatalogRepository,
+                                                             new ImageReferenceParser(),
+                                                             NullLogger<ImageScanOrchestrator>.Instance,
+                                                             registryMetadataService);
+
+                await orchestrator.ScanAsync(observedImage.Id,
+                                             ScanTriggerSource.Manual,
+                                             CancellationToken.None)
+                                  .ConfigureAwait(false);
+
+                dbContext.ChangeTracker.Clear();
+
+                var relationship = await dbContext.ImageRelationships.SingleAsync(TestContext.CancellationToken).ConfigureAwait(false);
+
+                return relationship.SourceReference;
+            }
+        }
+    }
+
     #endregion // Methods
 }

@@ -1287,8 +1287,8 @@ public partial class DockerHubClientTests
                        {
                          "config": {
                            "Labels": {
-                             "org.opencontainers.image.base.name": "docker.io/library/de\u001Bbian:1\u202E2",
-                             "org.opencontainers.image.base.digest": "sha256:ab\u200Bcd"
+                             "org.opencontainers.image.base.name": "\u001Bdocker.io/library/debian:12\u202E",
+                             "org.opencontainers.image.base.digest": "\u200Bsha256:abcd"
                            }
                          }
                        }
@@ -1317,9 +1317,9 @@ public partial class DockerHubClientTests
         var baseImage = Assert.ContainsSingle(result.Data, "The base-image resolution must return the one base image of the chain");
 
         Assert.AreEqual("docker.io", baseImage.Registry, "The registry of the base image must be kept");
-        Assert.AreEqual("library/de bian", baseImage.Repository, "The repository of the base image must be cleaned");
-        Assert.AreEqual("1 2", baseImage.Tag, "The tag of the base image must be cleaned");
-        Assert.AreEqual("sha256:ab cd", baseImage.Digest, "The digest of the base image must be cleaned");
+        Assert.AreEqual("library/debian", baseImage.Repository, "The replaced characters at the edges of the name must be trimmed off the repository");
+        Assert.AreEqual("12", baseImage.Tag, "The replaced characters at the edges of the name must be trimmed off the tag");
+        Assert.AreEqual("sha256:abcd", baseImage.Digest, "The replaced character at the edge of the digest must be trimmed off the digest");
     }
 
     /// <summary>
@@ -1334,8 +1334,8 @@ public partial class DockerHubClientTests
                      "next": null,
                      "results": [
                        {
-                         "namespace": "ac\u000Ame",
-                         "name": "ap\u202Ei",
+                         "namespace": "\u001Bacme",
+                         "name": "api\u202E",
                          "description": "De\u001Bsc\u200Bription",
                          "last_updated": "2025-04-01T10:00:00Z"
                        }
@@ -1344,7 +1344,7 @@ public partial class DockerHubClientTests
                    """;
 
         Assert.Contains("\\u202E", json, "The test input must carry the escaped format character");
-        Assert.Contains("\\u000A", json, "The test input must carry the escaped line feed");
+        Assert.Contains("\\u001B", json, "The test input must carry the escaped escape character");
 
         using var handler = new DelegateHttpMessageHandler(request => CreateHubResponse(request, () => CreateJsonResponse(json)));
         using var httpClient = new HttpClient(handler)
@@ -1362,8 +1362,76 @@ public partial class DockerHubClientTests
 
         var repository = Assert.ContainsSingle(result.Data, "The listing must return the one repository");
 
-        Assert.AreEqual("ac me/ap i", repository.Repository, "The repository name built from namespace and name must be cleaned");
+        Assert.AreEqual("acme/api", repository.Repository, "The replaced characters at the edges of namespace and name must be trimmed off the repository name");
         Assert.AreEqual("De sc ription", repository.Description, "The description must be cleaned");
+    }
+
+    /// <summary>
+    /// Verify the Docker Hub base-image resolution ends with an empty chain at a label that is not a valid reference
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerHubClientResolveBaseImagesAsyncWhenBaseImageLabelIsInvalidReturnsEmptyChainAsync()
+    {
+        var blobJson = $$"""
+                         { "config": { "Labels": { "org.opencontainers.image.base.name": "docker.io/library/{{new string('a', 256)}}:12" } } }
+                         """;
+
+        using var handler = new DelegateHttpMessageHandler(request => CreateBaseImageChainResponse(request, blobJson));
+        using var httpClient = new HttpClient(handler);
+
+        var client = CreateClient(httpClient);
+
+        var result = await client.ResolveBaseImagesAsync(new ImageReference
+                                                         {
+                                                             Registry = "docker.io",
+                                                             Repository = "library/app",
+                                                             Tag = "latest",
+                                                         },
+                                                         CancellationToken.None)
+                                 .ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "An invalid label must end the chain, not fail the resolution");
+        Assert.IsNotNull(result.Data, "The resolution must return the chain");
+        Assert.IsEmpty(result.Data, "A base image with a repository over 255 characters must not be reported");
+    }
+
+    /// <summary>
+    /// Verify a listed repository whose name is not a valid repository path is reported with an empty repository
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerHubClientGetRepositoriesAsyncWhenRepositoryNameIsInvalidReturnsEmptyRepositoryAsync()
+    {
+        var json = $$"""
+                     {
+                       "next": null,
+                       "results": [
+                         { "namespace": "acme", "name": "my app" },
+                         { "namespace": "{{new string('a', 100)}}", "name": "{{new string('b', 155)}}" },
+                         { "namespace": "..", "name": "x" },
+                         { "namespace": "acme", "name": ".." },
+                         { "namespace": "acme", "name": "ok" }
+                       ]
+                     }
+                     """;
+
+        using var handler = new DelegateHttpMessageHandler(request => CreateHubResponse(request, () => CreateJsonResponse(json)));
+        using var httpClient = new HttpClient(handler)
+                               {
+                                   BaseAddress = new Uri("https://hub.docker.com/"),
+                               };
+
+        var client = CreateClient(httpClient);
+
+        var result = await client.GetRepositoriesAsync("acme", CancellationToken.None)
+                                 .ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "An invalid name must not fail the listing");
+        Assert.IsNotNull(result.Data, "The listing must return the repositories");
+        Assert.AreSequenceEqual(new[] { string.Empty, string.Empty, string.Empty, string.Empty, "acme/ok" },
+                                result.Data.Select(repository => repository.Repository).ToArray(),
+                                "A space, a total over 255 characters and the dot segments must give an empty repository, a valid name must stay");
     }
 
     /// <summary>

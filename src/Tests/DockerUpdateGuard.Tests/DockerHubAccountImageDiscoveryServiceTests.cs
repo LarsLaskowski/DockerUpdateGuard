@@ -191,6 +191,102 @@ public class DockerHubAccountImageDiscoveryServiceTests
     }
 
     /// <summary>
+    /// Verify a discovered repository name over 200 characters is cut for the observed image name, new and existing, while the catalog keeps the repository whole
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerHubAccountImageDiscoveryServiceSynchronizeAccountImagesAsyncWhenRepositoryExceedsNameLengthCutsNameAsync()
+    {
+        using (var database = new SqliteTestDatabase())
+        {
+            var dbContext = database.CreateDbContext();
+
+            await using (dbContext.ConfigureAwait(false))
+            {
+                var imageCatalogRepository = new ImageCatalogRepository(dbContext);
+                var dockerHubClient = Substitute.For<IDockerHubClient>();
+                var existingLongRepository = "acme/" + new string('a', 250);
+                var newLongRepository = "acme/" + new string('b', 250);
+                var optionsMonitor = new TestOptionsMonitor<DockerUpdateGuardOptions>(new DockerUpdateGuardOptions
+                                                                                      {
+                                                                                          DockerHub = new DockerHubOptions
+                                                                                                      {
+                                                                                                          Registry = "docker.io",
+                                                                                                          UserName = "acme",
+                                                                                                          Pat = "configured-pat",
+                                                                                                      },
+                                                                                      });
+                var existingRepository = await imageCatalogRepository.GetOrCreateRegistryRepositoryAsync("docker.io",
+                                                                                                         existingLongRepository,
+                                                                                                         CancellationToken.None)
+                                                                     .ConfigureAwait(false);
+                var existingVersion = new ImageVersion
+                                      {
+                                          RegistryRepositoryId = existingRepository.Id,
+                                          RegistryRepository = existingRepository,
+                                          Tag = "1.0.0",
+                                          Digest = "sha256:old",
+                                          Source = ImageVersionSource.ObservedImage,
+                                      };
+
+                dbContext.ImageVersions.Add(existingVersion);
+                dbContext.ObservedImages.Add(new ObservedImage
+                                             {
+                                                 Name = "Previous name",
+                                                 CurrentImageVersion = existingVersion,
+                                                 Source = RegistrationSource.Discovery,
+                                             });
+                await dbContext.SaveChangesAsync(CancellationToken.None)
+                               .ConfigureAwait(false);
+
+                dockerHubClient.GetRepositoriesAsync("acme", CancellationToken.None)
+                               .Returns(ExternalOperationResult<IReadOnlyList<DockerHubRepositoryData>>.Succeeded([
+                                                                                                                      new DockerHubRepositoryData
+                                                                                                                      {
+                                                                                                                          Registry = "docker.io",
+                                                                                                                          Repository = existingLongRepository,
+                                                                                                                      },
+                                                                                                                      new DockerHubRepositoryData
+                                                                                                                      {
+                                                                                                                          Registry = "docker.io",
+                                                                                                                          Repository = newLongRepository,
+                                                                                                                      },
+                                                                                                                  ]));
+                dockerHubClient.GetTagsAsync("docker.io",
+                                             Arg.Any<string>(),
+                                             cancellationToken: CancellationToken.None)
+                               .Returns(ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Succeeded([
+                                                                                                               new DockerHubTagData
+                                                                                                               {
+                                                                                                                   Tag = "latest",
+                                                                                                                   Digest = "sha256:new",
+                                                                                                                   PublishedAtUtc = DateTimeOffset.UtcNow,
+                                                                                                               },
+                                                                                                           ]));
+
+                var service = new DockerHubAccountImageDiscoveryService(dbContext,
+                                                                        dockerHubClient,
+                                                                        imageCatalogRepository,
+                                                                        new TestLogger<DockerHubAccountImageDiscoveryService>(),
+                                                                        optionsMonitor);
+
+                await service.SynchronizeAccountImagesAsync(CancellationToken.None)
+                             .ConfigureAwait(false);
+
+                var observedImages = await dbContext.ObservedImages.Include(entity => entity.CurrentImageVersion.RegistryRepository)
+                                                                   .ToListAsync(CancellationToken.None)
+                                                                   .ConfigureAwait(false);
+                var existingImage = observedImages.Single(entity => entity.CurrentImageVersion.RegistryRepository.Repository == existingLongRepository);
+                var newImage = observedImages.Single(entity => entity.CurrentImageVersion.RegistryRepository.Repository == newLongRepository);
+
+                Assert.HasCount(2, observedImages, "Both repositories must be kept, none may be skipped for its length");
+                Assert.AreEqual(existingLongRepository[..199] + "…", existingImage.Name, "The name of an existing observed image must be cut to 200 characters ending in the marker");
+                Assert.AreEqual(newLongRepository[..199] + "…", newImage.Name, "The name of a new observed image must be cut to 200 characters ending in the marker");
+            }
+        }
+    }
+
+    /// <summary>
     /// Verify Docker Hub account synchronization skips execution when no PAT is configured
     /// </summary>
     /// <returns>Task</returns>

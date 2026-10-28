@@ -2137,6 +2137,214 @@ public class RuntimeContainerScanOrchestratorTests
     }
 
     /// <summary>
+    /// Verify a container whose image reference is unparsable or invalid produces no snapshot, no catalog entry and no log entry, and ends the run partial with a fixed message
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task RuntimeContainerScanOrchestratorScanAllAsyncWhenImageReferenceIsInvalidRecordsNoSnapshotAsync()
+    {
+        string[] imageReferences = [$"docker.io/{new string('a', 256)}:1.0.0", "/"];
+
+        foreach (var imageReference in imageReferences)
+        {
+            using (var database = new SqliteTestDatabase())
+            {
+                var dbContext = database.CreateDbContext();
+
+                await using (dbContext.ConfigureAwait(false))
+                {
+                    var dockerInstanceClient = Substitute.For<IDockerInstanceClient>();
+                    var registryMetadataService = Substitute.For<IRegistryMetadataService>();
+                    var logger = new TestLogger<RuntimeContainerScanOrchestrator>();
+                    var orchestrator = CreateFailureOrchestrator(dbContext, dockerInstanceClient, registryMetadataService, logger);
+
+                    dockerInstanceClient.DiscoverContainersAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<CancellationToken>())
+                                        .Returns(ExternalOperationResult<IReadOnlyList<RuntimeContainerDescriptor>>.Succeeded([
+                                                                                                                                  new RuntimeContainerDescriptor
+                                                                                                                                  {
+                                                                                                                                      ContainerId = "container-1",
+                                                                                                                                      Name = "web-1",
+                                                                                                                                      ImageReference = imageReference,
+                                                                                                                                      RuntimeStatus = ContainerRuntimeStatus.Running,
+                                                                                                                                      IsRunning = true,
+                                                                                                                                  },
+                                                                                                                              ]));
+
+                    await orchestrator.ScanAllAsync(ScanTriggerSource.Scheduled, CancellationToken.None)
+                                      .ConfigureAwait(false);
+
+                    var scanRun = await dbContext.ScanRuns.SingleAsync(TestContext.CancellationToken).ConfigureAwait(false);
+                    var snapshotCount = await dbContext.ContainerSnapshots.CountAsync(TestContext.CancellationToken).ConfigureAwait(false);
+                    var versionCount = await dbContext.ImageVersions.CountAsync(TestContext.CancellationToken).ConfigureAwait(false);
+                    var repositoryCount = await dbContext.RegistryRepositories.CountAsync(TestContext.CancellationToken).ConfigureAwait(false);
+
+                    Assert.AreEqual(0, snapshotCount, $"An invalid image reference must produce no snapshot (length {imageReference.Length})");
+                    Assert.AreEqual(0, versionCount, $"An invalid image reference must produce no image version (length {imageReference.Length})");
+                    Assert.AreEqual(0, repositoryCount, $"An invalid image reference must produce no catalog repository (length {imageReference.Length})");
+                    Assert.AreEqual(ScanRunStatus.Partial, scanRun.Status, $"An invalid image reference must end the run partial (length {imageReference.Length})");
+                    Assert.AreEqual("Container 'web-1' could not be processed: invalid image reference",
+                                    scanRun.ErrorMessage,
+                                    $"The run must carry the fixed message (length {imageReference.Length})");
+                    Assert.DoesNotContain(entry => entry.EventId.Id == 2098,
+                                          logger.Entries,
+                                          $"The raw reference must not be written to the log (length {imageReference.Length})");
+                    Assert.DoesNotContain(entry => entry.Message.Contains(imageReference, StringComparison.Ordinal),
+                                          logger.Entries,
+                                          $"No log entry may carry the raw reference (length {imageReference.Length})");
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Verify a digest outside the digest grammar, from the reference or from the repository digests, leaves the catalog entry without digest
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task RuntimeContainerScanOrchestratorScanAllAsyncWhenImageDigestIsInvalidStoresVersionWithoutDigestAsync()
+    {
+        using (var database = new SqliteTestDatabase())
+        {
+            var dbContext = database.CreateDbContext();
+
+            await using (dbContext.ConfigureAwait(false))
+            {
+                var dockerInstanceClient = Substitute.For<IDockerInstanceClient>();
+                var registryMetadataService = Substitute.For<IRegistryMetadataService>();
+                var logger = new TestLogger<RuntimeContainerScanOrchestrator>();
+                var orchestrator = CreateFailureOrchestrator(dbContext, dockerInstanceClient, registryMetadataService, logger);
+
+                dockerInstanceClient.DiscoverContainersAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<CancellationToken>())
+                                    .Returns(ExternalOperationResult<IReadOnlyList<RuntimeContainerDescriptor>>.Succeeded([
+                                                                                                                              new RuntimeContainerDescriptor
+                                                                                                                              {
+                                                                                                                                  ContainerId = "container-1",
+                                                                                                                                  Name = "from-reference",
+                                                                                                                                  ImageReference = "docker.io/library/nginx:1.0.0@sha256:ab cd",
+                                                                                                                                  RuntimeStatus = ContainerRuntimeStatus.Running,
+                                                                                                                                  IsRunning = true,
+                                                                                                                              },
+                                                                                                                              new RuntimeContainerDescriptor
+                                                                                                                              {
+                                                                                                                                  ContainerId = "container-2",
+                                                                                                                                  Name = "from-repository-digests",
+                                                                                                                                  ImageReference = "docker.io/library/redis:7",
+                                                                                                                                  ImageDigest = "sha256:ab cd",
+                                                                                                                                  RuntimeStatus = ContainerRuntimeStatus.Running,
+                                                                                                                                  IsRunning = true,
+                                                                                                                              },
+                                                                                                                          ]));
+                dockerInstanceClient.InspectImageAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+                                    .Returns(ExternalOperationResult<DockerImageInspectData>.NotFound("The local image inspect payload is not available"));
+                dockerInstanceClient.GetImageHistoryAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+                                    .Returns(ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>.NotFound("The local image history payload is not available"));
+                registryMetadataService.GetTagsAsync(Arg.Any<string>(),
+                                                     Arg.Any<string>(),
+                                                     Arg.Any<string?>(),
+                                                     Arg.Any<string?>(),
+                                                     Arg.Any<RegistryTagQueryOptions?>(),
+                                                     Arg.Any<CancellationToken>())
+                                       .Returns(ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.NotFound("No tag data"));
+                registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), cancellationToken: Arg.Any<CancellationToken>())
+                                       .Returns(ExternalOperationResult<DockerHubTagData>.NotFound("No exact tag metadata is available"));
+
+                await orchestrator.ScanAllAsync(ScanTriggerSource.Scheduled, CancellationToken.None)
+                                  .ConfigureAwait(false);
+
+                var versions = await dbContext.ImageVersions.ToListAsync(TestContext.CancellationToken).ConfigureAwait(false);
+                var snapshots = await dbContext.ContainerSnapshots.ToListAsync(TestContext.CancellationToken).ConfigureAwait(false);
+
+                Assert.HasCount(2, versions, "Both containers must keep their image version despite the invalid digest");
+                Assert.HasCount(2, snapshots, "An invalid digest must not remove the snapshots");
+                Assert.IsTrue(versions.TrueForAll(version => version.Digest is null), "A digest outside the digest grammar must leave the catalog entry without digest");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Verify the fallback messages and their log entries carry the normalized reference instead of the raw one
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task RuntimeContainerScanOrchestratorScanAllAsyncWhenTagResultHasNoMessageUsesNormalizedReferenceAsync()
+    {
+        using (var database = new SqliteTestDatabase())
+        {
+            var dbContext = database.CreateDbContext();
+
+            await using (dbContext.ConfigureAwait(false))
+            {
+                var dockerInstanceClient = Substitute.For<IDockerInstanceClient>();
+                var registryMetadataService = Substitute.For<IRegistryMetadataService>();
+                var logger = new TestLogger<RuntimeContainerScanOrchestrator>();
+                var orchestrator = CreateFailureOrchestrator(dbContext, dockerInstanceClient, registryMetadataService, logger);
+
+                dockerInstanceClient.DiscoverContainersAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<CancellationToken>())
+                                    .Returns(ExternalOperationResult<IReadOnlyList<RuntimeContainerDescriptor>>.Succeeded([
+                                                                                                                              new RuntimeContainerDescriptor
+                                                                                                                              {
+                                                                                                                                  ContainerId = "container-1",
+                                                                                                                                  Name = "incomplete",
+                                                                                                                                  ImageReference = "  docker.io/library/nginx:1.0.0  ",
+                                                                                                                                  RuntimeStatus = ContainerRuntimeStatus.Running,
+                                                                                                                                  IsRunning = true,
+                                                                                                                              },
+                                                                                                                              new RuntimeContainerDescriptor
+                                                                                                                              {
+                                                                                                                                  ContainerId = "container-2",
+                                                                                                                                  Name = "unsupported",
+                                                                                                                                  ImageReference = "  docker.io/library/redis:7  ",
+                                                                                                                                  RuntimeStatus = ContainerRuntimeStatus.Running,
+                                                                                                                                  IsRunning = true,
+                                                                                                                              },
+                                                                                                                          ]));
+                dockerInstanceClient.InspectImageAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+                                    .Returns(ExternalOperationResult<DockerImageInspectData>.NotFound("The local image inspect payload is not available"));
+                dockerInstanceClient.GetImageHistoryAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+                                    .Returns(ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>.NotFound("The local image history payload is not available"));
+                registryMetadataService.GetTagsAsync("docker.io",
+                                                     "library/nginx",
+                                                     Arg.Any<string?>(),
+                                                     Arg.Any<string?>(),
+                                                     Arg.Any<RegistryTagQueryOptions?>(),
+                                                     Arg.Any<CancellationToken>())
+                                       .Returns(ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Unknown(null!));
+                registryMetadataService.GetTagsAsync("docker.io",
+                                                     "library/redis",
+                                                     Arg.Any<string?>(),
+                                                     Arg.Any<string?>(),
+                                                     Arg.Any<RegistryTagQueryOptions?>(),
+                                                     Arg.Any<CancellationToken>())
+                                       .Returns(ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Unsupported(null!));
+                registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), cancellationToken: Arg.Any<CancellationToken>())
+                                       .Returns(ExternalOperationResult<DockerHubTagData>.NotFound("No exact tag metadata is available"));
+
+                await orchestrator.ScanAllAsync(ScanTriggerSource.Scheduled, CancellationToken.None)
+                                  .ConfigureAwait(false);
+
+                var snapshots = await dbContext.ContainerSnapshots.ToListAsync(TestContext.CancellationToken).ConfigureAwait(false);
+                var incomplete = snapshots.Single(entity => entity.Name == "incomplete");
+                var unsupported = snapshots.Single(entity => entity.Name == "unsupported");
+
+                Assert.AreEqual("Unable to evaluate runtime image 'docker.io/library/nginx:1.0.0'",
+                                incomplete.UpdateAssessmentMessage,
+                                "The incomplete-evaluation message must name the normalized reference");
+                Assert.AreEqual("Runtime image 'docker.io/library/redis:7' cannot be evaluated by the current registry adapters",
+                                unsupported.UpdateAssessmentMessage,
+                                "The unsupported-evaluation message must name the normalized reference");
+                Assert.Contains(entry => entry.EventId.Id == 2077
+                                         && entry.Message.Contains("image docker.io/library/nginx:1.0.0 returned", StringComparison.Ordinal),
+                                logger.Entries,
+                                "The incomplete-evaluation log entry must carry the normalized reference");
+                Assert.Contains(entry => entry.EventId.Id == 2078
+                                         && entry.Message.Contains("image docker.io/library/redis:7 is not supported", StringComparison.Ordinal),
+                                logger.Entries,
+                                "The unsupported-evaluation log entry must carry the normalized reference");
+            }
+        }
+    }
+
+    /// <summary>
     /// Create an orchestrator for a single configured Docker instance
     /// </summary>
     /// <param name="dbContext">Database context</param>

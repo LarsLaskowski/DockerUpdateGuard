@@ -1251,6 +1251,173 @@ public partial class DockerInstanceClientTests
     }
 
     /// <summary>
+    /// Verify discovery leaves out a container whose ID is longer than the stored 200 characters
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerInstanceClientDiscoverContainersAsyncWhenContainerIdExceedsStoredLengthSkipsContainerAsync()
+    {
+        var exactId = new string('b', 200);
+        var containersJson = $$"""
+                               [
+                                 { "Id": "{{new string('a', 201)}}", "Names": ["/too-long"], "Image": "nginx:1", "State": "running" },
+                                 { "Id": "{{exactId}}", "Names": ["/exact"], "Image": "nginx:1", "State": "running" }
+                               ]
+                               """;
+
+        using var handler = new SequenceHttpMessageHandler();
+        using var httpClient = new HttpClient(handler)
+                               {
+                                   BaseAddress = new Uri("https://docker.example.test/"),
+                               };
+
+        handler.AddJsonResponse("https://docker.example.test/v1.41/containers/json?all=1", containersJson);
+
+        var client = new DockerInstanceClient(new TestLogger<DockerInstanceClient>(), (_, _) => httpClient);
+
+        var result = await client.DiscoverContainersAsync(CreateInstanceOptions(), TestContext.CancellationToken).ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "A container with an over-long ID must not fail the discovery");
+        Assert.IsNotNull(result.Data, "Discovery must return the containers");
+
+        var container = Assert.ContainsSingle(result.Data, "Only the container whose ID fits the stored length must be returned");
+
+        Assert.AreEqual(exactId, container.ContainerId, "A container ID of exactly 200 characters must be kept whole");
+    }
+
+    /// <summary>
+    /// Verify discovery cuts a container name and the compose, stack and service labels longer than 200 characters
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerInstanceClientDiscoverContainersAsyncWhenNameOrLabelsExceedStoredLengthCutsThemAsync()
+    {
+        var longText = new string('n', 201);
+        var exactText = new string('e', 200);
+        var containersJson = $$"""
+                               [
+                                 {
+                                   "Id": "long", "Names": ["/{{longText}}"], "Image": "nginx:1", "State": "running",
+                                   "Labels": {
+                                     "com.docker.compose.project": "{{longText}}",
+                                     "com.docker.stack.namespace": "{{longText}}",
+                                     "com.docker.swarm.service.name": "{{longText}}"
+                                   }
+                                 },
+                                 {
+                                   "Id": "exact", "Names": ["/{{exactText}}"], "Image": "nginx:1", "State": "running",
+                                   "Labels": { "com.docker.compose.project": "{{exactText}}" }
+                                 },
+                                 { "Id": "none", "Names": ["/none"], "Image": "nginx:1", "State": "running", "Labels": {} }
+                               ]
+                               """;
+
+        using var handler = new SequenceHttpMessageHandler();
+        using var httpClient = new HttpClient(handler)
+                               {
+                                   BaseAddress = new Uri("https://docker.example.test/"),
+                               };
+
+        handler.AddJsonResponse("https://docker.example.test/v1.41/containers/json?all=1", containersJson);
+
+        var client = new DockerInstanceClient(new TestLogger<DockerInstanceClient>(), (_, _) => httpClient);
+
+        var result = await client.DiscoverContainersAsync(CreateInstanceOptions(), TestContext.CancellationToken).ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "Discovery must succeed");
+        Assert.IsNotNull(result.Data, "Discovery must return the containers");
+        Assert.HasCount(3, result.Data, "No container may be left out for the length of its name or labels");
+
+        var cutText = new string('n', 199) + "…";
+        var longContainer = result.Data.Single(entry => entry.ContainerId == "long");
+        var exactContainer = result.Data.Single(entry => entry.ContainerId == "exact");
+        var noneContainer = result.Data.Single(entry => entry.ContainerId == "none");
+
+        Assert.AreEqual(cutText, longContainer.Name, "A name over 200 characters must be cut to 200 characters ending in the marker");
+        Assert.AreEqual(cutText, longContainer.ComposeProject, "A compose project over 200 characters must be cut");
+        Assert.AreEqual(cutText, longContainer.StackName, "A stack name over 200 characters must be cut");
+        Assert.AreEqual(cutText, longContainer.ServiceName, "A service name over 200 characters must be cut");
+        Assert.AreEqual(exactText, exactContainer.Name, "A name of exactly 200 characters must stay unchanged");
+        Assert.AreEqual(exactText, exactContainer.ComposeProject, "A label of exactly 200 characters must stay unchanged");
+        Assert.IsNull(exactContainer.StackName, "A missing label must stay null");
+        Assert.IsNull(noneContainer.ComposeProject, "A missing compose label must stay null");
+        Assert.IsNull(noneContainer.ServiceName, "A missing service label must stay null");
+    }
+
+    /// <summary>
+    /// Verify resource sampling leaves out a container whose ID is longer than 200 characters and requests no stats for it
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerInstanceClientCollectContainerResourceUsageAsyncWhenContainerIdExceedsStoredLengthSkipsContainerAsync()
+    {
+        var longId = new string('a', 201);
+        var containersJson = $$"""
+                               [
+                                 { "Id": "{{longId}}", "Names": ["/too-long"] },
+                                 { "Id": "ok", "Names": ["/fine"] }
+                               ]
+                               """;
+
+        using var handler = new SequenceHttpMessageHandler();
+        using var httpClient = new HttpClient(handler)
+                               {
+                                   BaseAddress = new Uri("https://docker.example.test/"),
+                               };
+
+        handler.AddJsonResponse("https://docker.example.test/v1.41/containers/json", containersJson);
+        handler.AddJsonResponse("https://docker.example.test/v1.41/containers/ok/stats?stream=false", """{ "read": "2025-06-01T12:00:00Z" }""");
+
+        var client = new DockerInstanceClient(new TestLogger<DockerInstanceClient>(), (_, _) => httpClient);
+
+        var result = await client.CollectContainerResourceUsageAsync(CreateInstanceOptions(), TestContext.CancellationToken).ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "A container with an over-long ID must not fail the sampling");
+        Assert.IsNotNull(result.Data, "Sampling must return the samples");
+
+        var sample = Assert.ContainsSingle(result.Data, "Only the container whose ID fits the stored length must be sampled");
+
+        Assert.AreEqual("ok", sample.ContainerId, "The sample must belong to the container with the valid ID");
+        Assert.DoesNotContain(request => request.RequestUri.Contains(longId, StringComparison.Ordinal),
+                              handler.Requests,
+                              "No stats request may be sent for a container whose ID is too long");
+    }
+
+    /// <summary>
+    /// Verify resource sampling cuts a container name longer than 200 characters
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerInstanceClientCollectContainerResourceUsageAsyncWhenNameExceedsStoredLengthCutsItAsync()
+    {
+        var containersJson = $$"""
+                               [
+                                 { "Id": "long", "Names": ["/{{new string('n', 201)}}"] }
+                               ]
+                               """;
+
+        using var handler = new SequenceHttpMessageHandler();
+        using var httpClient = new HttpClient(handler)
+                               {
+                                   BaseAddress = new Uri("https://docker.example.test/"),
+                               };
+
+        handler.AddJsonResponse("https://docker.example.test/v1.41/containers/json", containersJson);
+        handler.AddJsonResponse("https://docker.example.test/v1.41/containers/long/stats?stream=false", """{ "read": "2025-06-01T12:00:00Z" }""");
+
+        var client = new DockerInstanceClient(new TestLogger<DockerInstanceClient>(), (_, _) => httpClient);
+
+        var result = await client.CollectContainerResourceUsageAsync(CreateInstanceOptions(), TestContext.CancellationToken).ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "Sampling must succeed");
+        Assert.IsNotNull(result.Data, "Sampling must return the samples");
+
+        var sample = Assert.ContainsSingle(result.Data, "A long name must not leave the container out");
+
+        Assert.AreEqual(new string('n', 199) + "…", sample.ContainerName, "A name over 200 characters must be cut to 200 characters ending in the marker");
+    }
+
+    /// <summary>
     /// Verify image inspect replaces control characters in every text field it exposes
     /// </summary>
     /// <returns>Task</returns>
@@ -1348,6 +1515,20 @@ public partial class DockerInstanceClientTests
         Assert.AreEqual("/bin/sh -c #(nop)  ENV A=1 2", entry.CreatedBy, "The created-by command must be cleaned");
         Assert.AreEqual("fi nal  stage", entry.Comment, "The comment must be cleaned");
         Assert.AreSequenceEqual(["docker.io/co mp any/api:1.0.0"], entry.Tags.ToArray(), "The tags must be cleaned");
+    }
+
+    /// <summary>
+    /// Create the options of an enabled Docker instance
+    /// </summary>
+    /// <returns>Instance options</returns>
+    private static DockerInstanceOptions CreateInstanceOptions()
+    {
+        return new DockerInstanceOptions
+               {
+                   Name = "Production",
+                   BaseUrl = "https://docker.example.test",
+                   Enabled = true,
+               };
     }
 
     /// <summary>
