@@ -266,6 +266,10 @@ change. No guarantee of `.squad/project.md` is touched.
   refusing needs a not-found path in every URI builder of both clients — which would widen this change.
 - **N2–N4** — no change, as Security stated.
 
+## Security notes
+
+- Wording in the plan's *Security review* section, N1 answer: it calls manual registration "authenticated". The app has no authentication or authorization of its own; it relies on the trusted network perimeter (`.squad/project.md`, *Guarantees*). The decision to defer N1 is unaffected, because manual input is still entered by the operator. But the follow-up issue should not claim authentication.
+
 ## Out of scope / follow-ups
 
 - U+0000 (fact 7): already replaced since #359; no change.
