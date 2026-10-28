@@ -1,3 +1,4 @@
+using DockerUpdateGuard.Images.Data;
 using DockerUpdateGuard.Images.Helper;
 
 namespace DockerUpdateGuard.Tests;
@@ -118,6 +119,165 @@ public class RegistryReferenceValidatorTests
             Assert.IsNull(RegistryReferenceValidator.ValidDigestOrNull(digest),
                           $"A string outside the digest grammar must become null (length {digest?.Length})");
         }
+    }
+
+    /// <summary>
+    /// Verify hosts of the reference grammar are valid registries
+    /// </summary>
+    [TestMethod]
+    public void RegistryReferenceValidatorIsValidRegistryWhenHostMatchesGrammarReturnsTrue()
+    {
+        string[] registries = ["docker.io", "localhost:5000", "registry.example.com:443", "[::1]:5000", new string('a', RegistryReferenceValidator.MaxRegistryLength)];
+
+        foreach (var registry in registries)
+        {
+            Assert.IsTrue(RegistryReferenceValidator.IsValidRegistry(registry),
+                          $"A host matching the reference grammar must be a valid registry (length {registry.Length}): {registry}");
+        }
+    }
+
+    /// <summary>
+    /// Verify strings outside the registry grammar are rejected
+    /// </summary>
+    [TestMethod]
+    public void RegistryReferenceValidatorIsValidRegistryWhenInvalidReturnsFalse()
+    {
+        string?[] registries = [
+                                   null,
+                                   string.Empty,
+                                   "https:",
+                                   "reg istry.example",
+                                   "under_score.example",
+                                   "-lead.example",
+                                   "trail.example.",
+                                   "host:port",
+                                   new string('a', RegistryReferenceValidator.MaxRegistryLength + 1),
+                               ];
+
+        foreach (var registry in registries)
+        {
+            Assert.IsFalse(RegistryReferenceValidator.IsValidRegistry(registry),
+                           $"A string outside the registry grammar must be invalid: '{registry}' (length {registry?.Length})");
+        }
+    }
+
+    /// <summary>
+    /// Verify paths of the repository grammar are valid repositories
+    /// </summary>
+    [TestMethod]
+    public void RegistryReferenceValidatorIsValidRepositoryWhenPathMatchesGrammarReturnsTrue()
+    {
+        string[] repositories = ["library/nginx", "a__b/c-d.e", "a---b", new string('a', RegistryReferenceValidator.MaxRepositoryLength)];
+
+        foreach (var repository in repositories)
+        {
+            Assert.IsTrue(RegistryReferenceValidator.IsValidRepository(repository),
+                          $"A path matching the repository grammar must be valid (length {repository.Length}): {repository}");
+        }
+    }
+
+    /// <summary>
+    /// Verify strings outside the repository grammar, dot segments included, are rejected
+    /// </summary>
+    [TestMethod]
+    public void RegistryReferenceValidatorIsValidRepositoryWhenInvalidReturnsFalse()
+    {
+        string?[] repositories = [
+                                     null,
+                                     string.Empty,
+                                     "Library/nginx",
+                                     "_a",
+                                     "a___b",
+                                     "a//b",
+                                     "a/",
+                                     "a b",
+                                     "..",
+                                     "a/../b",
+                                     "a/./b",
+                                     new string('a', RegistryReferenceValidator.MaxRepositoryLength + 1),
+                                 ];
+
+        foreach (var repository in repositories)
+        {
+            Assert.IsFalse(RegistryReferenceValidator.IsValidRepository(repository),
+                           $"A string outside the repository grammar must be invalid, dot segments included: '{repository}' (length {repository?.Length})");
+        }
+    }
+
+    /// <summary>
+    /// Verify an invalid registry, repository or tag makes the reference invalid
+    /// </summary>
+    [TestMethod]
+    public void RegistryReferenceValidatorValidReferenceOrNullWhenPartIsInvalidReturnsNull()
+    {
+        var invalidRegistry = new ImageReference
+                              {
+                                  Registry = "under_score.example",
+                                  Repository = "library/nginx",
+                                  Tag = "latest"
+                              };
+        var invalidRepository = new ImageReference
+                                {
+                                    Registry = "docker.io",
+                                    Repository = "a/../b",
+                                    Tag = "latest"
+                                };
+        var invalidTag = new ImageReference
+                         {
+                             Registry = "docker.io",
+                             Repository = "library/nginx",
+                             Tag = new string('t', RegistryReferenceValidator.MaxTagLength + 1)
+                         };
+
+        Assert.IsNull(RegistryReferenceValidator.ValidReferenceOrNull(invalidRegistry), "A reference with an invalid registry must be rejected");
+        Assert.IsNull(RegistryReferenceValidator.ValidReferenceOrNull(invalidRepository), "A reference with an invalid repository must be rejected");
+        Assert.IsNull(RegistryReferenceValidator.ValidReferenceOrNull(invalidTag), "A reference with a tag over 128 characters must be rejected");
+    }
+
+    /// <summary>
+    /// Verify an invalid digest is removed and the rest of the reference is kept
+    /// </summary>
+    [TestMethod]
+    public void RegistryReferenceValidatorValidReferenceOrNullWhenDigestIsInvalidRemovesDigest()
+    {
+        var reference = new ImageReference
+                        {
+                            Registry = "docker.io",
+                            Repository = "library/nginx",
+                            Tag = "1.0",
+                            Digest = "sha256:ab cd"
+                        };
+
+        var result = RegistryReferenceValidator.ValidReferenceOrNull(reference);
+
+        Assert.IsNotNull(result, "An invalid digest must not make the reference invalid");
+        Assert.AreSame(reference, result, "The given instance must be returned");
+        Assert.IsNull(result.Digest, "A digest outside the digest grammar must be removed");
+        Assert.AreEqual("docker.io/library/nginx:1.0", result.FullReference, "Registry, repository and tag must be kept");
+    }
+
+    /// <summary>
+    /// Verify a valid reference is returned with all its parts
+    /// </summary>
+    [TestMethod]
+    public void RegistryReferenceValidatorValidReferenceOrNullWhenValidKeepsAllParts()
+    {
+        var digest = "sha256:" + new string('a', 64);
+        var reference = new ImageReference
+                        {
+                            Registry = "localhost:5000",
+                            Repository = "a/b-c",
+                            Tag = "v1",
+                            Digest = digest
+                        };
+
+        var result = RegistryReferenceValidator.ValidReferenceOrNull(reference);
+
+        Assert.IsNotNull(result, "A valid reference must be returned");
+        Assert.AreEqual("localhost:5000", result.Registry, "The registry must be kept");
+        Assert.AreEqual("a/b-c", result.Repository, "The repository must be kept");
+        Assert.AreEqual("v1", result.Tag, "The tag must be kept");
+        Assert.AreEqual(digest, result.Digest, "A valid digest must be kept");
     }
 
     #endregion // Methods

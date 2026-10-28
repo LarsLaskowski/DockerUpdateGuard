@@ -108,6 +108,22 @@ internal static class ResponseBodyExcerpt
     }
 
     /// <summary>
+    /// Cut a text to a maximum total length including the truncation marker
+    /// </summary>
+    /// <param name="text">Text to cut, or null</param>
+    /// <param name="maxLength">Maximum number of characters of the result</param>
+    /// <returns>Null for null, the text when it fits, otherwise a cut text ending in the truncation marker</returns>
+    public static string? CutToLength(string? text, int maxLength)
+    {
+        if (text is null || text.Length <= maxLength)
+        {
+            return text;
+        }
+
+        return Truncate(text, maxLength - 1);
+    }
+
+    /// <summary>
     /// Cut a text to a maximum length
     /// </summary>
     /// <param name="text">Text to cut</param>

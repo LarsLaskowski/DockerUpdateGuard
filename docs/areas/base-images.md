@@ -32,6 +32,9 @@ a base-image update or vulnerability reaches; vulnerability refreshes and the da
   an image reference, see [Image catalog](image-catalog.md)); `org.opencontainers.image.base.digest` supplies its
   digest (lowercased) when the name carries none. Both values have their control characters replaced by spaces before
   they are parsed ([Registries](registries.md#remote-text-fields)). The same rule applies to Docker Hub and to every other registry.
+- A name that cannot be parsed as an image reference, or whose registry, repository or tag is outside the reference
+  grammar ([Image catalog](image-catalog.md#image-references)), counts as no label: the chain ends at that depth and the
+  chain found so far is kept. A digest outside the digest grammar is dropped and the base image is kept without it.
 - The chain is followed by reading each base image's own configuration and labels. Depth 1 is the direct base; the
   chain ends at depth 5, at an image without the label, or at a base whose configuration cannot be read (the chain
   found so far is kept).
@@ -57,7 +60,9 @@ a base-image update or vulnerability reaches; vulnerability refreshes and the da
   becomes *partial* (unless already *failed*) with the lookup's message.
 - A relationship records the child (the observed image's current version), the base, the depth, the source reference
   (the image whose label named this base: the observed image for depth 1, the previous base for deeper levels) and the
-  scan run that recorded it (cleared when that run is deleted).
+  scan run that recorded it (cleared when that run is deleted). The source reference is stored cut to 500 characters
+  with a trailing `…`; a valid reference with parts near their limits can be longer than that, and the cut is
+  deterministic, so the grouping stays stable.
 - A relationship is unique per child, base, depth and type; depth is greater than zero and child and base differ.
 
 ### Shared base images

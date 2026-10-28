@@ -1004,8 +1004,8 @@ public partial class OciRegistryClientTests
                        {
                          "config": {
                            "Labels": {
-                             "org.opencontainers.image.base.name": "mcr.microsoft.com/dotnet/run\u001Btime:8.\u202E0",
-                             "org.opencontainers.image.base.digest": "sha256:ab\u200Bcd"
+                             "org.opencontainers.image.base.name": "\u001Bmcr.microsoft.com/dotnet/runtime:8.0\u202E",
+                             "org.opencontainers.image.base.digest": "\u200Bsha256:abcd"
                            }
                          }
                        }
@@ -1034,9 +1034,39 @@ public partial class OciRegistryClientTests
         var baseImage = Assert.ContainsSingle(result.Data, "The base-image resolution must return the one base image of the chain");
 
         Assert.AreEqual("mcr.microsoft.com", baseImage.Registry, "The registry of the base image must be kept");
-        Assert.AreEqual("dotnet/run time", baseImage.Repository, "The repository of the base image must be cleaned");
-        Assert.AreEqual("8. 0", baseImage.Tag, "The tag of the base image must be cleaned");
-        Assert.AreEqual("sha256:ab cd", baseImage.Digest, "The digest of the base image must be cleaned");
+        Assert.AreEqual("dotnet/runtime", baseImage.Repository, "The replaced characters at the edges of the name must be trimmed off the repository");
+        Assert.AreEqual("8.0", baseImage.Tag, "The replaced characters at the edges of the name must be trimmed off the tag");
+        Assert.AreEqual("sha256:abcd", baseImage.Digest, "The replaced character at the edge of the digest must be trimmed off the digest");
+    }
+
+    /// <summary>
+    /// Verify the OCI base-image resolution ends with an empty chain at a label that is not a valid reference
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task OciRegistryClientResolveBaseImagesAsyncWhenBaseImageLabelIsInvalidReturnsEmptyChainAsync()
+    {
+        var blobJson = $$"""
+                         { "config": { "Labels": { "org.opencontainers.image.base.name": "mcr.microsoft.com/{{new string('a', 256)}}:8.0" } } }
+                         """;
+
+        using var handler = new DelegateHttpMessageHandler(request => CreateBaseImageChainResponse(request, blobJson));
+        using var httpClient = new HttpClient(handler);
+
+        var client = new OciRegistryClient(httpClient, new TestLogger<OciRegistryClient>());
+
+        var result = await client.ResolveBaseImagesAsync(new ImageReference
+                                                         {
+                                                             Registry = "mcr.microsoft.com",
+                                                             Repository = "dotnet/aspnet",
+                                                             Tag = "8.0",
+                                                         },
+                                                         CancellationToken.None)
+                                 .ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "An invalid label must end the chain, not fail the resolution");
+        Assert.IsNotNull(result.Data, "The resolution must return the chain");
+        Assert.IsEmpty(result.Data, "A base image with a repository over 255 characters must not be reported");
     }
 
     /// <summary>

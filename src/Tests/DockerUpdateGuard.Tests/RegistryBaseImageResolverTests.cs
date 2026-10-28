@@ -6,11 +6,14 @@ using DockerUpdateGuard.Configuration;
 using DockerUpdateGuard.DockerHub;
 using DockerUpdateGuard.Images;
 using DockerUpdateGuard.Images.Data;
+using DockerUpdateGuard.Images.Interfaces;
 using DockerUpdateGuard.Infrastructure;
 using DockerUpdateGuard.Tests.Data;
 using DockerUpdateGuard.Tests.Helper;
 
 using Microsoft.Extensions.Options;
+
+using NSubstitute;
 
 namespace DockerUpdateGuard.Tests;
 
@@ -146,9 +149,89 @@ public class RegistryBaseImageResolverTests
         }
     }
 
+    /// <summary>
+    /// Verify an invalid base-image label ends the chain at its depth and keeps the chain so far
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task RegistryBaseImageResolverResolveAsyncWhenBaseImageLabelIsInvalidEndsChainAsync()
+    {
+        var registryMetadataService = Substitute.For<IRegistryMetadataService>();
+        var rootConfiguration = CreateConfiguration("docker.io/library/debian:12");
+        var debianConfiguration = CreateConfiguration($"docker.io/{new string('a', 256)}:1");
+
+        registryMetadataService.GetImageConfigurationAsync(Arg.Is<ImageReference>(reference => reference.Repository == "library/app"), Arg.Any<CancellationToken>())
+                               .Returns(ExternalOperationResult<RegistryImageConfigurationData>.Succeeded(rootConfiguration));
+        registryMetadataService.GetImageConfigurationAsync(Arg.Is<ImageReference>(reference => reference.Repository == "library/debian"), Arg.Any<CancellationToken>())
+                               .Returns(ExternalOperationResult<RegistryImageConfigurationData>.Succeeded(debianConfiguration));
+
+        var resolver = new RegistryBaseImageResolver(registryMetadataService);
+
+        var result = await resolver.ResolveAsync(new ImageReference
+                                                 {
+                                                     Registry = "docker.io",
+                                                     Repository = "library/app",
+                                                     Tag = "latest",
+                                                 },
+                                                 CancellationToken.None)
+                                   .ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "An invalid label must end the chain, not fail the resolution");
+        Assert.IsNotNull(result.Data, "The resolver must return the chain so far");
+
+        var baseImage = Assert.ContainsSingle(result.Data, "Only the valid depth 1 base image must be reported");
+
+        Assert.AreEqual("library/debian", baseImage.Repository, "The valid base image must be kept");
+        Assert.AreEqual(1, baseImage.Depth, "The kept base image must be the one of depth 1");
+    }
+
+    /// <summary>
+    /// Verify a base-image label the parser rejects gives an empty chain instead of an exception
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task RegistryBaseImageResolverResolveAsyncWhenBaseImageLabelCannotBeParsedReturnsEmptyChainAsync()
+    {
+        var registryMetadataService = Substitute.For<IRegistryMetadataService>();
+
+        registryMetadataService.GetImageConfigurationAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
+                               .Returns(ExternalOperationResult<RegistryImageConfigurationData>.Succeeded(CreateConfiguration("/")));
+
+        var resolver = new RegistryBaseImageResolver(registryMetadataService);
+
+        var result = await resolver.ResolveAsync(new ImageReference
+                                                 {
+                                                     Registry = "docker.io",
+                                                     Repository = "library/app",
+                                                     Tag = "latest",
+                                                 },
+                                                 CancellationToken.None)
+                                   .ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "An unparsable label must not fail the resolution");
+        Assert.IsNotNull(result.Data, "The resolver must return the chain");
+        Assert.IsEmpty(result.Data, "An unparsable label must give no base image");
+    }
+
     #endregion // Methods
 
     #region Static methods
+
+    /// <summary>
+    /// Create an image configuration with a base-image name label
+    /// </summary>
+    /// <param name="baseImageName">Value of the base-image name label</param>
+    /// <returns>Configuration</returns>
+    private static RegistryImageConfigurationData CreateConfiguration(string baseImageName)
+    {
+        return new RegistryImageConfigurationData
+               {
+                   Labels = new Dictionary<string, string>
+                            {
+                                ["org.opencontainers.image.base.name"] = baseImageName,
+                            },
+               };
+    }
 
     /// <summary>
     /// Create a manifest response with a content digest header

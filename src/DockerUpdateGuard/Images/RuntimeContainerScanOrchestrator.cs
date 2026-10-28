@@ -152,6 +152,16 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
     #region Static methods
 
     /// <summary>
+    /// Create the failure message of a container whose image reference is not valid
+    /// </summary>
+    /// <param name="container">Discovered runtime container</param>
+    /// <returns>Failure message</returns>
+    private static string CreateInvalidImageReferenceMessage(RuntimeContainerDescriptor container)
+    {
+        return $"Container '{container.Name}' could not be processed: invalid image reference";
+    }
+
+    /// <summary>
     /// Mark the supplied runtime findings as resolved and clear their tag candidates
     /// </summary>
     /// <param name="findings">Findings to deactivate</param>
@@ -558,19 +568,33 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
                                                       CancellationToken cancellationToken)
     {
         ContainerSnapshot? snapshot = null;
+        ImageReference parsedReference;
 
         try
         {
-            var parsedReference = _imageReferenceParser.Parse(container.ImageReference);
-            var inspectData = await GetCurrentImageInspectDataAsync(configuredInstance,
-                                                                    container,
-                                                                    cancellationToken).ConfigureAwait(false);
+            parsedReference = _imageReferenceParser.Parse(container.ImageReference);
+        }
+        catch (ArgumentException)
+        {
+            return CreateInvalidImageReferenceMessage(container);
+        }
 
+        try
+        {
             if (string.IsNullOrWhiteSpace(parsedReference.Digest)
                 && string.IsNullOrWhiteSpace(container.ImageDigest) == false)
             {
                 parsedReference.Digest = container.ImageDigest.Trim().ToLowerInvariant();
             }
+
+            if (RegistryReferenceValidator.ValidReferenceOrNull(parsedReference) is null)
+            {
+                return CreateInvalidImageReferenceMessage(container);
+            }
+
+            var inspectData = await GetCurrentImageInspectDataAsync(configuredInstance,
+                                                                    container,
+                                                                    cancellationToken).ConfigureAwait(false);
 
             var imageVersion = await _imageCatalogRepository.GetOrCreateImageVersionAsync(parsedReference.Registry,
                                                                                           parsedReference.Repository,
@@ -636,7 +660,7 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
             {
                 failureMessage = ApplyUnevaluatedTagResult(snapshot,
                                                            dockerInstance.Name,
-                                                           container.ImageReference,
+                                                           parsedReference.FullReference,
                                                            tagsResult,
                                                            out evaluated);
             }

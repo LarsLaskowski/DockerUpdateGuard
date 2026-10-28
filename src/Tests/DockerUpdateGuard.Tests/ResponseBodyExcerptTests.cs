@@ -76,6 +76,54 @@ public class ResponseBodyExcerptTests
     }
 
     /// <summary>
+    /// Verify a missing text stays null
+    /// </summary>
+    [TestMethod]
+    public void ResponseBodyExcerptCutToLengthWhenTextIsNullReturnsNull()
+    {
+        var result = ResponseBodyExcerpt.CutToLength(null, 10);
+
+        Assert.IsNull(result, "A missing text must stay null so a nullable column keeps its meaning");
+    }
+
+    /// <summary>
+    /// Verify a text within the limit is returned unchanged
+    /// </summary>
+    [TestMethod]
+    public void ResponseBodyExcerptCutToLengthWhenTextFitsReturnsItUnchanged()
+    {
+        var result = ResponseBodyExcerpt.CutToLength("abcde", 5);
+
+        Assert.AreEqual("abcde", result, "A text of exactly the maximum length must stay unchanged");
+    }
+
+    /// <summary>
+    /// Verify a longer text is cut to the maximum length including the marker
+    /// </summary>
+    [TestMethod]
+    public void ResponseBodyExcerptCutToLengthWhenTextIsLongerCutsWithMarker()
+    {
+        var result = ResponseBodyExcerpt.CutToLength("abcdef", 5);
+
+        Assert.AreEqual("abcd…", result, "A longer text must be cut so that the result, marker included, has the maximum length");
+    }
+
+    /// <summary>
+    /// Verify a cut never splits a surrogate pair
+    /// </summary>
+    [TestMethod]
+    public void ResponseBodyExcerptCutToLengthWhenCutWouldSplitSurrogatePairKeepsPairWhole()
+    {
+        var pair = char.ConvertFromUtf32(0x1F600);
+        var text = $"ab{pair}cd";
+
+        var result = ResponseBodyExcerpt.CutToLength(text, 4);
+
+        Assert.AreEqual("ab…", result, "A cut between the halves of a surrogate pair must be moved before the pair");
+        Assert.IsLessThanOrEqualTo(4, result!.Length, "The result must not exceed the maximum length");
+    }
+
+    /// <summary>
     /// Verify a body within 500 characters is returned whole
     /// </summary>
     /// <returns>Task</returns>

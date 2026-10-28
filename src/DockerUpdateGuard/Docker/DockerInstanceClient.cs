@@ -21,6 +21,20 @@ namespace DockerUpdateGuard.Docker;
 /// </summary>
 public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
 {
+    #region Constants
+
+    /// <summary>
+    /// Maximum stored length of a container ID
+    /// </summary>
+    private const int MaxContainerIdLength = 200;
+
+    /// <summary>
+    /// Maximum stored length of a container name, compose project, stack name and service name
+    /// </summary>
+    private const int MaxNameLength = 200;
+
+    #endregion // Constants
+
     #region Fields
 
     /// <summary>
@@ -504,12 +518,12 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
         return new RuntimeContainerDescriptor
                {
                    ContainerId = TryGetString(element, "Id") ?? string.Empty,
-                   Name = GetPrimaryName(element),
+                   Name = ResponseBodyExcerpt.CutToLength(GetPrimaryName(element), MaxNameLength) ?? string.Empty,
                    ImageReference = TryGetString(element, "Image") ?? string.Empty,
                    LocalImageId = TryGetString(element, "ImageID"),
-                   ComposeProject = TryGetLabel(labels, "com.docker.compose.project"),
-                   StackName = TryGetLabel(labels, "com.docker.stack.namespace"),
-                   ServiceName = TryGetLabel(labels, "com.docker.swarm.service.name"),
+                   ComposeProject = ResponseBodyExcerpt.CutToLength(TryGetLabel(labels, "com.docker.compose.project"), MaxNameLength),
+                   StackName = ResponseBodyExcerpt.CutToLength(TryGetLabel(labels, "com.docker.stack.namespace"), MaxNameLength),
+                   ServiceName = ResponseBodyExcerpt.CutToLength(TryGetLabel(labels, "com.docker.swarm.service.name"), MaxNameLength),
                    RuntimeStatus = ParseRuntimeStatus(TryGetString(element, "State")),
                    IsRunning = string.Equals(TryGetString(element, "State"),
                                              "running",
@@ -530,7 +544,7 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
         return new RuntimeContainerResourceDescriptor
                {
                    ContainerId = TryGetString(containerElement, "Id") ?? string.Empty,
-                   ContainerName = GetPrimaryName(containerElement),
+                   ContainerName = ResponseBodyExcerpt.CutToLength(GetPrimaryName(containerElement), MaxNameLength) ?? string.Empty,
                    CpuPercent = ParseCpuPercent(statsElement),
                    MemoryUsageBytes = ParseMemoryUsage(statsElement),
                    MemoryLimitBytes = ParseMemoryLimit(statsElement),
@@ -538,6 +552,18 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
                    NetworkTxBytesTotal = ParseNetworkTotal(statsElement, "tx_bytes"),
                    RecordedAtUtc = recordedAtUtc ?? DateTimeOffset.UtcNow,
                };
+    }
+
+    /// <summary>
+    /// Check whether the container ID fits the stored column length
+    /// </summary>
+    /// <param name="element">JSON element</param>
+    /// <returns>True when the ID is not longer than the stored length</returns>
+    private static bool HasStorableId(JsonElement element)
+    {
+        var containerId = TryGetString(element, "Id");
+
+        return containerId is null || containerId.Length <= MaxContainerIdLength;
     }
 
     /// <summary>
@@ -1011,6 +1037,11 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
 
                 foreach (var element in jsonDocument.RootElement.EnumerateArray())
                 {
+                    if (HasStorableId(element) == false)
+                    {
+                        continue;
+                    }
+
                     containers.Add(ParseContainer(element));
                 }
 
@@ -1085,7 +1116,8 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
                 {
                     var containerId = TryGetString(containerElement, "Id");
 
-                    if (string.IsNullOrWhiteSpace(containerId))
+                    if (string.IsNullOrWhiteSpace(containerId)
+                        || containerId.Length > MaxContainerIdLength)
                     {
                         continue;
                     }

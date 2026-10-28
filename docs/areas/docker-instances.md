@@ -82,12 +82,14 @@ on the snapshots and samples it produces.
 
 ### Container discovery
 
-- Discovery lists **all** containers of an instance, including stopped ones.
+- Discovery lists **all** containers of an instance, including stopped ones. A container whose ID is longer than 200
+  characters is left out.
 - Per container it records: the container ID; the name (the first listed name without its leading `/`, or the
   container ID when it has no name); the image reference as the Engine reports it; the local image ID; the compose
   project (`com.docker.compose.project` label), the stack name (`com.docker.stack.namespace`) and the swarm service
   name (`com.docker.swarm.service.name`). These values arrive with control characters replaced by spaces
-  ([Registries](registries.md#remote-text-fields)).
+  ([Registries](registries.md#remote-text-fields)). The name and the three labels are cut to 200 characters with a
+  trailing `…`; a missing label stays empty.
 - The runtime status is one of Running, Paused, Restarting, Exited, Dead; any other Engine state (for example
   `created`) is *not set*. A container counts as running only in state `running`.
 - The image digest of each container is taken from the repository digests of its local image (one image inspect per
@@ -118,8 +120,11 @@ on the snapshots and samples it produces.
 - The **current** containers of an instance are the snapshots of its most recent runtime scan run that recorded
   snapshots. A later run that recorded none (for example because the Engine was unreachable) does not empty the
   current set; the previous set stays current.
-- A container whose image reference cannot be parsed produces no snapshot; the scan run then ends *partial* with a
-  message naming the container.
+- A container whose image reference cannot be parsed, or whose registry, repository or tag is outside the reference
+  grammar ([Image catalog](image-catalog.md#image-references)), produces no snapshot, no catalog entry and no log
+  entry; the scan run then ends *partial* with the message `Container '<name>' could not be processed: invalid image
+  reference`. A digest outside the digest grammar, from the reference or from the repository digests, is stored as no
+  digest. The fallback assessment messages of an image that cannot be evaluated name the normalized reference.
 - Outcome of the discovery step for the scan run: a *failed* discovery ends the run *failed*; *not configured* or
   *unsupported* ends it *partial*; an unexpected error ends it *failed*. The run's error message joins the distinct
   messages of all problems. One failing instance never stops the scans of the other instances.
@@ -131,7 +136,8 @@ on the snapshots and samples it produces.
 - Every `DockerUpdateGuard:Scanning:ResourceStatisticsIntervalMinutes` (1–1440, default 5) each enabled, configured
   instance is sampled ([Scan engine](scan-engine.md) owns the schedule).
 - Only **running** containers are sampled, one at a time, each with a single non-streaming stats request. A container
-  whose stats request answers non-success is left out of that round.
+  whose stats request answers non-success is left out of that round, and so is one whose ID is longer than 200
+  characters (no request is sent for it). The container name of a sample is cut to 200 characters with a trailing `…`.
 - Per container sample:
   - CPU percent = (container CPU time delta ÷ system CPU time delta) × online CPUs × 100, rounded to 4 decimals; the
     CPU count falls back to the per-CPU usage list length and then to 1; 0 when either delta is not positive. A

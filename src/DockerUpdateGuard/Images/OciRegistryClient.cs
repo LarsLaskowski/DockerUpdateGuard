@@ -963,16 +963,9 @@ public partial class OciRegistryClient : IRegistryMetadataClient
                 return null;
             }
 
-            var parsedReference = new ImageReferenceParser().Parse(baseImageName);
             var baseImageDigest = ResponseBodyExcerpt.ReplaceControlCharacters(TryGetString(labelsElement, OciBaseImageDigestLabel));
 
-            if (string.IsNullOrWhiteSpace(parsedReference.Digest)
-                && string.IsNullOrWhiteSpace(baseImageDigest) == false)
-            {
-                parsedReference.Digest = ImageReferenceParser.NormalizeDigest(baseImageDigest);
-            }
-
-            return parsedReference;
+            return BaseImageLabelReader.ReadReference(baseImageName, baseImageDigest);
         }
     }
 
