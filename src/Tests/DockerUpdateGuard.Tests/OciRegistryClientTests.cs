@@ -1412,6 +1412,9 @@ public partial class OciRegistryClientTests
     [DataRow("..")]
     [DataRow("evil.com?x")]
     [DataRow("localhost:99999")]
+    [DataRow("\u212Aevil.com")]
+    [DataRow(" a.b")]
+    [DataRow("a.b\n")]
     public async Task OciRegistryClientGetTagsAsyncInvalidRegistryReturnsNotFoundWithoutRequestAsync(string registry)
     {
         using var handler = new SequenceHttpMessageHandler();
