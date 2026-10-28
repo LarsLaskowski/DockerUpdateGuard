@@ -18,3 +18,4 @@ are quoted in full.
 | 2026-10-28 19:55 | 7 Code check | Orchestrator | Format, Build 0 warn, Test 991+21 passed, Coverage gate PASS (28/28, overall 88.2%), Analyzer gate PASS, scope-check PASS; Sonar gate NOT CHECKED (HTTP 400 reading branch result; scan uploaded) - re-check on PR in step 11. Code SHA b7c15db |
 | 2026-10-28 19:57 | 8 Review | squad-reviewer | Round 1 APPROVE, no findings (opus/medium · 67,121 tokens · 9 tool uses · 64 s) |
 | 2026-10-28 19:57 | 8 Review | squad-security | Diff APPROVED, 1 non-blocking note (GetTagsAsync validates the normalized, not the raw registry; Kelvin sign/whitespace pass) (opus/medium · 54,171 tokens · 11 tool uses · 80 s) |
+| 2026-10-28 19:58 | 9 PR approval | squad-lead | NOT APPROVED: Security note fixed now (3 GetTagsAsync rows by Tester, raw IsValidRegistry check by Dev before NormalizeRegistry, plan AC2 extended); DockerHubClient deviation confirmed; delta round required (opus/medium · usage pending) |

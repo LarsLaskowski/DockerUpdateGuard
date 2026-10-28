@@ -70,7 +70,9 @@ and `CreateTagsUri` through their `refusalMessage`; the registry is checked befo
   `https://ghcr.io`.
 - [ ] AC2: For registry `.`, `..`, `evil.com?x` and `localhost:99999`, `GetTagsAsync` and `GetImageConfigurationAsync`
   answer *not found* with `InvalidRegistryMessage`, and `ResolveBaseImagesAsync` succeeds with no base images; none of
-  them sends a request or logs.
+  them sends a request or logs. `GetTagsAsync` checks the registry as given, before `NormalizeRegistry` trims and
+  lowercases it: registry `\u212Aevil.com` (the escape stands for U+212A, KELVIN SIGN, which lowercases to `k`),
+  ` a.b` (leading space) and `a.b\n` (the escape stands for a line feed) answer the same way (step 9 decision).
 - [ ] AC3: A registry with a port is addressed with its host and port: `GetTagAsync` for registry `localhost:5000`,
   `registry.example.com:5000`, `127.0.0.1:5000` and `[::1]:5000`, repository `corp/api`, tag `1.0` requests
   exactly `https://<registry>/v2/corp/api/manifests/1.0` and succeeds; `GetTagsAsync("Registry.Example.com:5000",
@@ -91,7 +93,8 @@ Every test asserts on the recording `SequenceHttpMessageHandler` (`handler.Reque
 dot-segment tests (`AssertDotSegmentRefusal`, `OciRegistryClientTests.cs:1380`) do. All fail on the current code: the
 dot forms throw, `a.`/`evil.com?x`/`https://ghcr.io`/`localhost:99999` send a request, `localhost:5000` is requested as
 `localhost:5000/v2/…`, `127.0.0.1:5000` throws, the tag listing of `registry.example.com:5000` loses its host;
-`ResolveBaseImagesAsync` answers *failed*. Escape check (*Escapes in files*): if `"evil.com\\x"` lost its backslash it
+`ResolveBaseImagesAsync` answers *failed*. The three rows added to the `GetTagsAsync` test in step 9 (C# literals
+`"\u212Aevil.com"`, `" a.b"`, `"a.b\n"`) fail on code SHA b7c15db: the normalized value is valid and requested. Escape check (*Escapes in files*): if `"evil.com\\x"` lost its backslash it
 would be `evil.comx`, a valid host that is requested, and the AC1 test fails for that row. The non-ASCII case is
 written as the C# escape `\u00e4`, not as the letter.
 
@@ -109,7 +112,9 @@ written as the C# escape `\u00e4`, not as the letter.
    `InvalidRegistryMessage`; on success `string.Empty`. (A reference with both defects gets the dot-segment message;
    no criterion depends on the order.)
 4. Callers use the message: `GetManifestMetadataAsync` (line 851-854) and `GetImageConfigurationAsync` (line
-   1417-1420) return `NotFound(refusalMessage)`; `GetTagsAsync` (line 1282-1285) likewise; `ExtractBaseImageFromConfigAsync`
+   1417-1420) return `NotFound(refusalMessage)`; `GetTagsAsync` (line 1282-1285) likewise, and after `CanHandle`,
+   before `NormalizeRegistry`, it returns `NotFound(RegistryReferenceValidator.InvalidRegistryMessage)` when
+   `RegistryReferenceValidator.IsValidRegistry(registry)` is false for the raw value (step 9); `ExtractBaseImageFromConfigAsync`
    (line 959-962) keeps returning `null`, so the base-image chain ends as for a dot segment.
 5. `NormalizeRegistry`: drop the absolute-URI branch; return `registry.Trim().ToLowerInvariant()` (keeps a port).
 6. `DockerHubClient.IsSupportedRegistry` (plan deviation, step 6): use the absolute-URI branch only when the parsed
