@@ -27,7 +27,8 @@ refer to the same image the same way.
   name is rejected.
 - A reference read from a remote side — the base-image labels of an image configuration and the image of a Docker
   Engine container — is accepted only when its registry (host and optional port, at most 200 characters), repository
-  (path components of `[a-z0-9]` joined by `.`, `_`, `__` or `-`, at most 255 characters; no `.` or `..` component) and
+  (`/`-separated path components of `[a-z0-9]` runs joined by `.`, `_`, `__` or one or more `-`, at most 255
+  characters; no `.` or `..` component) and
   tag (at most 128 characters) fit the reference grammar of Docker; otherwise it is treated as absent. A digest
   outside the digest grammar becomes none and the reference is kept. A reference entered by the user keeps the plain
   parsing above. See [0014](../decisions/0014-registry-tag-names-and-digests-are-validated-where-they-are-read.md).
