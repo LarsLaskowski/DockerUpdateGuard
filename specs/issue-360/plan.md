@@ -192,7 +192,10 @@ Existing test call sites of a changed signature: none (only private members chan
 none sends a dot segment into a request path (the `..` cases today are tag-grammar or account-listing cases), and
 the Scout tests use `library/nginx:latest` and `acme/api:1.0.0`, unchanged by the escaping (VF 15).
 
-Files no unit test can cover: none.
+Files no unit test can cover: none. One line stays uncovered by design: the `return` after the `manifestUri is null`
+check in `DockerHubClient.ResolveBaseImageChainAsync`, a defensive guard no input reaches today (depth 1 is ended
+earlier in `ResolveBaseImagesAsync`, deeper references come from `BaseImageLabelReader.ReadReference`); it is kept so
+every `CreateRegistryRequestUri` caller handles `null` alike, without a null-forgiving operator.
 
 ## Areas
 
