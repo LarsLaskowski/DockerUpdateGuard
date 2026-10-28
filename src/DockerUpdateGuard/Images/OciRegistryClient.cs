@@ -1269,6 +1269,11 @@ public partial class OciRegistryClient : IRegistryMetadataClient
             return ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Unsupported($"Registry '{registry}' is not supported by the OCI registry adapter");
         }
 
+        if (RegistryReferenceValidator.IsValidRegistry(registry) == false)
+        {
+            return ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.NotFound(RegistryReferenceValidator.InvalidRegistryMessage);
+        }
+
         var normalizedRegistry = NormalizeRegistry(registry);
         var allowedOrigin = CreateTagsUri(normalizedRegistry, repository, lastTag: null, out var refusalMessage);
 
