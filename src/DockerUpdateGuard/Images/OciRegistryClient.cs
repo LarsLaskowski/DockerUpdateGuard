@@ -1284,7 +1284,7 @@ public partial class OciRegistryClient : IRegistryMetadataClient
             return ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.NotFound(RegistryReferenceValidator.DotSegmentMessage);
         }
 
-        Uri? requestUri = allowedOrigin;
+        Uri requestUri = allowedOrigin;
         var tags = new List<DockerHubTagData>();
         var inspectedTagCount = 0;
         var lookupContext = new RegistryTagLookupContext
@@ -1296,7 +1296,7 @@ public partial class OciRegistryClient : IRegistryMetadataClient
                                 QueryOptions = queryOptions,
                             };
 
-        while (requestUri is not null)
+        while (true)
         {
             using var response = await SendRegistryRequestAsync(requestUri,
                                                                 repository,
