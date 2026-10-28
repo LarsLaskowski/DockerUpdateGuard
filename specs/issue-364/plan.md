@@ -216,3 +216,15 @@ origin of the first request, unchanged).
   target or refuse a target that begins with `-`. Found while planning #364." Security area: External process execution.
 - Checking the registration form against the reference grammar: #343.
 - Transport errors escaping as errors: #272.
+
+
+## Challenge notes
+
+1. **minor:** Port 0 passes both checks. The plan's own wording says "port at most 65535" in *Areas* and "0-65535" in *Security considerations*, which don't match. I measured `localhost:0`: it matches the grammar, `Uri.TryCreate("https://localhost:0/")` succeeds, and the request goes to `https://localhost:0/v2/…`. The connection then fails as a transport error (#272), not as *not found*. Leading zeros are normalized (`localhost:05000` becomes port 5000). Instruction for the Dev: either refuse port 0 in `CreateRegistryUri` (`baseUri.Port == 0`) and add `localhost:0` as an AC1 row, or say explicitly in `docs/areas/registries.md` that ports 0-65535 are accepted. Either way the *Areas* and *Security considerations* wording must agree. Why minor: it's a detail the Dev can settle without changing the plan, and it opens no path escape.
+
+2. **minor:** No test row covers the 200-character limit, even though *Security considerations* claims it as a limit. Every AC1 form fails for another reason, so a broken length check would go unnoticed. Instruction for the Tester: add an AC1 `DataRow` with a registry that matches the grammar and is 201 characters long (for example 50 four-character labels such as `abcd.` repeated, trimmed so the total is exactly 201). It must answer *not found* with `InvalidRegistryMessage` and send no request. Why minor: it adds one test row and changes nothing in the approach.
+
+## Security notes
+
+1. Fixing the port bug means a registered reference can now reach any host:port over HTTPS. Before, only bracketed IPv6 with a port worked; host names and IPv4 with a port failed. This is intended, since the area document already promises non-default ports, and the risk is limited: every request is HTTPS and sends no stored credentials. Still, the planned bullet in `docs/areas/registries.md` under "Request paths" should say plainly that any port from 0 to 65535 on the named host is reachable. That way the area document records it as behavior, not just as a format rule.
+2. The follow-up issue "Trivy scan target can begin with a dash" is a good catch and is correctly kept out of scope. The orchestrator should file it as planned.
