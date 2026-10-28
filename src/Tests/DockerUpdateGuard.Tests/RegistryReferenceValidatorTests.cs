@@ -297,5 +297,25 @@ public class RegistryReferenceValidatorTests
                       $"A path with a '.' or '..' segment must be reported: {path}");
     }
 
+    /// <summary>
+    /// Verify a path without a segment equal to '.' or '..' is not reported as a dot segment
+    /// </summary>
+    /// <param name="path">Path to check</param>
+    [TestMethod]
+    [DataRow("a")]
+    [DataRow("a.b/c")]
+    [DataRow("...")]
+    [DataRow(".a")]
+    [DataRow("a.")]
+    [DataRow("..a")]
+    [DataRow("%2E%2E")]
+    [DataRow("a//b")]
+    [DataRow("")]
+    public void RegistryReferenceValidatorHasDotSegmentNoDotSegmentReturnsFalse(string path)
+    {
+        Assert.IsFalse(RegistryReferenceValidator.HasDotSegment(path),
+                       $"A path without a '.' or '..' segment must not be reported: {path}");
+    }
+
     #endregion // Methods
 }

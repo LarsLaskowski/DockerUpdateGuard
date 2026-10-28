@@ -1263,6 +1263,78 @@ public partial class OciRegistryClientTests
     }
 
     /// <summary>
+    /// Verify the OCI tag lookup keeps a repository segment that only contains dots or percent text
+    /// </summary>
+    /// <param name="repository">Repository</param>
+    /// <param name="expectedUri">Expected manifest request URI</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [DataRow("corp/my.app", "https://mcr.microsoft.com/v2/corp/my.app/manifests/1.0")]
+    [DataRow("corp/.../api", "https://mcr.microsoft.com/v2/corp/.../api/manifests/1.0")]
+    [DataRow("corp/%2E%2E/api", "https://mcr.microsoft.com/v2/corp/%252E%252E/api/manifests/1.0")]
+    public async Task OciRegistryClientGetTagAsyncDotsInsideSegmentKeepsSegmentAsync(string repository, string expectedUri)
+    {
+        using var handler = new SequenceHttpMessageHandler();
+        using var httpClient = new HttpClient(handler);
+
+        handler.AddResponse(expectedUri,
+                            CreateManifestResponse("sha256:manifest",
+                                                   """
+                                                   { "schemaVersion": 2, "config": { "digest": "sha256:config" } }
+                                                   """));
+
+        var client = new OciRegistryClient(httpClient, new TestLogger<OciRegistryClient>());
+
+        var result = await client.GetTagAsync(new ImageReference
+                                              {
+                                                  Registry = "mcr.microsoft.com",
+                                                  Repository = repository,
+                                                  Tag = "1.0",
+                                              },
+                                              "linux",
+                                              "amd64",
+                                              CancellationToken.None)
+                                 .ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "A segment that is not exactly a dot segment must not be refused");
+        Assert.HasCount(1, handler.Requests, "Exactly the manifest request must be sent");
+        Assert.AreEqual(expectedUri, handler.Requests[0].RequestUri, "Every segment must be requested as written");
+    }
+
+    /// <summary>
+    /// Verify the OCI base-image resolution sends no blob request for a configuration digest that is a dot segment
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task OciRegistryClientResolveBaseImagesAsyncDotSegmentConfigDigestEndsChainWithoutBlobRequestAsync()
+    {
+        using var handler = new SequenceHttpMessageHandler();
+        using var httpClient = new HttpClient(handler);
+
+        handler.AddResponse("https://mcr.microsoft.com/v2/corp/api/manifests/1.0",
+                            CreateManifestResponse("sha256:manifest",
+                                                   """
+                                                   { "schemaVersion": 2, "config": { "digest": ".." } }
+                                                   """));
+
+        var client = new OciRegistryClient(httpClient, new TestLogger<OciRegistryClient>());
+
+        var result = await client.ResolveBaseImagesAsync(new ImageReference
+                                                         {
+                                                             Registry = "mcr.microsoft.com",
+                                                             Repository = "corp/api",
+                                                             Tag = "1.0",
+                                                         },
+                                                         CancellationToken.None)
+                                 .ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "A configuration digest with a dot segment must end the chain like a 404");
+        Assert.IsNotNull(result.Data, "The resolution must return a base-image list");
+        Assert.IsEmpty(result.Data, "A configuration digest with a dot segment must yield no base images");
+        Assert.HasCount(1, handler.Requests, "Only the manifest may be requested, never the blob");
+    }
+
+    /// <summary>
     /// Answer the requests of a base-image chain: the first image carries the given config blob, every further image has no labels
     /// </summary>
     /// <param name="request">Request</param>

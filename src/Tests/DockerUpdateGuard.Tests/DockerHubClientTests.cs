@@ -1773,6 +1773,90 @@ public partial class DockerHubClientTests
     }
 
     /// <summary>
+    /// Verify the Docker Hub tag lookup keeps a repository segment that only contains dots
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerHubClientGetTagAsyncDotsInsideSegmentKeepsSegmentAsync()
+    {
+        const string tagUri = "https://hub.docker.com/v2/namespaces/acme/repositories/my.app/tags/1.0";
+
+        using var handler = new StubHttpMessageHandler();
+        using var httpClient = new HttpClient(handler)
+                               {
+                                   BaseAddress = new Uri("https://hub.docker.com/"),
+                               };
+
+        handler.AddResponse("https://hub.docker.com/v2/users/login", LoginResponseJson);
+        handler.AddResponse(tagUri,
+                            """
+                            {
+                              "name": "1.0",
+                              "digest": "sha256:index",
+                              "last_pushed": "2025-04-02T10:00:00Z",
+                              "images": [ { "architecture": "amd64", "os": "linux", "digest": "sha256:amd64" } ]
+                            }
+                            """);
+
+        var client = CreateClient(httpClient);
+
+        var result = await client.GetTagAsync(new ImageReference
+                                              {
+                                                  Registry = "docker.io",
+                                                  Repository = "acme/my.app",
+                                                  Tag = "1.0",
+                                              },
+                                              "linux",
+                                              "amd64",
+                                              CancellationToken.None)
+                                 .ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "A segment that is not exactly a dot segment must not be refused");
+        Assert.Contains(request => string.Equals(request.RequestUri, tagUri, StringComparison.Ordinal),
+                        handler.Requests,
+                        "The tag must be requested with every segment kept");
+    }
+
+    /// <summary>
+    /// Verify the Docker Hub base-image resolution sends no blob request for a configuration digest that is a dot segment
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerHubClientResolveBaseImagesAsyncDotSegmentConfigDigestEndsChainWithoutBlobRequestAsync()
+    {
+        var requests = new List<string>();
+
+        using var handler = new DelegateHttpMessageHandler(request =>
+                                                           {
+                                                               var uri = request.RequestUri!;
+
+                                                               requests.Add(uri.AbsoluteUri);
+
+                                                               return string.Equals(uri.Host, "auth.docker.io", StringComparison.Ordinal)
+                                                                          ? CreateJsonResponse("""{ "token": "registry-token" }""")
+                                                                          : CreateJsonResponse("""{ "schemaVersion": 2, "config": { "digest": ".." } }""");
+                                                           });
+        using var httpClient = new HttpClient(handler);
+
+        var client = CreateClient(httpClient);
+
+        var result = await client.ResolveBaseImagesAsync(new ImageReference
+                                                         {
+                                                             Registry = "docker.io",
+                                                             Repository = "acme/api",
+                                                             Tag = "1.0",
+                                                         },
+                                                         CancellationToken.None)
+                                 .ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "A configuration digest with a dot segment must end the chain like a 404");
+        Assert.IsNotNull(result.Data, "The resolution must return a base-image list");
+        Assert.IsEmpty(result.Data, "A configuration digest with a dot segment must yield no base images");
+        Assert.HasCount(2, requests, "Only the token and the manifest may be requested, never the blob");
+        Assert.DoesNotContain("/blobs/", requests[1], "The second request must be the manifest, not a blob");
+    }
+
+    /// <summary>
     /// Assert a lookup was refused for a dot segment: not found with the fixed message, no request and no log entry
     /// </summary>
     /// <param name="status">Result status</param>
