@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-10-28
 - **Area:** Registries
-- **Source:** Issue #348, issue #355, issue #360
+- **Source:** Issue #348, issue #355, issue #360, issue #364
 - **Supersedes:** —
 
 ## Context
@@ -41,6 +41,17 @@ request path without any escaping, with the Docker Hub token attached, so `..` s
 Scout host and a `?` or `#` in the tag added a query or fragment. Measured on .NET 10: `%2E` and `%2E%2E` in a path are unescaped and removed the same way, and after the
 escaping only a segment that is exactly `.` or `..` is affected (`...`, `.%20`, a percent sign, escaped as `%25`, and a
 backslash, escaped as `%5C`, stay as they are).
+
+The registry part of a registered reference is the first segment when it contains a `.` or a `:` or is `localhost`, with
+no further check, so `.`, `..`, `a.`, `evil.com?x`, `user:pw` or `mailto:x` become the registry (#364). The OCI client
+took a registry that `Uri.TryCreate` accepts as an absolute URI as a base URL and built every other one as the host of a
+`UriBuilder`. Measured on .NET 10: `.`, `..`, `.a`, `a..b`, `http:evil.com`, `a b.c` and `127.0.0.1:5000` make
+`UriBuilder.Uri` throw `UriFormatException`, which escaped the lookups and failed the scan as an unexpected error; no
+request was sent and nothing resolved relatively. `a.`, `-a.com` and `a_b.com` were requested as hosts; `evil.com?x` and
+`evil.com#x` were requested from `evil.com` with the request path replaced by `/` and the rest moved into the query or
+fragment. Every registry of a host name with a port (`localhost:5000`, `registry.example.com:5000`) parses as an absolute URI whose scheme is the host name, so `SocketsHttpHandler` refused it with `NotSupportedException`,
+and the tag listing normalized it to an empty host. `https://<registry>/` parsed as a URI keeps host and port for every
+registry of the grammar and rejects a port above 65535 and a bracketed value that is no IPv6 address.
 
 ## Options considered
 
@@ -98,6 +109,21 @@ backslash, escaped as `%5C`, stay as they are).
 19. **Check the configured Docker Hub user name, the path segment of the account listing, here as well** — a
     configured value is checked at startup with the other options ([Hosting](../areas/hosting.md)), so it is the follow-up
     [#363](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/363).
+20. **Build the OCI request URI only from a registry that matches the registry grammar within its stored limit and
+    parses as `https://<registry>/`, refusing any other registry where the URI is composed, answered as a 404 would be,
+    without sending a request** — the same place and outcome as option 14: it covers references registered before the
+    change, every lookup and the base-image chain, and a new lookup gets it by construction. Chosen.
+21. **Reject the reference at registration** — leaves the references already in the catalog, which is never cleaned,
+    and changes what a user can register, which option 18 leaves to plain parsing; checking the registration form
+    against the stored rules is [#343](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/343).
+22. **Let the OCI client decline such a registry in `CanHandle`, so the lookup is *unsupported*** — one check, but the
+    dispatcher's message repeats the raw registry (control characters included) in scan messages, and the base-image
+    chain, which calls the client's own lookups, would still reach the URI builder.
+23. **Keep the absolute-URL form of a registry for `http` and `https` URLs** — no source produces it: the parser splits
+    at `/`, remote references are held to the grammar, Docker Hub URLs go to the Docker Hub client; the form only kept a
+    way to plain-HTTP requests and is what broke registries with a port.
+24. **Catch `UriFormatException` and answer *failed*** — leaves `a.`, `evil.com?x` and the non-`http` schemes, which do
+    not throw, and keeps registries with a port broken.
 
 ## Decision
 
@@ -108,7 +134,9 @@ nothing. Image references read from a base-image label or a Docker Engine contai
 Hub account listing, are accepted only when they match Docker's reference grammar within the stored limits; display
 names and the source reference are cut to their columns, a container whose ID exceeds its column is left out, and
 the request builders of both registry clients and of the Docker Scout provider refuse a path with a segment that is
-exactly `.` or `..`, answered as a 404 of that request would be, without sending it; Docker Scout escapes each segment. The rules are in
+exactly `.` or `..`, answered as a 404 of that request would be, without sending it; Docker Scout escapes each segment.
+The OCI client addresses only a registry that is a host with an optional port by that grammar and refuses any other
+registry the same way. The rules are in
 [Registries](../areas/registries.md#what-can-be-read) and [its request paths](../areas/registries.md#request-paths),
 [Image catalog](../areas/image-catalog.md#image-references), [Vulnerabilities](../areas/vulnerabilities.md#docker-scout) and
 [Docker instances](../areas/docker-instances.md).
@@ -131,6 +159,10 @@ exactly `.` or `..`, answered as a 404 of that request would be, without sending
   log entry, so its scan reports it like an image the registry does not have. The configured Docker Hub user name
   still reaches the path of the account listing unchecked ([#363](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/363)); the Docker Engine requests are not
   covered: their container and image IDs come from the configured endpoint.
+- A registered reference whose registry is not a host with an optional port is answered *not found* without a request
+  or log entry instead of failing its scan with an unexpected error; it can still be registered and stays in the
+  catalog. Registries with a port (`localhost:5000`) are reached for the first time. A registry given to the OCI client
+  as an absolute URL is no longer accepted.
 - Vulnerability advisory fields are handled by [#271](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/271);
   references entered by a user at registration are not remote and keep the behavior of
   [0009](0009-integration-results-carry-fixed-failure-reasons.md).
