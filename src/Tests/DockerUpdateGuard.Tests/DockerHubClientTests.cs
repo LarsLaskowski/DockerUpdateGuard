@@ -4,6 +4,7 @@ using System.Text;
 using DockerUpdateGuard.Configuration;
 using DockerUpdateGuard.DockerHub;
 using DockerUpdateGuard.Images.Data;
+using DockerUpdateGuard.Images.Helper;
 using DockerUpdateGuard.Infrastructure;
 using DockerUpdateGuard.Tests.Data;
 using DockerUpdateGuard.Tests.Helper;
@@ -1506,6 +1507,287 @@ public partial class DockerHubClientTests
         Assert.Contains("ac m e", entry.Message, "The log entry must name the cleaned user name");
         Assert.DoesNotContain("\n", entry.Message, "The log entry must carry no line feed from the remote user name");
         Assert.DoesNotContain("\u202E", entry.Message, "The log entry must carry no bidirectional control character from the remote user name");
+    }
+
+    /// <summary>
+    /// Verify the Docker Hub tag lookup answers not found without a request or a log entry for a repository with a dot segment
+    /// </summary>
+    /// <param name="repository">Repository with a dot segment</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [DataRow("../api")]
+    [DataRow("./api")]
+    [DataRow("acme/..")]
+    [DataRow("acme/../../v2/x")]
+    [DataRow("..")]
+    public async Task DockerHubClientGetTagAsyncDotSegmentRepositoryReturnsNotFoundWithoutRequestAsync(string repository)
+    {
+        using var handler = new StubHttpMessageHandler();
+        using var httpClient = new HttpClient(handler)
+                               {
+                                   BaseAddress = new Uri("https://hub.docker.com/"),
+                               };
+
+        handler.AddResponse("https://hub.docker.com/v2/users/login", LoginResponseJson);
+        handler.Response = new HttpResponseMessage(HttpStatusCode.NotFound);
+
+        var logger = new TestLogger<DockerHubClient>();
+        var client = CreateClient(httpClient, logger: logger);
+
+        var result = await client.GetTagAsync(new ImageReference
+                                              {
+                                                  Registry = "docker.io",
+                                                  Repository = repository,
+                                                  Tag = "1.0",
+                                              },
+                                              "linux",
+                                              "amd64",
+                                              CancellationToken.None)
+                                 .ConfigureAwait(false);
+
+        AssertDotSegmentRefusal(result.Status, result.Message, handler, logger);
+    }
+
+    /// <summary>
+    /// Verify the Docker Hub repository lookup answers not found without a request or a log entry for a repository with a dot segment
+    /// </summary>
+    /// <param name="repository">Repository with a dot segment</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [DataRow("../api")]
+    [DataRow("./api")]
+    [DataRow("acme/..")]
+    [DataRow("acme/../../v2/x")]
+    [DataRow("..")]
+    public async Task DockerHubClientGetRepositoryAsyncDotSegmentRepositoryReturnsNotFoundWithoutRequestAsync(string repository)
+    {
+        using var handler = new StubHttpMessageHandler();
+        using var httpClient = new HttpClient(handler)
+                               {
+                                   BaseAddress = new Uri("https://hub.docker.com/"),
+                               };
+
+        handler.AddResponse("https://hub.docker.com/v2/users/login", LoginResponseJson);
+        handler.Response = new HttpResponseMessage(HttpStatusCode.NotFound);
+
+        var logger = new TestLogger<DockerHubClient>();
+        var client = CreateClient(httpClient, logger: logger);
+
+        var result = await client.GetRepositoryAsync(new ImageReference
+                                                     {
+                                                         Registry = "docker.io",
+                                                         Repository = repository,
+                                                         Tag = "1.0",
+                                                     },
+                                                     CancellationToken.None)
+                                 .ConfigureAwait(false);
+
+        AssertDotSegmentRefusal(result.Status, result.Message, handler, logger);
+    }
+
+    /// <summary>
+    /// Verify the Docker Hub tags listing answers not found without a request or a log entry for a repository with a dot segment
+    /// </summary>
+    /// <param name="repository">Repository with a dot segment</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [DataRow("../api")]
+    [DataRow("./api")]
+    [DataRow("acme/..")]
+    [DataRow("acme/../../v2/x")]
+    [DataRow("..")]
+    public async Task DockerHubClientGetTagsAsyncDotSegmentRepositoryReturnsNotFoundWithoutRequestAsync(string repository)
+    {
+        using var handler = new StubHttpMessageHandler();
+        using var httpClient = new HttpClient(handler)
+                               {
+                                   BaseAddress = new Uri("https://hub.docker.com/"),
+                               };
+
+        handler.AddResponse("https://hub.docker.com/v2/users/login", LoginResponseJson);
+        handler.Response = new HttpResponseMessage(HttpStatusCode.NotFound);
+
+        var logger = new TestLogger<DockerHubClient>();
+        var client = CreateClient(httpClient, logger: logger);
+
+        var result = await client.GetTagsAsync("docker.io",
+                                               repository,
+                                               cancellationToken: CancellationToken.None)
+                                 .ConfigureAwait(false);
+
+        AssertDotSegmentRefusal(result.Status, result.Message, handler, logger);
+    }
+
+    /// <summary>
+    /// Verify the Docker Hub image configuration lookup answers not found without a request or a log entry for a reference with a dot segment
+    /// </summary>
+    /// <param name="repository">Repository</param>
+    /// <param name="tag">Tag</param>
+    /// <param name="digest">Digest or null</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [DataRow("acme/..", "1.0", null)]
+    [DataRow("acme/api", "..", null)]
+    [DataRow("acme/api", "1.0", "..")]
+    public async Task DockerHubClientGetImageConfigurationAsyncDotSegmentReferenceReturnsNotFoundWithoutRequestAsync(string repository, string tag, string? digest)
+    {
+        using var handler = new StubHttpMessageHandler();
+        using var httpClient = new HttpClient(handler)
+                               {
+                                   BaseAddress = new Uri("https://hub.docker.com/"),
+                               };
+
+        var logger = new TestLogger<DockerHubClient>();
+        var client = CreateClient(httpClient, logger: logger);
+
+        var result = await client.GetImageConfigurationAsync(new ImageReference
+                                                             {
+                                                                 Registry = "docker.io",
+                                                                 Repository = repository,
+                                                                 Tag = tag,
+                                                                 Digest = digest,
+                                                             },
+                                                             CancellationToken.None)
+                                 .ConfigureAwait(false);
+
+        AssertDotSegmentRefusal(result.Status, result.Message, handler, logger);
+    }
+
+    /// <summary>
+    /// Verify the Docker Hub base-image resolution ends the chain without a request for a repository with a dot segment
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerHubClientResolveBaseImagesAsyncDotSegmentRepositoryReturnsNoBaseImagesWithoutRequestAsync()
+    {
+        using var handler = new StubHttpMessageHandler();
+        using var httpClient = new HttpClient(handler)
+                               {
+                                   BaseAddress = new Uri("https://hub.docker.com/"),
+                               };
+
+        var logger = new TestLogger<DockerHubClient>();
+        var client = CreateClient(httpClient, logger: logger);
+
+        var result = await client.ResolveBaseImagesAsync(new ImageReference
+                                                         {
+                                                             Registry = "docker.io",
+                                                             Repository = "acme/../../v2/x",
+                                                             Tag = "1.0",
+                                                         },
+                                                         CancellationToken.None)
+                                 .ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "A repository with a dot segment must end the chain like a 404 and not fail the resolution");
+        Assert.IsNotNull(result.Data, "The resolution must return a base-image list");
+        Assert.IsEmpty(result.Data, "A repository with a dot segment must yield no base images");
+        Assert.IsEmpty(handler.Requests, "No request, not even a token request, may be sent for a repository with a dot segment");
+        Assert.IsEmpty(logger.Entries, "Nothing may be logged for a repository with a dot segment");
+    }
+
+    /// <summary>
+    /// Verify the Docker Hub image configuration lookup sends no blob request for a configuration digest that is a dot segment
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerHubClientGetImageConfigurationAsyncDotSegmentConfigDigestSendsNoBlobRequestAsync()
+    {
+        var requests = new List<string>();
+
+        using var handler = new DelegateHttpMessageHandler(request =>
+                                                           {
+                                                               var uri = request.RequestUri!;
+
+                                                               requests.Add(uri.AbsoluteUri);
+
+                                                               return string.Equals(uri.Host, "auth.docker.io", StringComparison.Ordinal)
+                                                                          ? CreateJsonResponse("""{ "token": "registry-token" }""")
+                                                                          : CreateJsonResponse("""{ "schemaVersion": 2, "config": { "digest": ".." } }""");
+                                                           });
+        using var httpClient = new HttpClient(handler);
+
+        var client = CreateClient(httpClient);
+
+        var result = await client.GetImageConfigurationAsync(new ImageReference
+                                                             {
+                                                                 Registry = "docker.io",
+                                                                 Repository = "acme/api",
+                                                                 Tag = "1.0",
+                                                             },
+                                                             CancellationToken.None)
+                                 .ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Failed, result.Status, "A configuration digest with a dot segment must fail like an unreadable blob");
+        Assert.AreEqual("Image configuration blob could not be read for 'docker.io/acme/api:1.0'",
+                        result.Message,
+                        "The message must be the one of an unreadable configuration blob");
+        Assert.HasCount(2, requests, "Only the token and the manifest may be requested, never the blob");
+        Assert.DoesNotContain("/blobs/", requests[1], "The second request must be the manifest, not a blob");
+    }
+
+    /// <summary>
+    /// Verify the Docker Hub image configuration lookup sends no platform manifest request for a manifest-list digest that is a dot segment
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerHubClientGetImageConfigurationAsyncDotSegmentManifestListDigestReturnsNotFoundAsync()
+    {
+        var requests = new List<string>();
+
+        using var handler = new DelegateHttpMessageHandler(request =>
+                                                           {
+                                                               var uri = request.RequestUri!;
+
+                                                               requests.Add(uri.AbsoluteUri);
+
+                                                               if (string.Equals(uri.Host, "auth.docker.io", StringComparison.Ordinal))
+                                                               {
+                                                                   return CreateJsonResponse("""{ "token": "registry-token" }""");
+                                                               }
+
+                                                               return new HttpResponseMessage(HttpStatusCode.OK)
+                                                                      {
+                                                                          Content = new StringContent("""{ "schemaVersion": 2, "manifests": [ { "digest": "..", "platform": { "os": "linux", "architecture": "amd64" } } ] }""",
+                                                                                                      Encoding.UTF8,
+                                                                                                      "application/vnd.oci.image.index.v1+json"),
+                                                                      };
+                                                           });
+        using var httpClient = new HttpClient(handler);
+
+        var client = CreateClient(httpClient);
+
+        var result = await client.GetImageConfigurationAsync(new ImageReference
+                                                             {
+                                                                 Registry = "docker.io",
+                                                                 Repository = "acme/api",
+                                                                 Tag = "1.0",
+                                                             },
+                                                             CancellationToken.None)
+                                 .ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.NotFound, result.Status, "A manifest-list digest with a dot segment must be answered like an unresolvable configuration digest");
+        Assert.AreEqual("Config blob digest could not be resolved for 'docker.io/acme/api:1.0'",
+                        result.Message,
+                        "The message must be the one of an unresolvable configuration digest");
+        Assert.HasCount(2, requests, "Only the token and the manifest list may be requested, never the platform manifest");
+    }
+
+    /// <summary>
+    /// Assert a lookup was refused for a dot segment: not found with the fixed message, no request and no log entry
+    /// </summary>
+    /// <param name="status">Result status</param>
+    /// <param name="message">Result message</param>
+    /// <param name="handler">Handler that observed the requests</param>
+    /// <param name="logger">Logger that captured the entries</param>
+    private static void AssertDotSegmentRefusal(ExternalOperationStatus status,
+                                                string? message,
+                                                StubHttpMessageHandler handler,
+                                                TestLogger<DockerHubClient> logger)
+    {
+        Assert.AreEqual(ExternalOperationStatus.NotFound, status, "A path with a dot segment must be answered as not found");
+        Assert.AreEqual(RegistryReferenceValidator.DotSegmentMessage, message, "The message must be the fixed dot-segment text");
+        Assert.IsEmpty(handler.Requests, "No request, not even a login or token request, may be sent for a path with a dot segment");
+        Assert.IsEmpty(logger.Entries, "Nothing may be logged for a path with a dot segment");
     }
 
     /// <summary>

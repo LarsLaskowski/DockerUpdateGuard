@@ -12,3 +12,4 @@ are quoted in full.
 | 2026-10-28 16:35 | 3 Plan revise | Lead | RESULT: DONE, Docker Scout provider taken into scope (AC9, AC10, CreateVulnerabilitiesUri), record 0014 updated, 2 follow-up issues proposed (opus/medium · 66,124 tokens · 16 tool uses · 145 s) |
 | 2026-10-28 16:42 | 3 Plan security review (2nd) | Security | APPROVED: B1 resolved, Verified fact 16 confirmed by measurement, no blocking findings (opus/medium · usage pending) |
 | 2026-10-28 16:45 | 4 Skeleton | Dev | RegistryReferenceValidator.DotSegmentMessage and stub HasDotSegment; format 0 changes, build 0 warnings (sonnet/medium · 73,075 tokens · 5 tool uses · 165 s) |
+| 2026-10-28 16:55 | 5 Tests first | Tester | 22 test methods / 47 cases, all fail on behaviour (verified by Orchestrator: Failed 47, Passed 0); deferred: AC1 negative rows, AC8 pins, 2 AC10 rows (sonnet/medium · 165,908 tokens · 29 tool uses · 561 s) |

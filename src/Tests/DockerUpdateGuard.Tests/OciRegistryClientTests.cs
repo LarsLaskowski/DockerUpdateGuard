@@ -5,6 +5,7 @@ using System.Text;
 using DockerUpdateGuard.DockerHub;
 using DockerUpdateGuard.Images;
 using DockerUpdateGuard.Images.Data;
+using DockerUpdateGuard.Images.Helper;
 using DockerUpdateGuard.Infrastructure;
 using DockerUpdateGuard.Tests.Data;
 using DockerUpdateGuard.Tests.Helper;
@@ -1070,6 +1071,198 @@ public partial class OciRegistryClientTests
     }
 
     /// <summary>
+    /// Verify the OCI tag lookup answers not found without a request or a log entry for a repository with a dot segment
+    /// </summary>
+    /// <param name="repository">Repository with a dot segment</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [DataRow("corp/../../../v2/_catalog")]
+    [DataRow("./corp/api")]
+    [DataRow("corp/.")]
+    [DataRow("..")]
+    public async Task OciRegistryClientGetTagAsyncDotSegmentRepositoryReturnsNotFoundWithoutRequestAsync(string repository)
+    {
+        using var handler = new SequenceHttpMessageHandler();
+        using var httpClient = new HttpClient(handler);
+
+        var logger = new TestLogger<OciRegistryClient>();
+        var client = new OciRegistryClient(httpClient, logger);
+
+        var result = await client.GetTagAsync(new ImageReference
+                                              {
+                                                  Registry = "mcr.microsoft.com",
+                                                  Repository = repository,
+                                                  Tag = "1.0",
+                                              },
+                                              "linux",
+                                              "amd64",
+                                              CancellationToken.None)
+                                 .ConfigureAwait(false);
+
+        AssertDotSegmentRefusal(result.Status, result.Message, handler, logger);
+    }
+
+    /// <summary>
+    /// Verify the OCI image configuration lookup answers not found without a request or a log entry for a reference with a dot segment
+    /// </summary>
+    /// <param name="repository">Repository</param>
+    /// <param name="tag">Tag</param>
+    /// <param name="digest">Digest or null</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [DataRow("corp/..", "1.0", null)]
+    [DataRow("corp/api", "..", null)]
+    [DataRow("corp/api", ".", null)]
+    [DataRow("corp/api", "1.0", "..")]
+    public async Task OciRegistryClientGetImageConfigurationAsyncDotSegmentReferenceReturnsNotFoundWithoutRequestAsync(string repository, string tag, string? digest)
+    {
+        using var handler = new SequenceHttpMessageHandler();
+        using var httpClient = new HttpClient(handler);
+
+        var logger = new TestLogger<OciRegistryClient>();
+        var client = new OciRegistryClient(httpClient, logger);
+
+        var result = await client.GetImageConfigurationAsync(new ImageReference
+                                                             {
+                                                                 Registry = "mcr.microsoft.com",
+                                                                 Repository = repository,
+                                                                 Tag = tag,
+                                                                 Digest = digest,
+                                                             },
+                                                             CancellationToken.None)
+                                 .ConfigureAwait(false);
+
+        AssertDotSegmentRefusal(result.Status, result.Message, handler, logger);
+    }
+
+    /// <summary>
+    /// Verify the OCI base-image resolution ends the chain without a request for a repository with a dot segment
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task OciRegistryClientResolveBaseImagesAsyncDotSegmentRepositoryReturnsNoBaseImagesWithoutRequestAsync()
+    {
+        using var handler = new SequenceHttpMessageHandler();
+        using var httpClient = new HttpClient(handler);
+
+        var logger = new TestLogger<OciRegistryClient>();
+        var client = new OciRegistryClient(httpClient, logger);
+
+        var result = await client.ResolveBaseImagesAsync(new ImageReference
+                                                         {
+                                                             Registry = "mcr.microsoft.com",
+                                                             Repository = "corp/../../v2/x",
+                                                             Tag = "1.0",
+                                                         },
+                                                         CancellationToken.None)
+                                 .ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "A repository with a dot segment must end the chain like a 404 and not fail the resolution");
+        Assert.IsNotNull(result.Data, "The resolution must return a base-image list");
+        Assert.IsEmpty(result.Data, "A repository with a dot segment must yield no base images");
+        Assert.IsEmpty(handler.Requests, "No request may be sent for a repository with a dot segment");
+        Assert.IsEmpty(logger.Entries, "Nothing may be logged for a repository with a dot segment");
+    }
+
+    /// <summary>
+    /// Verify the OCI tags listing answers not found without a request or a log entry for a repository with a dot segment
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task OciRegistryClientGetTagsAsyncDotSegmentRepositoryReturnsNotFoundWithoutRequestAsync()
+    {
+        using var handler = new SequenceHttpMessageHandler();
+        using var httpClient = new HttpClient(handler);
+
+        var logger = new TestLogger<OciRegistryClient>();
+        var client = new OciRegistryClient(httpClient, logger);
+
+        var result = await client.GetTagsAsync("mcr.microsoft.com",
+                                               "corp/../../../v2/_catalog",
+                                               cancellationToken: CancellationToken.None)
+                                 .ConfigureAwait(false);
+
+        AssertDotSegmentRefusal(result.Status, result.Message, handler, logger);
+    }
+
+    /// <summary>
+    /// Verify the OCI image configuration lookup does not request a configuration blob whose digest is a dot segment
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task OciRegistryClientGetImageConfigurationAsyncDotSegmentConfigDigestReturnsNotFoundWithoutBlobRequestAsync()
+    {
+        using var handler = new SequenceHttpMessageHandler();
+        using var httpClient = new HttpClient(handler);
+
+        handler.AddResponse("https://mcr.microsoft.com/v2/corp/api/manifests/1.0",
+                            CreateManifestResponse("sha256:manifest",
+                                                   """
+                                                   { "schemaVersion": 2, "config": { "digest": ".." } }
+                                                   """));
+
+        var client = new OciRegistryClient(httpClient, new TestLogger<OciRegistryClient>());
+
+        var result = await client.GetImageConfigurationAsync(new ImageReference
+                                                             {
+                                                                 Registry = "mcr.microsoft.com",
+                                                                 Repository = "corp/api",
+                                                                 Tag = "1.0",
+                                                             },
+                                                             CancellationToken.None)
+                                 .ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.NotFound, result.Status, "A configuration digest with a dot segment must be answered as not found");
+        Assert.AreEqual(RegistryReferenceValidator.DotSegmentMessage, result.Message, "The message must be the fixed dot-segment text");
+        Assert.HasCount(1, handler.Requests, "Only the manifest may be requested, never the blob");
+        Assert.AreEqual("https://mcr.microsoft.com/v2/corp/api/manifests/1.0",
+                        handler.Requests[0].RequestUri,
+                        "The one request must be the manifest");
+    }
+
+    /// <summary>
+    /// Verify the OCI tag lookup does not request a platform manifest whose digest in the manifest list is a dot segment
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task OciRegistryClientGetTagAsyncDotSegmentManifestListDigestReturnsNotFoundAsync()
+    {
+        using var handler = new SequenceHttpMessageHandler();
+        using var httpClient = new HttpClient(handler);
+
+        handler.AddResponse("https://mcr.microsoft.com/v2/corp/api/manifests/1.0",
+                            CreateManifestListResponse("sha256:index",
+                                                       """
+                                                       {
+                                                         "schemaVersion": 2,
+                                                         "manifests": [
+                                                           { "digest": "..", "platform": { "os": "linux", "architecture": "amd64" } }
+                                                         ]
+                                                       }
+                                                       """));
+
+        var client = new OciRegistryClient(httpClient, new TestLogger<OciRegistryClient>());
+
+        var result = await client.GetTagAsync(new ImageReference
+                                              {
+                                                  Registry = "mcr.microsoft.com",
+                                                  Repository = "corp/api",
+                                                  Tag = "1.0",
+                                              },
+                                              "linux",
+                                              "amd64",
+                                              CancellationToken.None)
+                                 .ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.NotFound, result.Status, "A manifest-list digest with a dot segment must be answered as not found");
+        Assert.AreEqual(RegistryReferenceValidator.DotSegmentMessage, result.Message, "The message must be the fixed dot-segment text");
+        Assert.HasCount(1, handler.Requests, "Only the manifest list may be requested, never the platform manifest");
+        Assert.AreEqual("https://mcr.microsoft.com/v2/corp/api/manifests/1.0",
+                        handler.Requests[0].RequestUri,
+                        "The one request must be the manifest list");
+    }
+
+    /// <summary>
     /// Answer the requests of a base-image chain: the first image carries the given config blob, every further image has no labels
     /// </summary>
     /// <param name="request">Request</param>
@@ -1104,6 +1297,24 @@ public partial class OciRegistryClientTests
     #endregion // Methods
 
     #region Static methods
+
+    /// <summary>
+    /// Assert a lookup was refused for a dot segment: not found with the fixed message, no request and no log entry
+    /// </summary>
+    /// <param name="status">Result status</param>
+    /// <param name="message">Result message</param>
+    /// <param name="handler">Handler that observed the requests</param>
+    /// <param name="logger">Logger that captured the entries</param>
+    private static void AssertDotSegmentRefusal(ExternalOperationStatus status,
+                                                string? message,
+                                                SequenceHttpMessageHandler handler,
+                                                TestLogger<OciRegistryClient> logger)
+    {
+        Assert.AreEqual(ExternalOperationStatus.NotFound, status, "A path with a dot segment must be answered as not found");
+        Assert.AreEqual(RegistryReferenceValidator.DotSegmentMessage, message, "The message must be the fixed dot-segment text");
+        Assert.IsEmpty(handler.Requests, "No request may be sent for a path with a dot segment");
+        Assert.IsEmpty(logger.Entries, "Nothing may be logged for a path with a dot segment");
+    }
 
     /// <summary>
     /// Look up the tag <c>latest</c> of a registry whose manifest answer carries the given digest header
