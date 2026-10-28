@@ -20,6 +20,19 @@ namespace DockerUpdateGuard.Tests;
 [TestClass]
 public partial class OciRegistryClientTests
 {
+    #region Constants
+
+    /// <summary>
+    /// Registry that matches the host grammar and has 201 characters, one over the limit
+    /// </summary>
+    private const string OverlongRegistry = "abcd.abcd.abcd.abcd.abcd.abcd.abcd.abcd.abcd.abcd."
+                                            + "abcd.abcd.abcd.abcd.abcd.abcd.abcd.abcd.abcd.abcd."
+                                            + "abcd.abcd.abcd.abcd.abcd.abcd.abcd.abcd.abcd.abcd."
+                                            + "abcd.abcd.abcd.abcd.abcd.abcd.abcd.abcd.abcd.abcd."
+                                            + "a";
+
+    #endregion // Constants
+
     #region Methods
 
     /// <summary>
@@ -1335,6 +1348,220 @@ public partial class OciRegistryClientTests
     }
 
     /// <summary>
+    /// Verify the OCI tag lookup answers not found without a request or a log entry for a registry that is not a host with an optional port
+    /// </summary>
+    /// <param name="registry">Registry that is not a valid host with an optional port</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [DataRow(".")]
+    [DataRow("..")]
+    [DataRow("...")]
+    [DataRow(".a")]
+    [DataRow("a..b")]
+    [DataRow("a.")]
+    [DataRow("-a.com")]
+    [DataRow("a_b.com")]
+    [DataRow("http:")]
+    [DataRow("http:evil.com")]
+    [DataRow("mailto:x")]
+    [DataRow("user:pw")]
+    [DataRow("localhost:")]
+    [DataRow("localhost:abc")]
+    [DataRow("localhost:99999")]
+    [DataRow("evil.com:5000:6000")]
+    [DataRow("evil.com?x")]
+    [DataRow("evil.com#x")]
+    [DataRow("evil.com\\x")]
+    [DataRow("evil.com%2Fx")]
+    [DataRow("a b.com")]
+    [DataRow("ex\xE4mple.com")]
+    [DataRow("[::1")]
+    [DataRow("[a]")]
+    [DataRow("https://ghcr.io")]
+    [DataRow(OverlongRegistry)]
+    public async Task OciRegistryClientGetTagAsyncInvalidRegistryReturnsNotFoundWithoutRequestAsync(string registry)
+    {
+        using var handler = new SequenceHttpMessageHandler();
+        using var httpClient = new HttpClient(handler);
+
+        var logger = new TestLogger<OciRegistryClient>();
+        var client = new OciRegistryClient(httpClient, logger);
+
+        var result = await client.GetTagAsync(new ImageReference
+                                              {
+                                                  Registry = registry,
+                                                  Repository = "corp/api",
+                                                  Tag = "1.0",
+                                              },
+                                              "linux",
+                                              "amd64",
+                                              CancellationToken.None)
+                                 .ConfigureAwait(false);
+
+        AssertInvalidRegistryRefusal(result.Status, result.Message, handler, logger);
+    }
+
+    /// <summary>
+    /// Verify the OCI tags listing answers not found without a request or a log entry for a registry that is not a host with an optional port
+    /// </summary>
+    /// <param name="registry">Registry that is not a valid host with an optional port</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [DataRow(".")]
+    [DataRow("..")]
+    [DataRow("evil.com?x")]
+    [DataRow("localhost:99999")]
+    public async Task OciRegistryClientGetTagsAsyncInvalidRegistryReturnsNotFoundWithoutRequestAsync(string registry)
+    {
+        using var handler = new SequenceHttpMessageHandler();
+        using var httpClient = new HttpClient(handler);
+
+        var logger = new TestLogger<OciRegistryClient>();
+        var client = new OciRegistryClient(httpClient, logger);
+
+        var result = await client.GetTagsAsync(registry,
+                                               "corp/api",
+                                               cancellationToken: CancellationToken.None)
+                                 .ConfigureAwait(false);
+
+        AssertInvalidRegistryRefusal(result.Status, result.Message, handler, logger);
+    }
+
+    /// <summary>
+    /// Verify the OCI image configuration lookup answers not found without a request or a log entry for a registry that is not a host with an optional port
+    /// </summary>
+    /// <param name="registry">Registry that is not a valid host with an optional port</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [DataRow(".")]
+    [DataRow("..")]
+    [DataRow("evil.com?x")]
+    [DataRow("localhost:99999")]
+    public async Task OciRegistryClientGetImageConfigurationAsyncInvalidRegistryReturnsNotFoundWithoutRequestAsync(string registry)
+    {
+        using var handler = new SequenceHttpMessageHandler();
+        using var httpClient = new HttpClient(handler);
+
+        var logger = new TestLogger<OciRegistryClient>();
+        var client = new OciRegistryClient(httpClient, logger);
+
+        var result = await client.GetImageConfigurationAsync(new ImageReference
+                                                             {
+                                                                 Registry = registry,
+                                                                 Repository = "corp/api",
+                                                                 Tag = "1.0",
+                                                             },
+                                                             CancellationToken.None)
+                                 .ConfigureAwait(false);
+
+        AssertInvalidRegistryRefusal(result.Status, result.Message, handler, logger);
+    }
+
+    /// <summary>
+    /// Verify the OCI base-image resolution ends the chain without a request or a log entry for a registry that is not a host with an optional port
+    /// </summary>
+    /// <param name="registry">Registry that is not a valid host with an optional port</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [DataRow(".")]
+    [DataRow("..")]
+    [DataRow("evil.com?x")]
+    [DataRow("localhost:99999")]
+    public async Task OciRegistryClientResolveBaseImagesAsyncInvalidRegistryReturnsNoBaseImagesWithoutRequestAsync(string registry)
+    {
+        using var handler = new SequenceHttpMessageHandler();
+        using var httpClient = new HttpClient(handler);
+
+        var logger = new TestLogger<OciRegistryClient>();
+        var client = new OciRegistryClient(httpClient, logger);
+
+        var result = await client.ResolveBaseImagesAsync(new ImageReference
+                                                         {
+                                                             Registry = registry,
+                                                             Repository = "corp/api",
+                                                             Tag = "1.0",
+                                                         },
+                                                         CancellationToken.None)
+                                 .ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "A registry that is not a host must end the chain like a 404 and not fail the resolution");
+        Assert.IsNotNull(result.Data, "The resolution must return a base-image list");
+        Assert.IsEmpty(result.Data, "A registry that is not a host must yield no base images");
+        Assert.IsEmpty(handler.Requests, "No request may be sent for a registry that is not a host");
+        Assert.IsEmpty(logger.Entries, "Nothing may be logged for a registry that is not a host");
+    }
+
+    /// <summary>
+    /// Verify the OCI tag lookup requests the host and the port of a registry with a port
+    /// </summary>
+    /// <param name="registry">Registry with a port</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [DataRow("localhost:5000")]
+    [DataRow("registry.example.com:5000")]
+    [DataRow("127.0.0.1:5000")]
+    [DataRow("[::1]:5000")]
+    public async Task OciRegistryClientGetTagAsyncRegistryWithPortRequestsHostAndPortAsync(string registry)
+    {
+        using var handler = new SequenceHttpMessageHandler();
+        using var httpClient = new HttpClient(handler);
+
+        var manifestUri = $"https://{registry}/v2/corp/api/manifests/1.0";
+
+        handler.AddResponse(manifestUri,
+                            CreateManifestResponse("sha256:port-tag", """{ "schemaVersion": 2, "config": { "digest": "sha256:config" } }"""));
+
+        var client = new OciRegistryClient(httpClient, new TestLogger<OciRegistryClient>());
+
+        var result = await client.GetTagAsync(new ImageReference
+                                              {
+                                                  Registry = registry,
+                                                  Repository = "corp/api",
+                                                  Tag = "1.0",
+                                              },
+                                              "linux",
+                                              "amd64",
+                                              CancellationToken.None)
+                                 .ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "A registry with a port must be addressed and the lookup must succeed");
+        Assert.IsNotNull(result.Data, "The lookup must return tag data");
+        Assert.AreEqual("sha256:port-tag", result.Data.Digest, "The digest must come from the manifest of the registry with the port");
+        Assert.AreSequenceEqual([new Uri(manifestUri).AbsoluteUri],
+                                handler.Requests.Select(request => request.RequestUri)
+                                                .ToArray(),
+                                "Exactly one request must go to the host and the port of the registry");
+    }
+
+    /// <summary>
+    /// Verify the OCI tags listing keeps the host and the port of a registry with a port
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task OciRegistryClientGetTagsAsyncRegistryWithPortKeepsPortAsync()
+    {
+        using var handler = new SequenceHttpMessageHandler();
+        using var httpClient = new HttpClient(handler);
+
+        var tagsUri = "https://registry.example.com:5000/v2/corp/api/tags/list?n=100";
+
+        handler.AddJsonResponse(tagsUri, """{"name":"corp/api","tags":[]}""");
+
+        var client = new OciRegistryClient(httpClient, new TestLogger<OciRegistryClient>());
+
+        var result = await client.GetTagsAsync("Registry.Example.com:5000",
+                                               "corp/api",
+                                               cancellationToken: CancellationToken.None)
+                                 .ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "The tag listing of a registry with a port must succeed");
+        Assert.AreSequenceEqual([tagsUri],
+                                handler.Requests.Select(request => request.RequestUri)
+                                                .ToArray(),
+                                "The tag listing must request the lower-cased host with its port");
+    }
+
+    /// <summary>
     /// Answer the requests of a base-image chain: the first image carries the given config blob, every further image has no labels
     /// </summary>
     /// <param name="request">Request</param>
@@ -1369,6 +1596,24 @@ public partial class OciRegistryClientTests
     #endregion // Methods
 
     #region Static methods
+
+    /// <summary>
+    /// Assert a lookup was refused for a registry that is not a host with an optional port: not found with the fixed message, no request and no log entry
+    /// </summary>
+    /// <param name="status">Result status</param>
+    /// <param name="message">Result message</param>
+    /// <param name="handler">Handler that observed the requests</param>
+    /// <param name="logger">Logger that captured the entries</param>
+    private static void AssertInvalidRegistryRefusal(ExternalOperationStatus status,
+                                                     string? message,
+                                                     SequenceHttpMessageHandler handler,
+                                                     TestLogger<OciRegistryClient> logger)
+    {
+        Assert.AreEqual(ExternalOperationStatus.NotFound, status, "A registry that is not a host must be answered as not found");
+        Assert.AreEqual(RegistryReferenceValidator.InvalidRegistryMessage, message, "The message must be the fixed invalid-registry text");
+        Assert.IsEmpty(handler.Requests, "No request may be sent for a registry that is not a host");
+        Assert.IsEmpty(logger.Entries, "Nothing may be logged for a registry that is not a host");
+    }
 
     /// <summary>
     /// Assert a lookup was refused for a dot segment: not found with the fixed message, no request and no log entry
