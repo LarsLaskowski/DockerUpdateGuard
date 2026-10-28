@@ -27,7 +27,9 @@ and the observed image's name, 200), and from the Docker Engine the container ID
 labels (200 each, also in resource samples) and the container's image reference and digest. A base-image label the
 reference parser rejects even failed the whole observed-image scan. Docker's reference grammar (`distribution/reference`)
 gives registry hosts the form of DNS names or bracketed IPv6 addresses with an optional port, and repository paths
-lowercase components joined by `.`, `_`, `__` or dashes, at most 255 characters without the host. Container IDs have no
+lowercase components joined by `.`, `_`, `__` or dashes, at most 255 characters without the host. The parser kept
+`.` and `..` path segments, and the clients' path escaping leaves `.` alone, so `System.Uri` collapsed such a segment into
+another path of the registry host; the grammar admits no such segment. Container IDs have no
 grammar the application relies on; names and labels are display text.
 
 ## Options considered
@@ -63,8 +65,8 @@ grammar the application relies on; names and labels are display text.
     addresses no container and can collide. Holding IDs to Docker's 64 hexadecimal characters would exclude other
     engines for no storage benefit. Chosen.
 11. **Widen the source-reference column with a migration** — fits every reference the catalog can hold, but changes the
-    schema for a display and grouping value whose real lengths stay far below 500; the cut is deterministic, so grouping
-    by source reference is unchanged.
+    schema for a display and grouping value that exceeds 500 only when its parts are near their limits at once (a valid
+    reference can reach about 657 characters); the cut is deterministic, so grouping by source reference is unchanged.
 12. **Drop a container with an invalid reference in the Docker Engine client** — the client does not parse references,
     and a container that vanishes silently hides what the run's error message now names.
 13. **Skip a Docker Hub repository whose name exceeds the observed image's name column** — a pullable repository would
@@ -91,9 +93,11 @@ rules are in [Registries](../areas/registries.md#what-can-be-read),
   a label the parser rejects no longer fails the scan.
 - A registry host longer than 200 characters, legal in DNS up to 253, is not accepted.
 - A container whose reference Docker would refuse is no longer recorded; its findings stay as they were, and the run
-  ends *partial* naming it. A container with an over-long ID is not recorded and not sampled, without a message.
+  ends *partial* naming it, without a log entry, as one whose reference cannot be parsed. A container with an over-long ID is not recorded and not sampled, without a message.
 - Cut names no longer match the remote value: a lookup by the stored container name (none exists today) would miss a
   container whose name was cut; two names equal in their first 199 characters read alike on the pages.
+- A remote reference can no longer steer a registry or Docker Hub request to another path of the host; the request
+  builders themselves still pass dot segments of a manually registered reference (follow-up issue).
 - Vulnerability advisory fields are handled by [#271](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/271);
   references entered by a user at registration are not remote and keep the behavior of
   [0009](0009-integration-results-carry-fixed-failure-reasons.md).

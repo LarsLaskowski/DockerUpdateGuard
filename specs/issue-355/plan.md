@@ -1,8 +1,8 @@
 # Plan: Remote image references and names outside registry tag data can exceed stored column lengths
 
 Source: Issue #355
-Status: Draft
-Tier: standard — the change keeps malformed or over-long remote values from breaking a save (input handling: grammar and length checks, cuts of display names); it creates, changes or removes no security control.
+Status: Revised (1)
+Tier: security — the repository grammar becomes a guard on the registry and Docker Hub request paths built from remote references: it keeps `.` and `..` path segments, which `System.Uri` collapses into another endpoint of the same host, out of them (a new security control).
 Security areas touched: Registry and Docker Hub calls (`OciRegistryClient`, `DockerHubClient`), Docker Engine access (`DockerInstanceClient`), Logging and telemetry of external data (log entries that carry a runtime image reference)
 
 ## Problem / root cause
@@ -43,6 +43,9 @@ reach length-limited columns unchecked:
 | 9 | The parser lowercases registry and repository and throws `ArgumentException` for a reference without a repository | `ImageReferenceParser.cs` `Parse` | confirmed |
 | 10 | Container actions do not look containers up by the stored name | No production code builds a `PortainerActionRequest` (grep) | confirmed |
 | 11 | PostgreSQL rejects an over-long `varchar(n)` value and the save of the run fails | `varchar(n)` semantics; #348 analysis (0014, *Context*) | confirmed |
+| 12 | Dot segments reach request paths today | `ImageReferenceParser.Parse` keeps `.`/`..` segments; `EscapeRepository` (`OciRegistryClient.cs:483-489`, `DockerHubClient.cs:408`) uses `Uri.EscapeDataString`, which leaves `.` alone; `System.Uri` collapses them (Security's measurement: `corp/../../../v2/_catalog` → `https://registry.corp/v2/_catalog/manifests/latest`) | confirmed |
+| 13 | An unparsable runtime reference fails today in the generic catch | `Parse` throws `ArgumentException` (`ImageReferenceParser.cs:124`) inside the `try` of `ProcessContainerAsync` (`RuntimeContainerScanOrchestrator.cs:564`); the catch (~668-683) logs `RuntimeContainerProcessingFailed` with the raw reference and returns `… could not be processed: unexpected error` | confirmed |
+| 14 | A valid reference can exceed 500 characters | registry 200 + `/` + repository 255 + `:` + tag 128 + `@` + digest (71, up to 255) ≈ 657 or more | confirmed |
 
 ## Acceptance criteria
 
@@ -67,8 +70,9 @@ reach length-limited columns unchecked:
 - [ ] AC6: `DockerInstanceClient.DiscoverContainersAsync` and `CollectContainerResourceUsageAsync` leave out a container whose
   ID is longer than 200 characters (no stats request for it); the container name and the compose project, stack name and
   service name labels longer than 200 characters are cut to 200; a missing label stays null.
-- [ ] AC7: `RuntimeContainerScanOrchestrator`: a container whose parsed reference AC2 rejects produces no snapshot and no catalog
-  entry, and the run ends *partial* with exactly `Container '<name>' could not be processed: invalid image reference`; a digest
+- [ ] AC7: `RuntimeContainerScanOrchestrator`: a container whose reference the parser rejects or whose parsed reference AC2
+  rejects produces no snapshot, no catalog entry and no log entry, and the run ends *partial* with exactly
+  `Container '<name>' could not be processed: invalid image reference`; a digest
   outside the grammar (from the reference or the repository digests) leaves the catalog entry without digest; the fallback
   messages of `ApplyUnevaluatedTagResult` (`Unable to evaluate runtime image '…'`, `Runtime image '…' cannot be evaluated by the
   current registry adapters`) and its two log entries carry `parsedReference.FullReference` instead of the raw reference.
@@ -80,17 +84,17 @@ reach length-limited columns unchecked:
 
 | AC | Test(s) | Test file |
 | -- | ------- | --------- |
-| AC1 | `RegistryReferenceValidatorIsValidRegistryWhenHostMatchesGrammarReturnsTrue` (rows: `docker.io`, `localhost:5000`, `registry.example.com:443`, `[::1]:5000`, a 200-character host); `RegistryReferenceValidatorIsValidRegistryWhenInvalidReturnsFalse` (rows: null, empty, `https:`, `reg istry.example`, `under_score.example`, `-lead.example`, `trail.example.`, `host:port`, 201 characters); `RegistryReferenceValidatorIsValidRepositoryWhenPathMatchesGrammarReturnsTrue` (rows: `library/nginx`, `a__b/c-d.e`, `a---b`, 255 characters); `RegistryReferenceValidatorIsValidRepositoryWhenInvalidReturnsFalse` (rows: null, empty, `Library/nginx`, `_a`, `a___b`, `a//b`, `a/`, `a b`, 256 characters) | `src/Tests/DockerUpdateGuard.Tests/RegistryReferenceValidatorTests.cs` |
+| AC1 | `RegistryReferenceValidatorIsValidRegistryWhenHostMatchesGrammarReturnsTrue` (rows: `docker.io`, `localhost:5000`, `registry.example.com:443`, `[::1]:5000`, a 200-character host); `RegistryReferenceValidatorIsValidRegistryWhenInvalidReturnsFalse` (rows: null, empty, `https:`, `reg istry.example`, `under_score.example`, `-lead.example`, `trail.example.`, `host:port`, 201 characters); `RegistryReferenceValidatorIsValidRepositoryWhenPathMatchesGrammarReturnsTrue` (rows: `library/nginx`, `a__b/c-d.e`, `a---b`, 255 characters); `RegistryReferenceValidatorIsValidRepositoryWhenInvalidReturnsFalse` (rows: null, empty, `Library/nginx`, `_a`, `a___b`, `a//b`, `a/`, `a b`, `..`, `a/../b`, `a/./b`, 256 characters) | `src/Tests/DockerUpdateGuard.Tests/RegistryReferenceValidatorTests.cs` |
 | AC2 | `RegistryReferenceValidatorValidReferenceOrNullWhenPartIsInvalidReturnsNull` (rows: registry, repository, 129-character tag); `RegistryReferenceValidatorValidReferenceOrNullWhenDigestIsInvalidRemovesDigest`; `RegistryReferenceValidatorValidReferenceOrNullWhenValidKeepsAllParts` | same |
 | AC3 | `BaseImageLabelReaderReadReferenceWhenNameIsValidReturnsReference`; `BaseImageLabelReaderReadReferenceWhenNameCannotBeParsedReturnsNull` (rows: `:12`, `/`); `BaseImageLabelReaderReadReferenceWhenPartIsInvalidReturnsNull` (rows: 201-character registry, 256-character repository, 129-character tag, `debian 12`); `BaseImageLabelReaderReadReferenceWhenDigestIsInvalidReturnsReferenceWithoutDigest` | `src/Tests/DockerUpdateGuard.Tests/BaseImageLabelReaderTests.cs` |
 | AC3 | `RegistryBaseImageResolverResolveAsyncWhenBaseImageLabelIsInvalidEndsChainAsync` (valid depth 1, 256-character repository at depth 2: one entry, succeeded); `RegistryBaseImageResolverResolveAsyncWhenBaseImageLabelCannotBeParsedReturnsEmptyChainAsync` | `src/Tests/DockerUpdateGuard.Tests/RegistryBaseImageResolverTests.cs` |
 | AC3 | `OciRegistryClientResolveBaseImagesAsyncWhenBaseImageLabelIsInvalidReturnsEmptyChainAsync` | `src/Tests/DockerUpdateGuard.Tests/OciRegistryClientTests.cs` |
 | AC3 | `DockerHubClientResolveBaseImagesAsyncWhenBaseImageLabelIsInvalidReturnsEmptyChainAsync` | `src/Tests/DockerUpdateGuard.Tests/DockerHubClientTests.cs` |
-| AC4 | `ImageScanOrchestratorScanAsyncWhenSourceReferenceExceedsStoredLengthCutsItAsync` (501 characters: stored length 500, ends with `…`) | `src/Tests/DockerUpdateGuard.Tests/ImageScanOrchestratorTests.cs` |
-| AC5 | `DockerHubClientGetRepositoriesAsyncWhenRepositoryNameIsInvalidReturnsEmptyRepositoryAsync` (rows: name with a space, 256-character total) | `src/Tests/DockerUpdateGuard.Tests/DockerHubClientTests.cs` |
+| AC4 | `ImageScanOrchestratorScanAsyncWhenSourceReferenceExceedsStoredLengthCutsItAsync` (501 characters, or a valid reference of a 200-character registry and a 255-character repository: stored length 500, ends with `…`) | `src/Tests/DockerUpdateGuard.Tests/ImageScanOrchestratorTests.cs` |
+| AC5 | `DockerHubClientGetRepositoriesAsyncWhenRepositoryNameIsInvalidReturnsEmptyRepositoryAsync` (rows: name with a space, 256-character total, namespace `..` with name `x`, name `..`) | `src/Tests/DockerUpdateGuard.Tests/DockerHubClientTests.cs` |
 | AC5 | `DockerHubAccountImageDiscoveryServiceSynchronizeAccountImagesAsyncWhenRepositoryExceedsNameLengthCutsNameAsync` (new and existing observed image; repository stays whole in the catalog) | `src/Tests/DockerUpdateGuard.Tests/DockerHubAccountImageDiscoveryServiceTests.cs` |
 | AC6 | `DockerInstanceClientDiscoverContainersAsyncWhenContainerIdExceedsStoredLengthSkipsContainerAsync`; `DockerInstanceClientDiscoverContainersAsyncWhenNameOrLabelsExceedStoredLengthCutsThemAsync`; `DockerInstanceClientCollectContainerResourceUsageAsyncWhenContainerIdExceedsStoredLengthSkipsContainerAsync` (asserts no stats request); `DockerInstanceClientCollectContainerResourceUsageAsyncWhenNameExceedsStoredLengthCutsItAsync` | `src/Tests/DockerUpdateGuard.Tests/DockerInstanceClientTests.cs` |
-| AC7 | `RuntimeContainerScanOrchestratorScanAllAsyncWhenImageReferenceIsInvalidRecordsNoSnapshotAsync` (256-character repository: no snapshot, no image version, run *partial*, exact message); `RuntimeContainerScanOrchestratorScanAllAsyncWhenImageDigestIsInvalidStoresVersionWithoutDigestAsync`; `RuntimeContainerScanOrchestratorScanAllAsyncWhenTagResultHasNoMessageUsesNormalizedReferenceAsync` (raw reference padded with spaces) | `src/Tests/DockerUpdateGuard.Tests/RuntimeContainerScanOrchestratorTests.cs` |
+| AC7 | `RuntimeContainerScanOrchestratorScanAllAsyncWhenImageReferenceIsInvalidRecordsNoSnapshotAsync` (rows: 256-character repository, unparsable reference `/`: no snapshot, no image version, no `RuntimeContainerProcessingFailed` log entry, run *partial*, exact message); `RuntimeContainerScanOrchestratorScanAllAsyncWhenImageDigestIsInvalidStoresVersionWithoutDigestAsync`; `RuntimeContainerScanOrchestratorScanAllAsyncWhenTagResultHasNoMessageUsesNormalizedReferenceAsync` (raw reference padded with spaces) | `src/Tests/DockerUpdateGuard.Tests/RuntimeContainerScanOrchestratorTests.cs` |
 | AC8 | `ResponseBodyExcerptCutToLengthWhenTextIsNullReturnsNull`; `ResponseBodyExcerptCutToLengthWhenTextFitsReturnsItUnchanged`; `ResponseBodyExcerptCutToLengthWhenTextIsLongerCutsWithMarker`; `ResponseBodyExcerptCutToLengthWhenCutWouldSplitSurrogatePairKeepsPairWhole` | `src/Tests/DockerUpdateGuard.Tests/ResponseBodyExcerptTests.cs` |
 
 The test databases do not enforce column lengths, so the tests assert the stored values and their lengths, not a failing save.
@@ -117,8 +121,10 @@ Rule per value, applied where the value is read or parsed (0014's principle):
 - Regexes: `[GeneratedRegex(..., RegexOptions.CultureInvariant, 100)]` like the existing ones:
   registry `\A(?:(?:[a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9-]*[a-zA-Z0-9])(?:\.(?:[a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9-]*[a-zA-Z0-9]))*|\[[a-fA-F0-9:]+\])(?::[0-9]+)?\z`,
   repository `\A[a-z0-9]+(?:(?:[._]|__|-+)[a-z0-9]+)*(?:/[a-z0-9]+(?:(?:[._]|__|-+)[a-z0-9]+)*)*\z`.
-- Runtime scan rejection returns the failure message without logging (the run's error message names the container, as for an
-  unparsable reference today); the inspect call before it stays where it is.
+- Runtime scan: `_imageReferenceParser.Parse` moves into its own `try` catching only `ArgumentException`, before the inspect
+  call; a parser rejection and an AC2 rejection share one branch that returns the fixed AC7 message without a log entry (the
+  run's error message names the container; the raw reference is not written to the log). The generic catch and its
+  `RuntimeContainerProcessingFailed` entry stay for every other exception.
 - No new user-visible layout: the one new text is fixed by AC7.
 
 ## Options considered
@@ -127,9 +133,9 @@ Rule per value, applied where the value is read or parsed (0014's principle):
 2. **Length checks only** — keeps references Docker cannot pull (spaces, `_` in hosts) reaching requests, logs and pages; the
    grammar costs nothing more (0014, option 2).
 3. **Cut every value where it is stored** — a cut registry, repository or tag names a different image (0014, option 4).
-4. **Widen `SourceReference` to 1000 with a migration (`Update8`)** — a schema change for a display and grouping value whose real
-   lengths stay far below 500 (a 255-character path with a 128-character tag and a SHA-256 digest is about 460 plus the registry);
-   the deterministic cut keeps grouping stable. Lost.
+4. **Widen `SourceReference` to 1000 with a migration (`Update8`)** — a valid reference can exceed 500 (fact 14), but only near
+   every part's limit at once; a schema change for a display and grouping value is not worth that case, and the deterministic
+   cut keeps grouping stable. Lost.
 5. **Docker Engine: drop a container with an invalid reference in the client** — the client does not parse references, and a
    silently missing container hides what the *partial* run now names.
 6. **Container IDs: the Docker grammar (64 hexadecimal characters)** — an ID is an opaque key; other engines and many test
@@ -139,6 +145,8 @@ Rule per value, applied where the value is read or parsed (0014's principle):
    display text and discovery matches by catalog repository.
 8. **Fix only `RegistryBaseImageResolver`** — the client chains are public interface methods with tests; the shared reader costs
    one call each. Removing the unused chains is a follow-up.
+9. **Also make both `EscapeRepository` implementations refuse `.`/`..` segments (Security N1)** — lost for this change, see
+   *Security review*.
 
 ## Affected projects and types
 
@@ -198,10 +206,11 @@ Owned by the Dev, written against the code once green:
   base-image label or a Docker Engine container is accepted only with registry, repository and tag of the grammar (limits 200,
   255, 128) and that an invalid digest becomes none, linking [0014]; *Observed images*: discovered name cut to 200 with `…`.
 - `docs/areas/base-images.md` *Resolving the chain*: the chain also ends at a label that cannot be parsed or is invalid (link to
-  the image-catalog rule); *Storing the chain*: the source reference is cut to 500 characters.
+  the image-catalog rule); *Storing the chain*: the source reference is cut to 500 characters, which a valid reference near the
+  part limits can exceed.
 - `docs/areas/docker-instances.md` *Container discovery*: an ID over 200 characters leaves the container out; name and the three
-  labels cut to 200; *Container snapshots*: the invalid-reference case and its exact message, and that a digest outside the
-  grammar is stored as none; *Resource statistics*: the ID rule and the name cut.
+  labels cut to 200; *Container snapshots*: the existing "cannot be parsed" bullet becomes the unparsable-or-invalid case with
+  its exact message and that it writes no log entry, and a digest outside the grammar is stored as none; *Resource statistics*: the ID rule and the name cut.
 - `docs/areas/registries.md`: *Docker Hub account discovery* (invalid repository names skipped like blank ones, name cut);
   *Remote text fields* (the "without a cut, the length stays as received" sentence gets the exception of the cut names, linking
   docker-instances); *Limits and errors* last bullet extended to names and references; *Known gaps*: remove the #355 bullet;
@@ -223,12 +232,39 @@ change. No guarantee of `.squad/project.md` is touched.
 - [ ] Exceptions that can reach a user-visible message: a `RegexMatchTimeoutException` would surface as the existing fixed reason
   `unexpected error`; the new runtime-scan text is fixed (AC7). No raw remote text is added to any message; the fallback
   messages now carry the normalized, validated reference instead of the raw one.
+- [ ] Request paths: the repository grammar admits no `.` or `..` segment, so a reference from a base-image label, a Docker
+  Engine container or the Docker Hub account listing can no longer steer a registry or Docker Hub request to another path of
+  the same host (fact 12). Pinned by the `..`, `a/../b`, `a/./b` rows of AC1 and the dot rows of AC5.
+- [ ] Still unconfined: a manually registered reference keeps the parser's behavior (*Out of scope*), and `EscapeRepository`
+  still passes dot segments for any input that skips the validator (follow-up issue below). The host stays the one named in
+  the reference, so a collapsed path reaches the same registry with the same credentials.
 
 ## Decision records
 
 - `docs/decisions/0014-registry-tag-names-and-digests-are-validated-where-they-are-read.md` — extended in place (unreleased:
   `git ls-remote --tags origin` shows v1.3.7 as the newest tag, and `git tag --contains 4477ce7` is empty), retitled, status
   `Proposed`, index row updated.
+
+## Challenge
+
+1. *Minor — option 4's "far below 500" is wrong.* Accepted: fact 14 records that a valid reference reaches about 657
+   characters; option 4 and 0014 (option 11) now say so and still choose the cut; base-images.md *Storing the chain* states it
+   (Dev); AC4 gets the 200-character registry plus 255-character repository row (Tester).
+2. *Minor — an unparsable runtime reference is logged today, so "as today" is wrong.* Accepted: fact 13 records today's path;
+   the parser's `ArgumentException` is caught on its own and joins the AC7 branch (*Approach*), so both cases give the fixed
+   message and neither logs; docker-instances.md says so (Dev); AC7 gets the `/` row (Tester).
+
+## Security review
+
+- **B1 (blocking) — the repository grammar is a guard on request paths; tier `standard` is wrong.** Resolved: tier `security`
+  with that justification; fact 12; *Security considerations* names the dot-segment rule and what stays unconfined; rows `..`,
+  `a/../b`, `a/./b` (AC1) and `..` namespace or name (AC5) pin it. The AC3 and AC7 paths reach the same `IsValidRepository`
+  through `ValidReferenceOrNull`, which its AC2 repository row already covers.
+- **N1 — `EscapeRepository` lets dot segments through.** Decided: follow-up issue, not this change. The remote inputs of this
+  issue are confined by the grammar; what remains is user-entered (manual registration, authenticated, same host). Fixing it
+  needs its own decision — percent-encoding `.` relies on `System.Uri` not unescaping `%2E` before compaction (unmeasured), and
+  refusing needs a not-found path in every URI builder of both clients — which would widen this change.
+- **N2–N4** — no change, as Security stated.
 
 ## Out of scope / follow-ups
 
@@ -237,3 +273,8 @@ change. No guarantee of `.squad/project.md` is touched.
 - Follow-up issue (orchestrator): remove the unused base-image chain of the registry clients
   (`IRegistryMetadataClient.ResolveBaseImagesAsync`, `IRegistryMetadataService.ResolveBaseImagesAsync`,
   `IDockerHubClient.ResolveBaseImagesAsync`, `DockerHubBaseImageResolver`), which no production code calls.
+- Follow-up issue (orchestrator), title "Registry request paths pass `.` and `..` repository segments": body — `EscapeRepository`
+  in `OciRegistryClient` and `DockerHubClient` escapes each segment with `Uri.EscapeDataString`, which leaves `.` alone, and
+  `System.Uri` collapses dot segments (`corp/../../../v2/_catalog` → `/v2/_catalog/…`); #355 keeps them out of remote
+  references, but a manually registered reference still reaches the request builders. Make both builders refuse a `.` or `..`
+  segment (answered as not found), with tests per URI builder; measure first whether `%2E` survives `System.Uri`.
