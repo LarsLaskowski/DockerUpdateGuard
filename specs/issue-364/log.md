@@ -20,3 +20,5 @@ are quoted in full.
 | 2026-10-28 19:57 | 8 Review | squad-security | Diff APPROVED, 1 non-blocking note (GetTagsAsync validates the normalized, not the raw registry; Kelvin sign/whitespace pass) (opus/medium · 54,171 tokens · 11 tool uses · 80 s) |
 | 2026-10-28 19:58 | 9 PR approval | squad-lead | NOT APPROVED: Security note fixed now (3 GetTagsAsync rows by Tester, raw IsValidRegistry check by Dev before NormalizeRegistry, plan AC2 extended); DockerHubClient deviation confirmed; delta round required (opus/medium · 65,220 tokens · 15 tool uses · 79 s) |
 | 2026-10-28 20:00 | 9 Delta tests | squad-tester | 3 GetTagsAsync rows (Kelvin sign, leading space, trailing newline); fail on current code (sonnet/medium · 71,545 tokens · 8 tool uses · 80 s) |
+| 2026-10-28 20:03 | 9 Delta fix | squad-dev | GetTagsAsync checks IsValidRegistry on the raw registry before NormalizeRegistry; 3 new rows green (sonnet/medium · 72,981 tokens · 8 tool uses · 167 s) |
+| 2026-10-28 20:05 | 9 Code check | Orchestrator | Delta gates: Format clean, Build 0 warn, 994+21 passed, Coverage PASS (30/30, 88.2%), Analyzer PASS, scope PASS; main unmoved |
