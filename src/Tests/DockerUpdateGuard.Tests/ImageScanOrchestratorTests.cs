@@ -1434,6 +1434,30 @@ public class ImageScanOrchestratorTests
     }
 
     /// <summary>
+    /// Verify a source reference within the stored length, up to the 500 character boundary, is stored unchanged
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task ImageScanOrchestratorScanAsyncWhenSourceReferenceFitsStoredLengthStoresItUnchangedAsync()
+    {
+        const string shortReference = "FROM debian:12.0.0";
+        var boundaryReference = new ImageReference
+                                {
+                                    Registry = new string('a', 200),
+                                    Repository = new string('b', 221),
+                                    Tag = "1.0.0",
+                                    Digest = "sha256:" + new string('c', 64),
+                                }.FullReference;
+
+        var storedShort = await ScanAndReadSourceReferenceAsync(shortReference).ConfigureAwait(false);
+        var storedBoundary = await ScanAndReadSourceReferenceAsync(boundaryReference).ConfigureAwait(false);
+
+        Assert.AreEqual(500, boundaryReference.Length, "The boundary reference must have exactly the stored length");
+        Assert.AreEqual(shortReference, storedShort, "A source reference within the stored length must be stored unchanged");
+        Assert.AreEqual(boundaryReference, storedBoundary, "A source reference of exactly 500 characters must be stored unchanged");
+    }
+
+    /// <summary>
     /// Scan an observed image whose resolved base image carries the given source reference and read the stored value
     /// </summary>
     /// <param name="sourceReference">Source reference of the resolved base image</param>
