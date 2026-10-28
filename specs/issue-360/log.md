@@ -20,3 +20,6 @@ are quoted in full.
 | 2026-10-28 17:15 | 7 Code check | Orchestrator | main unchanged; Format check, Build 0 warnings, 941+21 tests, Coverage 98.7% new / 88.1% overall, Analyzer gate 0 diagnostics, scope-check PASS |
 | 2026-10-28 17:15 | 6 Documentation links | Dev | Follow-up issue #363 linked in registries.md and record 0014; decision-check PASS (sonnet/medium · 2,360 tokens · 9 tool uses · 60 s · continued from 6 Implement) |
 | 2026-10-28 17:19 | 7 Sonar gate | Orchestrator | NOT CHECKED twice: scan uploaded and succeeded, reading results failed (HTTP Error 400); to be checked on the draft PR with sonar-check.py pr (step 11); squad lesson candidate |
+| 2026-10-28 17:23 | 8 Review | Security | APPROVED (diff): all request paths of the planned scope covered, refusals send no request or token, nothing logged, escaping correct (opus/medium · 67,058 tokens · 15 tool uses · 108 s) |
+| 2026-10-28 17:23 | 8 Review | Reviewer | APPROVE round 1: no blocking findings; 1 non-blocking verbatim doc fix (registries.md Request paths wording) applied by Orchestrator (opus/medium · 89,515 tokens · 20 tool uses · 150 s) |
+| 2026-10-28 17:23 | 8 Verbatim doc fix | Orchestrator | registries.md Request paths first bullet reworded as the Reviewer's verbatim fix |

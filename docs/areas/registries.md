@@ -97,8 +97,9 @@ values stored before the replacement existed, which stay until they are written 
 
 - Every segment of a registry request path is percent-encoded. `System.Uri` removes `.` segments and resolves `..`
   segments even when they are written as `%2E`, so encoding cannot keep them; a path whose repository, tag, digest or
-  reference has a segment that is exactly `.` or `..` is therefore never sent. A segment that only contains dots or
-  percent text (`my.app`, `...`, `%2E%2E`) is requested as it is.
+  reference has a segment that is exactly `.` or `..` is therefore never sent. A segment that contains dots but is not
+  exactly `.` or `..` (`my.app`, `...`) is requested as it is, and percent text in a segment is itself encoded (`%2E%2E`
+  is sent as `%252E%252E`).
 - The rule applies to the repository (including the Docker Hub namespace), to the tag or digest of the reference, and
   to the digests a manifest names (the selected manifest-list entry and the configuration blob). Nothing is logged and
   no request is sent, not even a token request.
