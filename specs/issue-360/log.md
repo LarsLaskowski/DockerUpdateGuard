@@ -23,3 +23,4 @@ are quoted in full.
 | 2026-10-28 17:23 | 8 Review | Security | APPROVED (diff): all request paths of the planned scope covered, refusals send no request or token, nothing logged, escaping correct (opus/medium · 67,058 tokens · 15 tool uses · 108 s) |
 | 2026-10-28 17:23 | 8 Review | Reviewer | APPROVE round 1: no blocking findings; 1 non-blocking verbatim doc fix (registries.md Request paths wording) applied by Orchestrator (opus/medium · 89,515 tokens · 20 tool uses · 150 s) |
 | 2026-10-28 17:23 | 8 Verbatim doc fix | Orchestrator | registries.md Request paths first bullet reworded as the Reviewer's verbatim fix |
+| 2026-10-28 17:24 | 9 PR approval | Lead | APPROVED: line 628 accepted as defensive, ResolveBaseImagesAsync early return accepted (added to plan Approach 3), ARCHITECTURE.md update consistent, record 0014 Accepted, decision-check PASS (opus/medium · 56,956 tokens · 9 tool uses · 55 s) |
