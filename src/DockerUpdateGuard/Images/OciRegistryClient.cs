@@ -390,16 +390,23 @@ public partial class OciRegistryClient : IRegistryMetadataClient
     /// <param name="registry">Registry host</param>
     /// <param name="repository">Repository path</param>
     /// <param name="reference">Tag or digest</param>
-    /// <returns>Manifest URI or null when the repository or reference has a dot segment</returns>
-    private static Uri? CreateManifestUri(string registry, string repository, string reference)
+    /// <param name="refusalMessage">Message of the refusal, empty when the URI was created</param>
+    /// <returns>Manifest URI or null when the repository or reference has a dot segment or the registry is not a valid host</returns>
+    private static Uri? CreateManifestUri(string registry, string repository, string reference, out string refusalMessage)
     {
         if (RegistryReferenceValidator.HasDotSegment(repository)
             || RegistryReferenceValidator.HasDotSegment(reference))
         {
+            refusalMessage = RegistryReferenceValidator.DotSegmentMessage;
+
             return null;
         }
 
-        return CreateRegistryUri(registry, $"v2/{EscapeRepository(repository)}/manifests/{Uri.EscapeDataString(reference)}");
+        var manifestUri = CreateRegistryUri(registry, $"v2/{EscapeRepository(repository)}/manifests/{Uri.EscapeDataString(reference)}");
+
+        refusalMessage = manifestUri is null ? RegistryReferenceValidator.InvalidRegistryMessage : string.Empty;
+
+        return manifestUri;
     }
 
     /// <summary>
@@ -408,16 +415,23 @@ public partial class OciRegistryClient : IRegistryMetadataClient
     /// <param name="registry">Registry host</param>
     /// <param name="repository">Repository path</param>
     /// <param name="digest">Blob digest</param>
-    /// <returns>Blob URI or null when the repository or digest has a dot segment</returns>
-    private static Uri? CreateBlobUri(string registry, string repository, string digest)
+    /// <param name="refusalMessage">Message of the refusal, empty when the URI was created</param>
+    /// <returns>Blob URI or null when the repository or digest has a dot segment or the registry is not a valid host</returns>
+    private static Uri? CreateBlobUri(string registry, string repository, string digest, out string refusalMessage)
     {
         if (RegistryReferenceValidator.HasDotSegment(repository)
             || RegistryReferenceValidator.HasDotSegment(digest))
         {
+            refusalMessage = RegistryReferenceValidator.DotSegmentMessage;
+
             return null;
         }
 
-        return CreateRegistryUri(registry, $"v2/{EscapeRepository(repository)}/blobs/{Uri.EscapeDataString(digest)}");
+        var blobUri = CreateRegistryUri(registry, $"v2/{EscapeRepository(repository)}/blobs/{Uri.EscapeDataString(digest)}");
+
+        refusalMessage = blobUri is null ? RegistryReferenceValidator.InvalidRegistryMessage : string.Empty;
+
+        return blobUri;
     }
 
     /// <summary>
@@ -426,11 +440,14 @@ public partial class OciRegistryClient : IRegistryMetadataClient
     /// <param name="registry">Registry host</param>
     /// <param name="repository">Repository path</param>
     /// <param name="lastTag">Optional pagination marker</param>
-    /// <returns>Tags URI or null when the repository has a dot segment</returns>
-    private static Uri? CreateTagsUri(string registry, string repository, string? lastTag)
+    /// <param name="refusalMessage">Message of the refusal, empty when the URI was created</param>
+    /// <returns>Tags URI or null when the repository has a dot segment or the registry is not a valid host</returns>
+    private static Uri? CreateTagsUri(string registry, string repository, string? lastTag, out string refusalMessage)
     {
         if (RegistryReferenceValidator.HasDotSegment(repository))
         {
+            refusalMessage = RegistryReferenceValidator.DotSegmentMessage;
+
             return null;
         }
 
@@ -441,55 +458,38 @@ public partial class OciRegistryClient : IRegistryMetadataClient
             relativePath += $"&last={Uri.EscapeDataString(lastTag)}";
         }
 
-        return CreateRegistryUri(registry, relativePath);
+        var tagsUri = CreateRegistryUri(registry, relativePath);
+
+        refusalMessage = tagsUri is null ? RegistryReferenceValidator.InvalidRegistryMessage : string.Empty;
+
+        return tagsUri;
     }
 
     /// <summary>
-    /// Create an absolute registry URI
+    /// Create an absolute registry URI over HTTPS from a host with an optional port
     /// </summary>
-    /// <param name="registry">Registry host or base URI</param>
+    /// <param name="registry">Registry host with an optional port</param>
     /// <param name="relativePath">Relative path</param>
-    /// <returns>Absolute URI</returns>
-    private static Uri CreateRegistryUri(string registry, string relativePath)
+    /// <returns>Absolute URI or null when the registry is not a valid host with an optional port in 1-65535</returns>
+    private static Uri? CreateRegistryUri(string registry, string relativePath)
     {
+        if (RegistryReferenceValidator.IsValidRegistry(registry) == false
+            || Uri.TryCreate($"https://{registry}/", UriKind.Absolute, out var baseUri) == false
+            || baseUri.Port == 0)
+        {
+            return null;
+        }
+
         var querySeparatorIndex = relativePath.IndexOf('?');
         var path = querySeparatorIndex >= 0 ? relativePath[..querySeparatorIndex] : relativePath;
         var query = querySeparatorIndex >= 0 ? relativePath[(querySeparatorIndex + 1)..] : string.Empty;
-
-        if (Uri.TryCreate(registry, UriKind.Absolute, out var absoluteRegistryUri))
-        {
-            var absoluteBuilder = new UriBuilder(new Uri(EnsureTrailingSlash(absoluteRegistryUri), path))
-                                  {
-                                      Query = query,
-                                  };
-
-            return absoluteBuilder.Uri;
-        }
-
-        var registryBuilder = new UriBuilder(Uri.UriSchemeHttps, registry)
+        var registryBuilder = new UriBuilder(baseUri)
                               {
                                   Path = path,
                                   Query = query,
                               };
 
         return registryBuilder.Uri;
-    }
-
-    /// <summary>
-    /// Ensure a base URI ends with a trailing slash
-    /// </summary>
-    /// <param name="uri">Original URI</param>
-    /// <returns>Normalized URI</returns>
-    private static Uri EnsureTrailingSlash(Uri uri)
-    {
-        var builder = new UriBuilder(uri);
-
-        if (builder.Path.EndsWith('/') == false)
-        {
-            builder.Path = $"{builder.Path.TrimEnd('/')}/";
-        }
-
-        return builder.Uri;
     }
 
     /// <summary>
@@ -506,19 +506,12 @@ public partial class OciRegistryClient : IRegistryMetadataClient
     }
 
     /// <summary>
-    /// Normalize a registry value to a stable host representation
+    /// Normalize a registry value to a stable host representation that keeps its port
     /// </summary>
     /// <param name="registry">Raw registry value</param>
     /// <returns>Normalized registry value</returns>
     private static string NormalizeRegistry(string registry)
     {
-        if (Uri.TryCreate(registry, UriKind.Absolute, out var absoluteRegistryUri))
-        {
-            return absoluteRegistryUri.IsDefaultPort
-                       ? absoluteRegistryUri.Host.ToLowerInvariant()
-                       : $"{absoluteRegistryUri.Host.ToLowerInvariant()}:{absoluteRegistryUri.Port}";
-        }
-
         return registry.Trim().ToLowerInvariant();
     }
 
@@ -846,11 +839,11 @@ public partial class OciRegistryClient : IRegistryMetadataClient
                                                                                            string? operatingSystem = null,
                                                                                            string? architecture = null)
     {
-        var manifestUri = CreateManifestUri(imageReference.Registry, imageReference.Repository, reference);
+        var manifestUri = CreateManifestUri(imageReference.Registry, imageReference.Repository, reference, out var refusalMessage);
 
         if (manifestUri is null)
         {
-            return ExternalOperationResult<ManifestMetadata>.NotFound(RegistryReferenceValidator.DotSegmentMessage);
+            return ExternalOperationResult<ManifestMetadata>.NotFound(refusalMessage);
         }
 
         using var response = await SendManifestRequestAsync(manifestUri,
@@ -954,7 +947,7 @@ public partial class OciRegistryClient : IRegistryMetadataClient
                                                                         string configDigest,
                                                                         CancellationToken cancellationToken)
     {
-        var blobUri = CreateBlobUri(imageReference.Registry, imageReference.Repository, configDigest);
+        var blobUri = CreateBlobUri(imageReference.Registry, imageReference.Repository, configDigest, out _);
 
         if (blobUri is null)
         {
@@ -1277,11 +1270,11 @@ public partial class OciRegistryClient : IRegistryMetadataClient
         }
 
         var normalizedRegistry = NormalizeRegistry(registry);
-        var allowedOrigin = CreateTagsUri(normalizedRegistry, repository, lastTag: null);
+        var allowedOrigin = CreateTagsUri(normalizedRegistry, repository, lastTag: null, out var refusalMessage);
 
         if (allowedOrigin is null)
         {
-            return ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.NotFound(RegistryReferenceValidator.DotSegmentMessage);
+            return ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.NotFound(refusalMessage);
         }
 
         Uri requestUri = allowedOrigin;
@@ -1412,11 +1405,11 @@ public partial class OciRegistryClient : IRegistryMetadataClient
             return ExternalOperationResult<RegistryImageConfigurationData>.NotFound($"Registry image '{imageReference.FullReference}' did not expose a config digest");
         }
 
-        var blobUri = CreateBlobUri(imageReference.Registry, imageReference.Repository, manifestResult.Data.ConfigDigest);
+        var blobUri = CreateBlobUri(imageReference.Registry, imageReference.Repository, manifestResult.Data.ConfigDigest, out var refusalMessage);
 
         if (blobUri is null)
         {
-            return ExternalOperationResult<RegistryImageConfigurationData>.NotFound(RegistryReferenceValidator.DotSegmentMessage);
+            return ExternalOperationResult<RegistryImageConfigurationData>.NotFound(refusalMessage);
         }
 
         using var response = await SendRegistryRequestAsync(blobUri,

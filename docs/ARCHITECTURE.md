@@ -429,7 +429,7 @@ it links:
   ([record 0009](decisions/0009-integration-results-carry-fixed-failure-reasons.md)).
   Names and image references read from remote sides are held to their grammars and stored lengths where they are read,
   or cut where they are display names; the registry request builders refuse `.` and `..` path segments of any
-  reference or digest
+  reference or digest, and the OCI request builder a registry that is not a host with an optional port
   ([record 0014](decisions/0014-registry-tag-names-and-digests-are-validated-where-they-are-read.md)).
 - **Pagination stays on its origin.** `DockerHubClient`, `OciRegistryClient`
   and `DockerScoutVulnerabilityProvider` follow a next-page link only on the
