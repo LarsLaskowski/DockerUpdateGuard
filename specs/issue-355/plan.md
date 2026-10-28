@@ -124,7 +124,12 @@ Rule per value, applied where the value is read or parsed (0014's principle):
 - Runtime scan: `_imageReferenceParser.Parse` moves into its own `try` catching only `ArgumentException`, before the inspect
   call; a parser rejection and an AC2 rejection share one branch that returns the fixed AC7 message without a log entry (the
   run's error message names the container; the raw reference is not written to the log). The generic catch and its
-  `RuntimeContainerProcessingFailed` entry stay for every other exception.
+  `RuntimeContainerProcessingFailed` entry stay for every other exception. The image inspect call
+  (`GetCurrentImageInspectDataAsync`) runs after the AC2 validation, so an invalid reference sends no inspect request to the
+  Docker Engine (decided in step 6; the call has no other side effect and stays inside the generic `try`).
+- "Without digest" in AC7 means the persisted state: the catalog's digest converter stores none as an empty string and reads it
+  back as null (`ImageVersionConfiguration.cs`), while the tracked instance `GetOrCreateImageVersionAsync` returns carries
+  `string.Empty` (`ImageCatalogRepository.NormalizeDigest`). Tests read the stored entries after `ChangeTracker.Clear()`.
 - No new user-visible layout: the one new text is fixed by AC7.
 
 ## Options considered
