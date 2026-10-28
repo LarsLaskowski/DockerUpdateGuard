@@ -1,5 +1,6 @@
 using DockerUpdateGuard.DockerHub;
 using DockerUpdateGuard.Images.Data;
+using DockerUpdateGuard.Images.Helper;
 using DockerUpdateGuard.Images.Interfaces;
 using DockerUpdateGuard.Infrastructure;
 
@@ -89,18 +90,9 @@ public class RegistryBaseImageResolver : IBaseImageResolver
             return null;
         }
 
-        var parser = new ImageReferenceParser();
+        imageConfiguration.Labels.TryGetValue(OciBaseImageDigestLabel, out var baseImageDigest);
 
-        var parsedReference = parser.Parse(baseImageName);
-
-        if (string.IsNullOrWhiteSpace(parsedReference.Digest)
-            && imageConfiguration.Labels.TryGetValue(OciBaseImageDigestLabel, out var baseImageDigest)
-            && string.IsNullOrWhiteSpace(baseImageDigest) == false)
-        {
-            parsedReference.Digest = ImageReferenceParser.NormalizeDigest(baseImageDigest);
-        }
-
-        return parsedReference;
+        return BaseImageLabelReader.ReadReference(baseImageName, baseImageDigest);
     }
 
     #endregion // Static methods

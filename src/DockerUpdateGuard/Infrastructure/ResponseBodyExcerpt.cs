@@ -115,7 +115,12 @@ internal static class ResponseBodyExcerpt
     /// <returns>Null for null, the text when it fits, otherwise a cut text ending in the truncation marker</returns>
     public static string? CutToLength(string? text, int maxLength)
     {
-        throw new InvalidOperationException("Skeleton: not implemented");
+        if (text is null || text.Length <= maxLength)
+        {
+            return text;
+        }
+
+        return Truncate(text, maxLength - 1);
     }
 
     /// <summary>

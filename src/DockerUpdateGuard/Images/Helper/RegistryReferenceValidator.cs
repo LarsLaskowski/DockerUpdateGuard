@@ -88,7 +88,9 @@ internal static partial class RegistryReferenceValidator
     /// <returns>True when the registry is valid</returns>
     public static bool IsValidRegistry([NotNullWhen(true)] string? registry)
     {
-        throw new InvalidOperationException("Skeleton: not implemented");
+        return string.IsNullOrEmpty(registry) == false
+               && registry.Length <= MaxRegistryLength
+               && RegistryExpression().IsMatch(registry);
     }
 
     /// <summary>
@@ -98,7 +100,9 @@ internal static partial class RegistryReferenceValidator
     /// <returns>True when the repository is valid</returns>
     public static bool IsValidRepository([NotNullWhen(true)] string? repository)
     {
-        throw new InvalidOperationException("Skeleton: not implemented");
+        return string.IsNullOrEmpty(repository) == false
+               && repository.Length <= MaxRepositoryLength
+               && RepositoryExpression().IsMatch(repository);
     }
 
     /// <summary>
@@ -108,7 +112,16 @@ internal static partial class RegistryReferenceValidator
     /// <returns>The same reference or null</returns>
     public static ImageReference? ValidReferenceOrNull(ImageReference reference)
     {
-        throw new InvalidOperationException("Skeleton: not implemented");
+        if (IsValidRegistry(reference.Registry) == false
+            || IsValidRepository(reference.Repository) == false
+            || IsValidTag(reference.Tag) == false)
+        {
+            return null;
+        }
+
+        reference.Digest = ValidDigestOrNull(reference.Digest);
+
+        return reference;
     }
 
     /// <summary>

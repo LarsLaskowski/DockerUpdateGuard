@@ -25,6 +25,12 @@ refer to the same image the same way.
   (`docker.io/ghcr.io/owner/app:1` → `ghcr.io/owner/app:1`).
 - No other validation happens when parsing: characters and lengths are not checked. A reference without a repository
   name is rejected.
+- A reference read from a remote side — the base-image labels of an image configuration and the image of a Docker
+  Engine container — is accepted only when its registry (host and optional port, at most 200 characters), repository
+  (path components of `[a-z0-9]` joined by `.`, `_`, `__` or `-`, at most 255 characters; no `.` or `..` component) and
+  tag (at most 128 characters) fit the reference grammar of Docker; otherwise it is treated as absent. A digest
+  outside the digest grammar becomes none and the reference is kept. A reference entered by the user keeps the plain
+  parsing above. See [0014](../decisions/0014-registry-tag-names-and-digests-are-validated-where-they-are-read.md).
 - Docker Hub spellings are not unified: `docker.io/nginx` has the repository `nginx`, not `library/nginx`, and
   `index.docker.io/…` is a different registry from `docker.io/…`. Registry access still treats them alike
   ([Registries](registries.md)), but they are separate catalog entries.
@@ -59,7 +65,8 @@ refer to the same image the same way.
 
 ### Observed images
 
-- An observed image is a tracked target: a name (at most 200 characters, not required to be unique), an optional
+- An observed image is a tracked target: a name (at most 200 characters, not required to be unique; the name of a
+  discovered image is its repository cut to 200 characters with a trailing `…`), an optional
   description, its current image version, an enabled flag, its source and its creation and update times.
 - Sources: *manual* (registered on `/observed-images`) and *discovery* (added by the Docker Hub account discovery and
   shown as "My images" on `/my-images`; see [Registries](registries.md)). Discovered images are the user's own images.

@@ -51,8 +51,8 @@ retry policy and the failure model.
 
 The text fields a client reads from a remote answer and passes on to its callers get the same replacement as an excerpt
 (the characters of the Unicode categories Cc, Cf, Zl and Zp become one space each, a lone surrogate becomes U+FFFD),
-where the client reads the field and without a cut: the length stays as received, a field without such a character is
-unchanged, and the replacement runs on the decoded string, so a JSON escape cannot bypass it. Logs, stored values and
+where the client reads the field and, apart from the names that [Docker instances](docker-instances.md) cuts to their
+stored length, without a cut: the length stays as received, a field without such a character is unchanged, and the replacement runs on the decoded string, so a JSON escape cannot bypass it. Logs, stored values and
 pages therefore never carry them from these fields:
 
 - **Docker Engine** ([Docker instances](docker-instances.md)): of a listed container the ID, name, image reference,
@@ -183,7 +183,9 @@ values stored before the replacement existed, which stay until they are written 
 - For each repository the full tag list is read and one tag is tracked: the most recently pushed; on equal push time
   `latest` first, then alphabetical; tags without a push time come last.
 - Each repository becomes an observed image with source *discovery*, matched by registry and repository
-  (case-insensitive). A new one is created enabled; an existing one gets its name set to the repository, its
+  (case-insensitive). A repository whose `namespace/name` is outside the repository grammar
+  ([Image catalog](image-catalog.md#image-references)) is skipped like one with a blank name. A new one is created
+  enabled; an existing one gets its name set to the repository (cut to 200 characters), its
   description set to the Docker Hub description, its current version set to the tracked tag, and is enabled again.
   The catalog entry is created as described in [Image catalog](image-catalog.md), with the tag's digest and push time.
 - Discovered observed images whose repository is no longer listed are disabled, never deleted.
@@ -266,9 +268,10 @@ values stored before the replacement existed, which stay until they are written 
 - The PAT is never written to logs or messages. The user name appears in the log entry and the message of a failed
   Docker Hub login.
 - Registry responses are untrusted: missing or mistyped JSON fields are treated as unknown values. An unbounded
-  listing (account discovery) reads every page the registry offers. Tag names and digests leave the clients only when
-  they fit their grammars and lengths (see *What can be read*), so they fit every column they reach
-  ([0014](../decisions/0014-registry-tag-names-and-digests-are-validated-where-they-are-read.md)).
+  listing (account discovery) reads every page the registry offers. Tag names, digests, the image references of
+  base-image labels and the repository names of the account listing leave the clients only when they fit their
+  grammars and lengths (see *What can be read*); the names of Docker Engine containers and discovered images are cut
+  to their stored length, so these values fit every column they reach ([0014](../decisions/0014-registry-tag-names-and-digests-are-validated-where-they-are-read.md)).
 
 ### Known gaps
 
@@ -287,10 +290,6 @@ values stored before the replacement existed, which stay until they are written 
   attestation manifest, and publication times come only from a top-level `created` field of the manifest, which most
   registries do not send, so their tags usually have no publication time. Tracked in
   [#277](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/277).
-- Other remote values are not checked against their stored lengths: the parts of a base-image label reference (the
-  repository, the digest, the source reference, and the tag where no lookup resolves one), the repository names of the
-  Docker Hub account listing and the values read from the Docker Engine. Tracked in
-  [#355](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/355).
 
 ## Related decisions
 
@@ -299,8 +298,8 @@ values stored before the replacement existed, which stay until they are written 
   retried only when they cannot have been processed.
 - [0009](../decisions/0009-integration-results-carry-fixed-failure-reasons.md): integration results carry fixed
   failure reasons, never an error's own text.
-- [0014](../decisions/0014-registry-tag-names-and-digests-are-validated-where-they-are-read.md): registry tag names
-  and digests are validated where a client reads them.
+- [0014](../decisions/0014-registry-tag-names-and-digests-are-validated-where-they-are-read.md): remote tag names,
+  digests, image references and names are validated or bounded where they are read.
 
 ## Not here
 

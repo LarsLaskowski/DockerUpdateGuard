@@ -335,6 +335,11 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
                                        ? string.Empty
                                        : $"{namespaceName.Trim().ToLowerInvariant()}/{repositoryName.Trim().ToLowerInvariant()}";
 
+        if (RegistryReferenceValidator.IsValidRepository(normalizedRepository) == false)
+        {
+            normalizedRepository = string.Empty;
+        }
+
         return new DockerHubRepositoryData
                {
                    Registry = "docker.io",
@@ -793,16 +798,8 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
             }
 
             var baseImageDigest = ResponseBodyExcerpt.ReplaceControlCharacters(TryGetString(labelsElement, OciBaseImageDigestLabel));
-            var parser = new ImageReferenceParser();
-            var parsedRef = parser.Parse(baseImageName);
 
-            if (string.IsNullOrWhiteSpace(parsedRef.Digest)
-                && string.IsNullOrWhiteSpace(baseImageDigest) == false)
-            {
-                parsedRef.Digest = ImageReferenceParser.NormalizeDigest(baseImageDigest);
-            }
-
-            return parsedRef;
+            return BaseImageLabelReader.ReadReference(baseImageName, baseImageDigest);
         }
     }
 

@@ -17,7 +17,29 @@ internal static class BaseImageLabelReader
     /// <returns>The valid reference or null</returns>
     public static ImageReference? ReadReference(string? baseImageName, string? baseImageDigest)
     {
-        throw new InvalidOperationException("Skeleton: not implemented");
+        if (string.IsNullOrWhiteSpace(baseImageName))
+        {
+            return null;
+        }
+
+        ImageReference parsedReference;
+
+        try
+        {
+            parsedReference = new ImageReferenceParser().Parse(baseImageName);
+        }
+        catch (ArgumentException)
+        {
+            return null;
+        }
+
+        if (string.IsNullOrWhiteSpace(parsedReference.Digest)
+            && string.IsNullOrWhiteSpace(baseImageDigest) == false)
+        {
+            parsedReference.Digest = ImageReferenceParser.NormalizeDigest(baseImageDigest);
+        }
+
+        return RegistryReferenceValidator.ValidReferenceOrNull(parsedReference);
     }
 
     #endregion // Methods

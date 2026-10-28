@@ -28,6 +28,11 @@ public class ImageScanOrchestrator : IImageScanOrchestrator
     /// </summary>
     private const int MaxBaseImageTagScanCount = 150;
 
+    /// <summary>
+    /// Maximum stored length of the source reference of a relationship
+    /// </summary>
+    private const int MaxSourceReferenceLength = 500;
+
     #endregion // Const fields
 
     #region Fields
@@ -620,7 +625,7 @@ public class ImageScanOrchestrator : IImageScanOrchestrator
                                               ScanRunId = scanRun.Id,
                                               RelationshipType = ImageRelationshipType.BaseImage,
                                               Depth = baseImage.Depth,
-                                              SourceReference = baseImage.SourceReference,
+                                              SourceReference = ResponseBodyExcerpt.CutToLength(baseImage.SourceReference, MaxSourceReferenceLength),
                                           });
 
         return failureMessage;

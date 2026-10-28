@@ -18,6 +18,15 @@ namespace DockerUpdateGuard.Images;
 /// </summary>
 public class DockerHubAccountImageDiscoveryService : IDockerHubAccountImageDiscoveryService
 {
+    #region Const fields
+
+    /// <summary>
+    /// Maximum stored length of an observed image name
+    /// </summary>
+    private const int MaxObservedImageNameLength = 200;
+
+    #endregion // Const fields
+
     #region Fields
 
     /// <summary>
@@ -214,7 +223,7 @@ public class DockerHubAccountImageDiscoveryService : IDockerHubAccountImageDisco
         {
             existingObservedImage = new ObservedImage
                                     {
-                                        Name = repository.Repository,
+                                        Name = ResponseBodyExcerpt.CutToLength(repository.Repository, MaxObservedImageNameLength) ?? string.Empty,
                                         Description = NormalizeDescription(repository.Description),
                                         CurrentImageVersionId = imageVersion.Id,
                                         IsEnabled = true,
@@ -228,7 +237,7 @@ public class DockerHubAccountImageDiscoveryService : IDockerHubAccountImageDisco
             return true;
         }
 
-        existingObservedImage.Name = repository.Repository;
+        existingObservedImage.Name = ResponseBodyExcerpt.CutToLength(repository.Repository, MaxObservedImageNameLength) ?? string.Empty;
         existingObservedImage.Description = NormalizeDescription(repository.Description);
         existingObservedImage.CurrentImageVersionId = imageVersion.Id;
         existingObservedImage.IsEnabled = true;
