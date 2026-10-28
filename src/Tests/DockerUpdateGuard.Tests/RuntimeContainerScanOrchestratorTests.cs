@@ -2250,6 +2250,7 @@ public class RuntimeContainerScanOrchestratorTests
 
                 await orchestrator.ScanAllAsync(ScanTriggerSource.Scheduled, CancellationToken.None)
                                   .ConfigureAwait(false);
+                dbContext.ChangeTracker.Clear();
 
                 var versions = await dbContext.ImageVersions.ToListAsync(TestContext.CancellationToken).ConfigureAwait(false);
                 var snapshots = await dbContext.ContainerSnapshots.ToListAsync(TestContext.CancellationToken).ConfigureAwait(false);
