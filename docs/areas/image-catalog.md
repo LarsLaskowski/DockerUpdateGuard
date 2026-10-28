@@ -31,7 +31,7 @@ refer to the same image the same way.
   characters; no `.` or `..` component) and
   tag (at most 128 characters) fit the reference grammar of Docker; otherwise it is treated as absent. A digest
   outside the digest grammar becomes none and the reference is kept. A reference entered by the user keeps the plain
-  parsing above. See [0014](../decisions/0014-registry-tag-names-and-digests-are-validated-where-they-are-read.md).
+  parsing above; registry requests refuse its `.` and `..` segments ([Registries](registries.md#request-paths)). See [0014](../decisions/0014-registry-tag-names-and-digests-are-validated-where-they-are-read.md).
 - Docker Hub spellings are not unified: `docker.io/nginx` has the repository `nginx`, not `library/nginx`, and
   `index.docker.io/…` is a different registry from `docker.io/…`. Registry access still treats them alike
   ([Registries](registries.md)), but they are separate catalog entries.

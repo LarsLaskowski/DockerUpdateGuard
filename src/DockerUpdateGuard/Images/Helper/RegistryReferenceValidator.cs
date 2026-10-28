@@ -37,6 +37,11 @@ internal static partial class RegistryReferenceValidator
     /// </summary>
     public const string InvalidTagMessage = "Requested tag is not a valid registry tag";
 
+    /// <summary>
+    /// Message of a lookup whose request path would contain a dot segment
+    /// </summary>
+    public const string DotSegmentMessage = "Registry request path would contain a '.' or '..' segment";
+
     #endregion // Const fields
 
     #region Regular expressions
@@ -80,6 +85,18 @@ internal static partial class RegistryReferenceValidator
     #endregion // Regular expressions
 
     #region Methods
+
+    /// <summary>
+    /// Check whether a slash-separated path contains a segment equal to '.' or '..'
+    /// </summary>
+    /// <param name="path">Path to check</param>
+    /// <returns>True when the path contains a dot segment</returns>
+    public static bool HasDotSegment(string path)
+    {
+        return path.Split('/')
+                   .Any(segment => string.Equals(segment, ".", StringComparison.Ordinal)
+                                   || string.Equals(segment, "..", StringComparison.Ordinal));
+    }
 
     /// <summary>
     /// Check whether a string is a valid registry host with an optional port

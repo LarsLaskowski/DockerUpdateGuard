@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-10-28
 - **Area:** Registries
-- **Source:** Issue #348, issue #355
+- **Source:** Issue #348, issue #355, issue #360
 - **Supersedes:** —
 
 ## Context
@@ -31,6 +31,16 @@ lowercase components joined by `.`, `_`, `__` or dashes, at most 255 characters 
 `.` and `..` path segments, and the clients' path escaping leaves `.` alone, so `System.Uri` collapsed such a segment into
 another path of the registry host; the grammar admits no such segment. Container IDs have no
 grammar the application relies on; names and labels are display text.
+
+The request builders of both clients (#360) put every repository segment, tag, digest and reference through
+`Uri.EscapeDataString`, which leaves `.` alone, and `System.Uri` removes a `.` segment and resolves a `..` segment, so
+`corp/../../../v2/_catalog` addressed `/v2/_catalog/…` of the registry host. A reference the user registers is not held
+to the grammar, and the digests a manifest names (a manifest-list entry, the configuration blob) reach a request path
+unchecked. The Docker Scout provider puts the namespace, name and tag of a registered `docker.io` reference into its
+request path without any escaping, with the Docker Hub token attached, so `..` steered it to another path of the
+Scout host and a `?` or `#` in the tag added a query or fragment. Measured on .NET 10: `%2E` and `%2E%2E` in a path are unescaped and removed the same way, and after the
+escaping only a segment that is exactly `.` or `..` is affected (`...`, `.%20`, a percent sign, escaped as `%25`, and a
+backslash, escaped as `%5C`, stay as they are).
 
 ## Options considered
 
@@ -71,6 +81,23 @@ grammar the application relies on; names and labels are display text.
     and a container that vanishes silently hides what the run's error message now names.
 13. **Skip a Docker Hub repository whose name exceeds the observed image's name column** — a pullable repository would
     disappear from the user's own images; discovery matches by catalog repository, not by name.
+14. **Refuse a request path with a `.` or `..` segment in the request builders, answered as a 404 of that request
+    would be, without sending it** — one check where each path is composed covers user-entered references and the
+    digests read from manifests alike, and a new lookup gets it by construction; the Docker Scout provider, which sends
+    the same registered reference, refuses the same way before it logs in and escapes each segment like the registry
+    clients. Chosen.
+15. **Encode the dots as `%2E`** — `System.Uri` unescapes `%2E` and removes the segment all the same (measured), and a
+    server or proxy normalizes such a path as well (RFC 3986, *Remove Dot Segments*).
+16. **Turn off the path canonicalization (`UriCreationOptions.DangerousDisablePathAndQueryCanonicalization`)** — the
+    segment then reaches the registry, or a proxy in front of it, which resolves it to another path.
+17. **Check the reference at each public lookup** — nine entry points, a new one can miss the check, and the digests a
+    manifest names never pass an entry point.
+18. **Hold a user-entered reference to the full reference grammar** — closes more than the defect: it changes what a
+    user can register, which [0009](0009-integration-results-carry-fixed-failure-reasons.md) and this record leave to
+    plain parsing.
+19. **Check the configured Docker Hub user name, the path segment of the account listing, here as well** — a
+    configured value is checked at startup with the other options ([Hosting](../areas/hosting.md)), so it is the follow-up
+    [#363](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/363).
 
 ## Decision
 
@@ -79,9 +106,12 @@ a digest only when it matches the digest grammar of the OCI image specification 
 listed tag with another name is skipped, another digest is unknown, and a lookup for another requested tag finds
 nothing. Image references read from a base-image label or a Docker Engine container, and repository names of the Docker
 Hub account listing, are accepted only when they match Docker's reference grammar within the stored limits; display
-names and the source reference are cut to their columns, and a container whose ID exceeds its column is left out. The
-rules are in [Registries](../areas/registries.md#what-can-be-read),
-[Image catalog](../areas/image-catalog.md#image-references) and [Docker instances](../areas/docker-instances.md).
+names and the source reference are cut to their columns, a container whose ID exceeds its column is left out, and
+the request builders of both registry clients and of the Docker Scout provider refuse a path with a segment that is
+exactly `.` or `..`, answered as a 404 of that request would be, without sending it; Docker Scout escapes each segment. The rules are in
+[Registries](../areas/registries.md#what-can-be-read) and [its request paths](../areas/registries.md#request-paths),
+[Image catalog](../areas/image-catalog.md#image-references), [Vulnerabilities](../areas/vulnerabilities.md#docker-scout) and
+[Docker instances](../areas/docker-instances.md).
 
 ## Consequences
 
@@ -96,8 +126,11 @@ rules are in [Registries](../areas/registries.md#what-can-be-read),
   ends *partial* naming it, without a log entry, as one whose reference cannot be parsed. A container with an over-long ID is not recorded and not sampled, without a message.
 - Cut names no longer match the remote value: a lookup by the stored container name (none exists today) would miss a
   container whose name was cut; two names equal in their first 199 characters read alike on the pages.
-- A remote reference can no longer steer a registry or Docker Hub request to another path of the host; the request
-  builders themselves still pass dot segments of a manually registered reference (follow-up issue).
+- No reference, remote or entered by the user, and no digest a manifest names can steer a registry, Docker Hub or
+  Docker Scout request to another path of the host, and a tag no longer reaches Scout's query. A registered reference with such a segment is answered *not found* without a
+  log entry, so its scan reports it like an image the registry does not have. The configured Docker Hub user name
+  still reaches the path of the account listing unchecked ([#363](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/363)); the Docker Engine requests are not
+  covered: their container and image IDs come from the configured endpoint.
 - Vulnerability advisory fields are handled by [#271](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/271);
   references entered by a user at registration are not remote and keep the behavior of
   [0009](0009-integration-results-carry-fixed-failure-reasons.md).

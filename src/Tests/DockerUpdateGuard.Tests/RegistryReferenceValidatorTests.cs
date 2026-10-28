@@ -280,5 +280,42 @@ public class RegistryReferenceValidatorTests
         Assert.AreEqual(digest, result.Digest, "A valid digest must be kept");
     }
 
+    /// <summary>
+    /// Verify a path with a segment equal to '.' or '..' is reported as a dot segment
+    /// </summary>
+    /// <param name="path">Path to check</param>
+    [TestMethod]
+    [DataRow(".")]
+    [DataRow("..")]
+    [DataRow("a/.")]
+    [DataRow("a/../b")]
+    [DataRow("./a")]
+    [DataRow("a//..")]
+    public void RegistryReferenceValidatorHasDotSegmentDotSegmentReturnsTrue(string path)
+    {
+        Assert.IsTrue(RegistryReferenceValidator.HasDotSegment(path),
+                      $"A path with a '.' or '..' segment must be reported: {path}");
+    }
+
+    /// <summary>
+    /// Verify a path without a segment equal to '.' or '..' is not reported as a dot segment
+    /// </summary>
+    /// <param name="path">Path to check</param>
+    [TestMethod]
+    [DataRow("a")]
+    [DataRow("a.b/c")]
+    [DataRow("...")]
+    [DataRow(".a")]
+    [DataRow("a.")]
+    [DataRow("..a")]
+    [DataRow("%2E%2E")]
+    [DataRow("a//b")]
+    [DataRow("")]
+    public void RegistryReferenceValidatorHasDotSegmentNoDotSegmentReturnsFalse(string path)
+    {
+        Assert.IsFalse(RegistryReferenceValidator.HasDotSegment(path),
+                       $"A path without a '.' or '..' segment must not be reported: {path}");
+    }
+
     #endregion // Methods
 }

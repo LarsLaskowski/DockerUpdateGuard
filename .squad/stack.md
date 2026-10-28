@@ -59,6 +59,11 @@ and its non-Roslyn checks (hotspots, taint analysis, duplication) have no local 
 below is the first to report their issues and hotspots, and squad step 11 reads the quality gate,
 duplication included.
 
+One such C# rule that bit (`csharpsquid:S2589`, "condition always evaluates to True"): a nullable local that is assigned a
+value already checked as non-null and then tested `is not null` in a loop condition (`while (requestUri is not null)`).
+Declare the local non-nullable after the null check and, when the loop is left through `break` or `return`, loop with
+`while (true)`.
+
 Own browser scripts (`wwwroot/js/*.js`, no Node build) have no local analyzer; the repository has none today.
 SonarQube Cloud's JavaScript rules would report on one first in the *Sonar gate* below, so a new one is written to those
 rules from the start. The one that bit (`javascript:S2486`): a `catch` block that ignores the exception holds

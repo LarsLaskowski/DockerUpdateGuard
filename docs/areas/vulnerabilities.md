@@ -127,7 +127,10 @@ scan run:
   expiry cannot be read. Only one login runs at a time. A failed login gives *failed*, "Docker Hub authentication
   failed".
 - Vulnerabilities are read from `<DockerScoutBaseUrl>/v1/repositories/<namespace>/<repository>/tags/<tag>/vulnerabilities`,
-  following the `next` link of each page, for at most **50 pages**. When the cap is reached, the advisories read so
+  following the `next` link of each page, for at most **50 pages**. Each segment is percent-encoded. A repository or tag
+  with a `.` or `..` segment is not requested: the lookup logs nothing, does not log in, and gives *not found* with the
+  message `Registry request path would contain a '.' or '..' segment`, shown as *unavailable* on the vulnerability pages
+  ([Registries](registries.md#request-paths)). When the cap is reached, the advisories read so
   far are returned as a successful result.
 - The `next` link is followed only on the origin of `DockerScoutBaseUrl` (same scheme, host and port); a root-relative
   link is resolved against the current request. A link to another origin is not requested, so the bearer token never

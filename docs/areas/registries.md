@@ -93,6 +93,27 @@ values stored before the replacement existed, which stay until they are written 
   own scheme and base path; registry names are compared lowercased and keep a non-default port.
 - Outbound requests to registries and release feeds carry the user agent `DockerUpdateGuard/1.0`.
 
+### Request paths
+
+- Every segment of a registry request path is percent-encoded. `System.Uri` removes `.` segments and resolves `..`
+  segments even when they are written as `%2E`, so encoding cannot keep them; a path whose repository, tag, digest or
+  reference has a segment that is exactly `.` or `..` is therefore never sent. A segment that contains dots but is not
+  exactly `.` or `..` (`my.app`, `...`) is requested as it is, and percent text in a segment is itself encoded (`%2E%2E`
+  is sent as `%252E%252E`).
+- The rule applies to the repository (including the Docker Hub namespace), to the tag or digest of the reference, and
+  to the digests a manifest names (the selected manifest-list entry and the configuration blob). Nothing is logged and
+  no request is sent, not even a token request.
+- The outcome is that of a 404 for the lookup: the OCI manifest, tag listing and configuration lookups, the Docker Hub
+  web API lookups (repository, tag, tag listing) and the Docker Hub configuration lookup with a repository, tag or
+  reference of that kind answer *not found* with the message `Registry request path would contain a '.' or '..'
+  segment`. A base-image resolution ends its chain without base images and succeeds. A digest named by a manifest ends
+  the chain (base images), answers *not found* with the same message (OCI configuration, OCI manifest-list entry),
+  gives *failed* "Image configuration blob could not be read for '<reference>'" (Docker Hub configuration blob) or
+  *not found* "Config blob digest could not be resolved for '<reference>'" (Docker Hub manifest-list entry).
+- The vulnerability lookup of Docker Scout follows the same rule and escapes each segment of its path
+  ([Vulnerabilities](vulnerabilities.md#docker-scout)).
+- Not covered: the account name of the account listing and the Docker Engine requests.
+
 ### What can be read
 
 - **Tag lookup** — digest and publication time of one tag.
@@ -256,7 +277,7 @@ values stored before the replacement existed, which stay until they are written 
 
 - *Unsupported*: an empty registry; the account listing when `DockerHub:Registry` is not a Docker Hub host.
 - *Not found*: HTTP 404 for an account, repository, tag, manifest or configuration blob; an image whose manifest names
-  no configuration blob.
+  no configuration blob; a request path with a `.` or `..` segment, which is not sent ([Request paths](#request-paths)).
 - *Failed*: any other non-success status, a token that cannot be obtained, a PAT without user name, a multi-platform
   index without a usable entry. The message contains the status code and the bounded excerpt of the remote response body ([failure model](#failure-model-of-integrations)). A next-page link
   to another origin also gives *failed*, with the message of [Pagination links](#pagination-links).
@@ -290,6 +311,9 @@ values stored before the replacement existed, which stay until they are written 
   attestation manifest, and publication times come only from a top-level `created` field of the manifest, which most
   registries do not send, so their tags usually have no publication time. Tracked in
   [#277](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/277).
+- The configured `DockerHub:UserName` reaches the path of the account listing without a check, so `.` or `..` would
+  address another path of the Docker Hub web API. Tracked in
+  [#363](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/363).
 
 ## Related decisions
 
