@@ -1,6 +1,6 @@
 # 0014: Remote tag names, digests, image references and names are validated or bounded where they are read
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-28
 - **Area:** Registries
 - **Source:** Issue #348, issue #355
