@@ -6,3 +6,4 @@ are quoted in full.
 | Date | Step | Member | Result |
 | ---- | ---- | ------ | ------ |
 | 2026-10-29 18:44 | 1 Intake | Orchestrator | Issue 367 read: bug, open; branch claude/clever-bohr-4gav1b off main |
+| 2026-10-29 18:48 | 2 Plan | squad-lead | DONE: tier security, area External process execution; fix: -- before target in BuildArguments; record 0015 proposed (opus/medium · 106,799 tokens · 30 tool uses · 254 s) |

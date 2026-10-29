@@ -67,4 +67,5 @@ once in the [area document](../areas/README.md) of the record's area, and the re
 | [0012](0012-configured-urls-are-rejected-when-an-at-sign-is-not-their-user-info-separator.md) | Configured URLs are rejected when an `@` is not their user-info separator | Accepted | 2026-10-26 |
 | [0013](0013-docker-instance-keys-are-named-relative-to-the-instance.md) | Validation messages name Docker instance keys relative to the instance | Accepted | 2026-10-27 |
 | [0014](0014-registry-tag-names-and-digests-are-validated-where-they-are-read.md) | Remote tag names, digests, image references and names are validated or bounded where they are read | Accepted | 2026-10-28 |
+| [0015](0015-the-trivy-scan-target-follows-an-end-of-options-marker.md) | The Trivy scan target follows an end-of-options marker | Proposed | 2026-10-29 |
 <!-- project:end index -->
