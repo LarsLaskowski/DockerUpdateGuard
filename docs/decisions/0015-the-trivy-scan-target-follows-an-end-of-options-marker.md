@@ -1,6 +1,6 @@
 # 0015: The Trivy scan target follows an end-of-options marker
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-29
 - **Area:** Vulnerabilities
 - **Source:** Issue #367
