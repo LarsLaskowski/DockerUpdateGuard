@@ -135,8 +135,16 @@ registry never delays or prevents startup.
 - The process runs as UID `64000` in the root group (GID `0`), never as UID `0`. `/app` is owned by `64000:0` with
   group permissions equal to owner permissions, so the application also works when started with another UID in
   group `0`. Membership in group `0` keeps a `root:root` Docker socket readable where the socket grants group access.
-- The Trivy CLI is bundled at `/usr/local/bin/trivy` (taken from `aquasec/trivy:0.58.1` by default) with its cache in
-  `/tmp/trivy`, so Trivy client mode works without extra installation (see [Vulnerabilities](vulnerabilities.md)).
+- The Trivy CLI is bundled at `/usr/local/bin/trivy` (taken from the digest-pinned `aquasec/trivy` image of v0.76.1,
+  by default) with its cache in `/tmp/trivy`, so Trivy client mode works without extra installation (see
+  [Vulnerabilities](vulnerabilities.md)). The deployment tiers of the documented compose files run the Trivy server
+  of the same version.
+- The image sets `TRIVY_SKIP_VERSION_CHECK=true` and `TRIVY_DISABLE_TELEMETRY=true`, so Trivy sends no update check
+  or usage data to `check.trivy.dev` and contacts only the Trivy server, the Docker Engine at `/var/run/docker.sock`
+  when it is mounted there, and the registries, including Trivy's Java DB repository when an image contains Java
+  archives. Setting either to `false` brings the request back, and a Trivy run
+  outside the image needs both set by the operator
+  ([0016](../decisions/0016-the-bundled-trivy-skips-its-update-check-and-telemetry.md)).
 - The image sets `DockerUpdateGuard__DisplayVersion` to the version it was built with.
 - CA certificates are installed so outbound TLS connections can be verified.
 - Before the application starts, the entrypoint:
@@ -218,6 +226,8 @@ These properties hold today and must be provided for by the deployment:
   through a private directory appended to `SSL_CERT_DIR`, so no write access to the system trust store is needed.
 - [0012](../decisions/0012-configured-urls-are-rejected-when-an-at-sign-is-not-their-user-info-separator.md):
   configured URLs are rejected when an `@` is not their user-info separator.
+- [0016](../decisions/0016-the-bundled-trivy-skips-its-update-check-and-telemetry.md): the bundled Trivy skips its
+  update check and telemetry through the image's environment.
 
 ## Not here
 
