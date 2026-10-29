@@ -135,8 +135,8 @@ registry never delays or prevents startup.
 - The process runs as UID `64000` in the root group (GID `0`), never as UID `0`. `/app` is owned by `64000:0` with
   group permissions equal to owner permissions, so the application also works when started with another UID in
   group `0`. Membership in group `0` keeps a `root:root` Docker socket readable where the socket grants group access.
-- The Trivy CLI is bundled at `/usr/local/bin/trivy` (taken from `aquasec/trivy:0.76.1`, pinned by digest, by
-  default) with its cache in `/tmp/trivy`, so Trivy client mode works without extra installation (see
+- The Trivy CLI is bundled at `/usr/local/bin/trivy` (taken from the digest-pinned `aquasec/trivy` image of v0.76.1,
+  by default) with its cache in `/tmp/trivy`, so Trivy client mode works without extra installation (see
   [Vulnerabilities](vulnerabilities.md)). The deployment tiers of the documented compose files run the Trivy server
   of the same version.
 - The image sets `TRIVY_SKIP_VERSION_CHECK=true` and `TRIVY_DISABLE_TELEMETRY=true`, so Trivy sends no update check

@@ -41,7 +41,7 @@ ever read as a Trivy option. The argument list is described in [Vulnerabilities]
 - A registered reference that begins with `-` is scanned as an image name; when Trivy cannot pull it, its scan ends
   with a non-zero exit code and is reported like any other image Trivy cannot find.
 - The protection rests on Trivy honoring `--`. It was measured on Trivy v0.76.1, the version the image bundles
-  (pinned by tag and digest, so the build copies the measured binary): without `--`, `--config=x.y/z:latest` is read
-  as the configuration file option; after `--`, `--config=…`, `--input=…` and `-a/b` targets are taken as image names
+  (pinned by digest, the digest of the v0.76.1 image index, so the build copies the measured binary): without
+  `--`, `--config=x.y/z:latest` is read as the configuration file option; after `--`, `--config=…`, `--input=…` and `-a/b` targets are taken as image names
   and fail without opening the file they name, and a normal target takes the normal scan path. Any later Trivy update
   is measured again with the same cases.
