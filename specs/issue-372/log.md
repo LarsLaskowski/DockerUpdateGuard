@@ -12,3 +12,4 @@ are quoted in full.
 | 2026-10-29 20:52 | 3 Plan security review | Security | Confirmation of revision: APPROVED; B1/N1 resolved; NB1, NB2 appended as Security notes (opus/medium · 63,050 tokens · 14 tool uses · 146 s) |
 | 2026-10-29 20:52 | 4-5 Skeleton, tests first | Orchestrator | skipped: plan declares no production or test code (Verification without tests) |
 | 2026-10-29 20:57 | 6 Implement | Dev | Dockerfile pin+digest, 2 skip ENVs, compose files, area docs; AC1-AC6 measured and passed (registry via mirror.gcr.io; docker.io 429) (sonnet/medium · 100,556 tokens · 24 tool uses · 253 s) |
+| 2026-10-29 20:58 | 6 Records | Lead | Edited records 0015 and 0005 after measurements; 0016 stays Proposed until approval (opus/medium · 40,579 tokens · 6 tool uses · 32 s) |
