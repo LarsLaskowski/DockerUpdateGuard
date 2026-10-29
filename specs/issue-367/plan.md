@@ -28,12 +28,14 @@ argument `--config=x.y/z:latest`, and a registered `--input=/tmp/x.tar` (registr
 | 6 | References from Docker Engine containers and base-image labels cannot begin with `-` | `RuntimeContainerScanOrchestrator.cs` line 590 (`ValidReferenceOrNull`); registry and repository patterns in `RegistryReferenceValidator.cs` lines 76 and 85 start with `[a-zA-Z0-9]` / `[a-z0-9]` or `\[`; record 0014, *Decision* | confirmed |
 | 7 | No shell is involved; each argument reaches Trivy as one `argv` entry, so `--` is seen by Trivy as written | `ProcessRunner.cs` lines 28 (`UseShellExecute = false`) and 34 (`ArgumentList.Add`) | confirmed |
 | 8 | The container image bundles Trivy v0.58.1 | `src/DockerUpdateGuard/Dockerfile` line 4 | confirmed |
-| 9 | Without `--`, Trivy v0.58.1 reads `--config=x.y/z:latest` as its `--config` option and then fails for lack of an image argument (the issue's "likely an argument-count error") | to verify: Dev, step 6 — run the Trivy v0.58.1 Linux binary (GitHub release `v0.58.1`, archive checked against the release's checksums file, unpacked in the scratchpad) with `TRIVY_SERVER=http://127.0.0.1:9` and the current argument list ending in `--config=x.y/z:latest`; record exit code and last error line in the report | unverified |
-| 10 | With `--` before the target, Trivy v0.58.1 takes a dash-leading target as the image name (no option is set from it) and exits non-zero, so the scan fails closed | to verify: Dev, step 6 — same binary, argument list ending in `--`, then each of `--config=x.y/z:latest`, `--input=/tmp/x.tar:latest`, `-a/b:latest`; the error must name the target as an image reference that cannot be parsed or found, not a flag or argument-count error, and no file `/tmp/x.tar:latest` is read (it does not exist; the error must not be a file-open error) | unverified |
-| 11 | `--` does not change how Trivy v0.58.1 handles a normal target | to verify: Dev, step 6 — same binary, argument list ending in `-- library/alpine:3.20`; the error, if any, concerns the server or registry, not argument parsing | unverified |
+| 9 | Without `--`, Trivy reads `--config=x.y/z:latest` as its `--config` option (the issue's "likely an argument-count error" is refuted: it fails on loading the file) | Measured by the orchestrator on Trivy v0.76.1 (release archive, sha256 `c7cbe3137fb8a48a17574bede3dd6beb16742d1e9772929940fc90082c39d9c0` matched the release checksums file), `TRIVY_SERVER=http://127.0.0.1:9`, `trivy image --quiet --timeout 30s --config=x.y/z:latest`: exit 1, FATAL `config file "x.y/z:latest" loading error: open x.y/z:latest: no such file or directory` | confirmed |
+| 10 | With `--` before the target, Trivy takes a dash-leading target as the image name (no option set from it, no file read) and exits non-zero, so the scan fails closed | Same v0.76.1 binary and setup: `-- --config=x.y/z:latest` exit 1, registry error `Get "https://--config=x.y/v2/": Forbidden`; `-- --input=/tmp/x.tar:latest` exit 1, FATAL `failed to parse the image name: could not parse reference: --input=/tmp/x.tar:latest` (no file-open error); `-- -a/b:latest` exit 1, treated as an image | confirmed |
+| 11 | `--` does not change how Trivy handles a normal target | Same v0.76.1 setup: `-- library/alpine:3.20` takes the normal scan path and reaches the server call (connection refused to 127.0.0.1:9) | confirmed |
+| 12 | The bundled Trivy v0.58.1 (row 8) handles `--` as v0.76.1 does in rows 9–11 | to verify: in the follow-up issue (bundled Trivy version), not in this pipeline — the v0.58.1 release archive answered HTTP 404, so no binary could be measured; Cobra/pflag end option parsing at `--` in both versions, and the change cannot make any version worse than today, where the dash-leading target is already read as an option | unverified |
 
-If row 10 or 11 is refuted, the Dev stops and reports it; the Lead decides in mode `decide` (fallback: record 0015,
-option 2).
+The Dev does not download or run Trivy in step 6: rows 9–11 are settled. If a test of the existing suite disagrees
+with rows 9–11 (none is known to model Trivy's parsing), the Dev stops and reports it; the Lead decides in mode
+`decide` (fallback: record 0015, option 2).
 
 ## Acceptance criteria
 
@@ -126,6 +128,21 @@ for an expected failure; layering and DI are unchanged.
 
 - `docs/decisions/0015-the-trivy-scan-target-follows-an-end-of-options-marker.md` (Proposed)
 
+## Challenge
+
+- Devil's Advocate (minor), no instruction for when the Trivy binary cannot be obtained — accepted: the measurement
+  moved out of step 6; the orchestrator measured v0.76.1 (rows 9–11), the unobtainable v0.58.1 is row 12 and goes to
+  the follow-up below, and the Dev has no download step left to fail.
+
+## Security review
+
+- B1, rows 9–11 unmeasured — addressed: measured on Trivy v0.76.1 with a checksum-verified binary and confirmed
+  (rows 9–11); the bundled v0.58.1 could not be obtained (HTTP 404) and stays *unverified* in row 12 with its owner,
+  the follow-up issue. Record 0015, *Consequences*, names the measured version.
+
 ## Out of scope / follow-ups
 
+- Bundled Trivy version (follow-up issue, created by the orchestrator): move the Dockerfile pin from
+  `aquasec/trivy:0.58.1` to the measured v0.76.1 (or the then-current release, measured again with rows 9–11's cases)
+  and check that the pinned image is still pullable, since the v0.58.1 release archive answers HTTP 404; closes row 12.
 - Holding registered references to the reference grammar (record 0014, option 21; tracked in #343).
