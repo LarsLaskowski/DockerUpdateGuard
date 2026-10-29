@@ -146,3 +146,12 @@ for an expected failure; layering and DI are unchanged.
   `aquasec/trivy:0.58.1` to the measured v0.76.1 (or the then-current release, measured again with rows 9–11's cases)
   and check that the pinned image is still pullable, since the v0.58.1 release archive answers HTTP 404; closes row 12.
 - Holding registered references to the reference grammar (record 0014, option 21; tracked in #343).
+
+## Challenge notes
+
+- Minor (accepted): no instruction for when the Trivy binary cannot be obtained. Resolved by moving the measurement out of step 6 (see *Challenge*).
+
+## Security notes
+
+- N1 (non-blocking): row 12, the bundled Trivy v0.58.1, is unmeasured. Tracked in LarsLaskowski/DockerUpdateGuard#372, to be linked from the PR.
+- N2 (non-blocking, nothing to change here): after `--`, a dash-leading registry still makes Trivy send an outbound HTTPS request to a host taken from the reference; this is the same for any registered registry.
