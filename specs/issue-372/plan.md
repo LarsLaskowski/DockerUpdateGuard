@@ -209,3 +209,8 @@ unreleased records are edited in place by the Lead after the Dev's report:
 - N1 (the measurements call home): every AC3 run carries both variables; only AC6's control sends the request, on
   purpose, and the Dev records whether it could leave the session.
 - N2: nothing to change.
+
+## Security notes
+
+- NB1 (Security, non-blocking): AC6 says the final run "connects only to `127.0.0.1:9`, the DNS resolver and the registry". In the Security measurement strace also showed `connect` calls on port 53 to the resolved registry and CDN addresses (Go UDP connects for source-address selection, no traffic; the control shows the same set). The deciding signal is the `hostLookupOrder(check.trivy.dev)` line; the final run's connect set must equal the control's minus whatever `check.trivy.dev` resolved to.
+- NB2 (Security, non-blocking): the sentence "only the Trivy server and the registries" is broad; when an image contains JARs the client still pulls Trivy's Java DB from its OCI repository. Where the Dev writes the area text, use wording such as "the registries, including Trivy's Java DB repository when an image contains Java archives".
