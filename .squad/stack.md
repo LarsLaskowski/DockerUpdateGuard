@@ -91,9 +91,8 @@ untracked files other than the coverage reports) and needs a SonarQube credentia
 `*.sonarcloud.io` (the agent proxy attaches the token to those requests, so no session or member sees it), or
 else `SONAR_TOKEN` in the environment, which every process of the session can read. The scanner also needs
 network access to its download hosts (`api.sonarcloud.io` and `scanner.sonarcloud.io`, which the secret's
-hosts cover, and the package registry); without them it reports NOT CHECKED, and step 11 reads the draft pull request with `python3 .squad/tools/sonar-check.py pr <number>`
-instead. On a branch without a pull request yet, a NOT CHECKED result is therefore not final: step 11 reads the draft
-pull request with `sonar-check.py pr <number>`, whose result counts. The SessionStart hook installs
+hosts cover, and the package registry); without them it reports NOT CHECKED, which on a branch without a pull request yet is not final: step 11 reads the draft pull
+request with `python3 .squad/tools/sonar-check.py pr <number>` instead, and that result counts. The SessionStart hook installs
 `dotnet-sonarscanner` and puts `~/.dotnet/tools` on the `PATH`; a failed `sonar-check.py` read names the request and
 the response body (HTTP status included), so the cause of an HTTP error can be told from the output. A finding of a rule no local analyzer reports is noted in this section, in the same change, instead of a
 squad lesson.
