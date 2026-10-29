@@ -33,7 +33,7 @@ a host fingerprint to a third party, without anything in DockerUpdateGuard askin
 ## Decision
 
 The container image sets `TRIVY_SKIP_VERSION_CHECK=true` and `TRIVY_DISABLE_TELEMETRY=true`, so the bundled Trivy
-contacts only the Trivy server and the registries; the provider's arguments stay unchanged. The behavior is
+sends nothing to `check.trivy.dev`; the provider's arguments stay unchanged. The behavior is
 described in [Hosting](../areas/hosting.md#container-image).
 
 ## Consequences

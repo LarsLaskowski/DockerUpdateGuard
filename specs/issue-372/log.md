@@ -15,3 +15,4 @@ are quoted in full.
 | 2026-10-29 20:58 | 6 Records | Lead | Edited records 0015 and 0005 after measurements; 0016 stays Proposed until approval (opus/medium · 40,579 tokens · 6 tool uses · 32 s) |
 | 2026-10-29 20:58 | 7 Code check | Orchestrator | no code changed: hadolint, scope-check, decision-check, plan-check PASS |
 | 2026-10-29 21:00 | 7 Sonar gate | Orchestrator | NOT CHECKED: analysis uploaded, results API 403 'not allowed to access data from non main branches'; no code in change; re-check in step 11 via PR |
+| 2026-10-29 21:02 | 8 Review round 1 | Reviewer | BLOCKING 1: 'contacts only the Trivy server and the registries' false (Docker socket is contacted first); verbatim fix in 4 places; non-blocking 0 (opus/medium · 52,026 tokens · 10 tool uses · 94 s) |
