@@ -98,8 +98,9 @@ scan run:
   process environment, added to the environment inherited from the application (an inherited `TRIVY_SERVER` is
   replaced), so it does not stand on the command line, where every user who can see the process could read the user
   info.
-- The Trivy process contacts only the Trivy server and the registries, including Trivy's Java DB repository when an
-  image contains Java archives; the container image switches off Trivy's update check and telemetry
+- Besides the Trivy server, the Trivy process contacts only the Docker Engine at `/var/run/docker.sock` (Trivy reads
+  the image from it first when the socket is mounted there) and the registries, including Trivy's Java DB repository
+  when an image contains Java archives; the container image switches off Trivy's update check and telemetry
   ([Hosting](hosting.md#container-image)).
 - The target is `<repository>:<tag>` for `docker.io` images and `<registry>/<repository>:<tag>` otherwise, followed by
   `@<digest>` when the digest is known.

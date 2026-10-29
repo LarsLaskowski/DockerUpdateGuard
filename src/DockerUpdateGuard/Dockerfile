@@ -57,7 +57,7 @@ RUN apk add --no-cache ca-certificates
 COPY --from=trivy /usr/local/bin/trivy /usr/local/bin/trivy
 ENV TRIVY_CACHE_DIR=/tmp/trivy
 # Trivy's update check and telemetry would send a host identifier to check.trivy.dev on every scan;
-# both are off so Trivy contacts only the Trivy server and the registries.
+# both are off so Trivy sends nothing to check.trivy.dev.
 ENV TRIVY_SKIP_VERSION_CHECK=true
 ENV TRIVY_DISABLE_TELEMETRY=true
 

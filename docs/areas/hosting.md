@@ -140,8 +140,9 @@ registry never delays or prevents startup.
   [Vulnerabilities](vulnerabilities.md)). The deployment tiers of the documented compose files run the Trivy server
   of the same version.
 - The image sets `TRIVY_SKIP_VERSION_CHECK=true` and `TRIVY_DISABLE_TELEMETRY=true`, so Trivy sends no update check
-  or usage data to `check.trivy.dev` and contacts only the Trivy server and the registries, including Trivy's Java DB
-  repository when an image contains Java archives. Setting either to `false` brings the request back, and a Trivy run
+  or usage data to `check.trivy.dev` and contacts only the Trivy server, the Docker Engine at `/var/run/docker.sock`
+  when it is mounted there, and the registries, including Trivy's Java DB repository when an image contains Java
+  archives. Setting either to `false` brings the request back, and a Trivy run
   outside the image needs both set by the operator
   ([0016](../decisions/0016-the-bundled-trivy-skips-its-update-check-and-telemetry.md)).
 - The image sets `DockerUpdateGuard__DisplayVersion` to the version it was built with.
