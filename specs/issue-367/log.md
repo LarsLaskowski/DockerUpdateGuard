@@ -16,3 +16,5 @@ are quoted in full.
 | 2026-10-29 18:58 | 5 Tests first | squad-tester | AC1 test changed, AC2 test added (3 rows); confirmed 4 failing on current code, 26 others pass (sonnet/medium · 81,306 tokens · 9 tool uses · 146 s) |
 | 2026-10-29 18:59 | 6 Implement | squad-dev | EndOfOptionsMarker added before target; full suite 1018 pass (sonnet/medium · 73,178 tokens · 11 tool uses · 71 s) |
 | 2026-10-29 19:00 | 6 Coverage | Orchestrator | Coverage gate PASS (new 100%, overall 88.2%); tester coverage pass skipped: gate passes, no deferred tests |
+| 2026-10-29 19:02 | 6 Documentation | squad-dev | docs vulnerabilities.md and image-catalog.md updated; build/tests green (sonnet/medium · 5,501 tokens · 6 tool uses · 62 s · continued) |
+| 2026-10-29 19:02 | 7 Code check | Orchestrator | main unchanged; Format check 0/393; Analyzer gate PASS (0 diagnostics) |

@@ -90,7 +90,9 @@ scan run:
 - Trivy runs as a local process in client mode against the Trivy server at `TrivyBaseUrl`; the image is analysed by
   the process, only the vulnerability database lookup goes to the server. No shell is involved; each argument is
   passed separately:
-  `image --format json --quiet --scanners vuln --pkg-types os,library --timeout <RequestTimeoutSeconds>s <target>`.
+  `image --format json --quiet --scanners vuln --pkg-types os,library --timeout <RequestTimeoutSeconds>s -- <target>`.
+  The `--` ends Trivy's options, so a target that begins with `-` (possible for a registered reference) is read as the
+  image name, never as an option; Trivy cannot resolve such a name and the scan ends *failed* as described below.
 - The server address is passed as `TRIVY_SERVER` (`TrivyBaseUrl` without trailing `/`, user info unchanged) in the
   process environment, added to the environment inherited from the application (an inherited `TRIVY_SERVER` is
   replaced), so it does not stand on the command line, where every user who can see the process could read the user
@@ -191,6 +193,8 @@ The dashboard shows at most one hint about the vulnerability configuration:
 - [0005](../decisions/0005-urls-are-output-with-user-info-masked.md): URLs are output with their user info masked;
   Trivy's error output is withheld for a `TrivyBaseUrl` with an `@`; the Trivy server address is passed in the
   environment.
+- [0015](../decisions/0015-the-trivy-scan-target-follows-an-end-of-options-marker.md): the Trivy scan target follows
+  an end-of-options marker (`--`).
 
 ## Not here
 
