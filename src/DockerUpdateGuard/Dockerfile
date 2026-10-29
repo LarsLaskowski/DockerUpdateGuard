@@ -1,7 +1,7 @@
 ARG BASE_SDK="mcr.microsoft.com/dotnet/sdk:10.0-alpine"
 ARG BASE_RUNTIME="mcr.microsoft.com/dotnet/aspnet:10.0-alpine"
 ARG BASE_RUNTIME_DIGEST
-ARG TRIVY_IMAGE="aquasec/trivy:0.58.1"
+ARG TRIVY_IMAGE="aquasec/trivy:0.76.1@sha256:790fd66d1697395d8693d1acaa1ea702406a20f109b6fc7bac8db623eca6c06c"
 ARG APP_VERSION=1.0.0
 
 # ---------------------------
@@ -56,6 +56,10 @@ RUN apk add --no-cache ca-certificates
 # The cache directory lives under /tmp so any runtime UID can write it.
 COPY --from=trivy /usr/local/bin/trivy /usr/local/bin/trivy
 ENV TRIVY_CACHE_DIR=/tmp/trivy
+# Trivy's update check and telemetry would send a host identifier to check.trivy.dev on every scan;
+# both are off so Trivy contacts only the Trivy server and the registries.
+ENV TRIVY_SKIP_VERSION_CHECK=true
+ENV TRIVY_DISABLE_TELEMETRY=true
 
 COPY --from=build /app/publish .
 

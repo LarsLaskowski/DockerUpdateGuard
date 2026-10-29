@@ -98,6 +98,9 @@ scan run:
   process environment, added to the environment inherited from the application (an inherited `TRIVY_SERVER` is
   replaced), so it does not stand on the command line, where every user who can see the process could read the user
   info.
+- The Trivy process contacts only the Trivy server and the registries, including Trivy's Java DB repository when an
+  image contains Java archives; the container image switches off Trivy's update check and telemetry
+  ([Hosting](hosting.md#container-image)).
 - The target is `<repository>:<tag>` for `docker.io` images and `<registry>/<repository>:<tag>` otherwise, followed by
   `@<digest>` when the digest is known.
 - The process gets `RequestTimeoutSeconds` plus 10 seconds. When that passes, the process and its children are killed
@@ -196,6 +199,8 @@ The dashboard shows at most one hint about the vulnerability configuration:
   environment.
 - [0015](../decisions/0015-the-trivy-scan-target-follows-an-end-of-options-marker.md): the Trivy scan target follows
   an end-of-options marker (`--`).
+- [0016](../decisions/0016-the-bundled-trivy-skips-its-update-check-and-telemetry.md): the bundled Trivy skips its
+  update check and telemetry through the image's environment.
 
 ## Not here
 
