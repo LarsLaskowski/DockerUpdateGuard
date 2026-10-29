@@ -18,3 +18,4 @@ are quoted in full.
 | 2026-10-29 19:00 | 6 Coverage | Orchestrator | Coverage gate PASS (new 100%, overall 88.2%); tester coverage pass skipped: gate passes, no deferred tests |
 | 2026-10-29 19:02 | 6 Documentation | squad-dev | docs vulnerabilities.md and image-catalog.md updated; build/tests green (sonnet/medium · 5,501 tokens · 6 tool uses · 62 s · continued) |
 | 2026-10-29 19:02 | 7 Code check | Orchestrator | main unchanged; Format check 0/393; Analyzer gate PASS (0 diagnostics) |
+| 2026-10-29 19:05 | 7 Sonar gate | Orchestrator | NOT CHECKED: scan uploaded but SonarCloud denies reading non-main branch data (HTTP 400/org restriction); re-check on the PR analysis |
