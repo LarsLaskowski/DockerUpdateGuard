@@ -1,6 +1,6 @@
 # 0016: The bundled Trivy skips its update check and telemetry
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-29
 - **Area:** Hosting and configuration
 - **Source:** Issue #372

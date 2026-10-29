@@ -68,5 +68,5 @@ once in the [area document](../areas/README.md) of the record's area, and the re
 | [0013](0013-docker-instance-keys-are-named-relative-to-the-instance.md) | Validation messages name Docker instance keys relative to the instance | Accepted | 2026-10-27 |
 | [0014](0014-registry-tag-names-and-digests-are-validated-where-they-are-read.md) | Remote tag names, digests, image references and names are validated or bounded where they are read | Accepted | 2026-10-28 |
 | [0015](0015-the-trivy-scan-target-follows-an-end-of-options-marker.md) | The Trivy scan target follows an end-of-options marker | Accepted | 2026-10-29 |
-| [0016](0016-the-bundled-trivy-skips-its-update-check-and-telemetry.md) | The bundled Trivy skips its update check and telemetry | Proposed | 2026-10-29 |
+| [0016](0016-the-bundled-trivy-skips-its-update-check-and-telemetry.md) | The bundled Trivy skips its update check and telemetry | Accepted | 2026-10-29 |
 <!-- project:end index -->
