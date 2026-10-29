@@ -92,7 +92,8 @@ scan run:
   passed separately:
   `image --format json --quiet --scanners vuln --pkg-types os,library --timeout <RequestTimeoutSeconds>s -- <target>`.
   The `--` ends Trivy's options, so a target that begins with `-` (possible for a registered reference) is read as the
-  image name, never as an option; Trivy cannot resolve such a name and the scan ends *failed* as described below.
+  image name, never as an option; when Trivy cannot pull such an image, the scan ends with a non-zero exit code as
+  described below.
 - The server address is passed as `TRIVY_SERVER` (`TrivyBaseUrl` without trailing `/`, user info unchanged) in the
   process environment, added to the environment inherited from the application (an inherited `TRIVY_SERVER` is
   replaced), so it does not stand on the command line, where every user who can see the process could read the user
