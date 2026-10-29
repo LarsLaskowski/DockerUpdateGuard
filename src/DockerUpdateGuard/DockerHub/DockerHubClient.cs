@@ -371,7 +371,7 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
             return false;
         }
 
-        if (Uri.TryCreate(registry, UriKind.Absolute, out var registryUri))
+        if (Uri.TryCreate(registry, UriKind.Absolute, out var registryUri) && string.IsNullOrEmpty(registryUri.Host) == false)
         {
             return IsSupportedDockerHubHost(registryUri.Host);
         }

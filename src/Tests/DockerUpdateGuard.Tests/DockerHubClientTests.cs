@@ -36,6 +36,25 @@ public partial class DockerHubClientTests
     #region Methods
 
     /// <summary>
+    /// Verify registry values with an empty URI host or a port are judged by the plain host check without throwing
+    /// </summary>
+    /// <param name="registry">Registry value</param>
+    /// <param name="expected">Expected support result</param>
+    [TestMethod]
+    [DataRow("localhost:5000", false)]
+    [DataRow("user:pw", false)]
+    [DataRow("mailto:x", false)]
+    [DataRow("docker.io", true)]
+    [DataRow("https://index.docker.io", true)]
+    [DataRow("", false)]
+    public void DockerHubClientSupportsRegistryHostlessOrPortValueReturnsExpected(string registry, bool expected)
+    {
+        var result = DockerHubClient.SupportsRegistry(registry);
+
+        Assert.AreEqual(expected, result, $"SupportsRegistry(\"{registry}\") must not throw and must return {expected}.");
+    }
+
+    /// <summary>
     /// Verify the current Docker Hub account can be resolved from the authenticated user endpoint
     /// </summary>
     /// <returns>Task</returns>

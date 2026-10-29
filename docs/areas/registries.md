@@ -89,8 +89,9 @@ values stored before the replacement existed, which stay until they are written 
 - The Docker Hub client uses three endpoints: the web API at `DockerUpdateGuard:DockerHub:ApiBaseUrl` (default
   `https://hub.docker.com/`), the token service `https://auth.docker.io/token` and the registry
   `https://registry-1.docker.io`. A repository without a namespace is addressed as `library/<name>`.
-- The OCI client addresses `https://<registry>/v2/<repository>/…`. A registry given as an absolute URL is used with its
-  own scheme and base path; registry names are compared lowercased and keep a non-default port.
+- The OCI client addresses `https://<registry>/v2/<repository>/…`, with the registry as a host and an optional port;
+  registry names are compared lowercased and keep their port. A registry that is not a host with an optional port is
+  refused ([Request paths](#request-paths)).
 - Outbound requests to registries and release feeds carry the user agent `DockerUpdateGuard/1.0`.
 
 ### Request paths
@@ -100,13 +101,20 @@ values stored before the replacement existed, which stay until they are written 
   reference has a segment that is exactly `.` or `..` is therefore never sent. A segment that contains dots but is not
   exactly `.` or `..` (`my.app`, `...`) is requested as it is, and percent text in a segment is itself encoded (`%2E%2E`
   is sent as `%252E%252E`).
-- The rule applies to the repository (including the Docker Hub namespace), to the tag or digest of the reference, and
+- The registry is checked before the path: it must be a DNS host name, an IPv4 address or a bracketed IPv6 address with
+  an optional port, at most 200 characters in all (the reference grammar of Docker, ASCII only), and `https://<registry>/`
+  must parse with that host. A registry with a `?`, `#`, `\`, `%`, a space or a second `:` outside brackets, a scheme or user info
+  (`https://ghcr.io`, `user:pw`), an empty label, a port that is not a number or above 65535, or the port 0 is never
+  addressed. Any port from 1 to 65535 on the named host is reachable, over HTTPS and without stored credentials. The
+  Docker Hub client matches an absolute URL by its host and is not affected.
+- The path rule applies to the repository (including the Docker Hub namespace), to the tag or digest of the reference, and
   to the digests a manifest names (the selected manifest-list entry and the configuration blob). Nothing is logged and
   no request is sent, not even a token request.
 - The outcome is that of a 404 for the lookup: the OCI manifest, tag listing and configuration lookups, the Docker Hub
   web API lookups (repository, tag, tag listing) and the Docker Hub configuration lookup with a repository, tag or
   reference of that kind answer *not found* with the message `Registry request path would contain a '.' or '..'
-  segment`. A base-image resolution ends its chain without base images and succeeds. A digest named by a manifest ends
+  segment`; the OCI lookups with an invalid registry answer *not found* with `Registry is not a valid host with an
+  optional port`, sending no request and logging nothing. A base-image resolution ends its chain without base images and succeeds. A digest named by a manifest ends
   the chain (base images), answers *not found* with the same message (OCI configuration, OCI manifest-list entry),
   gives *failed* "Image configuration blob could not be read for '<reference>'" (Docker Hub configuration blob) or
   *not found* "Config blob digest could not be resolved for '<reference>'" (Docker Hub manifest-list entry).
@@ -277,7 +285,8 @@ values stored before the replacement existed, which stay until they are written 
 
 - *Unsupported*: an empty registry; the account listing when `DockerHub:Registry` is not a Docker Hub host.
 - *Not found*: HTTP 404 for an account, repository, tag, manifest or configuration blob; an image whose manifest names
-  no configuration blob; a request path with a `.` or `..` segment, which is not sent ([Request paths](#request-paths)).
+  no configuration blob; a request path with a `.` or `..` segment, or an OCI registry that is not a valid host with an
+  optional port, which is not sent ([Request paths](#request-paths)).
 - *Failed*: any other non-success status, a token that cannot be obtained, a PAT without user name, a multi-platform
   index without a usable entry. The message contains the status code and the bounded excerpt of the remote response body ([failure model](#failure-model-of-integrations)). A next-page link
   to another origin also gives *failed*, with the message of [Pagination links](#pagination-links).
