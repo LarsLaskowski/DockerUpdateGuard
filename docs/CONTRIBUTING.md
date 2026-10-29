@@ -148,6 +148,36 @@ issue of its milestone has been closed, not earlier and not later. The current r
   maintainer assigns a later one.
 - A tag is pushed only with explicit approval (see above); the milestone, not the merge of a pull request, makes a
   release due.
+
+### Updating the bundled Trivy
+
+Dependabot is not configured for Docker images in this repository, so the Trivy CLI the image bundles (the `TRIVY_IMAGE` build argument in
+`src/DockerUpdateGuard/Dockerfile`, pinned by digest) is updated by hand. Decision records
+[0015](decisions/0015-the-trivy-scan-target-follows-an-end-of-options-marker.md) and
+[0016](decisions/0016-the-bundled-trivy-skips-its-update-check-and-telemetry.md) rest on measurements of the bundled
+version, so every new version is measured again before it is bundled, and the results go into the pull request:
+
+1. Take the digest of the new version's multi-arch image index (`docker buildx imagetools inspect
+   aquasec/trivy:<version>`, line `Digest:`) and check that `docker pull aquasec/trivy@<digest>` succeeds.
+2. Extract `/usr/local/bin/trivy` from that image (`docker create`, `docker cp`) and check that `trivy --version`
+   names the new version and that `file` reports the binary as statically linked, since the runtime image is
+   Alpine-based.
+3. With `TRIVY_SERVER` pointing at an unreachable server (for example `http://127.0.0.1:9`), re-run the cases of
+   #367 with the provider's argument list ([Vulnerabilities](areas/vulnerabilities.md#trivy)): without `--`, the
+   target `--config=x.y/z:latest` is read as an option; after `--`, the targets `--config=…`, `--input=…` and `-a/b`
+   are taken as image names, the run exits non-zero and opens no file they name (for example checked with
+   `strace -f -e trace=open,openat`); `-- library/alpine:3.20` takes the normal scan path and fails on the
+   unreachable server, which shows that `TRIVY_SERVER` is read.
+4. Run one scan with `TRIVY_SKIP_VERSION_CHECK=true` and `TRIVY_DISABLE_TELEMETRY=true` and a control run without
+   them, watching the process's DNS lookups and connections: the first reaches no destination other than those
+   [Hosting](areas/hosting.md#container-image) lists, and never `check.trivy.dev`; the control run shows the request
+   to `check.trivy.dev`, so the observation is known to see it.
+5. Change together: the `TRIVY_IMAGE` default and the version in its comment in the Dockerfile, the
+   `aquasec/trivy:<version>` image of both Trivy servers in `docs/docker-compose.trivy.yml` and
+   `docs/docker-compose.full.yml` (client and server stay on one version), and the bundled version named in
+   [Hosting](areas/hosting.md#container-image) and in records 0005, 0015 and 0016: in place while a record is
+   unreleased, through a new record that amends it once it is released ([Decision records](decisions/README.md)).
+   A version named as the one a past measurement was made with (v0.58.1) stays.
 <!-- project:end releases -->
 
 <!-- project:begin stability -->
