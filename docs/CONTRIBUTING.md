@@ -151,7 +151,7 @@ issue of its milestone has been closed, not earlier and not later. The current r
 
 ### Updating the bundled Trivy
 
-Dependabot does not cover Docker images, so the Trivy CLI the image bundles (the `TRIVY_IMAGE` build argument in
+Dependabot is not configured for Docker images in this repository, so the Trivy CLI the image bundles (the `TRIVY_IMAGE` build argument in
 `src/DockerUpdateGuard/Dockerfile`, pinned by digest) is updated by hand. Decision records
 [0015](decisions/0015-the-trivy-scan-target-follows-an-end-of-options-marker.md) and
 [0016](decisions/0016-the-bundled-trivy-skips-its-update-check-and-telemetry.md) rest on measurements of the bundled
