@@ -1,0 +1,8 @@
+# Log: issue #367
+
+One line per pipeline step: date and time of day (UTC), step, member, result. Lead decisions and escalations
+are quoted in full.
+
+| Date | Step | Member | Result |
+| ---- | ---- | ------ | ------ |
+| 2026-10-29 18:44 | 1 Intake | Orchestrator | Issue 367 read: bug, open; branch claude/clever-bohr-4gav1b off main |
