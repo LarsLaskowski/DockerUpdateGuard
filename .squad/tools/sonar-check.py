@@ -26,6 +26,9 @@ The project comes from `SONAR_PROJECT_KEY` in `.squad/tools/squad_settings.py`, 
 server from `SONAR_HOST` (default https://sonarcloud.io); the scanner's report file from `SONAR_REPORT_TASK`
 (default `.scannerwork/report-task.txt`).
 
+A read that SonarQube answers with an HTTP error is NOT CHECKED with the request (path and parameters, never the
+token) and the response body, so a rejected parameter can be told from a missing project or the proxy.
+
 Every finding is printed as `rule path:line message` and fixed like an analyzer diagnostic. A rule that no local
 analyzer reports is noted in the *Analyzer gate* section of `.squad/stack.md` (project knowledge, in the same
 change), not filed as a squad lesson.
@@ -49,6 +52,7 @@ import shutil
 import subprocess
 import sys
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 
@@ -58,6 +62,7 @@ from analyzer_common import BASE_REF, changed_line_map, git, settings  # noqa: E
 CLEAN, FINDINGS, NOT_CHECKED, PENDING, USAGE = 0, 1, 2, 3, 4
 HOST = getattr(settings, "SONAR_HOST", "https://sonarcloud.io").rstrip("/")
 REPORT_TASK = getattr(settings, "SONAR_REPORT_TASK", ".scannerwork/report-task.txt")
+ERROR_BODY_CHARS = 500
 WAIT_SECONDS = 600
 POLL_SECONDS = 5
 PAGE_SIZE = 500
@@ -67,6 +72,10 @@ KEY_ARGUMENT = re.compile(r'/k:"?([\w.:-]+)"?')
 
 class NotChecked(Exception):
     """The gate could not run; the message says why."""
+
+
+class ApiError(OSError):
+    """SonarQube answered a request with an HTTP error; the message names the request and the response."""
 
 
 class Usage(argparse.ArgumentParser):
@@ -103,8 +112,13 @@ def api(path, params, token=None):
     request = urllib.request.Request(url)  # noqa: S310  # nosec B310
     if token:  # never forwarded to another host on a redirect
         request.add_unredirected_header("Authorization", "Basic " + base64.b64encode(f"{token}:".encode()).decode())
-    with urllib.request.urlopen(request, timeout=60) as response:  # noqa: S310  # nosec B310
-        return json.load(response)
+    try:
+        with urllib.request.urlopen(request, timeout=60) as response:  # noqa: S310  # nosec B310
+            return json.load(response)
+    except urllib.error.HTTPError as error:
+        # The URL carries the parameters but never the token (it travels in a header), so it may be printed.
+        body = error.read().decode("utf-8", "replace").strip()[:ERROR_BODY_CHARS]
+        raise ApiError(f"HTTP {error.code} for GET {url}: {body or 'empty response body'}") from error
 
 
 def proxy_credential():
