@@ -819,6 +819,43 @@ public partial class OciRegistryClientTests
     }
 
     /// <summary>
+    /// Verify OCI tag listing ignores rel parameters after the first one
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task OciRegistryClientGetTagsAsyncSecondRelationParameterIsIgnoredAsync()
+    {
+        var handler = new SequenceHttpMessageHandler();
+        var httpClient = new HttpClient(handler);
+
+        try
+        {
+            handler.AddResponse("https://mcr.microsoft.com/v2/mssql/server/tags/list?n=100",
+                                CreateTagListResponse("""{ "name": "mssql/server", "tags": [] }""",
+                                                      "</v2/mssql/server/tags/list?last=second&n=100>; rel=\"prev\"; rel=\"next\""));
+
+            var client = new OciRegistryClient(httpClient, new TestLogger<OciRegistryClient>());
+
+            var result = await client.GetTagsAsync("mcr.microsoft.com",
+                                                   "mssql/server",
+                                                   cancellationToken: CancellationToken.None)
+                                     .ConfigureAwait(false);
+
+            Assert.AreEqual(ExternalOperationStatus.Succeeded,
+                            result.Status,
+                            "A listing without a first next relation must end as succeeded");
+            Assert.DoesNotContain(request => request.RequestUri == "https://mcr.microsoft.com/v2/mssql/server/tags/list?last=second&n=100",
+                                  handler.Requests,
+                                  "A second rel parameter must not select a continuation page");
+        }
+        finally
+        {
+            httpClient.Dispose();
+            handler.Dispose();
+        }
+    }
+
+    /// <summary>
     /// Verify OCI tag listing recognizes next as one token of a quoted relation list
     /// </summary>
     /// <returns>Task</returns>

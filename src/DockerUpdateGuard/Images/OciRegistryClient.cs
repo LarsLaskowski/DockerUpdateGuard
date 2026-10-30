@@ -782,11 +782,8 @@ public partial class OciRegistryClient : IRegistryMetadataClient
 
             var relationValue = parameter[(separatorIndex + 1)..].Trim().Trim('"');
 
-            if (relationValue.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)
-                             .Any(relation => string.Equals(relation, "next", StringComparison.OrdinalIgnoreCase)))
-            {
-                return true;
-            }
+            return relationValue.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)
+                                .Any(relation => string.Equals(relation, "next", StringComparison.OrdinalIgnoreCase));
         }
 
         return false;
