@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Globalization;
 using System.Net;
 using System.Net.Http.Headers;
+using System.Text;
 using System.Text.Json;
 
 using DockerUpdateGuard.DockerHub;
@@ -48,6 +49,26 @@ public partial class OciRegistryClient : IRegistryMetadataClient
     /// Name of the config property in registry payloads
     /// </summary>
     private const string ConfigPropertyName = "config";
+
+    /// <summary>
+    /// Link header scanner state outside quoted parameters and URI targets
+    /// </summary>
+    private const char LinkHeaderDefaultState = '\0';
+
+    /// <summary>
+    /// Link header scanner state inside an angle-bracketed URI target
+    /// </summary>
+    private const char LinkHeaderUriTargetState = '<';
+
+    /// <summary>
+    /// Link header scanner state inside a quoted parameter
+    /// </summary>
+    private const char LinkHeaderQuotedParameterState = '"';
+
+    /// <summary>
+    /// Link header scanner state after an escape character in a quoted parameter
+    /// </summary>
+    private const char LinkHeaderEscapedQuotedParameterState = '\\';
 
     /// <summary>
     /// Assumed bearer token lifetime when the token response omits "expires_in"
@@ -654,26 +675,118 @@ public partial class OciRegistryClient : IRegistryMetadataClient
             return null;
         }
 
-        var nextLink = linkValues.SelectMany(value => value.Split(',', StringSplitOptions.RemoveEmptyEntries))
-                                 .Select(value => value.Trim())
-                                 .FirstOrDefault(value => value.Contains("rel=\"next\"", StringComparison.OrdinalIgnoreCase));
-
-        if (string.IsNullOrWhiteSpace(nextLink))
+        foreach (var linkValue in linkValues)
         {
-            return null;
+            foreach (var linkEntry in SplitLinkSegments(linkValue, ',', respectUriTargets: true))
+            {
+                var targetStart = linkEntry.IndexOf('<');
+                var targetEnd = linkEntry.IndexOf('>', targetStart + 1);
+                var nestedTargetStart = linkEntry.IndexOf('<', targetStart + 1);
+
+                if (targetStart < 0
+                    || targetEnd <= targetStart
+                    || (nestedTargetStart > targetStart && nestedTargetStart < targetEnd))
+                {
+                    continue;
+                }
+
+                var linkTarget = linkEntry[(targetStart + 1)..targetEnd];
+
+                if (string.IsNullOrWhiteSpace(linkTarget)
+                    || HasNextRelation(linkEntry[(targetEnd + 1)..]) == false)
+                {
+                    continue;
+                }
+
+                return linkTarget;
+            }
         }
 
-        var start = nextLink.IndexOf('<');
-        var end = nextLink.IndexOf('>');
+        return null;
+    }
 
-        if (start < 0 || end <= start)
+    /// <summary>
+    /// Split Link header segments without splitting inside quoted parameters or URI targets
+    /// </summary>
+    /// <param name="value">Raw Link header value or parameter list</param>
+    /// <param name="separator">Segment delimiter</param>
+    /// <param name="respectUriTargets">Whether separators inside angle-bracketed URI targets are retained</param>
+    /// <returns>Link header segments</returns>
+    private static IEnumerable<string> SplitLinkSegments(string value, char separator, bool respectUriTargets)
+    {
+        var current = new StringBuilder();
+        var state = LinkHeaderDefaultState;
+
+        foreach (var character in value)
         {
-            return null;
+            if (character == separator && state == LinkHeaderDefaultState)
+            {
+                if (current.Length > 0)
+                {
+                    yield return current.ToString();
+                    current.Clear();
+                }
+
+                continue;
+            }
+
+            current.Append(character);
+            state = GetNextLinkHeaderScanState(state, character, respectUriTargets);
         }
 
-        var linkTarget = nextLink[(start + 1)..end];
+        if (current.Length > 0)
+        {
+            yield return current.ToString();
+        }
+    }
 
-        return string.IsNullOrWhiteSpace(linkTarget) ? null : linkTarget;
+    /// <summary>
+    /// Get the Link header segment scanner state after reading a character
+    /// </summary>
+    /// <param name="state">Current scanner state</param>
+    /// <param name="character">Current header character</param>
+    /// <param name="respectUriTargets">Whether angle-bracketed URI targets are recognized</param>
+    /// <returns>Updated scanner state</returns>
+    private static char GetNextLinkHeaderScanState(char state, char character, bool respectUriTargets)
+    {
+        return state switch
+               {
+                   LinkHeaderEscapedQuotedParameterState => LinkHeaderQuotedParameterState,
+                   LinkHeaderQuotedParameterState when character == '\\' => LinkHeaderEscapedQuotedParameterState,
+                   LinkHeaderQuotedParameterState when character == '"' => LinkHeaderDefaultState,
+                   LinkHeaderQuotedParameterState => LinkHeaderQuotedParameterState,
+                   LinkHeaderUriTargetState when character == '>' => LinkHeaderDefaultState,
+                   LinkHeaderUriTargetState => LinkHeaderUriTargetState,
+                   LinkHeaderDefaultState when respectUriTargets && character == '<' => LinkHeaderUriTargetState,
+                   LinkHeaderDefaultState when character == '"' => LinkHeaderQuotedParameterState,
+                   _ => LinkHeaderDefaultState,
+               };
+    }
+
+    /// <summary>
+    /// Determine whether a Link entry declares the next relation
+    /// </summary>
+    /// <param name="parameterList">Link parameters following the URI target</param>
+    /// <returns>True when the entry has an exact next relation</returns>
+    private static bool HasNextRelation(string parameterList)
+    {
+        foreach (var parameter in SplitLinkSegments(parameterList, ';', respectUriTargets: false))
+        {
+            var separatorIndex = parameter.IndexOf('=');
+
+            if (separatorIndex <= 0
+                || string.Equals(parameter[..separatorIndex].Trim(), "rel", StringComparison.OrdinalIgnoreCase) == false)
+            {
+                continue;
+            }
+
+            var relationValue = parameter[(separatorIndex + 1)..].Trim().Trim('"');
+
+            return relationValue.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)
+                                .Any(relation => string.Equals(relation, "next", StringComparison.OrdinalIgnoreCase));
+        }
+
+        return false;
     }
 
     /// <summary>

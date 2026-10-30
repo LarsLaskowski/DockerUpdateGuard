@@ -175,6 +175,12 @@ values stored before the replacement existed, which stay until they are written 
   or path-relative link stays on the same origin and is followed. A link to another host or port, to `http` when the
   listing uses `https`, or with another scheme is not followed and no request is sent to it, so the Docker Hub bearer
   token never leaves the configured origin. A link that cannot be parsed is treated the same way.
+- OCI `Link` headers may contain multiple entries or parameters. Entries are split on commas only when the comma is
+  outside an angle-bracketed URI target and a quoted parameter. An entry with an unterminated or otherwise malformed
+  target is skipped; when no entry has a well-formed target with the `next` relation, the listing ends as *succeeded*
+  with the tags read so far and no request is sent. The `next` relation is matched as an exact, case-insensitive
+  relation token of the first `rel` parameter of an entry (later ones are ignored), whether `rel` is quoted
+  (`rel="next last"`) or unquoted (`rel=next`), so relation-like text in another parameter cannot select a page.
 - A rejected link makes the listing *failed*, and the entries read before are discarded. The message is
   `<listing> stopped: the next-page link pointed to a different origin (<origin>)`, for example
   `Docker Hub tag listing for 'acme/api' stopped: the next-page link pointed to a different origin (https://attacker.example)`;
