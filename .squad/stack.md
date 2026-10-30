@@ -92,12 +92,13 @@ untracked files other than the coverage reports) and needs a SonarQube credentia
 else `SONAR_TOKEN` in the environment, which every process of the session can read. The scanner also needs
 network access to its download hosts (`api.sonarcloud.io` and `scanner.sonarcloud.io`, which the secret's
 hosts cover, and the package registry); without them it reports NOT CHECKED, which on a branch without a pull request yet is not final: step 11 reads the draft pull
-request with `python3 .squad/tools/sonar-check.py pr <number>` instead, and that result counts. The SessionStart hook installs
-`dotnet-sonarscanner` and puts `~/.dotnet/tools` on the `PATH`; a failed `sonar-check.py` read names the request and
+request with `python3 .squad/tools/sonar-check.py pr <number>` instead, and that result counts. The SessionStart hook restores
+`dotnet-sonarscanner` from the tool manifest and puts `~/.dotnet/tools` on the `PATH`; a failed `sonar-check.py` read names the request and
 the response body (HTTP status included), so the cause of an HTTP error can be told from the output. A finding of a rule no local analyzer reports is noted in this section, in the same change, instead of a
 squad lesson.
-The .NET scanner is the `dotnet-sonarscanner` tool, installed globally with `dotnet tool install -g dotnet-sonarscanner`
-(a local install writes an untracked `dotnet-tools.json` to the repository root, which the gate refuses); its `begin`
+The .NET scanner is the `dotnet-sonarscanner` tool, pinned in the tool manifest `.config/dotnet-tools.json`, which
+`dotnet tool restore` must have restored before the gate in a fresh cloud session: the SessionStart hook does it, run it
+by hand where the hook did not; its `begin`
 arguments mirror the CI step, plus the branch name and the repository root as base
 directory, and it needs the full, non-incremental build between `begin` and `end`. The local coverage report is
 Cobertura, which the scanner does not read, so the branch analysis carries no coverage figure: the *Coverage
@@ -171,6 +172,12 @@ and no local gate reports it. The remedy is a neutral name for the value (a cons
 the variable name, for example) whose text a test pins, never a suppression.
 
 ## Writing tests
+
+**Scripts only CI can run.** A script that needs systemd, root or a service the session lacks (an
+end-to-end install check, for example) has a local smoke substitute, which the Tester runs before handing back:
+`bash -n` and `shellcheck` on the script, and a mode of the script (or a test) that runs the documented lines
+against a scratch directory with stub commands, without systemd. The plan lists the rows that can only run in
+CI (`.squad/routing.md`, *Operator environments and documented procedures*).
 
 See `docs/UNIT_TESTS.md` — MSTest with **NSubstitute** for collaborators that cross an infrastructure boundary,
 EF Core InMemory / SQLite for data tests. The rules the MSTest and Sonar analyzers enforce and the Code Officer cannot fix

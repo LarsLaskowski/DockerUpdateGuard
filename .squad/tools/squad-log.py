@@ -35,7 +35,8 @@ mechanics out of the orchestrator's hands:
   fresh launch of that step. A continuation logged at another step number than the fresh launch it continues
   prints a warning, unless its step cell names a fix, delta or revise round: the first launch of another mode
   (`skeleton` to `implement`, `tests-first` to `coverage`, `approve-pr`, `decide`) is a fresh launch, not a
-  continuation;
+  continuation. `--continued` and `--continued-from` are only for continuing the same agent: a fresh launch of
+  the same role at another step is logged without them;
 - the usage block often arrives only after the member's hand-back: `--amend-last MEMBER` with the same
   options adds the trailer to the last row of that member afterwards, so the row can be written as soon as
   the report is in. A row gets its trailer once (a pending one is completed); a second amend is refused. When a
@@ -52,9 +53,10 @@ mechanics out of the orchestrator's hands:
   launch, name it as unreported and exit 0, so the table is posted as the tool prints it instead of being
   summed by hand or left out. `--replace-last` with the real numbers turns it into a full trailer later;
 - rows of the Orchestrator, the Product Manager and the User (an answer, a measurement the user ran) are
-  not launches: write them with that member cell and no metric option, the summary does not ask for usage;
-  a metric option, `--amend-last`, `--replace-last` or `--unreported` for such a member is refused, since no
-  task notification exists for it;
+  not launches: write them with exactly the member cell `Orchestrator`, `Product Manager` or `User` (the
+  spellings `squad-orchestrator` and `squad-user` are written as those cells) and no metric option, the
+  summary does not ask for usage; a metric option, `--amend-last`, `--replace-last` or `--unreported` for such
+  a member is refused, since no task notification exists for it;
 - the metrics are what a launch really cost: fewer than 1,000 tokens (every launch loads its agent file and
   instructions first, so `--tokens 0` or `--tokens 1` can only be a placeholder) and negative numbers are
   refused, so a placeholder cannot be logged by accident. A row for a launch whose notification has not
@@ -130,6 +132,7 @@ ANY_TRAILER = re.compile(rf"\((?P<launch>[\w.-]+/[\w-]+) · (?:{UNREPORTED}|{PEN
 TWO_MEMBERS = re.compile(r"[,/+&]|\band\b")
 ORCHESTRATOR = "orchestrator"
 NOT_LAUNCHES = {ORCHESTRATOR, "product manager", "user"}
+NOT_LAUNCH_CELLS = {"orchestrator": "Orchestrator", "product manager": "Product Manager", "user": "User"}
 STAMP = r"\d{4}-\d{2}-\d{2}(?: \d{2}:\d{2})?"
 ROW = re.compile(rf"^\| (?P<date>{STAMP}) \| (?P<step>(?:[^|\\]|\\\|)*) \| (?P<member>(?:[^|\\]|\\\|)*) \| "
                  r"(?P<result>.*) \|\s*$")
@@ -146,6 +149,15 @@ def escape_controls(text):
     """Every control character other than tab and line break as `U+XXXX`."""
     return "".join(f"U+{ord(ch):04X}" if unicodedata.category(ch) in CONTROL_CATEGORIES and ch not in KEEP else ch
                    for ch in text)
+
+
+def canonical_member(member):
+    """`Orchestrator`, `Product Manager` and `User` for their `squad-` prefixed or differently cased spellings
+    (`squad-orchestrator`, `squad-user`); any other member is returned as given."""
+    if member is None:
+        return None
+    name = re.sub(r"^squad[- ]", "", member.strip().lower()).replace("-", " ")
+    return NOT_LAUNCH_CELLS.get(name, member)
 
 
 def cell(text):
@@ -738,6 +750,9 @@ def run_on_stdin(parser, args, root):
 def main():
     parser = build_parser()
     args = parser.parse_args()
+    args.member = canonical_member(args.member)
+    args.amend_last = canonical_member(args.amend_last)
+    args.replace_last = canonical_member(args.replace_last)
     toplevel = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, check=False)
     root = toplevel.stdout.strip() if toplevel.returncode == 0 else os.getcwd()
     if args.stdin:

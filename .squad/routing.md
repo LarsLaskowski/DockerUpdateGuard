@@ -128,6 +128,30 @@ plan names it as the criterion's verification with the Dev as its owner. A build
 working tree does not count: it restores with every source present. A red CI on such a criterion after that
 check is worked in step 11.
 
+### Operator environments and documented procedures
+
+A criterion or document that depends on the operator's environment (network, DNS, access policy, console,
+upload tools, what the target host has installed) is planned against that environment, not against the
+session's:
+
+- **Target host (install and deploy features).** The spec asks the Product Manager what the target host has
+  and may have (tools such as `git`, network access to which hosts, DNS, the console it is used from, the
+  order of steps the operator will paste) and records the answers as scenarios and acceptance criteria. The
+  Devil's Advocate checks the plan against that list.
+- **Dry run.** The plan schedules a dry run of the documented steps by the Product Manager (or a stated
+  stand-in) **before** the documentation is reviewed, and lists the hosts and software versions the run needs
+  (for example the backend version with the API the procedure calls). Every statement of the document that no
+  run has shown is marked as such in the document. When an external page cannot be reached from the session,
+  the plan asks the Product Manager to confirm those statements in the earliest real run, not at the end.
+- **Shell procedures.** For a documented shell procedure the plan states, before Security's plan review, what
+  happens when (a) all lines are pasted at once, (b) one line at a time, (c) one line fails, (d) a variable
+  is lost, and names the tests (unit and CI) that hold each answer; the Tester derives its cases from that
+  list. A line that continues after a failed step, so that a half-finished state can still be run, is a
+  defect of the design.
+- **CI-only rows.** A script only CI can run (it needs systemd, root or a service the session lacks) has a
+  local smoke substitute (*Writing tests* in `.squad/stack.md`); the plan lists the rows that can run in CI
+  only, and the Tester runs the substitute before handing back.
+
 ### Code a unit test cannot cover
 
 A file of the change that no unit test can cover — a browser script the stack has no test runner for, a

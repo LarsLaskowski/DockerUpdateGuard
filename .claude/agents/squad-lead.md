@@ -31,7 +31,9 @@ The orchestrator tells you which **mode** to run:
   the behavior. Size the spec to the feature: one scenario per behavior a user can tell apart, only the edge
   cases that change what the user sees, and a link instead of a restatement of the issue, an area document or a
   record — a small feature gets a short spec. Check every claim the issue makes about today's behavior against
-  the code before you build a scenario on it. A feature that already exists or contradicts an accepted decision record is
+  the code before you build a scenario on it. For an installer or deployment feature, ask the Product Manager
+  what the target host has and may have (`RESULT: ESCALATE`, *Operator environments and documented procedures*
+  in `.squad/routing.md`) and record the answers as scenarios and criteria. A feature that already exists or contradicts an accepted decision record is
   `RESULT: NO CHANGE` with the reason and a proposed issue comment.
 - `plan` — pick the tier on the change (`.squad/routing.md`, *Tiers*). For tiers `docs` and `patch` write
   **no** `plan.md`: return the tier with its justification, the files and the exact edits, and the acceptance

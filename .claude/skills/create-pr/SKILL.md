@@ -63,6 +63,11 @@ repository.
      verified) — including the unit-test, formatting, analyzer, coverage,
      documentation and dependency items, not just the general ones
    - wrap the body in a HEREDOC so the formatting survives
+   - set one label on the PR (`issue_write`, method `update`, `labels`) for the release notes
+     (`.github/release.yml`): `breaking-change` for a change that breaks existing users, else `enhancement` for a
+     feature, `security` for a security fix, `bug` for a bug fix (with a linked issue: the matching label of the
+     issue, else judge from the change); none for anything else (it lands under *Other
+     changes*), `ignore-for-release` for a change that is not worth a release note
    - read the body back right after creating or updating the PR
      (`pull_request_read`, method `get`) and compare its links and code spans
      with what you sent; a mangled one is fixed with `update_pull_request`
