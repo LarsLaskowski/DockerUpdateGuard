@@ -26,6 +26,11 @@ The project comes from `SONAR_PROJECT_KEY` in `.squad/tools/squad_settings.py`, 
 server from `SONAR_HOST` (default https://sonarcloud.io); the scanner's report file from `SONAR_REPORT_TASK`
 (default `.scannerwork/report-task.txt`).
 
+Two reads have a second endpoint for a credential that may browse the project but not use the first one (a
+403 from the proxy-authenticated session): the pull request's commit comes from `project_analyses/search` when
+`project_pull_requests/list` is refused, and the scan's processing status from `ce/activity` when `ce/task` is
+refused.
+
 A read that SonarQube answers with an HTTP error is NOT CHECKED with the request (path and parameters, never the
 token) and the response body, so a rejected parameter can be told from a missing project or the proxy.
 
@@ -77,6 +82,10 @@ class NotChecked(Exception):
 class ApiError(OSError):
     """SonarQube answered a request with an HTTP error; the message names the request and the response."""
 
+    def __init__(self, message, status=None):
+        super().__init__(message)
+        self.status = status
+
 
 class Usage(argparse.ArgumentParser):
     def error(self, message):
@@ -118,7 +127,7 @@ def api(path, params, token=None):
     except urllib.error.HTTPError as error:
         # The URL carries the parameters but never the token (it travels in a header), so it may be printed.
         body = error.read().decode("utf-8", "replace").strip()[:ERROR_BODY_CHARS]
-        raise ApiError(f"HTTP {error.code} for GET {url}: {body or 'empty response body'}") from error
+        raise ApiError(f"HTTP {error.code} for GET {url}: {body or 'empty response body'}", error.code) from error
 
 
 def proxy_credential():
@@ -178,15 +187,27 @@ def report(findings, gate=None):
     return CLEAN
 
 
+def analysed_commit(key, number, token=None):
+    """The commit SonarQube analysed last for the pull request, or "" when there is no analysis."""
+    try:
+        analyses = api("project_pull_requests/list", {"project": key}, token).get("pullRequests", [])
+    except ApiError as error:
+        if error.status != 403:
+            raise
+        found = api("project_analyses/search", {"project": key, "pullRequest": number, "ps": 1}, token)
+        return next((a.get("revision", "") for a in found.get("analyses", [])), "")
+    analysis = next((a for a in analyses if a.get("key") == str(number)), None)
+    return (analysis or {}).get("commit", {}).get("sha", "")
+
+
 def check_pr(key, number, head, token=None):
     """The analysis of the pull request, matched to the head."""
-    analyses = api("project_pull_requests/list", {"project": key}, token).get("pullRequests", [])
-    analysis = next((a for a in analyses if a.get("key") == str(number)), None)
-    analysed = (analysis or {}).get("commit", {}).get("sha", "")
-    if not analysis or len(head) < 7 or not analysed.startswith(head):  # a full SHA, or an abbreviation of it
+    analysed = analysed_commit(key, number, token)
+    if len(head) < 7 or not analysed or len(head) < 7 or not analysed.startswith(head):  # a full SHA, or an abbreviation of it
         print(f"PENDING: SonarQube has no analysis of pull request {number} at {head[:12]} yet"
-              + (f" (latest: {analysed[:12]})" if analysed else "") + "; wait and run again. Still PENDING after "
-              "every CI check of this head finished: the analysis cannot be read, and the PR stays a draft.")
+              + (f" (latest: {analysed[:12]})" if analysed else "") + ". PENDING says that a newer analysis than "
+              "the one shown is still to come, not that the head has a problem: wait and run again. Still PENDING "
+              "after every CI check of this head finished: the analysis cannot be read, and the PR stays a draft.")
         return PENDING
     params = {"projectKey": key, "pullRequest": number}
     gate = api("qualitygates/project_status", params, token)["projectStatus"]["status"]
@@ -210,11 +231,25 @@ def ce_task_id():
     return None
 
 
+def ce_task(task, token):
+    """The compute engine task; `ce/activity` answers for a credential that `ce/task` refuses."""
+    try:
+        return api("ce/task", {"id": task}, token)["task"]
+    except ApiError as error:
+        if error.status != 403:
+            raise
+        key = project_key()
+        for candidate in api("ce/activity", {"component": key, "ps": 20}, token).get("tasks", []):
+            if candidate.get("id") == task:
+                return candidate
+        return {"id": task, "status": "PENDING"}
+
+
 def wait_for_task(task, token):
     """Wait until SonarQube has processed the uploaded report; return the task (its status says how it ended)."""
     deadline = time.monotonic() + WAIT_SECONDS
     while True:
-        result = api("ce/task", {"id": task}, token)["task"]
+        result = ce_task(task, token)
         if result["status"] not in ("PENDING", "IN_PROGRESS"):
             return result
         if time.monotonic() >= deadline:

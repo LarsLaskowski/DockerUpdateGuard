@@ -303,6 +303,13 @@ public void UpdateDetectionServiceDigestChangeReturnsCurrentTagUpdate()
 }
 ```
 
+## Tests that read repository documents
+
+`.gitattributes` may check files out with CRLF (`*.md text eol=crlf`), so on a CI runner a document carries
+`\r\n` where the repository blob has `\n`. A test or script that reads a repository document (`*.md`, and the
+other files `.gitattributes` checks out with CRLF) normalizes `\r\n` to `\n` before it compares lines or feeds
+them to a shell. The first such test also tests the normalizer with CRLF input.
+
 ## Code coverage
 
 Code coverage is collected with `coverlet.collector`, already referenced by

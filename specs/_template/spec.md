@@ -29,7 +29,10 @@ repeated or concurrent action — numbered, each with what the user sees (the ex
 ## Non-functional requirements
 
 <!-- Limits and sizes, time and memory, security and privacy, compatibility (versions, platforms, existing data
-and configuration), new configuration with its default, logs and metrics — one bullet each, or "none". -->
+and configuration), new configuration with its default, logs and metrics — one bullet each, or "none". For an
+installer or deployment feature also what the target host has and may have (tools, network access, DNS, the
+console, the order of steps the operator pastes), as the Product Manager answered (*Operator environments and
+documented procedures* in `.squad/routing.md`). -->
 
 ## Acceptance criteria
 

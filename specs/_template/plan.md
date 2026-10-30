@@ -45,6 +45,12 @@ first, named strictly by *Layout* in `.squad/stack.md`. A criterion verified wit
 | -- | ------- | --------- |
 | AC1 | … | … |
 
+A test or script that reads a repository document (`*.md` and the other files `.gitattributes` checks out with
+CRLF) normalizes `\r\n` to `\n` first; the first such test also tests the normalizer with CRLF input
+(`docs/UNIT_TESTS.md`). For a documented shell procedure, a list under this table names the test for each case
+of *Operator environments and documented procedures* (`.squad/routing.md`), and the rows that can only run in
+CI.
+
 ## Verification without tests
 
 Only when the change touches no production or test code, in any tier: steps 4, 5 and the *Coverage gate*

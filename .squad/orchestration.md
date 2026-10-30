@@ -109,7 +109,7 @@ review (`update_pull_request` with `draft: false`) only when all of this holds o
   waited for, not counted as passed);
 - `python3 .squad/tools/sonar-check.py pr <number>` exits 0: the CI code analysis of **this** head passed its
   quality gate with **no new issue** and no hotspot to review (a passed gate with new issues is still
-  rework). PENDING (exit 3): wait and run it again, never read a `Quality Gate passed` comment instead; still
+  rework). PENDING (exit 3) means a newer analysis than the shown one is still to come, not a problem of the head (the analysis can lag the pushes by several commits): wait and run it again, never read a `Quality Gate passed` comment instead; still
   PENDING once every CI check of the head has finished means the analysis cannot be read;
 - no commit for a known failure or finding is still to be pushed, and after a fix in the squad skills the
   re-approval of step 9 has passed on this head.

@@ -69,7 +69,10 @@ every Git and GitHub action yourself, including follow-up issues the Lead decide
      agent is not the member's last fresh launch) on the call that carries its numbers — the amend of its pending
      row — with the notification's numbers unchanged (only the tokens are cumulative). Name a fix, delta or revise round as such in its step
      cell; a continuation at another step than its fresh launch draws a warning (a new mode is a fresh launch).
-   - Rows of the Orchestrator, the Product Manager and the User take no metric option.
+   - Rows of the Orchestrator, the Product Manager and the User take no metric option; their member cells are
+     exactly `Orchestrator`, `Product Manager` and `User` (`squad-orchestrator` is written as `Orchestrator`).
+   - `--continued-from` is only for continuing the same agent; a fresh launch of the same role at another step
+     is logged without it.
    - After step 10 every call — row, amend, summary — needs `--stdin` (step 10); without it, it fails.
    - Everything else, and what each refusal means: `python3 .squad/tools/squad-log.py --help`.
 
