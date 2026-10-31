@@ -1975,6 +1975,92 @@ public class RuntimeContainerScanOrchestratorTests
     }
 
     /// <summary>
+    /// Verify a batch scan still scans the remaining Docker instance after an earlier instance fails before its scan body
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task RuntimeContainerScanOrchestratorScanAllAsyncScansRemainingInstanceAfterEarlierInstanceFailsBeforeScanAsync()
+    {
+        using (var database = new SqliteTestDatabase())
+        {
+            var discoveryContext = database.CreateDbContext();
+
+            await using (discoveryContext.ConfigureAwait(false))
+            {
+                var failingContext = database.CreateSaveChangesFailingDbContext();
+
+                await using (failingContext.ConfigureAwait(false))
+                {
+                    var options = new DockerUpdateGuardOptions
+                                  {
+                                      DockerInstances = [
+                                                            new DockerInstanceOptions
+                                                            {
+                                                                Name = "Production",
+                                                                BaseUrl = "https://docker.example.test",
+                                                                Enabled = true,
+                                                                RequestTimeoutSeconds = 15,
+                                                            },
+                                                            new DockerInstanceOptions
+                                                            {
+                                                                Name = "Staging",
+                                                                BaseUrl = "https://staging.example.test",
+                                                                Enabled = true,
+                                                                RequestTimeoutSeconds = 15,
+                                                            },
+                                                        ],
+                                  };
+                    var optionsMonitor = new TestOptionsMonitor<DockerUpdateGuardOptions>(options);
+                    var logger = new TestLogger<RuntimeContainerScanOrchestrator>();
+                    var dockerInstanceClient = Substitute.For<IDockerInstanceClient>();
+                    var instanceDiscoveryService = new InstanceDiscoveryService(discoveryContext,
+                                                                                new TestLogger<InstanceDiscoveryService>(),
+                                                                                optionsMonitor);
+
+                    dockerInstanceClient.DiscoverContainersAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<CancellationToken>())
+                                        .Returns(ExternalOperationResult<IReadOnlyList<RuntimeContainerDescriptor>>.Succeeded([]));
+
+                    var orchestrator = new RuntimeContainerScanOrchestrator(new ApplicationTelemetry(),
+                                                                            failingContext,
+                                                                            dockerInstanceClient,
+                                                                            Substitute.For<IDerivedBaseRuntimeDetector>(),
+                                                                            Substitute.For<IDotNetReleaseMetadataService>(),
+                                                                            Substitute.For<INginxReleaseMetadataService>(),
+                                                                            new ImageCatalogRepository(failingContext),
+                                                                            new ImageReferenceParser(),
+                                                                            instanceDiscoveryService,
+                                                                            logger,
+                                                                            optionsMonitor,
+                                                                            Substitute.For<IRegistryMetadataService>(),
+                                                                            new UpdateDetectionService(optionsMonitor));
+
+                    failingContext.FailOnSaveAttempt = 1;
+
+                    await orchestrator.ScanAllAsync(ScanTriggerSource.Scheduled, CancellationToken.None)
+                                      .ConfigureAwait(false);
+
+                    failingContext.ChangeTracker.Clear();
+
+                    var itemFailures = logger.Entries.Count(entry => entry.EventId.Id == 2042);
+                    var succeededRuns = await failingContext.ScanRuns.Where(entity => entity.Type == ScanRunType.RuntimeContainer
+                                                                                      && entity.Status == ScanRunStatus.Succeeded
+                                                                                      && entity.CompletedAtUtc != null)
+                                                                     .CountAsync(TestContext.CancellationToken)
+                                                                     .ConfigureAwait(false);
+
+                    Assert.AreEqual(1, itemFailures, "Exactly the instance whose first save failed must be logged as a batch item failure");
+                    Assert.AreEqual(1, succeededRuns, "The remaining instance must be scanned to completion after the earlier instance failed");
+                    Assert.Contains(entry => entry.EventId.Id == 2072, logger.Entries, "The batch must complete after an instance failed before its scan body");
+
+                    await dockerInstanceClient.Received(1)
+                                              .DiscoverContainersAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<CancellationToken>())
+                                              .ConfigureAwait(false);
+                }
+            }
+        }
+    }
+
+    /// <summary>
     /// Verify cancellation during a Docker instance scan aborts the batch instead of being swallowed
     /// </summary>
     /// <returns>Task</returns>
