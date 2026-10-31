@@ -304,16 +304,15 @@ def branch_preconditions():
 
 
 def findings_on_branch(key, branch, token):
-    """Open issues and hotspots of the analysed branch on the lines the branch changed."""
+    """Open issues and hotspots of the analysed branch on the lines the branch changed. The issues are read for
+    the whole project and filtered by path here: a `componentKeys` list mixing source files (`FIL`) and test
+    files (`UTS`) is refused with HTTP 400."""
     lines = changed_line_map(merge_base_or_raise())
     paths = sorted(lines)
-    found = []
+    issues = paged("issues/search", {"componentKeys": key, "branch": branch, "resolved": "false"}, "issues", token)
+    found = [finding_line(i, key, "issue") for i in issues if on_changed_line(i, key, lines)]
     for start in range(0, len(paths), FILES_PER_QUERY):
         chunk = paths[start:start + FILES_PER_QUERY]
-        components = ",".join(f"{key}:{path}" for path in chunk)
-        issues = paged("issues/search", {"componentKeys": components, "branch": branch, "resolved": "false"},
-                       "issues", token)
-        found += [finding_line(i, key, "issue") for i in issues if on_changed_line(i, key, lines)]
         hotspots = paged("hotspots/search", {"projectKey": key, "branch": branch, "files": ",".join(chunk),
                                              "status": "TO_REVIEW"}, "hotspots", token)
         found += [finding_line(h, key, "hotspot") for h in hotspots if on_changed_line(h, key, lines)]
@@ -339,7 +338,14 @@ def check_branch(key, command, token):
     result = wait_for_task(task, token)
     if result["status"] != "SUCCESS":
         raise NotChecked(f"SonarQube processed the report with status {result['status']}")
-    return report(findings_on_branch(key, result.get("branch") or branch, token))
+    try:
+        findings = findings_on_branch(key, result.get("branch") or branch, token)
+    except ApiError as error:
+        if "non main branch" not in str(error):
+            raise
+        raise NotChecked("the organization cannot read data of non-main branches through the API; read the "
+                         "analysis on the draft pull request with `sonar-check.py pr <number>` in step 11") from error
+    return report(findings)
 
 
 def parse(argv):

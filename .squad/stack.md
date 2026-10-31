@@ -7,13 +7,14 @@ profile and owned by this repository: keep it true when the build changes.
 ## Toolchain
 
 - .NET SDK `10.0.x` (target framework `net10.0`), solution `DockerUpdateGuard.slnx`.
-- Formatter: `reihitsu-format` (`dotnet tool install -g Reihitsu.Cli`), on the same release line as the
+- Formatter: `reihitsu-format`, restored from the tool manifest `.config/dotnet-tools.json` (`dotnet tool restore`,
+  pinned there next to `dotnet-sonarscanner` so Dependabot raises them with the analyzer), on the same release line as the
   **Reihitsu.Analyzer** version pinned in `Directory.Packages.props`; otherwise the formatter can revert
   code the analyzer considers correct.
 - Analyzers: **SonarAnalyzer.CSharp** in every project via `Directory.Build.props` (the Sonar C# rules locally,
   so SonarQube issues surface before the push), **Reihitsu.Analyzer** likewise via `Directory.Build.props`, both
   configured by the rulesets in `rules/`, with warnings treated as errors; the MSTest analyzers come with the MSTest package in the test projects.
-- The SessionStart hook `.claude/hooks/session-start.sh` installs the formatter, sets `DOTNET_ROOT` and
+- The SessionStart hook `.claude/hooks/session-start.sh` restores the formatter, sets `DOTNET_ROOT` and
   restores the solution in remote sessions.
 
 ## Layout
@@ -30,8 +31,8 @@ profile and owned by this repository: keep it true when the build changes.
 | Name | Command |
 | ---- | ------- |
 | *Restore* | `dotnet restore DockerUpdateGuard.slnx` |
-| *Format* (in the squad: by the member that changed the files, `.squad/team.md`) | `reihitsu-format --force ./` |
-| *Format check* | `reihitsu-format --check ./` |
+| *Format* (in the squad: by the member that changed the files, `.squad/team.md`) | `dotnet tool run reihitsu-format --force ./` |
+| *Format check* | `dotnet tool run reihitsu-format --check ./` |
 | *Build* | `dotnet build DockerUpdateGuard.slnx -c Release --no-restore` |
 | *Test* | `dotnet test DockerUpdateGuard.slnx -c Release --no-build` |
 | *Single test* | `dotnet test src/Tests/DockerUpdateGuard.Tests/DockerUpdateGuard.Tests.csproj --filter "FullyQualifiedName~ClassName.MethodName"` |

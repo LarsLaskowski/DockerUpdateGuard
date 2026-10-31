@@ -72,7 +72,7 @@ PLACEHOLDERS = [re.compile(p) for p in (r"<title>", r"Issue #<number>", r"<one-s
                                          r"NNNN-title", rf"\bAC\d+: {ELLIPSIS}\s*$",
                                          rf"^\s*- [SE]\d+: {ELLIPSIS}\s*$", rf"^\|.*\|\s*{ELLIPSIS}\s*\|")]
 EMPTY_CELLS = {"", "-", "\u2013", "\u2014", "...", "\u2026", "none", "n/a", "tbd", "todo"}
-COMMENT = re.compile(r"<!--.*?-->", re.S)
+COMMENT = re.compile(r"(```.*?```|`[^`\n]*`)|<!--.*?-->", re.S)  # a code span or fenced block is kept whole
 EMPHASIS = "`*_"
 SPEC = "spec.md"
 SPECS_PREFIX = "specs/"
@@ -85,6 +85,11 @@ DECLARATION_KEYWORDS = {"func", "def", "fn", "public", "private", "protected", "
                         "readonly", "final", "async", "export", "function", "type", "class", "struct", "record",
                         "interface", "enum", "var", "let", "val", "abstract", "override"}
 TOP_ITEM = re.compile(r"^(?:[-*]|\d+[.)])\s+")
+
+
+def strip_comments(text):
+    """The text without its HTML comments; a comment opener inside a code span or fenced block is no comment."""
+    return COMMENT.sub(lambda match: match.group(1) or "", text)
 
 
 def read(path, errors):
@@ -124,7 +129,7 @@ def ids(text, kind=None):
 def sections(text):
     """{heading: body} for every `## ` section, without the template's guidance comments."""
     result, current = {}, None
-    for line in COMMENT.sub("", text).splitlines():
+    for line in strip_comments(text).splitlines():
         if line.startswith("## "):
             current = line[3:].strip()
             result[current] = []
@@ -175,7 +180,7 @@ def empty(value):
 
 
 def check_placeholders(name, text, errors):
-    for line in COMMENT.sub("", text).splitlines():
+    for line in strip_comments(text).splitlines():
         if any(pattern.search(line) for pattern in PLACEHOLDERS):
             errors.append(f"{name}: template placeholder left: {line.strip()}")
 
@@ -289,7 +294,7 @@ def signature_names(body):
     """The identifier of every backticked declaration in the plan's *Signatures* section (`Options.Kernel` and
     `func (o *Options) Kernel() string` give `Kernel`); a "none" section gives none."""
     names = []
-    for span in SPAN.findall(COMMENT.sub("", body or "")):
+    for span in SPAN.findall(strip_comments(body or "")):
         call = re.search(r"([A-Za-z_]\w*)\s*\(", span)
         words = [w for w in re.findall(r"[A-Za-z_][\w.]*", span) if w not in DECLARATION_KEYWORDS]
         name = words[0].split(".")[-1] if words else ""
@@ -399,7 +404,7 @@ def check_plan(plan, spec, errors):
     if name not in TIERS or tier.group(2).lstrip().startswith("|"):
         errors.append(f"plan.md: the *Tier* line must name exactly one of {', '.join(TIERS)}")
     check_security_areas(plan, errors)
-    own = set(CRITERION.findall(COMMENT.sub("", plan)))
+    own = set(CRITERION.findall(strip_comments(plan)))
     if spec is None:
         criteria = own
         if not criteria:
@@ -422,7 +427,7 @@ def check_spec_only(folder):
     check_spec(spec, errors)
     check_placeholders(SPEC, spec, errors)
     check_control_characters(folder, errors)
-    words = len(COMMENT.sub("", spec).split())
+    words = len(strip_comments(spec).split())
     if words > SPEC_MAX_WORDS:
         return errors, [f"spec.md has {words} words (SPEC_MAX_WORDS {SPEC_MAX_WORDS}), and every later launch reads it: "
                         "keep one scenario per behavior a user can tell apart and only the edge cases that change "

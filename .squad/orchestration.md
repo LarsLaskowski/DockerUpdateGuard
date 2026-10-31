@@ -168,6 +168,14 @@ state verbatim, is an ordinary fix for its owner with a delta round. One excepti
 statement an acceptance criterion or a guarantee in `.squad/project.md` relies on is not applied; the reviewer says
 so, and the Lead decides (mode `decide`).
 
+## A denied measurement
+
+When `squad-security` in mode `plan` reports a required measurement as not run because a download or tool was
+denied (e.g. a vendor release binary refused by the permission classifier), the orchestrator asks the Product
+Manager once for exactly that download, runs the measurement itself once it is allowed, and passes the measured
+result with the plan to the Lead (mode `revise`). Security re-runs the review in round 2 against the revised
+plan and the measurement. Not run is never approved, and the denial alone is no reason to skip the measurement.
+
 ## Unlisted security areas
 
 A Reviewer finding *unlisted security area* — the diff touches a security area the plan's *Security areas
