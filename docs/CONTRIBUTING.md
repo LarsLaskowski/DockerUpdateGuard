@@ -83,7 +83,7 @@ When a PR is related to an issue, use the `Closes #issuenumber` syntax so the is
 PR automatically and closes when the PR is merged.
 
 The PR's label decides its section in the generated release notes (`.github/release.yml`): `breaking-change`,
-`enhancement`, `security`, `bug`; any other PR is listed under *Other changes*, and `ignore-for-release` leaves it out.
+`enhancement` or `feature`, `security`, `bug`; any other PR is listed under *Other changes*, and `ignore-for-release` leaves it out.
 
 Follow the PR template in [`.github/pull_request_template.md`](../.github/pull_request_template.md).
 
@@ -104,7 +104,8 @@ is agreed as acceptance criteria before it is built, and the maintainers own tho
   on the first two. Open an issue instead.
 - **Checks on a fork:** pull requests from forks run without repository secrets, so the analysis that needs one
   (e.g. SonarQube Cloud) does not run there; a maintainer runs it before merging. Run the quality gates below
-  locally so the pull request arrives clean.
+  locally so the pull request arrives clean. The CI run of a first-time contributor's fork waits for a maintainer's
+  approval before it starts.
 - Maintainers may push to your branch ("Allow edits by maintainers") or carry the change on in a branch of their
   own; you stay credited as co-author of the squashed commit.
 

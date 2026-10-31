@@ -12,7 +12,7 @@ bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/install-linters.sh"
 
 cd "${CLAUDE_PROJECT_DIR:-$(pwd)}"
 
-# .NET global tools (reihitsu-format) need DOTNET_ROOT when dotnet is not installed in a default location.
+# .NET tools (reihitsu-format) need DOTNET_ROOT when dotnet is not installed in a default location.
 dotnet_root="$(dirname "$(readlink -f "$(command -v dotnet)")")"
 export DOTNET_ROOT="$dotnet_root"
 export PATH="$PATH:$HOME/.dotnet/tools"
@@ -23,14 +23,12 @@ if [[ -n "${CLAUDE_ENV_FILE:-}" ]]; then
   } >> "$CLAUDE_ENV_FILE"
 fi
 
-# Formatter (*Format* in .squad/stack.md), run by the squad member that changed the files
-if ! command -v reihitsu-format >/dev/null 2>&1; then
-  dotnet tool install -g Reihitsu.Cli
-fi
-
-# Local tools of the repository's manifest (dotnet-sonarscanner for the *Sonar gate*, a formatter pinned there).
+# Local tools of the repository's manifest: the formatter (*Format* in .squad/stack.md) and dotnet-sonarscanner
+# (*Sonar gate*), both pinned there.
 if [[ -e dotnet-tools.json || -e .config/dotnet-tools.json ]]; then
-  dotnet tool restore || echo "dotnet tool restore failed; run it before the Sonar gate" >&2
+  dotnet tool restore || echo "dotnet tool restore failed; run it before Format and the Sonar gate" >&2
+else
+  echo "no dotnet tool manifest (.config/dotnet-tools.json); the formatter is not installed" >&2
 fi
 
 # Restore every solution at the repository root (the squad's settings name the one the gates build).

@@ -81,8 +81,8 @@ Run from the repository root, where the solution file lives, in this order: *Res
 *Test*, *Analyzer gate*, and after *Test with coverage* the *Coverage gate*. Use the commands of those names
 in `.squad/stack.md` as they stand, never a copy from memory: they carry the solution name, the build
 configuration the project tests in, and the formatter's `--force` (`reihitsu-format` asks for confirmation
-for more than 25 files and, without a terminal, formats nothing). The formatter is installed with
-`dotnet tool install -g Reihitsu.Cli`.
+for more than 25 files and, without a terminal, formats nothing). The formatter is restored from the repository's tool
+manifest (`.config/dotnet-tools.json`) with `dotnet tool restore` and run as `dotnet tool run reihitsu-format`.
 <!-- stack:end commands -->
 
 All commands, with what each one checks, are listed in [`.squad/stack.md`](/.squad/stack.md).
