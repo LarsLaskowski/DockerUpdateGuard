@@ -825,6 +825,103 @@ public class ImageScanOrchestratorTests
     }
 
     /// <summary>
+    /// Verify a batch scan still completes the remaining image after an earlier image fails before its scan body
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task ImageScanOrchestratorScanAllAsyncCompletesRemainingImageAfterEarlierImageFailsBeforeScanAsync()
+    {
+        using (var database = new SqliteTestDatabase())
+        {
+            var seedContext = database.CreateDbContext();
+
+            await using (seedContext.ConfigureAwait(false))
+            {
+                var imageCatalogRepository = new ImageCatalogRepository(seedContext);
+                var firstImageVersion = await imageCatalogRepository.GetOrCreateImageVersionAsync("docker.io",
+                                                                                                  "company/first",
+                                                                                                  "1.0.0",
+                                                                                                  "sha256:first",
+                                                                                                  cancellationToken: CancellationToken.None)
+                                                                    .ConfigureAwait(false);
+                var secondImageVersion = await imageCatalogRepository.GetOrCreateImageVersionAsync("docker.io",
+                                                                                                   "company/second",
+                                                                                                   "2.0.0",
+                                                                                                   "sha256:second",
+                                                                                                   cancellationToken: CancellationToken.None)
+                                                                     .ConfigureAwait(false);
+
+                seedContext.ObservedImages.Add(new ObservedImage
+                                               {
+                                                   Name = "First",
+                                                   CurrentImageVersionId = firstImageVersion.Id,
+                                               });
+                seedContext.ObservedImages.Add(new ObservedImage
+                                               {
+                                                   Name = "Second",
+                                                   CurrentImageVersionId = secondImageVersion.Id,
+                                               });
+
+                await seedContext.SaveChangesAsync(TestContext.CancellationToken)
+                                 .ConfigureAwait(false);
+
+                var failingContext = database.CreateSaveChangesFailingDbContext();
+
+                await using (failingContext.ConfigureAwait(false))
+                {
+                    var logger = new TestLogger<ImageScanOrchestrator>();
+                    var baseImageResolver = Substitute.For<IBaseImageResolver>();
+                    var registryMetadataService = Substitute.For<IRegistryMetadataService>();
+
+                    baseImageResolver.ResolveAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
+                                     .Returns(ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>.Succeeded([]));
+                    registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), cancellationToken: Arg.Any<CancellationToken>())
+                                           .Returns(ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
+                                                                                                        {
+                                                                                                            Tag = "1.0.0",
+                                                                                                            Digest = "sha256:app",
+                                                                                                            PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
+                                                                                                        }));
+                    registryMetadataService.GetImageConfigurationAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
+                                           .Returns(ExternalOperationResult<RegistryImageConfigurationData>.NotFound("No registry config"));
+
+                    var orchestrator = new ImageScanOrchestrator(new ApplicationTelemetry(),
+                                                                 baseImageResolver,
+                                                                 failingContext,
+                                                                 Substitute.For<IDerivedBaseRuntimeDetector>(),
+                                                                 Substitute.For<IDotNetReleaseMetadataService>(),
+                                                                 Substitute.For<INginxReleaseMetadataService>(),
+                                                                 new ImageCatalogRepository(failingContext),
+                                                                 new ImageReferenceParser(),
+                                                                 logger,
+                                                                 registryMetadataService);
+
+                    failingContext.FailOnSaveAttempt = 1;
+
+                    await orchestrator.ScanAllAsync(ScanTriggerSource.Scheduled, CancellationToken.None)
+                                      .ConfigureAwait(false);
+
+                    failingContext.ChangeTracker.Clear();
+
+                    var itemFailures = logger.Entries.Count(entry => entry.EventId.Id == 2033);
+                    var succeededRuns = await failingContext.ScanRuns.Where(entity => entity.Type == ScanRunType.ObservedImage
+                                                                                      && entity.Status == ScanRunStatus.Succeeded
+                                                                                      && entity.CompletedAtUtc != null)
+                                                                     .CountAsync(TestContext.CancellationToken)
+                                                                     .ConfigureAwait(false);
+
+                    Assert.AreEqual(1, itemFailures, "Exactly the image whose first save failed must be logged as a batch item failure");
+                    Assert.AreEqual(1, succeededRuns, "The remaining image must be scanned to completion after the earlier image failed");
+
+                    await registryMetadataService.Received(1)
+                                                 .GetTagAsync(Arg.Any<ImageReference>(), cancellationToken: Arg.Any<CancellationToken>())
+                                                 .ConfigureAwait(false);
+                }
+            }
+        }
+    }
+
+    /// <summary>
     /// Verify cancellation during an observed image scan aborts the batch instead of being swallowed
     /// </summary>
     /// <returns>Task</returns>
@@ -1184,6 +1281,110 @@ public class ImageScanOrchestratorTests
                                 "A transient configuration refresh failure must not duplicate or delete the derived base-runtime finding");
                 Assert.IsTrue(findings[0].IsActive,
                               "A transient configuration refresh failure must keep the existing derived finding active instead of flickering it away");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Verify a transient release feed failure does not delete existing derived findings
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task ImageScanOrchestratorScanAsyncPreservesDerivedFindingWhenReleaseFeedFailsAsync()
+    {
+        using (var database = new SqliteTestDatabase())
+        {
+            var dbContext = database.CreateDbContext();
+
+            await using (dbContext.ConfigureAwait(false))
+            {
+                var imageCatalogRepository = new ImageCatalogRepository(dbContext);
+                var imageReferenceParser = new ImageReferenceParser();
+                var currentImageVersion = await imageCatalogRepository.GetOrCreateImageVersionAsync("ghcr.io",
+                                                                                                    "acme/api",
+                                                                                                    "1.0.0",
+                                                                                                    "sha256:app",
+                                                                                                    cancellationToken: CancellationToken.None)
+                                                                      .ConfigureAwait(false);
+                var observedImage = new ObservedImage
+                                    {
+                                        Name = "Acme API",
+                                        Source = RegistrationSource.Discovery,
+                                        CurrentImageVersionId = currentImageVersion.Id,
+                                    };
+                var baseImageResolver = Substitute.For<IBaseImageResolver>();
+                var derivedBaseRuntimeDetector = Substitute.For<IDerivedBaseRuntimeDetector>();
+                var dotNetReleaseMetadataService = Substitute.For<IDotNetReleaseMetadataService>();
+                var nginxReleaseMetadataService = Substitute.For<INginxReleaseMetadataService>();
+                var registryMetadataService = Substitute.For<IRegistryMetadataService>();
+
+                dbContext.ObservedImages.Add(observedImage);
+                await dbContext.SaveChangesAsync(TestContext.CancellationToken)
+                               .ConfigureAwait(false);
+
+                baseImageResolver.ResolveAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
+                                 .Returns(ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>.Succeeded([]));
+                registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), cancellationToken: Arg.Any<CancellationToken>())
+                                       .Returns(ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
+                                                                                                    {
+                                                                                                        Tag = "1.0.0",
+                                                                                                        Digest = "sha256:app",
+                                                                                                        PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
+                                                                                                    }));
+                registryMetadataService.GetImageConfigurationAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
+                                       .Returns(ExternalOperationResult<RegistryImageConfigurationData>.Succeeded(new RegistryImageConfigurationData
+                                                                                                                  {
+                                                                                                                      EnvironmentVariables = [
+                                                                                                                                                 "DOTNET_VERSION=9.0.13",
+                                                                                                                                             ],
+                                                                                                                  }));
+                derivedBaseRuntimeDetector.Detect(Arg.Any<DockerImageInspectData>(), Arg.Any<IReadOnlyList<DockerImageHistoryEntryData>>())
+                                          .Returns(new DerivedBaseRuntimeDescriptor
+                                                   {
+                                                       Kind = DerivedBaseRuntimeKind.DotNet,
+                                                       RuntimeVersion = new Version(9, 0, 13),
+                                                       ChannelVersion = "9.0",
+                                                   });
+                dotNetReleaseMetadataService.GetChannelReleaseAsync("9.0", Arg.Any<CancellationToken>())
+                                            .Returns(ExternalOperationResult<DotNetChannelReleaseData>.Succeeded(new DotNetChannelReleaseData
+                                                                                                                 {
+                                                                                                                     ChannelVersion = "9.0",
+                                                                                                                     LatestRuntimeVersion = new Version(9, 0, 15),
+                                                                                                                     IsSecurityRelease = true,
+                                                                                                                 }),
+                                                     ExternalOperationResult<DotNetChannelReleaseData>.Failed("The release feed is temporarily unavailable"));
+
+                var orchestrator = new ImageScanOrchestrator(new ApplicationTelemetry(),
+                                                             baseImageResolver,
+                                                             dbContext,
+                                                             derivedBaseRuntimeDetector,
+                                                             dotNetReleaseMetadataService,
+                                                             nginxReleaseMetadataService,
+                                                             imageCatalogRepository,
+                                                             imageReferenceParser,
+                                                             NullLogger<ImageScanOrchestrator>.Instance,
+                                                             registryMetadataService);
+
+                await orchestrator.ScanAsync(observedImage.Id,
+                                             ScanTriggerSource.Manual,
+                                             CancellationToken.None)
+                                  .ConfigureAwait(false);
+                await orchestrator.ScanAsync(observedImage.Id,
+                                             ScanTriggerSource.Manual,
+                                             CancellationToken.None)
+                                  .ConfigureAwait(false);
+
+                dbContext.ChangeTracker.Clear();
+
+                var findings = await dbContext.UpdateFindings.Where(entity => entity.Type == UpdateFindingType.DerivedBaseRuntimeUpdate)
+                                                             .ToListAsync(TestContext.CancellationToken)
+                                                             .ConfigureAwait(false);
+
+                Assert.HasCount(1,
+                                findings,
+                                "A transient release feed failure must not duplicate or delete the derived base-runtime finding");
+                Assert.IsTrue(findings[0].IsActive,
+                              "A transient release feed failure must keep the existing derived finding active instead of flickering it away");
             }
         }
     }
