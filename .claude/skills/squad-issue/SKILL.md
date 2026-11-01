@@ -55,7 +55,7 @@ every Git and GitHub action yourself, including follow-up issues the Lead decide
 
    **Logging.** Only you write `log.md`, one row per step and per launch, always with
    `python3 .squad/tools/squad-log.py issue-<number> "<step>" "<member>" "<result>"` — never by hand.
-   - Write a launch's row as soon as its report is in, with `--agent squad-<role>` alone (usage pending), a continued one too (`--continued` only on the amend). When
+   - Write a launch's row as soon as its report is in, with `--agent squad-<role>` alone (usage pending; `--launch` for a launch *Launch model* overrides), a continued one too (`--continued` only on the amend). When
      its task notification arrives, add the usage with `--amend-last "<member>" --agent squad-<role> --tokens …
      --tool-uses … --seconds …` (`--step "<step>"` for a row that is no longer the member's last).
    - **Every number is copied from the usage block of a task notification you have in front of you** —
@@ -105,7 +105,7 @@ every Git and GitHub action yourself, including follow-up issues the Lead decide
    signatures and the existing test call sites the plan assigns to the Dev. A plan that declares the change
    free of production and test code skips steps 4 and 5 (*Changes without production or test code*): log the
    skipped steps and run the plan's *Verification without tests* instead.
-5. **Tests first** (not for `trivial`). Launch `squad-tester` in mode `tests-first`. Confirm yourself that the
+5. **Tests first** (not for `trivial`). Launch `squad-tester` in mode `tests-first`, with the model *Launch model* names. Confirm yourself that the
    new tests compile and fail on the current code (unless the Tester justified why one cannot); note the
    tests it hands back as **deferred**. A fix without a reproducing test is acceptable only when the bug
    genuinely needs a live external system — then the PR says so.
@@ -124,9 +124,9 @@ every Git and GitHub action yourself, including follow-up issues the Lead decide
    reported as not unit-testable go to `squad-lead` in mode `decide`.
 7. **Code check.** `git fetch origin main` and merge `main` first when it moved (*Merge conflicts*). Run the gates of step 7 (*Pipeline*;
    for a change without code and for `patch` their sections) with the commands from `.squad/stack.md`,
-   once they pass, commit, then run the *Sonar gate*; keep the output for step 8. When *Format check* fails, run *Format*,
+   once they pass, commit (the *Sonar gate* runs on the draft PR in step 11). When *Format check* fails, run *Format*,
    `git restore -- <file>` every file it changed outside the change, and check again. Launch
-   `squad-code-officer` with the base ref only for analyzer diagnostics, Sonar findings or style findings that
+   `squad-code-officer` with the base ref only for analyzer diagnostics or style findings that
    need reading; structural items it hands back go to `squad-dev` (or `squad-tester`), a scope finding to its
    owner, a file it formatted outside the change you restore. Run the gates again until they pass.
 8. **Review.** Launch `squad-reviewer` (round 1, full) and — on tier `security` — `squad-security` in mode

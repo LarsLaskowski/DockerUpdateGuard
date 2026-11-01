@@ -13,7 +13,9 @@ mechanics out of the orchestrator's hands:
 - a control character (Unicode categories Cc, Cf, Zl, Zp other than tab and line break) is written as its
   escape (`U+202E`), never as the character itself; a tab becomes a space;
 - for a subagent launch, `--agent squad-<role>` (model and effort read from `.claude/agents/squad-<role>.md`,
-  so nothing is typed from memory) or `--launch MODEL/EFFORT`, with `--tokens N --tool-uses N --seconds N` from
+  so nothing is typed from memory) or `--launch MODEL/EFFORT` (a launch that overrode the agent file; a default
+  override of `.squad/orchestration.md`, *Launch model*, read against the *Tier* line of the folder's `plan.md`, is
+  refused with `--agent`), with `--tokens N --tool-uses N --seconds N` from
   the usage block of the launch's task notification, appends a trailer `(opus/high · 37,445 tokens · 6 tool
   uses · 57 s)` the summary can read back;
 - the first row replaces the template's heading `# Log: <issue #number | feature name>` with the work folder's
@@ -36,7 +38,9 @@ mechanics out of the orchestrator's hands:
   prints a warning, unless its step cell names a fix, delta or revise round: the first launch of another mode
   (`skeleton` to `implement`, `tests-first` to `coverage`, `approve-pr`, `decide`) is a fresh launch, not a
   continuation. `--continued` and `--continued-from` are only for continuing the same agent: a fresh launch of
-  the same role at another step is logged without them;
+  the same role at another step is logged without them. A continuation of an agent that was already continued
+  five times or reported 300,000 tokens is logged with a warning, and the summary names it under *Past the
+  continuation cap* (`.squad/orchestration.md`, *Continuing a member*: a fresh launch with a hand-over was due);
 - the usage block often arrives only after the member's hand-back: `--amend-last MEMBER` with the same
   options adds the trailer to the last row of that member afterwards, so the row can be written as soon as
   the report is in. A row gets its trailer once (a pending one is completed); a second amend is refused. When a
@@ -142,7 +146,14 @@ ROUND_OF_SAME_MODE = re.compile(r"\b(?:fix|delta|revis)", re.I)
 SPECS_PREFIX = "specs/"
 FOLDER_NAME = re.compile(r"\w[\w.-]*")
 FIX_STEP = re.compile(r"^\s*11\b")
+# Continuing a member (.squad/orchestration.md): after this many continuations, or once the agent's reported
+# tokens reach this figure, the next round is a fresh launch with a hand-over.
+CONTINUATION_CAP = 5
+CONTINUATION_TOKENS = 300_000
 FRONT_MATTER_KEY = re.compile(r"^(model|effort):\s*(\S+)\s*$", re.M)
+PLAN_TIER = re.compile(r"^Tier:\s*`?(\w+)", re.M)
+# The launches the orchestrator overrides by default (.squad/orchestration.md, *Launch model*): agent -> (tier, model).
+LAUNCH_OVERRIDES = {"squad-tester": ("security", "opus")}
 
 
 def escape_controls(text):
@@ -185,37 +196,77 @@ def metrics(match):
     return (int(match.group("tokens").replace(",", "")), int(match.group("tools")), int(match.group("seconds")))
 
 
-def previous_tokens(path, member, skip_last=False, step=None, origin=None):
-    """The tokens the continued agent had used before the round being logged: its fresh launch plus the
-    continuations logged for it. Without `origin` that agent is the member's last fresh launch, with `origin` the
-    member's last fresh launch whose step cell is that text; a continuation row belongs to the fresh launch its
-    trailer names (`· continued from <step>`), or else to the member's last fresh launch before it. None when the
-    member has no row with usage (with `origin`: no fresh launch of that step). With `skip_last` the member's last
-    trailer is left out (it is the one being replaced); with `step`, only the rows before the member's last row of
-    that step count (that row is the one amended or replaced)."""
+def agent_chains(rows, member):
+    """The agents of `member` (an escaped cell) in log order, as {"step", "tokens", "continuations", "over"}: a fresh
+    launch starts one, a continuation row joins the fresh launch its trailer names (`· continued from <step>`), or
+    else the member's last fresh launch before it. "tokens" is the agent's reported total, "over" the steps of its
+    continuations launched after the cap (`CONTINUATION_CAP`, `CONTINUATION_TOKENS`) was already reached; a
+    continuation without any fresh launch before it starts a chain with no step. Also the index of the member's
+    last fresh launch and {fresh step: index} as the third and second item."""
+    chains, fresh, current = [], {}, None
+    for _, row_step, row_member, result in rows:
+        match = TRAILER.search(result) if row_member == member else None
+        if not match:
+            continue
+        tokens = metrics(match)[0]
+        if not match.group("continued"):
+            current = fresh[row_step] = len(chains)
+            chains.append({"step": row_step, "tokens": tokens, "continuations": 0, "over": []})
+            continue
+        own = match.group("origin")
+        index = fresh.get(own) if own else current
+        if index is None:
+            index = current = len(chains)
+            chains.append({"step": None, "tokens": 0, "continuations": 0, "over": []})
+        chain = chains[index]
+        if at_cap(chain):
+            chain["over"].append(row_step)
+        chain["tokens"] += tokens
+        chain["continuations"] += 1
+    return chains, fresh, current
+
+
+def at_cap(chain):
+    """True when the agent may not be continued again (`.squad/orchestration.md`, *Continuing a member*)."""
+    return chain["continuations"] >= CONTINUATION_CAP or chain["tokens"] >= CONTINUATION_TOKENS
+
+
+def continued_chain(path, member, skip_last=False, step=None, origin=None):
+    """The agent a continuation of `member` continues, as `agent_chains` gives it: with `origin` the member's last
+    fresh launch whose step cell is that text, else its last fresh launch. None when the member has no row with
+    usage (with `origin`: no fresh launch of that step). With `skip_last` the member's last trailer is left out
+    (it is the one being replaced); with `step`, only the rows before the member's last row of that step count
+    (that row is the one amended or replaced)."""
     with open(path, encoding="utf-8-sig") as handle:
         rows = parse_rows(handle.read())
     wanted = cell(member)
     if step is not None:
         rows = rows_before(rows, wanted, cell(step))
-    matches = [(row_step, TRAILER.search(result)) for _, row_step, row_member, result in rows if row_member == wanted]
-    matches = [(row_step, match) for row_step, match in matches if match]
-    if skip_last and step is None:
-        matches = matches[:-1]
-    chains, fresh, current = {}, {}, None
-    for index, (row_step, match) in enumerate(matches):
-        tokens = metrics(match)[0]
-        if not match.group("continued"):
-            current, fresh[row_step] = index, index
-            chains[index] = tokens
-            continue
-        own = match.group("origin")
-        chain = fresh.get(own) if own else current
-        chains[chain] = chains.get(chain, 0) + tokens
-    if origin is not None:
-        target = fresh.get(cell(origin))
-        return None if target is None else chains[target]
-    return chains.get(current)
+    elif skip_last:
+        last = [index for index, row in enumerate(rows) if row[2] == wanted and TRAILER.search(row[3])]
+        rows = rows[:last[-1]] + rows[last[-1] + 1:] if last else rows
+    chains, fresh, current = agent_chains(rows, wanted)
+    index = fresh.get(cell(origin)) if origin is not None else current
+    return None if index is None else chains[index]
+
+
+def previous_tokens(path, member, skip_last=False, step=None, origin=None):
+    """The tokens the continued agent had used before the round being logged: its fresh launch plus the
+    continuations logged for it (`continued_chain`, which takes the same arguments); None when there is none."""
+    chain = continued_chain(path, member, skip_last, step, origin)
+    return None if chain is None else chain["tokens"]
+
+
+def cap_warning(path, member, skip_last=False, step=None, origin=None):
+    """A warning, or None, for a continuation of an agent that had already been continued `CONTINUATION_CAP` times
+    or reported `CONTINUATION_TOKENS` tokens (the arguments as for `continued_chain`)."""
+    chain = continued_chain(path, member, skip_last, step, origin)
+    if chain is None or not at_cap(chain):
+        return None
+    return (f"WARNING: {member}'s agent was already continued {chain['continuations']} time(s) at "
+            f"{chain['tokens']:,} tokens: from {CONTINUATION_CAP} continuations or {CONTINUATION_TOKENS:,} tokens "
+            "on, the next round is a fresh launch with a short hand-over (.squad/orchestration.md, *Continuing a "
+            "member*)")
 
 
 def rows_before(rows, member, step):
@@ -458,6 +509,16 @@ def member_totals(rows):
     return per_member
 
 
+def over_cap(rows):
+    """(member, steps) of every member with continuations launched past the cap (`agent_chains`)."""
+    found = []
+    for member in dict.fromkeys(row[2] for row in rows):
+        steps = [step for chain in agent_chains(rows, member)[0] for step in chain["over"]]
+        if steps:
+            found.append((member, steps))
+    return found
+
+
 def usage_notes(rows):
     """The notes under the table: launches whose usage never arrived, and launch rows still without usage."""
     text = ""
@@ -466,6 +527,12 @@ def usage_notes(rows):
         names = ", ".join(f"`{step} · {member}`" for step, member in unreported)
         text += (f"\n\n**Without reported usage:** {len(unreported)} launch(es) whose task notification never "
                  f"arrived — counted in the launches, not in the totals: {names}")
+    over = over_cap(rows)
+    if over:
+        names = ", ".join(f"`{member} · {', '.join(steps)}`" for member, steps in over)
+        text += (f"\n\n**Past the continuation cap:** continuations launched after the agent had been continued "
+                 f"{CONTINUATION_CAP} times or had reported {CONTINUATION_TOKENS:,} tokens, where a fresh launch with "
+                 f"a hand-over was due (`.squad/orchestration.md`, *Continuing a member*): {names}")
     missing = missing_usage(rows)
     if missing:
         names = ", ".join(f"`{step} · {member}`" for _, step, member in missing)
@@ -603,14 +670,40 @@ def unreported_launch(parser, model, args):
     return (model, None, None, None)
 
 
-def launch_metrics(parser, root, args):
+def plan_tier(log_path):
+    """The tier the *Tier* line of the work folder's `plan.md` names, or None (no plan: tiers `docs` and `patch`,
+    or a log read from standard input after step 10)."""
+    path = os.path.join(os.path.dirname(log_path), "plan.md")
+    if not os.path.isfile(path):
+        return None
+    with open(path, encoding="utf-8-sig") as handle:
+        found = PLAN_TIER.search(handle.read())
+    return found.group(1) if found else None
+
+
+def default_override(log_path, agent, launch):
+    """The `model/effort` the orchestrator launches `agent` with by default in this run instead of `launch` from
+    its agent file, or None when no override applies."""
+    override = LAUNCH_OVERRIDES.get(os.path.basename(agent or "").removesuffix(".md"))
+    if override is None or launch is None or plan_tier(log_path) != override[0]:
+        return None
+    return f"{override[1]}/{launch.split('/', 1)[1]}"
+
+
+def launch_metrics(parser, root, args, path):
     """(model/effort, tokens, tool uses, seconds) from the options, or None when no metric option is given; an
-    incomplete set is a usage error, an unknown agent file ends the run with exit code 1."""
+    incomplete set is a usage error, an unknown agent file ends the run with exit code 1. A launch the orchestrator
+    overrides by default is refused with `--agent` alone, so the override is logged as launched."""
     if not (args.agent or args.launch or has_numbers(args)):
         return None
     model = args.launch or (agent_launch(root, args.agent) if args.agent else None)
     if args.agent and not args.launch and model is None:
         sys.exit(f"No .claude/agents/{args.agent}.md with a model and an effort")
+    expected = None if args.launch else default_override(path, args.agent, model)
+    if expected:
+        parser.error(f"{args.agent} is launched with model {expected.split('/')[0]} in a tier-"
+                     f"{plan_tier(path)} run (.squad/orchestration.md, *Launch model*): log the launch with "
+                     f"--launch {expected} instead of --agent, or with the model it really ran on")
     if args.unreported:
         return unreported_launch(parser, model, args)
     if model and is_pending_row(args):
@@ -650,15 +743,20 @@ def amend_command(parser, path, folder, member, launch, replace, continued, step
     own_step, current = target_row(path, member, step)
     current = current or ""
     # Only a replaced trailer with real numbers is part of the earlier usage a continuation subtracts.
-    launch = share_of_round(path, member, launch, continued, replace and bool(TRAILER.search(current)), step, origin)
+    replaces_usage = replace and bool(TRAILER.search(current))
+    launch = share_of_round(path, member, launch, continued, replaces_usage, step, origin)
     if launch is None:
         return 1
-    warning = mode_change_warning(path, member, own_step, origin, True, step) if continued and own_step else None
+    warnings = []
+    if continued:
+        warnings = [cap_warning(path, member, replaces_usage, step, origin)]
+        if own_step:
+            warnings.insert(0, mode_change_warning(path, member, own_step, origin, True, step))
     row = amend_last(path, member, launch, replace=replace, step=step)
     if row is None:
         print(no_row_message(folder, member, replace, step))
         return 1
-    if warning:
+    for warning in filter(None, warnings):
         print(warning)
     print(row)
     return 0
@@ -686,8 +784,9 @@ def row_command(parser, path, args, launch):
     launch = share_of_round(path, args.member, launch, args.continued, origin=args.continued_from)
     if args.continued and launch is None:
         return 1
-    warning = mode_change_warning(path, args.member, cell(args.step), args.continued_from) if args.continued else None
-    if warning:
+    warnings = [mode_change_warning(path, args.member, cell(args.step), args.continued_from),
+                cap_warning(path, args.member, origin=args.continued_from)] if args.continued else []
+    for warning in filter(None, warnings):
         print(warning)
     print(append_row(path, args.step, args.member, args.result, launch=launch))
     return 0
@@ -719,7 +818,7 @@ def run(parser, args, root, path):
     if target is not None and is_not_launch(target) and uses_metrics:
         parser.error(f"'{target}' is no launch: its rows are written without any metric option and never "
                      "amended, and the summary asks no usage for them")
-    launch = launch_metrics(parser, root, args)
+    launch = launch_metrics(parser, root, args, path)
     args.continued = args.continued or args.continued_from is not None
     if args.amend_last and args.replace_last:
         parser.error("--amend-last and --replace-last exclude each other")

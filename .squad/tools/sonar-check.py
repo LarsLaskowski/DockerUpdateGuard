@@ -1,35 +1,21 @@
 #!/usr/bin/env python3
-"""Sonar gate: the CI code analysis (SonarQube Cloud) read as a check, so its findings are a gate result
-instead of a surprise after the pull request, and a rule the local analyzers do not know is no squad lesson.
+"""Sonar gate: the CI code analysis (SonarQube Cloud) of a pull request read as a check, so its findings are a
+gate result instead of a comment nobody reads, and a rule the local analyzers do not know is no squad lesson.
 
-Two modes:
+`pr <number>` (step 11, on the draft pull request) reads the analysis of that pull request and checks that it
+belongs to the current head (`HEAD`, or `--head <sha>`); an analysis of an earlier head, or one without a quality
+gate yet, is PENDING, never a pass. Then it lists the quality gate status, the open issues and the security
+hotspots to review. The work branch itself is not scanned before the pull request: SonarQube Cloud does not let
+every organization read the data of non-main branches through its API, and such a scan only delayed step 7.
 
-- `branch -- <scan command>` (step 7, before the pull request): needs a SonarQube credential and a
-  committed work branch (the scanner uploads the working tree; an uncommitted scratch file would be published
-  with a public project) — only the coverage reports of *Test with coverage* may lie around untracked. Runs
-  the scan command (*Sonar gate* in `.squad/stack.md`: the stack's scanner, analysing the work branch as a
-  branch of the project), waits for SonarQube to process the report, and lists every open issue and security
-  hotspot on a line the branch added or changed since the merge base with BASE_REF. Without a credential, or
-  when the scan fails (a network policy that blocks the scanner's download hosts, for example), the result is NOT
-  CHECKED, and the pull request mode runs on the draft pull request.
-- `pr <number>` (step 11, on the draft pull request): reads the analysis of that pull request (with
-  `SONAR_TOKEN` when it is set, which a private project needs) and checks that it belongs to the current head
-  (`HEAD`, or `--head <sha>`); an analysis of an earlier head, or one without a quality gate yet, is PENDING,
-  never a pass. Then lists the quality gate status, the open issues and the security hotspots to review.
-
-The credential is a network secret of the cloud environment for the SonarQube hosts (the agent proxy attaches
-it to every request to them, so the session never sees the token; `api/users/current` tells whether one is
-attached), or else `SONAR_TOKEN` in the environment, which every process of the session can read.
+A private project needs a credential: a network secret of the cloud environment for the SonarQube hosts (the
+agent proxy attaches it to every request to them, so the session never sees the token), or else `SONAR_TOKEN` in
+the environment, which every process of the session can read.
 
 The project comes from `SONAR_PROJECT_KEY` in `.squad/tools/squad_settings.py`, else `sonar.projectKey` in
 `sonar-project.properties`, else the `/k:` argument of the scanner in a workflow under `.github/workflows/`; the
-server from `SONAR_HOST` (default https://sonarcloud.io); the scanner's report file from `SONAR_REPORT_TASK`
-(default `.scannerwork/report-task.txt`).
-
-Two reads have a second endpoint for a credential that may browse the project but not use the first one (a
-403 from the proxy-authenticated session): the pull request's commit comes from `project_analyses/search` when
-`project_pull_requests/list` is refused, and the scan's processing status from `ce/activity` when `ce/task` is
-refused.
+server from `SONAR_HOST` (default https://sonarcloud.io). The pull request's commit comes from
+`project_analyses/search` when a credential that may browse the project is refused `project_pull_requests/list`.
 
 A read that SonarQube answers with an HTTP error is NOT CHECKED with the request (path and parameters, never the
 token) and the response body, so a rejected parameter can be told from a missing project or the proxy.
@@ -39,39 +25,31 @@ analyzer reports is noted in the *Analyzer gate* section of `.squad/stack.md` (p
 change), not filed as a squad lesson.
 
 Usage, from anywhere in the repository:
-    python3 .squad/tools/sonar-check.py branch -- <scan command and arguments>
     python3 .squad/tools/sonar-check.py pr <number> [--head <sha>]
 
-Exit code 0 clean, 1 findings or a failed quality gate, 2 NOT CHECKED (no credential, no project key, a dirty tree,
-the scan or SonarQube failed), 3 PENDING (the analysis of this head is not there yet: wait and run again),
-4 wrong usage (a mistyped command line never reads as a skipped gate).
+Exit code 0 clean, 1 findings or a failed quality gate, 2 NOT CHECKED (no project key, SonarQube or git could not
+be read), 3 PENDING (the analysis of this head is not there yet: wait and run again), 4 wrong usage (a mistyped
+command line never reads as a skipped gate).
 """
 import argparse
 import base64
-import fnmatch
 import glob
 import json
 import os
 import re
-import shutil
 import subprocess
 import sys
-import time
 import urllib.error
 import urllib.parse
 import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from analyzer_common import BASE_REF, changed_line_map, git, settings  # noqa: E402  (shared helpers next to this script)
+from analyzer_common import git, settings  # noqa: E402  (shared helpers next to this script)
 
 CLEAN, FINDINGS, NOT_CHECKED, PENDING, USAGE = 0, 1, 2, 3, 4
 HOST = getattr(settings, "SONAR_HOST", "https://sonarcloud.io").rstrip("/")
-REPORT_TASK = getattr(settings, "SONAR_REPORT_TASK", ".scannerwork/report-task.txt")
 ERROR_BODY_CHARS = 500
-WAIT_SECONDS = 600
-POLL_SECONDS = 5
 PAGE_SIZE = 500
-FILES_PER_QUERY = 50
 KEY_ARGUMENT = re.compile(r'/k:"?([\w.:-]+)"?')
 
 
@@ -130,15 +108,6 @@ def api(path, params, token=None):
         raise ApiError(f"HTTP {error.code} for GET {url}: {body or 'empty response body'}", error.code) from error
 
 
-def proxy_credential():
-    """True when SonarQube accepts requests that carry no token of their own: a network secret the agent proxy
-    attaches to the requests for the SonarQube hosts."""
-    try:
-        return api("users/current", {}).get("isLoggedIn") is True  # `authentication/validate` is true anonymously too
-    except (OSError, ValueError):  # URLError is an OSError
-        return False
-
-
 def paged(path, params, field, token=None):
     """Every item of a paged list endpoint."""
     items, page = [], 1
@@ -161,15 +130,6 @@ def finding_line(item, key, kind):
     line = item.get("line") or item.get("textRange", {}).get("startLine") or "-"
     rule = item.get("rule") or item.get("ruleKey") or kind
     return f"{rule} {path}:{line} {item.get('message', '')}".rstrip()
-
-
-def on_changed_line(item, key, lines):
-    """True when the finding sits on a changed line, or is a file-level finding of a changed file."""
-    path = file_of(item.get("component", ""), key)
-    if path not in lines:
-        return False
-    line = item.get("line") or item.get("textRange", {}).get("startLine")
-    return line is None or line in lines[path]
 
 
 def report(findings, gate=None):
@@ -221,138 +181,9 @@ def check_pr(key, number, head, token=None):
                   + [finding_line(h, key, "hotspot") for h in hotspots], gate)
 
 
-def ce_task_id():
-    if os.path.isfile(REPORT_TASK):
-        with open(REPORT_TASK, encoding="utf-8") as handle:
-            for line in handle:
-                name, _, value = line.strip().partition("=")
-                if name == "ceTaskId":
-                    return value
-    return None
-
-
-def ce_task(task, token):
-    """The compute engine task; `ce/activity` answers for a credential that `ce/task` refuses."""
-    try:
-        return api("ce/task", {"id": task}, token)["task"]
-    except ApiError as error:
-        if error.status != 403:
-            raise
-        key = project_key()
-        for candidate in api("ce/activity", {"component": key, "ps": 20}, token).get("tasks", []):
-            if candidate.get("id") == task:
-                return candidate
-        return {"id": task, "status": "PENDING"}
-
-
-def wait_for_task(task, token):
-    """Wait until SonarQube has processed the uploaded report; return the task (its status says how it ended)."""
-    deadline = time.monotonic() + WAIT_SECONDS
-    while True:
-        result = ce_task(task, token)
-        if result["status"] not in ("PENDING", "IN_PROGRESS"):
-            return result
-        if time.monotonic() >= deadline:
-            return {**result, "status": "TIMEOUT"}
-        time.sleep(POLL_SECONDS)
-
-
-def scan(command):
-    """Run the scan command; return the CE task id, or None when the scan failed or could not start."""
-    output_dir = REPORT_TASK.split("/", 1)[0]
-    left_behind = not os.path.exists(output_dir)
-    try:
-        result = subprocess.run(command, check=False)  # the command line of *Sonar gate* in .squad/stack.md
-        return ce_task_id() if result.returncode == 0 else None
-    except OSError as error:
-        print(f"The scan command could not start: {error}")
-        return None
-    finally:
-        if left_behind:  # leave no untracked scanner output behind
-            shutil.rmtree(output_dir, ignore_errors=True)
-
-
-def coverage_reports():
-    """The globs of the coverage reports *Test with coverage* writes: untracked output the gate expects."""
-    pairs = getattr(settings, "COVERAGE_REPORTS", None) or [
-        (getattr(settings, "COVERAGE_FORMAT", ""), getattr(settings, "COVERAGE_REPORT_GLOB", ""))]
-    return [pattern for _, pattern in pairs if pattern]
-
-
-def unexpected_files():
-    """Changed tracked files, and untracked files other than the coverage reports, which the scanner would upload."""
-    changed = git("diff", "--name-only", "HEAD").splitlines()
-    reports = coverage_reports()
-    untracked = [path for path in git("ls-files", "--others", "--exclude-standard").splitlines()
-                 if not any(fnmatch.fnmatch(path, pattern) or path.startswith(pattern.split("/", 1)[0] + "/")
-                            for pattern in reports)]
-    return [path for path in changed + untracked if path.strip()]
-
-
-def branch_preconditions():
-    """The current branch, when branch mode may scan it."""
-    branch = git("branch", "--show-current").strip()
-    base = BASE_REF.split("/", 1)[1] if BASE_REF.startswith("origin/") else BASE_REF
-    if not branch or branch == base:
-        raise NotChecked("branch mode scans a work branch only (not a detached HEAD or the base branch, whose "
-                         "analysis it would replace)")
-    unexpected = unexpected_files()
-    if unexpected:
-        raise NotChecked("uncommitted or untracked files the scanner would upload — commit the change first (no "
-                         "push needed) and remove scratch files: " + ", ".join(unexpected[:10]))
-    return branch
-
-
-def findings_on_branch(key, branch, token):
-    """Open issues and hotspots of the analysed branch on the lines the branch changed. The issues are read for
-    the whole project and filtered by path here: a `componentKeys` list mixing source files (`FIL`) and test
-    files (`UTS`) is refused with HTTP 400."""
-    lines = changed_line_map(merge_base_or_raise())
-    paths = sorted(lines)
-    issues = paged("issues/search", {"componentKeys": key, "branch": branch, "resolved": "false"}, "issues", token)
-    found = [finding_line(i, key, "issue") for i in issues if on_changed_line(i, key, lines)]
-    for start in range(0, len(paths), FILES_PER_QUERY):
-        chunk = paths[start:start + FILES_PER_QUERY]
-        hotspots = paged("hotspots/search", {"projectKey": key, "branch": branch, "files": ",".join(chunk),
-                                             "status": "TO_REVIEW"}, "hotspots", token)
-        found += [finding_line(h, key, "hotspot") for h in hotspots if on_changed_line(h, key, lines)]
-    return found
-
-
-def merge_base_or_raise():
-    result = subprocess.run(["git", "merge-base", BASE_REF, "HEAD"], capture_output=True, text=True, check=False)
-    if result.returncode != 0:
-        raise NotChecked(f"no merge base with {BASE_REF}: fetch it first (git fetch origin <branch>)")
-    return result.stdout.strip()
-
-
-def check_branch(key, command, token):
-    if not command:
-        print("Usage: branch mode needs the scan command after `--` (*Sonar gate* in .squad/stack.md)")
-        return USAGE
-    branch = branch_preconditions()
-    task = scan(command)
-    if not task:
-        raise NotChecked("the scan failed or wrote no report (output above); check the draft pull request with "
-                         "`sonar-check.py pr <number>` in step 11 instead")
-    result = wait_for_task(task, token)
-    if result["status"] != "SUCCESS":
-        raise NotChecked(f"SonarQube processed the report with status {result['status']}")
-    try:
-        findings = findings_on_branch(key, result.get("branch") or branch, token)
-    except ApiError as error:
-        if "non main branch" not in str(error):
-            raise
-        raise NotChecked("the organization cannot read data of non-main branches through the API; read the "
-                         "analysis on the draft pull request with `sonar-check.py pr <number>` in step 11") from error
-    return report(findings)
-
-
 def parse(argv):
     parser = Usage(prog="sonar-check.py", description="SonarQube Cloud findings as a gate result.")
     modes = parser.add_subparsers(dest="mode", required=True, parser_class=Usage)
-    branch = modes.add_parser("branch", help="scan the work branch (needs a SonarQube credential)")
-    branch.add_argument("command", nargs=argparse.REMAINDER, help="-- followed by the *Sonar gate* scan command")
     pr = modes.add_parser("pr", help="check the analysis of a pull request")
     pr.add_argument("number", type=int)
     pr.add_argument("--head", help="commit SHA the analysis must belong to (default: HEAD)")
@@ -365,19 +196,12 @@ def run(args):
         raise NotChecked("no SonarQube project key (SONAR_PROJECT_KEY in .squad/tools/squad_settings.py, "
                          "sonar.projectKey in sonar-project.properties or /k: in a workflow)")
     token = os.environ.get("SONAR_TOKEN", "")
-    if args.mode == "pr":
-        head = args.head or git("rev-parse", "HEAD").strip()
-        ahead = subprocess.run(["git", "rev-list", "--count", "@{u}..HEAD"], capture_output=True, text=True,
-                               check=False).stdout.strip()
-        if not args.head and ahead not in ("", "0"):
-            print("Note: HEAD has commits that are not pushed; the pull request cannot have been analysed at it.")
-        return check_pr(key, args.number, head, token or None)
-    if not token and not proxy_credential():
-        raise NotChecked("no SonarQube credential: neither a network secret for the SonarQube hosts nor "
-                         "SONAR_TOKEN in this environment; check the draft pull request with "
-                         "`sonar-check.py pr <number>` in step 11 instead")
-    command = args.command[1:] if args.command[:1] == ["--"] else args.command
-    return check_branch(key, command, token or None)
+    head = args.head or git("rev-parse", "HEAD").strip()
+    ahead = subprocess.run(["git", "rev-list", "--count", "@{u}..HEAD"], capture_output=True, text=True,
+                           check=False).stdout.strip()
+    if not args.head and ahead not in ("", "0"):
+        print("Note: HEAD has commits that are not pushed; the pull request cannot have been analysed at it.")
+    return check_pr(key, args.number, head, token or None)
 
 
 def main(argv=None):

@@ -5,8 +5,8 @@ instead of remembered by a reviewer.
 Checks, over every file changed since the merge base with BASE_REF (working tree and untracked files
 included; BASE_REF from `.squad/tools/squad_settings.py`, default origin/main):
 
-- no squad or instruction file is changed: `.squad/` except `stack.md` and `project.md`, `.claude/`,
-  `CLAUDE.md` (`.squad/routing.md`, *Scope of a product PR*; squad lessons become issues);
+- no squad or instruction file is changed: `.squad/` except `stack.md`, `project.md` and, outside a fork,
+  `tools/squad_settings.py`, `.claude/`, `CLAUDE.md` (`.squad/routing.md`, *Scope of a product PR*; squad lessons become issues);
 - a marked file (`AGENTS.md` and its Copilot mirror `.github/copilot-instructions.md`, `docs/CONTRIBUTING.md`,
   `docs/ARCHITECTURE.md`, the bug report and pull request templates, the decision and area index) is changed only
   inside its `<!-- project:… -->` blocks; `AGENTS.md` and its mirror are neither added nor deleted, and a project
@@ -54,6 +54,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from analyzer_common import BASE_REF, control_characters, git, merge_base, settings  # noqa: E402  (shared helpers next to this script)
 
 SQUAD_FILES_ALLOWED = {".squad/stack.md", ".squad/project.md"}
+# The repository's own settings (coverage exclusions, thresholds): a product PR may change them, a fork's never
+# (the file is executed Python).
+SETTINGS_FILE = ".squad/tools/squad_settings.py"
 INSTRUCTION_FILES = {"CLAUDE.md"}
 RULES, MIRROR = "AGENTS.md", ".github/copilot-instructions.md"
 # The rules every agent reads: a product PR of the squad may change their project blocks (identically in both), a
@@ -82,7 +85,7 @@ def changed_files(base):
 
 
 def is_squad_file(path, fork=False):
-    if path in SQUAD_FILES_ALLOWED:
+    if path in SQUAD_FILES_ALLOWED or (path == SETTINGS_FILE and not fork):
         return False
     return path.startswith((".squad/", ".claude/")) or path in INSTRUCTION_FILES or (fork and path in RULE_FILES)
 

@@ -70,7 +70,7 @@ squash-merging in [`decisions/`](decisions/README.md)).
 
 For PR naming use the following convention: `[area] Description` (no period at the end).
 
-- For the area, use one of the areas listed below, capitalized.
+- For the area, use one of the areas listed below, capitalized. Issue titles use the same `[area]` prefix.
 - For the description, do not reference an issue number in there. A clear, short summary of what
   the change entails is enough; there is room to elaborate in the description.
 
@@ -100,8 +100,8 @@ is agreed as acceptance criteria before it is built, and the maintainers own tho
 - **Out of scope for an outside pull request:** the AI squad and agent instructions (`.squad/` except
   `stack.md` and `project.md`, `.claude/`, `AGENTS.md`, `CLAUDE.md`, `.github/copilot-instructions.md`), the
   text outside the `<!-- project:… -->` blocks of the template's marked files, and the workflows under
-  `.github/workflows/`. They come from a shared template and are changed there; the *Fork scope* check fails
-  on the first two. Open an issue instead.
+  `.github/workflows/`. The first two come from a shared template and are changed there, the workflows are the
+  repository's own; the *Fork scope* check fails on the first two. Open an issue instead.
 - **Checks on a fork:** pull requests from forks run without repository secrets, so the analysis that needs one
   (e.g. SonarQube Cloud) does not run there; a maintainer runs it before merging. Run the quality gates below
   locally so the pull request arrives clean. The CI run of a first-time contributor's fork waits for a maintainer's

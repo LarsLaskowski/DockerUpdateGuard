@@ -55,11 +55,16 @@ test documentation, the area documents with their index rows, `docs/ARCHITECTURE
 *Coverage gate* passes — for a feature after the last task group, in your `implement` agent. Write each statement
 from the code as it now stands (`git diff <base>`, the working tree included), not from the plan's wording, and
 re-read every sentence of the touched sections that describes the changed behavior; run `decision-check.py` when
-you touched `docs/areas/`. A statement that would contradict a decision record goes to the Lead in your report.
+you touched `docs/areas/`. A sentence you write that states a number (a count, a limit, a size, a budget), an order
+or a completeness ("only", "all", "never", "covered by …") names in your report the code line, test or measurement
+it rests on; one you cannot trace is narrowed to what the code shows or left out. A statement that would contradict
+a decision record goes to the Lead in your report.
 
 Before handing over, run *Format* (`.squad/team.md`, *Shared rules*). Do not chase style diagnostics unless
 the Code Officer hands one back; run the *Analyzer gate* once and fix the findings in your production files
-that need a code change, so they do not come back later as a structural hand-back.
+that need a code change, so they do not come back later as a structural hand-back. A finding that contradicts a
+documented style rule (`AGENTS.md`, *Code style*; `.squad/stack.md`) is not worked around: report it as a conflict
+with that rule, name the `.editorconfig` severity as the proposed fix, and leave the code as the rule has it.
 Tests stay the Tester's beyond the mechanical call-site adaptations above (*Loop limits* in
 `.squad/routing.md`): a test you believe is wrong, or a plan that does not work, goes back as a report for the
 Lead, and a deviation from the plan is stated in your report.

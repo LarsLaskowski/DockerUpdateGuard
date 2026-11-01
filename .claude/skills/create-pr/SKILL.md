@@ -40,10 +40,9 @@ repository.
    unformatted code or outstanding analyzer diagnostics. This step is the gate
    before the PR; CI is not meant to find anything here.
 5. **Commit** as `AGENTS.md` (*Commit messages and pull requests*) says,
-   staging only the files that belong to this task. Then run the *Sonar gate*
-   from `.squad/stack.md` — SonarQube Cloud's analysis of the committed
-   branch; fix every finding it lists (and commit again). NOT CHECKED (no
-   SonarQube credential in this environment) leaves the check to step 9.
+   staging only the files that belong to this task. The *Sonar gate* from
+   `.squad/stack.md` reads the CI code analysis of the draft pull request, so it
+   runs in step 9.
 6. **Run the internal review loop** (see below) and resolve what it finds.
    This happens *before* the push, so the pull request opens on a reviewed
    change instead of collecting review rounds afterwards.

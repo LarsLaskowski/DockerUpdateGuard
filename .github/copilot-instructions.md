@@ -192,7 +192,7 @@ and the round semantics. The squad's members (`.squad/team.md`) run as subagents
 commits, pushes and posts. The pipeline, its limits and escalations are in [`.squad/routing.md`](/.squad/routing.md),
 the project's guarantees, security areas and integration surface in [`.squad/project.md`](/.squad/project.md).
 Working records stay under `specs/` on the work branch. A product PR never changes the squad or these
-instructions (`.squad/stack.md`, `.squad/project.md` and the project blocks of this file excepted); squad lessons become `squad` issues where they can be fixed (`.squad/orchestration.md`, *Squad
+instructions (`.squad/stack.md`, `.squad/project.md`, `.squad/tools/squad_settings.py` and the project blocks of this file excepted); squad lessons become `squad` issues where they can be fixed (`.squad/orchestration.md`, *Squad
 lessons*). The user acts as Product Manager and is asked only when the Lead escalates.
 
 The reasoning behind code decisions — why something was built the way it was — is recorded by the Lead
