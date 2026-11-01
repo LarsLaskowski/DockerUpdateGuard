@@ -236,6 +236,10 @@ def assigned_area(number, record, assignments, released, errors):
         errors.append(f"{rel}: no {AREA_FIELD} (an area from {AREAS_DIR}/README.md, or {NO_AREA} for a "
                       f"record about no area)")
         return None
+    if released is None and not assignments:
+        errors.append(f"{rel}: possibly released (release tags unknown: no local tags or no history); add an "
+                      f"{AREA_FIELD} (an area from {AREAS_DIR}/README.md, or {NO_AREA}) if it is unreleased")
+        return None
     if not assignments:
         errors.append(f"{rel}: released without a {AREA_FIELD} and no '## Area assignment' table in a "
                       f"later record names it")

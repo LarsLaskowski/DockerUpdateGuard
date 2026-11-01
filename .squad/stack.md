@@ -40,7 +40,7 @@ profile and owned by this repository: keep it true when the build changes.
 | *Test with coverage* | `rm -rf TestResults && dotnet test DockerUpdateGuard.slnx -c Release --no-build --collect:"XPlat Code Coverage" --results-directory ./TestResults` (clears earlier runs: the coverage gate merges every report it finds) |
 | *Coverage gate* | `python3 .squad/tools/coverage-check.py` |
 | *Analyzer gate* | `python3 .squad/tools/analyzer-check.py` |
-| *Sonar gate* | `python3 .squad/tools/sonar-check.py branch -- bash -c 'dotnet sonarscanner begin /k:"LarsLaskowski_DockerUpdateGuard" /o:"networlddev" ${SONAR_TOKEN:+/d:sonar.token="$SONAR_TOKEN"} /d:sonar.exclusions="docs/**" /d:sonar.branch.name="$(git branch --show-current)" /d:sonar.projectBaseDir="$PWD" && dotnet build DockerUpdateGuard.slnx -c Release --no-incremental && dotnet sonarscanner end ${SONAR_TOKEN:+/d:sonar.token="$SONAR_TOKEN"}'` (after *Test with coverage*; needs a SonarQube credential and the `dotnet-sonarscanner` tool, see *Sonar gate* below; the token is passed only when `SONAR_TOKEN` is set) |
+| *Sonar gate* | `python3 .squad/tools/sonar-check.py pr <number>` (step 11, on the draft pull request once its CI has finished; see *Sonar gate* below) |
 | *Image build check* | `docker build -f src/DockerUpdateGuard/Dockerfile .` where Docker runs; otherwise the restore-order reproduction under *Image build check* below (`.squad/routing.md`, *Criteria verified only in CI*) |
 
 ## Analyzer gate
@@ -57,8 +57,7 @@ underscores in member names, a region for an interface implementation named afte
 
 SonarQube Cloud's own quality profile can still report `S####` rules the local default profile does not,
 and its non-Roslyn checks (hotspots, taint analysis, duplication) have no local equivalent: the *Sonar gate*
-below is the first to report their issues and hotspots, and squad step 11 reads the quality gate,
-duplication included.
+below reports their issues and hotspots and the quality gate, duplication included, on the draft pull request.
 
 One such C# rule that bit (`csharpsquid:S2589`, "condition always evaluates to True"): a nullable local that is assigned a
 value already checked as non-null and then tested `is not null` in a loop condition (`while (requestUri is not null)`).
@@ -84,26 +83,15 @@ version follows the base image's repository and a pin breaks the build when it m
 `# hadolint ignore=DL3018` line above it, with the reason. Keep that line when the Dockerfile changes; any other
 hadolint finding is fixed, not ignored.
 
-*Sonar gate* runs SonarQube Cloud's own analysis on the work branch before the pull request (squad step 7):
-`sonar-check.py` runs the scanner with the branch name, waits for the analysis and fails on every open issue or
-security hotspot on a line the branch changed, so the rules no local analyzer has stop surfacing only after the
-pull request. It runs on the committed change (the scanner uploads the working tree, so it refuses uncommitted or
-untracked files other than the coverage reports) and needs a SonarQube credential: a network secret of the cloud environment for `sonarcloud.io` and
-`*.sonarcloud.io` (the agent proxy attaches the token to those requests, so no session or member sees it), or
-else `SONAR_TOKEN` in the environment, which every process of the session can read. The scanner also needs
-network access to its download hosts (`api.sonarcloud.io` and `scanner.sonarcloud.io`, which the secret's
-hosts cover, and the package registry); without them it reports NOT CHECKED, which on a branch without a pull request yet is not final: step 11 reads the draft pull
-request with `python3 .squad/tools/sonar-check.py pr <number>` instead, and that result counts. The SessionStart hook restores
-`dotnet-sonarscanner` from the tool manifest and puts `~/.dotnet/tools` on the `PATH`; a failed `sonar-check.py` read names the request and
-the response body (HTTP status included), so the cause of an HTTP error can be told from the output. A finding of a rule no local analyzer reports is noted in this section, in the same change, instead of a
+*Sonar gate* reads the CI code analysis of the draft pull request (squad step 11, *Draft until green* in
+`.squad/orchestration.md`): `sonar-check.py pr <number>` checks that the analysis belongs to the pushed head and
+fails on a failed quality gate, on every open issue and on every security hotspot to review. The work branch is
+not scanned before the pull request: SonarQube Cloud does not let every organization read the data of non-main
+branches through its API. A private project needs a SonarQube credential: a network secret of the cloud
+environment for `sonarcloud.io` and `*.sonarcloud.io` (the agent proxy attaches the token to those requests, so no
+session or member sees it), or else `SONAR_TOKEN` in the environment, which every process of the session can
+read. A finding of a rule no local analyzer reports is noted in this section, in the same change, instead of a
 squad lesson.
-The .NET scanner is the `dotnet-sonarscanner` tool, pinned in the tool manifest `.config/dotnet-tools.json`, which
-`dotnet tool restore` must have restored before the gate in a fresh cloud session: the SessionStart hook does it, run it
-by hand where the hook did not; its `begin`
-arguments mirror the CI step, plus the branch name and the repository root as base
-directory, and it needs the full, non-incremental build between `begin` and `end`. The local coverage report is
-Cobertura, which the scanner does not read, so the branch analysis carries no coverage figure: the *Coverage
-gate* covers that.
 
 ## Image build check
 
@@ -143,8 +131,7 @@ step of `.github/workflows/ci.yml` (today `.squad/**`, `.claude/**` and
 `src/DockerUpdateGuard.Data/Migrations/**`). A file no unit test can cover (`wwwroot/js/**`, a generated file) is
 added to both with a decision record — never to `sonar.exclusions`, which would drop it from the analysis too.
 `sonar.exclusions` holds only `docs/**` (concept mockups, screenshot scripts and the deployment examples
-`docker-compose.*.yml` and `.env.example`, no product code), set in the same
-step of `ci.yml` and in the *Sonar gate* command.
+`docker-compose.*.yml` and `.env.example`, no product code), set in the same step of `ci.yml`.
 
 ## Writing code
 

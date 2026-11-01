@@ -29,9 +29,8 @@ specific to this repository lives in two files the members read first:
 | Product Manager  | —                                                                     | answers escalations (the human user)                             |
 
 Model and effort are set per role in each agent file's front matter. The orchestrator may override a single
-launch through its own `model` and `effort` parameters; the one override by default is that every `squad-tester`
-launch of a tier-`security` run gets `model: opus` (a continued agent keeps its model), and `xhigh` is not
-used. A change of model or effort for a role is made in the template, on the evidence of the runs'
+launch through its own `model` and `effort` parameters; the overrides it makes by default are in
+`orchestration.md` (*Launch model*), and `xhigh` is not used. A change of model or effort for a role is made in the template, on the evidence of the runs'
 `squad-log.py --summary` tables. Where production and test code live is defined in `stack.md` (*Layout*).
 
 The **Lead** decides everything inside the squad, including approving plans; the pull request is approved
@@ -43,7 +42,9 @@ Product Manager*).
 
 `AGENTS.md`, `docs/ARCHITECTURE.md`, `docs/CONTRIBUTING.md`, `docs/UNIT_TESTS.md`, `.squad/stack.md` and
 `.squad/project.md` are binding: unit tests for all new code until the *Coverage gate* passes, and the code
-conventions from `stack.md` while writing.
+conventions from `stack.md` while writing. In a repository with more than one profile a code convention binds
+only the code of its own language: a rule under **Profile `<name>`** in `AGENTS.md`, or one `stack.md` states for
+one language, is never carried over to another (the .NET profile's `== false` is no rule for Go code).
 
 **Format.** The member that changed files — Dev, Tester, Code Officer, or the orchestrator for its own edits —
 runs *Format* from `stack.md` before handing back and keeps its result to those files: every other file the

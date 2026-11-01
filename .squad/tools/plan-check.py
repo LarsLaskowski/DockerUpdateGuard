@@ -81,6 +81,8 @@ NONE = re.compile(r"^\s*(?:[-*]\s+)?none\.?\s*$", re.I)
 SKELETON_ROW = re.compile(r"^skeleton\b", re.I)
 NO_NEW_API = re.compile(r"\bno new API\b", re.I)
 SPAN = re.compile(r"`([^`\n]+)`")
+# The receiver of a Go method (`func (o *Options) Kernel() string`): its parentheses are no call.
+GO_RECEIVER = re.compile(r"^\s*func\s*\([^)]*\)\s*")
 DECLARATION_KEYWORDS = {"func", "def", "fn", "public", "private", "protected", "internal", "static", "const",
                         "readonly", "final", "async", "export", "function", "type", "class", "struct", "record",
                         "interface", "enum", "var", "let", "val", "abstract", "override"}
@@ -291,10 +293,11 @@ def signatures_section(plan):
 
 
 def signature_names(body):
-    """The identifier of every backticked declaration in the plan's *Signatures* section (`Options.Kernel` and
-    `func (o *Options) Kernel() string` give `Kernel`); a "none" section gives none."""
+    """The identifier of every backticked declaration in the plan's *Signatures* section (`Options.Kernel` and the
+    Go method `func (o *Options) Kernel() string` give `Kernel`); a "none" section gives none."""
     names = []
     for span in SPAN.findall(strip_comments(body or "")):
+        span = GO_RECEIVER.sub("", span)
         call = re.search(r"([A-Za-z_]\w*)\s*\(", span)
         words = [w for w in re.findall(r"[A-Za-z_][\w.]*", span) if w not in DECLARATION_KEYWORDS]
         name = words[0].split(".")[-1] if words else ""

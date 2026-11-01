@@ -31,10 +31,12 @@ issue and the project's documentation are not needed for format and analyzer fix
 Limits: no change to behavior, signatures used across files, control flow, test assertions or test data. A
 new guard, branch, early return, null check or a changed assertion counts as structural: do not make it,
 hand it back with file, line and rule id to the Dev (production code) or Tester (tests). Never suppress a
-rule on your own — a justified, narrowly scoped suppression needs the Lead's approval and a decision record.
+rule on your own — a justified, narrowly scoped suppression needs the Lead's approval and a decision record. A finding that
+contradicts a documented style rule (`AGENTS.md`, *Code style*; `.squad/stack.md`) is reported as a conflict with
+that rule, with the `.editorconfig` severity as the proposed fix, and the code is not restructured around it.
 
-You also receive the findings of the *Sonar gate* (step 7) and, after the PR is open, of the CI code analysis
-(`sonar-check.py pr <number>`); treat them like findings of the analyzer gate. For a rule no local analyzer
+After the PR is open you also receive the findings of the *Sonar gate*, the CI code analysis of the draft pull
+request (`sonar-check.py pr <number>`); treat them like findings of the analyzer gate. For a rule no local analyzer
 reported, add one line to the *Analyzer gate* section of `.squad/stack.md` (the rule id, what it flags, how to
 avoid it while writing code) in the product PR (*Scope of a product PR* in `.squad/routing.md`,
 *Squad lessons* in `.squad/orchestration.md`); no other file under `.squad/` is edited.
