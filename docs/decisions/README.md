@@ -69,5 +69,5 @@ once in the [area document](../areas/README.md) of the record's area, and the re
 | [0014](0014-registry-tag-names-and-digests-are-validated-where-they-are-read.md) | Remote tag names, digests, image references and names are validated or bounded where they are read | Accepted | 2026-10-28 |
 | [0015](0015-the-trivy-scan-target-follows-an-end-of-options-marker.md) | The Trivy scan target follows an end-of-options marker | Accepted | 2026-10-29 |
 | [0016](0016-the-bundled-trivy-skips-its-update-check-and-telemetry.md) | The bundled Trivy skips its update check and telemetry | Accepted | 2026-10-29 |
-| [0017](0017-product-prs-may-change-the-squad-settings-file.md) | Product PRs may change the squad settings file (amends 0003) | Accepted | 2026-11-01 |
+| [0017](0017-product-prs-may-change-the-squad-settings-file.md) | Product PRs may change the squad settings file | Accepted | 2026-11-01 |
 <!-- project:end index -->
