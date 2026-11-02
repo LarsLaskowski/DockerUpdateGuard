@@ -190,7 +190,7 @@ head; step 10 then only posts the working record, removes `specs/` and marks not
 | 9 | PR approval | Orchestrator, Lead when needed | *PR approval* below; with an *Early draft PR* also green CI, the dry-run result and the Reviewer's round on the same head |
 | 10 | Pull request | Orchestrator | Working record posted as comment (a long `plan.md` may be given as a permalink to the last commit that contains it plus a summary), `specs/<folder>/` removed and `scope-check.py --no-specs` clean, PR opened **as a draft** (*Draft until green*; merged later with *Squash and merge*) — or, after an *Early draft PR*, only the record and the removal |
 | 11 | After the PR | Dev, Code Officer, Reviewer | *Draft until green* holds and the PR is marked ready for review; review comments worked |
-| 12 | Wrap-up | Orchestrator | Squad lessons filed as one issue per destination (*Squad lessons*), or "no lessons" logged; the run metrics of `squad-log.py --summary` (exit 0) appended to the working record exactly as printed and reported to the user |
+| 12 | Wrap-up | Orchestrator | Squad lessons filed as one issue per destination (*Squad lessons*), or "no lessons" logged; the run metrics of `squad-log.py --summary` (exit 0) appended to the working record exactly as printed and reported to the user, followed by the session's `/usage` output (below the tables, headed "Session usage (`/usage`)"; a built-in command only the user can run, so the orchestrator asks for it at the end of the run, and with no answer writes "not provided") |
 
 ### PR approval
 
