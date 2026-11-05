@@ -33,8 +33,8 @@ credentials and the Docker Scout login name.
 
 ## Decision
 
-A non-blank `DockerHub:UserName` must, after trimming, be one ASCII path component of the Docker reference grammar of
-at most 255 characters; any other value fails the configuration validation, at startup and on reload. The rule and
+A non-blank `DockerHub:UserName` must, after trimming, be one path component of the Docker reference grammar, with
+ASCII letters of either case, of at most 255 characters; any other value fails the configuration validation, at startup and on reload. The rule and
 its failure text are in [Registries](../areas/registries.md), *Configuration reload*.
 
 ## Consequences

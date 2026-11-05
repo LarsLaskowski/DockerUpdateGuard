@@ -25,7 +25,7 @@ removes `.` and resolves `..` segments, so `..` requests `v2/?page_size=100` and
 | 2 | `.`/`..` in that segment address another path (issue claim) | `EscapeDataString` leaves `.` unescaped and `System.Uri` removes/resolves dot segments, also written as `%2E` (measured for #360: decision 0014, options 14-15; `docs/areas/registries.md`, *Request paths*) | confirmed |
 | 3 | `UserName` is not validated today | `DockerUpdateGuardOptionsValidator.cs:93-119` | confirmed |
 | 4 | The validator runs at startup and on every reload before a value is read | `ServiceCollectionExtensions.cs:53-56` (`IValidateOptions` + `ValidateOnStart`); `OptionsFactory.Create` runs every `IValidateOptions` when `IOptionsMonitor` rebuilds the value; `docs/areas/hosting.md`, *Configuration reload* | confirmed |
-| 5 | Every consumer uses the value trimmed and treats blank as not set | `DockerHubClient.cs:682-685`, `1053-1060`; `DockerHubAccountImageDiscoveryService.cs:266-273`; `DockerScoutVulnerabilityProvider.cs:252`, `432`; `NavMenu.razor.cs:66`, `Dashboard.razor.cs:117` | confirmed |
+| 5 | The account listing uses the value trimmed and treats blank as not set (the Docker Scout login, `DockerScoutVulnerabilityProvider.cs:252`, sends it untrimmed in a JSON body, not a path) | `DockerHubClient.cs:682-685`, `1053-1060`; `DockerHubAccountImageDiscoveryService.cs:266-273`; `DockerScoutVulnerabilityProvider.cs:252`, `432`; `NavMenu.razor.cs:66`, `Dashboard.razor.cs:117` | confirmed |
 | 6 | The values in repository configuration and test data fit the new rule | `appsettings.json` (`""`), `README.md` sample and `TestDevelopmentConfiguration.cs:24` (`dockerupdateguard`); validator tests' `CreateValidOptions` sets no user name | confirmed |
 | 7 | `RegexOptions.IgnoreCase` and `ToLowerInvariant` fold `\u212A` (Kelvin sign) to `k`, which is why the grammar uses explicit `[a-zA-Z0-9]` classes | to verify: the `\u212Acme` row of AC1 fails red before the fix and passes after it, owner Tester (step 5) and Dev (step 6) | unverified |
 
@@ -44,15 +44,15 @@ removes `.` and resolves `..` segments, so `..` requests `v2/?page_size=100` and
   `a`, and 255 `a`.
 
 The C# escapes `\u212A`, `\u200B`, `\u00A0` are written as escapes in the test source. An AC1 row that lost its
-backslash (`u212Acme`, `acu200Bme`) becomes a valid name, so the row fails red; the AC2 no-break-space row asserts
-`char.IsWhiteSpace(value[0])` first, so a lost backslash there fails that guard.
+backslash (`u212Acme`, `acu200Bme`) becomes a valid name, so the row fails red; the AC2 no-break-space case is its own test,
+which asserts `char.IsWhiteSpace(userName[0])` unconditionally first, so a lost backslash there fails that guard.
 
 ## Tests per criterion
 
 | AC | Test(s) | Test file |
 | -- | ------- | --------- |
 | AC1 | `DockerUpdateGuardOptionsValidatorInvalidDockerHubUserNameReturnsFailure` (one `DataRow` per AC1 case; the failures are exactly the fixed text) | `src/Tests/DockerUpdateGuard.Tests/DockerUpdateGuardOptionsValidatorTests.cs` |
-| AC2 | `DockerUpdateGuardOptionsValidatorValidDockerHubUserNameReturnsSuccess` (one `DataRow` per AC2 case) | `src/Tests/DockerUpdateGuard.Tests/DockerUpdateGuardOptionsValidatorTests.cs` |
+| AC2 | `DockerUpdateGuardOptionsValidatorValidDockerHubUserNameReturnsSuccess` (one `DataRow` per AC2 case except the no-break-space one); `DockerUpdateGuardOptionsValidatorNoBreakSpaceDockerHubUserNameReturnsSuccess` (`const string userName = "\u00A0acme\u00A0";`, unconditional `Assert.IsTrue(char.IsWhiteSpace(userName[0]))` before validating) | `src/Tests/DockerUpdateGuard.Tests/DockerUpdateGuardOptionsValidatorTests.cs` |
 
 Both tests start from `CreateValidOptions()` with `CreateAtSignValidator()`, so AC1 asserts that the failures are
 exactly the one fixed text (`Assert.AreSequenceEqual`), which also proves that no failure carries the value; the
