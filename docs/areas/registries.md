@@ -41,12 +41,14 @@ retry policy and the failure model.
   rejected origin instead ([Pagination links](#pagination-links)).
 - An outcome caused by an error rather than by an answer carries a fixed reason, never the error's own text:
   `cancelled`, `timed out after <n> seconds` (or `timed out` when the call has no timeout of its own), `connection
-  failed` (transport failures and responses that break off), `invalid response` (malformed JSON, or a body in which any string value or property name does not decode as Unicode
-  text, such as a lone surrogate escape like `\ud800` or bytes that are not UTF-8: the whole body is refused, whatever
-  field holds it) or `unexpected
-  error`. A message the application composed itself from fixed text, configuration names and masked URLs is passed on:
-  it is raised as a `ReportableException`, a type whose message must never interpolate an error's message, a response
-  body or an unmasked URL (a reviewer treats such a use as blocking). The error is logged with the failure
+  failed` (transport failures and responses that break off), `invalid response` (malformed JSON, or a JSON string that
+  does not decode as Unicode text, such as a lone surrogate escape like `\ud800` or bytes that are not UTF-8: the
+  Docker Hub, OCI and Docker Engine clients refuse the whole body for one in any string value or property name, the
+  Portainer client and the vulnerability providers for one in a field they read; the release feeds report it as
+  `unexpected error`) or `unexpected error`. A message the application composed itself from fixed text, configuration
+  names and masked URLs is passed on: it is raised as a `ReportableException`, a type whose message must never
+  interpolate an error's message, a response body or an unmasked URL (a reviewer treats such a use as blocking). The
+  error is logged with the failure
   ([record 0009](../decisions/0009-integration-results-carry-fixed-failure-reasons.md)).
 
 ### Remote text fields
