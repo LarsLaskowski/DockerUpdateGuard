@@ -1,5 +1,7 @@
 using System.Diagnostics.CodeAnalysis;
 
+using DockerUpdateGuard.Images.Helper;
+
 using Microsoft.Extensions.Options;
 
 namespace DockerUpdateGuard.Configuration;
