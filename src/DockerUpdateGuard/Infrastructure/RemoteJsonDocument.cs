@@ -2,6 +2,8 @@ using System.Text.Json;
 
 namespace DockerUpdateGuard.Infrastructure;
 
+#pragma warning disable S1144, S1172 // Skeleton: removed with the implementation
+
 /// <summary>
 /// Parses a remote JSON response and refuses a body whose strings do not decode as Unicode text
 /// </summary>
@@ -42,3 +44,4 @@ internal static class RemoteJsonDocument
 
     #endregion // Static methods
 }
+#pragma warning restore S1144, S1172

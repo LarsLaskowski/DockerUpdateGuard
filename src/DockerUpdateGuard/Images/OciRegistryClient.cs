@@ -1314,6 +1314,7 @@ public partial class OciRegistryClient : IRegistryMetadataClient
         return inspectedTagCount;
     }
 
+#pragma warning disable S1144, S1172 // Skeleton: removed with the implementation
     /// <summary>
     /// Run an operation and answer an unexpected exception as a failed result
     /// </summary>
@@ -1332,6 +1333,8 @@ public partial class OciRegistryClient : IRegistryMetadataClient
 
         throw new InvalidOperationException("Skeleton: not implemented");
     }
+
+#pragma warning restore S1144, S1172
 
     #endregion // Methods
 

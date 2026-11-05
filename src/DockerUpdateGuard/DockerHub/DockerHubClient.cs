@@ -1179,6 +1179,7 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
                && _accessTokenExpiresAtUtc > DateTimeOffset.UtcNow.AddMinutes(1);
     }
 
+#pragma warning disable S1144, S1172 // Skeleton: removed with the implementation
     /// <summary>
     /// Run an operation and answer an unexpected exception as a failed result
     /// </summary>
@@ -1197,6 +1198,8 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
 
         throw new InvalidOperationException("Skeleton: not implemented");
     }
+
+#pragma warning restore S1144, S1172
 
     #endregion // Methods
 
