@@ -32,8 +32,10 @@ Bug fix only — a feature's criteria live in `spec.md` and are referred to by t
 
 Content the issue supplies verbatim (an image, SVG, configuration, a fixture) was rendered or exercised once
 before "identical to the issue" became a criterion. A criterion that fixes an error text names the exact text
-the tests compare. A criterion about a container image names the *Image build check* as its verification
-(*Criteria verified only in CI* in `.squad/routing.md`).
+the tests compare. A criterion about a container image names the *Image build check* as its verification;
+one tested by hand before step 9 names its build: a local build of the branch head (the command from the
+project's documentation) or the CI artifact of an *Early draft PR* (*Criteria verified only in CI* in
+`.squad/routing.md`).
 
 ## Tests per criterion
 
@@ -98,7 +100,7 @@ in behavior updates its area document in this pull request.
 ## Documentation updates
 
 `README.md` (configuration table, env vars), `docs/*.md` including the area documents and
-`docs/ARCHITECTURE.md` — or "none": each file and what changes in it. The Dev writes them once the code is green,
+`docs/ARCHITECTURE.md`, and what the PR template's checklist asks for (a changelog entry, say) — or "none": each file and what changes in it. The Dev writes them once the code is green,
 against that code (test documentation: the Tester); PR approval (step 9) only touches status, index rows and
 bookkeeping.
 

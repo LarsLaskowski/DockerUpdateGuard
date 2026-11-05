@@ -65,7 +65,8 @@ The orchestrator tells you which **mode** to run:
   - the **documentation updates**, found by a sweep before they are listed: search the area documents and
     `docs/ARCHITECTURE.md` for every enumeration or "only these …" statement the change extends (routes,
     rules, settings, tables, limits) and list each hit, besides the documents you already know the change
-    touches — each with the file and what changes in it, owned by the Dev (test documentation: the Tester),
+    touches and every document the checklist of `.github/pull_request_template.md` (its project block included)
+    asks to update for this change, such as a changelog entry for a user-visible change — each with the file and what changes in it, owned by the Dev (test documentation: the Tester),
     who writes it once the code is green, against that code; you state exact wording only where a criterion
     fixes the text;
   - for a feature, `tasks.md`: task groups in build order, each naming the spec's criteria it delivers, the
@@ -80,7 +81,8 @@ The orchestrator tells you which **mode** to run:
     default;
   - for a change without production or test code: the declaration and its *Verification without tests*
     (*Changes without production or test code*); for an input the image build is sensitive to: the *Image
-    build check* as the criterion's verification, run by the Dev (*Criteria verified only in CI*); the files
+    build check* as the criterion's verification, run by the Dev, and for a criterion tested by hand on a build the
+    build it runs on (*Criteria verified only in CI*); the files
     no unit test can cover, each with the reason, or "none" (*Code a unit test cannot cover*);
   - a claim about measured or library behavior that a security property or a test double rests on: marked
     *unverified* with its measurement and owner (`.squad/team.md`, *Test doubles that model a real component*);

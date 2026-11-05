@@ -66,7 +66,10 @@ mechanics out of the orchestrator's hands:
   refused, so a placeholder cannot be logged by accident. A row for a launch whose notification has not
   arrived yet is written with `--agent` (or `--launch`) alone: its trailer `(opus/medium · usage pending)` keeps
   model and effort, the summary lists it as incomplete, and `--amend-last` with the numbers completes it — the
-  only way to add the numbers later.
+  only way to add the numbers later. A continued launch is written the same way as soon as its report is in:
+  `--agent` with `--continued` or `--continued-from "<step>"` and no numbers gives `(opus/medium · usage pending ·
+  continued from <step>)`, and the amend with the numbers (with or without the continuation options) completes it
+  as that continuation.
 
 - `--stdin` reads the log from standard input instead of `specs/<folder>/log.md`, for the rows after step 10
   of `squad-issue` removed the folder: pipe the log table of the "Squad working record" comment in, the result
@@ -88,6 +91,8 @@ Usage, from anywhere inside the repository:
         --tokens 139230 --tool-uses 4 --seconds 61 --continued
     python3 .squad/tools/squad-log.py <work folder> "7 Fix" Dev "fixed" --agent squad-dev --tokens 412000
         --tool-uses 9 --seconds 317 --continued-from "6 Implement (rows 9-14)"
+    python3 .squad/tools/squad-log.py <work folder> "7 Fix" Dev "fixed" --agent squad-dev
+        --continued-from "6 Implement (rows 9-14)"
     python3 .squad/tools/squad-log.py <work folder> --summary
     python3 .squad/tools/squad-log.py <work folder> "11 CI" Dev "fixed" --agent squad-dev --tokens 41200
         --tool-uses 9 --seconds 80 --stdin < log-from-comment.md > log-updated.md
@@ -130,9 +135,10 @@ TRAILER = re.compile(r"\((?P<launch>[\w.-]+/[\w-]+) · (?P<tokens>[\d,]+) tokens
 UNREPORTED = "usage not reported"
 UNREPORTED_TRAILER = re.compile(rf"\((?P<launch>[\w.-]+/[\w-]+) · {UNREPORTED}\)\s*$")
 PENDING = "usage pending"
-PENDING_TRAILER = re.compile(rf"\((?P<launch>[\w.-]+/[\w-]+) · {PENDING}\)\s*$")
-ANY_TRAILER = re.compile(rf"\((?P<launch>[\w.-]+/[\w-]+) · (?:{UNREPORTED}|{PENDING}|[\d,]+ tokens · \d+ tool uses · "
-                         r"\d+ s(?: · continued(?: from .+)?)?)\)\s*$")
+PENDING_TRAILER = re.compile(rf"\((?P<launch>[\w.-]+/[\w-]+) · {PENDING}"
+                             r"(?P<continued> · continued(?: from (?P<origin>.+))?)?\)\s*$")
+ANY_TRAILER = re.compile(rf"\((?P<launch>[\w.-]+/[\w-]+) · (?:{UNREPORTED}|{PENDING}(?: · continued(?: from .+)?)?|"
+                         r"[\d,]+ tokens · \d+ tool uses · \d+ s(?: · continued(?: from .+)?)?)\)\s*$")
 TWO_MEMBERS = re.compile(r"[,/+&]|\band\b")
 ORCHESTRATOR = "orchestrator"
 NOT_LAUNCHES = {ORCHESTRATOR, "product manager", "user"}
@@ -183,11 +189,11 @@ def trailer(launch, tokens, tool_uses, seconds, continued=False, origin=None):
     launch = cell(launch)
     if tokens is None:
         return f"({launch} · {UNREPORTED})"
-    if tokens == PENDING:
-        return f"({launch} · {PENDING})"
     mark = ""
     if continued:
         mark = f" · continued from {cell(origin)}" if origin else " · continued"
+    if tokens == PENDING:
+        return f"({launch} · {PENDING}{mark})"
     return f"({launch} · {tokens:,} tokens · {tool_uses} tool uses · {seconds} s{mark})"
 
 
@@ -281,11 +287,14 @@ def rows_before(rows, member, step):
 def continued_launch(path, member, launch, skip_last=False, step=None, origin=None):
     """The round's own share of a continued launch: the reported tokens minus the agent's earlier tokens, tool
     uses and seconds as reported (they cover the round alone). A reported token figure below the earlier total
-    was already the round alone and is kept. None when there is nothing to continue from (`previous_tokens`)."""
+    was already the round alone and is kept. None when there is nothing to continue from (`previous_tokens`). A
+    pending launch keeps its pending mark and records the continuation, which its amend then completes."""
     earlier = previous_tokens(path, member, skip_last, step, origin)
     if earlier is None:
         return None
     model, tokens, tool_uses, seconds = launch[:4]
+    if tokens == PENDING:
+        return (model, PENDING, None, None, True, origin)
     return (model, tokens - earlier if tokens >= earlier else tokens, tool_uses, seconds, True, origin)
 
 
@@ -652,9 +661,8 @@ def build_parser():
 
 
 def is_pending_row(args):
-    """A new launch row with the agent alone: no numbers yet, not an amend or a continuation."""
-    return not has_numbers(args) and not args.continued \
-        and args.continued_from is None and not (args.amend_last or args.replace_last)
+    """A new launch row with the agent alone: no numbers yet, not an amend (a continuation may be pending too)."""
+    return not has_numbers(args) and not (args.amend_last or args.replace_last)
 
 
 def has_numbers(args):
@@ -742,6 +750,7 @@ def amend_command(parser, path, folder, member, launch, replace, continued, step
         parser.error("--unreported marks a row without a trailer: use it with --amend-last")
     own_step, current = target_row(path, member, step)
     current = current or ""
+    continued, origin = pending_continuation(current, launch, continued, origin)
     # Only a replaced trailer with real numbers is part of the earlier usage a continuation subtracts.
     replaces_usage = replace and bool(TRAILER.search(current))
     launch = share_of_round(path, member, launch, continued, replaces_usage, step, origin)
@@ -762,6 +771,17 @@ def amend_command(parser, path, folder, member, launch, replace, continued, step
     return 0
 
 
+def pending_continuation(result, launch, continued, origin):
+    """(continued, origin) for an amend or replace with numbers: as given, or else as the pending trailer of the row
+    being changed records them (`· usage pending · continued from <step>`), so the pending row's continuation is
+    not lost when the amend leaves out --continued."""
+    match = PENDING_TRAILER.search(result)
+    if continued or launch[1] in (None, PENDING) or not match or not match.group("continued"):
+        return continued, origin
+    found = match.group("origin")
+    return True, None if found is None else found.replace("\\|", "|")
+
+
 def no_row_message(folder, member, replace, step):
     state = "with" if replace else "without"
     where = f"of step '{step}' " if step is not None else ""
@@ -777,8 +797,8 @@ def row_command(parser, path, args, launch):
         parser.error(f"one row per launch: '{args.member}' names more than one member; write a row for each, "
                      "also when they ran in parallel")
     if args.continued and launch is None:
-        parser.error("--continued goes with the launch's usage (--agent or --launch, --tokens, --tool-uses, "
-                     "--seconds), on the row or with --amend-last")
+        parser.error("--continued goes with the launch (--agent or --launch, with --tokens, --tool-uses and "
+                     "--seconds or alone for a pending row), on the row or with --amend-last")
     if args.at_step is not None or args.unreported:
         parser.error("--step and --unreported go with --amend-last or --replace-last")
     launch = share_of_round(path, args.member, launch, args.continued, origin=args.continued_from)

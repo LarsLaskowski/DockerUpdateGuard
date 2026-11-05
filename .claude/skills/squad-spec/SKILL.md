@@ -51,7 +51,8 @@ cells in `log.md`); steps 4–12 follow `squad-issue` with the changes listed af
 
 - **Steps 4–6** run per task group — the *Group* column of `tasks.md`, in table order; tick tasks off as they
   are done. The Tester's tests first are the tests *Tests per criterion* names for the group's
-  criteria. The next task group continues each member's last agent of the same mode, as do the fix and delta
+  criteria; in a tier-`security` run every Tester launch, the first one included, passes `model: opus`
+  (*Launch model*). The next task group continues each member's last agent of the same mode, as do the fix and delta
   rounds (*Continuing a member*); log such a launch with `--continued-from "<step cell of that agent's fresh
   launch>"`. The documentation rows are the Dev's, done once the last group's *Coverage gate* passes (`squad-issue`
   step 6; *Documentation* in `squad-dev.md`).

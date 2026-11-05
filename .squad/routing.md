@@ -129,6 +129,11 @@ plan names it as the criterion's verification with the Dev as its owner. A build
 working tree does not count: it restores with every source present. A red CI on such a criterion after that
 check is worked in step 11.
 
+A criterion tested by hand on a build before the PR approval (step 9) — a Product Manager's manual test of the
+change, say — names in the plan the build it runs on: a local build or publish of the branch head, with the
+command the project's documentation gives, or the CI-built artifact, for which the plan asks for an *Early draft
+PR* (without one, no CI build of the change exists before step 10).
+
 ### Operator environments and documented procedures
 
 A criterion or document that depends on the operator's environment (network, DNS, access policy, console,
@@ -167,7 +172,8 @@ suppression): its rules still apply, and those no local gate reports arrive in s
 ### Early draft PR
 
 CI runs on pull requests only, so a change whose **CI-only criteria** (*Criteria verified only in CI*) or **dry
-run** (*Operator environments and documented procedures*) needs a CI result before the review, and a PR opened in
+run** (*Operator environments and documented procedures*) needs a CI result before the review, or whose manual
+test runs on the CI-built artifact (*Criteria verified only in CI*), and a PR opened in
 step 10 comes too late for it. For such a change the plan says so, and the orchestrator opens the PR as a draft
 right after step 7 (`create-pr` step 8, `specs/` still in the diff, no working record comment yet), then waits for CI
 and reads `sonar-check.py pr <n>` before step 8; findings are worked as in step 11. The *Sonar gate* alone is no
@@ -227,7 +233,8 @@ again. Each objection is ranked `major` (the plan would build the wrong thing or
 `minor`, so the orchestrator routes without judgment:
 
 - **Only minor objections** (when step 3 runs: and Security approved): no Lead launch; the orchestrator
-  appends them verbatim to `plan.md` as *Challenge notes* (bookkeeping, like `log.md`). Dev and Tester follow
+  appends them verbatim to `plan.md` as *Challenge notes* (bookkeeping, like `log.md`). `plan-check.py` does not count
+  *Challenge notes* and *Security notes* against `PLAN_MAX_WORDS`. Dev and Tester follow
   them or report a deviation; the Reviewer checks them in round 1.
 - **Non-blocking findings of Security's `APPROVED` plan review** go verbatim into a *Security notes* section
   the same way — except a note that leaves the plan a choice ("document it, or reject"): the Lead decides it

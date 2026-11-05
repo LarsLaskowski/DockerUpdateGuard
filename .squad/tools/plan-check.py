@@ -27,7 +27,8 @@ Checks, in the work folder `specs/<folder>/`:
   one row, and every row has evidence and a status (`confirmed`, `refuted`, or `unverified` with the measurement
   that settles it, starting with `to verify:`); no template placeholder is left; no Markdown file of the work
   folder contains a control character (`scope-check.py`'s check, here before any member reads the folder). A
-  plan longer than `PLAN_MAX_WORDS` (`squad_settings.py`, default 4000) is a finding: a long plan costs every
+  plan longer than `PLAN_MAX_WORDS` (`squad_settings.py`, default 4000; the orchestrator-appended *Challenge
+  notes* and *Security notes* sections do not count) is a finding: a long plan costs every
   member that reads it, so the Lead moves settled material (answered challenge entries, facts verified in earlier
   rounds) into the decision record, or into *Documentation updates* for the Dev. A plan whose scope really needs
   more says why in a `Plan size:` line under the header; then up to `PLAN_HARD_WORDS` (default twice the limit) is a warning that
@@ -55,6 +56,7 @@ from analyzer_common import control_characters  # noqa: E402  (shared helpers ne
 
 PLAN_MAX_WORDS = getattr(settings, "PLAN_MAX_WORDS", 4000)
 PLAN_HARD_WORDS = getattr(settings, "PLAN_HARD_WORDS", 2 * PLAN_MAX_WORDS)
+NOTES_HEADING = re.compile(r"^(#{2,6})[ \t]+(?:Challenge|Security) notes\b", re.I)
 PLAN_SIZE = re.compile(r"^Plan size:[ \t]*(\S.*)", re.M)
 SPEC_MAX_WORDS = getattr(settings, "SPEC_MAX_WORDS", 2500)
 TIERS = ("trivial", "standard", "security")
@@ -473,9 +475,25 @@ def check(folder):
     return errors, warnings
 
 
+def counted_words(plan):
+    """The words of the plan without the *Challenge notes* and *Security notes* sections the orchestrator appends
+    verbatim after the Lead has sized the plan: the Lead cannot shorten them."""
+    words, skip_level = 0, None
+    for line in plan.splitlines():
+        heading = re.match(r"^(#{1,6})[ \t]", line)
+        if heading and skip_level is not None and len(heading.group(1)) <= skip_level:
+            skip_level = None
+        notes = NOTES_HEADING.match(line)
+        if notes and skip_level is None:
+            skip_level = len(notes.group(1))
+        if skip_level is None:
+            words += len(line.split())
+    return words
+
+
 def check_plan_size(plan, errors, warnings):
     """A plan within PLAN_MAX_WORDS, or up to PLAN_HARD_WORDS with a `Plan size:` line that says why."""
-    words = len(plan.split())
+    words = counted_words(plan)
     if words <= PLAN_MAX_WORDS:
         return
     match = PLAN_SIZE.search(plan)
