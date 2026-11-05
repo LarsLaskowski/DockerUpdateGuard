@@ -555,6 +555,27 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
     }
 
     /// <summary>
+    /// Read the resource sample of one container from its stats body
+    /// </summary>
+    /// <param name="containerElement">Container element</param>
+    /// <param name="statsStream">Stream of the stats body</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Resource descriptor, or null when the body cannot be read</returns>
+    private static async Task<RuntimeContainerResourceDescriptor?> ReadResourceSampleAsync(JsonElement containerElement, Stream statsStream, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var statsDocument = await RemoteJsonDocument.ParseAsync(statsStream, cancellationToken).ConfigureAwait(false);
+
+            return ParseResourceSample(containerElement, statsDocument.RootElement);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
     /// Check whether the container ID fits the stored column length
     /// </summary>
     /// <param name="element">JSON element</param>
@@ -907,8 +928,8 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
 
             await using (responseStream.ConfigureAwait(false))
             {
-                using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: requestTimeoutSource.Token)
-                                                           .ConfigureAwait(false);
+                using var jsonDocument = await RemoteJsonDocument.ParseAsync(responseStream, requestTimeoutSource.Token)
+                                                                 .ConfigureAwait(false);
 
                 return ExternalOperationResult<DockerImageInspectData>.Succeeded(ParseImageInspect(jsonDocument.RootElement));
             }
@@ -960,8 +981,8 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
 
             await using (responseStream.ConfigureAwait(false))
             {
-                using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: requestTimeoutSource.Token)
-                                                           .ConfigureAwait(false);
+                using var jsonDocument = await RemoteJsonDocument.ParseAsync(responseStream, requestTimeoutSource.Token)
+                                                                 .ConfigureAwait(false);
                 var historyEntries = new List<DockerImageHistoryEntryData>();
 
                 foreach (var historyElement in jsonDocument.RootElement.EnumerateArray())
@@ -1031,8 +1052,8 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
 
             await using (responseStream.ConfigureAwait(false))
             {
-                using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: requestTimeoutSource.Token)
-                                                           .ConfigureAwait(false);
+                using var jsonDocument = await RemoteJsonDocument.ParseAsync(responseStream, requestTimeoutSource.Token)
+                                                                 .ConfigureAwait(false);
                 var containers = new List<RuntimeContainerDescriptor>();
 
                 foreach (var element in jsonDocument.RootElement.EnumerateArray())
@@ -1108,8 +1129,8 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
 
             await using (responseStream.ConfigureAwait(false))
             {
-                using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: requestTimeoutSource.Token)
-                                                           .ConfigureAwait(false);
+                using var jsonDocument = await RemoteJsonDocument.ParseAsync(responseStream, requestTimeoutSource.Token)
+                                                                 .ConfigureAwait(false);
                 var samples = new List<RuntimeContainerResourceDescriptor>();
 
                 foreach (var containerElement in jsonDocument.RootElement.EnumerateArray())
@@ -1136,10 +1157,12 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
 
                     await using (statsStream.ConfigureAwait(false))
                     {
-                        using var statsDocument = await JsonDocument.ParseAsync(statsStream, cancellationToken: statsTimeoutSource.Token)
-                                                                    .ConfigureAwait(false);
+                        var sample = await ReadResourceSampleAsync(containerElement, statsStream, statsTimeoutSource.Token).ConfigureAwait(false);
 
-                        samples.Add(ParseResourceSample(containerElement, statsDocument.RootElement));
+                        if (sample is not null)
+                        {
+                            samples.Add(sample);
+                        }
                     }
                 }
 
@@ -1275,8 +1298,8 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
 
             await using (responseStream.ConfigureAwait(false))
             {
-                using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: requestTimeoutSource.Token)
-                                                           .ConfigureAwait(false);
+                using var jsonDocument = await RemoteJsonDocument.ParseAsync(responseStream, requestTimeoutSource.Token)
+                                                                 .ConfigureAwait(false);
 
                 return ExternalOperationResult<long>.Succeeded(TryGetInt64(jsonDocument.RootElement, "MemTotal"));
             }

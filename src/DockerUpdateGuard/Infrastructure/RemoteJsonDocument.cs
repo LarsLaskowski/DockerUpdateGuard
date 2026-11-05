@@ -2,8 +2,6 @@ using System.Text.Json;
 
 namespace DockerUpdateGuard.Infrastructure;
 
-#pragma warning disable S1144, S1172 // Skeleton: removed with the implementation
-
 /// <summary>
 /// Parses a remote JSON response and refuses a body whose strings do not decode as Unicode text
 /// </summary>
@@ -28,9 +26,20 @@ internal static class RemoteJsonDocument
     /// <returns>Parsed document</returns>
     public static async Task<JsonDocument> ParseAsync(Stream stream, CancellationToken cancellationToken)
     {
-        await Task.CompletedTask.ConfigureAwait(false);
+        var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken).ConfigureAwait(false);
 
-        throw new InvalidOperationException("Skeleton: not implemented");
+        try
+        {
+            EnsureStringsDecode(document.RootElement);
+        }
+        catch (InvalidOperationException exception)
+        {
+            document.Dispose();
+
+            throw new JsonException(UndecodableStringMessage, exception);
+        }
+
+        return document;
     }
 
     /// <summary>
@@ -39,9 +48,35 @@ internal static class RemoteJsonDocument
     /// <param name="element">Element to walk</param>
     private static void EnsureStringsDecode(JsonElement element)
     {
-        throw new InvalidOperationException("Skeleton: not implemented");
+        switch (element.ValueKind)
+        {
+            case JsonValueKind.String:
+                {
+                    _ = element.GetString();
+                }
+                break;
+
+            case JsonValueKind.Object:
+                {
+                    foreach (var property in element.EnumerateObject())
+                    {
+                        _ = property.Name;
+
+                        EnsureStringsDecode(property.Value);
+                    }
+                }
+                break;
+
+            case JsonValueKind.Array:
+                {
+                    foreach (var item in element.EnumerateArray())
+                    {
+                        EnsureStringsDecode(item);
+                    }
+                }
+                break;
+        }
     }
 
     #endregion // Static methods
 }
-#pragma warning restore S1144, S1172

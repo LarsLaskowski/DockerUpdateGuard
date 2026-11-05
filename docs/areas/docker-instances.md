@@ -136,7 +136,8 @@ on the snapshots and samples it produces.
 - Every `DockerUpdateGuard:Scanning:ResourceStatisticsIntervalMinutes` (1–1440, default 5) each enabled, configured
   instance is sampled ([Scan engine](scan-engine.md) owns the schedule).
 - Only **running** containers are sampled, one at a time, each with a single non-streaming stats request. A container
-  whose stats request answers non-success is left out of that round, and so is one whose ID is longer than 200
+  whose stats request answers non-success or whose stats body cannot be read (malformed JSON, or a string that does not decode)
+  is left out of that round, and so is one whose ID is longer than 200
   characters (no request is sent for it). The container name of a sample is cut to 200 characters with a trailing `…`.
 - Per container sample:
   - CPU percent = (container CPU time delta ÷ system CPU time delta) × online CPUs × 100, rounded to 4 decimals; the
@@ -208,6 +209,8 @@ on the snapshots and samples it produces.
 
 - [0007](../decisions/0007-client-certificates-are-validated-as-pkcs12-at-startup.md): client certificates are
   validated as PKCS#12 at startup.
+- [0019](../decisions/0019-remote-json-with-undecodable-strings-is-an-invalid-response.md): remote JSON with a string
+  that does not decode is an invalid response.
 
 ## Not here
 
