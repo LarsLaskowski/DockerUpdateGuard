@@ -31,9 +31,377 @@ public partial class DockerHubClientTests
     /// </summary>
     private const string LoginResponseJson = $$"""{ "token": "{{LoginToken}}" }""";
 
+    /// <summary>
+    /// Escape of a lone high surrogate
+    /// </summary>
+    private const string LoneSurrogateEscape = """\ud800""";
+
     #endregion // Constants
 
     #region Methods
+
+    /// <summary>
+    /// Verify every Docker Hub call refuses a registry that is not Docker Hub as unsupported without a request
+    /// </summary>
+    /// <param name="operation">Name of the call</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [DataRow("CurrentUser")]
+    [DataRow("Repositories")]
+    [DataRow("Repository")]
+    [DataRow("Tag")]
+    [DataRow("Tags")]
+    public async Task DockerHubClientCallsWhenRegistryIsNotDockerHubReturnUnsupportedAsync(string operation)
+    {
+        using var handler = new StubHttpMessageHandler();
+        using var httpClient = new HttpClient(handler)
+                               {
+                                   BaseAddress = new Uri("https://hub.docker.com/"),
+                               };
+
+        var client = CreateClient(httpClient, registry: "ghcr.io");
+
+        var (status, message) = await RunCallAsync(client, operation, "ghcr.io").ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Unsupported, status, $"The {operation} call must refuse a foreign registry");
+        Assert.AreEqual("Registry 'ghcr.io' is not supported by the Docker Hub adapter", message, "The refusal must name the registry");
+        Assert.IsEmpty(handler.Requests, "No request may be sent for a foreign registry");
+    }
+
+    /// <summary>
+    /// Verify the Docker Hub calls answer a 404 as not found with the fixed text
+    /// </summary>
+    /// <param name="operation">Name of the call</param>
+    /// <param name="expectedMessage">Expected message</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [DataRow("Repositories", "Docker Hub account 'acme' was not found")]
+    [DataRow("Repository", "Repository 'acme/api' was not found in Docker Hub")]
+    [DataRow("Tag", "Tag 'latest' was not found for 'acme/api'")]
+    [DataRow("Tags", "Repository 'acme/api' was not found in Docker Hub")]
+    public async Task DockerHubClientCallsWhenHubAnswersNotFoundReturnNotFoundAsync(string operation, string expectedMessage)
+    {
+        using var handler = new DelegateHttpMessageHandler(request => CreateHubResponse(request, () => new HttpResponseMessage(HttpStatusCode.NotFound)));
+        using var httpClient = new HttpClient(handler)
+                               {
+                                   BaseAddress = new Uri("https://hub.docker.com/"),
+                               };
+
+        var client = CreateClient(httpClient);
+
+        var (status, message) = await RunCallAsync(client, operation, "docker.io").ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.NotFound, status, $"The {operation} call must answer a 404 as not found");
+        Assert.AreEqual(expectedMessage, message, "The not-found message must be the fixed text");
+    }
+
+    /// <summary>
+    /// Verify the Docker Hub calls answer a non-success status as failed with the call's message prefix
+    /// </summary>
+    /// <param name="operation">Name of the call</param>
+    /// <param name="expectedPrefix">Expected message prefix</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [DataRow("CurrentUser", "Docker Hub current user lookup failed")]
+    [DataRow("Repositories", "Docker Hub repository listing failed for 'acme'")]
+    [DataRow("Repository", "Repository metadata lookup failed for 'acme/api'")]
+    [DataRow("Tag", "Tag metadata lookup failed for 'docker.io/acme/api:latest'")]
+    [DataRow("Tags", "Tag lookup failed for 'acme/api'")]
+    public async Task DockerHubClientCallsWhenHubAnswersServerErrorReturnFailedAsync(string operation, string expectedPrefix)
+    {
+        using var handler = new DelegateHttpMessageHandler(request => CreateHubResponse(request, () => new HttpResponseMessage(HttpStatusCode.InternalServerError)));
+        using var httpClient = new HttpClient(handler)
+                               {
+                                   BaseAddress = new Uri("https://hub.docker.com/"),
+                               };
+
+        var logger = new TestLogger<DockerHubClient>();
+        var client = CreateClient(httpClient, logger: logger);
+
+        var (status, message) = await RunCallAsync(client, operation, "docker.io").ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Failed, status, $"The {operation} call must answer a server error as failed");
+        Assert.StartsWith(expectedPrefix, message, "The failure message must start with the call's prefix");
+        Assert.Contains(entry => entry.LogLevel == LogLevel.Warning,
+                        logger.Entries,
+                        "The failed request must be logged as a warning");
+    }
+
+    /// <summary>
+    /// Verify a current-user answer without a username is answered as failed
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerHubClientGetCurrentUserAsyncWhenBodyHasNoUsernameReturnsFailedAsync()
+    {
+        using var handler = new DelegateHttpMessageHandler(request => CreateHubResponse(request, () => CreateJsonResponse("{}")));
+        using var httpClient = new HttpClient(handler)
+                               {
+                                   BaseAddress = new Uri("https://hub.docker.com/"),
+                               };
+
+        var client = CreateClient(httpClient);
+
+        var result = await client.GetCurrentUserAsync(CancellationToken.None).ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Failed, result.Status, "An answer without a username must fail");
+        Assert.AreEqual("Docker Hub current user response did not contain a username", result.Message, "The failure must name the missing username");
+    }
+
+    /// <summary>
+    /// Verify a current-user answer with a string that does not decode is answered as an invalid response
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerHubClientGetCurrentUserAsyncWhenBodyHasLoneSurrogateReturnsInvalidResponseAsync()
+    {
+        var body = $$"""{ "username": "ac{{LoneSurrogateEscape}}me" }""";
+
+        Assert.Contains("\\ud800", body, "The test input must carry the escaped lone surrogate");
+
+        using var handler = new DelegateHttpMessageHandler(request => CreateHubResponse(request, () => CreateJsonResponse(body)));
+        using var httpClient = new HttpClient(handler)
+                               {
+                                   BaseAddress = new Uri("https://hub.docker.com/"),
+                               };
+
+        var logger = new TestLogger<DockerHubClient>();
+        var client = CreateClient(httpClient, logger: logger);
+
+        var result = await client.GetCurrentUserAsync(CancellationToken.None).ConfigureAwait(false);
+
+        AssertInvalidResponse(result, "Docker Hub current user lookup failed: invalid response", "current-user", logger);
+    }
+
+    /// <summary>
+    /// Verify a repository listing whose second page has a string that does not decode is answered as an invalid response
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerHubClientGetRepositoriesAsyncWhenSecondPageHasLoneSurrogateReturnsInvalidResponseAsync()
+    {
+        var secondPage = $$"""{ "next": null, "results": [ { "namespace": "acme", "name": "w{{LoneSurrogateEscape}}eb" } ] }""";
+
+        Assert.Contains("\\ud800", secondPage, "The test input must carry the escaped lone surrogate");
+
+        using var handler = new DelegateHttpMessageHandler(request => CreateHubResponse(request,
+                                                                                        () => request.RequestUri!.Query.Contains("page=2", StringComparison.Ordinal)
+                                                                                                  ? CreateJsonResponse(secondPage)
+                                                                                                  : CreateJsonResponse("""{ "next": "https://hub.docker.com/v2/repositories/acme/?page=2&page_size=100", "results": [ { "namespace": "acme", "name": "api" } ] }""")));
+        using var httpClient = new HttpClient(handler)
+                               {
+                                   BaseAddress = new Uri("https://hub.docker.com/"),
+                               };
+
+        var logger = new TestLogger<DockerHubClient>();
+        var client = CreateClient(httpClient, logger: logger);
+
+        var result = await client.GetRepositoriesAsync("acme", CancellationToken.None).ConfigureAwait(false);
+
+        AssertInvalidResponse(result, "Docker Hub repository listing failed for 'acme': invalid response", "acme", logger);
+    }
+
+    /// <summary>
+    /// Verify a repository listing with a body that is not JSON is answered as an invalid response
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerHubClientGetRepositoriesAsyncWhenBodyIsMalformedReturnsInvalidResponseAsync()
+    {
+        using var handler = new DelegateHttpMessageHandler(request => CreateHubResponse(request, () => CreateJsonResponse("""{ "results": [""")));
+        using var httpClient = new HttpClient(handler)
+                               {
+                                   BaseAddress = new Uri("https://hub.docker.com/"),
+                               };
+
+        var logger = new TestLogger<DockerHubClient>();
+        var client = CreateClient(httpClient, logger: logger);
+
+        var result = await client.GetRepositoriesAsync("acme", CancellationToken.None).ConfigureAwait(false);
+
+        AssertInvalidResponse(result, "Docker Hub repository listing failed for 'acme': invalid response", "acme", logger);
+    }
+
+    /// <summary>
+    /// Verify a repository answer with a description that does not decode is answered as an invalid response
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerHubClientGetRepositoryAsyncWhenDescriptionHasLoneSurrogateReturnsInvalidResponseAsync()
+    {
+        var body = $$"""{ "description": "API {{LoneSurrogateEscape}}", "last_updated": "2025-04-01T10:00:00Z" }""";
+
+        Assert.Contains("\\ud800", body, "The test input must carry the escaped lone surrogate");
+
+        using var handler = new DelegateHttpMessageHandler(request => CreateHubResponse(request, () => CreateJsonResponse(body)));
+        using var httpClient = new HttpClient(handler)
+                               {
+                                   BaseAddress = new Uri("https://hub.docker.com/"),
+                               };
+
+        var logger = new TestLogger<DockerHubClient>();
+        var client = CreateClient(httpClient, logger: logger);
+
+        var result = await client.GetRepositoryAsync(new ImageReference
+                                                     {
+                                                         Registry = "docker.io",
+                                                         Repository = "acme/api",
+                                                         Tag = "latest",
+                                                     },
+                                                     CancellationToken.None)
+                                 .ConfigureAwait(false);
+
+        AssertInvalidResponse(result, "Repository metadata lookup failed for 'acme/api': invalid response", "acme/api", logger);
+    }
+
+    /// <summary>
+    /// Verify a tag answer with a string that does not decode is answered as an invalid response
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerHubClientGetTagAsyncWhenBodyHasLoneSurrogateReturnsInvalidResponseAsync()
+    {
+        var body = $$"""{ "name": "latest", "digest": "sha256:ab{{LoneSurrogateEscape}}", "last_updated": "2025-04-01T10:00:00Z" }""";
+
+        Assert.Contains("\\ud800", body, "The test input must carry the escaped lone surrogate");
+
+        using var handler = new DelegateHttpMessageHandler(request => CreateHubResponse(request, () => CreateJsonResponse(body)));
+        using var httpClient = new HttpClient(handler)
+                               {
+                                   BaseAddress = new Uri("https://hub.docker.com/"),
+                               };
+
+        var logger = new TestLogger<DockerHubClient>();
+        var client = CreateClient(httpClient, logger: logger);
+        var imageReference = new ImageReference
+                             {
+                                 Registry = "docker.io",
+                                 Repository = "acme/api",
+                                 Tag = "latest",
+                             };
+
+        var result = await client.GetTagAsync(imageReference, "linux", "amd64", CancellationToken.None).ConfigureAwait(false);
+
+        AssertInvalidResponse(result, $"Tag metadata lookup failed for '{imageReference.FullReference}': invalid response", imageReference.FullReference, logger);
+    }
+
+    /// <summary>
+    /// Verify a tag lookup whose login answer has a string that does not decode is answered as an invalid response
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerHubClientGetTagAsyncWhenLoginBodyHasLoneSurrogateReturnsInvalidResponseAsync()
+    {
+        var loginBody = $$"""{ "token": "{{LoginToken}}", "detail": "{{LoneSurrogateEscape}}" }""";
+
+        Assert.Contains("\\ud800", loginBody, "The test input must carry the escaped lone surrogate");
+
+        using var handler = new DelegateHttpMessageHandler(request => request.RequestUri!.AbsolutePath.EndsWith("/users/login", StringComparison.Ordinal)
+                                                                          ? CreateJsonResponse(loginBody)
+                                                                          : CreateJsonResponse("""{ "name": "latest", "digest": "sha256:ab" }"""));
+        using var httpClient = new HttpClient(handler)
+                               {
+                                   BaseAddress = new Uri("https://hub.docker.com/"),
+                               };
+
+        var logger = new TestLogger<DockerHubClient>();
+        var client = CreateClient(httpClient, logger: logger);
+        var imageReference = new ImageReference
+                             {
+                                 Registry = "docker.io",
+                                 Repository = "acme/api",
+                                 Tag = "latest",
+                             };
+
+        var result = await client.GetTagAsync(imageReference, "linux", "amd64", CancellationToken.None).ConfigureAwait(false);
+
+        AssertInvalidResponse(result, $"Tag metadata lookup failed for '{imageReference.FullReference}': invalid response", imageReference.FullReference, logger);
+    }
+
+    /// <summary>
+    /// Verify a tag listing with a string that does not decode is answered as an invalid response
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerHubClientGetTagsAsyncWhenBodyHasLoneSurrogateReturnsInvalidResponseAsync()
+    {
+        var body = $$"""{ "next": null, "results": [ { "name": "latest", "digest": "sha256:ab{{LoneSurrogateEscape}}", "last_pushed": "2025-04-02T10:00:00Z" } ] }""";
+
+        Assert.Contains("\\ud800", body, "The test input must carry the escaped lone surrogate");
+
+        using var handler = new DelegateHttpMessageHandler(request => CreateHubResponse(request, () => CreateJsonResponse(body)));
+        using var httpClient = new HttpClient(handler)
+                               {
+                                   BaseAddress = new Uri("https://hub.docker.com/"),
+                               };
+
+        var logger = new TestLogger<DockerHubClient>();
+        var client = CreateClient(httpClient, logger: logger);
+
+        var result = await client.GetTagsAsync("docker.io", "acme/api", cancellationToken: CancellationToken.None).ConfigureAwait(false);
+
+        AssertInvalidResponse(result, "Tag lookup failed for 'acme/api': invalid response", "acme/api", logger);
+    }
+
+    /// <summary>
+    /// Verify a base-image resolution whose configuration blob has a label value that does not decode is answered as an invalid response
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerHubClientResolveBaseImagesAsyncWhenConfigHasLoneSurrogateReturnsInvalidResponseAsync()
+    {
+        var blobJson = $$"""{ "config": { "Labels": { "org.opencontainers.image.base.name": "docker.io/library/debian:12{{LoneSurrogateEscape}}" } } }""";
+
+        Assert.Contains("\\ud800", blobJson, "The test input must carry the escaped lone surrogate");
+
+        using var handler = new DelegateHttpMessageHandler(request => CreateBaseImageChainResponse(request, blobJson));
+        using var httpClient = new HttpClient(handler);
+
+        var client = CreateClient(httpClient);
+        var imageReference = new ImageReference
+                             {
+                                 Registry = "docker.io",
+                                 Repository = "library/app",
+                                 Tag = "latest",
+                             };
+
+        var result = await client.ResolveBaseImagesAsync(imageReference, CancellationToken.None).ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Failed, result.Status, "An unreadable configuration blob must fail the base-image resolution");
+        Assert.AreEqual($"Base image chain resolution failed for '{imageReference.FullReference}': invalid response",
+                        result.Message,
+                        "An unreadable configuration blob must be reported as an invalid response");
+    }
+
+    /// <summary>
+    /// Verify an image configuration lookup whose blob has a label value that does not decode is answered as an invalid response
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerHubClientGetImageConfigurationAsyncWhenConfigHasLoneSurrogateReturnsInvalidResponseAsync()
+    {
+        var blobJson = $$"""{ "config": { "Labels": { "plain": "v{{LoneSurrogateEscape}}" } } }""";
+
+        Assert.Contains("\\ud800", blobJson, "The test input must carry the escaped lone surrogate");
+
+        using var handler = new DelegateHttpMessageHandler(request => CreateBaseImageChainResponse(request, blobJson));
+        using var httpClient = new HttpClient(handler);
+
+        var client = CreateClient(httpClient);
+        var imageReference = new ImageReference
+                             {
+                                 Registry = "docker.io",
+                                 Repository = "library/app",
+                                 Tag = "latest",
+                             };
+
+        var result = await client.GetImageConfigurationAsync(imageReference, CancellationToken.None).ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Failed, result.Status, "An unreadable configuration blob must fail the configuration lookup");
+        Assert.AreEqual($"Image configuration lookup failed for '{imageReference.FullReference}': invalid response",
+                        result.Message,
+                        "An unreadable configuration blob must be reported as an invalid response");
+    }
 
     /// <summary>
     /// Verify registry values with an empty URI host or a port are judged by the plain host check without throwing
@@ -2055,6 +2423,86 @@ public partial class DockerHubClientTests
         }
 
         return new HttpResponseMessage(HttpStatusCode.NotFound);
+    }
+
+    /// <summary>
+    /// Assert a call answered an unreadable body as failed with the fixed text and logged one warning 3213 with its exception
+    /// </summary>
+    /// <typeparam name="T">Result data type</typeparam>
+    /// <param name="result">Result of the call</param>
+    /// <param name="expectedMessage">Expected failure message</param>
+    /// <param name="targetName">Target the warning names</param>
+    /// <param name="logger">Captured logger</param>
+    private static void AssertInvalidResponse<T>(ExternalOperationResult<T> result,
+                                                 string expectedMessage,
+                                                 string targetName,
+                                                 TestLogger<DockerHubClient> logger)
+    {
+        Assert.AreEqual(ExternalOperationStatus.Failed, result.Status, "An unreadable body must be answered as failed");
+        Assert.AreEqual(expectedMessage, result.Message, "An unreadable body must be reported as an invalid response");
+
+        var warning = Assert.ContainsSingle(entry => entry.EventId.Id == 3213 && entry.LogLevel == LogLevel.Warning,
+                                            logger.Entries,
+                                            "An unreadable body must be logged once as warning 3213");
+
+        Assert.IsNotNull(warning.Exception, "The warning must carry the exception");
+        Assert.StartsWith("Docker Hub ", warning.Message, "The warning must name Docker Hub");
+        Assert.EndsWith($" request for {targetName} failed", warning.Message, "The warning must name the target of the call");
+    }
+
+    /// <summary>
+    /// Run one Docker Hub call by name
+    /// </summary>
+    /// <param name="client">Client under test</param>
+    /// <param name="operation">Name of the call</param>
+    /// <param name="registry">Registry of the references</param>
+    /// <returns>Status and message of the result</returns>
+    private static async Task<(ExternalOperationStatus Status, string Message)> RunCallAsync(DockerHubClient client, string operation, string registry)
+    {
+        var imageReference = new ImageReference
+                             {
+                                 Registry = registry,
+                                 Repository = "acme/api",
+                                 Tag = "latest",
+                             };
+
+        switch (operation)
+        {
+            case "CurrentUser":
+                {
+                    var result = await client.GetCurrentUserAsync(CancellationToken.None).ConfigureAwait(false);
+
+                    return (result.Status, result.Message ?? string.Empty);
+                }
+
+            case "Repositories":
+                {
+                    var result = await client.GetRepositoriesAsync("acme", CancellationToken.None).ConfigureAwait(false);
+
+                    return (result.Status, result.Message ?? string.Empty);
+                }
+
+            case "Repository":
+                {
+                    var result = await client.GetRepositoryAsync(imageReference, CancellationToken.None).ConfigureAwait(false);
+
+                    return (result.Status, result.Message ?? string.Empty);
+                }
+
+            case "Tag":
+                {
+                    var result = await client.GetTagAsync(imageReference, "linux", "amd64", CancellationToken.None).ConfigureAwait(false);
+
+                    return (result.Status, result.Message ?? string.Empty);
+                }
+
+            default:
+                {
+                    var result = await client.GetTagsAsync(registry, "acme/api", cancellationToken: CancellationToken.None).ConfigureAwait(false);
+
+                    return (result.Status, result.Message ?? string.Empty);
+                }
+        }
     }
 
     #endregion // Methods

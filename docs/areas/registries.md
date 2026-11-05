@@ -41,16 +41,21 @@ retry policy and the failure model.
   rejected origin instead ([Pagination links](#pagination-links)).
 - An outcome caused by an error rather than by an answer carries a fixed reason, never the error's own text:
   `cancelled`, `timed out after <n> seconds` (or `timed out` when the call has no timeout of its own), `connection
-  failed` (transport failures and responses that break off), `invalid response` (malformed JSON) or `unexpected
-  error`. A message the application composed itself from fixed text, configuration names and masked URLs is passed on:
-  it is raised as a `ReportableException`, a type whose message must never interpolate an error's message, a response
-  body or an unmasked URL (a reviewer treats such a use as blocking). The error is logged with the failure
+  failed` (transport failures and responses that break off), `invalid response` (malformed JSON, or a JSON string that
+  does not decode as Unicode text, such as a lone surrogate escape like `\ud800` or bytes that are not UTF-8: the
+  Docker Hub, OCI and Docker Engine clients refuse the whole body for one in any string value or property name, the
+  Portainer client and the vulnerability providers for one in a field they read; the release feeds report it as
+  `unexpected error`) or `unexpected error`. A message the application composed itself from fixed text, configuration
+  names and masked URLs is passed on: it is raised as a `ReportableException`, a type whose message must never
+  interpolate an error's message, a response body or an unmasked URL (a reviewer treats such a use as blocking). The
+  error is logged with the failure
   ([record 0009](../decisions/0009-integration-results-carry-fixed-failure-reasons.md)).
 
 ### Remote text fields
 
 The text fields a client reads from a remote answer and passes on to its callers get the same replacement as an excerpt
-(the characters of the Unicode categories Cc, Cf, Zl and Zp become one space each, a lone surrogate becomes U+FFFD),
+(the characters of the Unicode categories Cc, Cf, Zl and Zp become one space each; a lone surrogate becomes U+FFFD only
+in text that is not a JSON string, because a JSON answer with an undecodable string is an invalid response instead),
 where the client reads the field and, apart from the names that [Docker instances](docker-instances.md) cuts to their
 stored length, without a cut: the length stays as received, a field without such a character is unchanged, and the replacement runs on the decoded string, so a JSON escape cannot bypass it. Logs, stored values and
 pages therefore never carry them from these fields:
@@ -302,9 +307,12 @@ values stored before the replacement existed, which stay until they are written 
 - *Failed*: any other non-success status, a token that cannot be obtained, a PAT without user name, a multi-platform
   index without a usable entry. The message contains the status code and the bounded excerpt of the remote response body ([failure model](#failure-model-of-integrations)). A next-page link
   to another origin also gives *failed*, with the message of [Pagination links](#pagination-links).
+- The Docker Hub current-user, account listing, repository, tag and tag-listing calls and the OCI tag, tag-listing and
+  image configuration calls answer an unreadable body (malformed JSON, or a string that does not decode) as *failed*
+  with `invalid response`, logging one warning with the exception.
 - Some failures still surface as errors instead of outcomes: transport errors and timeouts that remain after the
-  retries, and malformed JSON, during tag lookups, tag listings and the account listing (both clients) and during
-  image configuration lookups on other registries. A Docker Hub configuration lookup turns them into *failed* with a fixed reason
+  retries, a JSON value of the wrong type and a Docker Hub token payload that is not base64, during tag lookups, tag
+  listings and the account listing (both clients) and during image configuration lookups on other registries. A Docker Hub configuration lookup turns them into *failed* with a fixed reason
   ([failure model](#failure-model-of-integrations)). The scan that made the call records such an error as a failed
   scan: `Container '<name>' could not be processed: <reason>` or `Observed image scan failed: <reason>`.
 - The PAT is never written to logs or messages. The user name appears in the log entry and the message of a failed
@@ -326,8 +334,8 @@ values stored before the replacement existed, which stay until they are written 
 - `DockerHub:Registry` does not decide which registries the Docker Hub client serves (that host list is fixed); it
   only gates the account listing and, when set to an absolute URL with a non-Docker-Hub host, replaces the web API
   base address. Tracked in [#268](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/268).
-- Transport errors, timeouts and malformed JSON escape as errors from several calls instead of being answered as
-  *failed* outcomes. Tracked in [#272](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/272).
+- Transport errors, timeouts, JSON values of an unexpected type and an unreadable Docker Hub token payload escape as
+  errors from several calls instead of being answered as *failed* outcomes. Tracked in [#272](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/272).
 - For other registries an image configuration lookup without a platform takes the first index entry, which can be an
   attestation manifest, and publication times come only from a top-level `created` field of the manifest, which most
   registries do not send, so their tags usually have no publication time. Tracked in
@@ -340,6 +348,8 @@ values stored before the replacement existed, which stay until they are written 
   retried only when they cannot have been processed.
 - [0009](../decisions/0009-integration-results-carry-fixed-failure-reasons.md): integration results carry fixed
   failure reasons, never an error's own text.
+- [0019](../decisions/0019-remote-json-with-undecodable-strings-is-an-invalid-response.md): remote JSON with a string
+  that does not decode is an invalid response.
 - [0014](../decisions/0014-registry-tag-names-and-digests-are-validated-where-they-are-read.md): remote tag names,
   digests, image references and names are validated or bounded where they are read.
 - [0018](../decisions/0018-the-docker-hub-user-name-is-validated-as-a-namespace-at-startup.md): the Docker Hub user

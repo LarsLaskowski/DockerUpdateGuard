@@ -832,7 +832,7 @@ public partial class OciRegistryClient : IRegistryMetadataClient
 
         await using (responseStream.ConfigureAwait(false))
         {
-            using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: cancellationToken).ConfigureAwait(false);
+            using var jsonDocument = await RemoteJsonDocument.ParseAsync(responseStream, cancellationToken).ConfigureAwait(false);
 
             if (jsonDocument.RootElement.TryGetProperty("tags", out var tagsElement) == false
                 || tagsElement.ValueKind != JsonValueKind.Array)
@@ -982,7 +982,7 @@ public partial class OciRegistryClient : IRegistryMetadataClient
 
         await using (responseStream.ConfigureAwait(false))
         {
-            using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: cancellationToken).ConfigureAwait(false);
+            using var jsonDocument = await RemoteJsonDocument.ParseAsync(responseStream, cancellationToken).ConfigureAwait(false);
 
             if (IsManifestListContentType(contentType))
             {
@@ -1082,7 +1082,7 @@ public partial class OciRegistryClient : IRegistryMetadataClient
 
         await using (responseStream.ConfigureAwait(false))
         {
-            using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: cancellationToken).ConfigureAwait(false);
+            using var jsonDocument = await RemoteJsonDocument.ParseAsync(responseStream, cancellationToken).ConfigureAwait(false);
 
             if (jsonDocument.RootElement.TryGetProperty(ConfigPropertyName, out var configElement) == false
                 || configElement.TryGetProperty("Labels", out var labelsElement) == false
@@ -1250,7 +1250,7 @@ public partial class OciRegistryClient : IRegistryMetadataClient
 
         await using (responseStream.ConfigureAwait(false))
         {
-            using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: cancellationToken).ConfigureAwait(false);
+            using var jsonDocument = await RemoteJsonDocument.ParseAsync(responseStream, cancellationToken).ConfigureAwait(false);
 
             var token = TryGetString(jsonDocument.RootElement, "token")
                             ?? TryGetString(jsonDocument.RootElement, "access_token");
@@ -1314,98 +1314,47 @@ public partial class OciRegistryClient : IRegistryMetadataClient
         return inspectedTagCount;
     }
 
-    #endregion // Methods
-
-    #region IRegistryMetadataClient
-
-    /// <inheritdoc/>
-    public bool CanHandle(string registry)
+    /// <summary>
+    /// Run an operation and answer an unexpected exception as a failed result
+    /// </summary>
+    /// <typeparam name="T">Result value type</typeparam>
+    /// <param name="operationName">Operation name for the log entry</param>
+    /// <param name="targetName">Target the operation belongs to</param>
+    /// <param name="failureMessage">Failure message of the failed result</param>
+    /// <param name="operation">Operation to run</param>
+    /// <returns>Result of the operation or a failed result</returns>
+    private async Task<ExternalOperationResult<T>> ExecuteAsync<T>(string operationName,
+                                                                   string targetName,
+                                                                   string failureMessage,
+                                                                   Func<Task<ExternalOperationResult<T>>> operation)
     {
-        return string.IsNullOrWhiteSpace(registry) == false
-               && DockerHubClient.SupportsRegistry(registry) == false;
+        try
+        {
+            return await operation().ConfigureAwait(false);
+        }
+        catch (JsonException exception)
+        {
+            _logger.OciRegistryOperationFailed(exception, operationName, targetName);
+
+            return ExternalOperationResult<T>.Failed($"{failureMessage}: {FailureReason.InvalidResponse}");
+        }
     }
 
-    /// <inheritdoc/>
-    public async Task<ExternalOperationResult<DockerHubTagData>> GetTagAsync(ImageReference imageReference,
-                                                                             string? operatingSystem = null,
-                                                                             string? architecture = null,
-                                                                             CancellationToken cancellationToken = default)
+    /// <summary>
+    /// Read every tag page of a repository and inspect the tags
+    /// </summary>
+    /// <param name="lookupContext">Tag lookup context</param>
+    /// <param name="allowedOrigin">First tag listing address</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Tag listing result</returns>
+    private async Task<ExternalOperationResult<IReadOnlyList<DockerHubTagData>>> GetTagsCoreAsync(RegistryTagLookupContext lookupContext, Uri allowedOrigin, CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(imageReference);
-
-        if (CanHandle(imageReference.Registry) == false)
-        {
-            return ExternalOperationResult<DockerHubTagData>.Unsupported($"Registry '{imageReference.Registry}' is not supported by the OCI registry adapter");
-        }
-
-        if (RegistryReferenceValidator.IsValidTag(imageReference.Tag) == false)
-        {
-            return ExternalOperationResult<DockerHubTagData>.NotFound(RegistryReferenceValidator.InvalidTagMessage);
-        }
-
-        var manifestResult = await GetManifestMetadataAsync(imageReference,
-                                                            imageReference.Tag,
-                                                            cancellationToken,
-                                                            operatingSystem,
-                                                            architecture).ConfigureAwait(false);
-
-        if (manifestResult.Status != ExternalOperationStatus.Succeeded || manifestResult.Data is null)
-        {
-            return manifestResult.Status switch
-                   {
-                       ExternalOperationStatus.Unsupported => ExternalOperationResult<DockerHubTagData>.Unsupported(manifestResult.Message ?? "Registry lookup is unsupported"),
-                       ExternalOperationStatus.NotFound => ExternalOperationResult<DockerHubTagData>.NotFound(manifestResult.Message ?? "Registry tag was not found"),
-                       ExternalOperationStatus.NotConfigured => ExternalOperationResult<DockerHubTagData>.NotConfigured(manifestResult.Message ?? "Registry lookup is not configured"),
-                       ExternalOperationStatus.Unknown => ExternalOperationResult<DockerHubTagData>.Unknown(manifestResult.Message ?? "Registry lookup status is unknown"),
-                       _ => ExternalOperationResult<DockerHubTagData>.Failed(manifestResult.Message ?? "Registry tag lookup failed"),
-                   };
-        }
-
-        return ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
-                                                                   {
-                                                                       Tag = imageReference.Tag,
-                                                                       Digest = RegistryReferenceValidator.ValidDigestOrNull(manifestResult.Data.Digest),
-                                                                       PublishedAtUtc = manifestResult.Data.PublishedAtUtc,
-                                                                   });
-    }
-
-    /// <inheritdoc/>
-    public async Task<ExternalOperationResult<IReadOnlyList<DockerHubTagData>>> GetTagsAsync(string registry,
-                                                                                             string repository,
-                                                                                             string? operatingSystem = null,
-                                                                                             string? architecture = null,
-                                                                                             RegistryTagQueryOptions? queryOptions = null,
-                                                                                             CancellationToken cancellationToken = default)
-    {
-        if (CanHandle(registry) == false)
-        {
-            return ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Unsupported($"Registry '{registry}' is not supported by the OCI registry adapter");
-        }
-
-        if (RegistryReferenceValidator.IsValidRegistry(registry) == false)
-        {
-            return ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.NotFound(RegistryReferenceValidator.InvalidRegistryMessage);
-        }
-
-        var normalizedRegistry = NormalizeRegistry(registry);
-        var allowedOrigin = CreateTagsUri(normalizedRegistry, repository, lastTag: null, out var refusalMessage);
-
-        if (allowedOrigin is null)
-        {
-            return ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.NotFound(refusalMessage);
-        }
-
+        var normalizedRegistry = lookupContext.Registry;
+        var repository = lookupContext.Repository;
+        var queryOptions = lookupContext.QueryOptions;
         Uri requestUri = allowedOrigin;
         var tags = new List<DockerHubTagData>();
         var inspectedTagCount = 0;
-        var lookupContext = new RegistryTagLookupContext
-                            {
-                                Registry = normalizedRegistry,
-                                Repository = repository,
-                                OperatingSystem = operatingSystem,
-                                Architecture = architecture,
-                                QueryOptions = queryOptions,
-                            };
 
         while (true)
         {
@@ -1464,44 +1413,14 @@ public partial class OciRegistryClient : IRegistryMetadataClient
         return ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Succeeded(tags);
     }
 
-    /// <inheritdoc/>
-    public async Task<ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>> ResolveBaseImagesAsync(ImageReference imageReference, CancellationToken cancellationToken = default)
+    /// <summary>
+    /// Read the image configuration blob of an image
+    /// </summary>
+    /// <param name="imageReference">Image reference</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Image configuration result</returns>
+    private async Task<ExternalOperationResult<RegistryImageConfigurationData>> GetImageConfigurationCoreAsync(ImageReference imageReference, CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(imageReference);
-
-        if (CanHandle(imageReference.Registry) == false)
-        {
-            return ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>.Unsupported($"Registry '{imageReference.Registry}' is not supported by the OCI registry adapter");
-        }
-
-        var results = new List<BaseImageDescriptor>();
-
-        try
-        {
-            await ResolveBaseImageChainAsync(imageReference, results, depth: 1, cancellationToken).ConfigureAwait(false);
-        }
-        catch (Exception exception) when (exception is not OperationCanceledException)
-        {
-            _logger.LogWarning(exception,
-                               "OCI base image chain resolution failed for {ImageReference}",
-                               imageReference.FullReference);
-
-            return ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>.Failed($"Base image chain resolution failed for '{imageReference.FullReference}': {FailureReason.FromException(exception, null, cancellationToken)}");
-        }
-
-        return ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>.Succeeded(results);
-    }
-
-    /// <inheritdoc/>
-    public async Task<ExternalOperationResult<RegistryImageConfigurationData>> GetImageConfigurationAsync(ImageReference imageReference, CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(imageReference);
-
-        if (CanHandle(imageReference.Registry) == false)
-        {
-            return ExternalOperationResult<RegistryImageConfigurationData>.Unsupported($"Registry '{imageReference.Registry}' is not supported by the OCI registry adapter");
-        }
-
         var manifestResult = await GetManifestMetadataAsync(imageReference,
                                                             string.IsNullOrWhiteSpace(imageReference.Digest) ? imageReference.Tag : imageReference.Digest,
                                                             cancellationToken).ConfigureAwait(false);
@@ -1552,10 +1471,156 @@ public partial class OciRegistryClient : IRegistryMetadataClient
 
         await using (responseStream.ConfigureAwait(false))
         {
-            using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: cancellationToken).ConfigureAwait(false);
+            using var jsonDocument = await RemoteJsonDocument.ParseAsync(responseStream, cancellationToken).ConfigureAwait(false);
 
             return ExternalOperationResult<RegistryImageConfigurationData>.Succeeded(ParseImageConfiguration(jsonDocument.RootElement));
         }
+    }
+
+    #endregion // Methods
+
+    #region IRegistryMetadataClient
+
+    /// <inheritdoc/>
+    public bool CanHandle(string registry)
+    {
+        return string.IsNullOrWhiteSpace(registry) == false
+               && DockerHubClient.SupportsRegistry(registry) == false;
+    }
+
+    /// <inheritdoc/>
+    public async Task<ExternalOperationResult<DockerHubTagData>> GetTagAsync(ImageReference imageReference,
+                                                                             string? operatingSystem = null,
+                                                                             string? architecture = null,
+                                                                             CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(imageReference);
+
+        if (CanHandle(imageReference.Registry) == false)
+        {
+            return ExternalOperationResult<DockerHubTagData>.Unsupported($"Registry '{imageReference.Registry}' is not supported by the OCI registry adapter");
+        }
+
+        if (RegistryReferenceValidator.IsValidTag(imageReference.Tag) == false)
+        {
+            return ExternalOperationResult<DockerHubTagData>.NotFound(RegistryReferenceValidator.InvalidTagMessage);
+        }
+
+        return await ExecuteAsync(nameof(GetTagAsync),
+                                  imageReference.FullReference,
+                                  $"Registry tag lookup failed for '{imageReference.FullReference}'",
+                                  async () =>
+                                  {
+                                      var manifestResult = await GetManifestMetadataAsync(imageReference,
+                                                                                          imageReference.Tag,
+                                                                                          cancellationToken,
+                                                                                          operatingSystem,
+                                                                                          architecture).ConfigureAwait(false);
+
+                                      if (manifestResult.Status != ExternalOperationStatus.Succeeded || manifestResult.Data is null)
+                                      {
+                                          return manifestResult.Status switch
+                                                 {
+                                                     ExternalOperationStatus.Unsupported => ExternalOperationResult<DockerHubTagData>.Unsupported(manifestResult.Message ?? "Registry lookup is unsupported"),
+                                                     ExternalOperationStatus.NotFound => ExternalOperationResult<DockerHubTagData>.NotFound(manifestResult.Message ?? "Registry tag was not found"),
+                                                     ExternalOperationStatus.NotConfigured => ExternalOperationResult<DockerHubTagData>.NotConfigured(manifestResult.Message ?? "Registry lookup is not configured"),
+                                                     ExternalOperationStatus.Unknown => ExternalOperationResult<DockerHubTagData>.Unknown(manifestResult.Message ?? "Registry lookup status is unknown"),
+                                                     _ => ExternalOperationResult<DockerHubTagData>.Failed(manifestResult.Message ?? "Registry tag lookup failed"),
+                                                 };
+                                      }
+
+                                      return ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
+                                                                                                 {
+                                                                                                     Tag = imageReference.Tag,
+                                                                                                     Digest = RegistryReferenceValidator.ValidDigestOrNull(manifestResult.Data.Digest),
+                                                                                                     PublishedAtUtc = manifestResult.Data.PublishedAtUtc,
+                                                                                                 });
+                                  }).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc/>
+    public async Task<ExternalOperationResult<IReadOnlyList<DockerHubTagData>>> GetTagsAsync(string registry,
+                                                                                             string repository,
+                                                                                             string? operatingSystem = null,
+                                                                                             string? architecture = null,
+                                                                                             RegistryTagQueryOptions? queryOptions = null,
+                                                                                             CancellationToken cancellationToken = default)
+    {
+        if (CanHandle(registry) == false)
+        {
+            return ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Unsupported($"Registry '{registry}' is not supported by the OCI registry adapter");
+        }
+
+        if (RegistryReferenceValidator.IsValidRegistry(registry) == false)
+        {
+            return ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.NotFound(RegistryReferenceValidator.InvalidRegistryMessage);
+        }
+
+        var normalizedRegistry = NormalizeRegistry(registry);
+        var allowedOrigin = CreateTagsUri(normalizedRegistry, repository, lastTag: null, out var refusalMessage);
+
+        if (allowedOrigin is null)
+        {
+            return ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.NotFound(refusalMessage);
+        }
+
+        var lookupContext = new RegistryTagLookupContext
+                            {
+                                Registry = normalizedRegistry,
+                                Repository = repository,
+                                OperatingSystem = operatingSystem,
+                                Architecture = architecture,
+                                QueryOptions = queryOptions,
+                            };
+
+        return await ExecuteAsync(nameof(GetTagsAsync),
+                                  $"{normalizedRegistry}/{repository}",
+                                  $"Tag lookup failed for '{normalizedRegistry}/{repository}'",
+                                  () => GetTagsCoreAsync(lookupContext, allowedOrigin, cancellationToken)).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc/>
+    public async Task<ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>> ResolveBaseImagesAsync(ImageReference imageReference, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(imageReference);
+
+        if (CanHandle(imageReference.Registry) == false)
+        {
+            return ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>.Unsupported($"Registry '{imageReference.Registry}' is not supported by the OCI registry adapter");
+        }
+
+        var results = new List<BaseImageDescriptor>();
+
+        try
+        {
+            await ResolveBaseImageChainAsync(imageReference, results, depth: 1, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            _logger.LogWarning(exception,
+                               "OCI base image chain resolution failed for {ImageReference}",
+                               imageReference.FullReference);
+
+            return ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>.Failed($"Base image chain resolution failed for '{imageReference.FullReference}': {FailureReason.FromException(exception, null, cancellationToken)}");
+        }
+
+        return ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>.Succeeded(results);
+    }
+
+    /// <inheritdoc/>
+    public async Task<ExternalOperationResult<RegistryImageConfigurationData>> GetImageConfigurationAsync(ImageReference imageReference, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(imageReference);
+
+        if (CanHandle(imageReference.Registry) == false)
+        {
+            return ExternalOperationResult<RegistryImageConfigurationData>.Unsupported($"Registry '{imageReference.Registry}' is not supported by the OCI registry adapter");
+        }
+
+        return await ExecuteAsync(nameof(GetImageConfigurationAsync),
+                                  imageReference.FullReference,
+                                  $"Registry image configuration lookup failed for '{imageReference.FullReference}'",
+                                  () => GetImageConfigurationCoreAsync(imageReference, cancellationToken)).ConfigureAwait(false);
     }
 
     #endregion // IRegistryMetadataClient

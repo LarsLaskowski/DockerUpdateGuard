@@ -700,7 +700,7 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
 
         await using (responseStream.ConfigureAwait(false))
         {
-            using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: cancellationToken).ConfigureAwait(false);
+            using var jsonDocument = await RemoteJsonDocument.ParseAsync(responseStream, cancellationToken).ConfigureAwait(false);
 
             return TryGetString(jsonDocument.RootElement, "token")
                        ?? TryGetString(jsonDocument.RootElement, "access_token");
@@ -742,7 +742,7 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
 
         await using (responseStream.ConfigureAwait(false))
         {
-            using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: cancellationToken).ConfigureAwait(false);
+            using var jsonDocument = await RemoteJsonDocument.ParseAsync(responseStream, cancellationToken).ConfigureAwait(false);
 
             if (string.Equals(contentType, "application/vnd.docker.distribution.manifest.list.v2+json", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(contentType, "application/vnd.oci.image.index.v1+json", StringComparison.OrdinalIgnoreCase))
@@ -811,7 +811,7 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
 
         await using (responseStream.ConfigureAwait(false))
         {
-            using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: cancellationToken).ConfigureAwait(false);
+            using var jsonDocument = await RemoteJsonDocument.ParseAsync(responseStream, cancellationToken).ConfigureAwait(false);
 
             if (jsonDocument.RootElement.TryGetProperty(ConfigPropertyName, out var configElement))
             {
@@ -857,7 +857,7 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
 
         await using (responseStream.ConfigureAwait(false))
         {
-            using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: cancellationToken).ConfigureAwait(false);
+            using var jsonDocument = await RemoteJsonDocument.ParseAsync(responseStream, cancellationToken).ConfigureAwait(false);
 
             if (jsonDocument.RootElement.TryGetProperty(ConfigPropertyName, out var configElement) == false
                 || configElement.TryGetProperty("Labels", out var labelsElement) == false
@@ -914,7 +914,7 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
 
         await using (responseStream.ConfigureAwait(false))
         {
-            using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: cancellationToken).ConfigureAwait(false);
+            using var jsonDocument = await RemoteJsonDocument.ParseAsync(responseStream, cancellationToken).ConfigureAwait(false);
             var rootElement = jsonDocument.RootElement;
             var environmentVariables = rootElement.TryGetProperty(ConfigPropertyName, out var configElement)
                                        && configElement.ValueKind == JsonValueKind.Object
@@ -1159,8 +1159,8 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
 
         await using (responseStream.ConfigureAwait(false))
         {
-            using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: cancellationToken)
-                                                       .ConfigureAwait(false);
+            using var jsonDocument = await RemoteJsonDocument.ParseAsync(responseStream, cancellationToken)
+                                                             .ConfigureAwait(false);
             var token = TryGetString(jsonDocument.RootElement, "token");
 
             return string.IsNullOrWhiteSpace(token)
@@ -1179,279 +1179,42 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
                && _accessTokenExpiresAtUtc > DateTimeOffset.UtcNow.AddMinutes(1);
     }
 
-    #endregion // Methods
-
-    #region IDockerHubClient
-
-    /// <inheritdoc/>
-    public async Task<ExternalOperationResult<DockerHubAuthenticatedUserData>> GetCurrentUserAsync(CancellationToken cancellationToken = default)
+    /// <summary>
+    /// Run an operation and answer an unexpected exception as a failed result
+    /// </summary>
+    /// <typeparam name="T">Result value type</typeparam>
+    /// <param name="operationName">Operation name for the log entry</param>
+    /// <param name="targetName">Target the operation belongs to</param>
+    /// <param name="failureMessage">Failure message of the failed result</param>
+    /// <param name="operation">Operation to run</param>
+    /// <returns>Result of the operation or a failed result</returns>
+    private async Task<ExternalOperationResult<T>> ExecuteAsync<T>(string operationName,
+                                                                   string targetName,
+                                                                   string failureMessage,
+                                                                   Func<Task<ExternalOperationResult<T>>> operation)
     {
-        if (IsSupportedRegistry(_optionsMonitor.CurrentValue.DockerHub.Registry) == false)
+        try
         {
-            _logger.DockerHubRegistryUnsupported(_optionsMonitor.CurrentValue.DockerHub.Registry, nameof(GetCurrentUserAsync));
-
-            return ExternalOperationResult<DockerHubAuthenticatedUserData>.Unsupported($"Registry '{_optionsMonitor.CurrentValue.DockerHub.Registry}' is not supported by the Docker Hub adapter");
+            return await operation().ConfigureAwait(false);
         }
-
-        using var response = await SendGetAsync("v2/user/", cancellationToken).ConfigureAwait(false);
-
-        if (response.IsSuccessStatusCode == false)
+        catch (JsonException exception)
         {
-            _logger.DockerHubRequestFailed(nameof(GetCurrentUserAsync),
-                                           "current-user",
-                                           (int)response.StatusCode);
+            _logger.DockerHubOperationFailed(exception, operationName, targetName);
 
-            return await CreateFailureResultAsync<DockerHubAuthenticatedUserData>(response,
-                                                                                  "Docker Hub current user lookup failed",
-                                                                                  cancellationToken).ConfigureAwait(false);
-        }
-
-        var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken)
-                                                   .ConfigureAwait(false);
-
-        await using (responseStream.ConfigureAwait(false))
-        {
-            using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: cancellationToken)
-                                                       .ConfigureAwait(false);
-            var userName = ResponseBodyExcerpt.ReplaceControlCharacters(TryGetString(jsonDocument.RootElement, "username"));
-
-            if (string.IsNullOrWhiteSpace(userName))
-            {
-                return ExternalOperationResult<DockerHubAuthenticatedUserData>.Failed("Docker Hub current user response did not contain a username");
-            }
-
-            _logger.DockerHubAuthenticatedAccountResolved(userName);
-
-            return ExternalOperationResult<DockerHubAuthenticatedUserData>.Succeeded(new DockerHubAuthenticatedUserData
-                                                                                     {
-                                                                                         UserName = userName,
-                                                                                     });
+            return ExternalOperationResult<T>.Failed($"{failureMessage}: {FailureReason.InvalidResponse}");
         }
     }
 
-    /// <inheritdoc/>
-    public async Task<ExternalOperationResult<IReadOnlyList<DockerHubRepositoryData>>> GetRepositoriesAsync(string accountName, CancellationToken cancellationToken = default)
+    /// <summary>
+    /// Read every tag page of a repository
+    /// </summary>
+    /// <param name="repository">Repository name</param>
+    /// <param name="repositoryPath">Validated repository path</param>
+    /// <param name="queryOptions">Optional tag query options</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Tag listing result</returns>
+    private async Task<ExternalOperationResult<IReadOnlyList<DockerHubTagData>>> GetTagsCoreAsync(string repository, string repositoryPath, RegistryTagQueryOptions? queryOptions, CancellationToken cancellationToken)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(accountName);
-
-        if (IsSupportedRegistry(_optionsMonitor.CurrentValue.DockerHub.Registry) == false)
-        {
-            _logger.DockerHubRegistryUnsupported(_optionsMonitor.CurrentValue.DockerHub.Registry, nameof(GetRepositoriesAsync));
-
-            return ExternalOperationResult<IReadOnlyList<DockerHubRepositoryData>>.Unsupported($"Registry '{_optionsMonitor.CurrentValue.DockerHub.Registry}' is not supported by the Docker Hub adapter");
-        }
-
-        var repositories = new List<DockerHubRepositoryData>();
-        var apiBaseUri = GetApiBaseUri();
-        Uri? requestUri = new Uri(apiBaseUri, $"v2/repositories/{Uri.EscapeDataString(accountName)}/?page_size=100");
-
-        while (requestUri is not null)
-        {
-            using var response = await SendGetAsync(requestUri, cancellationToken).ConfigureAwait(false);
-
-            if (response.StatusCode == HttpStatusCode.NotFound)
-            {
-                _logger.DockerHubTargetNotFound(nameof(GetRepositoriesAsync), accountName);
-
-                return ExternalOperationResult<IReadOnlyList<DockerHubRepositoryData>>.NotFound($"Docker Hub account '{accountName}' was not found");
-            }
-
-            if (response.IsSuccessStatusCode == false)
-            {
-                _logger.DockerHubRequestFailed(nameof(GetRepositoriesAsync),
-                                               accountName,
-                                               (int)response.StatusCode);
-
-                return await CreateFailureResultAsync<IReadOnlyList<DockerHubRepositoryData>>(response,
-                                                                                              $"Docker Hub repository listing failed for '{accountName}'",
-                                                                                              cancellationToken).ConfigureAwait(false);
-            }
-
-            string? nextLink;
-            var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken)
-                                                       .ConfigureAwait(false);
-
-            await using (responseStream.ConfigureAwait(false))
-            {
-                using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: cancellationToken)
-                                                           .ConfigureAwait(false);
-
-                AppendRepositoryPage(jsonDocument.RootElement, repositories);
-
-                nextLink = TryGetString(jsonDocument.RootElement, "next");
-            }
-
-            if (string.IsNullOrWhiteSpace(nextLink))
-            {
-                requestUri = null;
-
-                continue;
-            }
-
-            var nextUri = PaginationLinkGuard.ResolveNextLink(requestUri, apiBaseUri, nextLink);
-
-            if (nextUri is null)
-            {
-                return RejectPaginationLink<IReadOnlyList<DockerHubRepositoryData>>(nameof(GetRepositoriesAsync),
-                                                                                    accountName,
-                                                                                    $"Docker Hub repository listing for '{accountName}'",
-                                                                                    requestUri,
-                                                                                    nextLink);
-            }
-
-            requestUri = nextUri;
-        }
-
-        _logger.DockerHubRepositoriesListed(accountName, repositories.Count);
-
-        return ExternalOperationResult<IReadOnlyList<DockerHubRepositoryData>>.Succeeded(repositories);
-    }
-
-    /// <inheritdoc/>
-    public async Task<ExternalOperationResult<DockerHubRepositoryData>> GetRepositoryAsync(ImageReference imageReference, CancellationToken cancellationToken = default)
-    {
-        if (IsSupportedRegistry(imageReference.Registry) == false)
-        {
-            _logger.DockerHubRegistryUnsupported(imageReference.Registry, nameof(GetRepositoryAsync));
-
-            return ExternalOperationResult<DockerHubRepositoryData>.Unsupported($"Registry '{imageReference.Registry}' is not supported by the Docker Hub adapter");
-        }
-
-        var repositoryPath = CreateRepositoryPath(imageReference.Repository);
-
-        if (repositoryPath is null)
-        {
-            return ExternalOperationResult<DockerHubRepositoryData>.NotFound(RegistryReferenceValidator.DotSegmentMessage);
-        }
-
-        using var activity = DockerUpdateGuardTelemetry.ActivitySource.StartActivity(TelemetryActivityNames.DockerHubRequest, ActivityKind.Client);
-
-        activity?.SetTag(TelemetryTagNames.ImageReference, imageReference.FullReference);
-
-        using var response = await SendGetAsync($"v2/namespaces/{CreateRepositoryApiPath(repositoryPath)}", cancellationToken).ConfigureAwait(false);
-
-        if (response.StatusCode == HttpStatusCode.NotFound)
-        {
-            _logger.DockerHubTargetNotFound(nameof(GetRepositoryAsync), imageReference.Repository);
-
-            return ExternalOperationResult<DockerHubRepositoryData>.NotFound($"Repository '{imageReference.Repository}' was not found in Docker Hub");
-        }
-
-        if (response.IsSuccessStatusCode == false)
-        {
-            _logger.DockerHubRequestFailed(nameof(GetRepositoryAsync),
-                                           imageReference.Repository,
-                                           (int)response.StatusCode);
-
-            return await CreateFailureResultAsync<DockerHubRepositoryData>(response,
-                                                                           $"Repository metadata lookup failed for '{imageReference.Repository}'",
-                                                                           cancellationToken).ConfigureAwait(false);
-        }
-
-        var responseStream = await response.Content
-                                           .ReadAsStreamAsync(cancellationToken)
-                                           .ConfigureAwait(false);
-
-        await using (responseStream.ConfigureAwait(false))
-        {
-            using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: cancellationToken)
-                                                       .ConfigureAwait(false);
-            var root = jsonDocument.RootElement;
-            var repositoryData = new DockerHubRepositoryData
-                                 {
-                                     Registry = imageReference.Registry,
-                                     Repository = imageReference.Repository,
-                                     Description = ResponseBodyExcerpt.ReplaceControlCharacters(TryGetString(root, "description")),
-                                     LastUpdatedAtUtc = TryGetDateTimeOffset(root, "last_updated"),
-                                 };
-
-            return ExternalOperationResult<DockerHubRepositoryData>.Succeeded(repositoryData);
-        }
-    }
-
-    /// <inheritdoc/>
-    public async Task<ExternalOperationResult<DockerHubTagData>> GetTagAsync(ImageReference imageReference,
-                                                                             string? operatingSystem = null,
-                                                                             string? architecture = null,
-                                                                             CancellationToken cancellationToken = default)
-    {
-        if (IsSupportedRegistry(imageReference.Registry) == false)
-        {
-            _logger.DockerHubRegistryUnsupported(imageReference.Registry, nameof(GetTagAsync));
-
-            return ExternalOperationResult<DockerHubTagData>.Unsupported($"Registry '{imageReference.Registry}' is not supported by the Docker Hub adapter");
-        }
-
-        if (RegistryReferenceValidator.IsValidTag(imageReference.Tag) == false)
-        {
-            return ExternalOperationResult<DockerHubTagData>.NotFound(RegistryReferenceValidator.InvalidTagMessage);
-        }
-
-        var repositoryPath = CreateRepositoryPath(imageReference.Repository);
-
-        if (repositoryPath is null)
-        {
-            return ExternalOperationResult<DockerHubTagData>.NotFound(RegistryReferenceValidator.DotSegmentMessage);
-        }
-
-        using var activity = DockerUpdateGuardTelemetry.ActivitySource.StartActivity(TelemetryActivityNames.DockerHubRequest, ActivityKind.Client);
-
-        activity?.SetTag(TelemetryTagNames.ImageReference, imageReference.FullReference);
-
-        using var response = await SendGetAsync($"v2/namespaces/{CreateRepositoryApiPath(repositoryPath)}/tags/{Uri.EscapeDataString(imageReference.Tag)}", cancellationToken).ConfigureAwait(false);
-
-        if (response.StatusCode == HttpStatusCode.NotFound)
-        {
-            _logger.DockerHubTargetNotFound(nameof(GetTagAsync), imageReference.FullReference);
-
-            return ExternalOperationResult<DockerHubTagData>.NotFound($"Tag '{imageReference.Tag}' was not found for '{imageReference.Repository}'");
-        }
-
-        if (response.IsSuccessStatusCode == false)
-        {
-            _logger.DockerHubRequestFailed(nameof(GetTagAsync),
-                                           imageReference.FullReference,
-                                           (int)response.StatusCode);
-
-            return await CreateFailureResultAsync<DockerHubTagData>(response,
-                                                                    $"Tag metadata lookup failed for '{imageReference.FullReference}'",
-                                                                    cancellationToken).ConfigureAwait(false);
-        }
-
-        var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken)
-                                                   .ConfigureAwait(false);
-
-        await using (responseStream.ConfigureAwait(false))
-        {
-            using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: cancellationToken)
-                                                       .ConfigureAwait(false);
-
-            return ExternalOperationResult<DockerHubTagData>.Succeeded(CreateTagData(jsonDocument.RootElement, imageReference.Tag));
-        }
-    }
-
-    /// <inheritdoc/>
-    public async Task<ExternalOperationResult<IReadOnlyList<DockerHubTagData>>> GetTagsAsync(string registry,
-                                                                                             string repository,
-                                                                                             string? operatingSystem = null,
-                                                                                             string? architecture = null,
-                                                                                             RegistryTagQueryOptions? queryOptions = null,
-                                                                                             CancellationToken cancellationToken = default)
-    {
-        if (IsSupportedRegistry(registry) == false)
-        {
-            _logger.DockerHubRegistryUnsupported(registry, nameof(GetTagsAsync));
-
-            return ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Unsupported($"Registry '{registry}' is not supported by the Docker Hub adapter");
-        }
-
-        var repositoryPath = CreateRepositoryPath(repository);
-
-        if (repositoryPath is null)
-        {
-            return ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.NotFound(RegistryReferenceValidator.DotSegmentMessage);
-        }
-
         var apiBaseUri = GetApiBaseUri();
         Uri? requestUri = new Uri(apiBaseUri, $"v2/namespaces/{CreateRepositoryApiPath(repositoryPath)}/tags?page_size=100");
         var results = new List<DockerHubTagData>();
@@ -1485,8 +1248,8 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
 
             await using (responseStream.ConfigureAwait(false))
             {
-                using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: cancellationToken)
-                                                           .ConfigureAwait(false);
+                using var jsonDocument = await RemoteJsonDocument.ParseAsync(responseStream, cancellationToken)
+                                                                 .ConfigureAwait(false);
 
                 nextLink = AppendTagPage(jsonDocument.RootElement,
                                          queryOptions,
@@ -1518,6 +1281,309 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
         }
 
         return ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Succeeded(results);
+    }
+
+    #endregion // Methods
+
+    #region IDockerHubClient
+
+    /// <inheritdoc/>
+    public async Task<ExternalOperationResult<DockerHubAuthenticatedUserData>> GetCurrentUserAsync(CancellationToken cancellationToken = default)
+    {
+        if (IsSupportedRegistry(_optionsMonitor.CurrentValue.DockerHub.Registry) == false)
+        {
+            _logger.DockerHubRegistryUnsupported(_optionsMonitor.CurrentValue.DockerHub.Registry, nameof(GetCurrentUserAsync));
+
+            return ExternalOperationResult<DockerHubAuthenticatedUserData>.Unsupported($"Registry '{_optionsMonitor.CurrentValue.DockerHub.Registry}' is not supported by the Docker Hub adapter");
+        }
+
+        return await ExecuteAsync(nameof(GetCurrentUserAsync),
+                                  "current-user",
+                                  "Docker Hub current user lookup failed",
+                                  async () =>
+                                  {
+                                      using var response = await SendGetAsync("v2/user/", cancellationToken).ConfigureAwait(false);
+
+                                      if (response.IsSuccessStatusCode == false)
+                                      {
+                                          _logger.DockerHubRequestFailed(nameof(GetCurrentUserAsync),
+                                                                         "current-user",
+                                                                         (int)response.StatusCode);
+
+                                          return await CreateFailureResultAsync<DockerHubAuthenticatedUserData>(response,
+                                                                                                                "Docker Hub current user lookup failed",
+                                                                                                                cancellationToken).ConfigureAwait(false);
+                                      }
+
+                                      var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken)
+                                                                                 .ConfigureAwait(false);
+
+                                      await using (responseStream.ConfigureAwait(false))
+                                      {
+                                          using var jsonDocument = await RemoteJsonDocument.ParseAsync(responseStream, cancellationToken)
+                                                                                           .ConfigureAwait(false);
+                                          var userName = ResponseBodyExcerpt.ReplaceControlCharacters(TryGetString(jsonDocument.RootElement, "username"));
+
+                                          if (string.IsNullOrWhiteSpace(userName))
+                                          {
+                                              return ExternalOperationResult<DockerHubAuthenticatedUserData>.Failed("Docker Hub current user response did not contain a username");
+                                          }
+
+                                          _logger.DockerHubAuthenticatedAccountResolved(userName);
+
+                                          return ExternalOperationResult<DockerHubAuthenticatedUserData>.Succeeded(new DockerHubAuthenticatedUserData
+                                                                                                                   {
+                                                                                                                       UserName = userName,
+                                                                                                                   });
+                                      }
+                                  }).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc/>
+    public async Task<ExternalOperationResult<IReadOnlyList<DockerHubRepositoryData>>> GetRepositoriesAsync(string accountName, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(accountName);
+
+        if (IsSupportedRegistry(_optionsMonitor.CurrentValue.DockerHub.Registry) == false)
+        {
+            _logger.DockerHubRegistryUnsupported(_optionsMonitor.CurrentValue.DockerHub.Registry, nameof(GetRepositoriesAsync));
+
+            return ExternalOperationResult<IReadOnlyList<DockerHubRepositoryData>>.Unsupported($"Registry '{_optionsMonitor.CurrentValue.DockerHub.Registry}' is not supported by the Docker Hub adapter");
+        }
+
+        return await ExecuteAsync(nameof(GetRepositoriesAsync),
+                                  accountName,
+                                  $"Docker Hub repository listing failed for '{accountName}'",
+                                  async () =>
+                                  {
+                                      var repositories = new List<DockerHubRepositoryData>();
+                                      var apiBaseUri = GetApiBaseUri();
+                                      Uri? requestUri = new Uri(apiBaseUri, $"v2/repositories/{Uri.EscapeDataString(accountName)}/?page_size=100");
+
+                                      while (requestUri is not null)
+                                      {
+                                          using var response = await SendGetAsync(requestUri, cancellationToken).ConfigureAwait(false);
+
+                                          if (response.StatusCode == HttpStatusCode.NotFound)
+                                          {
+                                              _logger.DockerHubTargetNotFound(nameof(GetRepositoriesAsync), accountName);
+
+                                              return ExternalOperationResult<IReadOnlyList<DockerHubRepositoryData>>.NotFound($"Docker Hub account '{accountName}' was not found");
+                                          }
+
+                                          if (response.IsSuccessStatusCode == false)
+                                          {
+                                              _logger.DockerHubRequestFailed(nameof(GetRepositoriesAsync),
+                                                                             accountName,
+                                                                             (int)response.StatusCode);
+
+                                              return await CreateFailureResultAsync<IReadOnlyList<DockerHubRepositoryData>>(response,
+                                                                                                                            $"Docker Hub repository listing failed for '{accountName}'",
+                                                                                                                            cancellationToken).ConfigureAwait(false);
+                                          }
+
+                                          string? nextLink;
+                                          var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken)
+                                                                                     .ConfigureAwait(false);
+
+                                          await using (responseStream.ConfigureAwait(false))
+                                          {
+                                              using var jsonDocument = await RemoteJsonDocument.ParseAsync(responseStream, cancellationToken)
+                                                                                               .ConfigureAwait(false);
+
+                                              AppendRepositoryPage(jsonDocument.RootElement, repositories);
+
+                                              nextLink = TryGetString(jsonDocument.RootElement, "next");
+                                          }
+
+                                          if (string.IsNullOrWhiteSpace(nextLink))
+                                          {
+                                              requestUri = null;
+
+                                              continue;
+                                          }
+
+                                          var nextUri = PaginationLinkGuard.ResolveNextLink(requestUri, apiBaseUri, nextLink);
+
+                                          if (nextUri is null)
+                                          {
+                                              return RejectPaginationLink<IReadOnlyList<DockerHubRepositoryData>>(nameof(GetRepositoriesAsync),
+                                                                                                                  accountName,
+                                                                                                                  $"Docker Hub repository listing for '{accountName}'",
+                                                                                                                  requestUri,
+                                                                                                                  nextLink);
+                                          }
+
+                                          requestUri = nextUri;
+                                      }
+
+                                      _logger.DockerHubRepositoriesListed(accountName, repositories.Count);
+
+                                      return ExternalOperationResult<IReadOnlyList<DockerHubRepositoryData>>.Succeeded(repositories);
+                                  }).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc/>
+    public async Task<ExternalOperationResult<DockerHubRepositoryData>> GetRepositoryAsync(ImageReference imageReference, CancellationToken cancellationToken = default)
+    {
+        if (IsSupportedRegistry(imageReference.Registry) == false)
+        {
+            _logger.DockerHubRegistryUnsupported(imageReference.Registry, nameof(GetRepositoryAsync));
+
+            return ExternalOperationResult<DockerHubRepositoryData>.Unsupported($"Registry '{imageReference.Registry}' is not supported by the Docker Hub adapter");
+        }
+
+        var repositoryPath = CreateRepositoryPath(imageReference.Repository);
+
+        if (repositoryPath is null)
+        {
+            return ExternalOperationResult<DockerHubRepositoryData>.NotFound(RegistryReferenceValidator.DotSegmentMessage);
+        }
+
+        using var activity = DockerUpdateGuardTelemetry.ActivitySource.StartActivity(TelemetryActivityNames.DockerHubRequest, ActivityKind.Client);
+
+        activity?.SetTag(TelemetryTagNames.ImageReference, imageReference.FullReference);
+
+        return await ExecuteAsync(nameof(GetRepositoryAsync),
+                                  imageReference.Repository,
+                                  $"Repository metadata lookup failed for '{imageReference.Repository}'",
+                                  async () =>
+                                  {
+                                      using var response = await SendGetAsync($"v2/namespaces/{CreateRepositoryApiPath(repositoryPath)}", cancellationToken).ConfigureAwait(false);
+
+                                      if (response.StatusCode == HttpStatusCode.NotFound)
+                                      {
+                                          _logger.DockerHubTargetNotFound(nameof(GetRepositoryAsync), imageReference.Repository);
+
+                                          return ExternalOperationResult<DockerHubRepositoryData>.NotFound($"Repository '{imageReference.Repository}' was not found in Docker Hub");
+                                      }
+
+                                      if (response.IsSuccessStatusCode == false)
+                                      {
+                                          _logger.DockerHubRequestFailed(nameof(GetRepositoryAsync),
+                                                                         imageReference.Repository,
+                                                                         (int)response.StatusCode);
+
+                                          return await CreateFailureResultAsync<DockerHubRepositoryData>(response,
+                                                                                                         $"Repository metadata lookup failed for '{imageReference.Repository}'",
+                                                                                                         cancellationToken).ConfigureAwait(false);
+                                      }
+
+                                      var responseStream = await response.Content
+                                                                         .ReadAsStreamAsync(cancellationToken)
+                                                                         .ConfigureAwait(false);
+
+                                      await using (responseStream.ConfigureAwait(false))
+                                      {
+                                          using var jsonDocument = await RemoteJsonDocument.ParseAsync(responseStream, cancellationToken)
+                                                                                           .ConfigureAwait(false);
+                                          var root = jsonDocument.RootElement;
+                                          var repositoryData = new DockerHubRepositoryData
+                                                               {
+                                                                   Registry = imageReference.Registry,
+                                                                   Repository = imageReference.Repository,
+                                                                   Description = ResponseBodyExcerpt.ReplaceControlCharacters(TryGetString(root, "description")),
+                                                                   LastUpdatedAtUtc = TryGetDateTimeOffset(root, "last_updated"),
+                                                               };
+
+                                          return ExternalOperationResult<DockerHubRepositoryData>.Succeeded(repositoryData);
+                                      }
+                                  }).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc/>
+    public async Task<ExternalOperationResult<DockerHubTagData>> GetTagAsync(ImageReference imageReference,
+                                                                             string? operatingSystem = null,
+                                                                             string? architecture = null,
+                                                                             CancellationToken cancellationToken = default)
+    {
+        if (IsSupportedRegistry(imageReference.Registry) == false)
+        {
+            _logger.DockerHubRegistryUnsupported(imageReference.Registry, nameof(GetTagAsync));
+
+            return ExternalOperationResult<DockerHubTagData>.Unsupported($"Registry '{imageReference.Registry}' is not supported by the Docker Hub adapter");
+        }
+
+        if (RegistryReferenceValidator.IsValidTag(imageReference.Tag) == false)
+        {
+            return ExternalOperationResult<DockerHubTagData>.NotFound(RegistryReferenceValidator.InvalidTagMessage);
+        }
+
+        var repositoryPath = CreateRepositoryPath(imageReference.Repository);
+
+        if (repositoryPath is null)
+        {
+            return ExternalOperationResult<DockerHubTagData>.NotFound(RegistryReferenceValidator.DotSegmentMessage);
+        }
+
+        using var activity = DockerUpdateGuardTelemetry.ActivitySource.StartActivity(TelemetryActivityNames.DockerHubRequest, ActivityKind.Client);
+
+        activity?.SetTag(TelemetryTagNames.ImageReference, imageReference.FullReference);
+
+        return await ExecuteAsync(nameof(GetTagAsync),
+                                  imageReference.FullReference,
+                                  $"Tag metadata lookup failed for '{imageReference.FullReference}'",
+                                  async () =>
+                                  {
+                                      using var response = await SendGetAsync($"v2/namespaces/{CreateRepositoryApiPath(repositoryPath)}/tags/{Uri.EscapeDataString(imageReference.Tag)}", cancellationToken).ConfigureAwait(false);
+
+                                      if (response.StatusCode == HttpStatusCode.NotFound)
+                                      {
+                                          _logger.DockerHubTargetNotFound(nameof(GetTagAsync), imageReference.FullReference);
+
+                                          return ExternalOperationResult<DockerHubTagData>.NotFound($"Tag '{imageReference.Tag}' was not found for '{imageReference.Repository}'");
+                                      }
+
+                                      if (response.IsSuccessStatusCode == false)
+                                      {
+                                          _logger.DockerHubRequestFailed(nameof(GetTagAsync),
+                                                                         imageReference.FullReference,
+                                                                         (int)response.StatusCode);
+
+                                          return await CreateFailureResultAsync<DockerHubTagData>(response,
+                                                                                                  $"Tag metadata lookup failed for '{imageReference.FullReference}'",
+                                                                                                  cancellationToken).ConfigureAwait(false);
+                                      }
+
+                                      var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken)
+                                                                                 .ConfigureAwait(false);
+
+                                      await using (responseStream.ConfigureAwait(false))
+                                      {
+                                          using var jsonDocument = await RemoteJsonDocument.ParseAsync(responseStream, cancellationToken)
+                                                                                           .ConfigureAwait(false);
+
+                                          return ExternalOperationResult<DockerHubTagData>.Succeeded(CreateTagData(jsonDocument.RootElement, imageReference.Tag));
+                                      }
+                                  }).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc/>
+    public async Task<ExternalOperationResult<IReadOnlyList<DockerHubTagData>>> GetTagsAsync(string registry,
+                                                                                             string repository,
+                                                                                             string? operatingSystem = null,
+                                                                                             string? architecture = null,
+                                                                                             RegistryTagQueryOptions? queryOptions = null,
+                                                                                             CancellationToken cancellationToken = default)
+    {
+        if (IsSupportedRegistry(registry) == false)
+        {
+            _logger.DockerHubRegistryUnsupported(registry, nameof(GetTagsAsync));
+
+            return ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Unsupported($"Registry '{registry}' is not supported by the Docker Hub adapter");
+        }
+
+        var repositoryPath = CreateRepositoryPath(repository);
+
+        if (repositoryPath is null)
+        {
+            return ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.NotFound(RegistryReferenceValidator.DotSegmentMessage);
+        }
+
+        return await ExecuteAsync(nameof(GetTagsAsync),
+                                  repository,
+                                  $"Tag lookup failed for '{repository}'",
+                                  () => GetTagsCoreAsync(repository, repositoryPath, queryOptions, cancellationToken)).ConfigureAwait(false);
     }
 
     /// <inheritdoc/>
