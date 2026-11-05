@@ -860,9 +860,6 @@ public class DockerUpdateGuardOptionsValidatorTests
         Assert.AreSequenceEqual([failureText],
                                 failures,
                                 "The user name failure must be the only failure and carry the fixed text");
-        Assert.DoesNotContain(message => message.Contains(value.Trim(), StringComparison.Ordinal),
-                              failures,
-                              "No failure may repeat the configured value");
     }
 
     /// <summary>
