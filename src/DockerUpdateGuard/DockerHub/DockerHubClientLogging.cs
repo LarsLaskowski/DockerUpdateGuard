@@ -160,5 +160,20 @@ internal static partial class DockerHubClientLogging
                                                                        Exception exception,
                                                                        string imageReference);
 
+    /// <summary>
+    /// Log that a Docker Hub operation failed with an exception
+    /// </summary>
+    /// <param name="logger">Logger</param>
+    /// <param name="exception">Exception</param>
+    /// <param name="operationName">Operation name</param>
+    /// <param name="targetName">Target the operation belongs to</param>
+    [LoggerMessage(EventId = 3213,
+                   Level = LogLevel.Warning,
+                   Message = "Docker Hub {OperationName} request for {TargetName} failed")]
+    public static partial void DockerHubOperationFailed(this ILogger logger,
+                                                        Exception exception,
+                                                        string operationName,
+                                                        string targetName);
+
     #endregion // Methods
 }

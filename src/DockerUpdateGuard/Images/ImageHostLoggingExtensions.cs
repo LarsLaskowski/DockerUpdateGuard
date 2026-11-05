@@ -706,5 +706,20 @@ internal static partial class ImageHostLoggingExtensions
                                                                  string repository,
                                                                  string rejectedOrigin);
 
+    /// <summary>
+    /// Log that a registry operation failed with an exception
+    /// </summary>
+    /// <param name="logger">Logger</param>
+    /// <param name="exception">Exception</param>
+    /// <param name="operationName">Operation name</param>
+    /// <param name="targetName">Target the operation belongs to</param>
+    [LoggerMessage(EventId = 2100,
+                   Level = LogLevel.Warning,
+                   Message = "Registry {OperationName} request for {TargetName} failed")]
+    public static partial void OciRegistryOperationFailed(this ILogger logger,
+                                                          Exception exception,
+                                                          string operationName,
+                                                          string targetName);
+
     #endregion // Methods
 }

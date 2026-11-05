@@ -1179,6 +1179,25 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
                && _accessTokenExpiresAtUtc > DateTimeOffset.UtcNow.AddMinutes(1);
     }
 
+    /// <summary>
+    /// Run an operation and answer an unexpected exception as a failed result
+    /// </summary>
+    /// <typeparam name="T">Result value type</typeparam>
+    /// <param name="operationName">Operation name for the log entry</param>
+    /// <param name="targetName">Target the operation belongs to</param>
+    /// <param name="failureMessage">Failure message of the failed result</param>
+    /// <param name="operation">Operation to run</param>
+    /// <returns>Result of the operation or a failed result</returns>
+    private async Task<ExternalOperationResult<T>> ExecuteAsync<T>(string operationName,
+                                                                   string targetName,
+                                                                   string failureMessage,
+                                                                   Func<Task<ExternalOperationResult<T>>> operation)
+    {
+        await Task.CompletedTask.ConfigureAwait(false);
+
+        throw new InvalidOperationException("Skeleton: not implemented");
+    }
+
     #endregion // Methods
 
     #region IDockerHubClient
