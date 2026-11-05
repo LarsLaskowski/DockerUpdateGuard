@@ -38,6 +38,11 @@ public partial class DockerInstanceClientTests
                                                   { "Id": "sha256:local-image", "RepoDigests": [] }
                                                   """;
 
+    /// <summary>
+    /// Escape of a lone high surrogate
+    /// </summary>
+    private const string LoneSurrogateEscape = """\ud800""";
+
     #endregion // Constants
 
     #region Properties
@@ -50,6 +55,105 @@ public partial class DockerInstanceClientTests
     #endregion // Properties
 
     #region Methods
+
+    /// <summary>
+    /// Verify container discovery reports an answer with a string that does not decode as an invalid response
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerInstanceClientDiscoverContainersAsyncWhenBodyHasLoneSurrogateReturnsInvalidResponseAsync()
+    {
+        var body = $$"""[ { "Id": "c1", "Names": ["/na{{LoneSurrogateEscape}}me"] } ]""";
+
+        await AssertInvalidResponseAsync("Discovery", body, "Docker container discovery failed for 'Production': invalid response", 3104).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Verify resource sampling reports a container list with a string that does not decode as an invalid response
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerInstanceClientCollectContainerResourceUsageAsyncWhenContainerListHasLoneSurrogateReturnsInvalidResponseAsync()
+    {
+        var body = $$"""[ { "Id": "c1", "Names": ["/na{{LoneSurrogateEscape}}me"] } ]""";
+
+        await AssertInvalidResponseAsync("Sampling", body, "Docker container resource sampling failed for 'Production': invalid response", 3107).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Verify image inspect reports an answer with a string that does not decode as an invalid response
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerInstanceClientInspectImageAsyncWhenBodyHasLoneSurrogateReturnsInvalidResponseAsync()
+    {
+        var body = $$"""{ "Id": "sha256:local-image", "Os": "li{{LoneSurrogateEscape}}nux" }""";
+
+        await AssertInvalidResponseAsync("Inspect", body, "Docker image inspect failed for 'Production': invalid response", 3108).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Verify image history reports an answer with a string that does not decode as an invalid response
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerInstanceClientGetImageHistoryAsyncWhenBodyHasLoneSurrogateReturnsInvalidResponseAsync()
+    {
+        var body = $$"""[ { "Created": "2025-06-02T12:00:00Z", "CreatedBy": "x{{LoneSurrogateEscape}}" } ]""";
+
+        await AssertInvalidResponseAsync("History", body, "Docker image history failed for 'Production': invalid response", 3109).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Verify host info reports an answer with a string that does not decode as an invalid response
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerInstanceClientGetHostMemoryTotalAsyncWhenBodyHasLoneSurrogateReturnsInvalidResponseAsync()
+    {
+        var body = $$"""{ "MemTotal": 1024, "Name": "ho{{LoneSurrogateEscape}}st" }""";
+
+        await AssertInvalidResponseAsync("HostInfo", body, "Docker host info request failed for 'Production': invalid response", 3110).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Verify resource sampling skips a container whose stats body cannot be read and keeps the samples of the others
+    /// </summary>
+    /// <param name="statsBody">Stats body of the first container</param>
+    /// <param name="hasEscape">Whether the body holds the escape of a lone surrogate</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [DataRow("""{ "read": "2025-06-01T12:00:00Z", "name": "\ud800" }""", true)]
+    [DataRow("""{ "read": """, false)]
+    public async Task DockerInstanceClientCollectContainerResourceUsageAsyncWhenOneStatsBodyHasLoneSurrogateSkipsThatContainerAsync(string statsBody, bool hasEscape)
+    {
+        if (hasEscape)
+        {
+            Assert.Contains("\\ud800", statsBody, "The test input must carry the escaped lone surrogate");
+        }
+
+        using var handler = new SequenceHttpMessageHandler();
+        using var httpClient = new HttpClient(handler)
+                               {
+                                   BaseAddress = new Uri("https://docker.example.test/"),
+                               };
+
+        handler.AddJsonResponse("https://docker.example.test/v1.41/containers/json",
+                                """[ { "Id": "bad", "Names": ["/bad"] }, { "Id": "ok", "Names": ["/fine"] } ]""");
+        handler.AddJsonResponse("https://docker.example.test/v1.41/containers/bad/stats?stream=false", statsBody);
+        handler.AddJsonResponse("https://docker.example.test/v1.41/containers/ok/stats?stream=false", """{ "read": "2025-06-01T12:00:00Z" }""");
+
+        var client = new DockerInstanceClient(new TestLogger<DockerInstanceClient>(), (_, _) => httpClient);
+
+        var result = await client.CollectContainerResourceUsageAsync(CreateInstanceOptions(), TestContext.CancellationToken).ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "One unreadable stats body must not fail the sampling");
+        Assert.IsNotNull(result.Data, "Sampling must return the samples");
+
+        var sample = Assert.ContainsSingle(result.Data, "Only the container with a readable stats body must be sampled");
+
+        Assert.AreEqual("ok", sample.ContainerId, "The sample must belong to the container with the readable stats body");
+    }
 
     /// <summary>
     /// Verify disabled Docker instances return a not-configured result and log the skip decision
@@ -1600,6 +1704,58 @@ public partial class DockerInstanceClientTests
         Assert.IsNotNull(handler, "The Docker HTTP-client factory must create a socket handler for http and https endpoints");
 
         return handler.SslOptions.ClientCertificates;
+    }
+
+    /// <summary>
+    /// Create a JSON response
+    /// </summary>
+    /// <param name="json">JSON content</param>
+    /// <returns>Response</returns>
+    private static HttpResponseMessage CreateJsonResponse(string json)
+    {
+        return new HttpResponseMessage(HttpStatusCode.OK)
+               {
+                   Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json"),
+               };
+    }
+
+    /// <summary>
+    /// Run one Docker Engine operation against an answer and assert it ends as failed with the invalid-response reason and a logged exception
+    /// </summary>
+    /// <param name="operation">Name of the operation</param>
+    /// <param name="body">Answer body of every request</param>
+    /// <param name="expectedMessage">Expected failure message</param>
+    /// <param name="eventId">Expected event id of the logged failure</param>
+    /// <returns>Task</returns>
+    private async Task AssertInvalidResponseAsync(string operation, string body, string expectedMessage, int eventId)
+    {
+        Assert.Contains("\\ud800", body, "The test input must carry the escaped lone surrogate");
+
+        var logger = new TestLogger<DockerInstanceClient>();
+
+        using var handler = new DelegateHttpMessageHandler(_ => CreateJsonResponse(body));
+        using var httpClient = new HttpClient(handler)
+                               {
+                                   BaseAddress = new Uri("https://docker.example.test/"),
+                               };
+
+        var client = new DockerInstanceClient(logger, (_, _) => httpClient);
+        var instanceOptions = CreateInstanceOptions();
+
+        var (status, message) = operation switch
+                                {
+                                    "Discovery" => Summarize(await client.DiscoverContainersAsync(instanceOptions, TestContext.CancellationToken).ConfigureAwait(false)),
+                                    "Sampling" => Summarize(await client.CollectContainerResourceUsageAsync(instanceOptions, TestContext.CancellationToken).ConfigureAwait(false)),
+                                    "Inspect" => Summarize(await client.InspectImageAsync(instanceOptions, PooledImageReference, TestContext.CancellationToken).ConfigureAwait(false)),
+                                    "History" => Summarize(await client.GetImageHistoryAsync(instanceOptions, PooledImageReference, TestContext.CancellationToken).ConfigureAwait(false)),
+                                    _ => Summarize(await client.GetHostMemoryTotalAsync(instanceOptions, TestContext.CancellationToken).ConfigureAwait(false)),
+                                };
+
+        Assert.AreEqual(ExternalOperationStatus.Failed, status, "An unreadable Engine answer must end the operation as failed");
+        Assert.AreEqual(expectedMessage, message, "An unreadable Engine answer must report the fixed invalid-response reason");
+        Assert.Contains(entry => entry.EventId.Id == eventId && entry.Exception is not null,
+                        logger.Entries,
+                        "The failure must be logged with the exception");
     }
 
     #endregion // Methods

@@ -31,9 +31,200 @@ public partial class OciRegistryClientTests
                                             + "abcd.abcd.abcd.abcd.abcd.abcd.abcd.abcd.abcd.abcd."
                                             + "a";
 
+    /// <summary>
+    /// Escape of a lone high surrogate
+    /// </summary>
+    private const string LoneSurrogateEscape = """\ud800""";
+
     #endregion // Constants
 
     #region Methods
+
+    /// <summary>
+    /// Verify a tag lookup whose manifest has a string that does not decode is answered as an invalid response
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task OciRegistryClientGetTagAsyncWhenManifestHasLoneSurrogateReturnsInvalidResponseAsync()
+    {
+        var manifestJson = $$"""{ "schemaVersion": 2, "config": { "digest": "sha256:c{{LoneSurrogateEscape}}" } }""";
+
+        Assert.Contains("\\ud800", manifestJson, "The test input must carry the escaped lone surrogate");
+
+        using var handler = new SequenceHttpMessageHandler();
+        using var httpClient = new HttpClient(handler);
+
+        handler.AddResponse("https://mcr.microsoft.com/v2/mssql/server/manifests/latest", CreateManifestResponse("sha256:manifest", manifestJson));
+
+        var logger = new TestLogger<OciRegistryClient>();
+        var client = new OciRegistryClient(httpClient, logger);
+        var imageReference = new ImageReference
+                             {
+                                 Registry = "mcr.microsoft.com",
+                                 Repository = "mssql/server",
+                                 Tag = "latest",
+                             };
+
+        var result = await client.GetTagAsync(imageReference, "linux", "arm64", CancellationToken.None).ConfigureAwait(false);
+
+        AssertInvalidResponse(result, $"Registry tag lookup failed for '{imageReference.FullReference}': invalid response", imageReference.FullReference, logger);
+    }
+
+    /// <summary>
+    /// Verify a tag lookup whose token answer has a string that does not decode is answered as an invalid response
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task OciRegistryClientGetTagAsyncWhenTokenBodyHasLoneSurrogateReturnsInvalidResponseAsync()
+    {
+        var tokenJson = $$"""{ "access_token": "mcr-token", "detail": "{{LoneSurrogateEscape}}" }""";
+
+        Assert.Contains("\\ud800", tokenJson, "The test input must carry the escaped lone surrogate");
+
+        using var handler = new SequenceHttpMessageHandler();
+        using var httpClient = new HttpClient(handler);
+
+        handler.AddResponse("https://mcr.microsoft.com/v2/mssql/server/manifests/latest",
+                            CreateUnauthorizedResponse("https://mcr.microsoft.com/oauth2/token",
+                                                       "mcr.microsoft.com",
+                                                       "repository:mssql/server:pull"));
+        handler.AddJsonResponse("https://mcr.microsoft.com/oauth2/token?service=mcr.microsoft.com&scope=repository%3Amssql%2Fserver%3Apull", tokenJson);
+        handler.AddResponse("https://mcr.microsoft.com/v2/mssql/server/manifests/latest",
+                            CreateManifestResponse("sha256:manifest", """{ "schemaVersion": 2, "config": { "digest": "sha256:config" } }"""));
+
+        var logger = new TestLogger<OciRegistryClient>();
+        var client = new OciRegistryClient(httpClient, logger);
+        var imageReference = new ImageReference
+                             {
+                                 Registry = "mcr.microsoft.com",
+                                 Repository = "mssql/server",
+                                 Tag = "latest",
+                             };
+
+        var result = await client.GetTagAsync(imageReference, "linux", "arm64", CancellationToken.None).ConfigureAwait(false);
+
+        AssertInvalidResponse(result, $"Registry tag lookup failed for '{imageReference.FullReference}': invalid response", imageReference.FullReference, logger);
+    }
+
+    /// <summary>
+    /// Verify a tag listing whose tag list has a string that does not decode is answered as an invalid response
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task OciRegistryClientGetTagsAsyncWhenTagListHasLoneSurrogateReturnsInvalidResponseAsync()
+    {
+        var tagListJson = $$"""{ "name": "mssql/server", "tags": [ "1.0{{LoneSurrogateEscape}}" ] }""";
+
+        Assert.Contains("\\ud800", tagListJson, "The test input must carry the escaped lone surrogate");
+
+        using var handler = new SequenceHttpMessageHandler();
+        using var httpClient = new HttpClient(handler);
+
+        handler.AddJsonResponse("https://mcr.microsoft.com/v2/mssql/server/tags/list?n=100", tagListJson);
+
+        var logger = new TestLogger<OciRegistryClient>();
+        var client = new OciRegistryClient(httpClient, logger);
+
+        var result = await client.GetTagsAsync("mcr.microsoft.com", "mssql/server", cancellationToken: CancellationToken.None).ConfigureAwait(false);
+
+        AssertInvalidResponse(result, "Tag lookup failed for 'mcr.microsoft.com/mssql/server': invalid response", "mcr.microsoft.com/mssql/server", logger);
+    }
+
+    /// <summary>
+    /// Verify a tag listing in which only one manifest has a string that does not decode succeeds and lists that tag by name only
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task OciRegistryClientGetTagsAsyncWhenOneManifestHasLoneSurrogateListsThatTagByNameAsync()
+    {
+        var manifestJson = $$"""{ "schemaVersion": 2, "config": { "digest": "sha256:c{{LoneSurrogateEscape}}" } }""";
+
+        Assert.Contains("\\ud800", manifestJson, "The test input must carry the escaped lone surrogate");
+
+        using var handler = new SequenceHttpMessageHandler();
+        using var httpClient = new HttpClient(handler);
+
+        handler.AddJsonResponse("https://mcr.microsoft.com/v2/mssql/server/tags/list?n=100", """{ "name": "mssql/server", "tags": [ "1.0", "2.0" ] }""");
+        handler.AddResponse("https://mcr.microsoft.com/v2/mssql/server/manifests/1.0",
+                            CreateManifestResponse("sha256:one", """{ "schemaVersion": 2, "config": { "digest": "sha256:config1" } }"""));
+        handler.AddResponse("https://mcr.microsoft.com/v2/mssql/server/manifests/2.0", CreateManifestResponse("sha256:two", manifestJson));
+
+        var client = new OciRegistryClient(httpClient, new TestLogger<OciRegistryClient>());
+
+        var result = await client.GetTagsAsync("mcr.microsoft.com", "mssql/server", cancellationToken: CancellationToken.None).ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "One unreadable manifest must not fail the tag listing");
+        Assert.IsNotNull(result.Data, "The tag listing must return its tags");
+        Assert.HasCount(2, result.Data, "Both listed tags must be returned");
+
+        var readable = Assert.ContainsSingle(entry => entry.Tag == "1.0", result.Data, "The tag with a readable manifest must be listed");
+        var unreadable = Assert.ContainsSingle(entry => entry.Tag == "2.0", result.Data, "The tag with an unreadable manifest must be listed by name");
+
+        Assert.AreEqual("sha256:one", readable.Digest, "The readable tag must keep its digest");
+        Assert.IsNull(unreadable.Digest, "The unreadable tag must be listed by name only, without a digest");
+    }
+
+    /// <summary>
+    /// Verify an image configuration lookup whose blob has a string that does not decode is answered as an invalid response
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task OciRegistryClientGetImageConfigurationAsyncWhenConfigHasLoneSurrogateReturnsInvalidResponseAsync()
+    {
+        var blobJson = $$"""{ "config": { "Labels": { "plain": "v{{LoneSurrogateEscape}}" } } }""";
+
+        Assert.Contains("\\ud800", blobJson, "The test input must carry the escaped lone surrogate");
+
+        using var handler = new SequenceHttpMessageHandler();
+        using var httpClient = new HttpClient(handler);
+
+        handler.AddResponse("https://mcr.microsoft.com/v2/dotnet/aspnet/manifests/8.0",
+                            CreateManifestResponse("sha256:aspnet", """{ "schemaVersion": 2, "config": { "digest": "sha256:aspnet-config" } }"""));
+        handler.AddJsonResponse("https://mcr.microsoft.com/v2/dotnet/aspnet/blobs/sha256%3Aaspnet-config", blobJson);
+
+        var logger = new TestLogger<OciRegistryClient>();
+        var client = new OciRegistryClient(httpClient, logger);
+        var imageReference = new ImageReference
+                             {
+                                 Registry = "mcr.microsoft.com",
+                                 Repository = "dotnet/aspnet",
+                                 Tag = "8.0",
+                             };
+
+        var result = await client.GetImageConfigurationAsync(imageReference, CancellationToken.None).ConfigureAwait(false);
+
+        AssertInvalidResponse(result, $"Registry image configuration lookup failed for '{imageReference.FullReference}': invalid response", imageReference.FullReference, logger);
+    }
+
+    /// <summary>
+    /// Verify a base-image resolution whose configuration blob has a label value that does not decode is answered as an invalid response
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task OciRegistryClientResolveBaseImagesAsyncWhenConfigHasLoneSurrogateReturnsInvalidResponseAsync()
+    {
+        var blobJson = $$"""{ "config": { "Labels": { "org.opencontainers.image.base.name": "mcr.microsoft.com/dotnet/runtime:8.0{{LoneSurrogateEscape}}" } } }""";
+
+        Assert.Contains("\\ud800", blobJson, "The test input must carry the escaped lone surrogate");
+
+        using var handler = new DelegateHttpMessageHandler(request => CreateBaseImageChainResponse(request, blobJson));
+        using var httpClient = new HttpClient(handler);
+
+        var client = new OciRegistryClient(httpClient, new TestLogger<OciRegistryClient>());
+        var imageReference = new ImageReference
+                             {
+                                 Registry = "mcr.microsoft.com",
+                                 Repository = "dotnet/aspnet",
+                                 Tag = "8.0",
+                             };
+
+        var result = await client.ResolveBaseImagesAsync(imageReference, CancellationToken.None).ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Failed, result.Status, "An unreadable configuration blob must fail the base-image resolution");
+        Assert.AreEqual($"Base image chain resolution failed for '{imageReference.FullReference}': invalid response",
+                        result.Message,
+                        "An unreadable configuration blob must be reported as an invalid response");
+    }
 
     /// <summary>
     /// Verify OCI registries can authenticate and return tag metadata
@@ -2094,6 +2285,31 @@ public partial class OciRegistryClientTests
                    ReasonPhrase = reasonPhrase,
                    Content = new StringContent(new string('x', OversizedRemoteText.BodyLength)),
                };
+    }
+
+    /// <summary>
+    /// Assert a call answered an unreadable body as failed with the fixed text and logged one warning 2100 with its exception
+    /// </summary>
+    /// <typeparam name="T">Result data type</typeparam>
+    /// <param name="result">Result of the call</param>
+    /// <param name="expectedMessage">Expected failure message</param>
+    /// <param name="targetName">Target the warning names</param>
+    /// <param name="logger">Captured logger</param>
+    private static void AssertInvalidResponse<T>(ExternalOperationResult<T> result,
+                                                 string expectedMessage,
+                                                 string targetName,
+                                                 TestLogger<OciRegistryClient> logger)
+    {
+        Assert.AreEqual(ExternalOperationStatus.Failed, result.Status, "An unreadable body must be answered as failed");
+        Assert.AreEqual(expectedMessage, result.Message, "An unreadable body must be reported as an invalid response");
+
+        var warning = Assert.ContainsSingle(entry => entry.EventId.Id == 2100 && entry.LogLevel == LogLevel.Warning,
+                                            logger.Entries,
+                                            "An unreadable body must be logged once as warning 2100");
+
+        Assert.IsNotNull(warning.Exception, "The warning must carry the exception");
+        Assert.StartsWith("Registry ", warning.Message, "The warning must name the registry");
+        Assert.EndsWith($" request for {targetName} failed", warning.Message, "The warning must name the target of the call");
     }
 
     #endregion // Static methods
