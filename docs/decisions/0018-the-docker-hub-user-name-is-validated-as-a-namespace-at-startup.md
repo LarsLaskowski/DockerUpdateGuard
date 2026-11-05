@@ -1,6 +1,6 @@
 # 0018: The Docker Hub user name is validated as a Docker Hub namespace at startup
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-05
 - **Area:** Registries
 - **Source:** Issue #363

@@ -70,5 +70,5 @@ once in the [area document](../areas/README.md) of the record's area, and the re
 | [0015](0015-the-trivy-scan-target-follows-an-end-of-options-marker.md) | The Trivy scan target follows an end-of-options marker | Accepted | 2026-10-29 |
 | [0016](0016-the-bundled-trivy-skips-its-update-check-and-telemetry.md) | The bundled Trivy skips its update check and telemetry | Accepted | 2026-10-29 |
 | [0017](0017-product-prs-may-change-the-squad-settings-file.md) | Product PRs may change the squad settings file | Accepted | 2026-11-01 |
-| [0018](0018-the-docker-hub-user-name-is-validated-as-a-namespace-at-startup.md) | The Docker Hub user name is validated as a Docker Hub namespace at startup | Proposed | 2026-11-05 |
+| [0018](0018-the-docker-hub-user-name-is-validated-as-a-namespace-at-startup.md) | The Docker Hub user name is validated as a Docker Hub namespace at startup | Accepted | 2026-11-05 |
 <!-- project:end index -->
