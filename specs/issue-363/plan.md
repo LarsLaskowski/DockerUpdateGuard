@@ -161,3 +161,19 @@ validator in the same project). `docs/ARCHITECTURE.md` update as above, owner De
 - A check in `DockerHubClient.GetRepositoriesAsync` itself (option 4).
 - How Docker Hub treats upper-case letters or an e-mail address as login identifier: not known, and the rule does
   not rest on it (0018, *Consequences*).
+
+## Challenge notes
+
+Devil's Advocate, mode plan: OBJECTIONS 0 major, 2 minor (appended verbatim).
+
+1. minor — Verified fact 5 is wrong for one consumer, so do not rely on it beyond the URL path. `DockerScoutVulnerabilityProvider.cs:252` sends `hubOptions.UserName!` untrimmed in the Docker Scout login body; it does not use the trimmed value. `MyImages.razor.cs:178` also shows the raw value. Instruction for the Dev and Reviewer: leave both unchanged, because they are not path-bearing and not part of #363. Do not write in the docs or in 0018 that every consumer trims the value. Neither the ARCHITECTURE bullet nor the registries.md bullet may claim this. Why minor: the security property only needs the account-listing path to be trimmed, and it is (`DockerHubAccountImageDiscoveryService.cs:273`).
+
+2. minor — The test section names `CollectionAssert.AreEqual`, but the sibling at-sign tests in `src/Tests/DockerUpdateGuard.Tests/DockerUpdateGuardOptionsValidatorTests.cs` (around lines 862 and 900) use `Assert.AreSequenceEqual([...], ...)`. Instruction for the Tester: assert the exact single failure the way those tests do. Use `Assert.AreSequenceEqual` with the fixed AC1 text and an assertion message, so the new tests match their neighbours. Why minor: either assertion catches the defect; this is only about consistency in the file.
+
+## Security notes
+
+Security, mode plan: APPROVED, no blocking findings (non-blocking finding appended verbatim).
+
+1. Fact 5 says every consumer trims the value, but `DockerScoutVulnerabilityProvider.AuthenticateAsync` (`src/DockerUpdateGuard/Vulnerabilities/DockerScoutVulnerabilityProvider.cs:252`) sends `hubOptions.UserName!` untrimmed. It goes into a JSON body, not a URL path, so it has no security effect and the guard is not weakened. The Lead should correct the wording of fact 5 (or the decision draft's Context), not the code. Leading or trailing spaces sent to the Scout login are existing behavior and out of scope here.
+
+Fact 7 was measured by Security (a one-off .NET 10 app): `IgnoreCase` with `[a-z0-9]` matches the Kelvin sign and `ToLowerInvariant` folds it to `k`; the plan's pattern rejects it. The 255-character check precedes the regex, whose near-miss inputs ran in under 1 ms.
