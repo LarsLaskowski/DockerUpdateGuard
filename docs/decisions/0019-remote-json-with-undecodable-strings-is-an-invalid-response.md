@@ -1,6 +1,6 @@
 # 0019: Remote JSON with a string that does not decode is an invalid response
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-05
 - **Area:** Registries
 - **Source:** Issue #358
