@@ -873,7 +873,6 @@ public class DockerUpdateGuardOptionsValidatorTests
     [DataRow("acme")]
     [DataRow("Acme")]
     [DataRow("  acme  ")]
-    [DataRow("\u00A0acme\u00A0")]
     [DataRow("my.org")]
     [DataRow("my_org")]
     [DataRow("my__org")]
@@ -888,17 +887,33 @@ public class DockerUpdateGuardOptionsValidatorTests
         var options = CreateValidOptions();
         var value = userName == "255" ? new string('a', 255) : userName;
 
-        if (value is not null && value.StartsWith('\u00A0'))
-        {
-            Assert.IsTrue(char.IsWhiteSpace(value[0]), "The no-break space row must start with a white space character");
-        }
-
         options.DockerHub.UserName = value;
 
         var validationResult = validator.Validate(Options.DefaultName, options);
 
         Assert.IsTrue(validationResult.Succeeded,
                       $"A blank or valid Docker Hub user name must pass validation, failures: {string.Join("; ", validationResult.Failures ?? [])}");
+    }
+
+    /// <summary>
+    /// Verify a Docker Hub user name surrounded by no-break spaces is trimmed and passes validation
+    /// </summary>
+    [TestMethod]
+    public void DockerUpdateGuardOptionsValidatorNoBreakSpaceDockerHubUserNameReturnsSuccess()
+    {
+        const string userName = "\u00A0acme\u00A0";
+
+        Assert.IsTrue(char.IsWhiteSpace(userName[0]), "The user name must start with a no-break space that counts as white space");
+
+        var validator = CreateAtSignValidator();
+        var options = CreateValidOptions();
+
+        options.DockerHub.UserName = userName;
+
+        var validationResult = validator.Validate(Options.DefaultName, options);
+
+        Assert.IsTrue(validationResult.Succeeded,
+                      $"A Docker Hub user name surrounded by no-break spaces must pass validation, failures: {string.Join("; ", validationResult.Failures ?? [])}");
     }
 
     /// <summary>
