@@ -35,7 +35,8 @@ removes `.` and resolves `..` segments, so `..` requests `v2/?page_size=100` and
   namespace grammar `\A[a-zA-Z0-9]+(?:(?:[._]|__|-+)[a-zA-Z0-9]+)*\z` of at most 255 characters fails
   `DockerUpdateGuardOptionsValidator.Validate` with exactly
   `'DockerUpdateGuard:DockerHub:UserName' must be a Docker Hub user name: letters and digits, optionally separated by '.', '_' or '-'`,
-  and no failure contains the configured value. Cases: `.`, `..`, ` .. `, `...`, `.acme`, `acme.`, `acme/..`,
+  and no other failure, so no failure carries the configured value (the text does not depend on it; no separate
+  substring check, which the case `.` would fail against the text's own `'.'`). Cases: `.`, `..`, ` .. `, `...`, `.acme`, `acme.`, `acme/..`,
   `../acme`, `acme/x`, `%2e%2e`, `acme?x`, `acme#x`, `ac me`, `acme:pw`, `me@example.com`, `a___b`, `acme-`,
   `\u212Acme` (Kelvin sign), `ac\u200Bme` (zero-width space), and 256 `a`.
 - [ ] AC2: These values pass validation: `null`, `""`, `"   "`, `acme`, `Acme`, `  acme  `, `\u00A0acme\u00A0`
@@ -54,7 +55,8 @@ backslash (`u212Acme`, `acu200Bme`) becomes a valid name, so the row fails red; 
 | AC2 | `DockerUpdateGuardOptionsValidatorValidDockerHubUserNameReturnsSuccess` (one `DataRow` per AC2 case) | `src/Tests/DockerUpdateGuard.Tests/DockerUpdateGuardOptionsValidatorTests.cs` |
 
 Both tests start from `CreateValidOptions()` with `CreateAtSignValidator()`, so AC1 asserts that the failures are
-exactly the one fixed text (`CollectionAssert.AreEqual`), which also proves that no failure carries the value. The
+exactly the one fixed text (`Assert.AreSequenceEqual`), which also proves that no failure carries the value; the
+test has no separate `Contains(value)` assertion. The
 255/256-character values are built in the test (`new string('a', n)`), not typed.
 
 ## Approach
