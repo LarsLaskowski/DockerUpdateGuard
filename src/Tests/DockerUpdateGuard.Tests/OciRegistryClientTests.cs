@@ -41,6 +41,109 @@ public partial class OciRegistryClientTests
     #region Methods
 
     /// <summary>
+    /// Verify the OCI calls refuse Docker Hub as unsupported without a request
+    /// </summary>
+    /// <param name="operation">Name of the call</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [DataRow("Tag")]
+    [DataRow("Tags")]
+    [DataRow("BaseImages")]
+    [DataRow("Configuration")]
+    public async Task OciRegistryClientCallsWhenRegistryIsDockerHubReturnUnsupportedAsync(string operation)
+    {
+        using var handler = new SequenceHttpMessageHandler();
+        using var httpClient = new HttpClient(handler);
+
+        var client = new OciRegistryClient(httpClient, new TestLogger<OciRegistryClient>());
+        var imageReference = new ImageReference
+                             {
+                                 Registry = "docker.io",
+                                 Repository = "acme/api",
+                                 Tag = "latest",
+                             };
+
+        ExternalOperationStatus status;
+        string? message;
+
+        switch (operation)
+        {
+            case "Tag":
+                {
+                    var result = await client.GetTagAsync(imageReference, "linux", "amd64", CancellationToken.None).ConfigureAwait(false);
+
+                    (status, message) = (result.Status, result.Message);
+                }
+
+                break;
+
+            case "Tags":
+                {
+                    var result = await client.GetTagsAsync("docker.io", "acme/api", cancellationToken: CancellationToken.None).ConfigureAwait(false);
+
+                    (status, message) = (result.Status, result.Message);
+                }
+
+                break;
+
+            case "BaseImages":
+                {
+                    var result = await client.ResolveBaseImagesAsync(imageReference, CancellationToken.None).ConfigureAwait(false);
+
+                    (status, message) = (result.Status, result.Message);
+                }
+
+                break;
+
+            default:
+                {
+                    var result = await client.GetImageConfigurationAsync(imageReference, CancellationToken.None).ConfigureAwait(false);
+
+                    (status, message) = (result.Status, result.Message);
+                }
+
+                break;
+        }
+
+        Assert.AreEqual(ExternalOperationStatus.Unsupported, status, $"The {operation} call must refuse Docker Hub");
+        Assert.AreEqual("Registry 'docker.io' is not supported by the OCI registry adapter", message, "The refusal must name the registry");
+        Assert.IsEmpty(handler.Requests, "No request may be sent for Docker Hub");
+    }
+
+    /// <summary>
+    /// Verify a tag lookup carries the status of a manifest answer that is not a success
+    /// </summary>
+    /// <param name="statusCode">Status of the manifest answer</param>
+    /// <param name="expected">Expected status of the lookup</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [DataRow(HttpStatusCode.NotFound, ExternalOperationStatus.NotFound)]
+    [DataRow(HttpStatusCode.InternalServerError, ExternalOperationStatus.Failed)]
+    public async Task OciRegistryClientGetTagAsyncWhenManifestAnswersErrorCarriesStatusAsync(HttpStatusCode statusCode, ExternalOperationStatus expected)
+    {
+        using var handler = new SequenceHttpMessageHandler();
+        using var httpClient = new HttpClient(handler);
+
+        handler.AddResponse("https://mcr.microsoft.com/v2/mssql/server/manifests/latest", new HttpResponseMessage(statusCode));
+
+        var client = new OciRegistryClient(httpClient, new TestLogger<OciRegistryClient>());
+
+        var result = await client.GetTagAsync(new ImageReference
+                                              {
+                                                  Registry = "mcr.microsoft.com",
+                                                  Repository = "mssql/server",
+                                                  Tag = "latest",
+                                              },
+                                              "linux",
+                                              "arm64",
+                                              CancellationToken.None)
+                                 .ConfigureAwait(false);
+
+        Assert.AreEqual(expected, result.Status, "The lookup must carry the status of the manifest answer");
+        Assert.IsFalse(string.IsNullOrEmpty(result.Message), "The lookup must carry a message");
+    }
+
+    /// <summary>
     /// Verify a tag lookup whose manifest has a string that does not decode is answered as an invalid response
     /// </summary>
     /// <returns>Task</returns>

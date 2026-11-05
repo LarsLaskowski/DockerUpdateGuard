@@ -41,6 +41,114 @@ public partial class DockerHubClientTests
     #region Methods
 
     /// <summary>
+    /// Verify every Docker Hub call refuses a registry that is not Docker Hub as unsupported without a request
+    /// </summary>
+    /// <param name="operation">Name of the call</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [DataRow("CurrentUser")]
+    [DataRow("Repositories")]
+    [DataRow("Repository")]
+    [DataRow("Tag")]
+    [DataRow("Tags")]
+    public async Task DockerHubClientCallsWhenRegistryIsNotDockerHubReturnUnsupportedAsync(string operation)
+    {
+        using var handler = new StubHttpMessageHandler();
+        using var httpClient = new HttpClient(handler)
+                               {
+                                   BaseAddress = new Uri("https://hub.docker.com/"),
+                               };
+
+        var client = CreateClient(httpClient, registry: "ghcr.io");
+
+        var (status, message) = await RunCallAsync(client, operation, "ghcr.io").ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Unsupported, status, $"The {operation} call must refuse a foreign registry");
+        Assert.AreEqual("Registry 'ghcr.io' is not supported by the Docker Hub adapter", message, "The refusal must name the registry");
+        Assert.IsEmpty(handler.Requests, "No request may be sent for a foreign registry");
+    }
+
+    /// <summary>
+    /// Verify the Docker Hub calls answer a 404 as not found with the fixed text
+    /// </summary>
+    /// <param name="operation">Name of the call</param>
+    /// <param name="expectedMessage">Expected message</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [DataRow("Repositories", "Docker Hub account 'acme' was not found")]
+    [DataRow("Repository", "Repository 'acme/api' was not found in Docker Hub")]
+    [DataRow("Tag", "Tag 'latest' was not found for 'acme/api'")]
+    [DataRow("Tags", "Repository 'acme/api' was not found in Docker Hub")]
+    public async Task DockerHubClientCallsWhenHubAnswersNotFoundReturnNotFoundAsync(string operation, string expectedMessage)
+    {
+        using var handler = new DelegateHttpMessageHandler(request => CreateHubResponse(request, () => new HttpResponseMessage(HttpStatusCode.NotFound)));
+        using var httpClient = new HttpClient(handler)
+                               {
+                                   BaseAddress = new Uri("https://hub.docker.com/"),
+                               };
+
+        var client = CreateClient(httpClient);
+
+        var (status, message) = await RunCallAsync(client, operation, "docker.io").ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.NotFound, status, $"The {operation} call must answer a 404 as not found");
+        Assert.AreEqual(expectedMessage, message, "The not-found message must be the fixed text");
+    }
+
+    /// <summary>
+    /// Verify the Docker Hub calls answer a non-success status as failed with the call's message prefix
+    /// </summary>
+    /// <param name="operation">Name of the call</param>
+    /// <param name="expectedPrefix">Expected message prefix</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [DataRow("CurrentUser", "Docker Hub current user lookup failed")]
+    [DataRow("Repositories", "Docker Hub repository listing failed for 'acme'")]
+    [DataRow("Repository", "Repository metadata lookup failed for 'acme/api'")]
+    [DataRow("Tag", "Tag metadata lookup failed for 'docker.io/acme/api:latest'")]
+    [DataRow("Tags", "Tag lookup failed for 'acme/api'")]
+    public async Task DockerHubClientCallsWhenHubAnswersServerErrorReturnFailedAsync(string operation, string expectedPrefix)
+    {
+        using var handler = new DelegateHttpMessageHandler(request => CreateHubResponse(request, () => new HttpResponseMessage(HttpStatusCode.InternalServerError)));
+        using var httpClient = new HttpClient(handler)
+                               {
+                                   BaseAddress = new Uri("https://hub.docker.com/"),
+                               };
+
+        var logger = new TestLogger<DockerHubClient>();
+        var client = CreateClient(httpClient, logger: logger);
+
+        var (status, message) = await RunCallAsync(client, operation, "docker.io").ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Failed, status, $"The {operation} call must answer a server error as failed");
+        Assert.StartsWith(expectedPrefix, message, "The failure message must start with the call's prefix");
+        Assert.Contains(entry => entry.LogLevel == LogLevel.Warning,
+                        logger.Entries,
+                        "The failed request must be logged as a warning");
+    }
+
+    /// <summary>
+    /// Verify a current-user answer without a username is answered as failed
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerHubClientGetCurrentUserAsyncWhenBodyHasNoUsernameReturnsFailedAsync()
+    {
+        using var handler = new DelegateHttpMessageHandler(request => CreateHubResponse(request, () => CreateJsonResponse("{}")));
+        using var httpClient = new HttpClient(handler)
+                               {
+                                   BaseAddress = new Uri("https://hub.docker.com/"),
+                               };
+
+        var client = CreateClient(httpClient);
+
+        var result = await client.GetCurrentUserAsync(CancellationToken.None).ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Failed, result.Status, "An answer without a username must fail");
+        Assert.AreEqual("Docker Hub current user response did not contain a username", result.Message, "The failure must name the missing username");
+    }
+
+    /// <summary>
     /// Verify a current-user answer with a string that does not decode is answered as an invalid response
     /// </summary>
     /// <returns>Task</returns>
@@ -2340,6 +2448,61 @@ public partial class DockerHubClientTests
         Assert.IsNotNull(warning.Exception, "The warning must carry the exception");
         Assert.StartsWith("Docker Hub ", warning.Message, "The warning must name Docker Hub");
         Assert.EndsWith($" request for {targetName} failed", warning.Message, "The warning must name the target of the call");
+    }
+
+    /// <summary>
+    /// Run one Docker Hub call by name
+    /// </summary>
+    /// <param name="client">Client under test</param>
+    /// <param name="operation">Name of the call</param>
+    /// <param name="registry">Registry of the references</param>
+    /// <returns>Status and message of the result</returns>
+    private static async Task<(ExternalOperationStatus Status, string Message)> RunCallAsync(DockerHubClient client, string operation, string registry)
+    {
+        var imageReference = new ImageReference
+                             {
+                                 Registry = registry,
+                                 Repository = "acme/api",
+                                 Tag = "latest",
+                             };
+
+        switch (operation)
+        {
+            case "CurrentUser":
+                {
+                    var result = await client.GetCurrentUserAsync(CancellationToken.None).ConfigureAwait(false);
+
+                    return (result.Status, result.Message ?? string.Empty);
+                }
+
+            case "Repositories":
+                {
+                    var result = await client.GetRepositoriesAsync("acme", CancellationToken.None).ConfigureAwait(false);
+
+                    return (result.Status, result.Message ?? string.Empty);
+                }
+
+            case "Repository":
+                {
+                    var result = await client.GetRepositoryAsync(imageReference, CancellationToken.None).ConfigureAwait(false);
+
+                    return (result.Status, result.Message ?? string.Empty);
+                }
+
+            case "Tag":
+                {
+                    var result = await client.GetTagAsync(imageReference, "linux", "amd64", CancellationToken.None).ConfigureAwait(false);
+
+                    return (result.Status, result.Message ?? string.Empty);
+                }
+
+            default:
+                {
+                    var result = await client.GetTagsAsync(registry, "acme/api", cancellationToken: CancellationToken.None).ConfigureAwait(false);
+
+                    return (result.Status, result.Message ?? string.Empty);
+                }
+        }
     }
 
     #endregion // Methods
