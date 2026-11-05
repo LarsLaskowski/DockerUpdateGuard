@@ -819,6 +819,92 @@ public class DockerUpdateGuardOptionsValidatorTests
     }
 
     /// <summary>
+    /// Verify a Docker Hub user name outside the namespace grammar fails with the fixed text only
+    /// </summary>
+    /// <param name="userName">Configured Docker Hub user name; null stands for 256 letters</param>
+    [TestMethod]
+    [DataRow(".")]
+    [DataRow("..")]
+    [DataRow(" .. ")]
+    [DataRow("...")]
+    [DataRow(".acme")]
+    [DataRow("acme.")]
+    [DataRow("acme/..")]
+    [DataRow("../acme")]
+    [DataRow("acme/x")]
+    [DataRow("%2e%2e")]
+    [DataRow("acme?x")]
+    [DataRow("acme#x")]
+    [DataRow("ac me")]
+    [DataRow("acme:pw")]
+    [DataRow("me@example.com")]
+    [DataRow("a___b")]
+    [DataRow("acme-")]
+    [DataRow("\u212Acme")]
+    [DataRow("ac\u200Bme")]
+    [DataRow(null)]
+    public void DockerUpdateGuardOptionsValidatorInvalidDockerHubUserNameReturnsFailure(string? userName)
+    {
+        const string failureText = "'DockerUpdateGuard:DockerHub:UserName' must be a Docker Hub user name: letters and digits, optionally separated by '.', '_' or '-'";
+
+        var validator = CreateAtSignValidator();
+        var options = CreateValidOptions();
+        var value = userName ?? new string('a', 256);
+
+        options.DockerHub.UserName = value;
+
+        var validationResult = validator.Validate(Options.DefaultName, options);
+        var failures = validationResult.Failures?.ToArray() ?? [];
+
+        Assert.IsTrue(validationResult.Failed, "A Docker Hub user name outside the namespace grammar must fail validation");
+        Assert.AreSequenceEqual([failureText],
+                                failures,
+                                "The user name failure must be the only failure and carry the fixed text");
+        Assert.DoesNotContain(message => message.Contains(value.Trim(), StringComparison.Ordinal),
+                              failures,
+                              "No failure may repeat the configured value");
+    }
+
+    /// <summary>
+    /// Verify a blank or valid Docker Hub user name passes validation
+    /// </summary>
+    /// <param name="userName">Configured Docker Hub user name; "255" stands for 255 letters</param>
+    [TestMethod]
+    [DataRow(null)]
+    [DataRow("")]
+    [DataRow("   ")]
+    [DataRow("acme")]
+    [DataRow("Acme")]
+    [DataRow("  acme  ")]
+    [DataRow("\u00A0acme\u00A0")]
+    [DataRow("my.org")]
+    [DataRow("my_org")]
+    [DataRow("my__org")]
+    [DataRow("my-org")]
+    [DataRow("my---org")]
+    [DataRow("a1b2")]
+    [DataRow("a")]
+    [DataRow("255")]
+    public void DockerUpdateGuardOptionsValidatorValidDockerHubUserNameReturnsSuccess(string? userName)
+    {
+        var validator = CreateAtSignValidator();
+        var options = CreateValidOptions();
+        var value = userName == "255" ? new string('a', 255) : userName;
+
+        if (value is not null && value.StartsWith('\u00A0'))
+        {
+            Assert.IsTrue(char.IsWhiteSpace(value[0]), "The no-break space row must start with a white space character");
+        }
+
+        options.DockerHub.UserName = value;
+
+        var validationResult = validator.Validate(Options.DefaultName, options);
+
+        Assert.IsTrue(validationResult.Succeeded,
+                      $"A blank or valid Docker Hub user name must pass validation, failures: {string.Join("; ", validationResult.Failures ?? [])}");
+    }
+
+    /// <summary>
     /// Verify a Portainer base URL with an at sign outside its user info fails with the fixed text only
     /// </summary>
     /// <param name="baseUrl">Configured Portainer base URL</param>
