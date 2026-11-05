@@ -45,7 +45,8 @@ derived values and expect the Tester's test that pins the claim. A security prop
 rests on measured or library behavior (a deadline that interrupts a query step, a limit a parser enforces, a
 server's flush semantics) needs its measurement (`.squad/team.md`, *Test doubles that model a real
 component*): in mode `plan` you run it once before you approve, in mode `diff` you check the Dev's; an
-unverified claim of that kind is a blocking finding. If the measurement cannot run because a download or tool
+unverified claim of that kind is a blocking finding. A measurement you report names the exact command(s) you ran
+and quotes their output (or the test file and its run line); one without them is reported as not run. If the measurement cannot run because a download or tool
 is denied, report it as not run and name what it needs; the orchestrator handles it (`.squad/orchestration.md`,
 *A denied measurement*).
 

@@ -55,8 +55,9 @@ either); the `PreToolUse` hook `.claude/hooks/git-guard.py`, declared in `.claud
 commands to every `squad-*` agent. Read-only Git, `git add` and a scratch `git worktree` stay allowed; a member that needs
 anything else reports it. The orchestrator checks `git status` after each report and restores any index or tree change. Another revision is read with `git show <sha>:<path>` or in a scratch worktree
 (`git worktree add --detach`), never by checking it out in the repository working tree.
-Session-management tools (`create_session`, `send_message`, `archive_session` and the other remote-session
-tools) belong to the orchestrator alone, also for "handing over" work. Experiments (mutation tests, trial
+Session-management tools (`create_session`, `send_message`, `archive_session`, the scheduled-task tools and the
+other remote-session tools) belong to the orchestrator alone, also for "handing over" work or tidying up: a member
+never calls one, with a placeholder session id least of all. Experiments (mutation tests, trial
 edits, baselines) run in a scratch `git worktree` (`git stash` is a Git write, too). The orchestrator commits, pushes and opens the pull request (`routing.md`, *Pipeline*).
 
 **Reporting against a SHA.** Before the PR the orchestrator may commit your edits as work in progress while

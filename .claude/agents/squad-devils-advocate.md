@@ -55,6 +55,9 @@ Rules:
   one sentence why. The orchestrator routes on that rank alone (*Plan challenge*): minor objections go
   verbatim into the *Challenge notes* of the document you challenged (the plan's for the Dev, Tester and
   Reviewer; the spec's for the Lead), so write each one as an instruction they can follow.
+- An objection that prescribes a concrete assertion (an exact count, value or order) is checked against the
+  test's fixture and the code path it exercises, with file and line; one you have not checked states the intent
+  ("assert the notice is written exactly once"), not the exact count.
 - You have no veto and run at most once per mode; Security's findings are its own, so leave them to it.
 - If the plan holds up, say so in one line; that is a complete report. Never edit files.
 

@@ -55,7 +55,7 @@ every Git and GitHub action yourself, including follow-up issues the Lead decide
 
    **Logging.** Only you write `log.md`, one row per step and per launch, always with
    `python3 .squad/tools/squad-log.py issue-<number> "<step>" "<member>" "<result>"` — never by hand.
-   - Write a launch's row as soon as its report is in, with `--agent squad-<role>` alone (usage pending; `--launch` for a launch *Launch model* overrides), a continued one too (`--continued` only on the amend). When
+   - Write a launch's row as soon as its report is in, with `--agent squad-<role>` alone (usage pending; `--launch` for a launch *Launch model* overrides), a continued one too (with `--continued` or `--continued-from`, kept for its amend). When
      its task notification arrives, add the usage with `--amend-last "<member>" --agent squad-<role> --tokens …
      --tool-uses … --seconds …` (`--step "<step>"` for a row that is no longer the member's last).
    - **Every number is copied from the usage block of a task notification you have in front of you** —
@@ -66,8 +66,8 @@ every Git and GitHub action yourself, including follow-up issues the Lead decide
      counts. A notification that never comes is marked `--unreported`; a wrong trailer is corrected with
      `--replace-last`, never with a second row.
    - A continued launch gets `--continued` (or `--continued-from "<step cell of the fresh launch>"` when that
-     agent is not the member's last fresh launch) on the call that carries its numbers — the amend of its pending
-     row — with the notification's numbers unchanged (only the tokens are cumulative). Name a fix, delta or revise round as such in its step
+     agent is not the member's last fresh launch) on its pending row or on the amend that carries its numbers,
+     with the notification's numbers unchanged (only the tokens are cumulative). Name a fix, delta or revise round as such in its step
      cell; a continuation at another step than its fresh launch draws a warning (a new mode is a fresh launch).
    - Rows of the Orchestrator, the Product Manager and the User take no metric option; their member cells are
      exactly `Orchestrator`, `Product Manager` and `User` (`squad-orchestrator` is written as `Orchestrator`).
@@ -101,11 +101,12 @@ every Git and GitHub action yourself, including follow-up issues the Lead decide
    `squad-lead` revision (with the challenge's objections), then `squad-security` once more on the revision; a
    revision made only for a major objection is confirmed the same way. After the 2nd rejection, `squad-lead`
    in mode `decide` (*Loop limits*, Plan ↔ Security).
-4. **Skeleton** (only if the plan adds or changes API). Launch `squad-dev` in mode `skeleton`: the planned
-   signatures and the existing test call sites the plan assigns to the Dev. A plan that declares the change
+4. **Skeleton** (only if the plan adds or changes API). Launch `squad-dev` in mode `skeleton` with the body the *Skeleton*
+   section of `.squad/stack.md` names, quoted in the prompt: the planned signatures and the existing test call sites the plan assigns to the Dev. A plan that declares the change
    free of production and test code skips steps 4 and 5 (*Changes without production or test code*): log the
    skipped steps and run the plan's *Verification without tests* instead.
-5. **Tests first** (not for `trivial`). Launch `squad-tester` in mode `tests-first`, with the model *Launch model* names. Confirm yourself that the
+5. **Tests first** (not for `trivial`). Launch `squad-tester` in mode `tests-first`, with the model *Launch model* names (tier `security`:
+   pass `model: opus` on this first launch already, and on every later Tester launch). Confirm yourself that the
    new tests compile and fail on the current code (unless the Tester justified why one cannot); note the
    tests it hands back as **deferred**. A fix without a reproducing test is acceptable only when the bug
    genuinely needs a live external system — then the PR says so.
@@ -113,8 +114,8 @@ every Git and GitHub action yourself, including follow-up issues the Lead decide
    `squad-tester`, no *Test with coverage*, no *Coverage gate*. Otherwise launch `squad-dev` in mode `implement`
    — a fresh launch, never a continuation of its `skeleton` agent — with the plan and the test names. If the
    Dev disputes a test, launch `squad-lead` in mode `decide`; the Tester changes a test only if the Lead says
-   so. Run *Test with coverage* and the *Coverage gate* yourself. Launch `squad-tester` in mode `coverage`,
-   with the reason, only when the gate fails, the Dev reports uncovered new lines, a resource bound of the
+   so. Run *Test with coverage* and the *Coverage gate* yourself. Launch `squad-tester` in mode `coverage`
+   (model as in step 5; a fresh launch, never a continuation of its `tests-first` agent), with the reason, only when the gate fails, the Dev reports uncovered new lines, a resource bound of the
    plan has no test yet, a deferred test or test documentation is open (also when the gate passes) or a reviewer
    asks for a test;
    otherwise log why the pass is skipped. Repeat until the gate passes. Then, when the plan lists documentation

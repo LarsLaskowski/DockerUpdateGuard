@@ -182,6 +182,10 @@ Constructors store their arguments and never throw: a test harness builds these 
 fail.
 The `Skeleton` body above is the default. A zero-value stub is allowed only where it would break a test that
 exists and passes today: the new tests must still fail on the stub, and the Dev reports it as a deviation.
+A private member or parameter that nothing calls or reads yet fails the build as S1144 (unused private member) or
+S1172 (unused parameter). Wrap exactly those members in `#pragma warning disable S1144, S1172` /
+`#pragma warning restore S1144, S1172` with the comment `// Skeleton: removed with the implementation`; the Dev lists
+each pragma in its report and removes it in mode `implement`, and the Reviewer blocks one that is still there.
 
 ## Dependencies
 
@@ -201,7 +205,9 @@ itself with a lock (`obj/analyzer-check.lock`), plain builds do not.
 - `reihitsu-format` asks for confirmation for more than 25 files; `--force` skips the prompt, which a
   non-interactive session cannot answer.
 - `reihitsu-format` rewrites a `\u` escape in a C# string literal into the character it names, so a literal
-  U+2028 then breaks the compilation and a test about an escape tests the wrong input. After *Format*, check
+  U+2028 then breaks the compilation and a test about an escape tests the wrong input — also each half of a
+  surrogate pair (`\uD83D\uDE00` becomes the emoji). After *Format*, check
   the escapes of the changed files on disk (`grep -n '\\u' <file>`, *Escapes in files* in `.squad/team.md`);
   where the formatter keeps rewriting one, build the character at run time (`char.ConvertFromUtf32(0x2028)`)
-  instead of writing it as an escape in a literal.
+  instead of writing it as an escape in a literal; a test that needs the escape text itself (a JSON input, say)
+  keeps it in a raw string literal (`"""…"""`), whose `\u` the compiler and the formatter leave alone.
