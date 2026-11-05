@@ -71,4 +71,5 @@ once in the [area document](../areas/README.md) of the record's area, and the re
 | [0016](0016-the-bundled-trivy-skips-its-update-check-and-telemetry.md) | The bundled Trivy skips its update check and telemetry | Accepted | 2026-10-29 |
 | [0017](0017-product-prs-may-change-the-squad-settings-file.md) | Product PRs may change the squad settings file | Accepted | 2026-11-01 |
 | [0018](0018-the-docker-hub-user-name-is-validated-as-a-namespace-at-startup.md) | The Docker Hub user name is validated as a Docker Hub namespace at startup | Accepted | 2026-11-05 |
+| [0019](0019-remote-json-with-undecodable-strings-is-an-invalid-response.md) | Remote JSON with a string that does not decode is an invalid response | Proposed | 2026-11-05 |
 <!-- project:end index -->
