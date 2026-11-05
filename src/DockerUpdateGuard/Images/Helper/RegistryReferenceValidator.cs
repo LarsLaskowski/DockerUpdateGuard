@@ -119,7 +119,9 @@ internal static partial class RegistryReferenceValidator
     /// <returns>True when the namespace is valid</returns>
     public static bool IsValidNamespace([NotNullWhen(true)] string? namespaceName)
     {
-        throw new InvalidOperationException("Skeleton: not implemented");
+        return string.IsNullOrEmpty(namespaceName) == false
+               && namespaceName.Length <= MaxRepositoryLength
+               && NamespaceExpression().IsMatch(namespaceName);
     }
 
     /// <summary>

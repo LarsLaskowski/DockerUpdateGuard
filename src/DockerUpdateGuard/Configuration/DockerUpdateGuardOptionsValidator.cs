@@ -103,6 +103,12 @@ public class DockerUpdateGuardOptionsValidator : IValidateOptions<DockerUpdateGu
             failures.Add(CreateAtSignFailure($"'{DockerUpdateGuardOptions.SectionName}:DockerHub:Registry'"));
         }
 
+        if (string.IsNullOrWhiteSpace(options.UserName) == false
+            && RegistryReferenceValidator.IsValidNamespace(options.UserName.Trim()) == false)
+        {
+            failures.Add($"'{DockerUpdateGuardOptions.SectionName}:DockerHub:UserName' must be a Docker Hub user name: letters and digits, optionally separated by '.', '_' or '-'");
+        }
+
         if (options.RequestTimeoutSeconds is <= 0 or > 300)
         {
             failures.Add($"'{DockerUpdateGuardOptions.SectionName}:DockerHub:RequestTimeoutSeconds' must be between 1 and 300");
