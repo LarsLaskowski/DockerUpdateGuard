@@ -14,3 +14,5 @@ are quoted in full.
 | 2026-11-05 18:10 | 6 Implement | squad-dev | Code done, build 0 warnings; 1 of 1043 tests red: AC1 row '.' - substring check 'no failure contains the value' hits the fixed text (contains '.'); Dev disputes the test (sonnet/medium · 79,967 tokens · 9 tool uses · 103 s) |
 | 2026-11-05 18:10 | 6 Decide (test dispute) | squad-lead | DECIDED: Tester drops the redundant Assert.DoesNotContain; AC1 wording clarified in plan.md (opus/medium · 30,724 tokens · 7 tool uses · 23 s) |
 | 2026-11-05 18:12 | 6 Coverage (test fix) | squad-tester | Dropped redundant assert; 35/35 DockerHubUserName tests green. Orchestrator: full suite 1043+21 green, Coverage gate PASS (new/changed 100% 6/6, overall 88.3%) (opus/medium · 70,800 tokens · 7 tool uses · 38 s) |
+| 2026-11-05 18:13 | 6 Implement (docs round) | squad-dev | Docs written: registries.md, README.md, ARCHITECTURE.md (sonnet/medium · 4,243 tokens · 4 tool uses · 23 s · continued from 6 Implement) |
+| 2026-11-05 18:15 | 7 Code check | Orchestrator | Format check 0/393, build 0 warnings, tests green, coverage PASS, analyzer 0 diagnostics, scope-check PASS; code-officer not needed |

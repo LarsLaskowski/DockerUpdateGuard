@@ -285,7 +285,13 @@ values stored before the replacement existed, which stay until they are written 
   origin of `ApiBaseUrl` (or of an absolute `DockerHub:Registry` that replaces it), fixed at startup like `ApiBaseUrl`, is the only one Docker Hub pagination follows ([Pagination links](#pagination-links)).
 - Validation of these keys at startup (an invalid value fails startup, see [Hosting](hosting.md)): `Registry`
   non-empty, `ApiBaseUrl` an absolute `http`/`https` URL, neither `ApiBaseUrl` nor an absolute `Registry` with an `@`
-  outside its user info ([Hosting](hosting.md), *Validation*), and the ranges above.
+  outside its user info ([Hosting](hosting.md), *Validation*), the ranges above, and a non-blank `UserName`, trimmed,
+  which must be a Docker Hub user name: ASCII letters and digits, separated by `.`, `_`, `__` or any run of `-`, at
+  most 255 characters. Anything else fails with
+  `'DockerUpdateGuard:DockerHub:UserName' must be a Docker Hub user name: letters and digits, optionally separated by '.', '_' or '-'`
+  (the failure never contains the value), at startup and on reload. The account listing, which puts the trimmed value
+  into its request path, thereby never receives `.` or `..`
+  ([0018](../decisions/0018-the-docker-hub-user-name-is-validated-as-a-namespace-at-startup.md)).
 
 ## Limits and errors
 
@@ -326,9 +332,6 @@ values stored before the replacement existed, which stay until they are written 
   attestation manifest, and publication times come only from a top-level `created` field of the manifest, which most
   registries do not send, so their tags usually have no publication time. Tracked in
   [#277](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/277).
-- The configured `DockerHub:UserName` reaches the path of the account listing without a check, so `.` or `..` would
-  address another path of the Docker Hub web API. Tracked in
-  [#363](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/363).
 
 ## Related decisions
 
@@ -339,6 +342,8 @@ values stored before the replacement existed, which stay until they are written 
   failure reasons, never an error's own text.
 - [0014](../decisions/0014-registry-tag-names-and-digests-are-validated-where-they-are-read.md): remote tag names,
   digests, image references and names are validated or bounded where they are read.
+- [0018](../decisions/0018-the-docker-hub-user-name-is-validated-as-a-namespace-at-startup.md): the Docker Hub user
+  name is validated as a namespace at startup.
 
 ## Not here
 

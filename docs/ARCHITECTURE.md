@@ -431,6 +431,8 @@ it links:
   or cut where they are display names; the registry request builders refuse `.` and `..` path segments of any
   reference or digest, and the OCI request builder a registry that is not a host with an optional port
   ([record 0014](decisions/0014-registry-tag-names-and-digests-are-validated-where-they-are-read.md)).
+  The configured Docker Hub user name, the path segment of the account listing, must be a Docker Hub user name to pass
+  validation ([record 0018](decisions/0018-the-docker-hub-user-name-is-validated-as-a-namespace-at-startup.md)).
 - **Pagination stays on its origin.** `DockerHubClient`, `OciRegistryClient`
   and `DockerScoutVulnerabilityProvider` follow a next-page link only on the
   origin of the listing (`Infrastructure\PaginationLinkGuard`), so a remote

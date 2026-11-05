@@ -115,7 +115,7 @@ in a user name or password.
 | --- | --- | --- | --- |
 | `Registry` | `docker.io` | Yes | Registry host handled by the Docker Hub integration |
 | `ApiBaseUrl` | `https://hub.docker.com/` | No | Docker Hub API base address used for registries served by Docker Hub; a mirror or proxy must rewrite next-page links to its own origin, otherwise listings fail |
-| `UserName` | none | No | Docker Hub username for authenticated API requests |
+| `UserName` | none | No | Docker Hub user name (Docker ID) for authenticated API requests; letters, digits and `.`, `_`, `-` between them, validated at startup |
 | `Pat` | none | No | Docker Hub personal access token |
 | `RequestTimeoutSeconds` | `30` | No | Total time per outbound Docker Hub, OCI registry and .NET/nginx release-feed request, including its retries |
 | `MaxParallelRequests` | `4` | No | Maximum logical request parallelism for registry operations |
