@@ -70,6 +70,15 @@ internal static partial class RegistryReferenceValidator
     private static partial Regex DigestExpression();
 
     /// <summary>
+    /// Namespace grammar pattern
+    /// </summary>
+    /// <returns>Compiled regular expression</returns>
+    [GeneratedRegex(@"\A[a-zA-Z0-9]+(?:(?:[._]|__|-+)[a-zA-Z0-9]+)*\z",
+                    RegexOptions.CultureInvariant,
+                    100)]
+    private static partial Regex NamespaceExpression();
+
+    /// <summary>
     /// Registry grammar pattern
     /// </summary>
     /// <returns>Compiled regular expression</returns>
@@ -101,6 +110,16 @@ internal static partial class RegistryReferenceValidator
         return path.Split('/')
                    .Any(segment => string.Equals(segment, ".", StringComparison.Ordinal)
                                    || string.Equals(segment, "..", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// Check whether a string is a valid Docker Hub namespace
+    /// </summary>
+    /// <param name="namespaceName">Namespace to check</param>
+    /// <returns>True when the namespace is valid</returns>
+    public static bool IsValidNamespace([NotNullWhen(true)] string? namespaceName)
+    {
+        throw new InvalidOperationException("Skeleton: not implemented");
     }
 
     /// <summary>
