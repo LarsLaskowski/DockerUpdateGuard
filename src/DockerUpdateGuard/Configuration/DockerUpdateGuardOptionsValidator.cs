@@ -1,5 +1,7 @@
 using System.Diagnostics.CodeAnalysis;
 
+using DockerUpdateGuard.Images.Helper;
+
 using Microsoft.Extensions.Options;
 
 namespace DockerUpdateGuard.Configuration;
@@ -101,6 +103,12 @@ public class DockerUpdateGuardOptionsValidator : IValidateOptions<DockerUpdateGu
                  && HasAtSignOutsideUserInfo(options.Registry, registryUri))
         {
             failures.Add(CreateAtSignFailure($"'{DockerUpdateGuardOptions.SectionName}:DockerHub:Registry'"));
+        }
+
+        if (string.IsNullOrWhiteSpace(options.UserName) == false
+            && RegistryReferenceValidator.IsValidNamespace(options.UserName.Trim()) == false)
+        {
+            failures.Add($"'{DockerUpdateGuardOptions.SectionName}:DockerHub:UserName' must be a Docker Hub user name: letters and digits, optionally separated by '.', '_' or '-'");
         }
 
         if (options.RequestTimeoutSeconds is <= 0 or > 300)
