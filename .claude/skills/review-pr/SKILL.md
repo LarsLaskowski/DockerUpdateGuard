@@ -57,11 +57,8 @@ threads.
 ## Every posted finding gets worked
 
 Every posted finding — blocking or not, from this skill, a human or an
-automated review — is worked in the pull request it was posted on, never
-deferred (`AGENTS.md`, *Related skills*). One that genuinely should not be
-acted on here gets a reply explaining why the code stays, or a GitHub issue
-opened **now** and linked from the reply; either way the thread is answered
-and resolved before the PR is done.
+automated review — is worked as `AGENTS.md` (*Related skills*) says, and its
+thread is answered and resolved before the PR is done.
 
 ## Keeping the loop finite
 

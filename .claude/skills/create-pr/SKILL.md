@@ -19,12 +19,9 @@ repository.
    never commit directly to it. Derive a short kebab-case name from the work
    (e.g. `add-season-aggregates`, `fix-path-mapping`), or use the name the
    user supplied. If you are already on a feature branch, stay on it.
-3. **Verify tests exist** for what the diff changes. Per
-   [`UNIT_TESTS.md`](../../../docs/UNIT_TESTS.md), unit tests are mandatory for
-   new/changed behavior, not optional — if the diff adds or changes logic
-   without a corresponding test, write one before proceeding (following
-   `UNIT_TESTS.md`'s naming, test-double and assert-message conventions)
-   rather than opening the PR without coverage.
+3. **Verify tests exist** for what the diff changes: logic the diff adds or
+   changes without a test gets one now, following
+   [`UNIT_TESTS.md`](../../../docs/UNIT_TESTS.md), before the PR opens.
 4. **Run local verification** before pushing, from the repository root,
    with the commands from [`.squad/stack.md`](../../../.squad/stack.md):
    - *Restore* (if the stack has one) and *Format*
@@ -49,8 +46,7 @@ repository.
 7. **Push** the branch: `git push -u origin <branch-name>`.
 8. **Open the PR as a draft** (`draft: true`) using the repository's template at
    `.github/pull_request_template.md`. The GitHub tools can rewrite an inline Markdown link in the body into
-   a broken form: write record references as plain paths and check the body with `pull_request_read` after the
-   first write:
+   a broken form: write record references as plain paths:
    - base branch `main`, unless the user explicitly requests a different base
    - title `[area] Description` per
      [`CONTRIBUTING.md`](../../../docs/CONTRIBUTING.md) — area is one of the
@@ -77,17 +73,16 @@ repository.
    comes first (`.squad/orchestration.md`, *Merge conflicts*). Fix each failing
    check and every new issue `python3 .squad/tools/sonar-check.py pr <number>`
    lists, rerun step 4 on the fix (on merged files: the gates they need),
-   commit once per round and push. Mark the PR ready for review
-   (`update_pull_request` with `draft: false`) only when *Draft until green*
-   holds; otherwise leave it a draft and tell the user what blocks it.
+   commit once per round and push. Mark the PR ready for review only when
+   *Draft until green* holds; otherwise leave it a draft and tell the user
+   what blocks it.
 10. Report the branch name, the PR URL and whether it is ready for review or
     still a draft (and why) back to the user.
 
 ## What the pull request says — and what it doesn't
 
 The pull request documents **the change**, not how the change was produced
-(`AGENTS.md`, *Related skills*): no word about the internal review loop, its
-passes, findings or fixing commits — describe the finished state.
+(`AGENTS.md`, *Related skills*): describe the finished state.
 
 - Reviewer Notes tell a reviewer where to look and why the approach was
   chosen: the components touched, any guarantee from
@@ -148,6 +143,9 @@ skills*); `review-pr` (*Answering findings on your own PR*) describes how.
   sure the corresponding documentation — [`README.md`](../../../README.md),
   [`ARCHITECTURE.md`](../../../docs/ARCHITECTURE.md),
   [`SECURITY.md`](../../../SECURITY.md) — was updated in the same PR (see the
-  template checklist). See
+  template checklist). A change in behavior also updates its area document in
+  [`docs/areas/`](../../../docs/areas/README.md), and a decision with lasting
+  weight gets its record in [`docs/decisions/`](../../../docs/decisions/README.md),
+  both in the same PR. See
   [`CONTRIBUTING.md`](../../../docs/CONTRIBUTING.md) for the full workflow and
   stability policy this skill follows.

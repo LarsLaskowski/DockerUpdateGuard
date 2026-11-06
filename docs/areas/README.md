@@ -15,9 +15,10 @@ operator or another component can rely on — formats, limits, error behavior, g
   function names as a contract (mention them only as a pointer to where it is implemented).
 - **One home per behavior.** A cross-cutting topic (security, offline behavior) lives in the area that owns it; the
   others link there.
-- **Size.** One readable document per area: split one that grows past a few thousand words, fold one that
-  says only a few sentences into a neighbor. Development and release process are not areas (see
-  `CONTRIBUTING.md`).
+- **Size.** One readable document per area: split one that grows past `AREA_MAX_WORDS` words
+  (`.squad/tools/squad_settings.py`; `decision-check.py` warns and names the split) into narrower areas — a Lead
+  decision like any new area (below) — and fold one that says only a few sentences into a neighbor. Development and
+  release process are not areas (see `CONTRIBUTING.md`).
 - **A new area is a Lead decision** made in the plan (`plan.md`, *Areas*), with its name and scope; the Dev writes
   the document and its index row with the plan's documentation updates.
 - Every decision record names its area in its `Area:` field (`—` for a record about the process). Area documents are

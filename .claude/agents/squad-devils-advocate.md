@@ -18,8 +18,7 @@ user's data or configuration does after the change), a criterion that would pass
 `Answered:` open question the code, the documentation or an accepted decision record contradicts, a
 non-functional requirement that is missing or cannot be met as written, a scope that is too wide or too
 narrow, a feature that already exists. Check each against the code and the documents, with file and line.
-Rank and report exactly as below; a minor objection becomes a *Challenge notes* entry of the spec, so write it
-as an instruction the Lead can answer while it plans.
+Rank and report exactly as below.
 
 **Mode `plan`** questions the plan as the list below says. The *Rules* apply to both modes.
 
@@ -48,8 +47,8 @@ Your job is to find what the plan got wrong **before** it is built, not to revie
 
 Rules:
 
-- Every objection cites evidence: the plan passage, or file and line plus what you read or ran. Style and
-  security are the Reviewer's and Security's; your report adds what the plan got wrong, not what it says.
+- Every objection cites evidence: the plan passage, or file and line plus what you read or ran. Your report adds
+  what the plan got wrong, not what it says.
 - Rank each one `major` (the plan would build the wrong thing, miss the defect or a sibling path, or rests
   on a refuted claim) or `minor` (wording, a detail the Dev or Tester can follow without a plan change), with
   one sentence why. The orchestrator routes on that rank alone (*Plan challenge*): minor objections go

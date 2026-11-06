@@ -5,11 +5,18 @@ Advocate, Security, the Tester and the Reviewer. Not template-managed: `adopt-te
 and never overwrites it. A product PR updates it when the change makes an entry untrue
 (`.squad/routing.md`, *Scope of a product PR*).
 
+Every entry points: it names files, types or endpoints and links the document that says more. Behavior, values,
+limits and sequences are written once, in the area documents (`docs/areas/README.md`), and the reasons in the
+decision records; a copy here goes stale with the next change. `config-check.py` warns when this file grows past
+`PROJECT_MAX_WORDS` words (`.squad/tools/squad_settings.py`).
+
 ## Security areas
 
 A change that touches one of these lists it under *Security areas touched* in its plan, so Security reviews the
-plan (`.squad/routing.md`, *Tiers*, which also says when a change is tier `security`). Details in
-`docs/ARCHITECTURE.md`, *Security posture and operating assumptions*.
+plan (`.squad/routing.md`, *Tiers*, which also says when a change is tier `security`). One line per area: what is
+protected, the concrete types, files or endpoints, and a link to the area document that states its rules
+(`- Session tokens: issued in src/Auth/, checked by every /api route — [Sessions](../docs/areas/sessions.md)`); no
+limits, patterns or sequences. Details in `docs/ARCHITECTURE.md`, *Security posture and operating assumptions*.
 
 - **Secrets in configuration:** Docker Hub PAT, Portainer credentials/API token, database password — never
   logged, never shown in the UI, never in exception messages or telemetry attributes.
@@ -30,8 +37,9 @@ plan (`.squad/routing.md`, *Tiers*, which also says when a change is tier `secur
 
 ## Guarantees
 
-Deliberate behavior that must not change without the Product Manager. Each one is described in
-`docs/ARCHITECTURE.md` (*Key design decisions* and the sections it points to).
+Deliberate behavior that must not change without the Product Manager. One line each: the guarantee in a few words,
+a link to its decision record where it was a real choice, and a link to the area document that states it. Each one
+is described in `docs/ARCHITECTURE.md` (*Key design decisions* and the sections it points to).
 
 - No authentication or authorization in the app itself: it assumes a trusted network perimeter (reverse
   proxy, VPN, private network).
@@ -86,4 +94,4 @@ assumptions (included navigations, tracking) are checked against the query that 
 
 MSTest with **NSubstitute** (`Substitute.For<T>()`) for collaborators that cross an infrastructure boundary
 (HTTP, process, clock); real objects otherwise. Data tests use EF Core InMemory (host tests) or SQLite
-(`DockerUpdateGuard.Data.Tests`). Details and helpers in `docs/UNIT_TESTS.md`.
+(`DockerUpdateGuard.Data.Tests`). Details and helpers in `docs/UNIT_TESTS.md`. A hand-written fake or stub gets one line here: the double, where it lives and what it stands in for; how it behaves is read in its code.
