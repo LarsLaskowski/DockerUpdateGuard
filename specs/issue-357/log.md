@@ -18,3 +18,4 @@ are quoted in full.
 | 2026-11-07 11:01 | 8 Review | Reviewer | VERDICT: BLOCKING 0 \| NON-BLOCKING 1 (area name in plan.md, verbatim fix applied to plan only) (opus/medium · 52,139 tokens · 7 tool uses · 45 s · 14 in · 4,384 out · 224,632 cache read · 41,751 cache write · 170,709 weighted) |
 | 2026-11-07 11:01 | 8 Verbatim fix | Orchestrator | verbatim: plan.md security area name corrected (reviewer non-blocking finding), plan only |
 | 2026-11-07 11:01 | 9 PR approval | Orchestrator | approved by checklist; record 0021 set to Accepted |
+| 2026-11-07 11:02 | 10 Pull request | Orchestrator | follow-up issue #404 created (unused client-side base-image chains); record posted, specs removed, draft PR opened |
