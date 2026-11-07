@@ -10,3 +10,4 @@ are quoted in full.
 | 2026-11-07 17:30 | 2 Challenge skipped | Orchestrator | challenge skipped — one option and no new decision record |
 | 2026-11-07 17:30 | 3 Plan security | Security | VERDICT: APPROVED; one non-blocking note: AC4 grep pattern matches GetUtcNow, narrow to DateTime(Offset).(UtcNow\|Now) (opus/medium · 38,904 tokens · 6 tool uses · 40 s · 12 in · 3,200 out · 149,903 cache read · 37,288 cache write · 140,234 weighted) |
 | 2026-11-07 17:33 | 4 Skeleton | Dev | Skeleton done: ctor param, GetRetryAfter instance, 2 call sites adapted; build clean (sonnet/medium · 86,510 tokens · 4 tool uses · 129 s · 8 in · 2,506 out · 293,493 cache read · 35,438 cache write · 86,185 weighted) |
+| 2026-11-07 17:35 | 5 Tests first | Tester | Tests written (AC1-AC3); confirmed 4 fail on current code, 63 pass; no deferred tests (sonnet/medium · 95,854 tokens · 9 tool uses · 84 s · 18 in · 6,607 out · 732,854 cache read · 44,134 cache write · 161,506 weighted) |

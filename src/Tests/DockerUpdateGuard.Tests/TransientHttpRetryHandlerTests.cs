@@ -9,6 +9,8 @@ using DockerUpdateGuard.Tests.Helper;
 
 using Microsoft.Extensions.Logging;
 
+using NSubstitute;
+
 namespace DockerUpdateGuard.Tests;
 
 /// <summary>
@@ -17,7 +19,29 @@ namespace DockerUpdateGuard.Tests;
 [TestClass]
 public partial class TransientHttpRetryHandlerTests
 {
+    #region Fields
+
+    /// <summary>
+    /// Instant the substituted clock reports; far in the future so a date relative to it never matches the real clock
+    /// </summary>
+    private static readonly DateTimeOffset _clockNow = new(2100, 1, 1, 0, 0, 0, TimeSpan.Zero);
+
+    #endregion // Fields
+
     #region Static methods
+
+    /// <summary>
+    /// Create a clock that always reports <see cref="_clockNow"/>
+    /// </summary>
+    /// <returns>Substituted time provider</returns>
+    private static TimeProvider CreateClock()
+    {
+        var clock = Substitute.For<TimeProvider>();
+
+        clock.GetUtcNow().Returns(_clockNow);
+
+        return clock;
+    }
 
     /// <summary>
     /// Create an options monitor whose scanning section uses the supplied retry count
@@ -58,13 +82,15 @@ public partial class TransientHttpRetryHandlerTests
     /// <param name="request">Optional request; a GET request is used when null</param>
     /// <param name="nextJitterMilliseconds">Optional jitter provider; no jitter is applied when null</param>
     /// <param name="logger">Optional logger that captures the handler's log entries; a new logger is used when null</param>
+    /// <param name="timeProvider">Optional clock the Retry-After date is measured against; a clock fixed at <see cref="_clockNow"/> is used when null</param>
     /// <returns>Resulting response</returns>
     private static async Task<HttpResponseMessage> SendThroughRetryHandlerAsync(int retryCount,
                                                                                 RetryProbeHttpMessageHandler probe,
                                                                                 List<TimeSpan>? capturedDelays = null,
                                                                                 HttpRequestMessage? request = null,
                                                                                 Func<int, int>? nextJitterMilliseconds = null,
-                                                                                TestLogger<TransientHttpRetryHandler>? logger = null)
+                                                                                TestLogger<TransientHttpRetryHandler>? logger = null,
+                                                                                TimeProvider? timeProvider = null)
     {
         var handler = new TransientHttpRetryHandler(CreateOptions(retryCount),
                                                     logger ?? new TestLogger<TransientHttpRetryHandler>(),
@@ -75,7 +101,7 @@ public partial class TransientHttpRetryHandlerTests
                                                         return Task.CompletedTask;
                                                     },
                                                     nextJitterMilliseconds ?? (_ => 0),
-                                                    TimeProvider.System)
+                                                    timeProvider ?? CreateClock())
                       {
                           InnerHandler = probe,
                       };
@@ -337,11 +363,12 @@ public partial class TransientHttpRetryHandlerTests
     /// </summary>
     /// <returns>Task</returns>
     [TestMethod]
+    [TestCategory("AC1")]
     public async Task TransientHttpRetryHandlerHonorsRetryAfterDateHeaderAsync()
     {
         var probe = new RetryProbeHttpMessageHandler([HttpStatusCode.ServiceUnavailable, HttpStatusCode.OK], HttpStatusCode.OK)
                     {
-                        RetryAfter = new RetryConditionHeaderValue(DateTimeOffset.UtcNow.AddSeconds(30)),
+                        RetryAfter = new RetryConditionHeaderValue(_clockNow.AddSeconds(7)),
                     };
         var capturedDelays = new List<TimeSpan>();
 
@@ -350,12 +377,9 @@ public partial class TransientHttpRetryHandlerTests
         Assert.HasCount(1,
                         capturedDelays,
                         "The retry handler must apply a single Retry-After delay");
-        Assert.IsGreaterThan(TimeSpan.FromSeconds(27),
-                             capturedDelays[0],
-                             "The retry handler must wait close to the Retry-After date before retrying");
-        Assert.IsLessThanOrEqualTo(TimeSpan.FromSeconds(30),
-                                   capturedDelays[0],
-                                   "The retry handler must not wait longer than the Retry-After date");
+        Assert.AreEqual(TimeSpan.FromSeconds(7),
+                        capturedDelays[0],
+                        "The retry handler must wait exactly until the Retry-After date measured against the injected clock");
     }
 
     /// <summary>
@@ -363,17 +387,37 @@ public partial class TransientHttpRetryHandlerTests
     /// </summary>
     /// <returns>Task</returns>
     [TestMethod]
+    [TestCategory("AC2")]
     public async Task TransientHttpRetryHandlerWithPastRetryAfterDateUsesExponentialBackoffAsync()
     {
         var probe = new RetryProbeHttpMessageHandler([HttpStatusCode.ServiceUnavailable, HttpStatusCode.OK], HttpStatusCode.OK)
                     {
-                        RetryAfter = new RetryConditionHeaderValue(DateTimeOffset.UtcNow.AddSeconds(-30)),
+                        RetryAfter = new RetryConditionHeaderValue(_clockNow.AddSeconds(-30)),
                     };
         var capturedDelays = new List<TimeSpan>();
 
         using var response = await SendThroughRetryHandlerAsync(1, probe, capturedDelays).ConfigureAwait(false);
 
         Assert.AreSequenceEqual([TimeSpan.FromMilliseconds(500)], capturedDelays, "The retry handler must fall back to exponential backoff for a past Retry-After date");
+    }
+
+    /// <summary>
+    /// Verify a Retry-After date equal to the injected clock's now falls back to exponential backoff
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC2")]
+    public async Task TransientHttpRetryHandlerWithRetryAfterDateAtNowUsesExponentialBackoffAsync()
+    {
+        var probe = new RetryProbeHttpMessageHandler([HttpStatusCode.ServiceUnavailable, HttpStatusCode.OK], HttpStatusCode.OK)
+                    {
+                        RetryAfter = new RetryConditionHeaderValue(_clockNow),
+                    };
+        var capturedDelays = new List<TimeSpan>();
+
+        using var response = await SendThroughRetryHandlerAsync(1, probe, capturedDelays).ConfigureAwait(false);
+
+        Assert.AreSequenceEqual([TimeSpan.FromMilliseconds(500)], capturedDelays, "The retry handler must fall back to exponential backoff for a Retry-After date equal to the injected clock's now");
     }
 
     /// <summary>
@@ -668,11 +712,12 @@ public partial class TransientHttpRetryHandlerTests
     /// </summary>
     /// <returns>Task</returns>
     [TestMethod]
+    [TestCategory("AC3")]
     public async Task TransientHttpRetryHandlerDoesNotRetryPostWhenRetryAfterDateExceedsMaximumAsync()
     {
         var probe = new RetryProbeHttpMessageHandler([HttpStatusCode.TooManyRequests, HttpStatusCode.OK], HttpStatusCode.OK)
                     {
-                        RetryAfter = new RetryConditionHeaderValue(DateTimeOffset.UtcNow.AddHours(1)),
+                        RetryAfter = new RetryConditionHeaderValue(_clockNow.AddHours(1)),
                     };
         var capturedDelays = new List<TimeSpan>();
         using var request = CreatePostRequest();
@@ -687,6 +732,34 @@ public partial class TransientHttpRetryHandlerTests
                         "A POST must not be resent before the Retry-After date");
         Assert.IsEmpty(capturedDelays,
                        "The handler must not wait before returning the 429 response");
+    }
+
+    /// <summary>
+    /// Verify a POST answered with Too Many Requests and a short Retry-After date is retried after exactly that wait
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC3")]
+    public async Task TransientHttpRetryHandlerRetriesPostAfterShortRetryAfterDateAsync()
+    {
+        var probe = new RetryProbeHttpMessageHandler([HttpStatusCode.TooManyRequests, HttpStatusCode.OK], HttpStatusCode.OK)
+                    {
+                        RetryAfter = new RetryConditionHeaderValue(_clockNow.AddSeconds(10)),
+                    };
+        var capturedDelays = new List<TimeSpan>();
+        using var request = CreatePostRequest();
+
+        using var response = await SendThroughRetryHandlerAsync(2, probe, capturedDelays, request).ConfigureAwait(false);
+
+        Assert.AreEqual(HttpStatusCode.OK,
+                        response.StatusCode,
+                        "A POST answered with 429 and a short Retry-After date must be retried");
+        Assert.AreEqual(2,
+                        probe.AttemptCount,
+                        "A POST must be retried once after the Retry-After date");
+        Assert.AreSequenceEqual([TimeSpan.FromSeconds(10)],
+                                capturedDelays,
+                                "The wait before the retry must be the distance from the injected clock to the Retry-After date");
     }
 
     /// <summary>
