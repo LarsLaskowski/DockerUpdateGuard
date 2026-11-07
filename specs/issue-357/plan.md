@@ -2,7 +2,7 @@
 
 Source: Issue #357
 Tier: standard — a behavior change in both registry clients' configuration reader (a configuration that failed is now read) that creates, changes or removes no security control.
-Security areas touched: Registry and Docker Hub calls
+Security areas touched: Registry and Docker Scout calls
 
 ## Problem / root cause
 
