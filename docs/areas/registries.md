@@ -5,85 +5,19 @@
 Read access to container registries: Docker Hub (its web API and its registry) and every other registry that speaks the
 OCI Distribution API. Covers which client serves which registry, what can be read (tags, manifests, image
 configuration and labels), how DockerUpdateGuard authenticates, the Docker Hub account image discovery, the Docker Hub
-request budget and parallelism, the retry of transient HTTP failures shared by the outbound HTTP integrations, and the
-failure model every integration uses. The image catalog, base-image resolution and update detection rely on it for
-registry data; operators rely on it to configure credentials and limits; the other integration areas link here for the
-retry policy and the failure model.
+request budget and parallelism, and the request timeout. The image catalog, base-image resolution and update detection
+rely on it for registry data; operators rely on it to configure credentials and limits. How a failure is reported and
+which requests are retried is the same for every integration and stated in
+[Integration failures](integration-failures.md).
 
 ## Behavior
 
-### Failure model of integrations
+### Failure model, remote text and retry
 
-- An integration call answers with an outcome instead of raising an error for an expected failure. The outcomes are:
-  - *succeeded* — the call returned data;
-  - *not configured* — the feature lacks the configuration it needs;
-  - *unsupported* — the integration cannot serve this target (for example a registry no client handles);
-  - *not found* — the target does not exist (HTTP 404 for an account, repository, tag, manifest or blob);
-  - *failed* — the call was made and did not succeed (any other non-success status, a missing token, a response
-    without the expected content);
-  - *unknown* — the outcome could not be classified.
-- Every outcome other than *succeeded* carries a human-readable message. Callers decide on the outcome, not on errors;
-  how a scan turns outcomes into scan-run statuses is described with each scan
-  ([Base images](base-images.md), [Update detection](update-detection.md), [Scan engine](scan-engine.md)).
-- A *failed* outcome from a registry names the HTTP status code and includes an excerpt of the response body the remote side sent:
-  its first 500 characters (decoded as UTF-8 unless a byte-order mark names another encoding), followed by `…` when the body was longer; an OCI reason phrase is cut to
-  100 characters the same way. In every such excerpt (response body, reason phrase, rejected origin, Trivy's error
-  line and Docker Scout's unknown severity value) each control character is replaced by one space after the cut: the characters of the Unicode categories
-  Cc, Cf, Zl and Zp, that is line breaks, tabs, escape characters, bidirectional marks and zero-width characters
-  including the joiners U+200C and U+200D (so an emoji sequence or a joined word in an excerpt can come out split by
-  spaces), and a code point outside the Basic Multilingual Plane is replaced by a single space. A lone surrogate becomes U+FFFD.
-  The cut is decided on the text as received, before the replacement, so `…` follows exactly when the received text was
-  longer than the limit. An excerpt therefore never spans lines in a log or reorders a page; the text fields of remote
-  answers get the same replacement without a cut ([Remote text fields](#remote-text-fields)). This subsection and that
-  one together state the rule. The message length is bounded everywhere, but the read is bounded (about 8 KiB) only for
-  the streamed OCI and Docker Hub responses; Docker Engine and feed responses are buffered by `HttpClient` first. After a failed OCI or Docker Hub token exchange the excerpt is of the token failure message, which names the token request URI (OCI) or the Docker Hub user name before the token endpoint's own body excerpt, so that body may be cut away.
-  The exception is a listing stopped by a rejected next-page link: it has neither a status code nor a body and names the
-  rejected origin instead ([Pagination links](#pagination-links)).
-- An outcome caused by an error rather than by an answer carries a fixed reason, never the error's own text:
-  `cancelled`, `timed out after <n> seconds` (or `timed out` when the call has no timeout of its own), `connection
-  failed` (transport failures and responses that break off), `invalid response` (malformed JSON, or a JSON string that
-  does not decode as Unicode text, such as a lone surrogate escape like `\ud800` or bytes that are not UTF-8: the
-  Docker Hub, OCI and Docker Engine clients refuse the whole body for one in any string value or property name, the
-  Portainer client and the vulnerability providers for one in a field they read; the release feeds report it as
-  `unexpected error`) or `unexpected error`. A message the application composed itself from fixed text, configuration
-  names and masked URLs is passed on: it is raised as a `ReportableException`, a type whose message must never
-  interpolate an error's message, a response body or an unmasked URL (a reviewer treats such a use as blocking). The
-  error is logged with the failure
-  ([record 0009](../decisions/0009-integration-results-carry-fixed-failure-reasons.md)).
-
-### Remote text fields
-
-The text fields a client reads from a remote answer and passes on to its callers get the same replacement as an excerpt
-(the characters of the Unicode categories Cc, Cf, Zl and Zp become one space each; a lone surrogate becomes U+FFFD only
-in text that is not a JSON string, because a JSON answer with an undecodable string is an invalid response instead),
-where the client reads the field and, apart from the names that [Docker instances](docker-instances.md) cuts to their
-stored length, without a cut: the length stays as received, a field without such a character is unchanged, and the replacement runs on the decoded string, so a JSON escape cannot bypass it. Logs, stored values and
-pages therefore never carry them from these fields:
-
-- **Docker Engine** ([Docker instances](docker-instances.md)): of a listed container the ID, name, image reference,
-  local image ID and the compose project, stack name and swarm service name labels, and the ID and name of a resource
-  sample; of an image inspect the ID, repo tags, repo digests, environment variables, root file-system layers,
-  operating system and architecture; of a history entry the created-by command, comment and tags. An item of a list
-  that consists only of such characters is dropped like a blank one.
-- **Registries** (OCI and Docker Hub clients): of an image configuration the environment variables, the label values
-  (the label names stay as received, they are only looked up by fixed names), operating system and architecture; the
-  values of `org.opencontainers.image.base.name` and `org.opencontainers.image.base.digest`, before they are parsed
-  ([Base images](base-images.md)); of Docker Hub the repository name built from namespace and name, the description of
-  a listed or a single repository, and the current user's name, in the result and in its log entry.
-- **Vulnerability providers** ([Vulnerabilities](vulnerabilities.md)): of Trivy the advisory id, title, package,
-  installed and fixed version, package class and type, summary and reference URL; of Docker Scout the advisory id,
-  title, summary and reference URL.
-
-The replacement happens before any trimming, so a reference whose replaced characters sit only at its edges resolves to
-the reference without them (`nginx:1.25` followed by an escape character reads as `nginx:1.25`).
-
-Not cleaned: tag names and digests (held to a grammar without such characters,
-[Bounded tag listings](#bounded-tag-listings) and [What can be read](#what-can-be-read)), bearer tokens and next-page
-links (consumed by the client, and the guard of [Pagination links](#pagination-links) keeps its input),
-manifest-list platforms (used only to select a digest), Portainer text (environment names have their own rule,
-[Container actions](container-actions.md)), release-feed text (never reaches a log, a message or a stored value), and
-values stored before the replacement existed, which stay until they are written again
-([record 0009](../decisions/0009-integration-results-carry-fixed-failure-reasons.md)).
+<a id="failure-model-of-integrations"></a><a id="remote-text-fields"></a><a id="retry-of-transient-http-failures"></a>
+The registry clients answer with the outcomes, fixed failure reasons and bounded excerpts of
+[Integration failures](integration-failures.md), clean the text fields they read as stated there, and their requests
+go through its retry of transient HTTP failures.
 
 ### Choice of client per registry
 
@@ -101,8 +35,8 @@ values stored before the replacement existed, which stay until they are written 
 
 ### Request paths
 
-- Every segment of a registry request path is percent-encoded. `System.Uri` removes `.` segments and resolves `..`
-  segments even when they are written as `%2E`, so encoding cannot keep them; a path whose repository, tag, digest or
+- Every segment of a registry request path is percent-encoded. URL normalization removes `.` segments and resolves
+  `..` segments even when they are written as `%2E`, so encoding cannot keep them; a path whose repository, tag, digest or
   reference has a segment that is exactly `.` or `..` is therefore never sent. A segment that contains dots but is not
   exactly `.` or `..` (`my.app`, `...`) is requested as it is, and percent text in a segment is itself encoded (`%2E%2E`
   is sent as `%252E%252E`).
@@ -191,7 +125,7 @@ values stored before the replacement existed, which stay until they are written 
   `Docker Hub tag listing for 'acme/api' stopped: the next-page link pointed to a different origin (https://attacker.example)`;
   the same origin is logged as a warning. The origin text is the scheme, host (in punycode) and, unless it is the
   default, the port; user info, path and query of the link are never written. A link that cannot be parsed is
-  described as `unparseable link`. The origin text is cut to 300 characters followed by `…` and cleaned like an excerpt ([Failure model](#failure-model-of-integrations)).
+  described as `unparseable link`. The origin text is cut to 300 characters followed by `…` and cleaned like an excerpt ([Integration failures](integration-failures.md#excerpts-of-remote-text)).
 - The guard applies only where a listing would follow the link: a listing that stops on its own condition (a Docker
   Hub bound, the maximum tag count) does not look at it, and an empty link ends the listing as before.
 - Not covered: the token service a `WWW-Authenticate` challenge names, and HTTP redirects.
@@ -247,45 +181,19 @@ values stored before the replacement existed, which stay until they are written 
   instance has in flight at once, covering web API, login, token and registry requests. Every scan and every UI
   operation works with its own client instances, so the cap is not global. The value is read when an instance is
   created, so a configuration reload applies to later operations. Requests to other registries are not capped.
-- Docker Hub rate limiting (HTTP 429) is handled by the retry below.
+- Docker Hub rate limiting (HTTP 429) is handled by the retry of
+  [Integration failures](integration-failures.md#retry-of-transient-http-failures).
 
-### Retry of transient HTTP failures
+### Request timeout
 
-- Applies to Docker Hub (web API, login, token service, registry), other registries and their token services, the
-  .NET and nginx release feeds ([Base images](base-images.md)) and Portainer
-  ([Container actions](container-actions.md)). It does not apply to Docker Engine connections
-  ([Docker instances](docker-instances.md)) or to Docker Scout ([Vulnerabilities](vulnerabilities.md)).
-- Transient are the responses 408, 429 and every 5xx, and transport errors and timeouts raised while sending. Other
-  statuses (including 401, 403 and 404) and cancellation are not retried.
-- A request is retried up to `DockerUpdateGuard:Scanning:RetryCount` times (default 2, range 0–10; 0 disables
-  retries). The value is read for every request, so a configuration reload applies at once.
-- The wait before a retry is the response's `Retry-After` (delta or date) when positive, capped at 30 seconds (a non-idempotent request with a longer `Retry-After` is not retried, see below);
-  otherwise 500 ms × 2^n for the n-th retry (n starting at 0), capped at 30 seconds, plus a random jitter of up to 20 %
-  of that value, the total again capped at 30 seconds.
-- `GET`, `HEAD`, `OPTIONS`, `TRACE`, `PUT` and `DELETE` are retried as described above. Every other method (`POST`,
-  `PATCH`, any custom method) is not idempotent: a repeat could run its effect twice, so it is retried only on a 429 whose `Retry-After` asks for at most 30 seconds or is missing,
-  and after an `HttpRequestException` whose error shows that no request byte was sent (`NameResolutionError`,
-  `ConnectionError`, `SecureConnectionError`, `ProxyTunnelError`). A 5xx, a 408, a timeout or a connection that broke
-  after the connection was established ends the request after one attempt: the response is returned or the error
-  raised. A 429 whose `Retry-After` asks for more than 30 seconds is returned after one attempt as well: the retry does
-  not resend the request inside the window the server named. The callers may still log in again with their next
-  request (see *Known gaps*). The requests concerned are the Docker Hub login and the Portainer login and actions. A non-idempotent request always carries a body, an empty one if it has nothing to send: the runtime resends a body-less request on its own when a reused connection closes after the server read it ([0008](../decisions/0008-non-idempotent-requests-retry-only-when-not-processed.md)).
-- A request body is buffered before the first attempt, so a retry resends the identical body and a body of unknown
-  length is sent with a `Content-Length`.
-- When the retries are used up the last response is returned to the caller, or the last error is raised.
-- Each retry is logged as a warning with the method, the URL without its user info and query, the status or error, the attempt
-  number and the wait. A transient outcome that is not retried because the method is not idempotent is logged as a
-  debug entry (3502) with the method, the masked URL and the status or error name. A 429 that is not retried because its `Retry-After` exceeds 30 seconds
-  is logged as a debug entry (3503) with the status, the method, the masked URL, the requested wait and the 30-second
-  maximum.
 - `DockerUpdateGuard:DockerHub:RequestTimeoutSeconds` (default 30, range 1–300) is the total time one request may
-  take including all retries and waits, for Docker Hub, other registries and the release feeds. A request that runs
-  out of time is not retried.
+  take including all retries and waits ([Integration failures](integration-failures.md#retry-of-transient-http-failures)),
+  for Docker Hub, other registries and the release feeds.
 
 ### Configuration reload
 
-- Read live: `DockerHub:UserName`, `DockerHub:Pat`, `DockerHub:Registry` (for account discovery),
-  `DockerHub:MaxParallelRequests` (for new client instances) and `Scanning:RetryCount`.
+- Read live: `DockerHub:UserName`, `DockerHub:Pat`, `DockerHub:Registry` (for account discovery)
+  and `DockerHub:MaxParallelRequests` (for new client instances).
 - Fixed at startup, a change needs a restart: `DockerHub:ApiBaseUrl` and `DockerHub:RequestTimeoutSeconds`. The
   origin of `ApiBaseUrl` (or of an absolute `DockerHub:Registry` that replaces it), fixed at startup like `ApiBaseUrl`, is the only one Docker Hub pagination follows ([Pagination links](#pagination-links)).
 - Validation of these keys at startup (an invalid value fails startup, see [Hosting](hosting.md)): `Registry`
@@ -305,7 +213,7 @@ values stored before the replacement existed, which stay until they are written 
   no configuration blob; a request path with a `.` or `..` segment, or an OCI registry that is not a valid host with an
   optional port, which is not sent ([Request paths](#request-paths)).
 - *Failed*: any other non-success status, a token that cannot be obtained, a PAT without user name, a multi-platform
-  index without a usable entry. The message contains the status code and the bounded excerpt of the remote response body ([failure model](#failure-model-of-integrations)). A next-page link
+  index without a usable entry. The message contains the status code and the bounded excerpt of the remote response body ([Integration failures](integration-failures.md#excerpts-of-remote-text)). A next-page link
   to another origin also gives *failed*, with the message of [Pagination links](#pagination-links).
 - The Docker Hub current-user, account listing, repository, tag and tag-listing calls and the OCI tag, tag-listing and
   image configuration calls answer an unreadable body (malformed JSON, or a string that does not decode) as *failed*
@@ -313,7 +221,7 @@ values stored before the replacement existed, which stay until they are written 
 - Some failures still surface as errors instead of outcomes: transport errors and timeouts that remain after the
   retries, a JSON value of the wrong type and a Docker Hub token payload that is not base64, during tag lookups, tag
   listings and the account listing (both clients) and during image configuration lookups on other registries. A Docker Hub configuration lookup turns them into *failed* with a fixed reason
-  ([failure model](#failure-model-of-integrations)). The scan that made the call records such an error as a failed
+  ([Integration failures](integration-failures.md#fixed-failure-reasons)). The scan that made the call records such an error as a failed
   scan: `Container '<name>' could not be processed: <reason>` or `Observed image scan failed: <reason>`.
 - The PAT is never written to logs or messages. The user name appears in the log entry and the message of a failed
   Docker Hub login.
@@ -325,9 +233,6 @@ values stored before the replacement existed, which stay until they are written 
 
 ### Known gaps
 
-- After a failed login the Docker Hub client logs in again with its next authenticated request, and the Portainer
-  client logs in for every capability check and action; neither remembers a 429's `Retry-After`. Tracked in
-  [#320](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/320).
 - `MaxParallelRequests` caps each Docker Hub client instance, not the process: concurrent scans, and the client
   instances one scan uses, each get the full allowance. Tracked in
   [#265](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/265).
@@ -344,10 +249,6 @@ values stored before the replacement existed, which stay until they are written 
 ## Related decisions
 
 - [0004](../decisions/0004-pagination-follows-only-same-origin-links.md): pagination follows only same-origin links.
-- [0008](../decisions/0008-non-idempotent-requests-retry-only-when-not-processed.md): non-idempotent requests are
-  retried only when they cannot have been processed.
-- [0009](../decisions/0009-integration-results-carry-fixed-failure-reasons.md): integration results carry fixed
-  failure reasons, never an error's own text.
 - [0019](../decisions/0019-remote-json-with-undecodable-strings-is-an-invalid-response.md): remote JSON with a string
   that does not decode is an invalid response.
 - [0014](../decisions/0014-registry-tag-names-and-digests-are-validated-where-they-are-read.md): remote tag names,
@@ -357,6 +258,8 @@ values stored before the replacement existed, which stay until they are written 
 
 ## Not here
 
+- Outcomes, fixed failure reasons, excerpts, remote text cleaning and the retry of transient HTTP failures:
+  [Integration failures](integration-failures.md).
 - When scans and discovery run, and the formula that turns the request budget into a schedule:
   [Scan engine](scan-engine.md).
 - Parsing image references and storing what was read: [Image catalog](image-catalog.md).

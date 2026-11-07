@@ -126,7 +126,7 @@ never their values.
 - An error in a user action is shown as an error message on the page that started it (for the per-image rescan, next
   to its button); the page stays usable and the action can be started again. The message names the action and a
   fixed reason (`Vulnerability rescan failed: connection failed`), never the error's own text. The reasons are those
-  of [Registries](registries.md#failure-model-of-integrations); an application-composed message (the rejected image
+  of [Integration failures](integration-failures.md#fixed-failure-reasons); an application-composed message (the rejected image
   reference of [Image catalog](image-catalog.md)) is passed on. The prefix names the user action, not the step that
   failed: a later step of the same action (the scan after a registration, the reload after a save) can fail after the
   earlier step succeeded. The error is logged as an error with event ID 4000 (`User action <action> failed`) and the

@@ -147,10 +147,8 @@ them is a sync bug to fix):
 @.github/instructions/csharp.instructions.md
 
 - CRLF line endings and no final newline (`.editorconfig`).
-- Tests: MSTest's `Assert` / `CollectionAssert` (no FluentAssertions); **NSubstitute** is the mocking library
-  here, used only where a collaborator crosses an infrastructure boundary; EF Core InMemory / SQLite for data
-  tests (`docs/UNIT_TESTS.md`). Test classes `{TypeUnderTest}Tests`, methods
-  `{TypeUnderTest}{Scenario}{ExpectedResult}`, always with assertion messages.
+- Tests: the conventions in [`UNIT_TESTS.md`](/docs/UNIT_TESTS.md); the mocking library and the hand-written test
+  doubles are listed in [`.squad/project.md`](/.squad/project.md) (*Test doubles*).
 <!-- project:end code-style -->
 
 ## Testing

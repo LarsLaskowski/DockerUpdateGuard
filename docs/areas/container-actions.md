@@ -90,11 +90,10 @@ transport security; the UI is the intended caller of the actions.
   lookup), container not found, HTTP status code of a non-success answer, or the reason of an error (see *Limits and errors*).
 - Actions never throw to the caller; every outcome is a result. Executed, failed and not-found actions are logged with
   the action, the container name and the Docker instance name.
-- Portainer requests go through the shared retry of transient HTTP failures described in
-  [Registries](registries.md). The login and the action request are `POST`s, which are retried only when they cannot
-  have been processed: after a connection error before anything was sent, and on a 429 whose `Retry-After` is missing or asks for at most 30 seconds. The action request carries an
-  empty body so the runtime does not resend it on its own either. A requested action therefore reaches Portainer's
-  processing at most once; a 5xx, 408, timeout, broken connection or a 429 with a longer `Retry-After` ends it *failed* after one attempt, and the
+- Portainer requests go through the shared retry of transient HTTP failures
+  ([Integration failures](integration-failures.md#retry-of-transient-http-failures)). The login and the action request
+  are not idempotent and are retried only when they cannot have been processed, so a requested action reaches
+  Portainer's processing at most once; every other transient failure ends it *failed* after one attempt, and the
   operator repeats it deliberately.
 - `RequestTimeoutSeconds` (1–300, default 15) bounds each Portainer request including its retries.
 
@@ -122,7 +121,7 @@ transport security; the UI is the intended caller of the actions.
   <n> seconds` (`RequestTimeoutSeconds`); `connection failed` for any transport failure; `invalid response` for an
   answer that is not the expected JSON; `unexpected error` otherwise. The error itself is logged with the failure
   (EventIds 3306, 3310). These are the shared reasons of
-  [Registries](registries.md#failure-model-of-integrations).
+  [Integration failures](integration-failures.md#fixed-failure-reasons).
 - The capability and action `Message` can carry Portainer environment names (external data). They are never written to
   logs or telemetry and must be rendered HTML-encoded by any UI that shows them
   ([#280](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/280)).
@@ -149,7 +148,7 @@ transport security; the UI is the intended caller of the actions.
 ## Not here
 
 - Container discovery, snapshots and Docker Engine connectivity: [Docker instances](docker-instances.md).
-- The retry policy and the shared failure model of outbound HTTP: [Registries](registries.md).
+- The retry policy and the shared failure model of outbound HTTP: [Integration failures](integration-failures.md).
 - Startup validation failure and configuration reload: [Hosting](hosting.md).
 - Retention of snapshots and other history: [Scan engine](scan-engine.md).
 - What the UI shows about Portainer availability: [Web UI](web-ui.md).

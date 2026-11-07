@@ -51,7 +51,7 @@ on the snapshots and samples it produces.
   certificate it loaded: a file renewed under the same path is read only when that pool entry is rebuilt.
 - Engine requests use the Docker Engine API version `v1.41` path prefix.
 - Engine requests are not retried; a failed request fails that operation (the shared retry of outbound HTTP described
-  in [Registries](registries.md) does not apply to Engine connections).
+  in [Integration failures](integration-failures.md#retry-of-transient-http-failures) does not apply to Engine connections).
 
 ### TLS options
 
@@ -88,7 +88,7 @@ on the snapshots and samples it produces.
   container ID when it has no name); the image reference as the Engine reports it; the local image ID; the compose
   project (`com.docker.compose.project` label), the stack name (`com.docker.stack.namespace`) and the swarm service
   name (`com.docker.swarm.service.name`). These values arrive with control characters replaced by spaces
-  ([Registries](registries.md#remote-text-fields)). The name and the three labels are cut to 200 characters with a
+  ([Integration failures](integration-failures.md#remote-text-fields)). The name and the three labels are cut to 200 characters with a
   trailing `…`; a missing label stays empty.
 - The runtime status is one of Running, Paused, Restarting, Exited, Dead; any other Engine state (for example
   `created`) is *not set*. A container counts as running only in state `running`.
@@ -104,7 +104,7 @@ on the snapshots and samples it produces.
 - Other areas can read the inspect data of a local image (ID, repo tags, repo digests, environment variables, root
   file-system layers, creation time, operating system, architecture) and its history (creation time, created-by
   command, comment, tags per layer) from an instance, addressed by image ID or reference. The text values arrive with
-  control characters replaced by spaces ([Registries](registries.md#remote-text-fields)).
+  control characters replaced by spaces ([Integration failures](integration-failures.md#remote-text-fields)).
 - An image the Engine does not know answers *not found*; any other non-success answer *failed*. How the data is used
   belongs to [Base images](base-images.md) and [Update detection](update-detection.md).
 
@@ -181,10 +181,10 @@ on the snapshots and samples it produces.
 - These messages name the configured path (validation only) and the instance name; they never contain file contents,
   certificate fields or the underlying error text.
 - Every Engine operation reports its outcome as a status (*succeeded*, *not configured*, *unsupported*, *not found*,
-  *failed*) instead of throwing; the shared failure model is described in [Registries](registries.md).
+  *failed*) instead of throwing; the shared failure model is described in [Integration failures](integration-failures.md).
 - A non-success Engine answer is reported as *failed* with the instance name, the HTTP status code and the bounded excerpt of the
-  response body ([Registries](registries.md#failure-model-of-integrations)). Unexpected errors are reported with the instance name and a fixed reason
-  ([Registries](registries.md#failure-model-of-integrations)), except the composed certificate and named-pipe
+  response body ([Integration failures](integration-failures.md#excerpts-of-remote-text)). Unexpected errors are reported with the instance name and a fixed reason
+  ([Integration failures](integration-failures.md#fixed-failure-reasons)), except the composed certificate and named-pipe
   messages; every failure is logged with its error. These messages can end up in a scan run's error message and are
   shown in the UI.
 - A message or log entry that names an endpoint shows its URL with the user info replaced by `***`; connecting still

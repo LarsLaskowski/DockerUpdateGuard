@@ -109,7 +109,7 @@ scan run:
 - A non-zero exit code whose error output contains `MANIFEST_UNKNOWN`, `manifest unknown`, or both `manifest` and
   `not found` (any case) means the image is gone from the registry: *unavailable*, "The image is no longer available
   in the registry. The tag was likely re-published with a newer digest, leaving this version orphaned." Any other
-  non-zero exit code is *failed*, "Trivy exited with code X: <last line of the error output cut to 500 characters followed by `…`, with control characters replaced ([Registries](registries.md#failure-model-of-integrations)), or 'no error output'>".
+  non-zero exit code is *failed*, "Trivy exited with code X: <last line of the error output cut to 500 characters followed by `…`, with control characters replaced ([Integration failures](integration-failures.md#excerpts-of-remote-text)), or 'no error output'>".
   When `TrivyBaseUrl` contains an `@` (which validation allows only as the end of its user info), a non-empty error output is
   replaced by "error output withheld because TrivyBaseUrl may carry credentials" in the message and the log, because
   Trivy may repeat parts of the URL's user info there (measured with Trivy v0.58.1: the password masked but the user
@@ -120,7 +120,7 @@ scan run:
   `InstalledVersion`, `FixedVersion`; fix status from `Status` (`fixed`, `affected`, `will_not_fix`, `fix_deferred`,
   `end_of_life`, any case, everything else *not set*); package class and type from the result block's `Class` and
   `Type`; summary from `Description`; reference URL from `PrimaryURL`, else the first of `References`. Every text value
-  has its control characters replaced by spaces ([Registries](registries.md#remote-text-fields)); a title that is then
+  has its control characters replaced by spaces ([Integration failures](integration-failures.md#remote-text-fields)); a title that is then
   blank falls back to the advisory id, and a class or type that is then blank is *none*.
 - The CVSS score is the NVD v3 score, else the first v3 score of any source, else the NVD v2 score, else the first v2
   score of any source, else none.
@@ -151,7 +151,7 @@ scan run:
 - Each HTTP request is limited to `RequestTimeoutSeconds`.
 - Mapping: advisory id and title from `id`, severity from `severity` (as for Trivy; an unknown value maps to *not set* and is logged cut to 100 characters, followed by `…` when it was longer, with its control characters replaced), summary from `description`,
   reference URL from the first of `links`; the text values have their control characters replaced by spaces
-  ([Registries](registries.md#remote-text-fields)). Docker Scout supplies no package, versions, fix status or CVSS score.
+  ([Integration failures](integration-failures.md#remote-text-fields)). Docker Scout supplies no package, versions, fix status or CVSS score.
 
 ### Configuration hints
 
@@ -167,9 +167,9 @@ The dashboard shows at most one hint about the vulnerability configuration:
 ## Limits and errors
 
 - Providers never raise errors for expected failures; they report *not configured*, *unsupported*, *not found* or
-  *failed* with a message ([Registries](registries.md)). An unexpected error inside a provider call becomes *failed*
+  *failed* with a message ([Integration failures](integration-failures.md#outcomes)). An unexpected error inside a provider call becomes *failed*
   with `Trivy scan failed: <reason>` or `Docker Scout scan failed: <reason>`, where `<reason>` is a fixed reason
-  ([Registries](registries.md#failure-model-of-integrations)); a Trivy process that cannot be started reads `Trivy
+  ([Integration failures](integration-failures.md#fixed-failure-reasons)); a Trivy process that cannot be started reads `Trivy
   scan failed: the Trivy executable could not be started`. Cancellation is not converted.
 - An unexpected error during a refresh ends the scan run *failed* with `Vulnerability refresh failed: <reason>`; work
   saved before stays saved. If saving the final run state fails, it is retried once.
@@ -207,7 +207,8 @@ The dashboard shows at most one hint about the vulnerability configuration:
 
 - Refresh schedule, scan run statuses, stuck-run repair and cleanup of resolved findings: [Scan engine](scan-engine.md).
 - Which base images an image version has: [Base images](base-images.md).
-- Docker Hub credentials, registry access and the retry of transient HTTP failures: [Registries](registries.md).
+- Docker Hub credentials and registry access: [Registries](registries.md); the retry of transient HTTP failures:
+  [Integration failures](integration-failures.md).
 - Validation at startup, the bundled Trivy CLI in the container image: [Hosting](hosting.md).
 - How assessments, findings, severities and the rescan control are displayed: [Web UI](web-ui.md).
 - Inventory gauges for active findings: [Telemetry](telemetry.md).

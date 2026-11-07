@@ -33,13 +33,12 @@ credentials and the Docker Scout login name.
 
 ## Decision
 
-A non-blank `DockerHub:UserName` must, after trimming, be one path component of the Docker reference grammar, with
-ASCII letters of either case, of at most 255 characters; any other value fails the configuration validation, at startup and on reload. The rule and
-its failure text are in [Registries](../areas/registries.md), *Configuration reload*.
+Option 2: a configured Docker Hub user name must have the form of a Docker Hub namespace, with letters of either case,
+and any other value fails the configuration validation. The rule, its bound and its failure text are in
+[Registries](../areas/registries.md#configuration-reload).
 
 ## Consequences
 
-- A configuration whose user name is an e-mail address or carries other characters stops starting; the failure names
-  the key and the expected form, never the value. Whether Docker Hub accepted such a value for login is not known; the
+- A configuration whose user name is an e-mail address or carries other characters stops starting. Whether Docker Hub accepted such a value for login is not known; the
   account listing never worked with it.
 - Upper-case letters stay accepted although Docker Hub names are lower-case; how Docker Hub treats them is unchanged.

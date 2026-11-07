@@ -31,7 +31,7 @@ a base-image update or vulnerability reaches; vulnerability refreshes and the da
 - The source is the image configuration's labels: `org.opencontainers.image.base.name` names the base image (parsed as
   an image reference, see [Image catalog](image-catalog.md)); `org.opencontainers.image.base.digest` supplies its
   digest (lowercased) when the name carries none. Both values have their control characters replaced by spaces before
-  they are parsed ([Registries](registries.md#remote-text-fields)). The same rule applies to Docker Hub and to every other registry.
+  they are parsed ([Integration failures](integration-failures.md#remote-text-fields)). The same rule applies to Docker Hub and to every other registry.
 - A name that cannot be parsed as an image reference, or whose registry, repository or tag is outside the reference
   grammar ([Image catalog](image-catalog.md#image-references)), counts as no label: the chain ends at that depth and the
   chain found so far is kept. A digest outside the digest grammar is dropped and the base image is kept without it.
@@ -126,7 +126,7 @@ a base-image update or vulnerability reaches; vulnerability refreshes and the da
 
 - Chain depth is capped at 5; base-tag resolution searches at most 150 tags.
 - Registry outcomes other than *succeeded* never abort the scan; they set *partial* or *failed* and add the registry's
-  message (status code and an excerpt of the response body, see [Registries](registries.md)).
+  message (status code and an excerpt of the response body, see [Integration failures](integration-failures.md#excerpts-of-remote-text)).
 - Feed failures (non-success status, missing `releases-index` array, unreadable content) only suppress the runtime
   finding; they do not change the scan status. Unreadable content is logged as a warning.
 
@@ -143,7 +143,8 @@ None yet.
 
 ## Not here
 
-- Reading configurations, tags and labels from registries, retry and timeouts: [Registries](registries.md).
+- Reading configurations, tags and labels from registries, and their timeouts: [Registries](registries.md); retry:
+  [Integration failures](integration-failures.md).
 - Parsing references and the catalog entries: [Image catalog](image-catalog.md).
 - Tag formats, version lines and update recommendations: [Update detection](update-detection.md).
 - Vulnerabilities of base images: [Vulnerabilities](vulnerabilities.md).
