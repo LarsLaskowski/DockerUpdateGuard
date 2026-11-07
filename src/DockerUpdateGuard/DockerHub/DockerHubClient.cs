@@ -25,21 +25,6 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
     #region Constants
 
     /// <summary>
-    /// Maximum supported base-image depth
-    /// </summary>
-    private const int MaxBaseImageDepth = 5;
-
-    /// <summary>
-    /// OCI base-image name label
-    /// </summary>
-    private const string OciBaseImageNameLabel = "org.opencontainers.image.base.name";
-
-    /// <summary>
-    /// OCI base-image digest label
-    /// </summary>
-    private const string OciBaseImageDigestLabel = "org.opencontainers.image.base.digest";
-
-    /// <summary>
     /// Name of the digest property in registry payloads
     /// </summary>
     private const string DigestPropertyName = "digest";
@@ -604,65 +589,6 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
     #region Methods
 
     /// <summary>
-    /// Recursively resolve the base image chain for a given image reference
-    /// </summary>
-    /// <param name="imageReference">Image reference to resolve</param>
-    /// <param name="results">Accumulated base image descriptors</param>
-    /// <param name="depth">Current chain depth</param>
-    /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>Task</returns>
-    private async Task ResolveBaseImageChainAsync(ImageReference imageReference,
-                                                  List<BaseImageDescriptor> results,
-                                                  int depth,
-                                                  CancellationToken cancellationToken)
-    {
-        if (depth > MaxBaseImageDepth)
-        {
-            return;
-        }
-
-        var manifestUri = CreateRegistryRequestUri(imageReference.Repository, ManifestsResource, GetManifestReference(imageReference));
-
-        if (manifestUri is null)
-        {
-            return;
-        }
-
-        var registryToken = await GetRegistryTokenAsync(imageReference, cancellationToken).ConfigureAwait(false);
-
-        if (registryToken is null)
-        {
-            return;
-        }
-
-        var configDigest = await GetImageConfigDigestAsync(imageReference, manifestUri, registryToken, cancellationToken).ConfigureAwait(false);
-
-        if (configDigest is null)
-        {
-            return;
-        }
-
-        var baseImageRef = await ExtractBaseImageFromConfigAsync(imageReference, configDigest, registryToken, cancellationToken).ConfigureAwait(false);
-
-        if (baseImageRef is null)
-        {
-            return;
-        }
-
-        results.Add(new BaseImageDescriptor
-                    {
-                        Registry = baseImageRef.Registry,
-                        Repository = baseImageRef.Repository,
-                        Tag = baseImageRef.Tag,
-                        Digest = baseImageRef.Digest,
-                        Depth = depth,
-                        SourceReference = imageReference.FullReference,
-                    });
-
-        await ResolveBaseImageChainAsync(baseImageRef, results, depth + 1, cancellationToken).ConfigureAwait(false);
-    }
-
-    /// <summary>
     /// Request a pull token from the Docker Registry authentication service
     /// </summary>
     /// <param name="imageReference">Image reference to request scope for</param>
@@ -820,63 +746,6 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
         }
 
         return null;
-    }
-
-    /// <summary>
-    /// Fetch the image config blob and extract the OCI base image reference
-    /// </summary>
-    /// <param name="imageReference">Image reference to fetch the blob for</param>
-    /// <param name="configDigest">Config blob digest</param>
-    /// <param name="registryToken">Registry bearer token</param>
-    /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>Parsed base image reference or null when no OCI base image label is present</returns>
-    private async Task<ImageReference?> ExtractBaseImageFromConfigAsync(ImageReference imageReference,
-                                                                        string configDigest,
-                                                                        string registryToken,
-                                                                        CancellationToken cancellationToken)
-    {
-        var blobUri = CreateRegistryRequestUri(imageReference.Repository, BlobsResource, configDigest);
-
-        if (blobUri is null)
-        {
-            return null;
-        }
-
-        using var request = new HttpRequestMessage(HttpMethod.Get, blobUri);
-
-        request.Headers.Authorization = new AuthenticationHeaderValue(BearerScheme, registryToken);
-
-        using var response = await SendThrottledAsync(request, cancellationToken).ConfigureAwait(false);
-
-        if (response.IsSuccessStatusCode == false)
-        {
-            return null;
-        }
-
-        var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-
-        await using (responseStream.ConfigureAwait(false))
-        {
-            using var jsonDocument = await RemoteJsonDocument.ParseAsync(responseStream, cancellationToken).ConfigureAwait(false);
-
-            if (jsonDocument.RootElement.TryGetProperty(ConfigPropertyName, out var configElement) == false
-                || configElement.TryGetProperty("Labels", out var labelsElement) == false
-                || labelsElement.ValueKind != JsonValueKind.Object)
-            {
-                return null;
-            }
-
-            var baseImageName = ResponseBodyExcerpt.ReplaceControlCharacters(TryGetString(labelsElement, OciBaseImageNameLabel));
-
-            if (string.IsNullOrWhiteSpace(baseImageName))
-            {
-                return null;
-            }
-
-            var baseImageDigest = ResponseBodyExcerpt.ReplaceControlCharacters(TryGetString(labelsElement, OciBaseImageDigestLabel));
-
-            return BaseImageLabelReader.ReadReference(baseImageName, baseImageDigest);
-        }
     }
 
     /// <summary>
@@ -1580,43 +1449,6 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
                                   repository,
                                   $"Tag lookup failed for '{repository}'",
                                   () => GetTagsCoreAsync(repository, repositoryPath, queryOptions, cancellationToken)).ConfigureAwait(false);
-    }
-
-    /// <inheritdoc/>
-    public async Task<ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>> ResolveBaseImagesAsync(ImageReference imageReference, CancellationToken cancellationToken = default)
-    {
-        if (IsSupportedRegistry(imageReference.Registry) == false)
-        {
-            _logger.DockerHubRegistryUnsupported(imageReference.Registry, nameof(ResolveBaseImagesAsync));
-
-            return ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>.Unsupported($"Registry '{imageReference.Registry}' is not supported by the Docker Hub adapter");
-        }
-
-        if (CreateRegistryRequestUri(imageReference.Repository, ManifestsResource, GetManifestReference(imageReference)) is null)
-        {
-            return ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>.Succeeded([]);
-        }
-
-        using var activity = DockerUpdateGuardTelemetry.ActivitySource.StartActivity(TelemetryActivityNames.DockerHubRequest, ActivityKind.Client);
-
-        activity?.SetTag(TelemetryTagNames.ImageReference, imageReference.FullReference);
-
-        var results = new List<BaseImageDescriptor>();
-
-        try
-        {
-            await ResolveBaseImageChainAsync(imageReference, results, depth: 1, cancellationToken).ConfigureAwait(false);
-        }
-        catch (Exception exception) when (exception is not OperationCanceledException)
-        {
-            _logger.DockerHubBaseImageResolutionFailed(exception, imageReference.FullReference);
-
-            return ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>.Failed($"Base image chain resolution failed for '{imageReference.FullReference}': {FailureReason.FromException(exception, null, cancellationToken)}");
-        }
-
-        _logger.DockerHubBaseImageChainResolved(imageReference.FullReference, results.Count);
-
-        return ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>.Succeeded(results);
     }
 
     #endregion // IDockerHubClient

@@ -53,10 +53,9 @@ go through its retry of transient HTTP failures.
   web API lookups (repository, tag, tag listing) and the Docker Hub configuration lookup with a repository, tag or
   reference of that kind answer *not found* with the message `Registry request path would contain a '.' or '..'
   segment`; the OCI lookups with an invalid registry answer *not found* with `Registry is not a valid host with an
-  optional port`, sending no request and logging nothing. A base-image resolution ends its chain without base images and succeeds. A digest named by a manifest ends
-  the chain (base images), answers *not found* with the same message (OCI configuration, OCI manifest-list entry),
+  optional port`, sending no request and logging nothing. A digest named by a manifest answers *not found* with the same message (OCI configuration, OCI manifest-list entry),
   gives *failed* "Image configuration blob could not be read for '<reference>'" (Docker Hub configuration blob) or
-  *not found* "Config blob digest could not be resolved for '<reference>'" (Docker Hub manifest-list entry).
+  *not found* "Config blob digest could not be resolved for '<reference>'" (Docker Hub manifest-list entry). Base-image resolution reads configurations through these lookups; its outcome is described in [Base images](base-images.md#resolving-the-chain).
 - The vulnerability lookup of Docker Scout follows the same rule and escapes each segment of its path
   ([Vulnerabilities](vulnerabilities.md#docker-scout)).
 - Not covered: the account name of the account listing and the Docker Engine requests.

@@ -81,19 +81,6 @@ internal static partial class DockerHubClientLogging
     public static partial void DockerHubAuthenticationUserNameMissing(this ILogger logger);
 
     /// <summary>
-    /// Log that Docker Hub base image chain resolution completed successfully
-    /// </summary>
-    /// <param name="logger">Logger</param>
-    /// <param name="imageReference">Image reference</param>
-    /// <param name="baseImageCount">Number of resolved base images</param>
-    [LoggerMessage(EventId = 3207,
-                   Level = LogLevel.Information,
-                   Message = "Resolved {BaseImageCount} base image(s) in chain for {ImageReference}")]
-    public static partial void DockerHubBaseImageChainResolved(this ILogger logger,
-                                                               string imageReference,
-                                                               int baseImageCount);
-
-    /// <summary>
     /// Log that a Docker Registry token request failed
     /// </summary>
     /// <param name="logger">Logger</param>
@@ -118,19 +105,6 @@ internal static partial class DockerHubClientLogging
     public static partial void DockerHubManifestFetchFailed(this ILogger logger,
                                                             string imageReference,
                                                             int statusCode);
-
-    /// <summary>
-    /// Log that Docker Hub base image resolution failed with an exception
-    /// </summary>
-    /// <param name="logger">Logger</param>
-    /// <param name="exception">Exception</param>
-    /// <param name="imageReference">Image reference</param>
-    [LoggerMessage(EventId = 3210,
-                   Level = LogLevel.Warning,
-                   Message = "Docker Hub base image resolution failed for {ImageReference}")]
-    public static partial void DockerHubBaseImageResolutionFailed(this ILogger logger,
-                                                                  Exception exception,
-                                                                  string imageReference);
 
     /// <summary>
     /// Log that a Docker Hub pagination stopped because the next-page link pointed to a different origin
