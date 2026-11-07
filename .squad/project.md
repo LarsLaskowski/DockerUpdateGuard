@@ -61,7 +61,7 @@ a link to its decision record where it was a real choice, and a link to the area
   [decision 0009](../docs/decisions/0009-integration-results-carry-fixed-failure-reasons.md),
   [Integration failures](../docs/areas/integration-failures.md)
 - Update evaluation and tag comparison perform no I/O, including the conservative major-upgrade gating —
-  [Update detection](../docs/areas/update-detection.md#major-upgrade-policy)
+  [Update detection](../docs/areas/update-detection.md#limits-and-errors)
 - The registry/image-version catalog has one write path, get-or-create without duplicates under races; other records
   are written by the scan that owns them — [Image catalog](../docs/areas/image-catalog.md#the-catalog)
 - Migrations are serialized at startup — [Hosting](../docs/areas/hosting.md#startup-sequence); the scan engine assumes
@@ -128,7 +128,7 @@ line here: the double, where it lives and what it stands in for; how it behaves 
 `Data/` are under `src/Tests/DockerUpdateGuard.Tests/`.
 
 - `StubHttpMessageHandler` (`Helper/`) — the Docker Hub web API, token service and registry
-- `SequenceHttpMessageHandler` (`Helper/`) — an HTTP endpoint answering a fixed sequence (Docker Engine, Portainer, Docker Scout)
+- `SequenceHttpMessageHandler` (`Helper/`) — an HTTP endpoint answering a fixed sequence (Docker Engine, OCI registries, Portainer, Docker Scout)
 - `DelegateHttpMessageHandler` (`Helper/`) — an HTTP endpoint whose answer a test builds per request
 - `StaticHttpMessageHandler`, `StaticHttpJsonMessageHandler` (`Helper/`) — the nginx and .NET release feeds
 - `RetryProbeHttpMessageHandler` (`Helper/`) — an endpoint replaying transient failures for the retry handler
