@@ -38,9 +38,7 @@ public class TransientHttpRetryHandler : DelegatingHandler
     private readonly ILogger<TransientHttpRetryHandler> _logger;
     private readonly Func<TimeSpan, CancellationToken, Task> _delayAsync;
     private readonly Func<int, int> _nextJitterMilliseconds;
-#pragma warning disable S1144, S4487 // Skeleton: removed with the implementation
     private readonly TimeProvider _timeProvider;
-#pragma warning restore S1144, S4487
 
     #endregion // Fields
 
@@ -223,7 +221,7 @@ public class TransientHttpRetryHandler : DelegatingHandler
 
         if (retryAfter.Date is DateTimeOffset date)
         {
-            var untilDate = date - DateTimeOffset.UtcNow;
+            var untilDate = date - _timeProvider.GetUtcNow();
 
             if (untilDate > TimeSpan.Zero)
             {
