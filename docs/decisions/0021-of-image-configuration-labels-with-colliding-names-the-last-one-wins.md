@@ -21,8 +21,8 @@ trust question, only one of predictability.
 ## Options considered
 
 1. **The label that comes last in the configuration wins, compared case-insensitively.** Chosen. One rule for both
-   collisions: `JsonElement.TryGetProperty`, which reads the base-image labels elsewhere in both clients, also
-   returns the last of exact duplicates. Configurations written by Go tooling (Docker, BuildKit) serialize the label
+   collisions: `JsonElement.TryGetProperty`, the JSON reader's own property lookup, also returns the last of exact
+   duplicates. Configurations written by Go tooling (Docker, BuildKit) serialize the label
    map with sorted keys, so of names that differ only in case the all-lowercase one — the form of the OCI names
    looked up — comes last.
 2. **The first label wins.** Equally simple, but the opposite of `System.Text.Json` for exact duplicates, and in a

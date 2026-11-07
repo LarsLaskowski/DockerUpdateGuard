@@ -51,14 +51,6 @@ public interface IRegistryMetadataClient
                                                                                 CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Attempt to resolve base images for an observed image
-    /// </summary>
-    /// <param name="imageReference">Image reference</param>
-    /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>Base image result</returns>
-    Task<ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>> ResolveBaseImagesAsync(ImageReference imageReference, CancellationToken cancellationToken = default);
-
-    /// <summary>
     /// Read reduced image configuration metadata for an image reference
     /// </summary>
     /// <param name="imageReference">Image reference</param>

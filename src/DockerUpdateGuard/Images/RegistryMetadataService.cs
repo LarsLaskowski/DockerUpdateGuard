@@ -97,19 +97,6 @@ public partial class RegistryMetadataService : IRegistryMetadataService
     }
 
     /// <inheritdoc/>
-    public Task<ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>> ResolveBaseImagesAsync(ImageReference imageReference, CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(imageReference);
-
-        if (TryGetClient(imageReference.Registry, out var client) == false)
-        {
-            return Task.FromResult(ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>.Unsupported(CreateUnsupportedMessage(imageReference.Registry)));
-        }
-
-        return client.ResolveBaseImagesAsync(imageReference, cancellationToken);
-    }
-
-    /// <inheritdoc/>
     public Task<ExternalOperationResult<RegistryImageConfigurationData>> GetImageConfigurationAsync(ImageReference imageReference, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(imageReference);

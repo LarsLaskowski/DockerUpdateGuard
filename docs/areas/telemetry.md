@@ -49,7 +49,7 @@ Every exported signal carries the same resource:
 
   | Span name | Wraps | Attribute |
   | --- | --- | --- |
-  | `dockerhub.request` | A Docker Hub repository lookup, tag lookup or base-image resolution | `docker.image.reference` (the full image reference) |
+  | `dockerhub.request` | A Docker Hub repository lookup or tag lookup | `docker.image.reference` (the full image reference) |
   | `dockerengine.request` | Container discovery on one Docker instance | `docker.instance.name` (the configured instance name) |
 
 - The span names `scan.run`, `cve.request`, `portainer.request`, `portainer.action` and `persistence.operation` are

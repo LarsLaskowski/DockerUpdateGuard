@@ -48,12 +48,6 @@ internal sealed class NullRegistryMetadataClient : IRegistryMetadataClient
     }
 
     /// <inheritdoc/>
-    public Task<ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>> ResolveBaseImagesAsync(ImageReference imageReference, CancellationToken cancellationToken = default)
-    {
-        throw new NotSupportedException();
-    }
-
-    /// <inheritdoc/>
     public Task<ExternalOperationResult<RegistryImageConfigurationData>> GetImageConfigurationAsync(ImageReference imageReference, CancellationToken cancellationToken = default)
     {
         throw new NotSupportedException();

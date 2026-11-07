@@ -21,24 +21,9 @@ public partial class OciRegistryClient : IRegistryMetadataClient
     #region Constants
 
     /// <summary>
-    /// Maximum supported base-image depth
-    /// </summary>
-    private const int MaxBaseImageDepth = 5;
-
-    /// <summary>
     /// Docker-content-digest header name
     /// </summary>
     private const string DockerContentDigestHeaderName = "Docker-Content-Digest";
-
-    /// <summary>
-    /// OCI base-image name label
-    /// </summary>
-    private const string OciBaseImageNameLabel = "org.opencontainers.image.base.name";
-
-    /// <summary>
-    /// OCI base-image digest label
-    /// </summary>
-    private const string OciBaseImageDigestLabel = "org.opencontainers.image.base.digest";
 
     /// <summary>
     /// Name of the digest property in registry payloads
@@ -883,57 +868,6 @@ public partial class OciRegistryClient : IRegistryMetadataClient
     #region Methods
 
     /// <summary>
-    /// Resolve the base image chain recursively
-    /// </summary>
-    /// <param name="imageReference">Image reference</param>
-    /// <param name="results">Result collection</param>
-    /// <param name="depth">Current depth</param>
-    /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>Task</returns>
-    private async Task ResolveBaseImageChainAsync(ImageReference imageReference,
-                                                  List<BaseImageDescriptor> results,
-                                                  int depth,
-                                                  CancellationToken cancellationToken)
-    {
-        if (depth > MaxBaseImageDepth)
-        {
-            return;
-        }
-
-        var manifestResult = await GetManifestMetadataAsync(imageReference,
-                                                            string.IsNullOrWhiteSpace(imageReference.Digest) ? imageReference.Tag : imageReference.Digest,
-                                                            cancellationToken).ConfigureAwait(false);
-
-        if (manifestResult.Status != ExternalOperationStatus.Succeeded
-            || manifestResult.Data is null
-            || string.IsNullOrWhiteSpace(manifestResult.Data.ConfigDigest))
-        {
-            return;
-        }
-
-        var baseImageReference = await ExtractBaseImageFromConfigAsync(imageReference,
-                                                                       manifestResult.Data.ConfigDigest,
-                                                                       cancellationToken).ConfigureAwait(false);
-
-        if (baseImageReference is null)
-        {
-            return;
-        }
-
-        results.Add(new BaseImageDescriptor
-                    {
-                        Registry = baseImageReference.Registry,
-                        Repository = baseImageReference.Repository,
-                        Tag = baseImageReference.Tag,
-                        Digest = baseImageReference.Digest,
-                        Depth = depth,
-                        SourceReference = imageReference.FullReference,
-                    });
-
-        await ResolveBaseImageChainAsync(baseImageReference, results, depth + 1, cancellationToken).ConfigureAwait(false);
-    }
-
-    /// <summary>
     /// Fetch manifest metadata for a reference
     /// </summary>
     /// <param name="imageReference">Image reference</param>
@@ -1043,61 +977,6 @@ public partial class OciRegistryClient : IRegistryMetadataClient
         platformManifestResult.Data.Digest = string.IsNullOrWhiteSpace(digest) ? platformManifestResult.Data.Digest : digest;
 
         return platformManifestResult;
-    }
-
-    /// <summary>
-    /// Fetch the image config blob and extract the OCI base image reference
-    /// </summary>
-    /// <param name="imageReference">Image reference</param>
-    /// <param name="configDigest">Config blob digest</param>
-    /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>Parsed base image reference or null</returns>
-    private async Task<ImageReference?> ExtractBaseImageFromConfigAsync(ImageReference imageReference,
-                                                                        string configDigest,
-                                                                        CancellationToken cancellationToken)
-    {
-        var blobUri = CreateBlobUri(imageReference.Registry, imageReference.Repository, configDigest, out _);
-
-        if (blobUri is null)
-        {
-            return null;
-        }
-
-        using var response = await SendRegistryRequestAsync(blobUri,
-                                                            imageReference.Repository,
-                                                            HttpMethod.Get,
-                                                            configureRequest: null,
-                                                            cancellationToken).ConfigureAwait(false);
-
-        if (response.IsSuccessStatusCode == false)
-        {
-            return null;
-        }
-
-        var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-
-        await using (responseStream.ConfigureAwait(false))
-        {
-            using var jsonDocument = await RemoteJsonDocument.ParseAsync(responseStream, cancellationToken).ConfigureAwait(false);
-
-            if (jsonDocument.RootElement.TryGetProperty(ConfigPropertyName, out var configElement) == false
-                || configElement.TryGetProperty("Labels", out var labelsElement) == false
-                || labelsElement.ValueKind != JsonValueKind.Object)
-            {
-                return null;
-            }
-
-            var baseImageName = ResponseBodyExcerpt.ReplaceControlCharacters(TryGetString(labelsElement, OciBaseImageNameLabel));
-
-            if (string.IsNullOrWhiteSpace(baseImageName))
-            {
-                return null;
-            }
-
-            var baseImageDigest = ResponseBodyExcerpt.ReplaceControlCharacters(TryGetString(labelsElement, OciBaseImageDigestLabel));
-
-            return BaseImageLabelReader.ReadReference(baseImageName, baseImageDigest);
-        }
     }
 
     /// <summary>
@@ -1573,34 +1452,6 @@ public partial class OciRegistryClient : IRegistryMetadataClient
                                   $"{normalizedRegistry}/{repository}",
                                   $"Tag lookup failed for '{normalizedRegistry}/{repository}'",
                                   () => GetTagsCoreAsync(lookupContext, allowedOrigin, cancellationToken)).ConfigureAwait(false);
-    }
-
-    /// <inheritdoc/>
-    public async Task<ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>> ResolveBaseImagesAsync(ImageReference imageReference, CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(imageReference);
-
-        if (CanHandle(imageReference.Registry) == false)
-        {
-            return ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>.Unsupported($"Registry '{imageReference.Registry}' is not supported by the OCI registry adapter");
-        }
-
-        var results = new List<BaseImageDescriptor>();
-
-        try
-        {
-            await ResolveBaseImageChainAsync(imageReference, results, depth: 1, cancellationToken).ConfigureAwait(false);
-        }
-        catch (Exception exception) when (exception is not OperationCanceledException)
-        {
-            _logger.LogWarning(exception,
-                               "OCI base image chain resolution failed for {ImageReference}",
-                               imageReference.FullReference);
-
-            return ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>.Failed($"Base image chain resolution failed for '{imageReference.FullReference}': {FailureReason.FromException(exception, null, cancellationToken)}");
-        }
-
-        return ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>.Succeeded(results);
     }
 
     /// <inheritdoc/>

@@ -101,5 +101,18 @@ public class BaseImageLabelReaderTests
         Assert.IsNull(fromName.Digest, "A digest in the name outside the grammar must become none");
     }
 
+    /// <summary>
+    /// Verify a digest label that carries an image reference yields only the digest
+    /// </summary>
+    [TestMethod]
+    [TestCategory("AC2")]
+    public void BaseImageLabelReaderReadReferenceWhenDigestLabelHasImageReferenceKeepsDigestOnly()
+    {
+        var reference = BaseImageLabelReader.ReadReference("mcr.microsoft.com/dotnet/runtime:8.0", "mcr.microsoft.com/dotnet/runtime@sha256:runtime");
+
+        Assert.IsNotNull(reference, "A valid label must be parsed");
+        Assert.AreEqual("sha256:runtime", reference.Digest, "Only the digest of an image reference in the digest label must be kept");
+    }
+
     #endregion // Methods
 }
