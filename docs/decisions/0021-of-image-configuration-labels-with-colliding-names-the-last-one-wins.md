@@ -1,6 +1,6 @@
 # 0021: Of image configuration labels with colliding names, the last one wins
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-07
 - **Area:** Registries
 - **Source:** Issue #357

@@ -81,5 +81,5 @@ once in the [area document](../areas/README.md) of the record's area, and the re
 | [0018](0018-the-docker-hub-user-name-is-validated-as-a-namespace-at-startup.md) | The Docker Hub user name is validated as a Docker Hub namespace at startup | Accepted | 2026-11-05 |
 | [0019](0019-remote-json-with-undecodable-strings-is-an-invalid-response.md) | Remote JSON with a string that does not decode is an invalid response | Accepted | 2026-11-05 |
 | [0020](0020-the-squads-process-decisions-live-in-process-md.md) | The squad's process decisions live in process.md | Accepted | 2026-11-06 |
-| [0021](0021-of-image-configuration-labels-with-colliding-names-the-last-one-wins.md) | Of image configuration labels with colliding names, the last one wins | Proposed | 2026-11-07 |
+| [0021](0021-of-image-configuration-labels-with-colliding-names-the-last-one-wins.md) | Of image configuration labels with colliding names, the last one wins | Accepted | 2026-11-07 |
 <!-- project:end index -->
