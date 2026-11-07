@@ -90,5 +90,54 @@ public class ImageConfigurationLabelReaderTests
         Assert.AreEqual("unchanged", labels["plain"], "A value without such a character must stay unchanged");
     }
 
+    /// <summary>
+    /// Verify a label whose value is null gives no entry, so no empty string is produced for it
+    /// </summary>
+    [TestMethod]
+    [TestCategory("AC3")]
+    public void ImageConfigurationLabelReaderReadLabelsWhenValueIsNullGivesNoEntry()
+    {
+        using var document = JsonDocument.Parse("""{ "nothing": null, "empty": "" }""");
+
+        var labels = ImageConfigurationLabelReader.ReadLabels(document.RootElement);
+
+        var label = Assert.ContainsSingle(labels, "Only the string label must give an entry");
+
+        Assert.AreEqual("empty", label.Key, "The empty string label must be kept");
+        Assert.AreEqual(string.Empty, label.Value, "The empty string value must stay empty");
+        Assert.DoesNotContain("nothing", labels.Keys.ToArray(), "A null value must give no entry");
+    }
+
+    /// <summary>
+    /// Verify a labels element that is not an object gives an empty result
+    /// </summary>
+    /// <param name="json">Json text of the labels element</param>
+    [TestMethod]
+    [DataRow("null")]
+    [DataRow("[\"a\", \"b\"]")]
+    [DataRow("\"text\"")]
+    [DataRow("5")]
+    [TestCategory("AC3")]
+    public void ImageConfigurationLabelReaderReadLabelsWhenElementIsNotObjectGivesEmpty(string json)
+    {
+        using var document = JsonDocument.Parse(json);
+
+        var labels = ImageConfigurationLabelReader.ReadLabels(document.RootElement);
+
+        Assert.IsEmpty(labels, "A labels element that is not an object must give no labels");
+    }
+
+    /// <summary>
+    /// Verify an undefined labels element gives an empty result
+    /// </summary>
+    [TestMethod]
+    [TestCategory("AC3")]
+    public void ImageConfigurationLabelReaderReadLabelsWhenElementIsUndefinedGivesEmpty()
+    {
+        var labels = ImageConfigurationLabelReader.ReadLabels(default);
+
+        Assert.IsEmpty(labels, "An undefined labels element must give no labels");
+    }
+
     #endregion // Methods
 }
