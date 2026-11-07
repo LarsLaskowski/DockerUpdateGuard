@@ -52,7 +52,10 @@ formatter touched is reported as "formatted outside the change", not edited, and
 
 **Git and GitHub.** Members never run Git write operations and never post to GitHub (no GitHub MCP write tool
 either); the hook `.claude/hooks/git-guard.py` denies such Bash commands. Read-only Git, `git add` and a scratch `git
-worktree` stay allowed; a member that needs anything else reports it. The orchestrator checks `git status` after each report and restores any index or tree change. Another revision is read with `git show <sha>:<path>` or in a scratch worktree
+worktree` stay allowed; a member that needs anything else reports it. A file the change deletes is removed with plain
+`rm`, the removal staged with `git add <path>` (a moved file: `mv`, then `git add` both paths; `git rm` and `git mv`
+are denied) and named in the report. The orchestrator checks `git status` after each report and restores any index or
+tree change the report does not name. Another revision is read with `git show <sha>:<path>` or in a scratch worktree
 (`git worktree add --detach`), never by checking it out in the repository working tree.
 Session-management tools (`create_session`, `send_message`, `archive_session`, the scheduled-task tools and the
 other remote-session tools) belong to the orchestrator alone, also for "handing over" work or tidying up: a member

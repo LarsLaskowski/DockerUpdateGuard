@@ -117,9 +117,10 @@ every Git and GitHub action yourself, including follow-up issues the Lead decide
 8. **Review.** Launch the review set `squad-next.py` prints, in parallel, with the base ref, the stamp's code
    SHA, the work folder (tiers `docs` and `patch`: the first `log.md` row) and the stamp's gate output; tell
    them that later commits may only touch `specs/`, and avoid commits while the round runs (*The stop hook*). A
-   report for another code head is a stale round. Then:
+   report for another code head is a stale round (`squad-next.py` compares the SHA of the Reviewer's verdict line
+   with the stamp). Then:
    - a tier raise: *Tiers*; an *unlisted security area*: *Unlisted security areas*; a fix marked `verbatim`:
-     *Verbatim documentation fixes*;
+     *Verbatim documentation fixes*; an `unopened` link: *Pages the session cannot open*;
    - blocking findings → their owner (`squad-dev` for code and documentation, `squad-tester`) → steps 6 and 7 again (tiers `docs` and
      `patch`: you fix them and stamp again) → **a delta round, mandatory**; at most 2 fix rounds, then
      `squad-lead` in mode `decide` (*Loop limits*);

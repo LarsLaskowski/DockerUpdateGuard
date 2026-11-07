@@ -57,8 +57,8 @@ round number, and — from round 2 on — the previous round's findings and the
 commits that were supposed to fix them. If no round number is given, assume
 round 1. The head is a code SHA: commits after it that touch only `specs/`
 (log rows a stop hook made the session commit) are bookkeeping — review the
-SHA you were given and report it first; a later commit outside `specs/` is
-a stale round.
+SHA you were given and name it in your verdict line (*Output*); a later commit
+outside `specs/` is a stale round.
 
 When invoked by the squad (`squad-issue` / `squad-spec`), the calling session
 also gives you the work folder (`specs/<folder>/`) and the output of the gates
@@ -162,7 +162,10 @@ repository names this thing, and is that statement still true?**
   needs the matching section of its area document in `docs/areas/` in the same
   diff, and a decision record repeats no rules the area document states. Each
   decision record of the change matches what was built; the PR approval (step 9)
-  does not check it again.
+  does not check it again. A link or statement that rests on a page you cannot
+  open (the proxy refuses the host, the repository cannot be attached) is
+  neither a finding nor checked: list it after the findings as `unopened`, with
+  the error you got (*Pages the session cannot open* in `.squad/routing.md`).
 - **Language**: all new code, comments, documentation and commit messages in
   English.
 - **Scope**: unrelated changes bundled in, accidental file inclusions, debug
@@ -211,12 +214,17 @@ A nit that would not change what gets merged stays out of the report.
 
 ## Output
 
-Start your report with exactly one verdict line:
+Start your report with exactly one verdict line in one of these three forms, which `squad-next.py` reads back:
 
 ```
-VERDICT: APPROVE
-VERDICT: BLOCKING 2 | NON-BLOCKING 1
+VERDICT: APPROVE on <sha>
+VERDICT: BLOCKING 0 | NON-BLOCKING 2 on <sha>
+VERDICT: BLOCKING 2 | NON-BLOCKING 1 on <sha>
 ```
+
+`APPROVE` only without any finding; with findings both counts, `BLOCKING 0` when only non-blocking ones remain.
+`<sha>` is the code SHA you reviewed, copied from the output of `git rev-parse <the head you were given>` (all 40
+characters), never typed from memory: `squad-next.py` compares it with the gate stamp's.
 
 Then the findings, most severe first, in this shape:
 

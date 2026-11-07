@@ -141,10 +141,16 @@ session's:
   and may have (tools such as `git`, network access to which hosts, DNS, the console it is used from, the
   order of steps the operator will paste) and records the answers as scenarios and acceptance criteria. The
   Devil's Advocate checks the plan against that list.
+- **Third-party pages.** A document that leads the operator through another provider's page or console (a
+  settings page, a dashboard) rests on labels and layouts that change without notice. The spec asks the Product
+  Manager how far the document may rest on them — their exact labels, only the page's name and purpose, or a link
+  to the provider's own guide — and records the answer as a non-functional requirement.
 - **Dry run.** The plan schedules a dry run of the documented steps by the Product Manager (or a stated
   stand-in) **before** the documentation is reviewed, and lists the hosts and software versions the run needs
   (for example the backend version with the API the procedure calls). Every statement of the document that no
-  run has shown is marked as such in the document. When an external page cannot be reached from the session,
+  run has shown is a row of the plan's *Verified facts*, `unverified` with the dry run as its owner — never a
+  marker in the document, which its readers keep; the dry run confirms or corrects each, and a statement it could
+  not show is narrowed to what it showed or left out. When an external page cannot be reached from the session,
   the plan asks the Product Manager to confirm those statements in the earliest real run, not at the end.
 - **Shell procedures.** For a documented shell procedure the plan states, before Security's plan review, what
   happens when (a) all lines are pasted at once, (b) one line at a time, (c) one line fails, (d) a variable
@@ -154,6 +160,16 @@ session's:
 - **CI-only rows.** A script only CI can run (it needs systemd, root or a service the session lacks) has a
   local smoke substitute (*Writing tests* in `.squad/stack.md`); the plan lists the rows that can run in CI
   only, and the Tester runs the substitute before handing back.
+
+### Pages the session cannot open
+
+A link or statement of the change that rests on a page the session cannot open (the proxy refuses the host, the
+repository cannot be attached) is confirmed by a person, never assumed. A plan whose documentation links or
+describes third-party pages names who opens the ones the session cannot (the Product Manager or a stated stand-in)
+and when: in the earliest real run when there is a dry run (*Operator environments and documented procedures*),
+otherwise before step 9. The Reviewer reports each such link or statement of the diff as `unopened`, with the error
+it got, instead of judging it; the orchestrator asks that person once for the round's list and logs the answer as a
+Product Manager row, and a page that does not say what the change claims is a blocking finding for the Dev.
 
 ### Code a unit test cannot cover
 
@@ -204,7 +220,8 @@ The orchestrator first runs this checklist in full:
   round runs first;
 - `gate-stamp.py --verify` passes after `git fetch origin main`: a passing stamp on the head's code, which
   contains `main` — otherwise `main` is merged first (*Merge conflicts*) and the stamp runs again;
-- the area documents and documentation updates the plan names are in the diff.
+- the area documents and documentation updates the plan names are in the diff;
+- every link or statement a review round reported `unopened` is confirmed (*Pages the session cannot open*).
 
 Then it sets each `Proposed` decision record of this change and its index row to `Accepted` and runs
 `decision-check.py` (bookkeeping, like `log.md`). The Lead is launched in mode `approve-pr` only when a
@@ -320,7 +337,9 @@ the kind of an issue labelled both bug and feature (*Bug or feature*); the appro
 approval* in `orchestration.md`); the public issue comment of *Outcome "no change"* and of *Outside authors*; a
 download a member was denied (*A denied measurement* in `orchestration.md`); a Security rejection of a fix the Lead
 accepted, and a safeguard stop (*Loop limits*); the dry run and the confirmation of statements no run has shown
-(*Operator environments and documented procedures*); a manual test before step 9 (*Criteria verified only in CI*). A request the Product Manager makes on the open pull request goes to
+(*Operator environments and documented procedures*); the pages the session cannot open (*Pages the session cannot
+open*); a manual test before step 9 (*Criteria verified only in CI*); a pull request the user marked ready before
+*Draft until green* holds (`orchestration.md`). A request the Product Manager makes on the open pull request goes to
 the Lead first (*Loop limits*, New scope on the open PR).
 
 ## Non-blocking findings

@@ -129,6 +129,10 @@ blocked. The hook never decides when a commit is made:
   re-runs CI and the code analysis on it), do not commit: answer the hook once with what is running and when
   its commit follows, and end the turn. A head that was pushed half-finished anyway is logged as work in
   progress, and neither CI nor the code analysis is judged on it.
+- The exception once the PR is open: while the run waits on the Product Manager with an *Early draft PR* open (the
+  dry run, a manual test, an answer), commit and push the `specs/` bookkeeping before ending the turn, since a cloud
+  container can be reclaimed while it waits. The commit touches only `specs/`, so it needs no new stamp or review
+  round; CI runs on the new head and is waited for as after any push.
 
 ## Draft until green
 
@@ -150,6 +154,11 @@ Each failure is fixed on the branch as step 11 describes, and the check starts a
 a check fails for reasons outside the change (red on the base branch too), or the code analysis cannot be
 read, the PR stays a draft and the user is told what blocks it. Once ready, the PR is not turned back into
 a draft; review comments and later CI failures are worked as before.
+
+When the user marks the pull request ready before all of this holds (an *Early draft PR* before its dry run, say),
+the orchestrator does not turn it back into a draft: it tells the Product Manager once what is still open and asks
+whether the PR stays ready, logs the answer as a Product Manager row, and continues the pipeline either way. A PR the
+user turned back into a draft is marked ready as above.
 
 ## Merge conflicts
 
@@ -175,6 +184,11 @@ lacks its latest commit, so the reviewers see the merged code and the change's s
 against today's `main`. A merge that took both sides unchanged needs the gates of step 7 again, not a new review
 round; a resolution that rewrote code, or a statement of the change the merged `main` made untrue, goes through
 steps 7–8.
+
+A merge that changes `.squad/tools/` (a template refresh on `main`) can bring checks the approved plan or spec never
+had to pass. `squad-next.py` runs `plan-check.py` after the merge as after every row and sends a new finding to the
+Lead in mode `revise`, the findings only and the approved scope unchanged; the size limit no longer applies to an
+approved plan (`plan-check.py`).
 
 ## Concurrency
 
