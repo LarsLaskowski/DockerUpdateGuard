@@ -175,3 +175,12 @@ one source of `unexpected error` disappears.
 - Real sample: the change does not alter which fields of the configuration format are read, only how colliding names
   in an already parsed JSON object are folded; the variants (case-differing names, exact repeats) are JSON-structure
   variants, written as inline JSON like the existing configuration tests. No sample escalation.
+
+## Challenge notes
+
+1. minor: the end-to-end tests cannot tell "last wins" from "lowercase wins". AC4 and AC5 put the lowercase name second, so a build that always prefers the lowercase or exact-case name would also pass them. Instruction for the Tester: in the AC1 reader test, put the mixed-case name (for example `Org.Opencontainers.Image.Base.Name`) after the lowercase one. Then assert that `Labels["org.opencontainers.image.base.name"]` returns the mixed-case label's value and that `Keys` holds only the mixed-case name. This proves the record 0021 rule (position in the document, not case) and not just the Go-sorted ordering.
+2. minor: the plan names the wrong test helper for Docker Hub. The plan says AC4 and AC5 follow "`SequenceHttpMessageHandler` / `CreateBaseImageChainResponse`". In fact `OciRegistryClientTests.cs:1612` uses `SequenceHttpMessageHandler`, while `DockerHubClientTests.cs:1644` uses `DelegateHttpMessageHandler` with `CreateBaseImageChainResponse` (helper at line 2404). Instruction for the Tester: copy each class's own `...WhenFieldsHaveControlCharactersReplacesThemAsync` arrangement as it stands.
+
+## Security notes
+
+1. Non-blocking: the plan names the security area wrongly. *Security areas touched* says "Registry and Docker Hub calls", but `.squad/project.md:38` lists it as "Registry and Docker Scout calls" (the entry covers `DockerHubClient.cs` and `OciRegistryClient.cs`). Smallest fix, verbatim: in `specs/issue-357/plan.md`, replace `Security areas touched: Registry and Docker Hub calls` with `Security areas touched: Registry and Docker Scout calls`.
