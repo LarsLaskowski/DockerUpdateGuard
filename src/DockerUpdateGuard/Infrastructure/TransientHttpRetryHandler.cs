@@ -38,6 +38,7 @@ public class TransientHttpRetryHandler : DelegatingHandler
     private readonly ILogger<TransientHttpRetryHandler> _logger;
     private readonly Func<TimeSpan, CancellationToken, Task> _delayAsync;
     private readonly Func<int, int> _nextJitterMilliseconds;
+    private readonly TimeProvider _timeProvider;
 
     #endregion // Fields
 
@@ -53,7 +54,8 @@ public class TransientHttpRetryHandler : DelegatingHandler
         : this(options,
                logger,
                (delay, cancellationToken) => Task.Delay(delay, cancellationToken),
-               maxExclusive => maxExclusive <= 0 ? 0 : Random.Shared.Next(maxExclusive))
+               maxExclusive => maxExclusive <= 0 ? 0 : Random.Shared.Next(maxExclusive),
+               TimeProvider.System)
     {
     }
 
@@ -64,15 +66,18 @@ public class TransientHttpRetryHandler : DelegatingHandler
     /// <param name="logger">Logger</param>
     /// <param name="delayAsync">Delay callback invoked before each retry attempt</param>
     /// <param name="nextJitterMilliseconds">Jitter provider returning a value in the range zero to the supplied exclusive upper bound</param>
+    /// <param name="timeProvider">Time provider used to resolve a Retry-After date</param>
     internal TransientHttpRetryHandler(IOptionsMonitor<DockerUpdateGuardOptions> options,
                                        ILogger<TransientHttpRetryHandler> logger,
                                        Func<TimeSpan, CancellationToken, Task> delayAsync,
-                                       Func<int, int> nextJitterMilliseconds)
+                                       Func<int, int> nextJitterMilliseconds,
+                                       TimeProvider timeProvider)
     {
         _options = options;
         _logger = logger;
         _delayAsync = delayAsync;
         _nextJitterMilliseconds = nextJitterMilliseconds;
+        _timeProvider = timeProvider;
     }
 
     #endregion // Constructors
@@ -167,38 +172,6 @@ public class TransientHttpRetryHandler : DelegatingHandler
     }
 
     /// <summary>
-    /// Read the wait the server asked for with a Retry-After header, without clamping it
-    /// </summary>
-    /// <param name="response">Response that failed, or null when an exception occurred</param>
-    /// <returns>The positive wait requested by a delta or a date, or null when the header is missing or asks for no wait</returns>
-    private static TimeSpan? GetRetryAfter(HttpResponseMessage? response)
-    {
-        var retryAfter = response?.Headers.RetryAfter;
-
-        if (retryAfter is null)
-        {
-            return null;
-        }
-
-        if (retryAfter.Delta is TimeSpan delta && delta > TimeSpan.Zero)
-        {
-            return delta;
-        }
-
-        if (retryAfter.Date is DateTimeOffset date)
-        {
-            var untilDate = date - DateTimeOffset.UtcNow;
-
-            if (untilDate > TimeSpan.Zero)
-            {
-                return untilDate;
-            }
-        }
-
-        return null;
-    }
-
-    /// <summary>
     /// Build a log-safe request target that omits the query string to avoid leaking credentials
     /// </summary>
     /// <param name="request">Request message</param>
@@ -226,6 +199,38 @@ public class TransientHttpRetryHandler : DelegatingHandler
     #endregion // Static methods
 
     #region Methods
+
+    /// <summary>
+    /// Read the wait the server asked for with a Retry-After header, without clamping it
+    /// </summary>
+    /// <param name="response">Response that failed, or null when an exception occurred</param>
+    /// <returns>The positive wait requested by a delta or a date, or null when the header is missing or asks for no wait</returns>
+    private TimeSpan? GetRetryAfter(HttpResponseMessage? response)
+    {
+        var retryAfter = response?.Headers.RetryAfter;
+
+        if (retryAfter is null)
+        {
+            return null;
+        }
+
+        if (retryAfter.Delta is TimeSpan delta && delta > TimeSpan.Zero)
+        {
+            return delta;
+        }
+
+        if (retryAfter.Date is DateTimeOffset date)
+        {
+            var untilDate = date - _timeProvider.GetUtcNow();
+
+            if (untilDate > TimeSpan.Zero)
+            {
+                return untilDate;
+            }
+        }
+
+        return null;
+    }
 
     /// <summary>
     /// Log that a transient outcome of a non-idempotent request was not retried

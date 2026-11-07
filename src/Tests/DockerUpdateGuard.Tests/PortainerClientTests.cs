@@ -842,7 +842,8 @@ public class PortainerClientTests
                                                                                                           }),
                                                          new TestLogger<TransientHttpRetryHandler>(),
                                                          (_, _) => Task.CompletedTask,
-                                                         _ => 0)
+                                                         _ => 0,
+                                                         TimeProvider.System)
                            {
                                InnerHandler = sequenceHandler,
                            };
