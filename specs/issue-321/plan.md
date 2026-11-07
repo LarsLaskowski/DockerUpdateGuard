@@ -119,3 +119,7 @@ unchanged; the composition root is unchanged (DI still uses the public construct
 ## Out of scope / follow-ups
 
 - Other services that still read `DateTimeOffset.UtcNow` move when they are changed (`docs/UNIT_TESTS.md`).
+
+## Security notes
+
+- AC4 check (non-blocking, Security): the pattern `grep -n "UtcNow"` also matches `_timeProvider.GetUtcNow()` and the substitute setup. Use `grep -nE "DateTime(Offset)?\.(UtcNow|Now)"` instead; the criterion is unchanged.
