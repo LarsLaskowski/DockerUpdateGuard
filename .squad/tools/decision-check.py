@@ -50,7 +50,7 @@ sys.dont_write_bytecode = True  # importing the settings must leave no __pycache
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 try:
     import squad_settings as settings  # per-repository settings next to this script
-except Exception:  # noqa: BLE001  (missing outside a target, or broken: the defaults apply, config-check.py reports it)
+except Exception:  # noqa: BLE001  (missing outside a target, or broken; the defaults apply, config-check.py reports it)
     settings = None
 
 AREA_MAX_WORDS = getattr(settings, "AREA_MAX_WORDS", 5000)

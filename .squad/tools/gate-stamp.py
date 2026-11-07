@@ -100,7 +100,8 @@ FOLDER_NAME = re.compile(r"\w[\w.-]*")
 PLAN_TIER = re.compile(r"^Tier:\s*`?(\w+)", re.M)
 LEAD_TIER = re.compile(r"\btier\b\W{0,3}(docs|patch(?:/security)?)\b", re.I)
 STEP_TWO = re.compile(r"^\s*2[ab]?\b")
-WITHOUT_TESTS = re.compile(r"^## Verification without tests[ \t]*\n(?P<body>.*?)(?=^## |\Z)", re.M | re.S)
+WITHOUT_TESTS = re.compile(r"^## Verification without tests[ \t]*$", re.M)
+NEXT_SECTION = re.compile(r"^## ", re.M)
 COMMENT = re.compile(r"<!--.*?-->", re.S)
 COMMAND_ROW = re.compile(r"^\|\s*\*(?P<name>[^*|\n]+)\*[^|\n]*\|\s*`(?P<command>[^`\n]+)`")
 PLACEHOLDER = re.compile(r"<(\w+)>")
@@ -197,7 +198,11 @@ def run_tier(plan, rows):
 def code_free(plan):
     """True when the plan has a filled *Verification without tests* section (no production or test code)."""
     found = WITHOUT_TESTS.search(plan or "")
-    return bool(found and COMMENT.sub("", found.group("body")).strip())
+    if not found:
+        return False
+    body = plan[found.end():]
+    end = NEXT_SECTION.search(body)
+    return bool(COMMENT.sub("", body[:end.start()] if end else body).strip())
 
 
 def merge_base(root):

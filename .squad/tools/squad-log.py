@@ -898,6 +898,12 @@ def launch_metrics(parser, root, args, path):
         return unreported_launch(parser, model, args)
     if model and is_pending_row(args):
         return (model, PENDING, None, None)  # a new launch row whose notification has not arrived yet
+    return reported_launch(parser, model, args)
+
+
+def reported_launch(parser, model, args):
+    """The launch of a row with its usage from the task notification: --tokens, --tool-uses and --seconds all given
+    and in range."""
     if not model or None in (args.tokens, args.tool_uses, args.seconds):
         parser.error("--agent (or --launch), --tokens, --tool-uses and --seconds go together; a launch whose "
                      "notification has not arrived yet is logged with --agent alone (usage pending) and completed "
