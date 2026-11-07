@@ -235,7 +235,7 @@ These properties hold today and must be provided for by the deployment:
   [Registries](registries.md), [Base images](base-images.md), [Update detection](update-detection.md),
   [Vulnerabilities](vulnerabilities.md), [Container actions](container-actions.md), [Scan engine](scan-engine.md)).
 - The complete configuration key reference: `README.md`, *Configuration reference*.
-- Retry of outbound HTTP calls: [Registries](registries.md).
+- Retry of outbound HTTP calls: [Integration failures](integration-failures.md).
 - Logs, traces, metrics and the rule that credentials stay out of them: [Telemetry](telemetry.md).
 - Pages and what they show: [Web UI](web-ui.md).
 - Building, testing, CI and releasing the image: `docs/CONTRIBUTING.md`.

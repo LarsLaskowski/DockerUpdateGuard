@@ -107,8 +107,8 @@ resource statistics, cleanup) leave no scan-run record and report only through l
   the job, the other jobs or the host; the job waits its interval and runs again.
 - Inside a batch, an error while scanning one observed image or one Docker instance is logged and the batch goes on
   with the next one.
-- A failed run is not retried before the next scheduled run. `DockerUpdateGuard:Scanning:RetryCount` (default 2,
-  range 0–10) applies to individual outbound HTTP requests, not to runs ([Registries](registries.md)).
+- A failed run is not retried before the next scheduled run. `DockerUpdateGuard:Scanning:RetryCount` applies to
+  individual outbound HTTP requests, not to runs ([Integration failures](integration-failures.md#retry-of-transient-http-failures)).
 - Host shutdown cancels the run in progress; it is logged neither as completed nor as failed.
 
 ### Unfinished runs
@@ -178,8 +178,8 @@ may scan the same image at the same time. This is wasteful but does not corrupt 
 - A step that reports a failure or an unexpected error turns the run `Failed`; the error message of the run carries
   the step's message as returned by the integration, or, for an unexpected error, `<scan> failed: <reason>` (`Runtime container scan failed`, `Observed image scan
   failed`, `Vulnerability refresh failed`) or, for one container of a runtime scan, `Container '<name>' could not be
-  processed: <reason>`, with a fixed reason ([Registries](registries.md#failure-model-of-integrations)). Integrations
-  report expected failures as results, not errors ([Registries](registries.md)).
+  processed: <reason>`, with a fixed reason ([Integration failures](integration-failures.md#fixed-failure-reasons)). Integrations
+  report expected failures as results, not errors ([Integration failures](integration-failures.md#outcomes)).
 - A run that cannot be saved at its end (for example because the database became unreachable) stays `Running` until
   the stale-run repair marks it `Failed`. A vulnerability refresh retries this final save once on a fresh state
   before giving up.
@@ -211,7 +211,8 @@ None yet.
 - Container discovery, snapshots and resource sampling in [Docker instances](docker-instances.md).
 - Vulnerability providers, assessment status and the provider parallelism in
   [Vulnerabilities](vulnerabilities.md).
-- Docker Hub request parallelism, HTTP retry and the failure model of integrations in [Registries](registries.md).
+- Docker Hub request parallelism in [Registries](registries.md); HTTP retry and the failure model of integrations in
+  [Integration failures](integration-failures.md).
 - How scan runs and manual triggers are shown in the UI in [Web UI](web-ui.md).
 - Metrics recorded per run and the inventory gauges in [Telemetry](telemetry.md).
 - Configuration loading, validation and the startup sequence in [Hosting and configuration](hosting.md).

@@ -219,7 +219,7 @@ client library. Clients return plain DTOs wrapped in
 `ExternalOperationResult<T>` (`Infrastructure\ExternalOperationResult{T}.cs`)
 for expected failure modes, and orchestrators branch on that status instead
 of on exceptions. The outcomes and where errors still escape are specified
-in [Registries](areas/registries.md#failure-model-of-integrations).
+in [Integration failures](areas/integration-failures.md).
 
 | Client | Talks to | Area |
 | --- | --- | --- |
@@ -242,7 +242,7 @@ implementation, not touching the dispatcher.
 typed/named `HttpClient`s registered in the composition root (§3). The
 Docker Engine client and Docker Scout create their `HttpClient`s without
 it. The retry policy is specified in
-[Registries](areas/registries.md#retry-of-transient-http-failures).
+[Integration failures](areas/integration-failures.md#retry-of-transient-http-failures).
 
 ## 7. Domain / orchestration layer and the scan engine
 
@@ -421,7 +421,7 @@ it links:
 - **Failure messages carry fixed reasons.** Integration clients and the scan orchestrators never put an exception's
   message into a result or a scan run, and the pages never show one for a failed user action
   ([Web UI](areas/web-ui.md#limits-and-errors)); they report a fixed reason and log the exception
-  ([Registries](areas/registries.md#failure-model-of-integrations),
+  ([Integration failures](areas/integration-failures.md#fixed-failure-reasons),
   [record 0009](decisions/0009-integration-results-carry-fixed-failure-reasons.md)). Remote text a message
   carries (body excerpts, reason phrase, rejected origin, Trivy's last error line, Docker Scout's unknown severity) passes one helper,
   `Infrastructure\ResponseBodyExcerpt`, which bounds it and replaces its control characters; the text fields the

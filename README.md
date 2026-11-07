@@ -90,11 +90,14 @@ For example:
 
 ## Configuration reference
 
-A configured URL whose `@` is not the end of a non-empty user info fails validation at startup (for example
-`https://admin#secret@host`, which would send the credentials to host `admin`); percent-encode `@`, `#`, `?` and `/`
-in a user name or password.
+The tables list each key with its default. What a key does, its allowed range, whether a change applies without a
+restart and how it is validated are stated in the area document each section links; an invalid value fails startup
+([Hosting and configuration](docs/areas/hosting.md#validation)). Percent-encode `@`, `#`, `?` and `/` in a user name or
+password inside a configured URL.
 
 ### Connection and host settings
+
+Rules: [Hosting and configuration](docs/areas/hosting.md).
 
 | Key | Default | Required | Description |
 | --- | --- | --- | --- |
@@ -111,19 +114,22 @@ in a user name or password.
 
 ### `DockerUpdateGuard:DockerHub`
 
+Rules: [Registries](docs/areas/registries.md).
+
 | Key | Default | Required | Description |
 | --- | --- | --- | --- |
 | `Registry` | `docker.io` | Yes | Registry host handled by the Docker Hub integration |
-| `ApiBaseUrl` | `https://hub.docker.com/` | No | Docker Hub API base address used for registries served by Docker Hub; a mirror or proxy must rewrite next-page links to its own origin, otherwise listings fail |
-| `UserName` | none | No | Docker Hub user name (Docker ID) for authenticated API requests; letters, digits and `.`, `_`, `-` between them, validated at startup |
+| `ApiBaseUrl` | `https://hub.docker.com/` | No | Docker Hub web API base address; a mirror or proxy must keep next-page links on its own origin ([Pagination links](docs/areas/registries.md#pagination-links)) |
+| `UserName` | none | No | Docker Hub user name (Docker ID) for authenticated requests |
 | `Pat` | none | No | Docker Hub personal access token |
-| `RequestTimeoutSeconds` | `30` | No | Total time per outbound Docker Hub, OCI registry and .NET/nginx release-feed request, including its retries |
+| `RequestTimeoutSeconds` | `30` | No | Timeout of one Docker Hub, OCI registry or release-feed request, retries included |
 | `MaxParallelRequests` | `4` | No | Maximum logical request parallelism for registry operations |
 
 ### `DockerUpdateGuard:ReleaseMetadata`
 
 Base addresses of the upstream feeds used to resolve .NET and nginx release
 versions. Override them to route the lookups through an internal mirror or proxy.
+Rules: [Base images](docs/areas/base-images.md#release-feeds-and-runtime-findings).
 
 | Key | Default | Required | Description |
 | --- | --- | --- | --- |
@@ -132,6 +138,8 @@ versions. Override them to route the lookups through an internal mirror or proxy
 
 ### `DockerUpdateGuard:Vulnerabilities`
 
+Rules: [Vulnerabilities](docs/areas/vulnerabilities.md#configuration).
+
 | Key | Default | Required | Description |
 | --- | --- | --- | --- |
 | `Enabled` | `false` | No | Enables vulnerability refresh |
@@ -139,11 +147,16 @@ versions. Override them to route the lookups through an internal mirror or proxy
 | `TrivyBaseUrl` | none | Required for `Trivy` | Base URL of the Trivy server used by the Trivy CLI in client mode |
 | `TrivyExecutablePath` | `trivy` | No | Path to the Trivy executable (resolved through `PATH` by default; bundled in the published container image) |
 | `DockerScoutLoginUrl` | `https://hub.docker.com/v2/users/login` | No | Docker Hub login endpoint used by the `DockerScout` provider |
-| `DockerScoutBaseUrl` | `https://api.scout.docker.com` | No | Base address of the Docker Scout API; a proxy must rewrite next-page links to its own origin, otherwise listings fail |
-| `RequestTimeoutSeconds` | `120` | No | Timeout for vulnerability provider requests; first-time Trivy scans of large images regularly exceed shorter timeouts |
-| `MaxParallelScans` | `1` | No | Maximum number of vulnerability provider scans running at the same time (`1` to `8`) |
+| `DockerScoutBaseUrl` | `https://api.scout.docker.com` | No | Base address of the Docker Scout API |
+| `RequestTimeoutSeconds` | `120` | No | Timeout for vulnerability provider requests |
+| `MaxParallelScans` | `1` | No | Maximum number of vulnerability provider scans running at the same time |
 
 ### `DockerUpdateGuard:Scanning`
+
+Rules: [Scan engine](docs/areas/scan-engine.md#background-jobs); `RetryCount` in
+[Integration failures](docs/areas/integration-failures.md#retry-of-transient-http-failures), the major-upgrade keys in
+[Update detection](docs/areas/update-detection.md#major-upgrade-policy), the request budget in
+[Registries](docs/areas/registries.md#docker-hub-request-budget-and-parallelism).
 
 | Key | Default | Description |
 | --- | --- | --- |
@@ -157,23 +170,23 @@ versions. Override them to route the lookups through an internal mirror or proxy
 | `ResourceStatisticsIntervalMinutes` | `5` | Interval for sampling CPU, memory, and network usage |
 | `VulnerabilityRefreshIntervalMinutes` | `180` | Interval for refreshing vulnerability information |
 | `CleanupIntervalMinutes` | `720` | Interval for cleaning old scan data |
-| `RetryCount` | `2` | Retries of a single outbound HTTP request after a transient failure (`0` to `10`); applies to Docker Hub, other registries, the release feeds and Portainer, for scheduled and manual work alike. A failed scan run is not retried before its next scheduled run. Non-idempotent requests (logins, Portainer actions) are retried only after a connection error before sending and on a 429 whose `Retry-After` is missing or asks for at most 30 seconds |
+| `RetryCount` | `2` | Retries of one outbound HTTP request after a transient failure; `0` disables them |
 | `RetainScanRunsDays` | `30` | Retention period for completed scan history |
-| `MajorUpgradeMinimumAgeDays` | `30` | Waiting period before a new major version line is recommended; the upgrade also stays deferred while the current major version line is still served next to the new line or while its first release is unknown; `0` disables the waiting periods |
-| `MajorUpgradeMinimumReleaseCount` | `2` | Number of releases a new major version line must have before it is recommended; `0` disables the requirement |
+| `MajorUpgradeMinimumAgeDays` | `30` | Waiting period before a new major version line is recommended |
+| `MajorUpgradeMinimumReleaseCount` | `2` | Number of releases a new major version line must have before it is recommended |
 
 ### `DockerUpdateGuard:DockerInstances[]`
 
-Each entry describes one Docker Engine endpoint.
+Each entry describes one Docker Engine endpoint. Rules: [Docker instances](docs/areas/docker-instances.md).
 
 | Key | Default | Required | Description |
 | --- | --- | --- | --- |
 | `Name` | none | Yes | Display name of the Docker instance |
-| `BaseUrl` | none | Yes | Docker endpoint URI; validation allows `http`, `https`, `tcp`, `unix`, and `npipe` and rejects an `@` outside its user info |
+| `BaseUrl` | none | Yes | Docker endpoint URI (`http`, `https`, `tcp`, `unix` or `npipe`) |
 | `Enabled` | `true` | No | Enables or disables this Docker instance |
 | `UseTls` | `false` | No | For `tcp://` endpoints, upgrade the connection to HTTPS |
-| `SkipCertificateValidation` | `false` | No | Skip server certificate validation for TLS endpoints. **Insecure:** disables TLS authentication and exposes the connection to man-in-the-middle attacks; a warning is logged at runtime whenever it is active. Use only for trusted endpoints with self-signed certificates. |
-| `CertificatePath` | none | No | Optional client certificate for TLS-secured engine access: a password-less PKCS#12 bundle (`.pfx` or `.p12`) holding the certificate and its private key, readable by the container user (UID `64000`). It is presented on `https://` endpoints and on `tcp://` endpoints with `UseTls`; `http://`, plain `tcp://`, `unix://` and `npipe://` instances do not use it, but an enabled instance that sets it is still checked at startup (a missing, unreadable, PEM, DER or password-protected file fails startup). Convert PEM files with `openssl pkcs12 -export -in cert.pem -inkey key.pem -out client.pfx -passout pass:`. |
+| `SkipCertificateValidation` | `false` | No | Skip server certificate validation for TLS endpoints. **Insecure:** exposes the connection to man-in-the-middle attacks; use only for trusted endpoints with self-signed certificates ([TLS options](docs/areas/docker-instances.md#tls-options)). |
+| `CertificatePath` | none | No | Client certificate for TLS-secured engine access, a password-less PKCS#12 bundle (`.pfx` or `.p12`) ([TLS options](docs/areas/docker-instances.md#tls-options)). Convert PEM files with `openssl pkcs12 -export -in cert.pem -inkey key.pem -out client.pfx -passout pass:`. |
 | `RequestTimeoutSeconds` | `15` | No | Timeout for Docker Engine requests |
 
 Recommended Linux socket configuration:
@@ -187,16 +200,17 @@ Recommended Linux socket configuration:
 ### `DockerUpdateGuard:DockerInstances[].Portainer`
 
 Portainer settings are optional and are only needed when Portainer-backed actions should be available.
+Rules: [Container actions](docs/areas/container-actions.md#configuration-and-mapping).
 
 | Key | Default | Required | Description |
 | --- | --- | --- | --- |
 | `Enabled` | `false` | No | Enables Portainer integration for the Docker instance |
-| `BaseUrl` | none | Required when enabled | Absolute `https` Portainer URL (strongly recommended), no `@` outside its user info; see `AllowInsecureHttp` |
-| `AllowInsecureHttp` | `false` | No | Allow plaintext `http` for `BaseUrl`; credentials are transmitted unencrypted — only use on localhost or trusted private networks; a warning is logged at runtime, once per Docker instance, while it is in use |
+| `BaseUrl` | none | Required when enabled | Absolute Portainer URL; `https` unless `AllowInsecureHttp` is set |
+| `AllowInsecureHttp` | `false` | No | Allow plaintext `http` for `BaseUrl`; credentials travel unencrypted, so use it only on localhost or trusted private networks ([Transport security](docs/areas/container-actions.md#transport-security)) |
 | `Username` | none | Conditional | Username for Portainer login |
 | `Password` | none | Conditional | Password for Portainer login |
 | `ApiToken` | none | Conditional | Portainer API token; takes precedence over username/password |
-| `EndpointId` | none | No | Portainer environment ID; required when Portainer manages more than one environment — without it the only listed environment is used, and actions are refused when there are several |
+| `EndpointId` | none | No | Portainer environment ID; needed when Portainer manages more than one environment |
 | `RequestTimeoutSeconds` | `15` | No | Timeout for Portainer requests |
 
 When Portainer is enabled, either:
@@ -207,6 +221,8 @@ When Portainer is enabled, either:
 must be configured.
 
 ### `Telemetry`
+
+Rules: [Telemetry](docs/areas/telemetry.md#signals-and-switches).
 
 | Key | Default | Required | Description |
 | --- | --- | --- | --- |
@@ -299,8 +315,8 @@ See the JSON example above for the exact keys and structure.
 - The container listens on port 8080 by default
 - The image sets `DockerUpdateGuard:DisplayVersion` from the image build argument
 - For Linux host monitoring, bind-mount `/var/run/docker.sock`
-- For TLS-secured remote engines, also mount the client certificate (a password-less `.pfx`/`.p12` bundle readable by UID `64000`) if `CertificatePath` is used
-- To trust an internal CA, mount its PEM file into `/app/certs` (read-only); it is trusted by the default non-root user too, without root or a derived image (see [DOCKER.md](DOCKER.md))
+- For TLS-secured remote engines, also mount the client certificate if `CertificatePath` is used; the container runs as a non-root user ([Container image](docs/areas/hosting.md#container-image))
+- To trust an internal CA, mount its PEM file into `/app/certs` (read-only; see [DOCKER.md](DOCKER.md))
 - The application needs outbound network access to the configured registry, optional Portainer endpoint, optional Trivy server, and optional OTLP collector
 
 ## License

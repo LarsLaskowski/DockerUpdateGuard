@@ -187,7 +187,8 @@ None yet.
 
 ## Not here
 
-- Fetching tags, digests and publication times, registry support and retries: [Registries](registries.md).
+- Fetching tags, digests and publication times and registry support: [Registries](registries.md); retries:
+  [Integration failures](integration-failures.md).
 - Parsing and normalizing image references, the image version catalog: [Image catalog](image-catalog.md).
 - Base-image resolution, derived .NET/nginx runtime findings and observed-image findings: [Base images](base-images.md).
 - When runtime scans run, scan runs, retention and cleanup of findings and candidates: [Scan engine](scan-engine.md).

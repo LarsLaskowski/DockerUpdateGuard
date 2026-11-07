@@ -2,7 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-11-05
-- **Area:** Registries
+- **Area:** Integration failures
 - **Source:** Issue #358
 - **Supersedes:** 0009 — amends it: a JSON body with a string that does not decode is an `invalid response`, and the Docker Hub and OCI calls that had no handler answer a body they cannot parse as *failed*.
 
@@ -44,11 +44,12 @@ transport errors, timeouts and malformed JSON, including the login response and 
 
 ## Decision
 
-Every remote JSON body the Docker Hub, OCI and Docker Engine clients parse is refused as a `JsonException` when any
-of its string values or property names does not decode, so it is reported with the fixed reason `invalid response`;
-the Docker Hub and OCI calls that had no handler answer it, and a malformed body, as *failed* with that reason through
-one wrapper per client. One container's unreadable stats body leaves only that container out of a resource sampling.
-The rule is stated in [Registries](../areas/registries.md#failure-model-of-integrations).
+Option 1: a remote JSON body with a string that does not decode is refused where the Docker Hub, OCI and Docker
+Engine clients parse it and is reported like malformed JSON, and the Docker Hub and OCI calls that had no handler
+answer both through one wrapper per client. The rules are stated in
+[Integration failures](../areas/integration-failures.md#fixed-failure-reasons),
+[Registries](../areas/registries.md#limits-and-errors) and, for the resource sampling,
+[Docker instances](../areas/docker-instances.md#resource-statistics).
 
 ## Consequences
 
