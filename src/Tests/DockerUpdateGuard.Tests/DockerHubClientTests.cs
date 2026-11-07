@@ -1665,6 +1665,46 @@ public partial class DockerHubClientTests
     }
 
     /// <summary>
+    /// Verify the Hub image configuration keeps the last of label names that differ only in case
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC5")]
+    public async Task DockerHubClientGetImageConfigurationAsyncWhenLabelNamesDifferOnlyInCaseKeepsTheLastAsync()
+    {
+        var blobJson = """
+                       {
+                         "config": {
+                           "Env": ["A=1"],
+                           "Labels": {
+                             "Org.Opencontainers.Image.Base.Name": "first",
+                             "org.opencontainers.image.base.name": "second"
+                           }
+                         }
+                       }
+                       """;
+
+        using var handler = new DelegateHttpMessageHandler(request => CreateBaseImageChainResponse(request, blobJson));
+        using var httpClient = new HttpClient(handler);
+
+        var client = CreateClient(httpClient);
+
+        var result = await client.GetImageConfigurationAsync(new ImageReference
+                                                             {
+                                                                 Registry = "docker.io",
+                                                                 Repository = "library/app",
+                                                                 Tag = "latest",
+                                                             },
+                                                             CancellationToken.None)
+                                 .ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "Label names that differ only in case must not fail the configuration lookup");
+        Assert.IsNotNull(result.Data, "The configuration lookup must return the configuration");
+        Assert.AreEqual("second", result.Data.Labels["org.opencontainers.image.base.name"], "The label that comes last must win");
+        Assert.AreSequenceEqual(["A=1"], result.Data.EnvironmentVariables.ToArray(), "The environment variable must be kept");
+    }
+
+    /// <summary>
     /// Verify the Docker Hub base-image resolution replaces control characters in the base-image labels before it parses them
     /// </summary>
     /// <returns>Task</returns>
