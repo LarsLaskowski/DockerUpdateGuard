@@ -627,11 +627,7 @@ public partial class OciRegistryClient : IRegistryMetadataClient
             return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         }
 
-        return labelsElement.EnumerateObject()
-                            .Where(property => property.Value.ValueKind == JsonValueKind.String)
-                            .ToDictionary(property => property.Name,
-                                          property => ResponseBodyExcerpt.ReplaceControlCharacters(property.Value.GetString()) ?? string.Empty,
-                                          StringComparer.OrdinalIgnoreCase);
+        return ImageConfigurationLabelReader.ReadLabels(labelsElement);
     }
 
     /// <summary>

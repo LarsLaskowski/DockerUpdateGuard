@@ -930,11 +930,7 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
                          && configElement.ValueKind == JsonValueKind.Object
                          && configElement.TryGetProperty("Labels", out var labelsElement)
                          && labelsElement.ValueKind == JsonValueKind.Object
-                             ? labelsElement.EnumerateObject()
-                                            .Where(property => property.Value.ValueKind == JsonValueKind.String)
-                                            .ToDictionary(property => property.Name,
-                                                          property => ResponseBodyExcerpt.ReplaceControlCharacters(property.Value.GetString()) ?? string.Empty,
-                                                          StringComparer.OrdinalIgnoreCase)
+                             ? ImageConfigurationLabelReader.ReadLabels(labelsElement)
                              : new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
             return new RegistryImageConfigurationData

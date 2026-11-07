@@ -73,8 +73,10 @@ go through its retry of transient HTTP failures.
     is not a valid registry tag", without a request. Docker Hub reports the requested tag, not the `name` of the
     record. A digest is accepted only when it matches the digest grammar of the OCI image specification
     (`algorithm:encoded`, ASCII only) and has at most 255 characters; any other digest is unknown (no digest).
-- **Image configuration** — environment variables, labels (keys compared case-insensitively), creation time, operating
-  system and architecture, read from the image's configuration blob. For a multi-platform index one platform manifest
+- **Image configuration** — environment variables, labels (keys compared case-insensitively; of labels whose names
+  are equal case-insensitively, or repeat, the one that comes last in the configuration is kept, with its name and
+  value), creation time, operating system and architecture, read from the image's configuration blob. For a
+  multi-platform index one platform manifest
   is chosen:
   - Docker Hub: the first `linux` entry, skipping entries whose operating system or architecture is `unknown`
     (attestations); otherwise the first remaining entry.
@@ -255,6 +257,8 @@ go through its retry of transient HTTP failures.
   digests, image references and names are validated or bounded where they are read.
 - [0018](../decisions/0018-the-docker-hub-user-name-is-validated-as-a-namespace-at-startup.md): the Docker Hub user
   name is validated as a namespace at startup.
+- [0021](../decisions/0021-of-image-configuration-labels-with-colliding-names-the-last-one-wins.md): of image
+  configuration labels with colliding names the last one wins.
 
 ## Not here
 

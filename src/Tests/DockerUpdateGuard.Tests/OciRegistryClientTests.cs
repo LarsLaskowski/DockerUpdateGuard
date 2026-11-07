@@ -1640,6 +1640,53 @@ public partial class OciRegistryClientTests
     }
 
     /// <summary>
+    /// Verify the OCI image configuration keeps the last of label names that differ only in case
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC4")]
+    public async Task OciRegistryClientGetImageConfigurationAsyncWhenLabelNamesDifferOnlyInCaseKeepsTheLastAsync()
+    {
+        var blobJson = """
+                       {
+                         "config": {
+                           "Env": ["A=1"],
+                           "Labels": {
+                             "Org.Opencontainers.Image.Base.Name": "first",
+                             "org.opencontainers.image.base.name": "second"
+                           }
+                         }
+                       }
+                       """;
+
+        using var handler = new SequenceHttpMessageHandler();
+        using var httpClient = new HttpClient(handler);
+
+        handler.AddResponse("https://mcr.microsoft.com/v2/dotnet/aspnet/manifests/8.0",
+                            CreateManifestResponse("sha256:aspnet",
+                                                   """
+                                                   { "schemaVersion": 2, "config": { "digest": "sha256:aspnet-config" } }
+                                                   """));
+        handler.AddJsonResponse("https://mcr.microsoft.com/v2/dotnet/aspnet/blobs/sha256%3Aaspnet-config", blobJson);
+
+        var client = new OciRegistryClient(httpClient, new TestLogger<OciRegistryClient>());
+
+        var result = await client.GetImageConfigurationAsync(new ImageReference
+                                                             {
+                                                                 Registry = "mcr.microsoft.com",
+                                                                 Repository = "dotnet/aspnet",
+                                                                 Tag = "8.0",
+                                                             },
+                                                             CancellationToken.None)
+                                 .ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "Label names that differ only in case must not fail the configuration lookup");
+        Assert.IsNotNull(result.Data, "The configuration lookup must return the configuration");
+        Assert.AreEqual("second", result.Data.Labels["org.opencontainers.image.base.name"], "The label that comes last must win");
+        Assert.AreSequenceEqual(["A=1"], result.Data.EnvironmentVariables.ToArray(), "The environment variable must be kept");
+    }
+
+    /// <summary>
     /// Verify the OCI base-image resolution replaces control characters in the base-image labels before it parses them
     /// </summary>
     /// <returns>Task</returns>
