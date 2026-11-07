@@ -62,7 +62,8 @@ CHANGELOG = re.compile(r"(?:^|/)CHANGELOG[^/]*$", re.IGNORECASE)
 BLOCK_BEGIN = re.compile(r"<!-- project:begin [\w-]+ -->")
 BLOCK_END = re.compile(r"<!-- project:end [\w-]+ -->")
 HUNK = re.compile(r"^@@ -\d+(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
-CODE_NUMBER = re.compile(r"(?<![\w.])\d++(?:_\d++)*+(?:\.\d++)*+")  # possessive: no backtracking (Python 3.11+)
+# A run of digits, underscores and dots; code_number() takes the number from it (no nested quantifiers: Sonar S8786).
+CODE_RUN = re.compile(r"(?<![\w.])\d[\d_.]*")
 QUOTED = re.compile(r"([\"'`])([^\"'`\s]{3,80})\1")
 CONSTANT_CHARACTER = re.compile(r"[\d_./:@-]")
 INNER_CAPITAL = re.compile(r"[a-z][A-Z]")
@@ -144,19 +145,42 @@ def is_constant(token):
     return bool(CONSTANT_CHARACTER.search(token) or INNER_CAPITAL.search(token)) or (token.isupper() and len(token) >= 3)
 
 
+def code_number(run):
+    """The number a CODE_RUN starts with: digit groups joined by single underscores (`1_000`), then by single dots
+    (`8.0.1`); the rest of the run (`1..3`, a trailing dot, `1.5_0`) is no part of it."""
+    integer, *fractions = run.split(".")
+    groups = integer.split("_")
+    if "" in groups:
+        return "_".join(groups[:groups.index("")])
+    number = integer
+    for fraction in fractions:
+        digits = fraction.split("_", 1)[0]
+        if not digits:
+            break
+        number += "." + digits
+        if digits != fraction:
+            break
+    return number
+
+
+def is_number(value):
+    """Whether the value is one number as code writes it (CODE_RUN, code_number)."""
+    return CODE_RUN.fullmatch(value) is not None and code_number(value) == value
+
+
 def values(lines):
     """The numbers and quoted constants in the lines, trivial values left out."""
     found = set()
     for line in lines:
-        found.update(number.replace("_", "") for number in CODE_NUMBER.findall(DATE.sub(" ", line)))
+        found.update(code_number(run).replace("_", "") for run in CODE_RUN.findall(DATE.sub(" ", line)))
         found.update(token for _, token in QUOTED.findall(line) if is_constant(token))
     return found - TRIVIAL
 
 
 def same_kind(found, value):
     """The values of `found` that are numbers when `value` is one, else the constants."""
-    number = CODE_NUMBER.fullmatch(value) is not None
-    return {other for other in found if (CODE_NUMBER.fullmatch(other) is not None) == number}
+    number = is_number(value)
+    return {other for other in found if is_number(other) == number}
 
 
 def replacement(before, after, value):
@@ -254,7 +278,7 @@ def matches(line, numbers, strings):
 
 def find_hits(changes):
     """(document, line number, line, value) for every documentation line that states an old value."""
-    numbers = {value for value in changes if CODE_NUMBER.fullmatch(value)}
+    numbers = {value for value in changes if is_number(value)}
     strings = [(value, re.compile(STRING_EDGE.format(re.escape(value)))) for value in sorted(changes)
                if value not in numbers]
     hits = []
