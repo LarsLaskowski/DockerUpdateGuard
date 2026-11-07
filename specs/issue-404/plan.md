@@ -2,7 +2,7 @@
 
 Source: Issue #404
 Tier: standard — removes production API (members of three public interfaces, their implementations and an unregistered resolver) without changing what runs in production, and it is the choice between the issue's two options.
-Security areas touched: Registry and Docker Scout calls (`DockerHub/DockerHubClient.cs`, `Images/OciRegistryClient.cs`: request code of an unreachable path is deleted; no guard on a reachable path changes)
+Security areas touched: Registry and Docker Scout calls (`DockerHub/DockerHubClient.cs`, `Images/OciRegistryClient.cs`: request code of an unreachable path is deleted; no guard on a reachable path changes); Logging and telemetry of external data (`DockerHub/DockerHubClientLogging.cs`: events 3207/3210 removed; `dockerhub.request` span of the base-image path removed, `docs/areas/telemetry.md`)
 
 ## Problem / root cause
 
