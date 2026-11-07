@@ -14,3 +14,4 @@ are quoted in full.
 | 2026-11-07 11:35 | 6 Implement | Dev | Removed ResolveBaseImagesAsync chains, DockerHubBaseImageResolver, log events 3207/3210; docs updated; format/build/tests/coverage/analyzer gates clean (sonnet/medium · 108,046 tokens · 19 tool uses · 224 s · 36 in · 8,352 out · 1,676,762 cache read · 56,119 cache write · 279,621 weighted) |
 | 2026-11-07 11:36 | 6 Coverage skipped | Orchestrator | Coverage gate passes (new 0/0 lines, overall 89.1%), no uncovered lines, nothing deferred |
 | 2026-11-07 11:36 | 6 Documentation | Orchestrator | written in 6 Implement |
+| 2026-11-07 11:38 | 7 Gate stamp | Orchestrator | PASS on aad0d2bab03a1aeb703beed82d87892b1a6d6530 (tier standard): Format check pass; Analyzer gate pass; Test with coverage pass; Coverage gate pass; scope-check.py pass · figure-check.py 10 hit(s) |
