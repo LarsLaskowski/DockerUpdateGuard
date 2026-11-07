@@ -48,7 +48,6 @@ public partial class OciRegistryClientTests
     [TestMethod]
     [DataRow("Tag")]
     [DataRow("Tags")]
-    [DataRow("BaseImages")]
     [DataRow("Configuration")]
     public async Task OciRegistryClientCallsWhenRegistryIsDockerHubReturnUnsupportedAsync(string operation)
     {
@@ -80,15 +79,6 @@ public partial class OciRegistryClientTests
             case "Tags":
                 {
                     var result = await client.GetTagsAsync("docker.io", "acme/api", cancellationToken: CancellationToken.None).ConfigureAwait(false);
-
-                    (status, message) = (result.Status, result.Message);
-                }
-
-                break;
-
-            case "BaseImages":
-                {
-                    var result = await client.ResolveBaseImagesAsync(imageReference, CancellationToken.None).ConfigureAwait(false);
 
                     (status, message) = (result.Status, result.Message);
                 }
@@ -297,36 +287,6 @@ public partial class OciRegistryClientTests
         var result = await client.GetImageConfigurationAsync(imageReference, CancellationToken.None).ConfigureAwait(false);
 
         AssertInvalidResponse(result, $"Registry image configuration lookup failed for '{imageReference.FullReference}': invalid response", imageReference.FullReference, logger);
-    }
-
-    /// <summary>
-    /// Verify a base-image resolution whose configuration blob has a label value that does not decode is answered as an invalid response
-    /// </summary>
-    /// <returns>Task</returns>
-    [TestMethod]
-    public async Task OciRegistryClientResolveBaseImagesAsyncWhenConfigHasLoneSurrogateReturnsInvalidResponseAsync()
-    {
-        var blobJson = $$"""{ "config": { "Labels": { "org.opencontainers.image.base.name": "mcr.microsoft.com/dotnet/runtime:8.0{{LoneSurrogateEscape}}" } } }""";
-
-        Assert.Contains("\\ud800", blobJson, "The test input must carry the escaped lone surrogate");
-
-        using var handler = new DelegateHttpMessageHandler(request => CreateBaseImageChainResponse(request, blobJson));
-        using var httpClient = new HttpClient(handler);
-
-        var client = new OciRegistryClient(httpClient, new TestLogger<OciRegistryClient>());
-        var imageReference = new ImageReference
-                             {
-                                 Registry = "mcr.microsoft.com",
-                                 Repository = "dotnet/aspnet",
-                                 Tag = "8.0",
-                             };
-
-        var result = await client.ResolveBaseImagesAsync(imageReference, CancellationToken.None).ConfigureAwait(false);
-
-        Assert.AreEqual(ExternalOperationStatus.Failed, result.Status, "An unreadable configuration blob must fail the base-image resolution");
-        Assert.AreEqual($"Base image chain resolution failed for '{imageReference.FullReference}': invalid response",
-                        result.Message,
-                        "An unreadable configuration blob must be reported as an invalid response");
     }
 
     /// <summary>
@@ -657,119 +617,6 @@ public partial class OciRegistryClientTests
             httpClient.Dispose();
             handler.Dispose();
         }
-    }
-
-    /// <summary>
-    /// Verify OCI base-image resolution strips an embedded image reference from the base digest label
-    /// </summary>
-    /// <returns>Task</returns>
-    [TestMethod]
-    public async Task OciRegistryClientResolveBaseImagesAsyncNormalizesDigestLabelReferenceAsync()
-    {
-        var handler = new SequenceHttpMessageHandler();
-        var httpClient = new HttpClient(handler);
-
-        try
-        {
-            handler.AddResponse("https://mcr.microsoft.com/v2/dotnet/aspnet/manifests/8.0",
-                                CreateUnauthorizedResponse("https://mcr.microsoft.com/oauth2/token",
-                                                           "mcr.microsoft.com",
-                                                           "repository:dotnet/aspnet:pull"));
-            handler.AddJsonResponse("https://mcr.microsoft.com/oauth2/token?service=mcr.microsoft.com&scope=repository%3Adotnet%2Faspnet%3Apull",
-                                    """
-                                    {
-                                      "access_token": "mcr-token"
-                                    }
-                                    """);
-            handler.AddResponse("https://mcr.microsoft.com/v2/dotnet/aspnet/manifests/8.0",
-                                CreateManifestResponse("sha256:aspnet",
-                                                       """
-                                                       {
-                                                         "schemaVersion": 2,
-                                                         "config": {
-                                                           "digest": "sha256:aspnet-config"
-                                                         }
-                                                       }
-                                                       """));
-            handler.AddJsonResponse("https://mcr.microsoft.com/v2/dotnet/aspnet/blobs/sha256%3Aaspnet-config",
-                                    """
-                                    {
-                                      "config": {
-                                        "Labels": {
-                                          "org.opencontainers.image.base.name": "mcr.microsoft.com/dotnet/runtime:8.0",
-                                          "org.opencontainers.image.base.digest": "mcr.microsoft.com/dotnet/runtime@sha256:runtime"
-                                        }
-                                      }
-                                    }
-                                    """);
-
-            var client = new OciRegistryClient(httpClient, new TestLogger<OciRegistryClient>());
-            var result = await client.ResolveBaseImagesAsync(new ImageReference
-                                                             {
-                                                                 Registry = "mcr.microsoft.com",
-                                                                 Repository = "dotnet/aspnet",
-                                                                 Tag = "8.0",
-                                                             },
-                                                             CancellationToken.None)
-                                     .ConfigureAwait(false);
-
-            Assert.AreEqual(ExternalOperationStatus.Succeeded,
-                            result.Status,
-                            "OCI base-image resolution must succeed when the manifest and config blob can be read");
-            Assert.IsNotNull(result.Data, "OCI base-image resolution must return resolved base images");
-            Assert.HasCount(1,
-                            result.Data,
-                            "OCI base-image resolution must return the discovered base image");
-            Assert.AreEqual("sha256:runtime",
-                            result.Data[0].Digest,
-                            "OCI base-image resolution must strip the image reference prefix from the base digest label");
-            Assert.Contains(request => request.RequestUri == "https://mcr.microsoft.com/v2/dotnet/runtime/manifests/sha256%3Aruntime",
-                            handler.Requests,
-                            "OCI base-image recursion must use the normalized digest when resolving the parent image chain");
-        }
-        finally
-        {
-            httpClient.Dispose();
-            handler.Dispose();
-        }
-    }
-
-    /// <summary>
-    /// Verify a transport failure during OCI base-image resolution reports the fixed connection-failed reason
-    /// </summary>
-    /// <returns>Task</returns>
-    [TestMethod]
-    public async Task OciRegistryClientResolveBaseImagesAsyncWhenTransportFailsReportsConnectionFailedAsync()
-    {
-        var injected = new HttpRequestException(HttpRequestError.ConnectionError, "Connection refused (registry.internal.test:443)");
-        var logger = new TestLogger<OciRegistryClient>();
-        var imageReference = new ImageReference
-                             {
-                                 Registry = "mcr.microsoft.com",
-                                 Repository = "dotnet/aspnet",
-                                 Tag = "8.0",
-                             };
-
-        using var handler = new RetryProbeHttpMessageHandler([null], HttpStatusCode.OK)
-                            {
-                                FailureFactory = () => injected,
-                            };
-        using var httpClient = new HttpClient(handler);
-
-        var client = new OciRegistryClient(httpClient, logger);
-
-        var result = await client.ResolveBaseImagesAsync(imageReference, CancellationToken.None)
-                                 .ConfigureAwait(false);
-
-        Assert.AreEqual(ExternalOperationStatus.Failed, result.Status, "A transport failure must fail the base-image resolution");
-        Assert.AreEqual($"Base image chain resolution failed for '{imageReference.FullReference}': connection failed",
-                        result.Message,
-                        "A transport failure must report the fixed connection-failed reason");
-        Assert.IsNotNull(result.Message, "A failed result must carry a message");
-        Assert.DoesNotContain("internal.test", result.Message, "The exception text must not reach the result message");
-        Assert.Contains(entry => ReferenceEquals(entry.Exception, injected),
-                        logger.Entries,
-                        "The transport failure must still be logged with the exception");
     }
 
     /// <summary>
@@ -1687,82 +1534,6 @@ public partial class OciRegistryClientTests
     }
 
     /// <summary>
-    /// Verify the OCI base-image resolution replaces control characters in the base-image labels before it parses them
-    /// </summary>
-    /// <returns>Task</returns>
-    [TestMethod]
-    public async Task OciRegistryClientResolveBaseImagesAsyncWhenBaseImageLabelsHaveControlCharactersReplacesThemAsync()
-    {
-        var blobJson = """
-                       {
-                         "config": {
-                           "Labels": {
-                             "org.opencontainers.image.base.name": "\u001Bmcr.microsoft.com/dotnet/runtime:8.0\u202E",
-                             "org.opencontainers.image.base.digest": "\u200Bsha256:abcd"
-                           }
-                         }
-                       }
-                       """;
-
-        Assert.Contains("\\u202E", blobJson, "The test input must carry the escaped format character");
-        Assert.Contains("\\u001B", blobJson, "The test input must carry the escaped escape character");
-
-        using var handler = new DelegateHttpMessageHandler(request => CreateBaseImageChainResponse(request, blobJson));
-        using var httpClient = new HttpClient(handler);
-
-        var client = new OciRegistryClient(httpClient, new TestLogger<OciRegistryClient>());
-
-        var result = await client.ResolveBaseImagesAsync(new ImageReference
-                                                         {
-                                                             Registry = "mcr.microsoft.com",
-                                                             Repository = "dotnet/aspnet",
-                                                             Tag = "8.0",
-                                                         },
-                                                         CancellationToken.None)
-                                 .ConfigureAwait(false);
-
-        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "The base-image resolution must succeed for well-formed blobs");
-        Assert.IsNotNull(result.Data, "The base-image resolution must return the base images");
-
-        var baseImage = Assert.ContainsSingle(result.Data, "The base-image resolution must return the one base image of the chain");
-
-        Assert.AreEqual("mcr.microsoft.com", baseImage.Registry, "The registry of the base image must be kept");
-        Assert.AreEqual("dotnet/runtime", baseImage.Repository, "The replaced characters at the edges of the name must be trimmed off the repository");
-        Assert.AreEqual("8.0", baseImage.Tag, "The replaced characters at the edges of the name must be trimmed off the tag");
-        Assert.AreEqual("sha256:abcd", baseImage.Digest, "The replaced character at the edge of the digest must be trimmed off the digest");
-    }
-
-    /// <summary>
-    /// Verify the OCI base-image resolution ends with an empty chain at a label that is not a valid reference
-    /// </summary>
-    /// <returns>Task</returns>
-    [TestMethod]
-    public async Task OciRegistryClientResolveBaseImagesAsyncWhenBaseImageLabelIsInvalidReturnsEmptyChainAsync()
-    {
-        var blobJson = $$"""
-                         { "config": { "Labels": { "org.opencontainers.image.base.name": "mcr.microsoft.com/{{new string('a', 256)}}:8.0" } } }
-                         """;
-
-        using var handler = new DelegateHttpMessageHandler(request => CreateBaseImageChainResponse(request, blobJson));
-        using var httpClient = new HttpClient(handler);
-
-        var client = new OciRegistryClient(httpClient, new TestLogger<OciRegistryClient>());
-
-        var result = await client.ResolveBaseImagesAsync(new ImageReference
-                                                         {
-                                                             Registry = "mcr.microsoft.com",
-                                                             Repository = "dotnet/aspnet",
-                                                             Tag = "8.0",
-                                                         },
-                                                         CancellationToken.None)
-                                 .ConfigureAwait(false);
-
-        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "An invalid label must end the chain, not fail the resolution");
-        Assert.IsNotNull(result.Data, "The resolution must return the chain");
-        Assert.IsEmpty(result.Data, "A base image with a repository over 255 characters must not be reported");
-    }
-
-    /// <summary>
     /// Verify the OCI tag lookup answers not found without a request or a log entry for a repository with a dot segment
     /// </summary>
     /// <param name="repository">Repository with a dot segment</param>
@@ -1825,35 +1596,6 @@ public partial class OciRegistryClientTests
                                  .ConfigureAwait(false);
 
         AssertDotSegmentRefusal(result.Status, result.Message, handler, logger);
-    }
-
-    /// <summary>
-    /// Verify the OCI base-image resolution ends the chain without a request for a repository with a dot segment
-    /// </summary>
-    /// <returns>Task</returns>
-    [TestMethod]
-    public async Task OciRegistryClientResolveBaseImagesAsyncDotSegmentRepositoryReturnsNoBaseImagesWithoutRequestAsync()
-    {
-        using var handler = new SequenceHttpMessageHandler();
-        using var httpClient = new HttpClient(handler);
-
-        var logger = new TestLogger<OciRegistryClient>();
-        var client = new OciRegistryClient(httpClient, logger);
-
-        var result = await client.ResolveBaseImagesAsync(new ImageReference
-                                                         {
-                                                             Registry = "mcr.microsoft.com",
-                                                             Repository = "corp/../../v2/x",
-                                                             Tag = "1.0",
-                                                         },
-                                                         CancellationToken.None)
-                                 .ConfigureAwait(false);
-
-        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "A repository with a dot segment must end the chain like a 404 and not fail the resolution");
-        Assert.IsNotNull(result.Data, "The resolution must return a base-image list");
-        Assert.IsEmpty(result.Data, "A repository with a dot segment must yield no base images");
-        Assert.IsEmpty(handler.Requests, "No request may be sent for a repository with a dot segment");
-        Assert.IsEmpty(logger.Entries, "Nothing may be logged for a repository with a dot segment");
     }
 
     /// <summary>
@@ -1994,39 +1736,6 @@ public partial class OciRegistryClientTests
     }
 
     /// <summary>
-    /// Verify the OCI base-image resolution sends no blob request for a configuration digest that is a dot segment
-    /// </summary>
-    /// <returns>Task</returns>
-    [TestMethod]
-    public async Task OciRegistryClientResolveBaseImagesAsyncDotSegmentConfigDigestEndsChainWithoutBlobRequestAsync()
-    {
-        using var handler = new SequenceHttpMessageHandler();
-        using var httpClient = new HttpClient(handler);
-
-        handler.AddResponse("https://mcr.microsoft.com/v2/corp/api/manifests/1.0",
-                            CreateManifestResponse("sha256:manifest",
-                                                   """
-                                                   { "schemaVersion": 2, "config": { "digest": ".." } }
-                                                   """));
-
-        var client = new OciRegistryClient(httpClient, new TestLogger<OciRegistryClient>());
-
-        var result = await client.ResolveBaseImagesAsync(new ImageReference
-                                                         {
-                                                             Registry = "mcr.microsoft.com",
-                                                             Repository = "corp/api",
-                                                             Tag = "1.0",
-                                                         },
-                                                         CancellationToken.None)
-                                 .ConfigureAwait(false);
-
-        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "A configuration digest with a dot segment must end the chain like a 404");
-        Assert.IsNotNull(result.Data, "The resolution must return a base-image list");
-        Assert.IsEmpty(result.Data, "A configuration digest with a dot segment must yield no base images");
-        Assert.HasCount(1, handler.Requests, "Only the manifest may be requested, never the blob");
-    }
-
-    /// <summary>
     /// Verify the OCI tag lookup answers not found without a request or a log entry for a registry that is not a host with an optional port
     /// </summary>
     /// <param name="registry">Registry that is not a valid host with an optional port</param>
@@ -2141,40 +1850,6 @@ public partial class OciRegistryClientTests
     }
 
     /// <summary>
-    /// Verify the OCI base-image resolution ends the chain without a request or a log entry for a registry that is not a host with an optional port
-    /// </summary>
-    /// <param name="registry">Registry that is not a valid host with an optional port</param>
-    /// <returns>Task</returns>
-    [TestMethod]
-    [DataRow(".")]
-    [DataRow("..")]
-    [DataRow("evil.com?x")]
-    [DataRow("localhost:99999")]
-    public async Task OciRegistryClientResolveBaseImagesAsyncInvalidRegistryReturnsNoBaseImagesWithoutRequestAsync(string registry)
-    {
-        using var handler = new SequenceHttpMessageHandler();
-        using var httpClient = new HttpClient(handler);
-
-        var logger = new TestLogger<OciRegistryClient>();
-        var client = new OciRegistryClient(httpClient, logger);
-
-        var result = await client.ResolveBaseImagesAsync(new ImageReference
-                                                         {
-                                                             Registry = registry,
-                                                             Repository = "corp/api",
-                                                             Tag = "1.0",
-                                                         },
-                                                         CancellationToken.None)
-                                 .ConfigureAwait(false);
-
-        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "A registry that is not a host must end the chain like a 404 and not fail the resolution");
-        Assert.IsNotNull(result.Data, "The resolution must return a base-image list");
-        Assert.IsEmpty(result.Data, "A registry that is not a host must yield no base images");
-        Assert.IsEmpty(handler.Requests, "No request may be sent for a registry that is not a host");
-        Assert.IsEmpty(logger.Entries, "Nothing may be logged for a registry that is not a host");
-    }
-
-    /// <summary>
     /// Verify the OCI tag lookup requests the host and the port of a registry with a port
     /// </summary>
     /// <param name="registry">Registry with a port</param>
@@ -2242,38 +1917,6 @@ public partial class OciRegistryClientTests
                                 handler.Requests.Select(request => request.RequestUri)
                                                 .ToArray(),
                                 "The tag listing must request the lower-cased host with its port");
-    }
-
-    /// <summary>
-    /// Answer the requests of a base-image chain: the first image carries the given config blob, every further image has no labels
-    /// </summary>
-    /// <param name="request">Request</param>
-    /// <param name="firstBlobJson">Config blob of dotnet/aspnet</param>
-    /// <returns>Response</returns>
-    private static HttpResponseMessage CreateBaseImageChainResponse(HttpRequestMessage request, string firstBlobJson)
-    {
-        var path = request.RequestUri!.AbsolutePath;
-        var isFirstImage = path.Contains("/dotnet/aspnet/", StringComparison.Ordinal);
-
-        if (path.Contains("/manifests/", StringComparison.Ordinal))
-        {
-            return CreateManifestResponse("sha256:manifest",
-                                          """
-                                          { "schemaVersion": 2, "config": { "digest": "sha256:config" } }
-                                          """);
-        }
-
-        if (path.Contains("/blobs/", StringComparison.Ordinal))
-        {
-            return new HttpResponseMessage(HttpStatusCode.OK)
-                   {
-                       Content = new StringContent(isFirstImage ? firstBlobJson : """{ "config": { "Labels": {} } }""",
-                                                   Encoding.UTF8,
-                                                   "application/json"),
-                   };
-        }
-
-        return new HttpResponseMessage(HttpStatusCode.NotFound);
     }
 
     #endregion // Methods

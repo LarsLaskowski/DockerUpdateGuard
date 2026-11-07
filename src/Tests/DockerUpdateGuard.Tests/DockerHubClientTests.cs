@@ -344,36 +344,6 @@ public partial class DockerHubClientTests
     }
 
     /// <summary>
-    /// Verify a base-image resolution whose configuration blob has a label value that does not decode is answered as an invalid response
-    /// </summary>
-    /// <returns>Task</returns>
-    [TestMethod]
-    public async Task DockerHubClientResolveBaseImagesAsyncWhenConfigHasLoneSurrogateReturnsInvalidResponseAsync()
-    {
-        var blobJson = $$"""{ "config": { "Labels": { "org.opencontainers.image.base.name": "docker.io/library/debian:12{{LoneSurrogateEscape}}" } } }""";
-
-        Assert.Contains("\\ud800", blobJson, "The test input must carry the escaped lone surrogate");
-
-        using var handler = new DelegateHttpMessageHandler(request => CreateBaseImageChainResponse(request, blobJson));
-        using var httpClient = new HttpClient(handler);
-
-        var client = CreateClient(httpClient);
-        var imageReference = new ImageReference
-                             {
-                                 Registry = "docker.io",
-                                 Repository = "library/app",
-                                 Tag = "latest",
-                             };
-
-        var result = await client.ResolveBaseImagesAsync(imageReference, CancellationToken.None).ConfigureAwait(false);
-
-        Assert.AreEqual(ExternalOperationStatus.Failed, result.Status, "An unreadable configuration blob must fail the base-image resolution");
-        Assert.AreEqual($"Base image chain resolution failed for '{imageReference.FullReference}': invalid response",
-                        result.Message,
-                        "An unreadable configuration blob must be reported as an invalid response");
-    }
-
-    /// <summary>
     /// Verify an image configuration lookup whose blob has a label value that does not decode is answered as an invalid response
     /// </summary>
     /// <returns>Task</returns>
@@ -940,105 +910,12 @@ public partial class DockerHubClientTests
     }
 
     /// <summary>
-    /// Verify Docker Hub base-image resolution strips an embedded image reference from the base digest label
+    /// Verify the Docker Hub image configuration lookup selects a real platform manifest and skips attestation manifests
     /// </summary>
     /// <returns>Task</returns>
     [TestMethod]
-    public async Task DockerHubClientResolveBaseImagesAsyncNormalizesDigestLabelReferenceAsync()
-    {
-        var handler = new StubHttpMessageHandler();
-        var httpClient = new HttpClient(handler);
-
-        try
-        {
-            httpClient.BaseAddress = new Uri("https://hub.docker.com/");
-            handler.AddResponse("https://auth.docker.io/token?service=registry.docker.io&scope=repository:library/app:pull",
-                                """
-                                {
-                                  "token": "registry-token"
-                                }
-                                """);
-            handler.AddResponse("https://registry-1.docker.io/v2/library/app/manifests/latest",
-                                """
-                                {
-                                  "schemaVersion": 2,
-                                  "config": {
-                                    "digest": "sha256:app-config"
-                                  }
-                                }
-                                """);
-            handler.AddResponse("https://registry-1.docker.io/v2/library/app/blobs/sha256%3Aapp-config",
-                                """
-                                {
-                                  "config": {
-                                    "Labels": {
-                                      "org.opencontainers.image.base.name": "debian:12",
-                                      "org.opencontainers.image.base.digest": "docker.io/library/debian@sha256:debian"
-                                    }
-                                  }
-                                }
-                                """);
-            handler.AddResponse("https://auth.docker.io/token?service=registry.docker.io&scope=repository:library/debian:pull",
-                                """
-                                {
-                                  "token": "base-registry-token"
-                                }
-                                """);
-            handler.AddResponse("https://registry-1.docker.io/v2/library/debian/manifests/sha256%3Adebian",
-                                """
-                                {
-                                  "schemaVersion": 2,
-                                  "config": {
-                                    "digest": "sha256:debian-config"
-                                  }
-                                }
-                                """);
-            handler.AddResponse("https://registry-1.docker.io/v2/library/debian/blobs/sha256%3Adebian-config",
-                                """
-                                {
-                                  "config": {
-                                    "Labels": {}
-                                  }
-                                }
-                                """);
-
-            var client = CreateClient(httpClient);
-            var result = await client.ResolveBaseImagesAsync(new ImageReference
-                                                             {
-                                                                 Registry = "docker.io",
-                                                                 Repository = "library/app",
-                                                                 Tag = "latest",
-                                                             },
-                                                             CancellationToken.None)
-                                     .ConfigureAwait(false);
-
-            Assert.AreEqual(ExternalOperationStatus.Succeeded,
-                            result.Status,
-                            "Docker Hub base-image resolution must succeed when the manifest and config blob can be read");
-            Assert.IsNotNull(result.Data, "Docker Hub base-image resolution must return resolved base images");
-            Assert.HasCount(1,
-                            result.Data,
-                            "Docker Hub base-image resolution must return the discovered base image");
-            Assert.AreEqual("sha256:debian",
-                            result.Data[0].Digest,
-                            "Docker Hub base-image resolution must strip the image reference prefix from the base digest label");
-            Assert.Contains(entry => entry.RequestUri == "https://registry-1.docker.io/v2/library/debian/manifests/sha256%3Adebian",
-                            handler.Requests,
-                            "Docker Hub base-image recursion must use the normalized digest when resolving the parent image chain");
-        }
-        finally
-        {
-            httpClient.Dispose();
-            handler.Dispose();
-        }
-    }
-
-    /// <summary>
-    /// Verify Docker Hub base-image resolution selects a real platform manifest and skips attestation manifests
-    /// </summary>
-    /// <returns>Task</returns>
-    [TestMethod]
-    public async Task DockerHubClientResolveBaseImagesAsyncSkipsAttestationManifestAsync()
+    [TestCategory("AC2")]
+    public async Task DockerHubClientGetImageConfigurationAsyncSkipsAttestationManifestAsync()
     {
         var handler = new StubHttpMessageHandler();
         var httpClient = new HttpClient(handler);
@@ -1090,61 +967,35 @@ public partial class DockerHubClientTests
                                 {
                                   "config": {
                                     "Labels": {
-                                      "org.opencontainers.image.base.name": "debian:12"
+                                      "org.example.marker": "platform-config"
                                     }
-                                  }
-                                }
-                                """);
-            handler.AddResponse("https://auth.docker.io/token?service=registry.docker.io&scope=repository:library/debian:pull",
-                                """
-                                {
-                                  "token": "base-registry-token"
-                                }
-                                """);
-            handler.AddResponse("https://registry-1.docker.io/v2/library/debian/manifests/12",
-                                """
-                                {
-                                  "schemaVersion": 2,
-                                  "config": {
-                                    "digest": "sha256:debian-config"
-                                  }
-                                }
-                                """);
-            handler.AddResponse("https://registry-1.docker.io/v2/library/debian/blobs/sha256%3Adebian-config",
-                                """
-                                {
-                                  "config": {
-                                    "Labels": {}
                                   }
                                 }
                                 """);
 
             var client = CreateClient(httpClient);
-            var result = await client.ResolveBaseImagesAsync(new ImageReference
-                                                             {
-                                                                 Registry = "docker.io",
-                                                                 Repository = "library/app",
-                                                                 Tag = "latest",
-                                                             },
-                                                             CancellationToken.None)
+            var result = await client.GetImageConfigurationAsync(new ImageReference
+                                                                 {
+                                                                     Registry = "docker.io",
+                                                                     Repository = "library/app",
+                                                                     Tag = "latest",
+                                                                 },
+                                                                 CancellationToken.None)
                                      .ConfigureAwait(false);
 
             Assert.AreEqual(ExternalOperationStatus.Succeeded,
                             result.Status,
-                            "Docker Hub base-image resolution must succeed when a platform manifest can be selected from the manifest list");
-            Assert.IsNotNull(result.Data, "Docker Hub base-image resolution must return resolved base images");
-            Assert.HasCount(1,
-                            result.Data,
-                            "Docker Hub base-image resolution must return the discovered base image");
-            Assert.AreEqual("debian",
-                            result.Data[0].Repository.Split('/')[^1],
-                            "Docker Hub base-image resolution must resolve the base image from the selected platform manifest config");
+                            "The configuration lookup must succeed when a platform manifest can be selected from the manifest list");
+            Assert.IsNotNull(result.Data, "The configuration lookup must return the configuration");
+            Assert.AreEqual("platform-config",
+                            result.Data.Labels["org.example.marker"],
+                            "The configuration must come from the selected platform manifest");
             Assert.Contains(entry => entry.RequestUri == "https://registry-1.docker.io/v2/library/app/manifests/sha256%3Aamd64",
                             handler.Requests,
-                            "Docker Hub manifest-list selection must fetch the real linux/amd64 platform manifest");
+                            "The manifest-list selection must fetch the real linux/amd64 platform manifest");
             Assert.DoesNotContain(entry => entry.RequestUri == "https://registry-1.docker.io/v2/library/app/manifests/sha256%3Aattestation",
                                   handler.Requests,
-                                  "Docker Hub manifest-list selection must skip attestation manifests with an unknown platform");
+                                  "The manifest-list selection must skip attestation manifests with an unknown platform");
         }
         finally
         {
@@ -1309,39 +1160,6 @@ public partial class DockerHubClientTests
             httpClient.Dispose();
             handler.Dispose();
         }
-    }
-
-    /// <summary>
-    /// Verify a transport failure during Docker Hub base-image resolution reports the fixed connection-failed reason
-    /// </summary>
-    /// <returns>Task</returns>
-    [TestMethod]
-    public async Task DockerHubClientResolveBaseImagesAsyncWhenTransportFailsReportsConnectionFailedAsync()
-    {
-        var injected = new HttpRequestException(HttpRequestError.ConnectionError, "Connection refused (auth.internal.test:443)");
-        var logger = new TestLogger<DockerHubClient>();
-        var imageReference = CreateTransportFailureReference();
-
-        using var handler = new RetryProbeHttpMessageHandler([null], HttpStatusCode.OK)
-                            {
-                                FailureFactory = () => injected,
-                            };
-        using var httpClient = new HttpClient(handler);
-
-        var client = CreateClient(httpClient, logger: logger);
-
-        var result = await client.ResolveBaseImagesAsync(imageReference, CancellationToken.None)
-                                 .ConfigureAwait(false);
-
-        Assert.AreEqual(ExternalOperationStatus.Failed, result.Status, "A transport failure must fail the base-image resolution");
-        Assert.AreEqual($"Base image chain resolution failed for '{imageReference.FullReference}': connection failed",
-                        result.Message,
-                        "A transport failure must report the fixed connection-failed reason");
-        Assert.IsNotNull(result.Message, "A failed result must carry a message");
-        Assert.DoesNotContain("internal.test", result.Message, "The exception text must not reach the result message");
-        Assert.Contains(entry => ReferenceEquals(entry.Exception, injected),
-                        logger.Entries,
-                        "The transport failure must still be logged with the exception");
     }
 
     /// <summary>
@@ -1705,52 +1523,6 @@ public partial class DockerHubClientTests
     }
 
     /// <summary>
-    /// Verify the Docker Hub base-image resolution replaces control characters in the base-image labels before it parses them
-    /// </summary>
-    /// <returns>Task</returns>
-    [TestMethod]
-    public async Task DockerHubClientResolveBaseImagesAsyncWhenBaseImageLabelsHaveControlCharactersReplacesThemAsync()
-    {
-        var blobJson = """
-                       {
-                         "config": {
-                           "Labels": {
-                             "org.opencontainers.image.base.name": "\u001Bdocker.io/library/debian:12\u202E",
-                             "org.opencontainers.image.base.digest": "\u200Bsha256:abcd"
-                           }
-                         }
-                       }
-                       """;
-
-        Assert.Contains("\\u202E", blobJson, "The test input must carry the escaped format character");
-        Assert.Contains("\\u001B", blobJson, "The test input must carry the escaped escape character");
-
-        using var handler = new DelegateHttpMessageHandler(request => CreateBaseImageChainResponse(request, blobJson));
-        using var httpClient = new HttpClient(handler);
-
-        var client = CreateClient(httpClient);
-
-        var result = await client.ResolveBaseImagesAsync(new ImageReference
-                                                         {
-                                                             Registry = "docker.io",
-                                                             Repository = "library/app",
-                                                             Tag = "latest",
-                                                         },
-                                                         CancellationToken.None)
-                                 .ConfigureAwait(false);
-
-        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "The base-image resolution must succeed for well-formed blobs");
-        Assert.IsNotNull(result.Data, "The base-image resolution must return the base images");
-
-        var baseImage = Assert.ContainsSingle(result.Data, "The base-image resolution must return the one base image of the chain");
-
-        Assert.AreEqual("docker.io", baseImage.Registry, "The registry of the base image must be kept");
-        Assert.AreEqual("library/debian", baseImage.Repository, "The replaced characters at the edges of the name must be trimmed off the repository");
-        Assert.AreEqual("12", baseImage.Tag, "The replaced characters at the edges of the name must be trimmed off the tag");
-        Assert.AreEqual("sha256:abcd", baseImage.Digest, "The replaced character at the edge of the digest must be trimmed off the digest");
-    }
-
-    /// <summary>
     /// Verify the Docker Hub repository listing replaces control characters in the repository name and the description
     /// </summary>
     /// <returns>Task</returns>
@@ -1792,36 +1564,6 @@ public partial class DockerHubClientTests
 
         Assert.AreEqual("acme/api", repository.Repository, "The replaced characters at the edges of namespace and name must be trimmed off the repository name");
         Assert.AreEqual("De sc ription", repository.Description, "The description must be cleaned");
-    }
-
-    /// <summary>
-    /// Verify the Docker Hub base-image resolution ends with an empty chain at a label that is not a valid reference
-    /// </summary>
-    /// <returns>Task</returns>
-    [TestMethod]
-    public async Task DockerHubClientResolveBaseImagesAsyncWhenBaseImageLabelIsInvalidReturnsEmptyChainAsync()
-    {
-        var blobJson = $$"""
-                         { "config": { "Labels": { "org.opencontainers.image.base.name": "docker.io/library/{{new string('a', 256)}}:12" } } }
-                         """;
-
-        using var handler = new DelegateHttpMessageHandler(request => CreateBaseImageChainResponse(request, blobJson));
-        using var httpClient = new HttpClient(handler);
-
-        var client = CreateClient(httpClient);
-
-        var result = await client.ResolveBaseImagesAsync(new ImageReference
-                                                         {
-                                                             Registry = "docker.io",
-                                                             Repository = "library/app",
-                                                             Tag = "latest",
-                                                         },
-                                                         CancellationToken.None)
-                                 .ConfigureAwait(false);
-
-        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "An invalid label must end the chain, not fail the resolution");
-        Assert.IsNotNull(result.Data, "The resolution must return the chain");
-        Assert.IsEmpty(result.Data, "A base image with a repository over 255 characters must not be reported");
     }
 
     /// <summary>
@@ -2081,38 +1823,6 @@ public partial class DockerHubClientTests
     }
 
     /// <summary>
-    /// Verify the Docker Hub base-image resolution ends the chain without a request for a repository with a dot segment
-    /// </summary>
-    /// <returns>Task</returns>
-    [TestMethod]
-    public async Task DockerHubClientResolveBaseImagesAsyncDotSegmentRepositoryReturnsNoBaseImagesWithoutRequestAsync()
-    {
-        using var handler = new StubHttpMessageHandler();
-        using var httpClient = new HttpClient(handler)
-                               {
-                                   BaseAddress = new Uri("https://hub.docker.com/"),
-                               };
-
-        var logger = new TestLogger<DockerHubClient>();
-        var client = CreateClient(httpClient, logger: logger);
-
-        var result = await client.ResolveBaseImagesAsync(new ImageReference
-                                                         {
-                                                             Registry = "docker.io",
-                                                             Repository = "acme/../../v2/x",
-                                                             Tag = "1.0",
-                                                         },
-                                                         CancellationToken.None)
-                                 .ConfigureAwait(false);
-
-        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "A repository with a dot segment must end the chain like a 404 and not fail the resolution");
-        Assert.IsNotNull(result.Data, "The resolution must return a base-image list");
-        Assert.IsEmpty(result.Data, "A repository with a dot segment must yield no base images");
-        Assert.IsEmpty(handler.Requests, "No request, not even a token request, may be sent for a repository with a dot segment");
-        Assert.IsEmpty(logger.Entries, "Nothing may be logged for a repository with a dot segment");
-    }
-
-    /// <summary>
     /// Verify the Docker Hub image configuration lookup sends no blob request for a configuration digest that is a dot segment
     /// </summary>
     /// <returns>Task</returns>
@@ -2242,45 +1952,6 @@ public partial class DockerHubClientTests
         Assert.Contains(request => string.Equals(request.RequestUri, tagUri, StringComparison.Ordinal),
                         handler.Requests,
                         "The tag must be requested with every segment kept");
-    }
-
-    /// <summary>
-    /// Verify the Docker Hub base-image resolution sends no blob request for a configuration digest that is a dot segment
-    /// </summary>
-    /// <returns>Task</returns>
-    [TestMethod]
-    public async Task DockerHubClientResolveBaseImagesAsyncDotSegmentConfigDigestEndsChainWithoutBlobRequestAsync()
-    {
-        var requests = new List<string>();
-
-        using var handler = new DelegateHttpMessageHandler(request =>
-                                                           {
-                                                               var uri = request.RequestUri!;
-
-                                                               requests.Add(uri.AbsoluteUri);
-
-                                                               return string.Equals(uri.Host, "auth.docker.io", StringComparison.Ordinal)
-                                                                          ? CreateJsonResponse("""{ "token": "registry-token" }""")
-                                                                          : CreateJsonResponse("""{ "schemaVersion": 2, "config": { "digest": ".." } }""");
-                                                           });
-        using var httpClient = new HttpClient(handler);
-
-        var client = CreateClient(httpClient);
-
-        var result = await client.ResolveBaseImagesAsync(new ImageReference
-                                                         {
-                                                             Registry = "docker.io",
-                                                             Repository = "acme/api",
-                                                             Tag = "1.0",
-                                                         },
-                                                         CancellationToken.None)
-                                 .ConfigureAwait(false);
-
-        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "A configuration digest with a dot segment must end the chain like a 404");
-        Assert.IsNotNull(result.Data, "The resolution must return a base-image list");
-        Assert.IsEmpty(result.Data, "A configuration digest with a dot segment must yield no base images");
-        Assert.HasCount(2, requests, "Only the token and the manifest may be requested, never the blob");
-        Assert.DoesNotContain("/blobs/", requests[1], "The second request must be the manifest, not a blob");
     }
 
     /// <summary>

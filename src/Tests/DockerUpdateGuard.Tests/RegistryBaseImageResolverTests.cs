@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Headers;
+using System.Reflection;
 using System.Text;
 
 using DockerUpdateGuard.Configuration;
@@ -211,6 +212,28 @@ public class RegistryBaseImageResolverTests
         Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "An unparsable label must not fail the resolution");
         Assert.IsNotNull(result.Data, "The resolver must return the chain");
         Assert.IsEmpty(result.Data, "An unparsable label must give no base image");
+    }
+
+    /// <summary>
+    /// Verify the registered resolver is the only declaration of a base-image chain resolution in the application assembly
+    /// </summary>
+    [TestMethod]
+    [TestCategory("AC1")]
+    public void RegistryBaseImageResolverWhenAssemblyIsScannedIsTheOnlyBaseImageChainResolver()
+    {
+        var chainType = typeof(Task<ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>>);
+        var declaringTypes = typeof(RegistryBaseImageResolver).Assembly
+                                                              .GetTypes()
+                                                              .SelectMany(type => type.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly))
+                                                              .Where(method => method.ReturnType == chainType)
+                                                              .Select(method => method.DeclaringType!.Name)
+                                                              .Distinct()
+                                                              .OrderBy(name => name, StringComparer.Ordinal)
+                                                              .ToArray();
+
+        Assert.AreSequenceEqual(new[] { nameof(IBaseImageResolver), nameof(RegistryBaseImageResolver) },
+                                declaringTypes,
+                                "Only IBaseImageResolver and RegistryBaseImageResolver may declare a base-image chain resolution");
     }
 
     #endregion // Methods
