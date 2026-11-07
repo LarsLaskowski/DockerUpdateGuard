@@ -74,7 +74,8 @@ public partial class TransientHttpRetryHandlerTests
 
                                                         return Task.CompletedTask;
                                                     },
-                                                    nextJitterMilliseconds ?? (_ => 0))
+                                                    nextJitterMilliseconds ?? (_ => 0),
+                                                    TimeProvider.System)
                       {
                           InnerHandler = probe,
                       };
