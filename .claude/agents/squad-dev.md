@@ -57,7 +57,9 @@ test documentation, the area documents with their index rows, `docs/ARCHITECTURE
 *Coverage gate* passes — for a feature after the last task group, in your `implement` agent. Write each statement
 from the code as it now stands (`git diff <base>`, the working tree included), not from the plan's wording, and
 re-read every sentence of the touched sections that describes the changed behavior; run `decision-check.py` when
-you touched `docs/areas/`. A sentence you write that states a number (a count, a limit, a size, a budget), an order
+you touched `docs/areas/`. Then run `python3 .squad/tools/figure-check.py`, also when the plan names no documentation
+update: fix every line it reports that the change made untrue, a file the plan did not list included, and name in
+your report each hit that still holds, with the reason (it states another quantity of the same value). A sentence you write that states a number (a count, a limit, a size, a budget), an order
 or a completeness ("only", "all", "never", "covered by …") names in your report the code line, test or measurement
 it rests on; one you cannot trace is narrowed to what the code shows or left out. A statement that would contradict
 a decision record goes to the Lead in your report.

@@ -30,8 +30,8 @@ specific to this repository lives in two files the members read first:
 
 Model and effort are set per role in each agent file's front matter. The orchestrator may override a single
 launch through its own `model` and `effort` parameters; the overrides it makes by default are in
-`orchestration.md` (*Launch model*), and `xhigh` is not used. A change of model or effort for a role is made in the template, on the evidence of the runs'
-`squad-log.py --summary` tables. Where production and test code live is defined in `stack.md` (*Layout*).
+`orchestration.md` (*Launch model*), and `xhigh` is not used. Where production and test code live is defined in
+`stack.md` (*Layout*).
 
 The **Lead** decides everything inside the squad, including approving plans; the pull request is approved
 by the orchestrator's checklist (`routing.md`, *PR approval*) and the Lead is launched only for what is still
@@ -51,14 +51,21 @@ runs *Format* from `stack.md` before handing back and keeps its result to those 
 formatter touched is reported as "formatted outside the change", not edited, and the orchestrator restores it.
 
 **Git and GitHub.** Members never run Git write operations and never post to GitHub (no GitHub MCP write tool
-either); the `PreToolUse` hook `.claude/hooks/git-guard.py`, declared in `.claude/settings.json`, denies such Bash
-commands to every `squad-*` agent. Read-only Git, `git add` and a scratch `git worktree` stay allowed; a member that needs
-anything else reports it. The orchestrator checks `git status` after each report and restores any index or tree change. Another revision is read with `git show <sha>:<path>` or in a scratch worktree
+either); the hook `.claude/hooks/git-guard.py` denies such Bash commands. Read-only Git, `git add` and a scratch `git
+worktree` stay allowed; a member that needs anything else reports it. The orchestrator checks `git status` after each report and restores any index or tree change. Another revision is read with `git show <sha>:<path>` or in a scratch worktree
 (`git worktree add --detach`), never by checking it out in the repository working tree.
 Session-management tools (`create_session`, `send_message`, `archive_session`, the scheduled-task tools and the
 other remote-session tools) belong to the orchestrator alone, also for "handing over" work or tidying up: a member
-never calls one, with a placeholder session id least of all. Experiments (mutation tests, trial
+never calls one. Experiments (mutation tests, trial
 edits, baselines) run in a scratch `git worktree` (`git stash` is a Git write, too). The orchestrator commits, pushes and opens the pull request (`routing.md`, *Pipeline*).
+
+**Files.** A member writes only what its row in *Members* names — the Lead only under `specs/` and
+`docs/decisions/`, the Tester only in the test paths (`COVERAGE_TEST_PATHSPECS` in `.squad/tools/squad_settings.py`,
+by default its `COVERAGE_EXCLUDES`) and `docs/UNIT_TESTS.md` — and nothing under `.git/`, `.claude/` or `.squad/` (the
+Code Officer's notes in `.squad/stack.md` excepted); the hook `.claude/hooks/file-guard.py` denies every other Write or
+Edit call inside the repository (a scratch worktree outside it is not checked). A member that needs another file
+changed (a test fixture outside the test paths, `.squad/project.md`) reports it. Both hooks prevent accidents and are
+no security boundary: an interpreter or a shell redirect gets past them, and these rules bind there all the same.
 
 **Reporting against a SHA.** Before the PR the orchestrator may commit your edits as work in progress while
 you work (`orchestration.md`, *The stop hook*), so a clean `git status` at hand-back is expected: report your

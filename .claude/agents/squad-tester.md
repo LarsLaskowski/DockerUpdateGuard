@@ -70,8 +70,6 @@ Mode `coverage` (after the Dev's implementation):
 
 Rules:
 
-- A test double you write or extend that copies a real component's behavior names its measurement in your
-  report (*Test doubles that model a real component* in `.squad/team.md`).
 - Follow `docs/UNIT_TESTS.md` and *Writing tests* in `stack.md` (framework, test doubles, naming, one
   assertion message per assertion where the framework supports it). Write tests the analyzers accept from
   the start — these are test-design rules the Code Officer cannot fix without handing them back — and run

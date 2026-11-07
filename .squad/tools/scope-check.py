@@ -20,7 +20,9 @@ included; BASE_REF from `.squad/tools/squad_settings.py`, default origin/main):
   `.squad/project.md`, the project blocks of `AGENTS.md` and its mirror, the bug report and pull request
   templates) or a working record under `specs/`;
 - with `--tier patch`: the files outside `specs/` change by at most PATCH_MAX_LINES lines in all (added plus
-  removed, an untracked file with every line; default 30, `squad_settings.py`), and no binary file changes.
+  removed, an untracked file with every line; default 30, `squad_settings.py`), and no binary file changes;
+- with `--tier tests`: every changed file outside `specs/` is a test path (`COVERAGE_TEST_PATHSPECS` of
+  `squad_settings.py`, by default its `COVERAGE_EXCLUDES`) or `docs/UNIT_TESTS.md`.
 
 When BASE_REF is not an ancestor of HEAD (a stale local copy in a fresh session, or a base that moved on), the
 script prints a warning above the result: the file list may then include changes that are not this branch's, so
@@ -36,7 +38,7 @@ The script takes only these options, and `NUMBER` is an integer, so nothing user
 or the filesystem; the API paths are quoted and the repositories checked against `owner/name`.
 
 Usage, from the repository root:
-    python3 .squad/tools/scope-check.py [--tier docs|patch|trivial|standard|security] [--no-specs]
+    python3 .squad/tools/scope-check.py [--tier docs|patch|tests|trivial|standard|security] [--no-specs]
     python3 .squad/tools/scope-check.py --pull-request NUMBER [--no-specs]
 
 Exit code 0 when the diff is in scope, 1 otherwise.
@@ -72,6 +74,7 @@ DOCS_TIER_DIRS = ["docs/"]
 DOCS_TIER_EXCLUDED = ["docs/decisions/", "docs/areas/"]
 PROJECT_BLOCK = re.compile(r"<!-- project:begin ([\w-]+) -->\n.*?<!-- project:end \1 -->\n?", re.S)
 PATCH_MAX_LINES = getattr(settings, "PATCH_MAX_LINES", 30)
+TEST_DOCUMENT = "docs/UNIT_TESTS.md"
 GITHUB_API_HOST = "api.github.com"
 REPOSITORY = re.compile(r"^[\w.-]+/[\w.-]+$")
 FILES_PER_PAGE = 100
@@ -252,6 +255,21 @@ def patch_errors(base):
     return errors
 
 
+def tests_errors(base, files):
+    """The `tests` tier: every changed file outside `specs/` is a test path or the test document."""
+    pathspecs = [str(p) for p in getattr(settings, "COVERAGE_TEST_PATHSPECS", getattr(settings, "COVERAGE_EXCLUDES", []))]
+    tests = set()
+    if pathspecs:
+        tests = set(git("diff", "--name-only", base, "--", *pathspecs).splitlines())
+        tests |= set(git("ls-files", "--others", "--exclude-standard", "--", *pathspecs).splitlines())
+    return [f"{path}: not test code - tier tests allows only the test paths ({', '.join(pathspecs) or 'none set'}: "
+            "COVERAGE_TEST_PATHSPECS in squad_settings.py) and docs/UNIT_TESTS.md (raise the tier)"
+            for path in files if path not in tests and path != TEST_DOCUMENT and not is_working_record(path)]
+
+
+TIER_CHECKS = {"patch": lambda base, files: patch_errors(base), "tests": tests_errors}
+
+
 def project_blocks(text):
     """{block name: content} of a text's project blocks, Claude Code import lines left out (the Copilot mirror has
     none)."""
@@ -276,7 +294,7 @@ def check(files, base, tier, no_specs, source=None):
     source = source or LocalSource(base)
     errors = [error for path in files for error in file_errors(path, source, tier, no_specs, fork)]
     errors += [] if fork else rule_block_errors(files, source)
-    return errors + (patch_errors(base) if tier == "patch" else [])
+    return errors + (TIER_CHECKS[tier](base, files) if tier in TIER_CHECKS else [])
 
 
 def base_is_stale():
@@ -294,7 +312,7 @@ def pull_request_source(number):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--tier", choices=["docs", "patch", "trivial", "standard", "security"])
+    parser.add_argument("--tier", choices=["docs", "patch", "tests", "trivial", "standard", "security"])
     parser.add_argument("--no-specs", action="store_true", help="no working record may be left under specs/")
     parser.add_argument("--pull-request", type=int, metavar="NUMBER",
                         help="check this pull request through the GitHub API instead of the working tree")

@@ -1,6 +1,6 @@
 # Tasks: <title>
 
-Plan: [plan.md](plan.md) — Status: Draft | Approved
+Plan: [plan.md](plan.md)
 
 Each task names its criteria, the tasks it waits for and its group (steps 4–6 run per group, one agent per member
 and mode; rows consecutive). A group has a "Skeleton" row for its API in *Signatures*, or says "no new API". Each

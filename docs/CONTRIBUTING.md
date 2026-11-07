@@ -65,8 +65,8 @@ a pull request.
 Pull requests are merged with **Squash and merge**: the PR title becomes the single commit subject on
 `main` and the description its body, so the commits on the branch are working history and need not be
 curated. Keep the branch up to date by merging the current `main` into it (no force-push needed); do not
-use the plain *Create a merge commit* or *Rebase and merge* buttons (see the decision record on
-squash-merging in [`decisions/`](decisions/README.md)).
+use the plain *Create a merge commit* or *Rebase and merge* buttons (see the process decisions in
+[`decisions/process.md`](decisions/process.md)).
 
 For PR naming use the following convention: `[area] Description` (no period at the end).
 
@@ -116,7 +116,7 @@ Code-style rules are documented in [`AGENTS.md`](../AGENTS.md) and in
 request, run the commands from `stack.md`: *Format*, *Build*, the *Analyzer gate* (no analyzer diagnostic
 of any severity in a changed file) and the *Coverage gate* (line coverage on new or changed production code
 and overall, thresholds in [`UNIT_TESTS.md`](UNIT_TESTS.md#code-coverage)). A pull request is
-expected to arrive clean (see the decision record on quality gates in [`decisions/`](decisions/README.md)).
+expected to arrive clean (see the process decisions in [`decisions/process.md`](decisions/process.md)).
 
 <!-- project:begin releases -->
 ## Versioning and releases

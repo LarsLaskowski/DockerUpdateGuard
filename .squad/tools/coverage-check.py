@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Coverage gate for the squad: line coverage of new/changed production lines (like SonarQube's
 "coverage on new code") and overall line coverage, merged from all coverage reports
-(one per test project) of the latest test run; *Test with coverage* clears the results directory first.
+(one per test project) of the latest test run; *Test with coverage* clears the results directory first. A report
+older than the last change of a tracked production or test file is refused: a merge, a formatter or an edit since
+the test run has moved the lines it counts.
 
 Supported report formats (set COVERAGE_FORMAT in `.squad/tools/squad_settings.py`; a repository with
 several stack profiles lists one `(format, glob)` pair per report kind in COVERAGE_REPORTS instead, and
@@ -60,10 +62,15 @@ def changed_lines():
     return changed_line_map(merge_base(), pathspecs)
 
 
+def tests_pathspecs():
+    """COVERAGE_TEST_PATHSPECS, by default the COVERAGE_EXCLUDES of squad_settings."""
+    return getattr(settings, "COVERAGE_TEST_PATHSPECS", settings.COVERAGE_EXCLUDES)
+
+
 def changed_test_files():
     """Return the repo-relative test files changed since the merge base with origin/main (working tree
-    included): the paths in COVERAGE_TEST_PATHSPECS, by default the COVERAGE_EXCLUDES of squad_settings."""
-    pathspecs = getattr(settings, "COVERAGE_TEST_PATHSPECS", settings.COVERAGE_EXCLUDES)
+    included): the paths in tests_pathspecs()."""
+    pathspecs = tests_pathspecs()
     if not pathspecs:
         return []
     return subprocess.run(
@@ -91,6 +98,20 @@ def run_reports(pattern):
         sys.exit(f"No coverage report matches {pattern} - the report was never written or "
                  "has been deleted; run *Test with coverage* from .squad/stack.md first, then this gate again")
     return reports
+
+
+def refuse_stale_reports():
+    """Exit when a report is older than the newest change of a tracked production or test file: its line numbers
+    belong to the files as they were before that change, so it would count changed lines wrongly."""
+    reports = [report for _, pattern in report_sources() for report in run_reports(pattern)]
+    oldest = min(reports, key=os.path.getmtime)
+    tests = tests_pathspecs()
+    files = production_files() | (tracked_files(tests) if tests else set())
+    newest = max(((os.path.getmtime(path), path) for path in files if os.path.isfile(path)), default=None)
+    if newest and newest[0] > os.path.getmtime(oldest):
+        sys.exit(f"{oldest} is older than the last change of {newest[1]}: it does not measure the files as they "
+                 "are now (a merge, a formatter or an edit since the test run). Run *Test with coverage* from "
+                 ".squad/stack.md again, then this gate.")
 
 
 def add_hit(hits, path, number, count):
@@ -173,17 +194,20 @@ def merged_hits():
     return hits
 
 
+def tracked_files(pathspecs, *options):
+    """The files `git ls-files <options> -- <pathspecs>` lists."""
+    return set(subprocess.run(["git", "ls-files", *options, "--", *pathspecs],
+                              capture_output=True, text=True, check=True).stdout.splitlines())
+
+
 def production_files(*options):
     """The production files `git ls-files <options>` lists: COVERAGE_PATHSPECS minus COVERAGE_EXCLUDES. The
     excludes are subtracted from a second listing, not passed as `:(exclude)` pathspecs: `git ls-files`
     (2.43) drops every tracked file for an exclude that matches none of them (`:(exclude)*.d.ts` with no
     declaration file under `src/`), which left the overall value at 0/0 lines."""
-    def listed(pathspecs):
-        return set(subprocess.run(["git", "ls-files", *options, "--", *pathspecs],
-                                  capture_output=True, text=True, check=True).stdout.splitlines())
-    files = listed(settings.COVERAGE_PATHSPECS)
+    files = tracked_files(settings.COVERAGE_PATHSPECS, *options)
     if settings.COVERAGE_EXCLUDES:
-        files -= listed(settings.COVERAGE_EXCLUDES)
+        files -= tracked_files(settings.COVERAGE_EXCLUDES, *options)
     return files
 
 
@@ -229,6 +253,7 @@ def main():
 
     os.chdir(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
     warn_untracked()
+    refuse_stale_reports()
     hits = merged_hits()
     overall, total_hit, total = overall_coverage(hits)
     changed = changed_lines()

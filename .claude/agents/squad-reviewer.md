@@ -44,7 +44,11 @@ areas, guarantees, integration surface, test doubles), `AGENTS.md` and
   "add after '…'"), and mark the finding
   `verbatim` (`.squad/orchestration.md`, *Verbatim documentation fixes*). When the
   fix changes a behavior statement an acceptance criterion or a guarantee in
-  `.squad/project.md` relies on, say so: the Lead decides.
+  `.squad/project.md` relies on, say so: the Lead decides. Every wording
+  finding on a decision record (a stale name, link, number or sentence) is
+  stated this way, because records are the Lead's and any other form costs a
+  Lead launch; only a finding that changes a record's decision — the option it
+  takes or why — goes to the Lead without a verbatim fix.
 
 ## Inputs
 
@@ -60,14 +64,14 @@ When invoked by the squad (`squad-issue` / `squad-spec`), the calling session
 also gives you the work folder (`specs/<folder>/`) and the output of the gates
 it ran on the head (step 7). Then additionally read the folder's `plan.md` (and
 `spec.md` for features), run `python3 .squad/tools/scope-check.py` (with
-`--tier docs` or `--tier patch` for those tiers, `--no-specs` after step 10; every line it reports
+`--tier docs`, `--tier patch` or `--tier tests` for those tiers, `--no-specs` after step 10; every line it reports
 is blocking), and report as findings:
 
-- an acceptance criterion (from the plan, or for a feature from `spec.md`) that the diff does not fulfil or
-  that no test pins down (blocking) — in a plan without production or test code, one its *Verification
-  without tests* section does not cover; for a feature also a scenario or edge case the diff handles
-  differently from the spec, an area document that does not say what the spec's *Area documents* section
-  promised, and a spec *Challenge notes* entry the Lead left unanswered (each blocking);
+- an acceptance criterion (from the plan, or for a feature from `spec.md`, as its *Amendments* leave it) that the
+  diff does not fulfil or that no test pins down (blocking) — in a plan without production or test code, one its
+  *Verification without tests* section does not cover; for a feature also a scenario, edge case or non-functional
+  requirement the diff handles differently from the spec, an area document that does not say what the spec's
+  *Area documents* section promised, and a spec *Challenge notes* entry the Lead left unanswered (each blocking);
 - a declaration of a change without production or test code that does not hold (blocking; *Changes without
   production or test code* in `.squad/routing.md`);
 - a tier too low for what the diff touches (blocking; you may raise it, never lower it — *Tiers* in
@@ -76,7 +80,8 @@ is blocking), and report as findings:
   change, no new dependency, permission or schema, each edit covered by the check the row names. A security
   area the diff touches that *Security areas touched* does not list is a finding *unlisted security area*
   (*Unlisted security areas* in `.squad/orchestration.md`; tiers with a `plan.md` — `patch/security` goes to Security
-  anyway); a touch that changes nothing an attacker could use you clear yourself. Below the `security` tier you are the security review of the diff: the
+  anyway); a touch that changes nothing an attacker could use (a log wording, a rename, a moved line) you clear
+  yourself. Below the `security` tier you are the security review of the diff: the
   security areas, secrets reaching logs, input safety and new dependencies in the checklist below are yours;
 - a *Challenge notes* or *Security notes* entry the diff ignores without a reported deviation (blocking when
   it changes behavior, non-blocking otherwise).
@@ -155,7 +160,9 @@ repository names this thing, and is that statement still true?**
   standing still describe what the code does? Check the claims, don't read
   past them. A change in behavior (format, limit, default, error, guarantee)
   needs the matching section of its area document in `docs/areas/` in the same
-  diff, and a decision record repeats no rules the area document states.
+  diff, and a decision record repeats no rules the area document states. Each
+  decision record of the change matches what was built; the PR approval (step 9)
+  does not check it again.
 - **Language**: all new code, comments, documentation and commit messages in
   English.
 - **Scope**: unrelated changes bundled in, accidental file inclusions, debug

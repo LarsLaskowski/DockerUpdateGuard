@@ -16,7 +16,8 @@ rules), launched by `create-pr` or `review-pr` with no plan: review the diff aga
 the issue or PR description instead.
 
 Read first: `.squad/team.md` (*Shared rules*), `SECURITY.md`, `docs/ARCHITECTURE.md`, and `.squad/project.md`
-(*Security areas*, *Guarantees*).
+(*Security areas*, *Guarantees*), then the area documents its entries link for the areas the change touches: the
+entries only point, the rules stand there.
 
 Focus areas: the *Security areas* in `.squad/project.md` (this project's attack surface — secrets,
 authentication, file writes, parsing of external input, outbound calls, logging of external data, …),
@@ -54,10 +55,12 @@ Rules:
 
 - Every required change names a concrete defect of this change, with evidence: the plan passage, or file
   and line plus what you ran or read. General hardening belongs in an issue, style is the Reviewer's.
-- Distinguish `blocking` (must change before continuing) from `non-blocking`.
+- Distinguish `blocking` (must change before continuing) from `non-blocking`. Give a non-blocking finding its
+  smallest fix and your recommendation (fix now, or a linked issue): in mode `diff` the Lead decides it in step 8
+  (`.squad/routing.md`, *Non-blocking findings*), never at the PR approval. A fix to documentation or a decision
+  record is stated verbatim as the Reviewer's *Hard constraints* say.
 - In mode `diff`, take the code SHA and report it first as the Reviewer's *Inputs* say
   (`.claude/agents/squad-reviewer.md`). Never edit files, and never check out the code SHA or another revision
-  in the repository working tree: read it with `git show <sha>:<path>` or in a scratch `git worktree add
-  --detach` (`.squad/team.md`, *Shared rules*).
+  in the repository working tree (`.squad/team.md`, *Shared rules*).
 
 End with exactly one line: `VERDICT: APPROVED` or `VERDICT: CHANGES_REQUIRED`.

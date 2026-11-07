@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Print the tokens this Claude Code session used, read from Claude Code's own session transcript, for the "Squad run
-metrics" of the wrap-up (`.squad/routing.md`, step 12).
+metrics" of the wrap-up (`.squad/routing.md`, step 12), and read one subagent's launch for `squad-log.py --agent-id`.
 
 `/usage` shows the same numbers on screen only; this script reads them where Claude Code writes them:
 
@@ -11,11 +11,21 @@ metrics" of the wrap-up (`.squad/routing.md`, step 12).
 - per model, the input, output, cache-read and cache-write tokens of every API response (a response written
   once per content block is counted once, by its message id).
 
+Next to the raw tokens it prints a **weighted** figure: every token at its list price (`PRICES`, the current model of
+the model's family, cache writes by their lifetime), expressed in tokens of Sonnet input. It is proportional to what
+the tokens cost, so roles and models can be compared by it, while no cost is printed: Claude Code's own cost snapshot
+is written only when the session pauses and mostly predates the run. A model of no listed family gets no weighted
+figure (`–`) and is left out of the weighted total.
+
 Calls Claude Code makes on its own (permission checks of auto mode, titles, compaction) are in no transcript, so
 the tables are a lower bound: against `/usage`, output and cache-write tokens matched within a few percent, input
-and cache-read tokens were 15-20 % lower. No cost is printed: Claude Code's own cost snapshot is written only
-when the session pauses and mostly predates the run, and a cost computed here would be an estimate; the costs
-are calculated from the token tables where they are needed.
+and cache-read tokens were 15-20 % lower.
+
+A subagent's transcript holds one **round** per launch of its agent: the first launch and each continuation
+(`SendMessage`), a round starting with a message to the agent once the agent has answered. `squad-log.py` reads the
+latest round: its tokens per kind, its tool uses, its duration from the first to the last record, the model and
+effort its responses ran on, and the agent's context at the end of the round (the four kinds of its last response),
+which is the figure a task notification reports as the agent's tokens.
 
 Only these numbers, model ids and agent types are printed; no text of the transcripts, no path, account or other
 personal data. The format of these files is Claude Code's internal one and may change with an update: a record
@@ -30,6 +40,7 @@ wrap-up records as it stands.
 """
 import argparse
 import collections
+import datetime
 import glob
 import json
 import os
@@ -42,10 +53,28 @@ TOKEN_FIELDS = (
     ("cache_read_input_tokens", "Cache read"),
     ("cache_creation_input_tokens", "Cache write"),
 )
+# The part of the cache-write tokens written with a one-hour lifetime, which costs more than a five-minute one.
+WRITE_1H = "cache_write_1h"
+# List prices in USD per million tokens of each family's current model (2026-10): input, output, cache read, cache
+# write with a five-minute lifetime, cache write with a one-hour lifetime. A model is priced by the family its id
+# names (`claude-opus-5-5`: opus).
+PRICES = {
+    "fable": (10.0, 50.0, 0.25, 12.5, 20.0),
+    "mythos": (10.0, 50.0, 0.25, 12.5, 20.0),
+    "opus": (4.0, 20.0, 0.2, 5.0, 8.0),
+    "sonnet": (2.0, 10.0, 0.2, 2.5, 4.0),
+    "haiku": (0.1, 0.5, 0.01, 0.125, 0.2),
+}
+# The weighted figure is expressed in tokens of Sonnet input.
+REFERENCE_PRICE = PRICES["sonnet"][0]
+FAMILY = re.compile(r"(?<![a-z])(" + "|".join(PRICES) + r")(?![a-z])")
 NOT_PROVIDED = "not provided (no Claude Code session transcript found)"
 NAME = re.compile(r"[\w.-]{1,64}")
 TOTAL = "**Total**"
 JSONL = ".jsonl"
+NONE = "–"
+WEIGHTED_NOTE = ("Weighted: every token at its list price, in tokens of Sonnet input (`PRICES` in "
+                 "`.squad/tools/session-usage.py`); a model of no listed family has none (–).")
 
 
 def projects_dir():
@@ -62,6 +91,17 @@ def find_transcript(root, session):
         if os.path.isfile(path):
             return path
     return None
+
+
+def subagent_transcript(session_path, agent_id):
+    """`<session>/subagents/agent-<id>.jsonl` of the session's transcript, or None; the id is matched against the
+    directory listing, never used as a path."""
+    wanted = "agent-" + (agent_id or "").strip().removeprefix("agent-")
+    folder = os.path.join(session_path[: -len(JSONL)], "subagents")
+    if not NAME.fullmatch(wanted) or not os.path.isdir(folder):
+        return None
+    names = [name for name in os.listdir(folder) if name == wanted + JSONL]
+    return os.path.join(folder, names[0]) if names else None
 
 
 def records(path):
@@ -100,6 +140,34 @@ def add_usage(counter, usage):
         value = usage.get(field)
         if isinstance(value, int) and value > 0:
             counter[field] += value
+    lifetimes = usage.get("cache_creation")
+    value = lifetimes.get("ephemeral_1h_input_tokens") if isinstance(lifetimes, dict) else None
+    if isinstance(value, int) and value > 0:
+        counter[WRITE_1H] += value
+
+
+def family(model):
+    """The model family a model id or alias names (`opus` for `claude-opus-5-5`), or None."""
+    found = FAMILY.search((model or "").lower())
+    return found.group(1) if found else None
+
+
+def weighted(counter, model):
+    """The tokens of `counter` at the list prices of `model`'s family, in tokens of Sonnet input; None when the
+    model names no listed family."""
+    prices = PRICES.get(family(model))
+    if prices is None:
+        return None
+    one_hour = min(counter[WRITE_1H], counter["cache_creation_input_tokens"])
+    amounts = (counter["input_tokens"], counter["output_tokens"], counter["cache_read_input_tokens"],
+               counter["cache_creation_input_tokens"] - one_hour, one_hour)
+    return round(sum(amount * price for amount, price in zip(amounts, prices, strict=True)) / REFERENCE_PRICE)
+
+
+def weighted_sum(per_model):
+    """(weighted total of the priced models, whether a model had no price) of {model: counter}."""
+    values = [weighted(counter, model) for model, counter in per_model.items()]
+    return sum(value for value in values if value is not None), None in values
 
 
 def read_transcript(path, per_model, seen):
@@ -137,12 +205,103 @@ def read_session(path):
     pattern = os.path.join(path[: -len(JSONL)], "subagents", "agent-*.jsonl")
     for transcript in sorted(glob.glob(pattern)):
         own = read_transcript(transcript, per_model, seen)
-        entry = agents.setdefault(agent_type(transcript), {"launches": 0, "models": set(), "tokens": collections.Counter()})
+        entry = agents.setdefault(agent_type(transcript), {"launches": 0, "models": collections.defaultdict(
+            collections.Counter)})
         entry["launches"] += 1
         for model, counter in own.items():
-            entry["models"].add(model)
-            entry["tokens"].update(counter)
+            entry["models"][model].update(counter)
     return per_model, agents
+
+
+def timestamp(record):
+    """The record's time as a naive UTC datetime, or None."""
+    value = record.get("timestamp")
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = datetime.datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed.astimezone(datetime.UTC).replace(tzinfo=None) if parsed.tzinfo else parsed
+
+
+def is_message_to_agent(record):
+    """True for a message to the agent (a prompt or a continuation), not a tool result."""
+    message = record.get("message")
+    if record.get("type") != "user" or not isinstance(message, dict):
+        return False
+    content = message.get("content")
+    if isinstance(content, str):
+        return True
+    return isinstance(content, list) and not any(isinstance(block, dict) and block.get("type") == "tool_result"
+                                                 for block in content)
+
+
+def new_round():
+    return {"usage": collections.Counter(), "models": collections.Counter(), "effort": None, "tool_uses": 0,
+            "start": None, "end": None, "context": 0, "responses": 0}
+
+
+def add_response(current, record, found, tools):
+    """Add an API response record to the round: its usage once per message id (`found` is None for a further content
+    block of a counted response), its tool uses once per block id, its model and effort."""
+    message = record["message"]
+    for block in message.get("content") if isinstance(message.get("content"), list) else []:
+        if isinstance(block, dict) and block.get("type") == "tool_use" and block.get("id") not in tools:
+            tools.add(block.get("id"))
+            current["tool_uses"] += 1
+    if isinstance(record.get("effort"), str) and NAME.fullmatch(record["effort"]):
+        current["effort"] = record["effort"]
+    if found is None:
+        return
+    _, model, usage = found
+    add_usage(current["usage"], usage)
+    current["models"][model] += 1
+    current["responses"] += 1
+    current["context"] = sum(value for field, _ in TOKEN_FIELDS if isinstance(value := usage.get(field), int))
+
+
+def agent_rounds(path):
+    """The rounds of a subagent's transcript, oldest first (see the module description), each a dict with "usage"
+    (a counter of the token kinds), "models" (responses per model), "effort", "tool_uses", "start" and "end"
+    (datetimes), "context" (the four kinds of its last response) and "responses"; rounds without a response are
+    left out."""
+    rounds, seen, tools = [], set(), set()
+    current = None
+    for record in records(path):
+        if current is None or (is_message_to_agent(record) and current["responses"]):
+            current = new_round()
+            rounds.append(current)
+        stamp = timestamp(record)
+        if stamp is not None:
+            current["start"] = current["start"] or stamp
+            current["end"] = stamp
+        found = response_usage(record)
+        if found is None:
+            continue
+        counted = found if not (found[0] and found[0] in seen) else None
+        seen.add(found[0])
+        add_response(current, record, counted, tools)
+    return [entry for entry in rounds if entry["responses"]]
+
+
+def usage_since(path, since):
+    """({model: counter}, {effort: responses}) of the transcript's own responses from `since` (a naive UTC datetime,
+    None for all) on: the orchestrating session's share, its subagents being in their own transcripts."""
+    per_model, efforts, seen = collections.defaultdict(collections.Counter), collections.Counter(), set()
+    for record in records(path):
+        found = response_usage(record)
+        stamp = timestamp(record)
+        if not found or (since is not None and (stamp is None or stamp < since)):
+            continue
+        if isinstance(record.get("effort"), str) and NAME.fullmatch(record["effort"]):
+            efforts[record["effort"]] += 1
+        message_id, model, usage = found
+        if message_id and message_id in seen:
+            continue
+        seen.add(message_id)
+        add_usage(per_model[model], usage)
+    return per_model, efforts
 
 
 def number(value):
@@ -153,29 +312,41 @@ def token_cells(counter):
     return " | ".join(number(counter[field]) for field, _ in TOKEN_FIELDS)
 
 
+def weighted_cell(value):
+    return NONE if value is None else number(value)
+
+
 def model_table(per_model):
     heads = " | ".join(label for _, label in TOKEN_FIELDS)
-    lines = [f"| Model | {heads} |", "| --- |" + " ---: |" * len(TOKEN_FIELDS)]
+    lines = [f"| Model | {heads} | Weighted |", "| --- |" + " ---: |" * (len(TOKEN_FIELDS) + 1)]
     total = collections.Counter()
     for model in sorted(per_model):
-        lines.append(f"| {model} | {token_cells(per_model[model])} |")
+        lines.append(f"| {model} | {token_cells(per_model[model])} | "
+                     f"{weighted_cell(weighted(per_model[model], model))} |")
         total.update(per_model[model])
-    lines.append(f"| {TOTAL} | {token_cells(total)} |")
+    lines.append(f"| {TOTAL} | {token_cells(total)} | {number(weighted_sum(per_model)[0])} |")
     return lines
 
 
 def agent_table(agents):
     heads = " | ".join(label for _, label in TOKEN_FIELDS)
-    lines = [f"| Subagent | Launches | Models | {heads} |", "| --- | ---: | --- |" + " ---: |" * len(TOKEN_FIELDS)]
+    lines = [f"| Subagent | Launches | Models | {heads} | Weighted |",
+             "| --- | ---: | --- |" + " ---: |" * (len(TOKEN_FIELDS) + 1)]
     total = collections.Counter()
-    launches = 0
+    launches = weight = 0
     for name in sorted(agents):
         entry = agents[name]
-        models = ", ".join(sorted(entry["models"])) or "–"
-        lines.append(f"| {name} | {entry['launches']} | {models} | {token_cells(entry['tokens'])} |")
-        total.update(entry["tokens"])
+        models = ", ".join(sorted(entry["models"])) or NONE
+        tokens = collections.Counter()
+        for counter in entry["models"].values():
+            tokens.update(counter)
+        value, unpriced = weighted_sum(entry["models"])
+        lines.append(f"| {name} | {entry['launches']} | {models} | {token_cells(tokens)} | "
+                     f"{NONE if unpriced and not value else number(value)} |")
+        total.update(tokens)
         launches += entry["launches"]
-    lines.append(f"| {TOTAL} | {launches} | | {token_cells(total)} |")
+        weight += value
+    lines.append(f"| {TOTAL} | {launches} | | {token_cells(total)} | {number(weight)} |")
     return lines
 
 
@@ -185,6 +356,7 @@ def report(per_model, agents):
     lines += model_table(per_model)
     lines += ["", "Subagents:", ""]
     lines += agent_table(agents) if agents else ["No subagent was launched in this session."]
+    lines += ["", WEIGHTED_NOTE]
     return "\n".join(lines)
 
 
