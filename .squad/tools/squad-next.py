@@ -25,14 +25,22 @@ Gates count only as the stamp rows of `gate-stamp.py`, never as a member's repor
 head the next step is step 7 (`plan-check.py --matrix` first, a `MISSING` criterion to the Tester), a review round
 belongs to the stamp it follows, and step 9 waits for the stamp to pass `gate-stamp.py --verify`. A review, a
 Security verdict and the Devil's Advocate's objections are read from the member's `VERDICT:` line, which the
-orchestrator logs as the start of the row's result; a row without one is named, and both ways are printed. Three
-blocking rounds in a row (review pass 1 and two delta rounds) send the findings to the Lead (*Loop limits*), and so
-does a second `CHANGES_REQUIRED` of the Security plan review; two plan-check revisions of one document without a
-clean run hand the findings to the Lead in mode `decide`.
+orchestrator logs as the start of the row's result (a Reviewer's `VERDICT: NON-BLOCKING <m>` counts as `BLOCKING 0`);
+a row without one is named, and both ways are printed. A Reviewer's verdict line names the code SHA it reviewed
+(`VERDICT: APPROVE on <sha>`); one that names none, or a commit whose code differs from the stamp of its round (a
+later commit that touched only `specs/` holds the same code), ties the round to no stamp, and the Reviewer is
+continued on the stamp's SHA. Three blocking rounds in a row (review pass 1 and two delta
+rounds) send the findings to the Lead (*Loop limits*), and so does a second `CHANGES_REQUIRED` of the Security plan
+review; two plan-check revisions of one document without a clean run hand the findings to the Lead in mode `decide`.
+Once the log has a row of step 4 or later the plan is approved: `plan-check.py` still runs before the PR, its size
+limit only warns, and a finding — one a merge of `main` brought with new checks, say — goes to the Lead in mode
+`revise` with the approved scope unchanged (`.squad/orchestration.md`, *Merge conflicts*).
 
 The script recognises a step by the number at the start of its step cell (`2a` and `2b` in `squad-spec`), the member
 and, in a feature, the task group in the cell (`6 Implement (G2)`); the step cells it prints are the ones it reads.
-Steps 4–6 of a feature run per task group of `tasks.md`, in table order.
+Steps 4–6 of a feature run per task group of `tasks.md`, in table order. An orchestrator row of step 4 that says it
+skipped the step (`4 Skeleton skipped`: the plan adds no API after all) ends step 4 for its group, a row without a group
+for every group.
 
 `--launch squad-<role> <mode>` prints that one launch — model, fresh or continued, the log command — for a launch the
 log cannot foresee (a CI failure or a review comment in step 11). `--stdin` reads the log from standard input after
@@ -100,7 +108,8 @@ STEP = re.compile(r"^\s*(\d+)([ab])?\b")
 GROUP = re.compile(r"\b(G\d+)\b")
 RESULT = re.compile(r"RESULT:\s*(DONE|NO CHANGE|ESCALATE|DECIDED|NOT APPROVED|APPROVED)", re.I)
 REVIEW = re.compile(r"VERDICT:\s*(?:(?P<approve>APPROVE)\b(?!D)|BLOCKING\s+(?P<blocking>\d+)"
-                    r"(?:\s*\\?\|\s*NON-BLOCKING\s+(?P<nonblocking>\d+))?)", re.I)
+                    r"(?:\s*\\?\|\s*NON-BLOCKING\s+(?P<nonblocking>\d+))?|NON-BLOCKING\s+(?P<only>\d+))"
+                    r"(?:\s+on\s+`?(?P<sha>[0-9a-f]{7,40})\b)?", re.I)
 SECURITY_VERDICT = re.compile(r"VERDICT:\s*(APPROVED|CHANGES_REQUIRED)", re.I)
 OBJECTIONS = re.compile(r"VERDICT:\s*(?:(?P<none>NO OBJECTIONS)|OBJECTIONS\s+(?P<major>\d+)\s+major,\s*"
                         r"(?P<minor>\d+)\s+minor)", re.I)
@@ -340,6 +349,8 @@ def review_verdict(row):
         return None
     if found.group("approve"):
         return 0, 0
+    if found.group("only"):
+        return 0, int(found.group("only"))
     return int(found.group("blocking")), int(found.group("nonblocking") or 0)
 
 
@@ -496,22 +507,29 @@ def plan_written(run):
     return plan_findings(run)
 
 
+def approved_at(run):
+    """The index of the run's first row of step 4 or later, from which on the plan counts as approved, or None."""
+    return next((row.index for row in run.rows if row.number and int(STEP.match(row.number).group(1)) >= 4), None)
+
+
 def plan_findings(run):
     if run.after_pr or not os.path.isdir(run.folder):
         return None
-    errors, warnings = plan_check().check(run.folder)
+    approved = approved_at(run)
+    errors, warnings = plan_check().check(run.folder, approved=approved is not None)
     if not errors:
         return None
-    since = max([row.index for row in run.rows if row.who in (ADVOCATE, SECURITY) and row.number in ("2", "2b", "3")]
-                + [-1])
+    since = approved if approved is not None else max(
+        [row.index for row in run.rows if row.who in (ADVOCATE, SECURITY) and row.number in ("2", "2b", "3")] + [-1])
     rounds = run.of(LEAD, {run.plan_step}, after=since, word="plan-check")
-    lines = heading(f"step {run.plan_step} — plan-check.py findings") + [f"  Finding: {line}" for line in errors] + [
+    title = "plan-check.py findings" + (" on the approved plan" if approved is not None else "")
+    lines = heading(f"step {run.plan_step} — {title}") + [f"  Finding: {line}" for line in errors] + [
         f"  Warning: {line}" for line in warnings]
     if len(rounds) >= 2:
         return lines + launch(run, LEAD, "decide", f"{run.plan_step} Decide (plan-check)",
                               "the findings left after two revisions: it fixes them or escalates")
-    return lines + launch(run, LEAD, "revise", f"{run.plan_step} Plan revise (plan-check)",
-                          "the findings only (no challenge round)")
+    scope = "the findings only, the approved scope unchanged" if approved is not None else "the findings only"
+    return lines + launch(run, LEAD, "revise", f"{run.plan_step} Plan revise (plan-check)", f"{scope} (no challenge round)")
 
 
 def challenge_and_security(run):
@@ -615,6 +633,12 @@ def group_rows(run, who, number, group, word=None):
     return [row for row in run.of(who, {number}, word=word) if in_group(row, group)]
 
 
+def skeleton_skipped(run, group):
+    """True when the orchestrator logged step 4 as skipped for the group, or without a group for every group."""
+    return any(re.search(r"\bskip", f"{row.step} {row.result}", re.I) and (in_group(row, group) or not GROUP.search(row.step))
+               for row in run.of(ORCHESTRATOR, {"4"}))
+
+
 def code_steps(run):
     """Steps 4–6, per task group of a feature."""
     if run.base_tier not in ("trivial", "standard", "security", "tests") or run.plan is None:
@@ -643,11 +667,13 @@ def group_step(run, group, skeleton):
     tag = f" ({group})" if group else ""
     rows = "the group's task rows and spec.md" if group else "the plan"
     if run.base_tier in ("standard", "security"):
-        if skeleton and not group_rows(run, DEV, "4", group):
+        if skeleton and not group_rows(run, DEV, "4", group) and not skeleton_skipped(run, group):
             return heading(f"step 4 — Skeleton{tag}") + launch(
                 run, DEV, "skeleton", f"4 Skeleton{tag}", f"the body the *Skeleton* section of .squad/stack.md names, "
                 f"quoted in the prompt; the planned signatures and the test call sites the plan assigns to the Dev "
-                f"({rows})")
+                f"({rows})") + [
+                "  Not due when the plan states it adds no API (its *Signatures* names only private members): " +
+                orchestrator_log(run, f"4 Skeleton skipped{tag}", "skipped — <where the plan says it adds no API>").strip()]
         if not group_rows(run, TESTER, "5", group):
             return heading(f"step 5 — Tests first{tag}") + launch(
                 run, TESTER, "tests-first", f"5 Tests first{tag}", f"{rows}, the tests of *Tests per criterion*, "
@@ -881,9 +907,37 @@ def review(run):
         return heading("step 8 — route the review round") + no_verdict(rows[verdicts.index(None)]) + [
             "  blocking findings: their owner, then steps 6–7 and a delta round; non-blocking: the Lead (mode decide) "
             "first; clean: step 9"]
+    stale = unmatched_review(run, stamp_index, rows)
+    if stale:
+        return stale
     blocking = sum(v[0] for v in verdicts) - len(verbatim_rows(run, max(r.index for r in rows)))
     nonblocking = sum(v[1] for v in verdicts)
     return review_outcome(run, rows, max(blocking, 0), nonblocking)
+
+
+def unmatched_review(run, stamp_index, rows):
+    """The Reviewer's row whose verdict line names no code SHA, or another code than the stamp of its round: the
+    round is not tied to the stamp, so the Reviewer is continued on the stamp's SHA."""
+    stamp = next((stamp_tool().STAMP.match(row.result.strip()) for row in run.rows if row.index == stamp_index), None)
+    for row in rows:
+        found = REVIEW.search(row.result) if row.who == REVIEWER and stamp else None
+        sha = found.group("sha") if found else None
+        if found is None or (sha and names_stamped_code(run, sha, stamp.group("sha"))):
+            continue
+        what = f"names {sha[:12]}, not the stamped code {stamp.group('sha')[:12]}: a stale round" if sha else \
+            f"names no code SHA: the round cannot be matched to the stamp on {stamp.group('sha')[:12]}"
+        return heading(f"step {row.number} — the Reviewer's verdict line {what}") + launch(
+            run, REVIEWER, "review", f"{row.number} Review (stamp SHA)", f"the stamp's code SHA {stamp.group('sha')}: "
+            "it reviews that SHA, copies it from `git rev-parse` into its verdict line and reports again")
+    return None
+
+
+def names_stamped_code(run, sha, stamp):
+    """True when the SHA a Reviewer names is the stamp's, or a commit with the same code (one that touched only
+    `specs/` after it)."""
+    if stamp.startswith(sha.lower()):
+        return True
+    return stamp_tool().git(run.root, "diff", "--quiet", stamp, sha, *stamp_tool().OUTSIDE_SPECS)[0] == 0
 
 
 def work_record(run):

@@ -33,8 +33,9 @@ repeated or concurrent action — numbered, each with what the user sees (the ex
 <!-- Limits and sizes, time and memory, security and privacy, compatibility (versions, platforms, existing data
 and configuration), new configuration with its default, logs and metrics — numbered, one each: "N1: …", or
 "none". For an installer or deployment feature also what the target host has and may have (tools, network access,
-DNS, the console, the order of steps the operator pastes), as the Product Manager answered (*Operator environments
-and documented procedures* in `.squad/routing.md`). -->
+DNS, the console, the order of steps the operator pastes), and for a guide through third-party pages how far it may
+rest on them, as the Product Manager answered (*Operator environments and documented procedures* in
+`.squad/routing.md`). -->
 
 - N1: …
 

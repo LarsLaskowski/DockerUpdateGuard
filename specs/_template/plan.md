@@ -56,8 +56,9 @@ CI.
 Only when the change touches no production or test code, in any tier: steps 4, 5 and the *Coverage gate*
 are not applicable (*Changes without production or test code* in `.squad/routing.md`). Every acceptance
 criterion is then verified here instead of by a test, one line each with its kind as above (`- AC1: CI: …`, `check:`
-for a read-only check): where and by whom (workflow step, PR dry run, read-only check). Otherwise delete this
-section.
+for a read-only check): where and by whom (workflow step, PR dry run, read-only check). A criterion verified here has
+no *Tests per criterion* row, or one of the same kind or naming a test that exists already: a pointer such as
+`check (below)` reads as a test name. Otherwise delete this section.
 
 ## Approach
 
@@ -75,7 +76,9 @@ Each alternative weighed and why it lost — or "one option: <why the fix is the
 
 ## Signatures (for the Dev's skeleton)
 
-Every new or changed member, with its full signature — or "none".
+Every new or changed API member (one a test or another type calls), with its full signature in backticks — or
+"none". Each backticked declaration here is one the Dev's skeleton adds (step 4), so a private member is described
+in *Approach*, and a plan without API writes this section in plain prose.
 
 ## Test files
 

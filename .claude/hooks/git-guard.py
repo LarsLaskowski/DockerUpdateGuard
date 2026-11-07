@@ -28,7 +28,8 @@ trust, which a cloud or `-p` session never gives. It reads the hook input JSON f
   or a field or input (`-f`, `-F`, `--field`, `--raw-field`, `--input`, also attached as in `-fbody=x`).
 
 A denied call answers `{"hookSpecificOutput": {"permissionDecision": "deny", …}}` with the reason, so the
-member reports the need to the orchestrator instead. Anything else, including input the hook cannot
+member reports the need to the orchestrator instead; a denied `git rm` or `git mv` also names the plain `rm` or `mv`
+and the `git add` that do the same (`.squad/team.md`, *Git and GitHub*). Anything else, including input the hook cannot
 parse, is left to the normal permission flow (exit 0, no decision).
 
 The guard prevents accidents; it is not a security boundary. A command that runs Git or `gh` without naming it
@@ -99,6 +100,11 @@ BRANCH_READ = {"-l", "--list", "-a", "-r", "--all", "--remotes", "--show-current
                "--no-merged", "-v", "-vv", "--verbose"}
 CONFIG_READ = {"-l", "--list", "--show-origin", "--show-scope"}
 SHELLS = {"sh", "bash", "zsh", "dash", "ksh"}
+# What a member runs instead of a denied command that has an allowed equivalent (`.squad/team.md`, *Git and GitHub*).
+GIT_INSTEAD = {
+    "git rm": "To delete a file the change removes, run `rm <path>`, then `git add <path>`, and name it in your report.",
+    "git mv": "To move a file, run `mv <old> <new>`, then `git add <old> <new>`, and name both in your report.",
+}
 MEMBER_PREFIX = "squad-"
 
 
@@ -290,10 +296,11 @@ def deny_reason(data):
     found = check_command(command) if isinstance(command, str) else None
     if found is None:
         return None
-    return (f"{found} is denied to {agent}: members run no Git or GitHub write operation, nor a Git alias set for "
-            "the call, whose command the guard cannot see; subagents report, the orchestrator commits, pushes and "
-            "posts (.squad/team.md, Shared rules). Scratch worktrees (git worktree add/remove) and git add stay "
-            "allowed.")
+    reason = (f"{found} is denied to {agent}: members run no Git or GitHub write operation, nor a Git alias set for "
+              "the call, whose command the guard cannot see; subagents report, the orchestrator commits, pushes and "
+              "posts (.squad/team.md, Shared rules). Scratch worktrees (git worktree add/remove) and git add stay "
+              "allowed.")
+    return f"{reason} {GIT_INSTEAD[found]}" if found in GIT_INSTEAD else reason
 
 
 def main():
