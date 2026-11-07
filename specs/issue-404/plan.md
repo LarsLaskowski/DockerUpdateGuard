@@ -159,3 +159,12 @@ method), and the only base-image path is the one the architecture already names.
 ## Out of scope / follow-ups
 
 - Transport errors escaping OCI configuration lookups: known gap #272.
+
+## Challenge notes
+
+- Minor: AC2b is already covered on the live path by `RegistryBaseImageResolverTests.cs:73`/`:135` (`Digest == "sha256:runtime"`). The Tester keeps the new `BaseImageLabelReaderTests` test as a direct test of the helper; the deletion list names `RegistryBaseImageResolverTests.cs:135` as counterpart.
+- Minor: the AC2a fixture of the removed `DockerHubClientResolveBaseImagesAsyncSkipsAttestationManifestAsync` (`DockerHubClientTests.cs:1041`) sets up base-image responses (~:1100-:1118). With `GetImageConfigurationAsync` the Tester drops them and asserts that the platform manifest's configuration blob is requested and the attestation entry's digest (`unknown`/`unknown`, :1064-1065) never is, rather than counting requests.
+
+## Security notes
+
+- Non-blocking: *Logging and telemetry of external data* is also touched (events 3207/3210, the `dockerhub.request` span of the removed path); listed in *Security areas touched*. Removing output only reduces exposure.
