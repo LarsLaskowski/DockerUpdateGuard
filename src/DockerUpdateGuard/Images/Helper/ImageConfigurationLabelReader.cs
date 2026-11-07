@@ -1,5 +1,7 @@
 using System.Text.Json;
 
+using DockerUpdateGuard.Infrastructure;
+
 namespace DockerUpdateGuard.Images.Helper;
 
 /// <summary>
@@ -16,7 +18,25 @@ internal static class ImageConfigurationLabelReader
     /// <returns>The labels, the last of colliding names winning</returns>
     public static Dictionary<string, string> ReadLabels(JsonElement labelsElement)
     {
-        throw new InvalidOperationException("Skeleton: not implemented");
+        var labels = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        if (labelsElement.ValueKind != JsonValueKind.Object)
+        {
+            return labels;
+        }
+
+        foreach (var property in labelsElement.EnumerateObject())
+        {
+            if (property.Value.ValueKind != JsonValueKind.String)
+            {
+                continue;
+            }
+
+            labels.Remove(property.Name);
+            labels.Add(property.Name, ResponseBodyExcerpt.ReplaceControlCharacters(property.Value.GetString()) ?? string.Empty);
+        }
+
+        return labels;
     }
 
     #endregion // Methods
