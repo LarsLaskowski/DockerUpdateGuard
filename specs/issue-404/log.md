@@ -12,3 +12,5 @@ are quoted in full.
 | 2026-11-07 11:26 | 3 Plan security | Orchestrator | Notes appended to plan.md; logging area listed |
 | 2026-11-07 11:31 | 5 Tests first | Tester | AC1 reflection test (fails on current code, confirmed), AC2a/AC2b tests (pass), obsolete tests deleted; nothing deferred (sonnet/medium · 104,516 tokens · 13 tool uses · 299 s · 26 in · 8,201 out · 1,115,747 cache read · 102,914 cache write · 281,248 weighted) |
 | 2026-11-07 11:35 | 6 Implement | Dev | Removed ResolveBaseImagesAsync chains, DockerHubBaseImageResolver, log events 3207/3210; docs updated; format/build/tests/coverage/analyzer gates clean (sonnet/medium · 108,046 tokens · 19 tool uses · 224 s · 36 in · 8,352 out · 1,676,762 cache read · 56,119 cache write · 279,621 weighted) |
+| 2026-11-07 11:36 | 6 Coverage skipped | Orchestrator | Coverage gate passes (new 0/0 lines, overall 89.1%), no uncovered lines, nothing deferred |
+| 2026-11-07 11:36 | 6 Documentation | Orchestrator | written in 6 Implement |
