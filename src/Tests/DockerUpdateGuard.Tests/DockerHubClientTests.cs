@@ -943,9 +943,9 @@ public partial class DockerHubClientTests
                                       }
                                     },
                                     {
-                                      "digest": "sha256:amd64",
+                                      "digest": "sha256:windows",
                                       "platform": {
-                                        "os": "linux",
+                                        "os": "windows",
                                         "architecture": "amd64"
                                       }
                                     }
@@ -953,7 +953,7 @@ public partial class DockerHubClientTests
                                 }
                                 """,
                                 "application/vnd.oci.image.index.v1+json");
-            handler.AddResponse("https://registry-1.docker.io/v2/library/app/manifests/sha256%3Aamd64",
+            handler.AddResponse("https://registry-1.docker.io/v2/library/app/manifests/sha256%3Awindows",
                                 """
                                 {
                                   "schemaVersion": 2,
@@ -990,9 +990,9 @@ public partial class DockerHubClientTests
             Assert.AreEqual("platform-config",
                             result.Data.Labels["org.example.marker"],
                             "The configuration must come from the selected platform manifest");
-            Assert.Contains(entry => entry.RequestUri == "https://registry-1.docker.io/v2/library/app/manifests/sha256%3Aamd64",
+            Assert.Contains(entry => entry.RequestUri == "https://registry-1.docker.io/v2/library/app/manifests/sha256%3Awindows",
                             handler.Requests,
-                            "The manifest-list selection must fetch the real linux/amd64 platform manifest");
+                            "The manifest-list selection must fetch the real platform manifest when no linux entry exists");
             Assert.DoesNotContain(entry => entry.RequestUri == "https://registry-1.docker.io/v2/library/app/manifests/sha256%3Aattestation",
                                   handler.Requests,
                                   "The manifest-list selection must skip attestation manifests with an unknown platform");
