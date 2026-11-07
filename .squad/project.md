@@ -47,7 +47,8 @@ limits, patterns or sequences. Paths below are under `src/DockerUpdateGuard/` un
 - **Container image and runtime user:** the non-root user and the CA import — `Dockerfile`, `entrypoint.sh` —
   [Hosting](../docs/areas/hosting.md#container-image)
 - **Logging and telemetry of external data:** log messages and telemetry attributes carrying registry, container or
-  credential data — the `*Logging.cs` files, `src/DockerUpdateGuard.Telemetry/` — [Telemetry](../docs/areas/telemetry.md#credentials-and-external-data)
+  credential data — the `*Logging.cs` and `*LoggingExtensions.cs` files, every other log call and span tag,
+  `src/DockerUpdateGuard.Telemetry/` — [Telemetry](../docs/areas/telemetry.md#credentials-and-external-data)
 
 ## Guarantees
 
