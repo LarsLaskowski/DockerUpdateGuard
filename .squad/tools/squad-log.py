@@ -67,6 +67,11 @@ mechanics out of the orchestrator's hands:
   also when other rows of the member follow): the trailer of that row, a pending one too, is replaced, so the
   launch is still counted once. A notification repeated for one task id is no new launch: only the latest
   numbers of the id are logged, on the same row;
+- a row whose result text is wrong — a member's verdict line logged in another form than `squad-next.py` reads — is
+  corrected with `--replace-last MEMBER --new-result "TEXT"` (with `--step` for an earlier row, also when other rows
+  of the member follow): the result text is replaced and the trailer kept, so the launch is not logged twice. A new
+  row of the Reviewer, the Devil's Advocate, Security or the Lead whose result carries no verdict line `squad-next.py`
+  can read prints a warning that names the exact line;
 - a launch whose notification never arrived is marked with `--amend-last MEMBER --unreported --agent
   squad-<role>` (no numbers): the trailer `(opus/medium · usage not reported)` lets the summary count the
   launch, name it as unreported and exit 0, so the table is posted as the tool prints it instead of being
@@ -114,6 +119,8 @@ Usage, from anywhere inside the repository:
         --tool-uses 6 --seconds 57
     python3 .squad/tools/squad-log.py <work folder> --replace-last Lead --agent squad-lead --tokens 37445
         --tool-uses 6 --seconds 57
+    python3 .squad/tools/squad-log.py <work folder> --replace-last Reviewer --step "8 Review" --new-result
+        "VERDICT: BLOCKING 0 | NON-BLOCKING 1 on <sha> — one naming finding"
     python3 .squad/tools/squad-log.py <work folder> --amend-last Security --step "3 Plan security" --agent
         squad-security --tokens 45751 --tool-uses 7 --seconds 108
     python3 .squad/tools/squad-log.py <work folder> --amend-last "Devil's Advocate" --unreported --agent
@@ -214,6 +221,7 @@ LAUNCH_OVERRIDES = {"squad-tester": ("security", "opus")}
 
 _TRANSCRIPTS = []
 _GATE_STAMP = []
+_SQUAD_NEXT = []
 
 
 def transcripts():
@@ -236,6 +244,30 @@ def gate_stamp():
         spec.loader.exec_module(module)
         _GATE_STAMP.append(module)
     return _GATE_STAMP[0]
+
+
+def squad_next():
+    """`squad-next.py` next to this script, which reads the members' verdict lines back, as a module (loaded once)."""
+    if not _SQUAD_NEXT:
+        here = os.path.dirname(os.path.abspath(__file__))
+        spec = importlib.util.spec_from_file_location("squad_next", os.path.join(here, "squad-next.py"))
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        _SQUAD_NEXT.append(module)
+    return _SQUAD_NEXT[0]
+
+
+def verdict_warning(member, step, result):
+    """A warning when the row of a member whose verdict `squad-next.py` reads carries no verdict line it can read,
+    naming the exact line and how to correct the row; None otherwise."""
+    if is_not_launch(member):
+        return None
+    missing = squad_next().verdict_problem(member_agent(member), result)
+    if missing is None:
+        return None
+    return (f"WARNING: the row of {member} carries no verdict line squad-next.py can read; it needs {missing}. When the "
+            f"report states it, correct the row without a new launch: --replace-last \"{member}\" --step \"{step}\" "
+            "--new-result \"<the verdict line>, then the result\"")
 
 
 def escape_controls(text):
@@ -498,6 +530,27 @@ def amend_last(path, member, launch, replace=False, step=None):
         result = match.group("result")[:old.start()] if old else match.group("result")
         lines[index] = f"| {match.group('date')} | {match.group('step')} | {match.group('member')} | " \
                        f"{result.rstrip()} {trailer(*launch)} |"
+        with open(path, "wb") as handle:
+            handle.write(eol.decode().join(lines).encode())
+        return lines[index]
+    return None
+
+
+def replace_result(path, member, text, step=None):
+    """Replace the result text of the last row of `member` (with `step`, of its last row of that step), keeping its
+    launch trailer, so a corrected verdict line is no second launch; the changed row, or None without such a row."""
+    with open(path, "rb") as handle:
+        data = handle.read()
+    eol = b"\r\n" if b"\r\n" in data else b"\n"
+    lines = data.decode("utf-8-sig").split(eol.decode())
+    wanted, wanted_step = cell(member), None if step is None else cell(step)
+    for index in range(len(lines) - 1, -1, -1):
+        match = ROW.match(lines[index])
+        if not match or match.group("member") != wanted or (wanted_step is not None and match.group("step") != wanted_step):
+            continue
+        old = ANY_TRAILER.search(match.group("result"))
+        result = cell(text) + (f" {old.group(0)}" if old else "")
+        lines[index] = f"| {match.group('date')} | {match.group('step')} | {match.group('member')} | {result} |"
         with open(path, "wb") as handle:
             handle.write(eol.decode().join(lines).encode())
         return lines[index]
@@ -810,6 +863,8 @@ def build_parser():
     parser.add_argument("--amend-last", metavar="MEMBER", help="add the launch trailer to the last row of this member")
     parser.add_argument("--replace-last", metavar="MEMBER", help="replace the launch trailer of the last row of "
                                                                  "this member (to correct wrong metrics)")
+    parser.add_argument("--new-result", metavar="TEXT", help="with --replace-last and no metric option: replace the "
+                        "row's result text and keep its trailer (a verdict line logged wrong, corrected from the report)")
     parser.add_argument("--step", dest="at_step", metavar="STEP", help="with --amend-last or --replace-last: the "
                         "member's last row of this step instead of its last row (for a parallel launch whose "
                         "notification arrived after the next row was written)")
@@ -1074,6 +1129,27 @@ def row_command(parser, path, args, launch):
     for warning in filter(None, warnings):
         print(warning)
     print(append_row(path, args.step, args.member, args.result, launch=launch))
+    warning = verdict_warning(args.member, args.step, args.result)
+    if warning:
+        print(warning)
+    return 0
+
+
+def new_result_command(parser, path, args):
+    """`--replace-last MEMBER --new-result TEXT`: the result text of that row replaced, its trailer kept."""
+    if not args.replace_last or args.amend_last or args.unreported or args.agent or args.launch or args.agent_id \
+            or has_numbers(args) or args.continued or args.continued_from is not None or args.step is not None:
+        parser.error("--new-result goes with --replace-last MEMBER (and --step) alone: it changes the result text and "
+                     "keeps the trailer; a wrong trailer is replaced in a call of its own")
+    row = replace_result(path, args.replace_last, args.new_result, args.at_step)
+    if row is None:
+        where = f" of step '{args.at_step}'" if args.at_step is not None else ""
+        print(f"No row of {args.replace_last}{where} in {args.folder}")
+        return 1
+    print(row)
+    warning = verdict_warning(args.replace_last, ROW.match(row).group("step"), args.new_result)
+    if warning:
+        print(warning)
     return 0
 
 
@@ -1212,6 +1288,8 @@ def run(parser, args, root, path):
     """The command the arguments ask for, against the log at `path`; the exit code."""
     if args.summary:
         return summary_command(root, args.folder, path, args.session)
+    if args.new_result is not None:
+        return new_result_command(parser, path, args)
     target = args.amend_last or args.replace_last or args.member
     uses_metrics = args.amend_last or args.replace_last or args.unreported or args.agent or args.launch \
         or args.agent_id or has_numbers(args) or args.continued or args.continued_from is not None

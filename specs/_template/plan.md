@@ -78,7 +78,8 @@ Each alternative weighed and why it lost — or "one option: <why the fix is the
 
 Every new or changed API member (one a test or another type calls), with its full signature in backticks — or
 "none". Each backticked declaration here is one the Dev's skeleton adds (step 4), so a private member is described
-in *Approach*, and a plan without API writes this section in plain prose.
+in *Approach*, and a plan without API writes this section in plain prose. A member the change deletes stands on a
+line of its own that says it is deleted or removed: it is no declaration the skeleton adds.
 
 ## Test files
 

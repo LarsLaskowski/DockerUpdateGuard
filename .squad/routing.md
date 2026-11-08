@@ -223,8 +223,9 @@ The orchestrator first runs this checklist in full:
 - the area documents and documentation updates the plan names are in the diff;
 - every link or statement a review round reported `unopened` is confirmed (*Pages the session cannot open*).
 
-Then it sets each `Proposed` decision record of this change and its index row to `Accepted` and runs
-`decision-check.py` (bookkeeping, like `log.md`). The Lead is launched in mode `approve-pr` only when a
+Then it sets each `Proposed` decision record of this change and its index row to `Accepted`, runs
+`decision-check.py`, commits and stamps that commit with `gate-stamp.py --verbatim` (bookkeeping, like `log.md`: no
+delta round). The Lead is launched in mode `approve-pr` only when a
 decision is open: a plan deviation in a member's report, a Lead decision recorded during steps 3–8 (loop
 limit, dispute, accepted gap, finding accepted unfixed), or a change to `docs/ARCHITECTURE.md` or
 `.squad/project.md` that the plan does not name or the Reviewer did not find consistent. The orchestrator lists

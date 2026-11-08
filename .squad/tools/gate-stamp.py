@@ -45,7 +45,8 @@ the commit it names, the tier it names is still the run's tier, nothing outside 
 checklist (`.squad/routing.md`, *PR approval*). `squad-next.py` uses the same check, `squad-log.py --summary` the
 same without the last two parts.
 
-`--verbatim` stamps a verbatim documentation fix (`.squad/orchestration.md`, *Verbatim documentation fixes*): *Format
+`--verbatim` stamps a verbatim documentation fix (`.squad/orchestration.md`, *Verbatim documentation fixes*) and the
+record status of step 9 (`.squad/routing.md`, *PR approval*): *Format
 check*, `decision-check.py` and `scope-check.py` only, marked `(tier <tier>, verbatim)`; it is refused unless the last
 stamp of the full gates passed and HEAD differs from it only in Markdown files and `docs/`, and `--verify` accepts it on
 the same terms. A review round belongs to the full stamp before it, so a verbatim fix needs no new round.

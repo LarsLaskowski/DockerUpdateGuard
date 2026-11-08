@@ -145,6 +145,8 @@ NO_API_WORDS = {"api", "apis", "skeleton"}
 SPAN = re.compile(r"`([^`\n]+)`")
 # The receiver of a Go method (`func (o *Options) Kernel() string`): its parentheses are no call.
 GO_RECEIVER = re.compile(r"^\s*func\s*\([^)]*\)\s*")
+# A line of *Signatures* that names a member the change deletes: no declaration the skeleton adds.
+REMOVED_MEMBER = re.compile(r"\b(?:delete[sd]?|remove[sd]?|dropped|deletion|removal)\b", re.I)
 DECLARATION_KEYWORDS = {"func", "def", "fn", "public", "private", "protected", "internal", "static", "const",
                         "readonly", "final", "async", "export", "function", "type", "class", "struct", "record",
                         "interface", "enum", "var", "let", "val", "abstract", "override"}
@@ -468,11 +470,13 @@ def states_no_api(text):
 def signature_names(body):
     """The identifier of every backticked declaration in the plan's *Signatures* section (`Options.Kernel` and the
     Go method `func (o *Options) Kernel() string` give `Kernel`); a section that says "none" or states that the change
-    adds no API gives none, also when it names private members in backticks."""
+    adds no API gives none, also when it names private members in backticks; a line that says its member is deleted
+    or removed is left out."""
     names, text = [], strip_comments(body or "")
     if states_no_api(text):
         return names
-    for span in SPAN.findall(text):
+    kept = [line for line in text.splitlines() if not REMOVED_MEMBER.search(SPAN.sub(" ", line))]
+    for span in SPAN.findall("\n".join(kept)):
         span = GO_RECEIVER.sub("", span)
         call = re.search(r"([A-Za-z_]\w*)\s*\(", span)
         words = [w for w in re.findall(r"[A-Za-z_][\w.]*", span) if w not in DECLARATION_KEYWORDS]

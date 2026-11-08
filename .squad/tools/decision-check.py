@@ -24,16 +24,17 @@ Checks, run from anywhere inside the repository (it takes no arguments):
 `docs/decisions/process.md` holds the squad's process decisions; the template overwrites it on every refresh, so it
 is no record and is not checked: it needs no number, status or index row, and a link to it is no link to a record.
 
-Size warnings, which do not fail the check and name the split each file needs: an unreleased record (or one whose
-release cannot be told) past `RECORD_MAX_WORDS` words or `RECORD_MAX_OPTIONS` options under *Options considered*
-holds more than one decision; an area document in `docs/areas/` past `AREA_MAX_WORDS` words covers more than one area.
-The limits come from `.squad/tools/squad_settings.py` (defaults 1500, 8 and 5000).
+Size warnings, which do not fail the check and name the split each file needs: an unreleased record past
+`RECORD_MAX_WORDS` words or `RECORD_MAX_OPTIONS` options under *Options considered* holds more than one decision; an
+area document in `docs/areas/` past `AREA_MAX_WORDS` words covers more than one area. When the release of the records
+cannot be told, the records past the limits are one warning that names their numbers and says they may all be
+released, which exempts them. The limits come from `.squad/tools/squad_settings.py` (defaults 1500, 8 and 5000).
 
 Without release tags nothing is released and the freeze checks pass. Without local ones but with a remote
 configured, the remotes are asked (`git ls-remote --tags <remote> 'v*'`): when none has a release tag either,
 nothing is released; when one has, or cannot be asked, the freeze checks are skipped with a warning, because the
 tags may simply not be fetched. Without Git history (not a Git repository, shallow clone) the freeze checks are
-skipped with a warning.
+skipped with a warning; a shallow clone's names its fix, `git fetch --unshallow --tags`.
 
 Usage, from anywhere inside the repository:
     python3 .squad/tools/decision-check.py
@@ -76,6 +77,7 @@ RECORD_LINK = re.compile(r"\[(\d{4})\]\([^)]*\)")
 LINK_TARGET = re.compile(r"\]\(<?([^)\s>]+)>?(?:\s+\"[^\"]*\")?\)")
 RELEASE_TAGS = "v*"
 FETCH_TAGS = "run 'git fetch origin main --tags'"
+UNSHALLOW = "run 'git fetch --unshallow --tags' and check again"
 REMOTE_TIMEOUT = 30
 INDEX_FILE = "README.md"
 TEMPLATE_FILE = "_template.md"
@@ -375,7 +377,7 @@ def check_freeze(root, records, errors, warnings):
     if not tags:
         return without_local_tags(root, warnings)
     if (git(root, "rev-parse", "--is-shallow-repository") or "").strip() == "true":
-        warnings.append("shallow clone - released records are not checked (fetch the full history and tags)")
+        warnings.append(f"shallow clone - released records are not checked ({UNSHALLOW})")
         return None
     released = find_released(root, records, errors)
     for number, tag in released.items():
@@ -392,19 +394,28 @@ def option_count(text):
 
 def check_record_sizes(records, released, warnings):
     """An unreleased record past RECORD_MAX_WORDS or RECORD_MAX_OPTIONS holds several decisions: a warning that
-    names the split. `released` is the set of released numbers, or None when it cannot be told."""
+    names the split. `released` is the set of released numbers, or None when it cannot be told: then one summary line,
+    since every record it names may be released and exempt."""
+    oversized = []
     for number, record in records.items():
         if released is not None and number in released:
             continue  # append-only: a released record is never split
         words, options = len(record["text"].split()), option_count(record["text"])
-        if words <= RECORD_MAX_WORDS and options <= RECORD_MAX_OPTIONS:
-            continue
-        unless = "" if released is not None else ", unless it is released (a released record stays as it is)"
-        warnings.append(f"{record['rel']}: {words} words and {options} options (RECORD_MAX_WORDS {RECORD_MAX_WORDS}, "
-                        f"RECORD_MAX_OPTIONS {RECORD_MAX_OPTIONS}) - split it into one record per decision{unless}: "
-                        "each keeps its own context, options and consequences, the new ones take the next free "
-                        "numbers with their index rows, links to it point at the record of their decision, and the "
-                        "behavior it states moves to its area document (docs/decisions/README.md, Rules)")
+        if words > RECORD_MAX_WORDS or options > RECORD_MAX_OPTIONS:
+            oversized.append((number, record, words, options))
+    limits = f"RECORD_MAX_WORDS {RECORD_MAX_WORDS}, RECORD_MAX_OPTIONS {RECORD_MAX_OPTIONS}"
+    if released is None and oversized:
+        warnings.append(f"{len(oversized)} record(s) past {limits} ({', '.join(item[0] for item in oversized)}), but "
+                        "which records are released is not known (see the warning above): they may all be released, "
+                        "and a released record is never split - do not split one or file an issue for them before "
+                        "the release state is known; fetch the full history and tags and check again for the "
+                        "unreleased ones to split")
+        return
+    for _, record, words, options in oversized:
+        warnings.append(f"{record['rel']}: {words} words and {options} options ({limits}) - split it into one record "
+                        "per decision: each keeps its own context, options and consequences, the new ones take the "
+                        "next free numbers with their index rows, links to it point at the record of their decision, "
+                        "and the behavior it states moves to its area document (docs/decisions/README.md, Rules)")
 
 
 def check_area_sizes(root, warnings):

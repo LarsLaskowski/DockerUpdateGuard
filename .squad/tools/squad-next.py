@@ -12,8 +12,9 @@ for it, and prints the next step of `.squad/routing.md` (*Pipeline*) for the run
   agent, the Lead's mode `plan` after mode `spec` continues its spec agent, the next task group continues the member's
   last agent of the same mode, named by the step cell of its fresh launch — and the first launch of another mode, an
   agent continued five times or past 300,000 tokens, or one that ran on another model than *Launch model* names is a
-  fresh launch (the cap and the model: with a short hand-over); what to hand over; and the `squad-log.py` command
-  that logs it;
+  fresh launch (the cap and the model: with a short hand-over); what to hand over, with the exact verdict line of the
+  Reviewer, the Devil's Advocate, Security and the Lead in mode `decide` to quote in the prompt, so the member does
+  not depend on its agent file being current; and the `squad-log.py` command that logs it;
 - **the orchestrator's own step**: the row to log (a skipped challenge with the reason `plan-check.py` prints, the
   steps a plan without production or test code skips, the approval by checklist), notes to append verbatim, the
   question for the Product Manager;
@@ -29,8 +30,13 @@ orchestrator logs as the start of the row's result (a Reviewer's `VERDICT: NON-B
 a row without one is named, and both ways are printed. A Reviewer's verdict line names the code SHA it reviewed
 (`VERDICT: APPROVE on <sha>`); one that names none, or a commit whose code differs from the stamp of its round (a
 later commit that touched only `specs/` holds the same code), ties the round to no stamp, and the Reviewer is
-continued on the stamp's SHA. Three blocking rounds in a row (review pass 1 and two delta
-rounds) send the findings to the Lead (*Loop limits*), and so does a second `CHANGES_REQUIRED` of the Security plan
+continued on the stamp's SHA. The Orchestrator's verbatim rows after a round subtract the findings they name by tag
+(`[BLOCKING, verbatim]`, `[NON-BLOCKING, verbatim]`; a row without a tag counts as one blocking finding), so a
+non-blocking finding applied verbatim needs no Lead launch; a Lead `decide` row that orders a change (`FIX` in
+capitals, or "fix now") sends its owners, the gates and a delta round before step 9. A new stamp whose code differs
+from the reviewed one only in the `Status` lines of decision records and their index rows (step 9's record status)
+needs no new round, and the code check suggests `--verbatim` for it. Three blocking rounds in a row (review pass 1
+and two delta rounds) send the findings to the Lead (*Loop limits*), and so does a second `CHANGES_REQUIRED` of the Security plan
 review; two plan-check revisions of one document without a clean run hand the findings to the Lead in mode `decide`.
 Once the log has a row of step 4 or later the plan is approved: `plan-check.py` still runs before the PR, its size
 limit only warns, and a finding — one a merge of `main` brought with new checks, say — goes to the Lead in mode
@@ -132,6 +138,24 @@ SUMMARY = "squad-log.py --summary"
 # What the result cell starts with: the member's verdict line, which this script reads back.
 RESULT_HINTS = {LEAD: "<its RESULT line>, then the result", ADVOCATE: "<its VERDICT line>, then the objections",
                 SECURITY: "<its VERDICT line>, then the findings", REVIEWER: "<its VERDICT line>, then the findings"}
+# The exact verdict lines this script reads, quoted into every launch's hand-over so the member does not depend on
+# its agent file being current, and named by `squad-log.py` when a logged row carries none.
+VERDICT_FORMATS = {
+    REVIEWER: "`VERDICT: APPROVE on <sha>` or `VERDICT: BLOCKING <n> | NON-BLOCKING <m> on <sha>` (<sha>: all 40 "
+              "characters of `git rev-parse` of the head it reviewed)",
+    ADVOCATE: "`VERDICT: NO OBJECTIONS` or `VERDICT: OBJECTIONS <n> major, <m> minor`",
+    SECURITY: "`VERDICT: APPROVED` or `VERDICT: CHANGES_REQUIRED`",
+}
+DECIDE_FORMAT = ("`RESULT: DECIDED — <option>`; on review findings `FIX: <each change and its owner>` and `ISSUE: "
+                 "<each linked issue>` after the dash, `FIX` in capitals whenever it orders a change")
+# A Lead decision that orders a change: `FIX` in capitals, or "fix now" in any case.
+FIX_WORD = re.compile(r"\bFIX\b")
+FIX_NOW = re.compile(r"\bfix now\b", re.I)
+# The tags a verbatim row names its findings by, as the Reviewer wrote them (`[NON-BLOCKING, verbatim]`).
+NONBLOCKING_TAG = re.compile(r"\bNON-BLOCKING\b", re.I)
+BLOCKING_TAG = re.compile(r"(?<!NON-)\bBLOCKING\b", re.I)
+STATUS_FIELD = re.compile(r"^[+-]- \*\*Status:\*\*")
+DECISIONS = "docs/decisions/"
 DO = "  Do: "
 THEN = "  Then: "
 BASE_HANDOVER = "the base ref, the head SHA"
@@ -323,8 +347,33 @@ def launch(run, agent, mode, step, handover, rule=None, purpose=""):
     short = " — short: the plan or task group, what earlier rounds settled, the open findings, the head SHA" \
         if why and "short hand-over" in why else ""
     lines.append(f"  Hand over: {handover}{short}")
+    verdict = verdict_format(agent, mode)
+    if verdict:
+        lines.append(f"  Verdict line: quote it in the prompt, it must start the report: {verdict}")
     lines.append(log_command(run, step, agent, continuation))
     return lines
+
+
+def verdict_format(agent, mode):
+    """The exact verdict or result line a launch of `agent` in `mode` reports, or None."""
+    if agent == LEAD:
+        return DECIDE_FORMAT if mode == "decide" else None
+    return VERDICT_FORMATS.get(agent)
+
+
+def fix_ordered(result):
+    """True when a Lead decision orders a change: `FIX` in capitals, or "fix now"."""
+    return bool(FIX_WORD.search(result) or FIX_NOW.search(result))
+
+
+def verdict_problem(agent, result):
+    """For `squad-log.py`: the exact verdict line the row of `agent` lacks, or None when it carries one (or the member
+    reports none)."""
+    checks = {REVIEWER: REVIEW, ADVOCATE: OBJECTIONS, SECURITY: SECURITY_VERDICT, LEAD: RESULT}
+    if agent not in checks or checks[agent].search(result or ""):
+        return None
+    return "a `RESULT:` line (`.claude/agents/squad-lead.md`, *Output format*)" if agent == LEAD else \
+        VERDICT_FORMATS[agent]
 
 
 def orchestrator_log(run, step, result):
@@ -368,8 +417,13 @@ def lead_result(row):
 
 
 def no_verdict(row):
-    return [f"  Note: the row \"{row.step} · {CELLS.get(row.who, row.who)}\" carries no VERDICT line; the next step "
-            "follows its report:"]
+    lines = [f"  Note: the row \"{row.step} · {CELLS.get(row.who, row.who)}\" carries no VERDICT line; the next step "
+             "follows its report:"]
+    if row.who in VERDICT_FORMATS:
+        lines.append(f"  When the report states its counts, correct the row's result instead of a new launch: "
+                     f"{LOG_TOOL} <folder> --replace-last \"{CELLS[row.who]}\" --step \"{row.step}\" --new-result "
+                     f"\"<the verdict line>, then the result\" — the line: {VERDICT_FORMATS[row.who]}")
+    return lines
 
 
 # Stages ----------------------------------------------------------------------------------------------------------
@@ -785,6 +839,10 @@ def code_check(run):
     if last is not None and last.group("verdict") == "PASS" and verbatim_fix(run, last):
         lines.append("  A verbatim documentation fix since the stamp: add --verbatim (Format check, decision-check.py "
                      "and scope-check.py only; no delta round)")
+    elif last is not None and last.group("verdict") == "PASS" and record_status_only(run, last.group("sha"), "HEAD"):
+        lines.append("  Only decision-record status lines and index rows changed since the stamp (step 9, *PR "
+                     "approval*): add --verbatim (Format check, decision-check.py and scope-check.py only; no delta "
+                     "round)")
     return lines + gates_due(run)
 
 
@@ -794,9 +852,52 @@ def verbatim_rows(run, after):
             and not stamp_tool().STAMP_CELL.match(row.step)]
 
 
+def verbatim_findings(run, after):
+    """(blocking, non-blocking) findings the Orchestrator's verbatim rows after the row index `after` applied: each
+    `BLOCKING` and `NON-BLOCKING` tag a row names counts once; a row that names no tag counts as one blocking
+    finding."""
+    blocking = nonblocking = 0
+    for row in verbatim_rows(run, after):
+        tagged_nonblocking = len(NONBLOCKING_TAG.findall(row.result))
+        tagged_blocking = len(BLOCKING_TAG.findall(row.result))
+        nonblocking += tagged_nonblocking
+        blocking += tagged_blocking if tagged_blocking or tagged_nonblocking else 1
+    return blocking, nonblocking
+
+
 def verbatim_fix(run, last):
     return stamp_tool().documentation_only(run.root, last.group("sha"), "HEAD") and bool(
         verbatim_rows(run, last_full_stamp_row(run)))
+
+
+def record_status_only(run, old, new):
+    """True when everything that differs between `old` and `new` outside `specs/` is the `Status` line of decision
+    records and rows of their index: the record status step 9 sets, bookkeeping that needs no delta round."""
+    code, out = stamp_tool().git(run.root, "-c", stamp_tool().QUOTE_PATHS, "diff", "-U0", "--no-renames", old, new,
+                                 *stamp_tool().OUTSIDE_SPECS)
+    if code != 0 or not out.strip():
+        return False
+    path = None
+    for line in out.splitlines():
+        if line.startswith("+++ "):
+            path = line[6:] if line.startswith("+++ b/") else None
+        elif not line_allowed(path, line):
+            return False
+    return True
+
+
+def line_allowed(path, line):
+    """True for a diff line that is no new or deleted file and, when it changes content, a status change."""
+    if line.startswith(("new file", "deleted file", "Binary")):
+        return False
+    return not line.startswith(("+", "-")) or line.startswith("--- ") or status_change(path, line)
+
+
+def status_change(path, line):
+    """True when a changed line of a diff is a decision record's `Status` line or a row of the records' index."""
+    if path is None or not path.startswith(DECISIONS):
+        return False
+    return bool(STATUS_FIELD.match(line)) or (path == f"{DECISIONS}README.md" and line[1:].startswith("|"))
 
 
 def failed_gates(run, last):
@@ -891,7 +992,8 @@ def reviewed_stamp_row(run):
         return rows[-1]
     sha = {row.index: stamp_tool().STAMP.match(row.result.strip()).group("sha") for row in run.rows
            if row.index in (reviewed[-1], rows[-1])}
-    return reviewed[-1] if merged_base_only(run, sha[reviewed[-1]], sha[rows[-1]]) else rows[-1]
+    old, new = sha[reviewed[-1]], sha[rows[-1]]
+    return reviewed[-1] if merged_base_only(run, old, new) or record_status_only(run, old, new) else rows[-1]
 
 
 def review(run):
@@ -910,9 +1012,10 @@ def review(run):
     stale = unmatched_review(run, stamp_index, rows)
     if stale:
         return stale
-    blocking = sum(v[0] for v in verdicts) - len(verbatim_rows(run, max(r.index for r in rows)))
-    nonblocking = sum(v[1] for v in verdicts)
-    return review_outcome(run, rows, max(blocking, 0), nonblocking)
+    fixed_blocking, fixed_nonblocking = verbatim_findings(run, max(r.index for r in rows))
+    blocking = sum(v[0] for v in verdicts) - fixed_blocking
+    nonblocking = sum(v[1] for v in verdicts) - fixed_nonblocking
+    return review_outcome(run, rows, max(blocking, 0), max(nonblocking, 0))
 
 
 def unmatched_review(run, stamp_index, rows):
@@ -928,7 +1031,8 @@ def unmatched_review(run, stamp_index, rows):
             f"names no code SHA: the round cannot be matched to the stamp on {stamp.group('sha')[:12]}"
         return heading(f"step {row.number} — the Reviewer's verdict line {what}") + launch(
             run, REVIEWER, "review", f"{row.number} Review (stamp SHA)", f"the stamp's code SHA {stamp.group('sha')}: "
-            "it reviews that SHA, copies it from `git rev-parse` into its verdict line and reports again")
+            "it reviews that SHA, copies it from `git rev-parse` into its verdict line, in the `on <sha>` form below, "
+            "and reports again")
     return None
 
 
@@ -992,14 +1096,23 @@ def review_outcome(run, rows, blocking, nonblocking):
             "  Verbatim ones: *Verbatim documentation fixes*; all others in one Lead launch, before the round's fix round:"
         ] + launch(run, LEAD, "decide", run.step_cell("8", "Decide"), "the round's non-blocking findings (and, for "
                    "context, its blocking ones)")
-    if not blocking:
+    ordered = bool(decided) and fix_ordered(decided[-1].result)
+    if not blocking and not ordered:
         return None
     fixed = [row for row in run.rows if row.index > last and row.who in (DEV, TESTER)]
     if fixed:
         return None
+    what = "blocking findings" if blocking else "the fixes the Lead ordered"
     if run.base_tier in ("docs", "patch"):
-        return heading("step 8 — blocking findings (tiers docs and patch)") + [
+        return heading(f"step 8 — {what} (tiers docs and patch)") + [
             DO + "fix them yourself, commit and run the gate stamp again; then a delta round"]
+    if not blocking:
+        return heading("step 8 — the Lead ordered fixes: their owner, then steps 6–7 and a mandatory delta round") + \
+            launch(run, DEV, "fix", run.step_cell("8", "Fix"), "the fixes the Lead's decide row orders on code and "
+                   "documentation, the head SHA", purpose="when the Lead names the Dev") + launch(
+            run, TESTER, "coverage", run.step_cell("8", "Fix tests"), "the fixes the Lead's decide row orders on tests, "
+            "the head SHA", purpose="when the Lead names the Tester") + [
+            "  A fix marked verbatim: apply it yourself (*Verbatim documentation fixes*)"]
     return heading("step 8 — blocking findings to their owner, then steps 6–7 and a mandatory delta round") + launch(
         run, DEV, "fix", run.step_cell("8", "Fix"), "the blocking findings on code and documentation (and the "
         "non-blocking fixes the Lead ordered), the head SHA", purpose="code and documentation") + launch(
@@ -1028,7 +1141,8 @@ def approval(run):
             DO + "git fetch origin main; merge it when it moved (*Merge conflicts*); then the gates again (step 7)"]
     return heading("step 9 — PR approval (*PR approval*: the stamp and the review round are checked)") + [
         DO + "check that the area documents and documentation updates the plan names are in the diff; set each Proposed "
-        "decision record of this change and its index row to Accepted and run decision-check.py",
+        "decision record of this change and its index row to Accepted, run decision-check.py, commit, and stamp that "
+        f"commit with {STAMP_TOOL} {run.name} --verbatim (the record status needs no delta round)",
         "  No decision open: " + orchestrator_log(run, run.step_cell("9", "PR approval"), "approved by checklist").strip(),
         "  A decision open (a plan deviation, a Lead decision of steps 3–8, an unplanned change to docs/ARCHITECTURE.md "
         "or .squad/project.md):"] + launch(run, LEAD, "approve-pr", run.step_cell("9", "PR approval"),
