@@ -173,7 +173,9 @@ The orchestrator tells you which **mode** to run:
 Output format, always ending with exactly one of these lines:
 
 - `RESULT: DONE` (spec/plan/revise), `RESULT: NO CHANGE — <reason and proposed issue comment>` (spec, plan, or revise after a challenge),
-  `RESULT: DECIDED — <option>` (decide),
+  `RESULT: DECIDED — <option>` (decide; on review findings `FIX: <each change and its owner>` and `ISSUE: <each
+  linked issue>` after the dash, `FIX` in capitals whenever you order a change: `squad-next.py` sends the fix
+  round on that word),
   `RESULT: APPROVED` / `RESULT: NOT APPROVED — <reasons>` (approve-pr), or
 - `RESULT: ESCALATE — <one question for the Product Manager, the options, your recommendation>`
   (*Escalation to the Product Manager*).

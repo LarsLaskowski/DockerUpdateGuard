@@ -60,6 +60,9 @@ every Git and GitHub action yourself, including follow-up issues the Lead decide
      returned): the script reads the launch's figures from its transcript; never type a number yourself.
    - Log with the step cell and the continuation option (`--continued`, `--continued-from`) `squad-next.py`
      prints, and start the result with the member's `VERDICT:` or `RESULT:` line: the script reads them back.
+     Every launch prompt quotes the *Verdict line* `squad-next.py` prints for it; a row logged without that line
+     is corrected with `--replace-last <member> --step "<step>" --new-result "<line>, then the result"` when the
+     report states it, never with a second row of the same launch.
    - Rows of the Orchestrator, the Product Manager and the User take no metric option; their member cells are
      exactly `Orchestrator`, `Product Manager` and `User`.
    - Outside Claude Code (no transcript) a launch is logged from its task notification instead; that path, and
