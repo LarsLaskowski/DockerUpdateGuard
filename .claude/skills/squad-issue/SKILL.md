@@ -147,7 +147,9 @@ every Git and GitHub action yourself, including follow-up issues the Lead decide
     working record", each inside a collapsed `<details>` block — or, for a `plan.md` too
     long to re-type, a permalink to the last commit that contains it
     (`https://github.com/<owner>/<repo>/blob/<sha>/specs/issue-<number>/plan.md`) plus a summary of tier,
-    criteria, decisions and challenge outcome. Then `git rm -r specs/issue-<number>/`, confirm with
+    criteria, decisions and challenge outcome. A `log.md` that does not fit the comment (GitHub takes 65,536
+    characters) is linked the same way, and the comment's log table then starts with the step-10 row:
+    `squad-log.py` and `squad-next.py` with `--stdin` read the earlier rows from that commit. Then `git rm -r specs/issue-<number>/`, confirm with
     `python3 .squad/tools/scope-check.py --no-specs`, commit ("Remove squad working record") and push. Later
     log rows go into that comment: pipe its log table into `squad-log.py … --stdin` and paste the log it prints
     back (nothing is restored into the repository). Open the PR as `create-pr` step 8 says, without its review loop; a PR the

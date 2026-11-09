@@ -20,8 +20,10 @@ Checks, in the work folder `specs/<folder>/`:
   criterion of its own; every criterion of the spec has a row in the plan's *Tests per criterion* and appears in
   the *Criteria* column of `tasks.md` (every table of it), and neither names a criterion the spec lacks; every
   task row names its *Group* (the unit steps 4–6 run per, with one agent per member and mode), and a group's rows are
-  consecutive; when the plan's *Signatures* lists any API, every group has a *Skeleton* row (its *Task* cell
-  starts with "Skeleton") or a row saying "no new API", a group of documentation rows alone excepted (no row is
+  consecutive, except the rows of group `PM`: tasks of the Product Manager and the Lead (a probe, a survey run, a
+  fact correction), which steps 4–6 skip and only they may own; when the plan's *Signatures* lists any API, every
+  group but `PM` has a *Skeleton* row (its *Task* cell starts with "Skeleton") or a row saying "no new API", a
+  group of documentation rows alone excepted (no row is
   the Lead's outside `specs/` and `docs/decisions/`), and every name in
   *Signatures* (the identifier of each backticked declaration) appears in a skeleton row of some group. A
   *Signatures* section that starts with "none" or states that the change adds no API ("no new API", "no public API
@@ -138,6 +140,9 @@ TEMPLATE_PLAN = os.path.join("specs", "_template", PLAN)
 LEAD_FILES = (SPECS_PREFIX, "docs/decisions/")
 NONE = re.compile(r"^\s*(?:[-*]\s+)?none\.?\s*$", re.I)
 SKELETON_ROW = re.compile(r"^skeleton\b", re.I)
+# The group of the tasks steps 4–6 skip: the Product Manager's and the Lead's (squad-next.py runs no member for it).
+NO_CODE_GROUP = "PM"
+NO_CODE_OWNERS = {"product manager", "lead"}
 NO_NEW_API = re.compile(r"\bno new API\b", re.I)
 # The words that may stand between "no" and "API" in a *Signatures* section that states the change adds no API.
 API_MODIFIERS = {"new", "changed", "public", "internal", "exported", "or", "and"}
@@ -145,8 +150,10 @@ NO_API_WORDS = {"api", "apis", "skeleton"}
 SPAN = re.compile(r"`([^`\n]+)`")
 # The receiver of a Go method (`func (o *Options) Kernel() string`): its parentheses are no call.
 GO_RECEIVER = re.compile(r"^\s*func\s*\([^)]*\)\s*")
-# A line of *Signatures* that names a member the change deletes: no declaration the skeleton adds.
-REMOVED_MEMBER = re.compile(r"\b(?:delete[sd]?|remove[sd]?|dropped|deletion|removal)\b", re.I)
+# A line of *Signatures* that states its member is deleted ("- Deleted: `f()`", "`f()` is removed"): no declaration
+# the skeleton adds. A description that only uses the word ("removes the expired rows") states no deletion.
+REMOVED_LABEL = re.compile(r"^\s*(?:[-*]\s+)?(?:deleted|removed|dropped)\b", re.I)
+REMOVED_STATEMENT = re.compile(r"\b(?:is|are|gets?|was|were|be)\s+(?:deleted|removed|dropped)\b", re.I)
 DECLARATION_KEYWORDS = {"func", "def", "fn", "public", "private", "protected", "internal", "static", "const",
                         "readonly", "final", "async", "export", "function", "type", "class", "struct", "record",
                         "interface", "enum", "var", "let", "val", "abstract", "override"}
@@ -439,16 +446,34 @@ def check_groups(header, rows, errors):
     if index is None:
         errors.append("tasks.md: a task table without a *Group* column (steps 4–6 run per task group)")
         return
+    owner = column(header, "owner")
     seen, previous = set(), None
     for row in rows:
         group = row[index] if len(row) > index else ""
         if empty(group):
-            errors.append(f"tasks.md: task without a group: | {' | '.join(row)} |")
+            errors.append(f"tasks.md: task without a group: | {' | '.join(row)} | (a task of the Product Manager or "
+                          f"the Lead alone goes to group {NO_CODE_GROUP})")
+            continue
+        if group == NO_CODE_GROUP:
+            check_no_code_row(row, owner, errors)
             continue
         if group != previous and group in seen:
             errors.append(f"tasks.md: the rows of group {group} are not consecutive")
         seen.add(group)
         previous = group
+
+
+def owners(text):
+    """The owners an *Owner* cell names (`Product Manager, Lead` gives both), lower-case."""
+    return {name.strip().lower() for name in re.split(r"[,/&]|\band\b", cell(text)) if name.strip()}
+
+
+def check_no_code_row(row, owner, errors):
+    """A row of group `PM` is owned by the Product Manager or the Lead alone: steps 4–6 launch no member for it."""
+    names = owners(cell_at(row, owner))
+    if not names or names - NO_CODE_OWNERS:
+        errors.append(f"tasks.md: row {row[0]} of group {NO_CODE_GROUP} is owned by {cell_at(row, owner) or 'no one'}: "
+                      "that group holds only tasks of the Product Manager and the Lead, which steps 4–6 skip")
 
 
 def signatures_section(plan):
@@ -467,15 +492,20 @@ def states_no_api(text):
                in NO_API_WORDS for index, word in enumerate(words))
 
 
+def removed_member(prose):
+    """True when the prose of a *Signatures* line states that its member is deleted or removed."""
+    return bool(REMOVED_LABEL.search(prose) or REMOVED_STATEMENT.search(prose))
+
+
 def signature_names(body):
     """The identifier of every backticked declaration in the plan's *Signatures* section (`Options.Kernel` and the
     Go method `func (o *Options) Kernel() string` give `Kernel`); a section that says "none" or states that the change
-    adds no API gives none, also when it names private members in backticks; a line that says its member is deleted
+    adds no API gives none, also when it names private members in backticks; a line that states its member is deleted
     or removed is left out."""
     names, text = [], strip_comments(body or "")
     if states_no_api(text):
         return names
-    kept = [line for line in text.splitlines() if not REMOVED_MEMBER.search(SPAN.sub(" ", line))]
+    kept = [line for line in text.splitlines() if not removed_member(SPAN.sub(" ", line))]
     for span in SPAN.findall("\n".join(kept)):
         span = GO_RECEIVER.sub("", span)
         call = re.search(r"([A-Za-z_]\w*)\s*\(", span)
@@ -537,7 +567,7 @@ def check_skeleton(header, rows, signatures, errors):
     of the skeleton rows."""
     states, skeleton = group_states(header, rows, errors)
     for key, (stated, docs_only) in states.items():
-        if signatures and not (stated or docs_only or empty(key)):
+        if signatures and not (stated or docs_only or empty(key) or key == NO_CODE_GROUP):
             errors.append(f"tasks.md: group {key} has no *Skeleton* row and does not say \"no new API\" "
                           "(the plan's *Signatures* lists API)")
     return skeleton
