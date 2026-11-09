@@ -64,10 +64,13 @@ edits, baselines) run in a scratch `git worktree` (`git stash` is a Git write, t
 
 **Files.** A member writes only what its row in *Members* names — the Lead only under `specs/` and
 `docs/decisions/`, the Tester only in the test paths (`COVERAGE_TEST_PATHSPECS` in `.squad/tools/squad_settings.py`,
-by default its `COVERAGE_EXCLUDES`) and `docs/UNIT_TESTS.md` — and nothing under `.git/`, `.claude/` or `.squad/` (the
-Code Officer's notes in `.squad/stack.md` excepted); the hook `.claude/hooks/file-guard.py` denies every other Write or
-Edit call inside the repository (a scratch worktree outside it is not checked). A member that needs another file
-changed (a test fixture outside the test paths, `.squad/project.md`) reports it. Both hooks prevent accidents and are
+by default its `COVERAGE_EXCLUDES`), the Markdown files under their directories (a fixture README) and
+`docs/UNIT_TESTS.md` — and nothing under `.git/`, `.claude/` or `.squad/` (the Code Officer's notes in
+`.squad/stack.md` excepted); the hook `.claude/hooks/file-guard.py` denies every other Write or Edit call inside the
+repository (a scratch worktree outside it is not checked). A member that needs another file changed (a test fixture
+outside the test paths) reports it. An edit of `.squad/project.md` or `.squad/stack.md` the plan lists is the
+orchestrator's: the member that owns the content (the Tester for *Test doubles*, the Dev for the rest) reports the
+exact text, and the orchestrator writes it verbatim and runs *Format*. Both hooks prevent accidents and are
 no security boundary: an interpreter or a shell redirect gets past them, and these rules bind there all the same.
 
 **Reporting against a SHA.** Before the PR the orchestrator may commit your edits as work in progress while

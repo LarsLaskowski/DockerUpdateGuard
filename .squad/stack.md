@@ -146,6 +146,9 @@ added to both with a decision record — never to `sonar.exclusions`, which woul
   with `_camelCase` readonly fields, `.ConfigureAwait(false)` in library/service code.
 - Guards an analyzer asks for (e.g. `if (_logger.IsEnabled(...))` for CA1873) are written by the Dev,
   not added later by the Code Officer.
+- Names the analyzers refuse, checked by the Lead before a name goes into the plan's *Signatures*: an enum
+  whose name ends in `Flags` or `Enum` (S2344), a visible nested type (CA1034), a type named like its
+  namespace (CA1724).
 
 ## Logger arguments
 

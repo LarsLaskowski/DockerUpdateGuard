@@ -87,4 +87,5 @@ Rules:
   more than one place, and a rebuilt file keeps the duplicate. After the edit, compare `git diff --stat` with the
   intended size and list the case or function headers (`grep -n`) to show each appears once.
 
-Report: tests added (names), their result, the coverage output.
+Report: tests added (names), their result, the coverage output, and the exact text of an edit under `.squad/`
+the plan gives you (*Test doubles* rows), which the orchestrator writes (`.squad/team.md`, *Files*).

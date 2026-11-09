@@ -67,14 +67,16 @@ The orchestrator tells you which **mode** to run:
     `docs/ARCHITECTURE.md` for every enumeration or "only these …" statement the change extends (routes,
     rules, settings, tables, limits) and list each hit, besides the documents you already know the change
     touches and every document the checklist of `.github/pull_request_template.md` (its project block included)
-    asks to update for this change, such as a changelog entry for a user-visible change — each with the file and what changes in it, owned by the Dev (test documentation: the Tester),
+    asks to update for this change, such as a changelog entry for a user-visible change — each with the file and what changes in it, owned by the Dev (test documentation: the Tester; an edit under `.squad/`: the orchestrator, from the member's text, `.squad/team.md`, *Files*),
     who writes it once the code is green, against that code; you state exact wording only where a criterion
     fixes the text;
   - for a feature, `tasks.md`: task groups in build order, each naming the spec's criteria it delivers, the
     tasks it waits for and a skeleton row for its *Signatures* (or "no new API");
   - the exact **signatures** of every new or changed API member (for the Dev's skeleton; no private member, and
     no backticks in a plan without API: the template's *Signatures*) and the existing files the skeleton must
-    rewrite — a file you call final is one you read and found so;
+    rewrite — a file you call final is one you read and found so; every new name checked against the naming rules
+    the *Analyzer gate* enforces (`.squad/stack.md`, *Writing code*, and the analyzer configuration), so step 4
+    renames nothing;
   - the **test files**, named strictly by *Layout* in `.squad/stack.md` and `docs/UNIT_TESTS.md`, and the
     existing test call sites a changed signature affects, with who adapts them (*Loop limits*); a test kept
     unchanged has no input a new criterion handles differently, else it is adapted, with owner;
@@ -174,8 +176,8 @@ Output format, always ending with exactly one of these lines:
 
 - `RESULT: DONE` (spec/plan/revise), `RESULT: NO CHANGE — <reason and proposed issue comment>` (spec, plan, or revise after a challenge),
   `RESULT: DECIDED — <option>` (decide; on review findings `FIX: <each change and its owner>` and `ISSUE: <each
-  linked issue>` after the dash, `FIX` in capitals whenever you order a change: `squad-next.py` sends the fix
-  round on that word),
+  linked issue>` after the dash, `FIX:` in capitals whenever you order a change: `squad-next.py` sends the fix
+  round on that word, so a declined fix never writes it),
   `RESULT: APPROVED` / `RESULT: NOT APPROVED — <reasons>` (approve-pr), or
 - `RESULT: ESCALATE — <one question for the Product Manager, the options, your recommendation>`
   (*Escalation to the Product Manager*).

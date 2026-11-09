@@ -1,7 +1,7 @@
 {
   "repository": "LarsLaskowski/Squad-Spec-Repository-Template",
-  "tag": "v2026.11.2",
-  "commit": "043f7284f1afbc23b4b94b1bff44b93d285c7286",
+  "tag": "v2026.11.3",
+  "commit": "f90645c07c8b91acb441c60f529fdbbb36aede03",
   "profile": "dotnet",
   "profiles": [
     "dotnet"

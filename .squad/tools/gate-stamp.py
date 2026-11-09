@@ -26,7 +26,11 @@ code*):
   as `--project` when that check is a test; without one the stamp refuses to run. *Test (project)* is left out where
   *Test with coverage* runs, and the plain *Analyzer gate* covers its `--lint-only` pass;
 - tier `docs`: *Format check* and `scope-check.py --tier docs`;
-- once step 10 removed the work folder, `scope-check.py` runs with `--no-specs`.
+- once step 10 removed the work folder, `scope-check.py` runs with `--no-specs`;
+- every tier: when the branch changes a file under `docs/decisions/` or `docs/areas/`, `decision-check.py` runs before
+  `scope-check.py`, with `--require-history`: a released record it cannot check (a shallow clone, release tags not
+  fetched, a remote that cannot be asked) fails it, with the fix `decision-check.py` names. A verbatim stamp runs it
+  the same way.
 
 The tier is the *Tier* line of `plan.md`, or for `docs` and `patch` (no `plan.md`) what the Lead's first step-2 row
 names (`Tier: patch`, `tier docs`). Each gate's command is the first code span of its row in the *Commands* tables of
@@ -120,6 +124,8 @@ COVERAGE_GATE = "Coverage gate"
 SCOPE = "scope-check.py"
 FIGURE = "figure-check.py"
 DECISION = "decision-check.py"
+# The files whose change runs decision-check.py in the full gates too: the records and the area documents.
+RECORD_PATHSPECS = ["docs/decisions/", "docs/areas/"]
 VERBATIM = ", verbatim"
 CHECK = "check"
 PASSED = "pass"
@@ -349,8 +355,8 @@ def plan_run(root, context, options):
     run = [(label, checked(label, found)) for label, found in (gate_commands(name, commands, projects)
                                                                for name in gates)]
     run += [(f"{CHECK} {command}", [command]) for command in options.check]
-    if options.verbatim:
-        run.append(tool_gate(DECISION, []))
+    if options.verbatim or context.get("records"):
+        run.append(decision_gate())
     run.append(tool_gate(SCOPE, scope + (["--no-specs"] if context["after_pr"] else [])))
     return run, figure
 
@@ -360,6 +366,12 @@ def verbatim_run(context):
     check*, `decision-check.py` and `scope-check.py` with the tier's options."""
     _, scope, _, _ = due_gates(context["tier"], context["plan"], set())
     return [FORMAT_CHECK], scope
+
+
+def decision_gate():
+    """(label, [command]) of `decision-check.py` in a gate: a released record it cannot check (a shallow clone, tags
+    not fetched) fails it instead of a warning."""
+    return DECISION, [f"python3 .squad/tools/{DECISION} --require-history"]
 
 
 def tool_gate(tool, options):
@@ -434,7 +446,9 @@ def run_context(root, name, rows, after_pr):
     if tier is None:
         raise Refusal("The tier is unknown: plan.md has no Tier line, and no Lead row of step 2 names tier docs or "
                       "patch")
-    return {"tier": tier, "plan": plan, "kinds": changed_kinds(root, merge_base(root)), "after_pr": after_pr}
+    base = merge_base(root)
+    return {"tier": tier, "plan": plan, "kinds": changed_kinds(root, base), "after_pr": after_pr,
+            "records": bool(changed(root, base, RECORD_PATHSPECS))}
 
 
 def stamp_command(options, root, name, log_path, after_pr, stream=None):

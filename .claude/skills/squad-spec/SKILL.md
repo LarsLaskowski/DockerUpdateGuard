@@ -69,4 +69,5 @@ cells in `log.md`); steps 4–12 follow `squad-issue` with the changes listed af
 - **Step 10:** the working record (the verification matrix of the spec's criteria, `spec.md`, `plan.md`,
   `tasks.md`, `log.md`; on the `docs` route `log.md` alone) is posted to the feature request issue if one exists
   (`Closes #<n>` in the PR), otherwise as the first comment on the PR right after opening it; every log row and
-  amend after it goes through `squad-log.py … --stdin` on that comment's log table.
+  amend after it goes through `squad-log.py … --stdin` on that comment's log table. A document or a `log.md` that
+  does not fit the comment goes as a permalink to the commit before the removal, as `squad-issue` step 10 says.

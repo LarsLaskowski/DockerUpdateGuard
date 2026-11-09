@@ -34,13 +34,16 @@ Without release tags nothing is released and the freeze checks pass. Without loc
 configured, the remotes are asked (`git ls-remote --tags <remote> 'v*'`): when none has a release tag either,
 nothing is released; when one has, or cannot be asked, the freeze checks are skipped with a warning, because the
 tags may simply not be fetched. Without Git history (not a Git repository, shallow clone) the freeze checks are
-skipped with a warning; a shallow clone's names its fix, `git fetch --unshallow --tags`.
+skipped with a warning; a shallow clone's names its fix, `git fetch --unshallow --tags`. With `--require-history`
+(`gate-stamp.py` passes it) every such skip is an error instead: a gate must not pass a released record it could not
+check, which a shallow clone of a session otherwise lets through.
 
 Usage, from anywhere inside the repository:
-    python3 .squad/tools/decision-check.py
+    python3 .squad/tools/decision-check.py [--require-history]
 
 Exit code 0 when everything is valid, 1 otherwise.
 """
+import argparse
 import glob
 import os
 import re
@@ -431,14 +434,20 @@ def check_area_sizes(root, warnings):
                         "*Not here* section, and state each behavior once (docs/areas/README.md, Size)")
 
 
-def main():
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--require-history", action="store_true",
+                        help="fail instead of warning when the released records cannot be checked")
+    options = parser.parse_args(argv)
     root = (git(".", "rev-parse", "--show-toplevel") or ".").strip()
     errors, warnings = [], []
     records = load_records(root, errors)
     check_links(records, errors)
     check_record_links(root, records, errors)
     check_index(root, records, errors)
-    released = check_freeze(root, records, errors, warnings)
+    freeze_warnings = []
+    released = check_freeze(root, records, errors, freeze_warnings)
+    (errors if options.require_history else warnings).extend(freeze_warnings)
     check_areas(root, records, released, errors)
     check_record_sizes(records, released, warnings)
     check_area_sizes(root, warnings)

@@ -107,12 +107,15 @@ mechanics out of the orchestrator's hands:
 - `--stdin` reads the log from standard input instead of `specs/<folder>/log.md`, for the rows after step 10
   of `squad-issue` removed the folder: pipe the log table of the "Squad working record" comment in, the result
   of the command goes to standard error and the whole updated log to standard output (paste it back into the
-  comment); `--summary --stdin` prints the summary of that log, nothing is written to the repository;
+  comment); `--summary --stdin` prints the summary of that log, nothing is written to the repository. A piped
+  table whose first row is of step 10 or later gets the rows of the removed `log.md` (in the commit before its
+  removal) in front of it, so a comment too long for the whole log links `log.md` and holds only the rows from
+  step 10 on; the output is still the piped table with its change, never the earlier rows;
 
 Usage, from anywhere inside the repository:
     python3 .squad/tools/squad-log.py <work folder> <step> <member> <result> [--agent-id a1b2c3d4e5f6a7b8c]
-    python3 .squad/tools/squad-log.py <work folder> "8 Review delta" Reviewer "APPROVE" --agent-id a1b2c3d4e5f6a7b8c
-        --continued
+    python3 .squad/tools/squad-log.py <work folder> "8 Review delta" Reviewer "VERDICT: APPROVE on <sha>"
+        --agent-id a1b2c3d4e5f6a7b8c --continued
     python3 .squad/tools/squad-log.py <work folder> <step> <member> <result> [--agent squad-lead
         --tokens 37445 --tool-uses 6 --seconds 57]
     python3 .squad/tools/squad-log.py <work folder> --amend-last Lead --agent squad-lead --tokens 37445
@@ -125,8 +128,8 @@ Usage, from anywhere inside the repository:
         squad-security --tokens 45751 --tool-uses 7 --seconds 108
     python3 .squad/tools/squad-log.py <work folder> --amend-last "Devil's Advocate" --unreported --agent
         squad-devils-advocate
-    python3 .squad/tools/squad-log.py <work folder> "8 Review delta" Reviewer "APPROVE" --agent squad-reviewer
-        --tokens 139230 --tool-uses 4 --seconds 61 --continued
+    python3 .squad/tools/squad-log.py <work folder> "8 Review delta" Reviewer "VERDICT: APPROVE on <sha>"
+        --agent squad-reviewer --tokens 139230 --tool-uses 4 --seconds 61 --continued
     python3 .squad/tools/squad-log.py <work folder> "7 Fix" Dev "fixed" --agent squad-dev --tokens 412000
         --tool-uses 9 --seconds 317 --continued-from "6 Implement (rows 9-14)"
     python3 .squad/tools/squad-log.py <work folder> "7 Fix" Dev "fixed" --agent squad-dev
@@ -446,6 +449,19 @@ def mode_change_warning(path, member, own_step, origin=None, amending=False, ste
     numbers = [STEP_NUMBER.match(text or "") for text in (continued, own_step)]
     if None in numbers or numbers[0].group(1) == numbers[1].group(1) or ROUND_OF_SAME_MODE.search(own_step):
         return None
+    return mode_change_text(member, own_step, continued, fresh if origin is None else [])
+
+
+def mode_change_text(member, own_step, continued, fresh):
+    """The warning for a continuation into another mode; a note naming `--continued-from` when one of the member's
+    fresh launches has the step number of `own_step` (another task group's agent of the same mode)."""
+    number = STEP_NUMBER.match(own_step).group(1)
+    same = [text for text in fresh if STEP_NUMBER.match(text) and STEP_NUMBER.match(text).group(1) == number]
+    if same:
+        return (f"NOTE: '{own_step}' is logged as continuing {member}'s last fresh launch, '{continued}'. If the "
+                f"round continued the agent of '{same[-1]}' (the same mode, another task group), log it with "
+                f"--continued-from \"{same[-1]}\" so its tokens are counted against that agent; nothing else is "
+                "wrong")
     return (f"WARNING: '{own_step}' continues {member}'s launch of step '{continued}': a fix, delta or revise "
             "round continues, but the first launch of another mode is a fresh launch (.squad/orchestration.md, "
             "*Continuing a member*)")
@@ -1310,21 +1326,68 @@ def run(parser, args, root, path):
     return row_command(parser, path, args, launch)
 
 
+def removed_log(root, folder):
+    """The text of `specs/<folder>/log.md` in the commit before step 10 removed it, or None (no such folder name, no
+    removal, no Git)."""
+    name = folder.strip().replace("\\", "/").rstrip("/").removeprefix(SPECS_PREFIX)
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", name):
+        return None
+    rel = f"{SPECS_PREFIX}{name}/log.md"
+    found = subprocess.run(["git", "-C", root, "log", "--diff-filter=D", "--format=%H", "-1", "--", rel],
+                           capture_output=True, text=True, check=False)
+    if found.returncode != 0 or not found.stdout.strip():
+        return None
+    shown = subprocess.run(["git", "-C", root, "show", f"{found.stdout.strip()}^:{rel}"], capture_output=True,
+                           check=False)
+    return shown.stdout.decode("utf-8-sig", "replace") if shown.returncode == 0 else None
+
+
+def earlier_rows(root, folder, piped):
+    """The row lines of the removed `log.md`, joined with newlines, when the piped log table starts at step 10 or
+    later (a working-record comment that links `log.md` holds only the rows from step 10 on); empty when the table
+    holds earlier rows (the whole log) or there is no removed `log.md`."""
+    rows = parse_rows(piped)
+    first = STEP_NUMBER.match(rows[0][1]) if rows else None
+    if rows and (first is None or int(first.group(1)) < 10):
+        return ""
+    removed = removed_log(root, folder)
+    if removed is None:
+        print(f"WARNING: the piped log table starts at step 10 or later, but no removed specs/{folder}/log.md was found "
+              "to read the earlier rows from (a shallow clone: git fetch --unshallow; or another folder name): the "
+              "steps before it are missing", file=sys.stderr)
+        return ""
+    return "".join(f"{line.strip()}\n" for line in removed.splitlines() if parse_rows(line))
+
+
+def with_earlier_rows(root, folder, piped):
+    """The piped log with the removed `log.md`'s rows in front when it starts at step 10 (`earlier_rows`): what
+    `squad-next.py --stdin` reads."""
+    return earlier_rows(root, folder, piped) + piped
+
+
 def run_on_stdin(parser, args, root):
-    """`--stdin`: the log comes from standard input and lives in a temporary directory only; a command that
-    changes it prints the result to standard error and the whole updated log to standard output."""
+    """`--stdin`: the log comes from standard input and lives in a temporary directory only, with the rows of the
+    removed `log.md` it lacks in front of it; a command that changes it prints the result to standard error and the
+    piped log with its change to standard output."""
+    piped = sys.stdin.buffer.read()
+    prefix = earlier_rows(root, args.folder, piped.decode("utf-8-sig", "replace")).encode()
     with tempfile.TemporaryDirectory() as directory:
         path = os.path.join(directory, "log.md")
         with open(path, "wb") as handle:
-            handle.write(sys.stdin.buffer.read())
+            handle.write(prefix + piped)
         if args.summary:
             return run(parser, args, root, path)
         with contextlib.redirect_stdout(sys.stderr):
             code = run(parser, args, root, path)
-        if code == 0:
-            with open(path, "rb") as handle:
-                sys.stdout.buffer.write(handle.read())
-        return code
+        if code != 0:
+            return code
+        with open(path, "rb") as handle:
+            data = handle.read()
+        if not data.startswith(prefix):
+            print("A row before the comment's log table cannot change: it is in the linked log.md", file=sys.stderr)
+            return 1
+        sys.stdout.buffer.write(data[len(prefix):])
+        return 0
 
 
 def main():
