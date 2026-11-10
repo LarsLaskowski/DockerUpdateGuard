@@ -214,7 +214,10 @@ again only by a delta round due for another change. An edit beyond the proposed 
 state verbatim, is an ordinary fix for its owner with a delta round. A decision record's wording is fixed this way
 too, without a Lead launch. One exception: a fix that changes a behavior statement an acceptance criterion or a
 guarantee in `.squad/project.md` relies on, or a record's decision (the option it takes or why), is not applied;
-the reviewer says so, and the Lead decides (mode `decide`).
+the reviewer says so, and the Lead decides (mode `decide`). Trailing whitespace and a blank line at the end of a file
+that `git diff --check` reports are verbatim fixes by definition, in any file: the orchestrator removes exactly what it
+names, confirms that `git diff --check` is clean, and stamps with `gate-stamp.py --verbatim`, which refuses any other
+change to a file outside the documentation.
 
 ## A denied measurement
 

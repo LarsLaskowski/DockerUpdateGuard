@@ -50,9 +50,19 @@ every Git and GitHub action yourself, including follow-up issues the Lead decide
 1. **Intake.** Read the issue in full, including comments and labels, and decide bug or feature first
    (*Bug or feature*): a feature switches to `squad-spec` now, before any branch or work folder exists. Note
    the reported environment (versions, image tag or release, host OS, configuration). A closed issue: stop
-   and report that. Run `git fetch origin main --tags`, then start from a clean working tree on a new branch
-   off the latest `main`, e.g. `fix-issue-<number>-<short-slug>` (or the branch the session prescribes).
-   Create `specs/issue-<number>/log.md` from `specs/_template/log.md`, commit and push it.
+   and report that. Run `git fetch origin main --tags` (in a shallow clone, `git rev-parse
+   --is-shallow-repository` prints `true`: `git fetch --unshallow --tags origin`; a stamp that checks the decision
+   records refuses a shallow clone), then start from a clean working tree on a new branch off the latest `main`, e.g.
+   `fix-issue-<number>-<short-slug>` (or the branch the session prescribes). Create `specs/issue-<number>/log.md`
+   from `specs/_template/log.md`, commit and push it.
+
+   **Several issues in one request.** By default each issue gets its own run, branch and pull request, one after
+   another. Several may share one run: intake then starts with the lowest number (its work folder) and its row lists
+   every issue; when the Lead's step-2 result does not cover them all in one tier `docs` or `patch` change and the
+   user did not ask for one pull request, the others go back to runs of their own. A shared run's pull request
+   carries one `Closes #<number>` per issue, and the working record goes to the first issue with a one-line pointer
+   on each other. When the session prescribes a single branch but the issues
+   need separate pull requests, ask the user before step 2 of the second issue.
 
    **Logging.** Only you write `log.md`, one row per step and per launch, always with
    `python3 .squad/tools/squad-log.py issue-<number> "<step>" "<member>" "<result>"` — never by hand.
@@ -108,7 +118,8 @@ every Git and GitHub action yourself, including follow-up issues the Lead decide
    `coverage`. Lines
    reported as not unit-testable go to `squad-lead` in mode `decide`.
 7. **Code check.** `git fetch origin main` and merge `main` first when it moved (*Merge conflicts*). Commit, then
-   run `python3 .squad/tools/gate-stamp.py <folder>` (`patch`: with `--check "<command>"` for the check the Lead's
+   run `python3 .squad/tools/gate-stamp.py <folder>` — in the background (Bash `run_in_background`) when it runs
+   *Test with coverage*, which can outlast a foreground command's time limit — (`patch`: with `--check "<command>"` for the check the Lead's
    result names; `--project NAME=VALUE` for the test project of *Test (project)*). Route what it reports as the
    *Pipeline* row says: a `figure-check.py` hit to `squad-dev` in mode `fix`, with each hit; a *Format check*
    failure by *Format* and `git restore -- <file>` of every file it changed outside the change; analyzer findings to
@@ -143,12 +154,13 @@ every Git and GitHub action yourself, including follow-up issues the Lead decide
     to step 6) and fill in its results: each `to record` from the log (the manual test, the check), each `after
     merge` with a linked verification issue you create now, each `pending` CI row once the PR's checks have
     finished (step 11). Post the matrix, not collapsed, then
-    `plan.md` (none on tiers `docs` and `patch`) and `log.md` as one comment on the issue, headed "Squad
-    working record", each inside a collapsed `<details>` block — or, for a `plan.md` too
-    long to re-type, a permalink to the last commit that contains it
-    (`https://github.com/<owner>/<repo>/blob/<sha>/specs/issue-<number>/plan.md`) plus a summary of tier,
-    criteria, decisions and challenge outcome. A `log.md` that does not fit the comment (GitHub takes 65,536
-    characters) is linked the same way, and the comment's log table then starts with the step-10 row:
+    `plan.md` (none on tiers `docs` and `patch`), `measurements.md` when the run has one, and `log.md` as one
+    comment on the issue, headed "Squad working record", each inside a collapsed `<details>` block — or, for any
+    document except the matrix (the comment tool takes its body as typed text, so a long document would be re-typed),
+    a permalink to the last commit that contains it
+    (`https://github.com/<owner>/<repo>/blob/<sha>/specs/issue-<number>/plan.md`) plus a summary (for `plan.md`:
+    tier, criteria, decisions and challenge outcome). A `log.md` that does not fit the comment (GitHub takes 65,536
+    characters) must be linked this way; a linked `log.md` makes the comment's log table start with the step-10 row:
     `squad-log.py` and `squad-next.py` with `--stdin` read the earlier rows from that commit. Then `git rm -r specs/issue-<number>/`, confirm with
     `python3 .squad/tools/scope-check.py --no-specs`, commit ("Remove squad working record") and push. Later
     log rows go into that comment: pipe its log table into `squad-log.py … --stdin` and paste the log it prints

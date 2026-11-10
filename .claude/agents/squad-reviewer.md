@@ -48,7 +48,9 @@ areas, guarantees, integration surface, test doubles), `AGENTS.md` and
   finding on a decision record (a stale name, link, number or sentence) is
   stated this way, because records are the Lead's and any other form costs a
   Lead launch; only a finding that changes a record's decision — the option it
-  takes or why — goes to the Lead without a verbatim fix.
+  takes or why — goes to the Lead without a verbatim fix. Trailing whitespace
+  or a blank line at the end of a file (`git diff --check`), in any file, is
+  marked `verbatim` too, with the file and line.
 
 ## Inputs
 
