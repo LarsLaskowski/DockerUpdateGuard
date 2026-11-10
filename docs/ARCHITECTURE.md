@@ -243,6 +243,10 @@ typed/named `HttpClient`s registered in the composition root (§3). The
 Docker Engine client and Docker Scout create their `HttpClient`s without
 it. The retry policy is specified in
 [Integration failures](areas/integration-failures.md#retry-of-transient-http-failures).
+The singleton `LoginRetryAfterRegistry` (`Infrastructure\`) remembers, per login URL and user name, the window a 429's
+`Retry-After` named, so the Docker Hub client, the Docker Scout provider and the Portainer client send no login inside
+it ([Integration failures](areas/integration-failures.md#logins-inside-a-retry-after-window),
+[0022](decisions/0022-a-logins-retry-after-window-is-remembered-process-wide.md)).
 
 ## 7. Domain / orchestration layer and the scan engine
 

@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Headers;
 using System.Text;
 
 using DockerUpdateGuard.Configuration;
@@ -148,7 +149,7 @@ public class PortainerClientTests
 
         try
         {
-            var client = new PortainerClient(CreateHttpClientFactory(httpClient), logger);
+            var client = new PortainerClient(CreateHttpClientFactory(httpClient), logger, new LoginRetryAfterRegistry(TimeProvider.System));
             var instanceOptions = CreateInstanceOptions(InstanceName, options => options.Enabled = false);
 
             var result = await client.GetCapabilityAsync(instanceOptions, CancellationToken.None)
@@ -183,7 +184,7 @@ public class PortainerClientTests
 
         try
         {
-            var client = new PortainerClient(CreateHttpClientFactory(httpClient), logger);
+            var client = new PortainerClient(CreateHttpClientFactory(httpClient), logger, new LoginRetryAfterRegistry(TimeProvider.System));
             var instanceOptions = CreateInstanceOptions(InstanceName,
                                                         options =>
                                                         {
@@ -222,7 +223,7 @@ public class PortainerClientTests
         {
             handler.AddResponse(StatusUrl, new HttpResponseMessage(HttpStatusCode.InternalServerError));
 
-            var client = new PortainerClient(CreateHttpClientFactory(httpClient), logger);
+            var client = new PortainerClient(CreateHttpClientFactory(httpClient), logger, new LoginRetryAfterRegistry(TimeProvider.System));
             var instanceOptions = CreateInstanceOptions(InstanceName,
                                                         options =>
                                                         {
@@ -267,7 +268,7 @@ public class PortainerClientTests
             handler.AddResponse(StatusUrl, new HttpResponseMessage(HttpStatusCode.OK));
             handler.AddJsonResponse(EndpointsUrl, """[{"Id":7,"Name":"local"}]""");
 
-            var client = new PortainerClient(CreateHttpClientFactory(httpClient), logger);
+            var client = new PortainerClient(CreateHttpClientFactory(httpClient), logger, new LoginRetryAfterRegistry(TimeProvider.System));
             var instanceOptions = CreateInstanceOptions(InstanceName, options => options.ApiToken = PatToken);
 
             var result = await client.GetCapabilityAsync(instanceOptions, CancellationToken.None)
@@ -307,7 +308,7 @@ public class PortainerClientTests
             handler.AddResponse(StatusUrl, new HttpResponseMessage(HttpStatusCode.OK));
             handler.AddJsonResponse(EndpointsUrl, "[]");
 
-            var client = new PortainerClient(CreateHttpClientFactory(httpClient), logger);
+            var client = new PortainerClient(CreateHttpClientFactory(httpClient), logger, new LoginRetryAfterRegistry(TimeProvider.System));
             var instanceOptions = CreateInstanceOptions(InstanceName, options => options.ApiToken = PatToken);
 
             var result = await client.GetCapabilityAsync(instanceOptions, CancellationToken.None)
@@ -341,7 +342,7 @@ public class PortainerClientTests
         {
             handler.AddResponse(AuthUrl, new HttpResponseMessage(HttpStatusCode.Unauthorized));
 
-            var client = new PortainerClient(CreateHttpClientFactory(httpClient), logger);
+            var client = new PortainerClient(CreateHttpClientFactory(httpClient), logger, new LoginRetryAfterRegistry(TimeProvider.System));
             var instanceOptions = CreateInstanceOptions(InstanceName,
                                                         options =>
                                                         {
@@ -383,7 +384,7 @@ public class PortainerClientTests
 
         try
         {
-            var client = new PortainerClient(CreateHttpClientFactory(httpClient), logger);
+            var client = new PortainerClient(CreateHttpClientFactory(httpClient), logger, new LoginRetryAfterRegistry(TimeProvider.System));
             var instanceOptions = CreateInstanceOptions(InstanceName, options => options.Enabled = false);
             var actionRequest = new PortainerActionRequest
                                 {
@@ -420,7 +421,7 @@ public class PortainerClientTests
 
         try
         {
-            var client = new PortainerClient(CreateHttpClientFactory(httpClient), logger);
+            var client = new PortainerClient(CreateHttpClientFactory(httpClient), logger, new LoginRetryAfterRegistry(TimeProvider.System));
             var instanceOptions = CreateInstanceOptions(InstanceName, options => options.ApiToken = PatToken);
             var actionRequest = new PortainerActionRequest
                                 {
@@ -463,7 +464,7 @@ public class PortainerClientTests
             handler.AddJsonResponse(ContainersUrl, ContainerFoundJson);
             handler.AddResponse(RestartActionUrl, new HttpResponseMessage(HttpStatusCode.NoContent));
 
-            var client = new PortainerClient(CreateHttpClientFactory(httpClient), logger);
+            var client = new PortainerClient(CreateHttpClientFactory(httpClient), logger, new LoginRetryAfterRegistry(TimeProvider.System));
             var instanceOptions = CreateInstanceOptions(InstanceName,
                                                         options =>
                                                         {
@@ -512,7 +513,7 @@ public class PortainerClientTests
             handler.AddJsonResponse(ContainersUrl, ContainerFoundJson);
             handler.AddResponse(RestartActionUrl, new HttpResponseMessage(HttpStatusCode.NoContent));
 
-            var client = new PortainerClient(CreateHttpClientFactory(httpClient), logger);
+            var client = new PortainerClient(CreateHttpClientFactory(httpClient), logger, new LoginRetryAfterRegistry(TimeProvider.System));
             var instanceOptions = CreateInstanceOptions(InstanceName,
                                                         options =>
                                                         {
@@ -558,7 +559,7 @@ public class PortainerClientTests
         {
             handler.AddJsonResponse(AuthUrl, "{}");
 
-            var client = new PortainerClient(CreateHttpClientFactory(httpClient), logger);
+            var client = new PortainerClient(CreateHttpClientFactory(httpClient), logger, new LoginRetryAfterRegistry(TimeProvider.System));
             var instanceOptions = CreateInstanceOptions(InstanceName,
                                                         options =>
                                                         {
@@ -607,7 +608,7 @@ public class PortainerClientTests
         {
             handler.AddResponse(AuthUrl, new HttpResponseMessage(HttpStatusCode.Unauthorized));
 
-            var client = new PortainerClient(CreateHttpClientFactory(httpClient), logger);
+            var client = new PortainerClient(CreateHttpClientFactory(httpClient), logger, new LoginRetryAfterRegistry(TimeProvider.System));
             var instanceOptions = CreateInstanceOptions(InstanceName,
                                                         options =>
                                                         {
@@ -655,7 +656,7 @@ public class PortainerClientTests
         {
             handler.AddJsonResponse(EndpointsUrl, "[]");
 
-            var client = new PortainerClient(CreateHttpClientFactory(httpClient), logger);
+            var client = new PortainerClient(CreateHttpClientFactory(httpClient), logger, new LoginRetryAfterRegistry(TimeProvider.System));
             var instanceOptions = CreateInstanceOptions(InstanceName, options => options.ApiToken = PatToken);
             var actionRequest = new PortainerActionRequest
                                 {
@@ -693,7 +694,7 @@ public class PortainerClientTests
         {
             handler.AddJsonResponse(ContainersUrl, "[]");
 
-            var client = new PortainerClient(CreateHttpClientFactory(httpClient), logger);
+            var client = new PortainerClient(CreateHttpClientFactory(httpClient), logger, new LoginRetryAfterRegistry(TimeProvider.System));
             var instanceOptions = CreateInstanceOptions(InstanceName,
                                                         options =>
                                                         {
@@ -743,7 +744,7 @@ public class PortainerClientTests
             handler.AddJsonResponse(ContainersUrl, ContainerFoundJson);
             handler.AddResponse(RestartActionUrl, new HttpResponseMessage(HttpStatusCode.InternalServerError));
 
-            var client = new PortainerClient(CreateHttpClientFactory(httpClient), logger);
+            var client = new PortainerClient(CreateHttpClientFactory(httpClient), logger, new LoginRetryAfterRegistry(TimeProvider.System));
             var instanceOptions = CreateInstanceOptions(InstanceName,
                                                         options =>
                                                         {
@@ -793,7 +794,7 @@ public class PortainerClientTests
             handler.AddJsonResponse(ContainersUrl, ContainerFoundJson);
             handler.AddResponse(RestartActionUrl, new HttpResponseMessage(HttpStatusCode.NoContent));
 
-            var client = new PortainerClient(CreateHttpClientFactory(httpClient), logger);
+            var client = new PortainerClient(CreateHttpClientFactory(httpClient), logger, new LoginRetryAfterRegistry(TimeProvider.System));
             var instanceOptions = CreateInstanceOptions(InstanceName,
                                                         options =>
                                                         {
@@ -855,7 +856,7 @@ public class PortainerClientTests
             sequenceHandler.AddResponse(RestartActionUrl, new HttpResponseMessage(HttpStatusCode.ServiceUnavailable));
             sequenceHandler.AddResponse(RestartActionUrl, new HttpResponseMessage(HttpStatusCode.OK));
 
-            var client = new PortainerClient(CreateHttpClientFactory(httpClient), new TestLogger<PortainerClient>());
+            var client = new PortainerClient(CreateHttpClientFactory(httpClient), new TestLogger<PortainerClient>(), new LoginRetryAfterRegistry(TimeProvider.System));
             var instanceOptions = CreateInstanceOptions(InstanceName,
                                                         options =>
                                                         {
@@ -902,7 +903,7 @@ public class PortainerClientTests
             handler.AddJsonResponse(ContainersUrl, ContainerFoundJson);
             handler.AddResponse(RestartActionUrl, new HttpResponseMessage(HttpStatusCode.NoContent));
 
-            var client = new PortainerClient(CreateHttpClientFactory(httpClient), new TestLogger<PortainerClient>());
+            var client = new PortainerClient(CreateHttpClientFactory(httpClient), new TestLogger<PortainerClient>(), new LoginRetryAfterRegistry(TimeProvider.System));
             var instanceOptions = CreateInstanceOptions(InstanceName,
                                                         options =>
                                                         {
@@ -947,7 +948,7 @@ public class PortainerClientTests
         {
             handler.AddResponse("https://admin:S3cret@portainer.example.test:9443/api/auth", new HttpResponseMessage(HttpStatusCode.Unauthorized));
 
-            var client = new PortainerClient(CreateHttpClientFactory(httpClient), logger);
+            var client = new PortainerClient(CreateHttpClientFactory(httpClient), logger, new LoginRetryAfterRegistry(TimeProvider.System));
             var instanceOptions = CreateInstanceOptions(InstanceName,
                                                         options =>
                                                         {
@@ -1000,7 +1001,7 @@ public class PortainerClientTests
         {
             handler.AddJsonResponse("https://admin:S3cret@portainer.example.test:9443/api/auth", "{}");
 
-            var client = new PortainerClient(CreateHttpClientFactory(httpClient), logger);
+            var client = new PortainerClient(CreateHttpClientFactory(httpClient), logger, new LoginRetryAfterRegistry(TimeProvider.System));
             var instanceOptions = CreateInstanceOptions(InstanceName,
                                                         options =>
                                                         {
@@ -1050,7 +1051,7 @@ public class PortainerClientTests
 
         try
         {
-            var client = new PortainerClient(CreateHttpClientFactory(handler), logger);
+            var client = new PortainerClient(CreateHttpClientFactory(handler), logger, new LoginRetryAfterRegistry(TimeProvider.System));
             var instanceOptions = CreateInstanceOptions(InstanceName,
                                                         options =>
                                                         {
@@ -1097,7 +1098,7 @@ public class PortainerClientTests
 
         try
         {
-            var client = new PortainerClient(CreateHttpClientFactory(handler), logger);
+            var client = new PortainerClient(CreateHttpClientFactory(handler), logger, new LoginRetryAfterRegistry(TimeProvider.System));
             var lowerCaseInstance = CreateInstanceOptions("LowerCaseInstance",
                                                           options =>
                                                           {
@@ -1155,7 +1156,7 @@ public class PortainerClientTests
             handler.AddJsonResponse(ContainersUrl, ContainerFoundJson);
             handler.AddResponse(RestartActionUrl, new HttpResponseMessage(HttpStatusCode.NoContent));
 
-            var client = new PortainerClient(CreateHttpClientFactory(httpClient), logger);
+            var client = new PortainerClient(CreateHttpClientFactory(httpClient), logger, new LoginRetryAfterRegistry(TimeProvider.System));
             var instanceOptions = CreateInstanceOptions(InstanceName,
                                                         options =>
                                                         {
@@ -1203,7 +1204,7 @@ public class PortainerClientTests
         {
             handler.AddJsonResponse(InsecureAuthUrl, $$"""{"jwt":"{{secretJwt}}"}""");
 
-            var client = new PortainerClient(CreateHttpClientFactory(handler), logger);
+            var client = new PortainerClient(CreateHttpClientFactory(handler), logger, new LoginRetryAfterRegistry(TimeProvider.System));
             var tokenInstance = CreateInstanceOptions("TokenInstance",
                                                       options =>
                                                       {
@@ -1264,7 +1265,7 @@ public class PortainerClientTests
         {
             handler.AddResponse(InsecureAuthUrl, new HttpResponseMessage(HttpStatusCode.Unauthorized));
 
-            var client = new PortainerClient(CreateHttpClientFactory(httpClient), logger);
+            var client = new PortainerClient(CreateHttpClientFactory(httpClient), logger, new LoginRetryAfterRegistry(TimeProvider.System));
             var instanceOptions = CreateInstanceOptions(InstanceName,
                                                         options =>
                                                         {
@@ -1444,7 +1445,7 @@ public class PortainerClientTests
         {
             handler.AddJsonResponse(ContainersUrl, "<html>nope</html>");
 
-            var client = new PortainerClient(CreateHttpClientFactory(httpClient), logger);
+            var client = new PortainerClient(CreateHttpClientFactory(httpClient), logger, new LoginRetryAfterRegistry(TimeProvider.System));
             var result = await client.ExecuteActionAsync(CreateFailureInstanceOptions(), CreateRestartRequest(), CancellationToken.None)
                                      .ConfigureAwait(false);
 
@@ -1639,7 +1640,7 @@ public class PortainerClientTests
             handler.AddResponse(StatusUrl, new HttpResponseMessage(HttpStatusCode.OK));
             handler.AddResponse(EndpointsUrl, CreateEnvironmentListResponse("""[{"Id":1,"Name":"local"},{"Id":2,"Name":"nas"}]"""));
 
-            var client = new PortainerClient(CreateHttpClientFactory(handler), logger);
+            var client = new PortainerClient(CreateHttpClientFactory(handler), logger, new LoginRetryAfterRegistry(TimeProvider.System));
             var instanceOptions = CreateInstanceOptions(InstanceName,
                                                         options =>
                                                         {
@@ -1677,7 +1678,7 @@ public class PortainerClientTests
             handler.AddJsonResponse(ContainersUrl, ContainerFoundJson);
             handler.AddResponse(RestartActionUrl, new HttpResponseMessage(HttpStatusCode.NoContent));
 
-            var client = new PortainerClient(CreateHttpClientFactory(handler), logger);
+            var client = new PortainerClient(CreateHttpClientFactory(handler), logger, new LoginRetryAfterRegistry(TimeProvider.System));
             var instanceOptions = CreateInstanceOptions(InstanceName,
                                                         options =>
                                                         {
@@ -1855,6 +1856,120 @@ public class PortainerClientTests
     }
 
     /// <summary>
+    /// Verify a login answered 429 with Retry-After defers the next capability check without any request
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC4")]
+    public async Task PortainerClientLoginRetryAfterDefersCapabilityCheckAsync()
+    {
+        var now = new DateTimeOffset(2026, 3, 10, 12, 0, 0, TimeSpan.Zero);
+        var handler = new SequenceHttpMessageHandler();
+
+        try
+        {
+            handler.AddResponse(AuthUrl, CreateTooManyRequests(120));
+
+            var client = new PortainerClient(CreateHttpClientFactory(handler), new TestLogger<PortainerClient>(), new LoginRetryAfterRegistry(CreateClock(() => now)));
+            var instanceOptions = CreateLoginInstanceOptions(InstanceName);
+
+            await client.GetCapabilityAsync(instanceOptions, CancellationToken.None).ConfigureAwait(false);
+
+            Assert.HasCount(1, handler.Requests, "The first capability check must send exactly the login");
+
+            var result = await client.GetCapabilityAsync(instanceOptions, CancellationToken.None).ConfigureAwait(false);
+
+            Assert.IsTrue(result.IsConfigured, "A deferred capability check must still be reported as configured");
+            Assert.IsFalse(result.SupportsActions, "A deferred capability check must not support actions");
+            Assert.AreEqual($"Portainer connection error: {DeferredMessage("2026-03-10T12:02:00Z")}",
+                            result.Message,
+                            "The capability message must carry the authentication error with the end of the window");
+            Assert.HasCount(1, handler.Requests, "A capability check inside the window must send no request");
+        }
+        finally
+        {
+            handler.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Verify a login window opened by one client defers the action of another client and another Docker instance with the same login
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC4")]
+    public async Task PortainerClientLoginRetryAfterDefersActionOfOtherInstanceAsync()
+    {
+        var now = new DateTimeOffset(2026, 3, 10, 12, 0, 0, TimeSpan.Zero);
+        var handler = new SequenceHttpMessageHandler();
+
+        try
+        {
+            handler.AddResponse(AuthUrl, CreateTooManyRequests(120));
+
+            var registry = new LoginRetryAfterRegistry(CreateClock(() => now));
+            var firstClient = new PortainerClient(CreateHttpClientFactory(handler), new TestLogger<PortainerClient>(), registry);
+            var secondClient = new PortainerClient(CreateHttpClientFactory(handler), new TestLogger<PortainerClient>(), registry);
+
+            await firstClient.GetCapabilityAsync(CreateLoginInstanceOptions(InstanceName), CancellationToken.None).ConfigureAwait(false);
+
+            var result = await secondClient.ExecuteActionAsync(CreateLoginInstanceOptions("Staging"), CreateRestartRequest(), CancellationToken.None)
+                                           .ConfigureAwait(false);
+
+            Assert.IsFalse(result.Succeeded, "An action inside the window must fail");
+            Assert.AreEqual($"Action 'restart' failed: {DeferredMessage("2026-03-10T12:02:00Z")}",
+                            result.Message,
+                            "The action message must carry the authentication error with the end of the window");
+            Assert.HasCount(1, handler.Requests, "An action of another Docker instance with the same login must send no request inside the window");
+        }
+        finally
+        {
+            handler.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Verify the next capability check logs in again once the clock reaches the end of the window
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC5")]
+    public async Task PortainerClientLoginRetryAfterPassedLogsInAgainAsync()
+    {
+        var now = new DateTimeOffset(2026, 3, 10, 12, 0, 0, TimeSpan.Zero);
+        var handler = new SequenceHttpMessageHandler();
+
+        try
+        {
+            handler.AddResponse(AuthUrl, CreateTooManyRequests(120));
+            handler.AddJsonResponse(AuthUrl, """{"jwt":"jwt-token-xyz"}""");
+
+            var client = new PortainerClient(CreateHttpClientFactory(handler), new TestLogger<PortainerClient>(), new LoginRetryAfterRegistry(CreateClock(() => now)));
+            var instanceOptions = CreateLoginInstanceOptions(InstanceName);
+
+            await client.GetCapabilityAsync(instanceOptions, CancellationToken.None).ConfigureAwait(false);
+
+            now = now.AddSeconds(119);
+
+            await client.GetCapabilityAsync(instanceOptions, CancellationToken.None).ConfigureAwait(false);
+
+            Assert.HasCount(1, handler.Requests, "A capability check one second before the end of the window must send nothing");
+
+            now = now.AddSeconds(1);
+
+            await client.GetCapabilityAsync(instanceOptions, CancellationToken.None).ConfigureAwait(false);
+
+            Assert.AreEqual(2,
+                            handler.Requests.Count(request => request.RequestUri == AuthUrl),
+                            "The login must be sent again once the window has passed");
+        }
+        finally
+        {
+            handler.Dispose();
+        }
+    }
+
+    /// <summary>
     /// Create a successful environment list response
     /// </summary>
     /// <param name="json">Response body</param>
@@ -1892,6 +2007,60 @@ public class PortainerClientTests
     private static Exception CreateUnexpectedException()
     {
         return new InvalidOperationException("Raw runtime text for portainer.internal.test");
+    }
+
+    /// <summary>
+    /// Create the text of an authentication error for a deferred login
+    /// </summary>
+    /// <param name="until">End of the window as formatted in the message</param>
+    /// <returns>Error text</returns>
+    private static string DeferredMessage(string until)
+    {
+        return $"Portainer authentication for '{BaseUrl}' not sent: Portainer answered HTTP 429 and asked to wait until {until}";
+    }
+
+    /// <summary>
+    /// Create a clock that answers the given time
+    /// </summary>
+    /// <param name="now">Source of the current time</param>
+    /// <returns>Clock</returns>
+    private static TimeProvider CreateClock(Func<DateTimeOffset> now)
+    {
+        var clock = Substitute.For<TimeProvider>();
+
+        clock.GetUtcNow().Returns(_ => now());
+
+        return clock;
+    }
+
+    /// <summary>
+    /// Create a 429 response asking for a wait in seconds
+    /// </summary>
+    /// <param name="seconds">Requested wait in seconds</param>
+    /// <returns>Response</returns>
+    private static HttpResponseMessage CreateTooManyRequests(int seconds)
+    {
+        var response = new HttpResponseMessage(HttpStatusCode.TooManyRequests);
+
+        response.Headers.RetryAfter = new RetryConditionHeaderValue(TimeSpan.FromSeconds(seconds));
+
+        return response;
+    }
+
+    /// <summary>
+    /// Create Docker instance options that log in to Portainer with the same user name and password
+    /// </summary>
+    /// <param name="name">Docker instance display name</param>
+    /// <returns>Docker instance options</returns>
+    private static DockerInstanceOptions CreateLoginInstanceOptions(string name)
+    {
+        return CreateInstanceOptions(name,
+                                     options =>
+                                     {
+                                         options.Username = AdminUsername;
+                                         options.Password = "correct-password";
+                                         options.EndpointId = EndpointId;
+                                     });
     }
 
     /// <summary>
@@ -1938,7 +2107,7 @@ public class PortainerClientTests
                             };
         using var httpClient = new HttpClient(handler);
 
-        var client = new PortainerClient(CreateHttpClientFactory(httpClient), logger);
+        var client = new PortainerClient(CreateHttpClientFactory(httpClient), logger, new LoginRetryAfterRegistry(TimeProvider.System));
 
         return await client.ExecuteActionAsync(CreateFailureInstanceOptions(), CreateRestartRequest(), cancellationToken)
                            .ConfigureAwait(false);
@@ -1961,7 +2130,7 @@ public class PortainerClientTests
                             };
         using var httpClient = new HttpClient(handler);
 
-        var client = new PortainerClient(CreateHttpClientFactory(httpClient), logger);
+        var client = new PortainerClient(CreateHttpClientFactory(httpClient), logger, new LoginRetryAfterRegistry(TimeProvider.System));
 
         return await client.GetCapabilityAsync(CreateFailureInstanceOptions(), cancellationToken)
                            .ConfigureAwait(false);
@@ -2036,7 +2205,7 @@ public class PortainerClientTests
             handler.AddResponse(StatusUrl, new HttpResponseMessage(HttpStatusCode.OK));
             handler.AddResponse(EndpointsUrl, listResponse);
 
-            var client = new PortainerClient(CreateHttpClientFactory(handler), logger);
+            var client = new PortainerClient(CreateHttpClientFactory(handler), logger, new LoginRetryAfterRegistry(TimeProvider.System));
             var instanceOptions = CreateInstanceOptions(InstanceName, options => options.ApiToken = PatToken);
 
             var result = await client.GetCapabilityAsync(instanceOptions, TestContext.CancellationToken)
@@ -2066,7 +2235,7 @@ public class PortainerClientTests
             handler.AddJsonResponse(ContainersUrl, ContainerFoundJson);
             handler.AddResponse(RestartActionUrl, new HttpResponseMessage(HttpStatusCode.NoContent));
 
-            var client = new PortainerClient(CreateHttpClientFactory(handler), logger);
+            var client = new PortainerClient(CreateHttpClientFactory(handler), logger, new LoginRetryAfterRegistry(TimeProvider.System));
             var instanceOptions = CreateInstanceOptions(InstanceName, options => options.ApiToken = PatToken);
 
             var result = await client.ExecuteActionAsync(instanceOptions, CreateRestartRequest(), TestContext.CancellationToken)

@@ -207,29 +207,7 @@ public class TransientHttpRetryHandler : DelegatingHandler
     /// <returns>The positive wait requested by a delta or a date, or null when the header is missing or asks for no wait</returns>
     private TimeSpan? GetRetryAfter(HttpResponseMessage? response)
     {
-        var retryAfter = response?.Headers.RetryAfter;
-
-        if (retryAfter is null)
-        {
-            return null;
-        }
-
-        if (retryAfter.Delta is TimeSpan delta && delta > TimeSpan.Zero)
-        {
-            return delta;
-        }
-
-        if (retryAfter.Date is DateTimeOffset date)
-        {
-            var untilDate = date - _timeProvider.GetUtcNow();
-
-            if (untilDate > TimeSpan.Zero)
-            {
-                return untilDate;
-            }
-        }
-
-        return null;
+        return RetryAfterHeader.GetWait(response, _timeProvider.GetUtcNow());
     }
 
     /// <summary>
