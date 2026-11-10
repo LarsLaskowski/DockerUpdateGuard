@@ -12,13 +12,16 @@
 inside the window a 429's `Retry-After` names, and left the callers' own next login to a follow-up. The Docker Hub
 client logs in again with its next authenticated request after a failed token request, and a new client instance is
 created for every scope (a scan, a page operation), so even an instance that remembered the failure would not stop
-the next scan. The Portainer client logs in for every capability check and action. A server that rate-limits logins
+the next scan. The Portainer client logs in for every capability check and action. The Docker Scout provider posts the same Docker Hub
+credentials to `DockerScoutLoginUrl`, by default the Docker Hub client's own login URL, again for every image after a
+failed login and without a retry handler in front of it. A server that rate-limits logins
 therefore keeps receiving them inside its window, which is what trips lockouts and longer limits.
 
 ## Options considered
 
-1. **One process-wide registry of login windows, keyed by login URL and user name, consulted by both clients before
-   they log in (chosen)** — outlives every client instance, one implementation for both logins, and a test clock can
+1. **One process-wide registry of login windows, keyed by login URL and user name, consulted by every client before
+   it logs in (chosen)** — outlives every client instance, one implementation for all logins, the Docker Hub and Docker
+   Scout logins to the same URL share one window, and a test clock can
    drive it. The cost is a new singleton both clients depend on.
 2. **Refuse the send in the retry handler** — the handler is created per client and would need the same shared state;
    it would also stop requests other than the login, and it cannot answer with the client's own failure message, only
@@ -36,7 +39,7 @@ therefore keeps receiving them inside its window, which is what trips lockouts a
 
 ## Decision
 
-Option 1: the Docker Hub login and the Portainer login record a 429 with a positive `Retry-After` in one singleton
+Option 1: the Docker Hub login, the Docker Scout login and the Portainer login record a 429 with a positive `Retry-After` in one singleton
 registry, and neither sends that login again for the same login URL and user name until the window has passed; they
 answer at once with a failure that names the end of the window. The behavior is described in
 [Integration failures](../areas/integration-failures.md).
@@ -48,7 +51,10 @@ answer at once with a failure that names the end of the window. The behavior is 
 - A 429 whose wait the retry handler or the client's timeout swallowed (a short `Retry-After` retried, or a wait cut
   off by `RequestTimeoutSeconds`) reaches the client as a later 429 or as a timeout; only a 429 the client receives is
   remembered.
+- The Docker Scout login keys its window by the trimmed user name, as the Docker Hub client does, so the two share it
+  although Scout sends the user name untrimmed.
 - The window lives in memory: a restart clears it, and a configuration change of the user name or the URL starts a new
   login target.
 - Logins already in flight when the first 429 arrives are not recalled.
-- Revisit together with a JWT cache for Portainer, or when another integration logs in with credentials.
+- A new integration that logs in with credentials has to consult the registry as well; revisit together with a JWT
+  cache for Portainer.
