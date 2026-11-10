@@ -128,17 +128,38 @@ which stay until they are written again.
   because its `Retry-After` exceeds 30 seconds is logged as a debug entry (3503) with the status, the method, the masked
   URL, the requested wait and the 30-second maximum.
 
+### Logins inside a Retry-After window
+
+- Covers the three logins that send a secret: the Docker Hub web API login (`v2/users/login`), the Portainer login
+  (`/api/auth`, only for an instance with user name and password) and the Docker Scout login
+  (`DockerScoutLoginUrl`). Logins to the Docker Hub registry token service are not covered; they are idempotent and keep
+  the wait of [Retry of transient HTTP failures](#retry-of-transient-http-failures).
+- A window is kept per login URL (scheme, host, port and path; user info, query and fragment are ignored) and user name
+  (compared ordinally; the Docker Hub client and the Docker Scout provider use the trimmed name, Portainer the name as
+  configured). The Docker Hub client and the Docker Scout provider therefore share a window when `DockerScoutLoginUrl`
+  is the Docker Hub login URL (the default) and the user name is the same. A Docker Scout login URL that is not an
+  absolute URI is not tracked.
+- A login response of 429 with a positive `Retry-After` (seconds or date) opens a window that ends at the current time
+  plus that wait; the wait is not capped. A later window never shortens a longer one. A 429 without a usable
+  `Retry-After` and any other failure (401, 503, …) open no window and leave an existing one as it is. A successful
+  login removes the window; a window that has passed is removed when it is next read.
+- Inside a window no login and no request that needs the login is sent. The operation ends as a failure naming the end
+  of the window as UTC `yyyy-MM-ddTHH:mm:ssZ`:
+  - Docker Hub web API and Docker Scout: *failed* with `Docker Hub authentication token request for '<user>' not sent:
+    Docker Hub answered HTTP 429 and asked to wait until <until>`.
+  - Portainer: the authentication error `Portainer authentication for '<masked BaseUrl>' not sent: Portainer answered
+    HTTP 429 and asked to wait until <until>` ([Container actions](container-actions.md#authentication)).
+- Once the clock reaches the end of the window the next login is sent as usual.
+- The windows live in memory in one process-wide `LoginRetryAfterRegistry` shared by all clients and scopes; a restart
+  forgets them. Only the final response the client receives is recorded: a 429 the retry handler waits out and
+  retries opens no window.
+  Decision [0022](../decisions/0022-a-logins-retry-after-window-is-remembered-process-wide.md).
+
 ## Limits and errors
 
 - No outcome message, scan run or page carries an error's own text; the error is in the log entry of the failure.
 - Some registry calls still let errors escape instead of answering an outcome; which ones is listed in
   [Registries](registries.md#limits-and-errors).
-
-### Known gaps
-
-- After a failed login the Docker Hub client logs in again with its next authenticated request, and the Portainer
-  client logs in for every capability check and action; neither remembers a 429's `Retry-After`. Tracked in
-  [#320](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/320).
 
 ## Related decisions
 
@@ -146,6 +167,8 @@ which stay until they are written again.
   retried only when they cannot have been processed.
 - [0009](../decisions/0009-integration-results-carry-fixed-failure-reasons.md): integration results carry fixed
   failure reasons, never an error's own text.
+- [0022](../decisions/0022-a-logins-retry-after-window-is-remembered-process-wide.md): a login's Retry-After window is
+  remembered process-wide.
 - [0019](../decisions/0019-remote-json-with-undecodable-strings-is-an-invalid-response.md): remote JSON with a string
   that does not decode is an invalid response.
 

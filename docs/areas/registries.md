@@ -138,6 +138,9 @@ go through its retry of transient HTTP failures.
   trimmed) the client logs in and sends the returned token as a bearer token. The token is kept in memory and renewed
   one minute before its expiry (its `exp` claim, or five minutes after issue when it has none). `Pat` without
   `UserName` makes every web API request *failed*, naming the missing key. `UserName` without `Pat` is anonymous.
+  After a login answered 429 with a `Retry-After`, no login is sent before the window ends: the request sends nothing
+  and is *failed*, also in other client instances
+  ([Integration failures](integration-failures.md#logins-inside-a-retry-after-window)).
 - **Docker Hub registry.** A pull token is requested from the token service for every lookup, with the configured user
   name and PAT as basic credentials when both are set, otherwise anonymously.
 - **Other registries.** Access is anonymous only. On a 401 with a `Bearer` challenge a token is requested anonymously
@@ -183,7 +186,8 @@ go through its retry of transient HTTP failures.
   operation works with its own client instances, so the cap is not global. The value is read when an instance is
   created, so a configuration reload applies to later operations. Requests to other registries are not capped.
 - Docker Hub rate limiting (HTTP 429) is handled by the retry of
-  [Integration failures](integration-failures.md#retry-of-transient-http-failures).
+  [Integration failures](integration-failures.md#retry-of-transient-http-failures); the web API login additionally
+  honors a `Retry-After` window ([Integration failures](integration-failures.md#logins-inside-a-retry-after-window)).
 
 ### Request timeout
 
@@ -213,7 +217,8 @@ go through its retry of transient HTTP failures.
 - *Not found*: HTTP 404 for an account, repository, tag, manifest or configuration blob; an image whose manifest names
   no configuration blob; a request path with a `.` or `..` segment, or an OCI registry that is not a valid host with an
   optional port, which is not sent ([Request paths](#request-paths)).
-- *Failed*: any other non-success status, a token that cannot be obtained, a PAT without user name, a multi-platform
+- *Failed*: any other non-success status, a token that cannot be obtained, a login deferred by the server's `Retry-After` window (the message names the end of
+  the window), a PAT without user name, a multi-platform
   index without a usable entry. The message contains the status code and the bounded excerpt of the remote response body ([Integration failures](integration-failures.md#excerpts-of-remote-text)). A next-page link
   to another origin also gives *failed*, with the message of [Pagination links](#pagination-links).
 - The Docker Hub current-user, account listing, repository, tag and tag-listing calls and the OCI tag, tag-listing and

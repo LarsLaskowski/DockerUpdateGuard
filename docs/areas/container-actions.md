@@ -59,7 +59,14 @@ transport security; the UI is the intended caller of the actions.
 - When `ApiToken` is set, it is sent as an API key header on every request and takes precedence over username and
   password.
 - Otherwise `Username` and `Password` are posted to Portainer's authentication endpoint and the returned JWT is used as
-  a bearer token. The login is repeated for every operation; tokens are not cached.
+  a bearer token. The login is repeated for every operation; tokens are not cached. After a login answered 429 with a
+  positive `Retry-After`, no instance whose login goes to the same URL with the same user name sends a login before the
+  window ends: the capability check or action sends no request and fails with the authentication error `Portainer
+  authentication for '<masked BaseUrl>' not sent: Portainer answered HTTP 429 and asked to wait until <until>` (UTC
+  `yyyy-MM-ddTHH:mm:ssZ`), as `Portainer connection error: <that text>` for the capability check and `Action
+  '<action>' failed: <that text>` for an action
+  ([Integration failures](integration-failures.md#logins-inside-a-retry-after-window)). An instance with an `ApiToken`
+  never logs in and is unaffected.
 - A login that answers non-success, or answers success without a token, ends the operation with an authentication
   error that names the Portainer base URL (user info masked as `***`) and the HTTP status code; credentials never appear in it or in the log.
 
