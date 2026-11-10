@@ -19,7 +19,7 @@ cells in `log.md`); steps 4–12 follow `squad-issue` with the changes listed af
    it; a bug fix switches to `squad-issue` now. A closed issue: stop and report that. A run that waits for
    an outside author's agreement or the Product Manager's spec approval continues on its work branch
    (`.squad/orchestration.md`, *Outside authors*, *Spec approval*). Run
-   `git fetch origin main --tags`, create the branch off the latest `main` (or the branch the session
+   `git fetch origin main --tags` (unshallowing a shallow clone as `squad-issue` step 1 says), create the branch off the latest `main` (or the branch the session
    prescribes) and the work folder `specs/feature-<short-slug>/` (from an issue
    `specs/feature-<number>-<short-slug>/`) with `log.md` from `specs/_template/log.md`; commit and push. Log
    as `squad-issue` step 1 says.
@@ -67,7 +67,7 @@ cells in `log.md`); steps 4–12 follow `squad-issue` with the changes listed af
   `decide` in `squad-lead.md`); run `plan-check.py <folder>` on it before any member reads it, and hand later
   launches the amended spec.
 - **Step 10:** the working record (the verification matrix of the spec's criteria, `spec.md`, `plan.md`,
-  `tasks.md`, `log.md`; on the `docs` route `log.md` alone) is posted to the feature request issue if one exists
+  `tasks.md`, `measurements.md` when the run has one, `log.md`; on the `docs` route `log.md` alone) is posted to the feature request issue if one exists
   (`Closes #<n>` in the PR), otherwise as the first comment on the PR right after opening it; every log row and
-  amend after it goes through `squad-log.py … --stdin` on that comment's log table. A document or a `log.md` that
-  does not fit the comment goes as a permalink to the commit before the removal, as `squad-issue` step 10 says.
+  amend after it goes through `squad-log.py … --stdin` on that comment's log table. Any document but the
+  verification matrix may go as a permalink to the commit before the removal, with a summary, as `squad-issue` step 10 says.

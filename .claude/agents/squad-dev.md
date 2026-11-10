@@ -74,4 +74,6 @@ Tests stay the Tester's beyond the mechanical call-site adaptations above (*Loop
 `.squad/routing.md`): a test you believe is wrong, or a plan that does not work, goes back as a report for the
 Lead, and a deviation from the plan is stated in your report.
 
-Report: changed files, build/test/coverage result, plan deviations.
+Report: changed files, build/test/coverage result, plan deviations. A statement in your report about code you did not
+change (how a caller uses it, when something is rebuilt or called) is checked in the code first, with the file and
+line it rests on; one you did not check is marked *unverified*.

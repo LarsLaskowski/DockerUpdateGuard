@@ -910,6 +910,12 @@ def gates_due(run):
     if needs_check:
         lines.append("  The patch touches a script, workflow, Dockerfile or data file: pass the check the Lead's result "
                      "names with --check \"<command>\"")
+    if context.get("records") and tool.shallow(run.root):
+        lines.append(f"  The clone is shallow: run '{tool.UNSHALLOW}' before the stamp, which runs "
+                     f"{tool.DECISION} --require-history")
+    if tool.TEST_COVERAGE in gates:
+        lines.append("  Start the stamp in the background (Bash run_in_background): the full suite can outlast a "
+                     "foreground command's time limit")
     if tool.TEST_PROJECT in gates:
         lines.append("  *Test (project)*: pass the test project of the changed code as --project NAME=VALUE (the "
                      "placeholder in .squad/stack.md), or *Test* runs instead")

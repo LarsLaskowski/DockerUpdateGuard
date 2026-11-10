@@ -29,11 +29,16 @@ When the kind points to the other skill, switch to it now and say so in one line
 `log.md` names the kind and what decided it (`feature: user request`, `feature: label enhancement`,
 `bug: no feature label`).
 
+An issue whose change needs values only the Product Manager can produce (measurements on a real system, figures from
+a production host) runs with the skill its kind decides, but the Product Manager supplies the values before step 1;
+the orchestrator asks for them (*Escalation to the Product Manager*) and creates no branch until they are in. The
+Lead writes them, as given, into `measurements.md` in the work folder, which step 10 posts with the working record.
+
 ## Work folder
 
-- Issue (bug fix): `specs/issue-<number>/` — `plan.md`, `log.md`
+- Issue (bug fix): `specs/issue-<number>/` — `plan.md`, `log.md` (and `measurements.md`, *Bug or feature*)
 - Feature: `specs/feature-<short-slug>/`, from an issue `specs/feature-<number>-<short-slug>/` — `spec.md`,
-  `plan.md`, `tasks.md`, `log.md`
+  `plan.md`, `tasks.md`, `log.md` (and `measurements.md`, *Bug or feature*)
 - The work folder lives **only on the work branch**: it is committed and pushed after every step so a
   crashed session can resume, and in step 10 its content is posted as a "Squad working record" comment
   (on the issue, or on the PR for a feature without issue) and the folder is removed before the PR opens.
@@ -111,7 +116,8 @@ configuration, documentation only) may declare steps 4 (*Skeleton*), 5 (*Tests f
 gate* **not applicable**; the tier and its other steps stay. The Lead then names in `plan.md`, under
 *Verification without tests*, where and by whom each acceptance criterion is verified instead (a workflow
 step, a PR dry run, a build of the image, a read-only check); the orchestrator logs the skipped steps with a
-pointer to it. Step 6 is the Dev's edits alone, and step 7 runs every gate but the *Coverage gate*. The
+pointer to it. Step 6 is the Dev's edits alone, and step 7 runs every gate but the *Coverage gate* (a branch of
+Markdown files only: *Format check* alone, `gate-stamp.py`). The
 Reviewer checks that the section exists, covers every criterion and that the diff really holds no production
 or test code — otherwise the skip is blocking. If such code changes after all, steps 4–6 apply again.
 
@@ -334,7 +340,8 @@ the options and the Lead's recommendation. Follow-up issues the Lead decides on 
 listed in the PR under Next Steps.
 
 Besides the Lead's escalation, the orchestrator involves the Product Manager only where one of these rules says so:
-the kind of an issue labelled both bug and feature (*Bug or feature*); the approval of a feature's spec (*Spec
+the kind of an issue labelled both bug and feature and the values only the Product Manager can produce (*Bug or
+feature*); the approval of a feature's spec (*Spec
 approval* in `orchestration.md`); the public issue comment of *Outcome "no change"* and of *Outside authors*; a
 download a member was denied (*A denied measurement* in `orchestration.md`); a Security rejection of a fix the Lead
 accepted, and a safeguard stop (*Loop limits*); the dry run and the confirmation of statements no run has shown

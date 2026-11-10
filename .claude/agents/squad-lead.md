@@ -139,7 +139,10 @@ The orchestrator tells you which **mode** to run:
   *Challenge notes* section into *Challenge*, and decide every choice a *Security notes* entry leaves (the
   option taken and why), folding the section into *Security review*. Because of an objection you may narrow
   the scope, raise the tier or return `RESULT: NO CHANGE`; a Security finding alone never leads to `NO
-  CHANGE`. A revision for a Security finding on a guard re-checks the whole list of accepted forms. Do not append
+  CHANGE`. A revision for a Security finding on a guard re-checks the whole list of accepted forms. Before you hand
+  back, read *Signatures* against every sentence you changed in *Approach*, *Security considerations* and the
+  resource bounds: a signature that still contradicts one (a promise of one file in memory at a time beside a
+  method that takes four streams) is changed in the same revision. Do not append
   answers: move settled material (answered entries, verified facts) to the
   decision record, or into *Documentation updates* for the Dev, and shorten (a plan over its tier's
   `PLAN_MAX_WORDS` needs a `Plan size:` line, `plan-check.py`). Update the
