@@ -2077,6 +2077,71 @@ public partial class DockerHubClientTests
     }
 
     /// <summary>
+    /// Verify a login answered 429 without Retry-After opens no window
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC3")]
+    public async Task DockerHubClientLoginTooManyRequestsWithoutRetryAfterLogsInAgainAsync()
+    {
+        var now = new DateTimeOffset(2026, 3, 10, 12, 0, 0, TimeSpan.Zero);
+        var requests = new List<string>();
+
+        using var handler = CreateLoginSequenceHandler(requests, () => new HttpResponseMessage(HttpStatusCode.TooManyRequests));
+        using var httpClient = new HttpClient(handler)
+                               {
+                                   BaseAddress = new Uri("https://hub.docker.com/"),
+                               };
+
+        var client = CreateClient(httpClient, loginRetryAfterRegistry: new LoginRetryAfterRegistry(CreateClock(() => now)));
+
+        await client.GetCurrentUserAsync(CancellationToken.None).ConfigureAwait(false);
+        await client.GetCurrentUserAsync(CancellationToken.None).ConfigureAwait(false);
+
+        Assert.AreEqual(2,
+                        requests.Count(request => string.Equals(request, LoginUri, StringComparison.Ordinal)),
+                        "A 429 without Retry-After must not defer the next login");
+    }
+
+    /// <summary>
+    /// Verify a login failure other than 429 that carries Retry-After opens no window
+    /// </summary>
+    /// <param name="statusCode">Status code of the login response</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC3")]
+    [DataRow(HttpStatusCode.Unauthorized)]
+    [DataRow(HttpStatusCode.ServiceUnavailable)]
+    public async Task DockerHubClientLoginNonTooManyRequestsWithRetryAfterLogsInAgainAsync(HttpStatusCode statusCode)
+    {
+        var now = new DateTimeOffset(2026, 3, 10, 12, 0, 0, TimeSpan.Zero);
+        var requests = new List<string>();
+
+        using var handler = CreateLoginSequenceHandler(requests,
+                                                       () =>
+                                                       {
+                                                           var response = new HttpResponseMessage(statusCode);
+
+                                                           response.Headers.RetryAfter = new RetryConditionHeaderValue(TimeSpan.FromSeconds(120));
+
+                                                           return response;
+                                                       });
+        using var httpClient = new HttpClient(handler)
+                               {
+                                   BaseAddress = new Uri("https://hub.docker.com/"),
+                               };
+
+        var client = CreateClient(httpClient, loginRetryAfterRegistry: new LoginRetryAfterRegistry(CreateClock(() => now)));
+
+        await client.GetCurrentUserAsync(CancellationToken.None).ConfigureAwait(false);
+        await client.GetCurrentUserAsync(CancellationToken.None).ConfigureAwait(false);
+
+        Assert.AreEqual(2,
+                        requests.Count(request => string.Equals(request, LoginUri, StringComparison.Ordinal)),
+                        "A failure other than 429 must not defer the next login even with Retry-After");
+    }
+
+    /// <summary>
     /// Create a clock that answers the given time
     /// </summary>
     /// <param name="now">Source of the current time</param>
