@@ -22,7 +22,7 @@ therefore keeps receiving them inside its window, which is what trips lockouts a
 1. **One process-wide registry of login windows, keyed by login URL and user name, consulted by every client before
    it logs in (chosen)** — outlives every client instance, one implementation for all logins, the Docker Hub and Docker
    Scout logins to the same URL share one window, and a test clock can
-   drive it. The cost is a new singleton both clients depend on.
+   drive it. The cost is a new singleton the three clients depend on.
 2. **Refuse the send in the retry handler** — the handler is created per client and would need the same shared state;
    it would also stop requests other than the login, and it cannot answer with the client's own failure message, only
    with a fabricated response or an error.
@@ -40,7 +40,7 @@ therefore keeps receiving them inside its window, which is what trips lockouts a
 ## Decision
 
 Option 1: the Docker Hub login, the Docker Scout login and the Portainer login record a 429 with a positive `Retry-After` in one singleton
-registry, and neither sends that login again for the same login URL and user name until the window has passed; they
+registry, and none of them sends that login again for the same login URL and user name until the window has passed; they
 answer at once with a failure that names the end of the window. The behavior is described in
 [Integration failures](../areas/integration-failures.md).
 
