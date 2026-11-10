@@ -1,6 +1,6 @@
 # 0022: A login's Retry-After window is remembered process-wide
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-10
 - **Area:** Integration failures
 - **Source:** Issue #320
