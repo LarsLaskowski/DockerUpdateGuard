@@ -68,6 +68,14 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
     /// </summary>
     private readonly IOptionsMonitor<DockerUpdateGuardOptions> _optionsMonitor;
 
+    // Skeleton: removed with the implementation
+#pragma warning disable S4487
+    /// <summary>
+    /// Registry of the login Retry-After windows
+    /// </summary>
+    private readonly LoginRetryAfterRegistry _loginRetryAfterRegistry;
+#pragma warning restore S4487
+
     /// <summary>
     /// Access-token refresh lock
     /// </summary>
@@ -98,13 +106,16 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
     /// <param name="httpClient">Configured HTTP client</param>
     /// <param name="logger">Logger</param>
     /// <param name="optionsMonitor">Options monitor</param>
+    /// <param name="loginRetryAfterRegistry">Registry of the login Retry-After windows</param>
     public DockerHubClient(HttpClient httpClient,
                            ILogger<DockerHubClient> logger,
-                           IOptionsMonitor<DockerUpdateGuardOptions> optionsMonitor)
+                           IOptionsMonitor<DockerUpdateGuardOptions> optionsMonitor,
+                           LoginRetryAfterRegistry loginRetryAfterRegistry)
     {
         _httpClient = httpClient;
         _logger = logger;
         _optionsMonitor = optionsMonitor;
+        _loginRetryAfterRegistry = loginRetryAfterRegistry;
 
         var maxParallelRequests = Math.Max(1, optionsMonitor.CurrentValue.DockerHub.MaxParallelRequests);
         _requestThrottle = new SemaphoreSlim(maxParallelRequests, maxParallelRequests);

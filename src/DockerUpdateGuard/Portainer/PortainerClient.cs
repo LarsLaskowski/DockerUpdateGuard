@@ -69,6 +69,14 @@ public partial class PortainerClient : IPortainerClient
     /// </summary>
     private readonly ILogger<PortainerClient> _logger;
 
+    // Skeleton: removed with the implementation
+#pragma warning disable S4487
+    /// <summary>
+    /// Registry of the login Retry-After windows
+    /// </summary>
+    private readonly LoginRetryAfterRegistry _loginRetryAfterRegistry;
+#pragma warning restore S4487
+
     #endregion // Fields
 
     #region Constructors
@@ -78,10 +86,14 @@ public partial class PortainerClient : IPortainerClient
     /// </summary>
     /// <param name="httpClientFactory">HTTP client factory</param>
     /// <param name="logger">Logger</param>
-    public PortainerClient(IHttpClientFactory httpClientFactory, ILogger<PortainerClient> logger)
+    /// <param name="loginRetryAfterRegistry">Registry of the login Retry-After windows</param>
+    public PortainerClient(IHttpClientFactory httpClientFactory,
+                           ILogger<PortainerClient> logger,
+                           LoginRetryAfterRegistry loginRetryAfterRegistry)
     {
         _httpClientFactory = httpClientFactory;
         _logger = logger;
+        _loginRetryAfterRegistry = loginRetryAfterRegistry;
     }
 
     #endregion // Constructors

@@ -1029,7 +1029,8 @@ public partial class DockerHubClientTests
                           };
             var client = new DockerHubClient(httpClient,
                                              new TestLogger<DockerHubClient>(),
-                                             new TestOptionsMonitor<DockerUpdateGuardOptions>(options));
+                                             new TestOptionsMonitor<DockerUpdateGuardOptions>(options),
+                                             new LoginRetryAfterRegistry(TimeProvider.System));
             var requests = Enumerable.Range(0, 8)
                                      .Select(_ => client.GetCurrentUserAsync(CancellationToken.None))
                                      .ToArray();
@@ -2057,7 +2058,8 @@ public partial class DockerHubClientTests
 
         return new DockerHubClient(httpClient,
                                    logger ?? new TestLogger<DockerHubClient>(),
-                                   new TestOptionsMonitor<DockerUpdateGuardOptions>(options));
+                                   new TestOptionsMonitor<DockerUpdateGuardOptions>(options),
+                                   new LoginRetryAfterRegistry(TimeProvider.System));
     }
 
     /// <summary>
