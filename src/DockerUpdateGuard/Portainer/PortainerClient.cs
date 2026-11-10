@@ -69,13 +69,10 @@ public partial class PortainerClient : IPortainerClient
     /// </summary>
     private readonly ILogger<PortainerClient> _logger;
 
-    // Skeleton: removed with the implementation
-#pragma warning disable S4487
     /// <summary>
     /// Registry of the login Retry-After windows
     /// </summary>
     private readonly LoginRetryAfterRegistry _loginRetryAfterRegistry;
-#pragma warning restore S4487
 
     #endregion // Fields
 
@@ -326,7 +323,16 @@ public partial class PortainerClient : IPortainerClient
             {
                 var maskedBaseUrl = UrlRedaction.RedactUserInfo(options.BaseUrl);
                 var loginBody = new PortainerLoginRequest(options.Username, options.Password);
+                var loginUri = new Uri(client.BaseAddress, "/api/auth");
+
+                if (_loginRetryAfterRegistry.IsLoginDeferred(loginUri, options.Username, out var retryAt))
+                {
+                    throw new PortainerAuthenticationException($"Portainer authentication for '{maskedBaseUrl}' not sent: Portainer answered HTTP 429 and asked to wait until {LoginRetryAfterRegistry.FormatRetryAt(retryAt)}");
+                }
+
                 using var loginResponse = await client.PostAsJsonAsync("/api/auth", loginBody, cancellationToken).ConfigureAwait(false);
+
+                _loginRetryAfterRegistry.RecordLoginResponse(loginUri, options.Username, loginResponse);
 
                 if (loginResponse.IsSuccessStatusCode)
                 {

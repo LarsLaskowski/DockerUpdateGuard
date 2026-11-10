@@ -40,6 +40,11 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
     private const string BearerScheme = "Bearer";
 
     /// <summary>
+    /// Login path relative to the API base address
+    /// </summary>
+    private const string LoginPath = "v2/users/login";
+
+    /// <summary>
     /// Registry resource of manifests
     /// </summary>
     private const string ManifestsResource = "manifests";
@@ -68,13 +73,10 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
     /// </summary>
     private readonly IOptionsMonitor<DockerUpdateGuardOptions> _optionsMonitor;
 
-    // Skeleton: removed with the implementation
-#pragma warning disable S4487
     /// <summary>
     /// Registry of the login Retry-After windows
     /// </summary>
     private readonly LoginRetryAfterRegistry _loginRetryAfterRegistry;
-#pragma warning restore S4487
 
     /// <summary>
     /// Access-token refresh lock
@@ -157,6 +159,17 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
     public static bool SupportsRegistry(string registry)
     {
         return IsSupportedRegistry(registry);
+    }
+
+    /// <summary>
+    /// Build the message of a login that was not sent because a Retry-After window is open
+    /// </summary>
+    /// <param name="userName">Docker Hub user name</param>
+    /// <param name="retryAt">End of the window</param>
+    /// <returns>Failure message</returns>
+    internal static string CreateLoginDeferredMessage(string userName, DateTimeOffset retryAt)
+    {
+        return $"Docker Hub authentication token request for '{userName}' not sent: Docker Hub answered HTTP 429 and asked to wait until {LoginRetryAfterRegistry.FormatRetryAt(retryAt)}";
     }
 
     /// <summary>
@@ -878,6 +891,15 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
     }
 
     /// <summary>
+    /// Build the absolute URL of the Docker Hub login
+    /// </summary>
+    /// <returns>Login URL</returns>
+    private Uri CreateLoginUri()
+    {
+        return new Uri(GetApiBaseUri(), LoginPath);
+    }
+
+    /// <summary>
     /// Determine the origin that Docker Hub API requests and their pagination links must stay on
     /// </summary>
     /// <returns>API base URI</returns>
@@ -974,6 +996,11 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
                 return ExternalOperationResult<string>.Succeeded(_accessToken!);
             }
 
+            if (_loginRetryAfterRegistry.IsLoginDeferred(CreateLoginUri(), userName, out var retryAt))
+            {
+                return ExternalOperationResult<string>.Failed(CreateLoginDeferredMessage(userName, retryAt));
+            }
+
             var tokenResult = await RequestAccessTokenAsync(userName,
                                                             personalAccessToken,
                                                             cancellationToken).ConfigureAwait(false);
@@ -1011,13 +1038,15 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
                                                    username = userName,
                                                    password = personalAccessToken,
                                                });
-        using var request = new HttpRequestMessage(HttpMethod.Post, "v2/users/login")
+        using var request = new HttpRequestMessage(HttpMethod.Post, LoginPath)
                             {
                                 Content = new StringContent(payload,
                                                             Encoding.UTF8,
                                                             "application/json"),
                             };
         using var response = await SendThrottledAsync(request, cancellationToken).ConfigureAwait(false);
+
+        _loginRetryAfterRegistry.RecordLoginResponse(CreateLoginUri(), userName, response);
 
         if (response.IsSuccessStatusCode == false)
         {
