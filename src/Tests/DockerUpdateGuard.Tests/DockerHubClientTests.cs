@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Headers;
 using System.Text;
 
 using DockerUpdateGuard.Configuration;
@@ -10,6 +11,8 @@ using DockerUpdateGuard.Tests.Data;
 using DockerUpdateGuard.Tests.Helper;
 
 using Microsoft.Extensions.Logging;
+
+using NSubstitute;
 
 namespace DockerUpdateGuard.Tests;
 
@@ -30,6 +33,11 @@ public partial class DockerHubClientTests
     /// Docker Hub login response
     /// </summary>
     private const string LoginResponseJson = $$"""{ "token": "{{LoginToken}}" }""";
+
+    /// <summary>
+    /// Docker Hub login URL
+    /// </summary>
+    private const string LoginUri = "https://hub.docker.com/v2/users/login";
 
     /// <summary>
     /// Escape of a lone high surrogate
@@ -1029,7 +1037,8 @@ public partial class DockerHubClientTests
                           };
             var client = new DockerHubClient(httpClient,
                                              new TestLogger<DockerHubClient>(),
-                                             new TestOptionsMonitor<DockerUpdateGuardOptions>(options));
+                                             new TestOptionsMonitor<DockerUpdateGuardOptions>(options),
+                                             new LoginRetryAfterRegistry(TimeProvider.System));
             var requests = Enumerable.Range(0, 8)
                                      .Select(_ => client.GetCurrentUserAsync(CancellationToken.None))
                                      .ToArray();
@@ -1955,6 +1964,240 @@ public partial class DockerHubClientTests
     }
 
     /// <summary>
+    /// Verify a login answered 429 with a Retry-After delta defers the next request of the same instance without any request
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC1")]
+    public async Task DockerHubClientLoginRetryAfterDeltaDefersNextRequestOfSameInstanceAsync()
+    {
+        var now = new DateTimeOffset(2026, 3, 10, 12, 0, 0, TimeSpan.Zero);
+        var requests = new List<string>();
+
+        using var handler = CreateLoginSequenceHandler(requests, () => CreateTooManyRequests(new RetryConditionHeaderValue(TimeSpan.FromSeconds(120))));
+        using var httpClient = new HttpClient(handler)
+                               {
+                                   BaseAddress = new Uri("https://hub.docker.com/"),
+                               };
+
+        var client = CreateClient(httpClient, loginRetryAfterRegistry: new LoginRetryAfterRegistry(CreateClock(() => now)));
+
+        var first = await client.GetCurrentUserAsync(CancellationToken.None).ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Failed, first.Status, "The request whose login is answered 429 must fail");
+        Assert.HasCount(1, requests, "The first request must send exactly the login");
+
+        var second = await client.GetCurrentUserAsync(CancellationToken.None).ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Failed, second.Status, "A request inside the window must fail");
+        Assert.IsNotNull(second.Message, "The failed result must carry a message");
+        Assert.Contains("Docker Hub authentication token request for 'acme' not sent: Docker Hub answered HTTP 429 and asked to wait until 2026-03-10T12:02:00Z",
+                        second.Message,
+                        "The failure must name the user and the end of the window");
+        Assert.HasCount(1, requests, "A request inside the window must send no login and no web API request");
+    }
+
+    /// <summary>
+    /// Verify a login answered 429 with a Retry-After date defers the request of another instance sharing the registry
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC1")]
+    public async Task DockerHubClientLoginRetryAfterDateDefersRequestOfOtherInstanceAsync()
+    {
+        var now = new DateTimeOffset(2026, 3, 10, 12, 0, 0, TimeSpan.Zero);
+        var requests = new List<string>();
+        var registry = new LoginRetryAfterRegistry(CreateClock(() => now));
+
+        using var handler = CreateLoginSequenceHandler(requests, () => CreateTooManyRequests(new RetryConditionHeaderValue(now.AddSeconds(90))));
+        using var firstHttpClient = new HttpClient(handler, false)
+                                    {
+                                        BaseAddress = new Uri("https://hub.docker.com/"),
+                                    };
+        using var secondHttpClient = new HttpClient(handler, false)
+                                     {
+                                         BaseAddress = new Uri("https://hub.docker.com/"),
+                                     };
+
+        var firstClient = CreateClient(firstHttpClient, loginRetryAfterRegistry: registry);
+        var secondClient = CreateClient(secondHttpClient, loginRetryAfterRegistry: registry);
+
+        var first = await firstClient.GetCurrentUserAsync(CancellationToken.None).ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Failed, first.Status, "The request whose login is answered 429 must fail");
+
+        var second = await secondClient.GetCurrentUserAsync(CancellationToken.None).ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Failed, second.Status, "A request of another instance inside the window must fail");
+        Assert.IsNotNull(second.Message, "The failed result must carry a message");
+        Assert.Contains("Docker Hub authentication token request for 'acme' not sent: Docker Hub answered HTTP 429 and asked to wait until 2026-03-10T12:01:30Z",
+                        second.Message,
+                        "The failure must name the user and the end of the window given as a date");
+        Assert.HasCount(1, requests, "The other instance must send no request inside the window");
+    }
+
+    /// <summary>
+    /// Verify the next request logs in again once the clock reaches the end of the window
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC2")]
+    public async Task DockerHubClientLoginRetryAfterPassedLogsInAgainAsync()
+    {
+        var now = new DateTimeOffset(2026, 3, 10, 12, 0, 0, TimeSpan.Zero);
+        var requests = new List<string>();
+
+        using var handler = CreateLoginSequenceHandler(requests,
+                                                       () => CreateTooManyRequests(new RetryConditionHeaderValue(TimeSpan.FromSeconds(120))),
+                                                       () => CreateJsonResponse(LoginResponseJson));
+        using var httpClient = new HttpClient(handler)
+                               {
+                                   BaseAddress = new Uri("https://hub.docker.com/"),
+                               };
+
+        var client = CreateClient(httpClient, loginRetryAfterRegistry: new LoginRetryAfterRegistry(CreateClock(() => now)));
+
+        await client.GetCurrentUserAsync(CancellationToken.None).ConfigureAwait(false);
+
+        now = now.AddSeconds(119);
+
+        var beforeEnd = await client.GetCurrentUserAsync(CancellationToken.None).ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Failed, beforeEnd.Status, "A request one second before the end of the window must still fail");
+        Assert.HasCount(1, requests, "A request before the end of the window must send nothing");
+
+        now = now.AddSeconds(1);
+
+        var atEnd = await client.GetCurrentUserAsync(CancellationToken.None).ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, atEnd.Status, "A request at the end of the window must log in and succeed");
+        Assert.AreEqual(2,
+                        requests.Count(request => string.Equals(request, LoginUri, StringComparison.Ordinal)),
+                        "The login must be sent again once the window has passed");
+    }
+
+    /// <summary>
+    /// Verify a login answered 429 without Retry-After opens no window
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC3")]
+    public async Task DockerHubClientLoginTooManyRequestsWithoutRetryAfterLogsInAgainAsync()
+    {
+        var now = new DateTimeOffset(2026, 3, 10, 12, 0, 0, TimeSpan.Zero);
+        var requests = new List<string>();
+
+        using var handler = CreateLoginSequenceHandler(requests, () => new HttpResponseMessage(HttpStatusCode.TooManyRequests));
+        using var httpClient = new HttpClient(handler)
+                               {
+                                   BaseAddress = new Uri("https://hub.docker.com/"),
+                               };
+
+        var client = CreateClient(httpClient, loginRetryAfterRegistry: new LoginRetryAfterRegistry(CreateClock(() => now)));
+
+        await client.GetCurrentUserAsync(CancellationToken.None).ConfigureAwait(false);
+        await client.GetCurrentUserAsync(CancellationToken.None).ConfigureAwait(false);
+
+        Assert.AreEqual(2,
+                        requests.Count(request => string.Equals(request, LoginUri, StringComparison.Ordinal)),
+                        "A 429 without Retry-After must not defer the next login");
+    }
+
+    /// <summary>
+    /// Verify a login failure other than 429 that carries Retry-After opens no window
+    /// </summary>
+    /// <param name="statusCode">Status code of the login response</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC3")]
+    [DataRow(HttpStatusCode.Unauthorized)]
+    [DataRow(HttpStatusCode.ServiceUnavailable)]
+    public async Task DockerHubClientLoginNonTooManyRequestsWithRetryAfterLogsInAgainAsync(HttpStatusCode statusCode)
+    {
+        var now = new DateTimeOffset(2026, 3, 10, 12, 0, 0, TimeSpan.Zero);
+        var requests = new List<string>();
+
+        using var handler = CreateLoginSequenceHandler(requests,
+                                                       () =>
+                                                       {
+                                                           var response = new HttpResponseMessage(statusCode);
+
+                                                           response.Headers.RetryAfter = new RetryConditionHeaderValue(TimeSpan.FromSeconds(120));
+
+                                                           return response;
+                                                       });
+        using var httpClient = new HttpClient(handler)
+                               {
+                                   BaseAddress = new Uri("https://hub.docker.com/"),
+                               };
+
+        var client = CreateClient(httpClient, loginRetryAfterRegistry: new LoginRetryAfterRegistry(CreateClock(() => now)));
+
+        await client.GetCurrentUserAsync(CancellationToken.None).ConfigureAwait(false);
+        await client.GetCurrentUserAsync(CancellationToken.None).ConfigureAwait(false);
+
+        Assert.AreEqual(2,
+                        requests.Count(request => string.Equals(request, LoginUri, StringComparison.Ordinal)),
+                        "A failure other than 429 must not defer the next login even with Retry-After");
+    }
+
+    /// <summary>
+    /// Create a clock that answers the given time
+    /// </summary>
+    /// <param name="now">Source of the current time</param>
+    /// <returns>Clock</returns>
+    private static TimeProvider CreateClock(Func<DateTimeOffset> now)
+    {
+        var clock = Substitute.For<TimeProvider>();
+
+        clock.GetUtcNow().Returns(_ => now());
+
+        return clock;
+    }
+
+    /// <summary>
+    /// Create a 429 response with the given Retry-After header
+    /// </summary>
+    /// <param name="retryAfter">Retry-After header value</param>
+    /// <returns>Response</returns>
+    private static HttpResponseMessage CreateTooManyRequests(RetryConditionHeaderValue retryAfter)
+    {
+        var response = new HttpResponseMessage(HttpStatusCode.TooManyRequests);
+
+        response.Headers.RetryAfter = retryAfter;
+
+        return response;
+    }
+
+    /// <summary>
+    /// Create a handler that records every request URI, answers the logins with the given responses in turn
+    /// (the last one repeats) and every other request with the current user
+    /// </summary>
+    /// <param name="requests">List that receives the request URIs</param>
+    /// <param name="loginResponses">Factories of the login responses</param>
+    /// <returns>Handler</returns>
+    private static DelegateHttpMessageHandler CreateLoginSequenceHandler(List<string> requests, params Func<HttpResponseMessage>[] loginResponses)
+    {
+        var loginCount = 0;
+
+        return new DelegateHttpMessageHandler(request =>
+                                              {
+                                                  requests.Add(request.RequestUri!.AbsoluteUri);
+
+                                                  if (request.RequestUri.AbsolutePath.EndsWith("/users/login", StringComparison.Ordinal) == false)
+                                                  {
+                                                      return CreateJsonResponse("""{ "username": "acme" }""");
+                                                  }
+
+                                                  var index = Math.Min(loginCount, loginResponses.Length - 1);
+
+                                                  loginCount++;
+
+                                                  return loginResponses[index]();
+                                              });
+    }
+
+    /// <summary>
     /// Assert a lookup was refused for a dot segment: not found with the fixed message, no request and no log entry
     /// </summary>
     /// <param name="status">Result status</param>
@@ -2038,11 +2281,13 @@ public partial class DockerHubClientTests
     /// <param name="registry">Configured Docker Hub registry value</param>
     /// <param name="userName">Configured Docker Hub user name</param>
     /// <param name="logger">Logger that captures the client's entries; null creates a new one</param>
+    /// <param name="loginRetryAfterRegistry">Registry of the login windows; null creates a new one</param>
     /// <returns>Docker Hub client</returns>
     private static DockerHubClient CreateClient(HttpClient httpClient,
                                                 string registry = "docker.io",
                                                 string? userName = "acme",
-                                                TestLogger<DockerHubClient>? logger = null)
+                                                TestLogger<DockerHubClient>? logger = null,
+                                                LoginRetryAfterRegistry? loginRetryAfterRegistry = null)
     {
         var options = new DockerUpdateGuardOptions
                       {
@@ -2057,7 +2302,8 @@ public partial class DockerHubClientTests
 
         return new DockerHubClient(httpClient,
                                    logger ?? new TestLogger<DockerHubClient>(),
-                                   new TestOptionsMonitor<DockerUpdateGuardOptions>(options));
+                                   new TestOptionsMonitor<DockerUpdateGuardOptions>(options),
+                                   loginRetryAfterRegistry ?? new LoginRetryAfterRegistry(TimeProvider.System));
     }
 
     /// <summary>

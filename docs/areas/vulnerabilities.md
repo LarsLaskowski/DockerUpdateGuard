@@ -132,7 +132,11 @@ scan run:
 - The provider logs in by posting the Docker Hub user name and token to `DockerScoutLoginUrl` and caches the returned
   token for the whole process until one minute before the expiry stated in the token, or for five minutes when the
   expiry cannot be read. Only one login runs at a time. A failed login gives *failed*, "Docker Hub authentication
-  failed".
+  failed". After a login answered 429 with a positive `Retry-After`, the provider logs in no more before the window
+  ends, and neither does it after the Docker Hub client's login to the same URL with the same trimmed user name was
+  answered so: the lookup sends nothing and gives *failed* with `Docker Hub authentication token request for '<user>'
+  not sent: Docker Hub answered HTTP 429 and asked to wait until <until>`, also on the refresh after a 401
+  ([Integration failures](integration-failures.md#logins-inside-a-retry-after-window)).
 - Vulnerabilities are read from `<DockerScoutBaseUrl>/v1/repositories/<namespace>/<repository>/tags/<tag>/vulnerabilities`,
   following the `next` link of each page, for at most **50 pages**. Each segment is percent-encoded. A repository or tag
   with a `.` or `..` segment is not requested: the lookup logs nothing, does not log in, and gives *not found* with the

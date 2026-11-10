@@ -99,6 +99,8 @@ public static class ServiceCollectionExtensions
                 .AddHttpMessageHandler<TransientHttpRetryHandler>();
         services.AddHttpClient(PortainerClient.HttpClientName)
                 .AddHttpMessageHandler<TransientHttpRetryHandler>();
+        services.TryAddSingleton(TimeProvider.System);
+        services.AddSingleton<LoginRetryAfterRegistry>();
         services.AddSingleton<ApplicationTelemetry>();
         services.AddSingleton<IDockerInstanceClient, DockerInstanceClient>();
         services.AddSingleton<IPortainerClient, PortainerClient>();

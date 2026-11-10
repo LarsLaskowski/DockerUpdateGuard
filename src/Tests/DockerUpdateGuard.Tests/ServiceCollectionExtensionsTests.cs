@@ -4,6 +4,7 @@ using DockerUpdateGuard.DockerHub;
 using DockerUpdateGuard.Images;
 using DockerUpdateGuard.Images.Interfaces;
 using DockerUpdateGuard.Infrastructure;
+using DockerUpdateGuard.Portainer.Interfaces;
 using DockerUpdateGuard.Vulnerabilities;
 using DockerUpdateGuard.Vulnerabilities.Interfaces;
 
@@ -80,6 +81,56 @@ public class ServiceCollectionExtensionsTests
         Assert.IsNotNull(serviceProvider.GetService<DockerScoutVulnerabilityProvider>(), "The Docker Scout vulnerability provider must be registered unconditionally");
         Assert.IsNotNull(serviceProvider.GetService<TrivyVulnerabilityProvider>(), "The Trivy vulnerability provider must be registered unconditionally");
         Assert.IsNull(serviceProvider.GetService<IVulnerabilityProvider>(), "No conditional IVulnerabilityProvider registration must remain; consumers must depend on the resolver");
+    }
+
+    /// <summary>
+    /// Verify the login Retry-After registry is one singleton shared by the Docker Hub clients, the Portainer client and the Docker Scout provider
+    /// </summary>
+    [TestMethod]
+    [TestCategory("AC7")]
+    public void ServiceCollectionExtensionsLoginRetryAfterRegistryIsSharedSingleton()
+    {
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+                                                                             {
+                                                                                 ["DockerUpdateGuard:ConnectionString"] = "Host=database;Database=dug;Username=test;Password=test",
+                                                                                 ["Telemetry:EnableLogging"] = "true",
+                                                                                 ["Telemetry:EnableMetrics"] = "false",
+                                                                                 ["Telemetry:EnableTracing"] = "false",
+                                                                             })
+                                                      .Build();
+        var services = new ServiceCollection();
+
+        services.AddDockerUpdateGuardHost(configuration);
+
+        using var serviceProvider = services.BuildServiceProvider();
+        using var firstScope = serviceProvider.CreateScope();
+        using var secondScope = serviceProvider.CreateScope();
+
+        var registry = serviceProvider.GetRequiredService<LoginRetryAfterRegistry>();
+        var firstClient = firstScope.ServiceProvider.GetRequiredService<IDockerHubClient>();
+        var secondClient = secondScope.ServiceProvider.GetRequiredService<IDockerHubClient>();
+        var portainerClient = serviceProvider.GetRequiredService<IPortainerClient>();
+        var scoutProvider = serviceProvider.GetRequiredService<DockerScoutVulnerabilityProvider>();
+
+        Assert.AreNotSame(firstClient, secondClient, "The Docker Hub clients of two scopes must be separate instances");
+        Assert.AreSame(registry, GetRegistry(firstClient), "The Docker Hub client of the first scope must use the registered registry");
+        Assert.AreSame(registry, GetRegistry(secondClient), "The Docker Hub client of the second scope must use the registered registry");
+        Assert.AreSame(registry, GetRegistry(portainerClient), "The Portainer client must use the registered registry");
+        Assert.AreSame(registry, GetRegistry(scoutProvider), "The Docker Scout provider must use the registered registry");
+    }
+
+    /// <summary>
+    /// Read the login Retry-After registry a service holds, found by field type
+    /// </summary>
+    /// <param name="service">Service instance</param>
+    /// <returns>Registry or null when the service holds none</returns>
+    private static LoginRetryAfterRegistry? GetRegistry(object service)
+    {
+        var field = service.GetType()
+                           .GetFields(BindingFlags.Instance | BindingFlags.NonPublic)
+                           .FirstOrDefault(candidate => candidate.FieldType == typeof(LoginRetryAfterRegistry));
+
+        return field?.GetValue(service) as LoginRetryAfterRegistry;
     }
 
     #endregion // Methods
