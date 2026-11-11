@@ -230,12 +230,14 @@ def cell(value):
     return value.strip().strip(EMPHASIS).strip()
 
 
-def split_row(line):
-    return [cell(c) for c in re.split(r"(?<!\\)\|", line.strip().strip("|"))]
+def split_row(line, keep=False):
+    """The cells of a table row, without their emphasis; with `keep` only trimmed, so a cell of code spans (`` `A`,
+    `B` ``) keeps its backticks (Censio#137)."""
+    return [c.strip() if keep else cell(c) for c in re.split(r"(?<!\\)\|", line.strip().strip("|"))]
 
 
-def tables(body):
-    """Every Markdown table in the text, as (header cells, data rows)."""
+def tables(body, keep=False):
+    """Every Markdown table in the text, as (header cells, data rows); `keep` as for `split_row`."""
     found, header, rows = [], None, []
     for line in (body or "").splitlines():
         if not line.strip().startswith("|"):
@@ -243,7 +245,7 @@ def tables(body):
                 found.append((header, rows))
             header, rows = None, []
             continue
-        cells = split_row(line)
+        cells = split_row(line, keep)
         if all(set(c) <= set("-: ") for c in cells):
             continue
         if header is None:
@@ -805,24 +807,29 @@ def git_output(*args):
 
 
 def test_names(text):
-    """The test names of a *Test(s)* cell: comma-separated, a qualified name (`ExportTests.Writes`, a Go subtest
-    `TestParse/empty`) by the name a test file declares."""
+    """The test names of a *Test(s)* cell: its code spans when it has any (prose around them is no name), else its
+    comma-separated parts; a qualified name (`ExportTests.Writes`, a Go subtest `TestParse/empty`) by the name a test
+    file declares, and a shortened one (`…ArchiveUsed`, `ReaderLoad...`) by the part that is written out."""
+    spans = re.findall(r"`([^`\n]+)`", text)
+    parts = spans if spans else re.split(r"[,;]", text)
     names = []
-    for part in re.split(r"[,;]", text):
+    for part in parts:
         name = re.sub(r"\(\)$", "", part.strip().strip("`'\"").strip())
+        name = name.replace("\u2026", "").replace("...", "").strip()
         if name and " " not in name:
             name = name.split("/")[0].rsplit(".", 1)[-1]
-        if name:
+        if name and not (spans and " " in name):
             names.append(name)
     return names
 
 
 def row_verification(text, paths):
-    """(kind, tests or check, test names, test files) of one *Tests per criterion* cell."""
-    kind = KIND.match(text)
+    """(kind, tests or check, test names, test files) of one *Tests per criterion* cell, its code spans kept."""
+    plain = cell(text)
+    kind = KIND.match(plain)
     if kind:
-        return KINDS[kind.group(1).lower()], text[kind.end():].strip(), [], paths
-    if empty(text) or text.lower().startswith("none"):
+        return KINDS[kind.group(1).lower()], plain[kind.end():].strip(), [], paths
+    if empty(plain) or plain.lower().startswith("none"):
         return "review", "none (no tests first)", [], paths
     return "unit", text, test_names(text), paths
 
@@ -834,7 +841,8 @@ def cell_at(row, index):
 def test_rows(parts):
     """{criterion: (kind, tests or check, test names, test files)} of the plan's *Tests per criterion*."""
     planned = {}
-    for header, rows in tables(parts.get("Tests per criterion")):
+    for header, rows in tables(parts.get("Tests per criterion"), keep=True):
+        header = [cell(name) for name in header]
         test = column(header, "test(s)", "tests", "test")
         test = 1 if test is None else test
         files = column(header, "test file", "test files", "file", "files")
@@ -906,13 +914,18 @@ def changed_files():
 
 
 def carriers(criterion, verification, sources, changed):
-    """The test files that carry the criterion: one that names one of its tests, or one that carries its id (not as
-    part of a longer word or number) and is a file its row names or one the branch changes \u2014 the id in a test file
-    the branch leaves alone belongs to the test of an earlier change."""
+    """The test files that carry the criterion: the ones that name one of its tests; when none does, the files its row
+    names that carry its id (not as part of a longer word or number); when none of those does either, the files the
+    branch changes that carry it. The id alone is the last resort: an earlier feature's tests in a file the branch
+    touches carry the same `AC4` (Censio#137, Censio#140), and the id in a file the branch leaves alone belongs to the
+    test of an earlier change."""
     _, _, names, files = verification
+    named = [path for path, text in sources.items() if any(name in text for name in names)]
+    if named:
+        return named
     pattern = re.compile(rf"(?<![A-Za-z0-9]){criterion}(?![0-9])")
-    return [path for path, text in sources.items() if any(name in text for name in names)
-            or (pattern.search(text) and (path in files or path in changed))]
+    with_id = [path for path, text in sources.items() if pattern.search(text)]
+    return [path for path in with_id if path in files] or [path for path in with_id if path in changed]
 
 
 def matrix_row(criterion, planned, settled, sources, head, changed=frozenset()):

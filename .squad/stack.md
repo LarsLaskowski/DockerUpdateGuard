@@ -6,7 +6,16 @@ profile and owned by this repository: keep it true when the build changes.
 
 ## Toolchain
 
-- .NET SDK `10.0.x` (target framework `net10.0`), solution `DockerUpdateGuard.slnx`.
+- .NET SDK of `global.json` (seeded as the newest SDK of the major, `10.0.404`; `rollForward` `latestFeature`: the
+  newest installed feature band of that major, never the next major), target framework `net10.0`, solution
+  `DockerUpdateGuard.slnx`. Several majors may be installed side by side (a machine, CI); the repository is built for
+  one: every project's target framework, `global.json` and every .NET image (the defaults of the `BASE_SDK` and
+  `BASE_RUNTIME` build arguments of `src/DockerUpdateGuard/Dockerfile`) name the same major, which `dotnet_major.py`
+  checks in the *Analyzer gate*, and a new project gets it from the SDK `global.json` selects. Dependabot keeps the
+  SDK and the packages current within that major, and the floating `10.0-alpine` tags of the two .NET images resolve to
+  the newest image of it whenever the image is built (Dependabot does not read an image named through a build
+  argument); the move to the next one (target frameworks, `global.json`, the Microsoft.Extensions, ASP.NET Core and EF
+  Core packages, the image tags) is one change of its own.
 - Formatter: `reihitsu-format`, restored from the tool manifest `.config/dotnet-tools.json` (`dotnet tool restore`,
   pinned there next to `dotnet-sonarscanner` so Dependabot raises them with the analyzer), on the same release line as the
   **Reihitsu.Analyzer** version pinned in `Directory.Packages.props`; otherwise the formatter can revert
@@ -55,11 +64,19 @@ anywhere. Do not grep console build output instead: an incremental build prints 
 Easy to get wrong by hand: `#region` blocks on every type, XML documentation on every member, no
 underscores in member names, a region for an interface implementation named after the interface.
 
-SonarQube Cloud's own quality profile can still report `S####` rules the local default profile does not,
-and its non-Roslyn checks (hotspots, taint analysis, duplication) have no local equivalent: the *Sonar gate*
-below reports their issues and hotspots and the quality gate, duplication included, on the draft pull request.
+SonarAnalyzer.CSharp runs only the rules of *Sonar way core* by default. The rules the project's SonarQube Cloud C#
+profile adds (*Sonar way comprehensive*: S3776, S1192, S107, …), and the core rules it switches off, are set in the
+`squad:sonar-rules` block of `.editorconfig`, which `python3 .squad/tools/sonar-rules.py` writes from the two
+profiles (`--check` reports a block out of date; severity `SONAR_RULES_SEVERITY` in `squad_settings.py`): the
+*Analyzer gate* reports them in a changed file, so no rule of the profile is "one no local analyzer reports". Here the
+severity is `warning`, which `TreatWarningsAsErrors` turns into a build error everywhere, as the `Warning` action of
+the rulesets in `rules/` does: an `.editorconfig` severity overrides a ruleset's action, so a lower one would weaken
+the rules the rulesets enforce (S107, S3776). S1192 is in the block too; the `[**/Migrations/*.cs]` section after
+it switches the rule off for the EF Core migrations, and as the later section it wins there. SonarQube Cloud's non-Roslyn checks (hotspots,
+taint analysis, duplication) have no local equivalent: the *Sonar gate* below reports their issues and hotspots and
+the quality gate, duplication included, on the draft pull request.
 
-One such C# rule that bit (`csharpsquid:S2589`, "condition always evaluates to True"): a nullable local that is assigned a
+One rule of the block that bit (`csharpsquid:S2589`, "condition always evaluates to True"): a nullable local that is assigned a
 value already checked as non-null and then tested `is not null` in a loop condition (`while (requestUri is not null)`).
 Declare the local non-nullable after the null check and, when the loop is left through `break` or `return`, loop with
 `while (true)`.
@@ -185,10 +202,13 @@ Constructors store their arguments and never throw: a test harness builds these 
 fail.
 The `Skeleton` body above is the default. A zero-value stub is allowed only where it would break a test that
 exists and passes today: the new tests must still fail on the stub, and the Dev reports it as a deviation.
-A private member or parameter that nothing calls or reads yet fails the build as S1144 (unused private member) or
-S1172 (unused parameter). Wrap exactly those members in `#pragma warning disable S1144, S1172` /
-`#pragma warning restore S1144, S1172` with the comment `// Skeleton: removed with the implementation`; the Dev lists
-each pragma in its report and removes it in mode `implement`, and the Reviewer blocks one that is still there.
+A skeleton raises diagnostics by construction, which the zero-diagnostic rule does not count against it: S1144
+(unused private member), S1172 (unused parameter), S4487 (a private field assigned but not read yet), S2325 (a member
+that does not use instance data yet), CS0067 (an event never raised yet), CS0649 (a field never assigned yet) and
+RH2003 (`NotImplementedException`, which the body above avoids). Wrap exactly the members that raise one in
+`#pragma warning disable <the ids the build reports>` / `#pragma warning restore <the same ids>` with the comment
+`// Skeleton: removed with the implementation` — no other id; the Dev lists each pragma in its report and removes it in
+mode `implement`, and the Reviewer blocks one that is still there.
 
 ## Dependencies
 

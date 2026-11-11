@@ -9,7 +9,7 @@ To begin you'll need Git, the .NET SDK, and a PostgreSQL instance set up on your
 
 The `DockerUpdateGuard` repository uses Git as its source control system. If you haven't already installed it, you can download it [here](https://git-scm.com/downloads) or, if you prefer a GUI-based approach, try [GitHub Desktop](https://desktop.github.com/).
 
-Once Git is installed, you'll also need the .NET SDK matching the version targeted by the solution (currently `net10.0`). Instructions and downloads for your preferred OS can be found [here](https://dotnet.microsoft.com/download).
+Once Git is installed, you'll also need a .NET 10 SDK at least as new as the one `global.json` names (currently `10.0.404`; a later feature band of .NET 10 works too) for the solution's target framework `net10.0`. Instructions and downloads for your preferred OS can be found [here](https://dotnet.microsoft.com/download).
 
 The application connects to a PostgreSQL database at runtime and applies EF Core migrations automatically on startup. A local PostgreSQL instance (native or via Docker) is enough for development.
 

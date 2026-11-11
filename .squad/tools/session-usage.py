@@ -34,7 +34,8 @@ this script cannot read is skipped, never guessed.
 Usage, from anywhere:
     python3 .squad/tools/session-usage.py [--session <session id>]
 
-Prints Markdown tables (per model, per subagent type). Exit code 0 when a transcript was read,
+Prints Markdown tables (per model, per subagent type), then the orchestrating session's own share of the weighted
+figure, with a note naming its model when that share is above `ORCHESTRATOR_NOTE` percent. Exit code 0 when a transcript was read,
 2 when none was found (not a Claude Code session, or the id is unknown): it then prints "not provided", which the
 wrap-up records as it stands.
 """
@@ -69,6 +70,8 @@ PRICES = {
 REFERENCE_PRICE = PRICES["sonnet"][0]
 FAMILY = re.compile(r"(?<![a-z])(" + "|".join(PRICES) + r")(?![a-z])")
 NOT_PROVIDED = "not provided (no Claude Code session transcript found)"
+# From this share of the weighted figure on, the summary names the orchestrating session's model (in percent).
+ORCHESTRATOR_NOTE = 50
 NAME = re.compile(r"[\w.-]{1,64}")
 TOTAL = "**Total**"
 JSONL = ".jsonl"
@@ -197,20 +200,20 @@ def agent_type(transcript):
 
 
 def read_session(path):
-    """(per model, per agent type) of the session and all its subagents."""
+    """(per model, per agent type, the session's own per model) of the session and all its subagents."""
     per_model = collections.defaultdict(collections.Counter)
     seen = set()
-    read_transcript(path, per_model, seen)
+    own = read_transcript(path, per_model, seen)
     agents = {}
     pattern = os.path.join(path[: -len(JSONL)], "subagents", "agent-*.jsonl")
     for transcript in sorted(glob.glob(pattern)):
-        own = read_transcript(transcript, per_model, seen)
+        launched = read_transcript(transcript, per_model, seen)
         entry = agents.setdefault(agent_type(transcript), {"launches": 0, "models": collections.defaultdict(
             collections.Counter)})
         entry["launches"] += 1
-        for model, counter in own.items():
+        for model, counter in launched.items():
             entry["models"][model].update(counter)
-    return per_model, agents
+    return per_model, agents, own
 
 
 def timestamp(record):
@@ -350,12 +353,30 @@ def agent_table(agents):
     return lines
 
 
-def report(per_model, agents):
+def orchestrator_lines(per_model, own):
+    """The orchestrating session's own share of the weighted figure, and a note naming its model when the share is
+    above `ORCHESTRATOR_NOTE` (Squad-Spec-Repository-Template#313)."""
+    total, mine = weighted_sum(per_model)[0], weighted_sum(own)[0]
+    if not total or not own:
+        return []
+    share = round(100 * mine / total)
+    models = ", ".join(sorted(own))
+    lines = [f"Orchestrator (this session without its subagents): {number(mine)} weighted, {share} % of the total, on "
+             f"{models}."]
+    if share > ORCHESTRATOR_NOTE:
+        lines.append(f"Note: the orchestrating session carries more than {ORCHESTRATOR_NOTE} % of the run's weighted "
+                     f"figure on {models}; a squad run's orchestrator on Sonnet with medium effort costs several times "
+                     "less, and the members' work does not change with it.")
+    return [""] + lines
+
+
+def report(per_model, agents, own=None):
     lines = ["Tokens per model (the session and all its subagents; Claude Code's own background calls are not in "
              "the transcripts, so this is a lower bound):", ""]
     lines += model_table(per_model)
     lines += ["", "Subagents:", ""]
     lines += agent_table(agents) if agents else ["No subagent was launched in this session."]
+    lines += orchestrator_lines(per_model, own or {})
     lines += ["", WEIGHTED_NOTE]
     return "\n".join(lines)
 

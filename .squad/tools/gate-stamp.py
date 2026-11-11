@@ -60,6 +60,10 @@ whitespace at the end of its lines or blank lines at its end: a `git diff --chec
 newline, mode or file type is none), and `--verify` accepts it on
 the same terms. A review round belongs to the full stamp before it, so a verbatim fix needs no new round.
 
+Each gate's whole output goes to a file outside the repository (`<temp>/squad-gates/<folder>-<sha>.log`, named at the
+end); the session sees each command with `pass`, or with `FAIL` and the last `GATE_TAIL_LINES` lines of its output,
+so a long test log is not carried in the orchestrator's context for the rest of the run.
+
 `--dry-run` prints the gates and their commands without running them. `--stdin` reads the log from standard input
 (after step 10 removed the work folder; `plan.md` is then read from the commit before that removal), appends the row
 and prints the updated log to standard output and everything else to standard error, as `squad-log.py --stdin` does.
@@ -134,6 +138,8 @@ RECORD_PATHSPECS = ["docs/decisions/", "docs/areas/"]
 VERBATIM = ", verbatim"
 CHECK = "check"
 PASSED = "pass"
+# The lines of a failed gate's output the session sees; the whole output is in the file `output_path` names.
+GATE_TAIL_LINES = 60
 FULL = (FORMAT_CHECK, ANALYZER, TEST_COVERAGE, COVERAGE_GATE)
 ORDER = (FORMAT_CHECK, ANALYZER_LINT, ANALYZER, TEST_PROJECT, TEST_COVERAGE, COVERAGE_GATE)
 # .squad/routing.md, *Gates of a patch*: the kind of a changed file -> the gates of its row.
@@ -402,16 +408,39 @@ def tool_gate(tool, options):
     return " ".join([tool, *options]), [" ".join(["python3", f".squad/tools/{tool}", *options])]
 
 
-def run_command(command, root, stream):
-    """Run one command with `bash -c` from the repository root and print its output to `stream` (None: standard
-    output); True when it exits 0."""
-    print(f"$ {command}", file=stream or sys.stdout, flush=True)
+def output_path(name, sha):
+    """The file the full output of a stamp's gates goes to, outside the repository: `<temp>/squad-gates/<folder>-<sha>.log`."""
+    directory = os.path.join(tempfile.gettempdir(), "squad-gates")
+    os.makedirs(directory, exist_ok=True)
+    return os.path.join(directory, f"{name}-{(sha or 'head')[:12]}.log")
+
+
+def run_command(command, root, stream, full=None):
+    """Run one command with `bash -c` from the repository root; True when it exits 0. Its whole output goes to the
+    file `full` and `stream` (None: standard output) gets the command and its result, a failure with the last
+    `GATE_TAIL_LINES` lines of its output (#313: a long test log is not carried in the orchestrator's context); without
+    `full`, `stream` gets the whole output."""
+    out = stream or sys.stdout
+    print(f"$ {command}", file=out, flush=True)
     done = subprocess.run(["bash", "-c", command], cwd=root, capture_output=True, text=True, check=False)
-    print(done.stdout + done.stderr, file=stream or sys.stdout, end="", flush=True)
-    return done.returncode == 0
+    text = done.stdout + done.stderr
+    if full is None:
+        print(text, file=out, end="", flush=True)
+        return done.returncode == 0
+    full.write(f"$ {command}\n{text}" + ("" if text.endswith("\n") or not text else "\n"))
+    full.flush()
+    if done.returncode == 0:
+        print("  pass", file=out, flush=True)
+        return True
+    lines = text.splitlines()
+    shown = lines[-GATE_TAIL_LINES:]
+    head_note = f"  FAIL (exit {done.returncode}); the last {len(shown)} of {len(lines)} lines:" if len(lines) > \
+        len(shown) else f"  FAIL (exit {done.returncode}):"
+    print("\n".join([head_note, *shown]), file=out, flush=True)
+    return False
 
 
-def run_gates(run, root, stream):
+def run_gates(run, root, stream, full=None):
     """[(label, status)]: `pass`, `FAIL`, or `not run (<gate> failed)` for a gate whose input failed."""
     results, failed = [], set()
     for label, commands in run:
@@ -422,7 +451,7 @@ def run_gates(run, root, stream):
             continue
         passed = True
         for command in commands:  # every profile's command runs, also after one failed
-            passed = run_command(command, root, stream) and passed
+            passed = run_command(command, root, stream, full) and passed
         results.append((label, PASSED if passed else "FAIL"))
         if not passed:
             failed.add(label)
@@ -474,6 +503,15 @@ def run_context(root, name, rows, after_pr):
             "records": bool(changed(root, base, RECORD_PATHSPECS))}
 
 
+def run_logged(run, root, name, sha, stream):
+    """`run_gates` with the whole output in the file `output_path` names, which it prints at the end."""
+    path = output_path(name, sha)
+    with open(path, "w", encoding="utf-8") as full:
+        results = run_gates(run, root, stream, full)
+    print(f"Full gate output: {path} (hand it to the reviewers as the stamp's gate output)", file=stream or sys.stdout)
+    return results
+
+
 def stamp_command(options, root, name, log_path, after_pr, stream=None):
     """Run the gates and append the stamp row; the exit code."""
     dirty = uncommitted(root)
@@ -494,7 +532,7 @@ def stamp_command(options, root, name, log_path, after_pr, stream=None):
             print(f"{FIGURE} (no gate)")
         return 0
     sha = head(root)
-    results = run_gates(run, root, stream)
+    results = run_logged(run, root, name, sha, stream)
     hits = figure_hits(root, stream) if figure else None
     if head(root) != sha:
         results.append(("HEAD", f"moved to {head(root)} while the gates ran"))

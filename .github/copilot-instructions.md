@@ -117,10 +117,11 @@ All commands, with what each one checks, are listed in [`.squad/stack.md`](/.squ
 - Runtime projects disable generated assembly info and link `SharedAssemblyInfo.cs` from the repository root.
 - Runtime and test projects use per-configuration rulesets from `rules/DockerUpdateGuard.Debug.ruleset` and
   `rules/DockerUpdateGuard.Release.ruleset`; rules SonarAnalyzer.CSharp disables by default (e.g. `S3776`) are
-  enabled there.
+  enabled there and, with the rest of the SonarQube Cloud profile, in the `squad:sonar-rules` block of `.editorconfig`
+  (*Analyzer gate* in `.squad/stack.md`).
 - SonarCloud rule suppressions are centralized in the shared `src/GlobalSuppressions.cs` (linked into each
-  project), never scattered per file; the only exception is the temporary S1144/S1172 pragma of a skeleton
-  (*Skeleton* in `.squad/stack.md`), which is removed with the implementation.
+  project), never scattered per file; the only exception is the temporary pragma of a skeleton (the ids
+  *Skeleton* in `.squad/stack.md` lists), which is removed with the implementation.
 - Tests live under `src/Tests`, not a top-level `tests` folder; keep new test projects there.
 - EF Core migrations follow the SeriesOverwatch pattern: the first migration is `InitialCreate`, later ones
   `Update1`, `Update2`, …; migration files are renamed to drop the timestamp prefix, while the generated

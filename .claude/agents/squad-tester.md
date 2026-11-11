@@ -20,8 +20,9 @@ Mode `tests-first`:
    the test location from *Layout*, in the test files the plan names, reusing the existing test doubles.
    Each one fails on the current code or on the skeleton. A plan-named test that cannot fail yet (its data is
    already real; a guard, pin or determinism check that holds on the skeleton) is not written in this mode:
-   list it in the hand-back as **deferred**, with its name and criterion; the orchestrator launches mode
-   `coverage` for it even when the *Coverage gate* already passes. If the plan assigns you existing test call sites of a
+   list it in the hand-back as **deferred**, with its name and criterion, and end the hand-back with the line
+   `Deferred: <test names>` (`Deferred: none` without one), which the orchestrator's log row carries; it launches
+   mode `coverage` for them even when the *Coverage gate* already passes. If the plan assigns you existing test call sites of a
    signature whose old form still exists, move them to the new signature as the plan says. For a bug, use
    the input reported in the issue. For each existing test the plan keeps unchanged, check its input and
    expectation against every new criterion and report a contradiction in the hand-back. A plan's claim of a bound (memory, size, time) gets a test that fails

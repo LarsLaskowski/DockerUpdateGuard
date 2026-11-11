@@ -99,10 +99,12 @@ A fix, delta or `revise` round of the same member within the same run continues 
 launch; so do the Lead's mode `plan` after mode `spec` and a feature's next task group (the member's last agent of the
 same mode, with the group's task rows). The first launch of any other mode is fresh, and so is a launch after a session
 restart (the agent id is gone) or after one that ended on an API error. An agent continued five times or past 300,000
-reported tokens, or one that ran on another model than *Launch model* names, gets a fresh launch with a short
-hand-over — the plan or task group, what the earlier rounds settled, the open findings and the head SHA.
-`squad-next.py` names for every launch the agent it continues, or why it is fresh, and how to log it; what a continued
-member may do is in `team.md` (*Shared rules*).
+reported tokens, one that ran on another model than *Launch model* names, or one already continued in another mode,
+gets a fresh launch with a short hand-over — the plan or task group, what the earlier rounds settled, the open findings
+and the head SHA.
+`squad-next.py` names for every launch the agent it continues, by the step cell of its fresh launch, or why it is
+fresh, and how to log it: keep the agent id of every fresh launch, since the agent it names is not always the member's
+last one. What a continued member may do is in `team.md` (*Shared rules*).
 
 ## Commits
 
@@ -150,7 +152,9 @@ review (`update_pull_request` with `draft: false`) only when all of this holds o
 - no commit for a known failure or finding is still to be pushed, and after a fix in the squad skills the
   re-approval of step 9 has passed on this head.
 
-Each failure is fixed on the branch as step 11 describes, and the check starts again on the new head. When
+Each failure is fixed on the branch as step 11 describes, and the check starts again on the new head. A merge or close
+of the pull request ends the watching, never the run: the orchestrator logs it as a step-11 row (`11 Merged`) and runs
+step 12 at once, whether or not the PR was marked ready. When
 a check fails for reasons outside the change (red on the base branch too), or the code analysis cannot be
 read, the PR stays a draft and the user is told what blocks it. Once ready, the PR is not turned back into
 a draft; review comments and later CI failures are worked as before.
