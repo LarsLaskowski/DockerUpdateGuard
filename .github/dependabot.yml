@@ -15,7 +15,43 @@ updates:
       nuget-dependencies:
         patterns:
           - "*"
-        
+    # The next major of these targets the next .NET only (Microsoft.AspNetCore.Mvc.Testing and
+    # Microsoft.EntityFrameworkCore 11.0.0: net11.0): it comes with the change of the target framework, not alone.
+    ignore:
+      - dependency-name: "Microsoft.AspNetCore.*"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "Microsoft.EntityFrameworkCore*"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "Npgsql.EntityFrameworkCore.PostgreSQL"
+        update-types: ["version-update:semver-major"]
+
+  # The SDK of global.json: patch and feature bands as they are released; the next major (10 to 11) comes with the
+  # change of the target framework, never alone.
+  - package-ecosystem: dotnet-sdk
+    directory: "/"
+    schedule:
+      interval: weekly
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+
+  # The images of src/DockerUpdateGuard/Dockerfile (defaults of its build arguments). The .NET images move to the
+  # next major with the target framework, as the SDK does.
+  - package-ecosystem: docker
+    directory: "/src/DockerUpdateGuard"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    ignore:
+      - dependency-name: "mcr.microsoft.com/dotnet/*"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "dotnet/*"
+        update-types: ["version-update:semver-major"]
+    groups:
+      docker-images:
+        patterns:
+          - "*"
+
   - package-ecosystem: github-actions
     directory: "/"
     schedule:

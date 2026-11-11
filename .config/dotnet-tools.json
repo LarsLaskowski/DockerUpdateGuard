@@ -7,7 +7,7 @@
       "commands": [
         "reihitsu-format"
       ],
-      "rollForward": false
+      "rollForward": true
     },
     "dotnet-sonarscanner": {
       "version": "12.1.0",
