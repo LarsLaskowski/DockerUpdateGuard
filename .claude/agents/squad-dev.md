@@ -29,7 +29,10 @@ The orchestrator tells you which **mode** to run:
   existing test the default body breaks stays red until the implementation and is named in your report. Rewrite
   the existing files the plan lists, and adapt exactly the existing test call sites the plan assigns to you
   for an incompatible signature change (mechanically, no assertion touched), so the suite builds. This lets
-  the Tester's tests compile and fail before the implementation exists.
+  the Tester's tests compile and fail before the implementation exists. A composition-root (dependency injection)
+  registration that an acceptance criterion's test asserts — a lifetime, a shared instance — is no signature: leave
+  it to mode `implement`, so that test fails first; when *Build* or an existing test needs it already, add it and
+  name it in your report, and the Tester hands that test back as deferred.
 - `implement` — steps 1–3 below. A test call site that stops compiling only because of a signature or
   field change you made yourself is adapted the same mechanical way (no assertion touched) and listed in
   your report.

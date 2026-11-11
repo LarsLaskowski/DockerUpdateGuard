@@ -116,10 +116,21 @@ configuration, documentation only) may declare steps 4 (*Skeleton*), 5 (*Tests f
 gate* **not applicable**; the tier and its other steps stay. The Lead then names in `plan.md`, under
 *Verification without tests*, where and by whom each acceptance criterion is verified instead (a workflow
 step, a PR dry run, a build of the image, a read-only check); the orchestrator logs the skipped steps with a
-pointer to it. Step 6 is the Dev's edits alone, and step 7 runs every gate but the *Coverage gate* (a branch of
+pointer to it. Step 6 is the Dev's edits, plus the Tester's share where *Verification without tests* or
+*Documentation updates* names the Tester (test documentation, a dry-run artifact: *Dry-run artifacts*), in mode
+`coverage` after the Dev; step 7 runs every gate but the *Coverage gate* (a branch of
 Markdown files only: *Format check* alone, `gate-stamp.py`). The
 Reviewer checks that the section exists, covers every criterion and that the diff really holds no production
 or test code — otherwise the skip is blocking. If such code changes after all, steps 4–6 apply again.
+
+### Dry-run artifacts
+
+A criterion verified by a dry run on the branch — a planted failing test that must turn a gate or a CI job red, a
+deliberate defect a check must catch — never reaches the merged change. Its owner writes the artifact as a patch file
+outside the working tree (the scratchpad, a scratch worktree), checks it with `git apply --check` (`git-guard.py` allows a
+member only the forms of `git apply` that read a patch) and hands back its path. The orchestrator applies it as one commit, runs or waits
+for the check, reverts that commit with `git revert`, and logs both commits with the check's result; the Reviewer
+confirms that the revert left nothing of it.
 
 ### Criteria verified only in CI
 
@@ -240,8 +251,9 @@ non-blocking findings are decided in step 8 (*Non-blocking findings*). Otherwise
 logged → 10.
 
 A fix the Lead orders goes back to step 6 or 8 and counts against the review loop; any edit beyond the
-record status — `docs/ARCHITECTURE.md` included — has an owner and gets a delta round. `NOT APPROVED` without
-a fix means the Lead decides or escalates. After the PR, a re-approval runs the same checklist once CI on the
+record status — `docs/ARCHITECTURE.md` included — has an owner and gets a delta round. Once that round is clean, the
+checklist runs again; the Lead's `approve-pr` agent is continued only for a point the fix leaves open, and a point it
+settled is not listed again. `NOT APPROVED` without a fix means the Lead decides or escalates. After the PR, a re-approval runs the same checklist once CI on the
 new head has finished and passes.
 
 ## Plan challenge
@@ -272,7 +284,8 @@ Security delta confirmation.
 
 If the Lead concludes in step 2 (also after answering the Devil's Advocate) that no code change is needed —
 duplicate, cannot be reproduced, works as designed (e.g. covered by an accepted decision record), or out of
-scope — it returns `RESULT: NO CHANGE` with a proposed issue comment. The orchestrator shows the comment to
+scope — it returns `RESULT: NO CHANGE` with a proposed issue comment, written for the issue's author (`squad-lead.md`,
+*Output format*: none that thanks the repository owner who posts it). The orchestrator shows the comment to
 the Product Manager and posts it only after confirmation (a public statement on the issue), with the log
 appended as a collapsed "Squad working record" block. It removes the work folder with a commit and pushes; no
 PR is opened, the branch stays without one, and the user is told so.

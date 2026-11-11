@@ -11,11 +11,13 @@ trust, which a cloud or `-p` session never gives. It reads the hook input JSON f
 
 - allowed: read-only Git (`status`, `diff`, `log`, `show`, `ls-files`, `grep`, `rev-parse`, `merge-base`,
   `fetch`, `tag --list` / `--contains`, `branch --list` / `--show-current`, `ls-remote`, `clone`, …),
-  `git add` (the coverage gate only counts tracked files) and `git worktree add` / `remove` / `prune` /
-  `list` (scratch worktrees, `.squad/orchestration.md`, *Concurrency*), and read-only `gh` (`gh api` without a
+  `git add` (the coverage gate only counts tracked files), `git worktree add` / `remove` / `prune` /
+  `list` (scratch worktrees, `.squad/orchestration.md`, *Concurrency*), `git apply --check` / `--stat` / `--numstat` /
+  `--summary` without `--apply` (a dry-run patch checked, never applied: `.squad/routing.md`, *Dry-run artifacts*),
+  and read-only `gh` (`gh api` without a
   method or field, `gh pr view`, `gh run list`, `gh ruleset list`, …);
 - denied: `commit`, `push`, `stash`, `reset`, `checkout`, `switch`, `restore`, `rebase`, `merge`,
-  `cherry-pick`, `revert`, `rm`, `mv`, `clean`, `pull`, `am`, `apply`, `tag <name>`, `branch -d/-D/-m/…`,
+  `cherry-pick`, `revert`, `rm`, `mv`, `clean`, `pull`, `am`, `apply` (but its checks above), `tag <name>`, `branch -d/-D/-m/…`,
   `notes`, `update-ref`, `reflog`, `gc`, `filter-branch`, `config` (except `--get*`, `--list`);
 - denied: an alias or an included configuration file set for the call (`git -c alias.ci=commit ci`,
   `--config-env=alias.…`, `-c include.path=…`, `GIT_CONFIG_KEY_<n>` / `GIT_CONFIG_PARAMETERS` naming one), whose
@@ -44,7 +46,7 @@ import sys
 
 GIT_DENIED = {
     "commit", "push", "stash", "reset", "checkout", "switch", "restore", "rebase", "merge", "cherry-pick",
-    "revert", "rm", "mv", "clean", "pull", "am", "apply", "notes", "update-ref", "reflog", "gc",
+    "revert", "rm", "mv", "clean", "pull", "am", "notes", "update-ref", "reflog", "gc",
     "filter-branch", "replace", "submodule", "bisect",
 }
 GIT_OPTIONS_WITH_VALUE = {"-C", "-c", "--config-env", "--git-dir", "--work-tree", "--namespace", "--exec-path"}
@@ -99,6 +101,8 @@ BRANCH_WRITE = {"-d", "-D", "-m", "-M", "-c", "-C", "-f", "--delete", "--move", 
 BRANCH_READ = {"-l", "--list", "-a", "-r", "--all", "--remotes", "--show-current", "--contains", "--merged",
                "--no-merged", "-v", "-vv", "--verbose"}
 CONFIG_READ = {"-l", "--list", "--show-origin", "--show-scope"}
+# `git apply` options that only read the patch: with one of them and without `--apply`, nothing is applied.
+APPLY_READ = {"--check", "--stat", "--numstat", "--summary"}
 SHELLS = {"sh", "bash", "zsh", "dash", "ksh"}
 # What a member runs instead of a denied command that has an allowed equivalent (`.squad/team.md`, *Git and GitHub*).
 GIT_INSTEAD = {
@@ -162,7 +166,16 @@ def config_verdict(args):
     return "git config (write)"
 
 
-GIT_CHECKS = {"tag": tag_verdict, "branch": branch_verdict, "worktree": worktree_verdict, "config": config_verdict}
+def apply_verdict(args):
+    """`git apply --check` (or `--stat`, `--numstat`, `--summary`) reads a patch; any other form applies it."""
+    # Git accepts an unambiguous prefix of a long option, so `--ap` and `--appl` are `--apply` too.
+    if not any(len(a) >= 4 and "--apply".startswith(a) for a in args) and any(a in APPLY_READ for a in args):
+        return None
+    return "git apply (only --check, --stat, --numstat or --summary without --apply reads a patch)"
+
+
+GIT_CHECKS = {"tag": tag_verdict, "branch": branch_verdict, "worktree": worktree_verdict, "config": config_verdict,
+              "apply": apply_verdict}
 
 
 def git_verdict(tokens):

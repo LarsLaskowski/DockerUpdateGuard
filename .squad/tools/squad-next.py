@@ -128,13 +128,21 @@ SECURITY_VERDICT = re.compile(r"VERDICT:\s*(APPROVED|CHANGES_REQUIRED)", re.I)
 OBJECTIONS = re.compile(r"VERDICT:\s*(?:(?P<none>NO OBJECTIONS)|OBJECTIONS\s+(?P<major>\d+)\s+major" + NOTE +
                         r",\s*(?P<minor>\d+)\s+minor)", re.I)
 WAITS = re.compile(r"\bwaits? for\b|\bposted for agreement\b", re.I)
-APPROVED_ROW = re.compile(r"\bapproved\b", re.I)
-NOT_APPROVED = re.compile(r"\bnot approved\b", re.I)
+# The orchestrator's approval row of step 9 starts with these words; a mention of the Lead's NOT APPROVED later in
+# its prose decides nothing (Censio#140).
+CHECKLIST = re.compile(r"^\s*(?:re-)?approved by checklist\b", re.I)
+# A step-5 Tester row names its deferred tests after `Deferred:` (`Deferred: none` without one).
+DEFERRED = re.compile(r"\bDeferred:\s*(?P<names>[^\n|]*)", re.I)
+# A step-11 Orchestrator row that the PR was merged or closed: the watching ends, step 12 runs at once.
+PR_ENDED = re.compile(r"\b(?:merged|closed)\b", re.I)
+# A continuation that a fix, delta or revise round makes in another mode is no change of mode.
+ROUND_OF_SAME_MODE = re.compile(r"\b(?:fix|delta|revis)", re.I)
 READY = re.compile(r"\bready for review\b", re.I)
 EARLY_PR = re.compile(r"\bearly draft pr\b", re.I)
 SPEC_SETTLED = re.compile(r"\bspec (?:approved|corrected)\b", re.I)
 CORRECTED = re.compile(r"\bspec corrected\b", re.I)
 NOTES = re.compile(r"^#{2,6}[ \t]+Challenge notes\b", re.I | re.M)
+NOTES_ROW = re.compile(r"\bnotes\b", re.I)
 CONTINUATION_CAP = 5
 CONTINUATION_TOKENS = 300_000
 SPEC_APPROVAL = getattr(settings, "SPEC_APPROVAL", "lead")
@@ -164,10 +172,11 @@ BLOCKING_TAG = re.compile(r"\[BLOCKING, verbatim\]", re.I)
 STATUS_FIELD = re.compile(r"^[+-]- \*\*Status:\*\*")
 DECISIONS = "docs/decisions/"
 DO = "  Do: "
+FIX_TESTS = "Fix tests"
 THEN = "  Then: "
 BASE_HANDOVER = "the base ref, the head SHA"
-REVIEW_HANDOVER = ("the base ref, the exact code SHA of the stamp, {record} and the stamp's gate output; later "
-                   "commits during the round may only touch specs/")
+REVIEW_HANDOVER = ("the base ref, the exact code SHA of the stamp, {record} and the stamp's gate output (the file "
+                   "its `Full gate output:` line names); later commits during the round may only touch specs/")
 
 Row = collections.namedtuple("Row", "index step number who result")
 
@@ -262,22 +271,34 @@ def trailer_of(row):
 
 
 def agent_chains(run, agent):
-    """The agent's launches as chains {step, mode, launch, tokens, continuations}, the index of its last fresh launch
-    and the index of the chain of its last row."""
+    """The agent's launches as chains {step, mode, launch, tokens, continuations, mixed}, the index of its last fresh
+    launch and the index of the chain of its last row. "mixed" is the step cell of a continuation logged in another
+    mode than the chain's own (not a fix, delta or revise round, and not the Lead's plan after its spec), or None."""
     chains, by_step, fresh, last = [], {}, None, None
     for row in run.of(agent):
         model, tokens, continued, origin = trailer_of(row)
         if not continued:
             fresh = last = by_step[row.step] = len(chains)
             chains.append({"step": row.step, "mode": mode_of(agent, row.number, row.step), "tokens": tokens,
-                           "launch": model, "continuations": 0})
+                           "launch": model, "continuations": 0, "mixed": None})
             continue
         index = by_step.get(origin) if origin else fresh
         if index is not None:
-            chains[index]["tokens"] += tokens
-            chains[index]["continuations"] += 1
+            chain = chains[index]
+            chain["tokens"] += tokens
+            chain["continuations"] += 1
+            if chain["mixed"] is None and other_mode(agent, chain["mode"], row):
+                chain["mixed"] = row.step
             last = index
     return chains, fresh, last
+
+
+def other_mode(agent, mode, row):
+    """True when a continuation row of `agent` works in another mode than its chain's `mode` (Censio#140: tests-first
+    continued into coverage, skeleton into implement)."""
+    if ROUND_OF_SAME_MODE.search(row.step) or (agent, mode) == (LEAD, "spec"):
+        return False
+    return mode_of(agent, row.number, row.step) != mode
 
 
 def mode_of(agent, number, step):
@@ -321,15 +342,25 @@ def pick_chain(run, agent, mode, rule):
     if index is None:
         return None, (f"no earlier {agent} launch" if rule == LAST else f"the first launch of mode {mode}"), False
     chain = chains[index]
+    why = spent(run, agent, chain)
+    return (None, why, False) if why else (chain, None, index == fresh)
+
+
+def spent(run, agent, chain):
+    """Why the agent of `chain` is not continued again (*Continuing a member*), or None: the cap, a continuation in
+    another mode, or another model than *Launch model* names."""
     if chain["continuations"] >= CONTINUATION_CAP or chain["tokens"] >= CONTINUATION_TOKENS:
-        return None, (f"the agent of \"{chain['step']}\" was continued {chain['continuations']} time(s) at "
-                      f"{chain['tokens']:,} tokens: from {CONTINUATION_CAP} continuations or {CONTINUATION_TOKENS:,} "
-                      "tokens on, a fresh launch with a short hand-over"), False
+        return (f"the agent of \"{chain['step']}\" was continued {chain['continuations']} time(s) at "
+                f"{chain['tokens']:,} tokens: from {CONTINUATION_CAP} continuations or {CONTINUATION_TOKENS:,} "
+                "tokens on, a fresh launch with a short hand-over")
+    if chain["mixed"]:
+        return (f"the agent of \"{chain['step']}\" was continued in another mode at \"{chain['mixed']}\": it holds two "
+                "modes' work, so a fresh launch with a short hand-over")
     expected, _ = expected_model(run, agent)
     if chain["launch"] and "/" in expected and squad_log().model_warning(agent, chain["launch"], expected, False):
-        return None, (f"the agent of \"{chain['step']}\" ran on {chain['launch']}, not {expected}: never continued, a "
-                      "fresh launch with the right model and a short hand-over"), False
-    return chain, None, index == fresh
+        return (f"the agent of \"{chain['step']}\" ran on {chain['launch']}, not {expected}: never continued, a "
+                "fresh launch with the right model and a short hand-over")
+    return None
 
 
 def log_command(run, step, who, continuation=""):
@@ -344,12 +375,13 @@ def launch(run, agent, mode, step, handover, rule=None, purpose=""):
     model, source = expected_model(run, agent)
     lines = [f"  Launch: {agent}, mode {mode}" + (f" — {purpose}" if purpose else ""), f"  Model: {model} ({source})"]
     if chain is None:
-        lines.append(f"  Agent: fresh launch — {why}")
+        lines.append(f"  Agent: fresh launch, a new agent (no SendMessage to an earlier one) — {why}")
         continuation = ""
     else:
         lines.append(f"  Agent: continue the agent of \"{chain['step']}\" ({chain['continuations']} continuation(s), "
-                     f"{chain['tokens']:,} tokens); fresh with the same hand-over instead after a session restart (the "
-                     "agent id is gone) or when that launch ended on an API error")
+                     f"{chain['tokens']:,} tokens) — the agent id that row was logged with, not simply the member's "
+                     "last one; fresh with the same hand-over instead after a session restart (the agent id is gone) "
+                     "or when that launch ended on an API error")
         continuation = " --continued" if is_last else f" --continued-from \"{chain['step']}\""
     short = " — short: the plan or task group, what earlier rounds settled, the open findings, the head SHA" \
         if why and "short hand-over" in why else ""
@@ -540,11 +572,23 @@ def spec_challenge(run, challenge):
         return heading("step 2a — a major spec objection") + launch(
             run, LEAD, "revise", "2a Spec revise (challenge)",
             "all objections, minor ones included: it answers each in the spec's *Challenge* section")
-    if minor and not major and not NOTES.search(run.spec or ""):
+    if minor and not major and not notes_settled(run, run.spec, {"2a"}, challenge[-1]):
         return heading("step 2a — minor spec objections") + [
             DO + "append the minor objections verbatim to spec.md as a *Challenge notes* section (the Lead answers them "
-            "while it plans); commit"]
+            "while it plans); commit",
+            orchestrator_log(run, "2a Challenge notes", "minor objections appended verbatim to spec.md")]
     return None
+
+
+def notes_settled(run, document, numbers, challenge):
+    """True when the minor objections of `challenge` are in `document`: its *Challenge notes* section is there, the
+    orchestrator logged the append, or a later Lead launch folded or answered them (Censio#140: a Lead `decide` that
+    folds the notes must not send the orchestrator back to append them again)."""
+    if NOTES.search(document or ""):
+        return True
+    later = [row for row in run.rows if row.index > challenge.index and row.number in numbers]
+    return any(row.who == ORCHESTRATOR and NOTES_ROW.search(f"{row.step} {row.result}") for row in later) or \
+        any(row.who == LEAD for row in later)
 
 
 def spec_approval(run):
@@ -645,7 +689,7 @@ def revision(run, challenge, reviews, security_due):
     rejected = bool(security) and security[-1] == "CHANGES_REQUIRED" and not answered
     major_open = bool(verdict[0]) and not [row for row in revisions if row.index > challenge[-1].index]
     return lead_revision(run, rejected, security.count("CHANGES_REQUIRED"), major_open) or \
-        confirmation(run, security_due and bool(answered), verdict)
+        confirmation(run, security_due and bool(answered), verdict, challenge)
 
 
 def lead_revision(run, rejected, rejections, major_open):
@@ -664,14 +708,16 @@ def lead_revision(run, rejected, rejections, major_open):
     return None
 
 
-def confirmation(run, unconfirmed, verdict):
+def confirmation(run, unconfirmed, verdict, challenge):
     if unconfirmed:
         return heading("step 3 — Security delta confirmation of the revision") + launch(
             run, SECURITY, "plan", "3 Plan security delta", "the revised plan's commit and the findings it answers")
-    if verdict[1] and not verdict[0] and not NOTES.search(run.plan or ""):
+    later = {run.plan_step, "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"}
+    if verdict[1] and not verdict[0] and challenge and not notes_settled(run, run.plan, later, challenge[-1]):
         return heading(f"step {run.plan_step} — minor objections only") + [
             DO + "append the minor objections verbatim to plan.md as *Challenge notes* (and Security's non-blocking "
-            "notes as *Security notes*); commit — no Lead launch"]
+            "notes as *Security notes*); commit — no Lead launch",
+            orchestrator_log(run, f"{run.plan_step} Challenge notes", "minor objections appended verbatim to plan.md")]
     return None
 
 
@@ -755,9 +801,27 @@ def tests_first_ended(run, group):
                for row in run.of(ORCHESTRATOR, {"5"}))
 
 
+def deferred_tests(run, group):
+    """The deferred tests the group's last step-5 Tester row names after `Deferred:` (Censio#137), or ''."""
+    row = deferred_row(run, group)
+    found = DEFERRED.search(squad_log().ANY_TRAILER.sub("", row.result)) if row else None
+    names = found.group("names").strip().rstrip(";,.") if found else ""
+    return "" if not names or re.match(r"none\b", names, re.I) else names
+
+
+def deferred_row(run, group):
+    """The group's last step-5 Tester row that carries a `Deferred:` line (a later fix round may carry none), or None."""
+    rows = [row for row in group_rows(run, TESTER, "5", group) if DEFERRED.search(row.result)]
+    return rows[-1] if rows else None
+
+
 def coverage_ended(run, group):
     """True when the group's coverage pass is over: a Tester row of step 6, an orchestrator coverage row of step 6 that
-    names the group, or one without a group after the group's implementation (`6 Coverage gate (all groups)`)."""
+    names the group, or one without a group after the group's implementation (`6 Coverage gate (all groups)`). With
+    deferred tests open, only a Tester row of step 6 ends it."""
+    if deferred_tests(run, group):
+        tests_first = deferred_row(run, group).index
+        return any(row.index > tests_first for row in group_rows(run, TESTER, "6", group))
     if group_rows(run, TESTER, "6", group) or [row for row in run.of(ORCHESTRATOR, {"6"}, word="coverage")
                                                if GROUP.search(row.step) and in_group(row, group)]:
         return True
@@ -783,11 +847,25 @@ def code_free_steps(run):
     if not run.of(ORCHESTRATOR, {"4", "5"}, word="skip"):
         return heading("steps 4–5 — not applicable (*Changes without production or test code*)") + [
             orchestrator_log(run, "4-5 Skipped", "no production or test code: see *Verification without tests*")]
+    tester = tester_named(run)
     if not run.of(DEV, {"6"}):
-        return heading("step 6 — the Dev's edits alone (no Tester, no *Test with coverage*, no *Coverage gate*)") + \
+        extra = "; then the Tester's share the plan names" if tester else " (no Tester's share in the plan)"
+        return heading(f"step 6 — the Dev's edits{extra}; no *Test with coverage*, no *Coverage gate*") + \
             launch(run, DEV, "implement", "6 Implement", "the plan (a feature: the task rows and spec.md), the base "
                    "ref and the head SHA") + [THEN + "run the plan's *Verification without tests* where it names you"]
+    if tester and not run.of(TESTER, {"6"}):
+        return heading("step 6 — the Tester's share of a plan without production or test code (test documentation, "
+                       "a dry-run artifact: *Dry-run artifacts* in .squad/routing.md)") + launch(
+            run, TESTER, "coverage", "6 Tester share", "the plan's rows that name the Tester (*Verification without "
+            "tests*, *Documentation updates*); a dry-run artifact as a patch file outside the working tree, checked with "
+            f"git apply --check, its path in the report; {BASE_HANDOVER}")
     return None
+
+
+def tester_named(run):
+    """True when the plan's *Verification without tests* or *Documentation updates* names the Tester (Vandox#410)."""
+    text = run.section("Verification without tests") + "\n" + run.section("Documentation updates")
+    return bool(re.search(r"\btester\b", plan_check().strip_comments(text), re.I))
 
 
 def group_step(run, group, skeleton, docs_only=False):
@@ -807,7 +885,7 @@ def group_step(run, group, skeleton, docs_only=False):
             return heading(f"step 5 — Tests first{tag}") + launch(
                 run, TESTER, "tests-first", f"5 Tests first{tag}", f"{rows}, the tests of *Tests per criterion*, "
                 f"{BASE_HANDOVER}") + [THEN + "confirm yourself that the new tests compile and fail on the current "
-                                       "code; note the tests it hands back as deferred",
+                                       "code; log its `Deferred: <test names>` line (`Deferred: none`) in the row",
                                        "  Not due when the group adds no production behaviour (a limit change that "
                                        "was not due, say): " + orchestrator_log(
                                            run, f"5 Tests first skipped{tag}", "skipped — <why>").strip()]
@@ -822,7 +900,7 @@ def group_step(run, group, skeleton, docs_only=False):
             run, DEV, "implement", f"6 Implement{tag}", f"{rows}, the test names (the deferred ones marked), "
             f"{BASE_HANDOVER}")
     if not coverage_ended(run, group):
-        return coverage_pass(run, tag, rows)
+        return coverage_pass(run, tag, rows, deferred_tests(run, group))
     return None
 
 
@@ -844,7 +922,11 @@ def documentation_group(run, group, tag):
     return None
 
 
-def coverage_pass(run, tag, rows):
+def coverage_pass(run, tag, rows, deferred=""):
+    if deferred:
+        return heading(f"step 6 — Coverage{tag}: the Tester's pass is due for the deferred tests, also when the gate "
+                       "passes") + launch(run, TESTER, "coverage", f"6 Coverage{tag}",
+                                          f"the deferred tests ({deferred}), {rows}, {BASE_HANDOVER}")
     return heading(f"step 6 — Coverage{tag}") + [
         DO + "run *Test with coverage* and the *Coverage gate* from .squad/stack.md yourself",
         "  The Tester's pass runs only when the gate fails, the Dev reports uncovered new lines, a resource bound of the "
@@ -1216,18 +1298,23 @@ def review_outcome(run, rows, blocking, nonblocking):
     if run.base_tier in ("docs", "patch"):
         return heading(f"step 8 — {what} (tiers docs and patch)") + [
             DO + "fix them yourself, commit and run the gate stamp again; then a delta round"]
+    verbatim = ["  A fix marked verbatim: apply it yourself (*Verbatim documentation fixes*)"]
     if not blocking:
         return heading("step 8 — the Lead ordered fixes: their owner, then steps 6–7 and a mandatory delta round") + \
-            launch(run, DEV, "fix", run.step_cell("8", "Fix"), "the fixes the Lead's decide row orders on code and "
-                   "documentation, the head SHA", purpose="when the Lead names the Dev") + launch(
-            run, TESTER, "coverage", run.step_cell("8", "Fix tests"), "the fixes the Lead's decide row orders on tests, "
-            "the head SHA", purpose="when the Lead names the Tester") + [
-            "  A fix marked verbatim: apply it yourself (*Verbatim documentation fixes*)"]
+            owner_fixes(run, "8", "the Lead's decide row") + verbatim
     return heading("step 8 — blocking findings to their owner, then steps 6–7 and a mandatory delta round") + launch(
         run, DEV, "fix", run.step_cell("8", "Fix"), "the blocking findings on code and documentation (and the "
         "non-blocking fixes the Lead ordered), the head SHA", purpose="code and documentation") + launch(
-        run, TESTER, "coverage", run.step_cell("8", "Fix tests"), "the blocking findings on tests, the head SHA",
-        purpose="tests") + ["  A fix marked verbatim: apply it yourself (*Verbatim documentation fixes*)"]
+        run, TESTER, "coverage", run.step_cell("8", FIX_TESTS), "the blocking findings on tests, the head SHA",
+        purpose="tests") + verbatim
+
+
+def owner_fixes(run, number, source):
+    """The Dev's and the Tester's fix launches for the changes a Lead row (`source`) orders, each when it names them."""
+    return launch(run, DEV, "fix", run.step_cell(number, "Fix"), f"the fixes {source} orders on code and "
+                  "documentation, the head SHA", purpose="when the Lead names the Dev") + launch(
+        run, TESTER, "coverage", run.step_cell(number, FIX_TESTS), f"the fixes {source} orders on tests, the head SHA",
+        purpose="when the Lead names the Tester")
 
 
 def approval(run):
@@ -1238,13 +1325,18 @@ def approval(run):
         return None
     last_review = max([row.index for agent, _ in review_set(run) for row in review_rows(run, agent, -1)] + [-1])
     rows = [row for row in run.rows if row.index > last_review and row.number in ("9", "11")
-            and row.who in (ORCHESTRATOR, LEAD) and APPROVED_ROW.search(row.result)]
-    if rows and not NOT_APPROVED.search(rows[-1].result):
+            and approval_verdict(row)]
+    if rows and approval_verdict(rows[-1]) == "APPROVED":
         return None
-    if rows:
-        return heading("step 9 — NOT APPROVED") + [
-            "  The fixes the Lead orders go to their owner (back to step 6 or 8, a delta round); without a fix the "
-            "Lead decides or escalates"] + launch(run, DEV, "fix", run.step_cell("9", "Fix"), "the Lead's reasons")
+    verdict = rows[-1] if rows else None
+    if verdict and not fix_ordered(verdict.result) and not settled_by_decision(run, verdict):
+        return heading("step 9 — NOT APPROVED without a fix") + launch(
+            run, LEAD, "decide", run.step_cell("9", "Decide"), "the Lead's NOT APPROVED reasons: it decides or escalates")
+    if verdict and fix_ordered(verdict.result):
+        return heading("step 9 — NOT APPROVED with a fix") + [
+            "  The fixes the Lead orders go to their owner, then the stamp (step 7) and a delta round; once that round "
+            "is clean the checklist runs again, and the Lead's approve-pr agent is continued only for a point the fix "
+            "leaves open"] + owner_fixes(run, "9", "the Lead's approve-pr row")
     problem = stamp_tool().stamp_problem(run.root, run.raw, run.tier)
     if problem:
         return heading("step 9 — gate-stamp.py --verify fails: " + problem) + [
@@ -1258,6 +1350,22 @@ def approval(run):
         "or .squad/project.md):"] + launch(run, LEAD, "approve-pr", run.step_cell("9", "PR approval"),
                                            "the base ref, the gate output, the review outcome and the open points one "
                                            "by one (after the PR also the finished check-run list)")
+
+
+def settled_by_decision(run, verdict):
+    """True when a Lead row of step 9 or 11 after the NOT APPROVED row `verdict` decided it without ordering a fix: the
+    checklist runs again (a decision that orders one goes the way of step 8's fixes)."""
+    decided = [row for row in run.of(LEAD, {"9", "11"}, after=verdict.index) if lead_result(row) == "DECIDED"]
+    return bool(decided) and not fix_ordered(decided[-1].result)
+
+
+def approval_verdict(row):
+    """`APPROVED` or `NOT APPROVED` of a step-9 row: the Lead's `RESULT:` line, or the orchestrator's row that starts
+    with "approved by checklist"; None for any other row."""
+    if row.who == LEAD:
+        found = lead_result(row)
+        return found if found in ("APPROVED", "NOT APPROVED") else None
+    return "APPROVED" if row.who == ORCHESTRATOR and CHECKLIST.match(row.result) else None
 
 
 def pull_request(run):
@@ -1282,13 +1390,17 @@ def pull_request(run):
 
 
 def after_pr(run):
-    if not run.after_pr or [row for row in run.of(ORCHESTRATOR, {"11"}) if READY.search(f"{row.step} {row.result}")]:
+    if not run.after_pr or [row for row in run.of(ORCHESTRATOR, {"11"})
+                            if READY.search(f"{row.step} {row.result}") or PR_ENDED.search(row.step)]:
         return None
+    due = [] if squad_log().lessons_rows(run.raw) else [
+        "  Step 12 is still due: a merge or close notification ends the watching, never the run — log it, then run "
+        "step 12 at once: " + orchestrator_log(run, "11 Merged", "<merged|closed> at <time>").strip()]
     return heading("step 11 — After the PR (*Draft until green*)") + [
         DO + "subscribe to the PR's activity; merge conflicts first; a CI failure, a Sonar finding or a review comment "
         "goes to its owner — get the exact launch with --launch squad-<role> <mode> — and then through the stamp and "
         "a delta round again; once *Draft until green* holds, mark the PR ready",
-        orchestrator_log(run, "11 Ready for review", "marked ready for review")]
+        orchestrator_log(run, "11 Ready for review", "marked ready for review")] + due
 
 
 def wrap_up(run):
@@ -1321,8 +1433,30 @@ def run_header(run):
     return line + (" · after step 10 (log from --stdin)" if run.after_pr else "")
 
 
+def cap_warnings(run):
+    """A warning for every member whose last launch row continued an agent already past the continuation cap
+    (`squad-log.py`'s *Past the continuation cap*, Censio#146), until that member's next launch is fresh."""
+    found = []
+    log = squad_log()
+    for agent, member in CELLS.items():
+        launches = [i for i, row in enumerate(run.raw) if row[2] == member and log.TRAILER.search(row[3])]
+        if agent not in MODES or not launches:
+            continue
+        rows = run.raw[launches[-1]]
+        trailer = log.TRAILER.search(rows[3])
+        if not trailer.group("continued"):
+            continue
+        chains, fresh, current = log.agent_chains(run.raw[:launches[-1]], member)
+        index = fresh.get(trailer.group("origin")) if trailer.group("origin") else current
+        if index is not None and log.at_cap(chains[index]):
+            found.append(f"WARNING: {member}'s last launch, \"{rows[1]}\", continued an agent past the continuation "
+                         "cap (.squad/orchestration.md, *Continuing a member*): its next launch is a new agent with a "
+                         "short hand-over, as the launch below says")
+    return found
+
+
 def next_step(run):
-    lines = [run_header(run)]
+    lines = [run_header(run)] + cap_warnings(run)
     for stage in STAGES:
         found = stage(run)
         if found:
@@ -1341,7 +1475,7 @@ def launch_only(run, agent, mode):
         step = "2a Spec challenge" if mode == "spec" else f"{run.plan_step} Plan challenge"
     if run.after_pr or mode == "decide":
         step = f"{'11' if run.after_pr else '<step>'} {step.split(' ', 1)[-1]}"
-    return [run_header(run), f"Launch {agent} in mode {mode}:"] + launch(
+    return [run_header(run)] + cap_warnings(run) + [f"Launch {agent} in mode {mode}:"] + launch(
         run, agent, mode, step, "only what it needs (squad-issue: the plan or task rows, the test names, the base ref, "
         "the code SHA, the gate output for the head)")
 
