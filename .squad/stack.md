@@ -6,7 +6,14 @@ profile and owned by this repository: keep it true when the build changes.
 
 ## Toolchain
 
-- .NET SDK `10.0.x` (target framework `net10.0`), solution `DockerUpdateGuard.slnx`.
+- .NET SDK of `global.json` (seeded as the newest SDK of the major, `10.0.404`; `rollForward` `latestFeature`: the
+  newest installed feature band of that major, never the next major), target framework `net10.0`, solution
+  `DockerUpdateGuard.slnx`. Several majors may be installed side by side (a machine, CI); the repository is built for
+  one: every project's target framework, `global.json` and every .NET image (the defaults of the `BASE_SDK` and
+  `BASE_RUNTIME` build arguments of `src/DockerUpdateGuard/Dockerfile`) name the same major, which `dotnet_major.py`
+  checks in the *Analyzer gate*, and a new project gets it from the SDK `global.json` selects. Dependabot keeps the
+  SDK, the packages and the images current within that major; the move to the next one (target frameworks,
+  `global.json`, the ASP.NET Core and EF Core packages, the images) is one change of its own.
 - Formatter: `reihitsu-format`, restored from the tool manifest `.config/dotnet-tools.json` (`dotnet tool restore`,
   pinned there next to `dotnet-sonarscanner` so Dependabot raises them with the analyzer), on the same release line as the
   **Reihitsu.Analyzer** version pinned in `Directory.Packages.props`; otherwise the formatter can revert
@@ -185,10 +192,13 @@ Constructors store their arguments and never throw: a test harness builds these 
 fail.
 The `Skeleton` body above is the default. A zero-value stub is allowed only where it would break a test that
 exists and passes today: the new tests must still fail on the stub, and the Dev reports it as a deviation.
-A private member or parameter that nothing calls or reads yet fails the build as S1144 (unused private member) or
-S1172 (unused parameter). Wrap exactly those members in `#pragma warning disable S1144, S1172` /
-`#pragma warning restore S1144, S1172` with the comment `// Skeleton: removed with the implementation`; the Dev lists
-each pragma in its report and removes it in mode `implement`, and the Reviewer blocks one that is still there.
+A skeleton raises diagnostics by construction, which the zero-diagnostic rule does not count against it: S1144
+(unused private member), S1172 (unused parameter), S4487 (a private field assigned but not read yet), S2325 (a member
+that does not use instance data yet), CS0067 (an event never raised yet), CS0649 (a field never assigned yet) and
+RH2003 (`NotImplementedException`, which the body above avoids). Wrap exactly the members that raise one in
+`#pragma warning disable <the ids the build reports>` / `#pragma warning restore <the same ids>` with the comment
+`// Skeleton: removed with the implementation` — no other id; the Dev lists each pragma in its report and removes it in
+mode `implement`, and the Reviewer blocks one that is still there.
 
 ## Dependencies
 
