@@ -15,9 +15,12 @@ updates:
       nuget-dependencies:
         patterns:
           - "*"
-    # The next major of these targets the next .NET only (Microsoft.AspNetCore.Mvc.Testing and
-    # Microsoft.EntityFrameworkCore 11.0.0: net11.0): it comes with the change of the target framework, not alone.
+    # The next major of these belongs to the next .NET (Microsoft.AspNetCore.Mvc.Testing and
+    # Microsoft.EntityFrameworkCore 11.0.0 target net11.0 only; Microsoft.Extensions.* 11.0.0 would restore into a
+    # net10.0 project too): it comes with the change of the target framework, not alone.
     ignore:
+      - dependency-name: "Microsoft.Extensions.*"
+        update-types: ["version-update:semver-major"]
       - dependency-name: "Microsoft.AspNetCore.*"
         update-types: ["version-update:semver-major"]
       - dependency-name: "Microsoft.EntityFrameworkCore*"
