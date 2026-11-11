@@ -47,6 +47,7 @@ dotnet_diagnostic.S1168.severity = warning
 dotnet_diagnostic.S1172.severity = warning
 dotnet_diagnostic.S1185.severity = warning
 dotnet_diagnostic.S1186.severity = warning
+dotnet_diagnostic.S1192.severity = warning
 dotnet_diagnostic.S1199.severity = warning
 dotnet_diagnostic.S1206.severity = warning
 dotnet_diagnostic.S1210.severity = warning
@@ -219,6 +220,9 @@ dotnet_diagnostic.S8969.severity = warning
 dotnet_diagnostic.S8970.severity = warning
 dotnet_diagnostic.S9022.severity = warning
 dotnet_diagnostic.S9129.severity = warning
+dotnet_diagnostic.S9414.severity = warning
+dotnet_diagnostic.S9415.severity = warning
+dotnet_diagnostic.S9422.severity = warning
 dotnet_diagnostic.S4347.severity = none
 # squad:sonar-rules end
 

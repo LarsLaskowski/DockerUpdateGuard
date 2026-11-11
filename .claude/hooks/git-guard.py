@@ -13,7 +13,8 @@ trust, which a cloud or `-p` session never gives. It reads the hook input JSON f
   `fetch`, `tag --list` / `--contains`, `branch --list` / `--show-current`, `ls-remote`, `clone`, …),
   `git add` (the coverage gate only counts tracked files), `git worktree add` / `remove` / `prune` /
   `list` (scratch worktrees, `.squad/orchestration.md`, *Concurrency*), `git apply --check` / `--stat` / `--numstat` /
-  `--summary` without `--apply` (a dry-run patch checked, never applied: `.squad/routing.md`, *Dry-run artifacts*),
+  `--summary` with only options that write no file (`APPLY_HARMLESS`; a dry-run patch checked, never applied:
+  `.squad/routing.md`, *Dry-run artifacts*),
   and read-only `gh` (`gh api` without a
   method or field, `gh pr view`, `gh run list`, `gh ruleset list`, …);
 - denied: `commit`, `push`, `stash`, `reset`, `checkout`, `switch`, `restore`, `rebase`, `merge`,
@@ -103,6 +104,16 @@ BRANCH_READ = {"-l", "--list", "-a", "-r", "--all", "--remotes", "--show-current
 CONFIG_READ = {"-l", "--list", "--show-origin", "--show-scope"}
 # `git apply` options that only read the patch: with one of them and without `--apply`, nothing is applied.
 APPLY_READ = {"--check", "--stat", "--numstat", "--summary"}
+# The other `git apply` options that write no file beside a read-only one (Squad-Spec-Repository-Template#328: an
+# allowlist, so `--build-fake-ancestor=<file>`, which writes an index file, and any option Git adds later stay denied).
+# `-3`/`--3way` is left out: beside `--check` it still stores the merged blob in `.git/objects` (#328's review).
+APPLY_HARMLESS = {"-R", "--reverse", "-v", "--verbose", "-q", "--quiet", "-z", "--cached", "--index", "--reject",
+                  "--unidiff-zero", "--recount", "--allow-empty",
+                  "--allow-binary-replacement", "--binary", "--ignore-space-change", "--ignore-whitespace",
+                  "--inaccurate-eof", "--no-add"}
+# Options of `git apply` that take a value, attached (`--directory=src`) or as the next argument.
+APPLY_WITH_VALUE = {"--directory", "--exclude", "--include", "--whitespace"}
+APPLY_NUMBERED = re.compile(r"^-[pC]\d*$")
 SHELLS = {"sh", "bash", "zsh", "dash", "ksh"}
 # What a member runs instead of a denied command that has an allowed equivalent (`.squad/team.md`, *Git and GitHub*).
 GIT_INSTEAD = {
@@ -166,12 +177,34 @@ def config_verdict(args):
     return "git config (write)"
 
 
+def apply_option_ok(args, i):
+    """(whether the option at `args[i]` writes no file, how many arguments it takes up)."""
+    arg = args[i]
+    name = arg.split("=", 1)[0]
+    if name in APPLY_WITH_VALUE:
+        return True, 1 if "=" in arg else 2
+    return arg in APPLY_READ or arg in APPLY_HARMLESS or bool(APPLY_NUMBERED.match(arg)), 1
+
+
 def apply_verdict(args):
-    """`git apply --check` (or `--stat`, `--numstat`, `--summary`) reads a patch; any other form applies it."""
-    # Git accepts an unambiguous prefix of a long option, so `--ap` and `--appl` are `--apply` too.
-    if not any(len(a) >= 4 and "--apply".startswith(a) for a in args) and any(a in APPLY_READ for a in args):
-        return None
-    return "git apply (only --check, --stat, --numstat or --summary without --apply reads a patch)"
+    """`git apply` with `--check`, `--stat`, `--numstat` or `--summary` and otherwise only options that write no file
+    (`APPLY_HARMLESS`) reads a patch; any other option — `--apply`, `--build-fake-ancestor`, an abbreviation, one Git
+    adds later — makes the call a write."""
+    i, read = 0, False
+    while i < len(args):
+        arg = args[i]
+        if arg == "--":
+            break
+        if arg.startswith("-") and arg != "-":
+            ok, used = apply_option_ok(args, i)
+            if not ok:
+                return f"git apply {arg} (only --check, --stat, --numstat or --summary with options that write no file " \
+                       "reads a patch)"
+            read = read or arg in APPLY_READ
+            i += used
+            continue
+        i += 1
+    return None if read else "git apply (only --check, --stat, --numstat or --summary reads a patch)"
 
 
 GIT_CHECKS = {"tag": tag_verdict, "branch": branch_verdict, "worktree": worktree_verdict, "config": config_verdict,

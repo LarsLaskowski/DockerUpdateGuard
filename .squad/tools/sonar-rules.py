@@ -15,14 +15,16 @@ otherwise learn of the difference only from the pull request's analysis. This sc
   `.squad/tools/squad_settings.py` (default `suggestion`: the *Analyzer gate* reports every severity in a changed file,
   while code the change leaves alone keeps building; `warning` or `error` make the build itself report them);
 - a rule of *Sonar way core* the project's profile does not activate gets `none`;
-- a rule the file already sets outside the block is the project's own choice: it stays out of the block and is
-  listed.
+- a rule the file already sets outside the block for every C# file (`[*]`, `[*.cs]`, `[*.{cs,vb}]`) is the project's
+  own choice: it stays out of the block and is listed; one set only in a section of a path or of some file names
+  (`[tests/**.cs]`, `[*.g.cs]`) still gets its line in the block, so the rest of the code keeps it. Such a section
+  belongs after the block, or the block's line wins there too; the script warns about one before it.
 
-The block replaces the one between the markers. A file without them gets the block at the end of its first `[*.cs]`
-section, or a `[*.cs]` section at its end. Only `csharpsquid` rules are written; a rule's parameters (S107's
-maximum, S3776's threshold) stay the analyzer's defaults. The
-project and the server come from `sonar-check.py` (`SONAR_PROJECT_KEY`, `sonar-project.properties`, the scanner's
-`/k:`; `SONAR_HOST`), with the same credential (a network secret of the environment, or `SONAR_TOKEN`).
+The block replaces the one between the markers. A file without them gets the block at the end of its first section of
+the C# files alone (`[*.cs]`), or a `[*.cs]` section at its end. Only `csharpsquid` rules are written; a rule's
+parameters (S107's maximum, S3776's threshold) stay the analyzer's defaults. The project and the server come from
+`sonar-check.py` (`SONAR_PROJECT_KEY`, `sonar-project.properties`, the scanner's `/k:`; `SONAR_HOST`), with the same
+credential (a network secret of the environment, or `SONAR_TOKEN`).
 
 `adopt-template` runs it on adoption and on every refresh; `--check` reports a block that no longer matches the
 profiles (SonarSource or the project changed them).
@@ -53,8 +55,11 @@ CORE = "Sonar way core"
 REPOSITORY = "csharpsquid"
 SEVERITY = getattr(settings, "SONAR_RULES_SEVERITY", "suggestion")
 SEVERITIES = ("suggestion", "warning", "error")
-SECTION = re.compile(r"^\s*\[(?P<glob>[^\]]*)\]\s*$")
+SECTION = re.compile(r"^\s*\[(?P<glob>.*)\]\s*$")
 OWN_RULE = re.compile(r"^\s*dotnet_diagnostic\.(?P<rule>S\d+)\.severity\s*=", re.I)
+CS_PATHS = ("Program.cs", "src/App/Widget.cs", "src/App/Form.Designer.cs", "src/App/obj/Widget.g.cs",
+            "tests/App.Tests/WidgetTests.cs")
+OTHER_PATHS = ("README.md", "src/App/App.csproj")
 
 
 class NotChecked(Exception):
@@ -118,16 +123,95 @@ def split_block(text):
     return lines[:begin], lines[begin + 1:end], lines[end + 1:]
 
 
+def glob_regex(glob):
+    """An EditorConfig section glob as a regular expression over a path relative to the file: `*` within one folder,
+    `**` across folders, `?`, `[…]` and `{a,b}`; a glob without `/` matches the file name in any folder."""
+    out, depth, i = [], 0, 0
+    while i < len(glob):
+        char = glob[i]
+        if glob.startswith("**", i):
+            out.append(".*")
+            i += 1
+        elif char == "*":
+            out.append("[^/]*")
+        elif char == "?":
+            out.append("[^/]")
+        elif char == "[" and "]" in glob[i:]:
+            end = glob.index("]", i)
+            out.append("[" + glob[i + 1:end].replace("!", "^", 1) + "]")
+            i = end
+        elif char == "{":
+            depth += 1
+            out.append("(?:")
+        elif char == "}" and depth:
+            depth -= 1
+            out.append(")")
+        elif char == "," and depth:
+            out.append("|")
+        else:
+            out.append(re.escape(char))
+        i += 1
+    body = "".join(out).replace(r".*/", "(?:.*/)?")
+    return re.compile(("" if "/" in glob else "(?:.*/)?") + body.lstrip("/") + "$")
+
+
+def section_matches(line, paths):
+    """True when `line` is a section header whose glob matches every path of `paths`."""
+    match = SECTION.match(line)
+    if not match:
+        return False
+    try:
+        pattern = glob_regex(match.group("glob").strip())
+    except re.error:
+        return False
+    return all(pattern.match(path) for path in paths)
+
+
+def every_cs_file(line):
+    """True for a section header that applies to every C# file (`[*]`, `[*.cs]`, `[*.{cs,vb}]`), not to a path
+    (`[tests/**.cs]`) or to some file names (`[*.g.cs]`, `[*Tests.cs]`)."""
+    return section_matches(line, CS_PATHS)
+
+
+def cs_section(line):
+    """True for a section of every C# file that applies to no other file, where the block belongs."""
+    return every_cs_file(line) and not any(section_matches(line, [path]) for path in OTHER_PATHS)
+
+
 def own_rules(lines):
-    """The rules the file sets outside the block."""
-    return {match.group("rule").upper() for match in map(OWN_RULE.match, lines) if match}
+    """The rules the file sets outside the block for every C# file. A rule set in a section of a path or of some file
+    names only (`[tests/**.cs]`, `[*.g.cs]`) is no choice for the rest of the code, so the block still carries it
+    (Vandox: S107 off under `tests/**` would otherwise have left production code without S107)."""
+    found, everywhere = set(), True
+    for line in lines:
+        if SECTION.match(line):
+            everywhere = every_cs_file(line)
+            continue
+        match = OWN_RULE.match(line)
+        if match and everywhere:
+            found.add(match.group("rule").upper())
+    return found
+
+
+def overridden_ahead(lines):
+    """{rule: (section, severity)} of the rules a narrower section of C# files sets in `lines`, the part of the file
+    before the block: the block's line comes later and wins there too."""
+    found, section = {}, None
+    for line in lines:
+        if SECTION.match(line):
+            narrower = not every_cs_file(line) and any(section_matches(line, [path]) for path in CS_PATHS)
+            section = line.strip() if narrower else None
+            continue
+        match = OWN_RULE.match(line)
+        if match and section:
+            severity = line.split("=", 1)[1].split("#")[0].strip().lower()
+            found.setdefault(match.group("rule").upper(), (section, severity))
+    return found
 
 
 def insert_at(lines):
     """The index at the end of the first `[*.cs]` section (before trailing blank lines), or None without one."""
-    start = next((i for i, line in enumerate(lines) if SECTION.match(line)
-                  and "cs" in re.split(r"[{},.*\s]+", SECTION.match(line).group("glob"))
-                  and "/" not in SECTION.match(line).group("glob")), None)
+    start = next((i for i, line in enumerate(lines) if cs_section(line)), None)
     if start is None:
         return None
     end = next((i for i in range(start + 1, len(lines)) if SECTION.match(lines[i])), len(lines))
@@ -162,12 +246,24 @@ def read_file(path):
         return handle.read()
 
 
-def report(own_profile, added, removed, own):
+def ahead_of_block(text):
+    """The lines of the file that come before the block, where it is or where `render` puts it."""
+    before, block, _ = split_block(text)
+    at = None if block is not None else insert_at(before)
+    return before if at is None else before[:at]
+
+
+def report(own_profile, added, removed, own, ahead):
     print(f"Profile \"{own_profile.get('name')}\" against \"{CORE}\": {len(added)} rule(s) beyond it at {SEVERITY}, "
           f"{len(removed)} switched off.")
     kept = sorted((added | removed) & own, key=lambda rule: int(rule[1:]))
     if kept:
         print(f"Set by {EDITORCONFIG} itself, left out of the block: {', '.join(kept)}")
+    for rule, (section, severity) in sorted(ahead.items(), key=lambda item: int(item[0][1:])):
+        written = SEVERITY if rule in added else "none"
+        if rule in (added | removed) - own and severity != written:
+            print(f"WARNING: {section} sets {rule} before the block, whose line comes later and wins there too: move "
+                  "that section after the block")
 
 
 def main(argv=None):
@@ -193,7 +289,7 @@ def main(argv=None):
     before, _, after = split_block(text)
     own = own_rules(before + after)
     added, removed = project_rules - core_rules, core_rules - project_rules
-    report(own_profile, added, removed, own)
+    report(own_profile, added, removed, own, overridden_ahead(ahead_of_block(text)))
     updated = render(text, wanted_lines(added, removed, own))
     if updated == text:
         print(f"{EDITORCONFIG}: the sonar-rules block is current")
