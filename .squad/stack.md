@@ -12,8 +12,10 @@ profile and owned by this repository: keep it true when the build changes.
   one: every project's target framework, `global.json` and every .NET image (the defaults of the `BASE_SDK` and
   `BASE_RUNTIME` build arguments of `src/DockerUpdateGuard/Dockerfile`) name the same major, which `dotnet_major.py`
   checks in the *Analyzer gate*, and a new project gets it from the SDK `global.json` selects. Dependabot keeps the
-  SDK, the packages and the images current within that major; the move to the next one (target frameworks,
-  `global.json`, the Microsoft.Extensions, ASP.NET Core and EF Core packages, the images) is one change of its own.
+  SDK and the packages current within that major, and the floating `10.0-alpine` tags of the two .NET images resolve to
+  the newest image of it whenever the image is built (Dependabot does not read an image named through a build
+  argument); the move to the next one (target frameworks, `global.json`, the Microsoft.Extensions, ASP.NET Core and EF
+  Core packages, the image tags) is one change of its own.
 - Formatter: `reihitsu-format`, restored from the tool manifest `.config/dotnet-tools.json` (`dotnet tool restore`,
   pinned there next to `dotnet-sonarscanner` so Dependabot raises them with the analyzer), on the same release line as the
   **Reihitsu.Analyzer** version pinned in `Directory.Packages.props`; otherwise the formatter can revert
@@ -69,8 +71,8 @@ profiles (`--check` reports a block out of date; severity `SONAR_RULES_SEVERITY`
 *Analyzer gate* reports them in a changed file, so no rule of the profile is "one no local analyzer reports". Here the
 severity is `warning`, which `TreatWarningsAsErrors` turns into a build error everywhere, as the `Warning` action of
 the rulesets in `rules/` does: an `.editorconfig` severity overrides a ruleset's action, so a lower one would weaken
-the rules the rulesets enforce (S107, S3776). S1192 stays out of the block because `.editorconfig` switches it off for
-the EF Core migrations itself; elsewhere the rulesets enforce it. SonarQube Cloud's non-Roslyn checks (hotspots,
+the rules the rulesets enforce (S107, S3776). S1192 is in the block too; the `[**/Migrations/*.cs]` section after
+it switches the rule off for the EF Core migrations, and as the later section it wins there. SonarQube Cloud's non-Roslyn checks (hotspots,
 taint analysis, duplication) have no local equivalent: the *Sonar gate* below reports their issues and hotspots and
 the quality gate, duplication included, on the draft pull request.
 

@@ -38,23 +38,6 @@ updates:
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]
 
-  # The images of src/DockerUpdateGuard/Dockerfile (defaults of its build arguments). The .NET images move to the
-  # next major with the target framework, as the SDK does.
-  - package-ecosystem: docker
-    directory: "/src/DockerUpdateGuard"
-    schedule:
-      interval: weekly
-    open-pull-requests-limit: 10
-    ignore:
-      - dependency-name: "mcr.microsoft.com/dotnet/*"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "dotnet/*"
-        update-types: ["version-update:semver-major"]
-    groups:
-      docker-images:
-        patterns:
-          - "*"
-
   - package-ecosystem: github-actions
     directory: "/"
     schedule:
