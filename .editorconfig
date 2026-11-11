@@ -1,5 +1,5 @@
 # Remove the line below if you want to inherit .editorconfig settings from higher directories
-﻿root=true
+root = true
 
 # C# files
 [*.cs]
@@ -225,11 +225,6 @@ dotnet_diagnostic.S9415.severity = warning
 dotnet_diagnostic.S9422.severity = warning
 dotnet_diagnostic.S4347.severity = none
 # squad:sonar-rules end
-
-# EF Core migrations are scaffolded and must stay in the generated shape
-[**/Migrations/*.cs]
-generated_code = true
-dotnet_diagnostic.S1192.severity = none
 
 #### .NET Coding Conventions ####
 
@@ -474,3 +469,8 @@ dotnet_diagnostic.MSTEST0039.severity = error
 dotnet_diagnostic.MSTEST0049.severity = error
 dotnet_diagnostic.MSTEST0065.severity = error
 dotnet_diagnostic.MSTEST0068.severity = error
+
+# EF Core migrations are scaffolded and must stay in the generated shape
+[**/Migrations/*.cs]
+generated_code = true
+dotnet_diagnostic.S1192.severity = none
