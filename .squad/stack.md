@@ -62,11 +62,19 @@ anywhere. Do not grep console build output instead: an incremental build prints 
 Easy to get wrong by hand: `#region` blocks on every type, XML documentation on every member, no
 underscores in member names, a region for an interface implementation named after the interface.
 
-SonarQube Cloud's own quality profile can still report `S####` rules the local default profile does not,
-and its non-Roslyn checks (hotspots, taint analysis, duplication) have no local equivalent: the *Sonar gate*
-below reports their issues and hotspots and the quality gate, duplication included, on the draft pull request.
+SonarAnalyzer.CSharp runs only the rules of *Sonar way core* by default. The rules the project's SonarQube Cloud C#
+profile adds (*Sonar way comprehensive*: S3776, S1192, S107, …), and the core rules it switches off, are set in the
+`squad:sonar-rules` block of `.editorconfig`, which `python3 .squad/tools/sonar-rules.py` writes from the two
+profiles (`--check` reports a block out of date; severity `SONAR_RULES_SEVERITY` in `squad_settings.py`): the
+*Analyzer gate* reports them in a changed file, so no rule of the profile is "one no local analyzer reports". Here the
+severity is `warning`, which `TreatWarningsAsErrors` turns into a build error everywhere, as the `Warning` action of
+the rulesets in `rules/` does: an `.editorconfig` severity overrides a ruleset's action, so a lower one would weaken
+the rules the rulesets enforce (S107, S3776). S1192 stays out of the block because `.editorconfig` switches it off for
+the EF Core migrations itself; elsewhere the rulesets enforce it. Its non-Roslyn checks (hotspots, taint analysis,
+duplication) have no local equivalent: the *Sonar gate* below reports their issues and hotspots and the quality gate,
+duplication included, on the draft pull request.
 
-One such C# rule that bit (`csharpsquid:S2589`, "condition always evaluates to True"): a nullable local that is assigned a
+One rule of the block that bit (`csharpsquid:S2589`, "condition always evaluates to True"): a nullable local that is assigned a
 value already checked as non-null and then tested `is not null` in a loop condition (`while (requestUri is not null)`).
 Declare the local non-nullable after the null check and, when the loop is left through `break` or `return`, loop with
 `while (true)`.
