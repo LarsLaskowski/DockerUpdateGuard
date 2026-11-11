@@ -70,9 +70,9 @@ profiles (`--check` reports a block out of date; severity `SONAR_RULES_SEVERITY`
 severity is `warning`, which `TreatWarningsAsErrors` turns into a build error everywhere, as the `Warning` action of
 the rulesets in `rules/` does: an `.editorconfig` severity overrides a ruleset's action, so a lower one would weaken
 the rules the rulesets enforce (S107, S3776). S1192 stays out of the block because `.editorconfig` switches it off for
-the EF Core migrations itself; elsewhere the rulesets enforce it. Its non-Roslyn checks (hotspots, taint analysis,
-duplication) have no local equivalent: the *Sonar gate* below reports their issues and hotspots and the quality gate,
-duplication included, on the draft pull request.
+the EF Core migrations itself; elsewhere the rulesets enforce it. SonarQube Cloud's non-Roslyn checks (hotspots,
+taint analysis, duplication) have no local equivalent: the *Sonar gate* below reports their issues and hotspots and
+the quality gate, duplication included, on the draft pull request.
 
 One rule of the block that bit (`csharpsquid:S2589`, "condition always evaluates to True"): a nullable local that is assigned a
 value already checked as non-null and then tested `is not null` in a loop condition (`while (requestUri is not null)`).
