@@ -160,7 +160,7 @@ public partial class NginxReleaseMetadataService : INginxReleaseMetadataService
         }
         catch (Exception exception)
         {
-            _logger.LogWarning(exception, "Loading NGINX release metadata failed");
+            _logger.NginxReleaseMetadataLoadFailed(exception);
 
             return ExternalOperationResult.Failed<bool>($"Loading NGINX release metadata failed: {FailureReason.FromException(exception, _httpClient.Timeout, cancellationToken)}");
         }
