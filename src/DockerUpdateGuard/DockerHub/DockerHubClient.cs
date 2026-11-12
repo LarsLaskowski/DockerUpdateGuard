@@ -81,29 +81,12 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
     /// <summary>
     /// Shared cache of the Docker Hub access token
     /// </summary>
-#pragma warning disable S4487 // Skeleton: removed with the implementation
     private readonly DockerHubAccessTokenCache _accessTokenCache;
-#pragma warning restore S4487 // Skeleton: removed with the implementation
-
-    /// <summary>
-    /// Access-token refresh lock
-    /// </summary>
-    private readonly SemaphoreSlim _tokenRefreshLock = new(1, 1);
 
     /// <summary>
     /// Throttle bounding the number of concurrent outbound Docker Hub and registry requests
     /// </summary>
     private readonly SemaphoreSlim _requestThrottle;
-
-    /// <summary>
-    /// Access-token expiry timestamp
-    /// </summary>
-    private DateTimeOffset _accessTokenExpiresAtUtc;
-
-    /// <summary>
-    /// Cached access token
-    /// </summary>
-    private string? _accessToken;
 
     #endregion // Fields
 
@@ -180,53 +163,6 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
     internal static string CreateLoginDeferredMessage(string userName, DateTimeOffset retryAt)
     {
         return $"Docker Hub authentication token request for '{userName}' not sent: Docker Hub answered HTTP 429 and asked to wait until {LoginRetryAfterRegistry.FormatRetryAt(retryAt)}";
-    }
-
-    /// <summary>
-    /// Resolve the expiry of a Docker Hub access token
-    /// </summary>
-    /// <param name="token">JWT access token</param>
-    /// <returns>Expiry timestamp</returns>
-    private static DateTimeOffset ResolveTokenExpiry(string token)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(token);
-
-        var segments = token.Split('.');
-
-        if (segments.Length >= 2)
-        {
-            var payloadBytes = DecodeBase64Url(segments[1]);
-
-            if (payloadBytes.Length > 0)
-            {
-                using var jsonDocument = JsonDocument.Parse(payloadBytes);
-
-                if (jsonDocument.RootElement.TryGetProperty("exp", out var expirationElement)
-                    && expirationElement.TryGetInt64(out var expirationUnixTimeSeconds))
-                {
-                    return DateTimeOffset.FromUnixTimeSeconds(expirationUnixTimeSeconds);
-                }
-            }
-        }
-
-        return DateTimeOffset.UtcNow.AddMinutes(5);
-    }
-
-    /// <summary>
-    /// Decode a Base64 URL value
-    /// </summary>
-    /// <param name="value">Encoded value</param>
-    /// <returns>Decoded bytes</returns>
-    private static byte[] DecodeBase64Url(string value)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(value);
-
-        var normalizedValue = value.Replace('-', '+')
-                                   .Replace('_', '/');
-        var paddingLength = (4 - (normalizedValue.Length % 4)) % 4;
-        var paddedValue = normalizedValue.PadRight(normalizedValue.Length + paddingLength, '=');
-
-        return Convert.FromBase64String(paddedValue);
     }
 
     /// <summary>
@@ -991,45 +927,40 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
                                                                             string personalAccessToken,
                                                                             CancellationToken cancellationToken)
     {
-        if (HasValidAccessToken())
+        var loginUri = CreateLoginUri();
+
+        return await _accessTokenCache.GetOrRequestAsync(loginUri,
+                                                         userName,
+                                                         personalAccessToken,
+                                                         _httpClient.Timeout,
+                                                         loginToken => RequestAccessTokenOrDeferAsync(loginUri,
+                                                                                                      userName,
+                                                                                                      personalAccessToken,
+                                                                                                      loginToken),
+                                                         cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Request an access token unless a Retry-After window defers the login
+    /// </summary>
+    /// <param name="loginUri">Login address</param>
+    /// <param name="userName">Docker Hub user name</param>
+    /// <param name="personalAccessToken">Docker Hub PAT</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Access token result</returns>
+    private async Task<ExternalOperationResult<string>> RequestAccessTokenOrDeferAsync(Uri loginUri,
+                                                                                       string userName,
+                                                                                       string personalAccessToken,
+                                                                                       CancellationToken cancellationToken)
+    {
+        if (_loginRetryAfterRegistry.IsLoginDeferred(loginUri, userName, out var retryAt))
         {
-            return ExternalOperationResult.Succeeded<string>(_accessToken!);
+            return ExternalOperationResult.Failed<string>(CreateLoginDeferredMessage(userName, retryAt));
         }
 
-        await _tokenRefreshLock.WaitAsync(cancellationToken)
-                               .ConfigureAwait(false);
-
-        try
-        {
-            if (HasValidAccessToken())
-            {
-                return ExternalOperationResult.Succeeded<string>(_accessToken!);
-            }
-
-            if (_loginRetryAfterRegistry.IsLoginDeferred(CreateLoginUri(), userName, out var retryAt))
-            {
-                return ExternalOperationResult.Failed<string>(CreateLoginDeferredMessage(userName, retryAt));
-            }
-
-            var tokenResult = await RequestAccessTokenAsync(userName,
-                                                            personalAccessToken,
-                                                            cancellationToken).ConfigureAwait(false);
-
-            if (tokenResult.Status != ExternalOperationStatus.Succeeded
-                || string.IsNullOrWhiteSpace(tokenResult.Data))
-            {
-                return tokenResult;
-            }
-
-            _accessToken = tokenResult.Data;
-            _accessTokenExpiresAtUtc = ResolveTokenExpiry(tokenResult.Data);
-
-            return ExternalOperationResult.Succeeded<string>(tokenResult.Data);
-        }
-        finally
-        {
-            _tokenRefreshLock.Release();
-        }
+        return await RequestAccessTokenAsync(userName,
+                                             personalAccessToken,
+                                             cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -1082,16 +1013,6 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
                        ? ExternalOperationResult.Failed<string>("Docker Hub authentication token response did not contain a token")
                        : ExternalOperationResult.Succeeded<string>(token);
         }
-    }
-
-    /// <summary>
-    /// Determine whether the client currently holds a valid cached access token
-    /// </summary>
-    /// <returns>True when a cached token can be reused</returns>
-    private bool HasValidAccessToken()
-    {
-        return string.IsNullOrWhiteSpace(_accessToken) == false
-               && _accessTokenExpiresAtUtc > DateTimeOffset.UtcNow.AddMinutes(1);
     }
 
     /// <summary>
@@ -1570,7 +1491,6 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
     /// <inheritdoc/>
     public void Dispose()
     {
-        _tokenRefreshLock.Dispose();
         _requestThrottle.Dispose();
     }
 

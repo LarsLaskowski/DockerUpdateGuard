@@ -249,6 +249,9 @@ The singleton `LoginRetryAfterRegistry` (`Infrastructure\`) remembers, per login
 `Retry-After` named, so the Docker Hub client, the Docker Scout provider and the Portainer client send no login inside
 it ([Integration failures](areas/integration-failures.md#logins-inside-a-retry-after-window),
 [0022](decisions/0022-a-logins-retry-after-window-is-remembered-process-wide.md)).
+The singleton `DockerHubAccessTokenCache` (`DockerHub\`) holds the Docker Hub web API token for all scopes
+([Registries](areas/registries.md#authentication),
+[0023](decisions/0023-the-docker-hub-web-api-token-is-cached-process-wide-per-credentials.md)).
 
 ## 7. Domain / orchestration layer and the scan engine
 
