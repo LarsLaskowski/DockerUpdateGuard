@@ -1196,19 +1196,20 @@ public class DockerUpdateGuardOptionsValidatorTests
     /// <returns>Configured options</returns>
     private static DockerUpdateGuardOptions CreateValidOptions()
     {
-        var scanningOptions = new ScanningOptions();
-
-        scanningOptions.DiscoveryIntervalMinutes = 15;
-        scanningOptions.DockerHubAccountDiscoveryIntervalMinutes = 60;
-        scanningOptions.OwnImageBaseScanIntervalMinutes = 60;
-        scanningOptions.DockerHubRequestLimitWindowHours = 6;
-        scanningOptions.DockerHubRequestLimitPerWindow = 200;
-        scanningOptions.DockerHubReservedManualRequestsPerWindow = 40;
-        scanningOptions.RuntimeImageUpdateScanIntervalMinutes = 30;
-        scanningOptions.VulnerabilityRefreshIntervalMinutes = 180;
-        scanningOptions.CleanupIntervalMinutes = 720;
-        scanningOptions.RetryCount = 2;
-        scanningOptions.RetainScanRunsDays = 30;
+        var scanningOptions = new ScanningOptions
+                              {
+                                  DiscoveryIntervalMinutes = 15,
+                                  DockerHubAccountDiscoveryIntervalMinutes = 60,
+                                  OwnImageBaseScanIntervalMinutes = 60,
+                                  DockerHubRequestLimitWindowHours = 6,
+                                  DockerHubRequestLimitPerWindow = 200,
+                                  DockerHubReservedManualRequestsPerWindow = 40,
+                                  RuntimeImageUpdateScanIntervalMinutes = 30,
+                                  VulnerabilityRefreshIntervalMinutes = 180,
+                                  CleanupIntervalMinutes = 720,
+                                  RetryCount = 2,
+                                  RetainScanRunsDays = 30
+                              };
 
         var dockerHubOptions = new DockerHubOptions
                                {

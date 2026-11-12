@@ -277,7 +277,7 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
             return null;
         }
 
-        if (Uri.TryCreate(url, UriKind.Absolute, out Uri? parsed) == false)
+        if (Uri.TryCreate(url, UriKind.Absolute, out var parsed) == false)
         {
             return null;
         }

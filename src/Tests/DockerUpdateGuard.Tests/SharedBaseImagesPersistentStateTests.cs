@@ -45,14 +45,13 @@ public class SharedBaseImagesPersistentStateTests
             var persistentState = testContext.GetPersistentComponentState();
 
             persistentState.Persist<IReadOnlyList<SharedBaseImageListItemData>>(StateKey,
-                                                                                new List<SharedBaseImageListItemData>
-                                                                                {
+                                                                                [
                                                                                     new()
                                                                                     {
                                                                                         BaseImageVersionId = Guid.NewGuid(),
                                                                                         ImageReference = "docker.io/library/debian:12",
                                                                                     }
-                                                                                });
+                                                                                ]);
 
             var component = testContext.Render<SharedBaseImages>();
 
@@ -76,14 +75,13 @@ public class SharedBaseImagesPersistentStateTests
             var baseImageVersionId = Guid.NewGuid();
 
             viewService.GetBaseImagesAsync(Arg.Any<CancellationToken>())
-                       .Returns(new List<SharedBaseImageListItemData>
-                                {
+                       .Returns([
                                     new()
                                     {
                                         BaseImageVersionId = baseImageVersionId,
                                         ImageReference = "docker.io/library/debian:12",
                                     }
-                                });
+                                ]);
 
             testContext.Services.AddSingleton(viewService);
 

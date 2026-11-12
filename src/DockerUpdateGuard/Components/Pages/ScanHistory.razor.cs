@@ -1,3 +1,5 @@
+using System.Globalization;
+
 using DockerUpdateGuard.Configuration;
 using DockerUpdateGuard.Data.Entities;
 using DockerUpdateGuard.Images.Interfaces;
@@ -132,7 +134,7 @@ public sealed partial class ScanHistory : IDisposable
     {
         return schedule.NextVulnerabilityRefreshUtc is null
                    ? "shortly (no run recorded yet)"
-                   : schedule.NextVulnerabilityRefreshUtc.GetValueOrDefault().ToLocalTime().ToString("g");
+                   : schedule.NextVulnerabilityRefreshUtc.GetValueOrDefault().ToLocalTime().ToString("g", CultureInfo.CurrentCulture);
     }
 
     #endregion // Static methods
@@ -210,10 +212,7 @@ public sealed partial class ScanHistory : IDisposable
         {
             Logger.UserActionFailed("VulnerabilityRefresh", exception);
 
-            await InvokeAsync(() =>
-                              {
-                                  _errorMessage = $"Vulnerability refresh failed: {FailureReason.FromException(exception, null, CancellationToken.None)}";
-                              }).ConfigureAwait(false);
+            await InvokeAsync(() => _errorMessage = $"Vulnerability refresh failed: {FailureReason.FromException(exception, null, CancellationToken.None)}").ConfigureAwait(false);
         }
         finally
         {

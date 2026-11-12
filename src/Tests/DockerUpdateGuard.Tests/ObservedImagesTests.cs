@@ -42,7 +42,7 @@ public class ObservedImagesTests
             var exception = new InvalidOperationException("connection to db.internal.test:5432 refused");
 
             viewService.GetManualObservedImagesAsync(Arg.Any<CancellationToken>())
-                       .Returns(new List<ObservedImageListItemData>());
+                       .Returns([]);
             registrationService.RegisterAsync(Arg.Any<ObservedImageRegistrationRequest>(), Arg.Any<CancellationToken>())
                                .Returns(Task.FromException<ObservedImage>(exception));
 

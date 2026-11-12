@@ -393,17 +393,11 @@ public sealed partial class RuntimeContainers : IDisposable
         {
             Logger.UserActionFailed("UpdateCheck", exception);
 
-            await InvokeAsync(() =>
-                              {
-                                  _errorMessage = $"Update check failed: {FailureReason.FromException(exception, null, CancellationToken.None)}";
-                              }).ConfigureAwait(false);
+            await InvokeAsync(() => _errorMessage = $"Update check failed: {FailureReason.FromException(exception, null, CancellationToken.None)}").ConfigureAwait(false);
         }
         finally
         {
-            await InvokeAsync(() =>
-                              {
-                                  _isBusy = false;
-                              }).ConfigureAwait(false);
+            await InvokeAsync(() => _isBusy = false).ConfigureAwait(false);
         }
     }
 

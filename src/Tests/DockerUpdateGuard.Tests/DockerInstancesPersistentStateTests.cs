@@ -52,15 +52,14 @@ public class DockerInstancesPersistentStateTests
             var persistentState = testContext.GetPersistentComponentState();
 
             persistentState.Persist<IReadOnlyList<DockerInstanceListItemData>>(ListStateKey,
-                                                                               new List<DockerInstanceListItemData>
-                                                                               {
+                                                                               [
                                                                                    new()
                                                                                    {
                                                                                        Id = instanceId,
                                                                                        Name = "restored-instance",
                                                                                        EndpointUri = "unix:///var/run/docker.sock",
                                                                                    }
-                                                                               });
+                                                                               ]);
             persistentState.Persist(SingleDetailStateKey,
                                     new DockerInstanceDetailViewData
                                     {

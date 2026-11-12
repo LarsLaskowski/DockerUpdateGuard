@@ -189,10 +189,7 @@ public sealed partial class RuntimeContainerDetail : IDisposable
         var detail = await ViewService.GetRuntimeContainerDetailAsync(DockerInstanceId, ContainerId)
                                       .ConfigureAwait(false);
 
-        await InvokeAsync(() =>
-                          {
-                              _detail = detail;
-                          }).ConfigureAwait(false);
+        await InvokeAsync(() => _detail = detail).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -233,17 +230,11 @@ public sealed partial class RuntimeContainerDetail : IDisposable
         {
             Logger.UserActionFailed("SaveTagSelection", exception);
 
-            await InvokeAsync(() =>
-                              {
-                                  _errorMessage = $"Saving the tag selection failed: {FailureReason.FromException(exception, null, CancellationToken.None)}";
-                              }).ConfigureAwait(false);
+            await InvokeAsync(() => _errorMessage = $"Saving the tag selection failed: {FailureReason.FromException(exception, null, CancellationToken.None)}").ConfigureAwait(false);
         }
         finally
         {
-            await InvokeAsync(() =>
-                              {
-                                  _isBusy = false;
-                              }).ConfigureAwait(false);
+            await InvokeAsync(() => _isBusy = false).ConfigureAwait(false);
         }
     }
 
@@ -269,17 +260,11 @@ public sealed partial class RuntimeContainerDetail : IDisposable
         {
             Logger.UserActionFailed("ClearTagSelection", exception);
 
-            await InvokeAsync(() =>
-                              {
-                                  _errorMessage = $"Clearing the tag selection failed: {FailureReason.FromException(exception, null, CancellationToken.None)}";
-                              }).ConfigureAwait(false);
+            await InvokeAsync(() => _errorMessage = $"Clearing the tag selection failed: {FailureReason.FromException(exception, null, CancellationToken.None)}").ConfigureAwait(false);
         }
         finally
         {
-            await InvokeAsync(() =>
-                              {
-                                  _isBusy = false;
-                              }).ConfigureAwait(false);
+            await InvokeAsync(() => _isBusy = false).ConfigureAwait(false);
         }
     }
 

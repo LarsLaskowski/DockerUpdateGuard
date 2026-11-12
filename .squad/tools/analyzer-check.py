@@ -7,7 +7,8 @@ build therefore hides issues that the quality gate later reports. This script ru
 Release build with an SARIF error log per project and reports every non-suppressed diagnostic (RH####,
 S####, MSTEST####, CA####, ...) located in a file changed since the merge base with origin/main
 (working tree and untracked files included). Before it, `dotnet_major.py` checks that every project, `global.json`
-and every .NET image name the same .NET major, also with `--lint-only`.
+and every .NET image name the same .NET major, and `dotnet_config.py` the build structure and the template's rules
+(the dotnet-rules blocks current, no rule switched off outside them), also with `--lint-only`.
 
 The build command (solution from `.squad/tools/squad_settings.py`), the base (origin/main) and the log
 location are fixed on purpose: the script accepts one flag, `--lint-only` (the lint pass over changed shell
@@ -34,6 +35,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import squad_settings as settings  # noqa: E402  (per-repository settings next to this script)
 from analyzer_common import git, merge_base, lint_check, lint_only_requested  # noqa: E402  (shared helpers next to this script)
 import dotnet_major  # noqa: E402  (one .NET major per repository; next to this script)
+import dotnet_config  # noqa: E402  (one build structure and the template's rules; next to this script)
 
 SARIF_NAME = os.path.join("obj", "roslyn.sarif")
 LOCK_FILE = os.path.join("obj", "analyzer-check.lock")
@@ -81,6 +83,7 @@ def main():
     os.chdir(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
     if lint_only_requested():
         ok = dotnet_major.check()
+        ok = dotnet_config.check() and ok
         ok = lint_check() and ok
         print("PASS" if ok else "FAIL")
         return 0 if ok else 1
@@ -115,6 +118,7 @@ def run_check():
     print(f"\nDiagnostics in changed files: {len(in_changed)}")
     print(f"Diagnostics in unchanged files (not gating): {elsewhere}")
     ok = dotnet_major.check()
+    ok = dotnet_config.check() and ok
     ok = lint_check() and not in_changed and ok
     print("PASS" if ok else "FAIL")
     return 0 if ok else 1

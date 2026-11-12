@@ -49,12 +49,7 @@ public class RuntimeContainerTagSelectionService : IRuntimeContainerTagSelection
                                                                 .FirstOrDefaultAsync(entity => entity.DockerInstanceId == dockerInstanceId
                                                                                                && entity.ContainerId == containerId,
                                                                                      cancellationToken)
-                                                                .ConfigureAwait(false);
-
-        if (latestSnapshot is null)
-        {
-            throw new InvalidOperationException($"Runtime container '{dockerInstanceId}/{containerId}' was not found");
-        }
+                                                                .ConfigureAwait(false) ?? throw new InvalidOperationException($"Runtime container '{dockerInstanceId}/{containerId}' was not found");
 
         var selection = await _dbContext.RuntimeContainerTagSelections
                                         .SingleOrDefaultAsync(entity => entity.DockerInstanceId == dockerInstanceId

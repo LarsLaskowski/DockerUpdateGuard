@@ -48,8 +48,7 @@ public class ScanHistoryPersistentStateTests
             var persistentState = testContext.GetPersistentComponentState();
 
             persistentState.Persist<IReadOnlyList<ScanHistoryItemData>>(StateKey,
-                                                                        new List<ScanHistoryItemData>
-                                                                        {
+                                                                        [
                                                                             new()
                                                                             {
                                                                                 Type = "Discovery",
@@ -58,7 +57,7 @@ public class ScanHistoryPersistentStateTests
                                                                                 SubjectName = "restored-subject",
                                                                                 StartedAtUtc = DateTimeOffset.UtcNow,
                                                                             }
-                                                                        });
+                                                                        ]);
 
             var component = testContext.Render<ScanHistory>();
 
@@ -81,8 +80,7 @@ public class ScanHistoryPersistentStateTests
             var viewService = Substitute.For<IApplicationViewService>();
 
             viewService.GetScanHistoryAsync(Arg.Any<int>(), Arg.Any<CancellationToken>())
-                       .Returns(new List<ScanHistoryItemData>
-                                {
+                       .Returns([
                                     new()
                                     {
                                         Type = "Discovery",
@@ -91,7 +89,7 @@ public class ScanHistoryPersistentStateTests
                                         SubjectName = "loaded-subject",
                                         StartedAtUtc = DateTimeOffset.UtcNow,
                                     }
-                                });
+                                ]);
 
             RegisterServices(testContext, viewService);
 

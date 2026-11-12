@@ -46,8 +46,7 @@ public class RuntimeContainersPersistentStateTests
             var persistentState = testContext.GetPersistentComponentState();
 
             persistentState.Persist<IReadOnlyList<RuntimeContainerListItemData>>(StateKey,
-                                                                                 new List<RuntimeContainerListItemData>
-                                                                                 {
+                                                                                 [
                                                                                      new()
                                                                                      {
                                                                                          DockerInstanceId = Guid.NewGuid(),
@@ -56,7 +55,7 @@ public class RuntimeContainersPersistentStateTests
                                                                                          DockerInstanceName = "Production",
                                                                                          UpdateState = "Up to date",
                                                                                      }
-                                                                                 });
+                                                                                 ]);
 
             var component = testContext.Render<RuntimeContainers>();
 
@@ -79,8 +78,7 @@ public class RuntimeContainersPersistentStateTests
             var viewService = Substitute.For<IApplicationViewService>();
 
             viewService.GetRuntimeContainersAsync(Arg.Any<CancellationToken>())
-                       .Returns(new List<RuntimeContainerListItemData>
-                                {
+                       .Returns([
                                     new()
                                     {
                                         DockerInstanceId = Guid.NewGuid(),
@@ -89,7 +87,7 @@ public class RuntimeContainersPersistentStateTests
                                         DockerInstanceName = "Production",
                                         UpdateState = "Up to date",
                                     }
-                                });
+                                ]);
 
             RegisterServices(testContext, viewService);
 

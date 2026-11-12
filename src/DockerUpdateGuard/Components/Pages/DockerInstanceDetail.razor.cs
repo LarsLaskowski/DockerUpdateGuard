@@ -106,10 +106,7 @@ public sealed partial class DockerInstanceDetail : IDisposable
         var detail = await ViewService.GetDockerInstanceDetailAsync(DockerInstanceId)
                                       .ConfigureAwait(false);
 
-        await InvokeAsync(() =>
-                          {
-                              _detail = detail;
-                          }).ConfigureAwait(false);
+        await InvokeAsync(() => _detail = detail).ConfigureAwait(false);
     }
 
     /// <summary>

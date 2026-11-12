@@ -73,7 +73,7 @@ observability vs. everything else. Persistence stays in `.Data`;
 observability stays in `.Telemetry`; the host project owns composition.
 
 Solution-wide conventions (`.slnx` format, `net10.0`, nullable/implicit
-usings, `SharedAssemblyInfo.cs`, per-configuration rulesets, centralized
+usings, `SharedAssemblyInfo.cs`, the template's analyzer rule baseline, centralized
 `GlobalSuppressions.cs`, `Reihitsu.Analyzer` + `SonarAnalyzer.CSharp`) are
 documented in [AGENTS.md](../AGENTS.md) and not repeated here.
 

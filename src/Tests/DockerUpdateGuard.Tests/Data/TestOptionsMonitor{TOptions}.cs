@@ -9,12 +9,6 @@ namespace DockerUpdateGuard.Tests.Data;
 internal sealed partial class TestOptionsMonitor<TOptions> : IOptionsMonitor<TOptions>
     where TOptions : class
 {
-    #region Fields
-
-    private readonly TOptions _currentValue;
-
-    #endregion // Fields
-
     #region Constructors
 
     /// <summary>
@@ -23,7 +17,7 @@ internal sealed partial class TestOptionsMonitor<TOptions> : IOptionsMonitor<TOp
     /// <param name="currentValue">Current value</param>
     public TestOptionsMonitor(TOptions currentValue)
     {
-        _currentValue = currentValue;
+        CurrentValue = currentValue;
     }
 
     #endregion // Constructors
@@ -33,7 +27,7 @@ internal sealed partial class TestOptionsMonitor<TOptions> : IOptionsMonitor<TOp
     #region Properties
 
     /// <inheritdoc/>
-    public TOptions CurrentValue => _currentValue;
+    public TOptions CurrentValue { get; }
 
     #endregion // Properties
 
@@ -42,7 +36,7 @@ internal sealed partial class TestOptionsMonitor<TOptions> : IOptionsMonitor<TOp
     /// <inheritdoc/>
     public TOptions Get(string? name)
     {
-        return _currentValue;
+        return CurrentValue;
     }
 
     /// <inheritdoc/>
