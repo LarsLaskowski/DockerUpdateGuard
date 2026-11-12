@@ -104,25 +104,29 @@ All commands, with what each one checks, are listed in [`.squad/stack.md`](/.squ
 ## Project configuration
 
 <!-- stack:begin configuration -->
-- **Target framework** as set in the project files (see `.squad/stack.md`); **nullable reference types**, **implicit usings**, and
-  **documentation XML** generation are all enabled.
+- **Target framework** set once in `Directory.Build.props` (a project file names only a platform of the same major,
+  `net11.0-windows`), with **nullable reference types**, **implicit usings**, **documentation XML**,
+  `TreatWarningsAsErrors`, `EnforceCodeStyleInBuild` and `AnalysisLevel` `latest-recommended` for every project;
+  `dotnet_config.py` checks the build structure in the *Analyzer gate* (`.squad/stack.md`).
 - **Central Package Management** via `Directory.Packages.props`; never put versions in individual
   `.csproj` files.
 - **Reihitsu.Analyzer** and **SonarAnalyzer.CSharp** are dev dependencies in every project (via
   `Directory.Build.props`).
+- **Analyzer rules** and their severities come from the template, the same in every .NET repository: the
+  `squad:dotnet-rules` and `squad:sonar-rules` blocks of `.editorconfig`, written by `.squad/tools/dotnet-rules.py`
+  and `sonar-rules.py`; never set them outside the blocks (a rule the code does not meet yet: `DOTNET_RULES_PENDING`,
+  `.squad/stack.md`, *Analyzer gate*).
 - **Solution format** is `.slnx` (XML-based) at the repository root.
 <!-- stack:end configuration -->
 <!-- project:begin configuration -->
-- **Target framework** `net10.0` in the runtime projects; one solution, `DockerUpdateGuard.slnx`, at the
-  repository root.
-- Runtime projects disable generated assembly info and link `SharedAssemblyInfo.cs` from the repository root.
-- Runtime and test projects use per-configuration rulesets from `rules/DockerUpdateGuard.Debug.ruleset` and
-  `rules/DockerUpdateGuard.Release.ruleset`; rules SonarAnalyzer.CSharp disables by default (e.g. `S3776`) are
-  enabled there and, with the rest of the SonarQube Cloud profile, in the `squad:sonar-rules` block of `.editorconfig`
-  (*Analyzer gate* in `.squad/stack.md`).
-- SonarCloud rule suppressions are centralized in the shared `src/GlobalSuppressions.cs` (linked into each
-  project), never scattered per file; the only exception is the temporary pragma of a skeleton (the ids
-  *Skeleton* in `.squad/stack.md` lists), which is removed with the implementation.
+- **Target framework** `net10.0` for every project, set once in `Directory.Build.props`; one solution,
+  `DockerUpdateGuard.slnx`, at the repository root.
+- Every project disables generated assembly info and links `SharedAssemblyInfo.cs` from the repository root, whose
+  wildcard `AssemblyVersion` is why `Directory.Build.props` sets `Deterministic` `false` for every project.
+- SonarCloud rule suppressions are member- or type-scoped (with a `Target`) and centralized in `src/GlobalSuppressions.cs`
+  (linked into the host project, the one their targets are in), never scattered per file and never assembly-wide; the
+  only exception is the temporary pragma of a skeleton (the ids *Skeleton* in `.squad/stack.md` lists), which is
+  removed with the implementation.
 - Tests live under `src/Tests`, not a top-level `tests` folder; keep new test projects there.
 - EF Core migrations follow the SeriesOverwatch pattern: the first migration is `InitialCreate`, later ones
   `Update1`, `Update2`, …; migration files are renamed to drop the timestamp prefix, while the generated

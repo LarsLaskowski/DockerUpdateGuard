@@ -79,14 +79,9 @@ internal sealed class RetryProbeHttpMessageHandler : HttpMessageHandler
                                ? null
                                : await request.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false));
 
-        var outcome = _outcomes.Count > 0 ? _outcomes.Dequeue() : _fallbackStatusCode;
+        var outcome = (_outcomes.Count > 0 ? _outcomes.Dequeue() : _fallbackStatusCode) ?? throw FailureFactory();
 
-        if (outcome is null)
-        {
-            throw FailureFactory();
-        }
-
-        var response = new HttpResponseMessage(outcome.Value)
+        var response = new HttpResponseMessage(outcome)
                        {
                            RequestMessage = request,
                        };

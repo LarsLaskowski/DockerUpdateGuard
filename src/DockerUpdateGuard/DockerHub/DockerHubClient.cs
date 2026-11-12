@@ -1121,7 +1121,7 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
     private async Task<ExternalOperationResult<IReadOnlyList<DockerHubTagData>>> GetTagsCoreAsync(string repository, string repositoryPath, RegistryTagQueryOptions? queryOptions, CancellationToken cancellationToken)
     {
         var apiBaseUri = GetApiBaseUri();
-        Uri? requestUri = new Uri(apiBaseUri, $"v2/namespaces/{CreateRepositoryApiPath(repositoryPath)}/tags?page_size=100");
+        var requestUri = new Uri(apiBaseUri, $"v2/namespaces/{CreateRepositoryApiPath(repositoryPath)}/tags?page_size=100");
         var results = new List<DockerHubTagData>();
         var resolvedCurrentVersionTag = false;
 
@@ -1263,7 +1263,7 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
                                   {
                                       var repositories = new List<DockerHubRepositoryData>();
                                       var apiBaseUri = GetApiBaseUri();
-                                      Uri? requestUri = new Uri(apiBaseUri, $"v2/repositories/{Uri.EscapeDataString(accountName)}/?page_size=100");
+                                      var requestUri = new Uri(apiBaseUri, $"v2/repositories/{Uri.EscapeDataString(accountName)}/?page_size=100");
 
                                       while (requestUri is not null)
                                       {

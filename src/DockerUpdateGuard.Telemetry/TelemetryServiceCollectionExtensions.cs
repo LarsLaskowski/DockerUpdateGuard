@@ -153,10 +153,7 @@ public static class TelemetryServiceCollectionExtensions
             return;
         }
 
-        loggingOptions.AddOtlpExporter(exporterOptions =>
-                                       {
-                                           exporterOptions.Endpoint = endpoint;
-                                       });
+        loggingOptions.AddOtlpExporter(exporterOptions => exporterOptions.Endpoint = endpoint);
     }
 
     /// <summary>
@@ -178,10 +175,7 @@ public static class TelemetryServiceCollectionExtensions
             return;
         }
 
-        metricsBuilder.AddOtlpExporter(exporterOptions =>
-                                       {
-                                           exporterOptions.Endpoint = endpoint;
-                                       });
+        metricsBuilder.AddOtlpExporter(exporterOptions => exporterOptions.Endpoint = endpoint);
     }
 
     /// <summary>
@@ -203,10 +197,7 @@ public static class TelemetryServiceCollectionExtensions
             return;
         }
 
-        tracingBuilder.AddOtlpExporter(exporterOptions =>
-                                       {
-                                           exporterOptions.Endpoint = endpoint;
-                                       });
+        tracingBuilder.AddOtlpExporter(exporterOptions => exporterOptions.Endpoint = endpoint);
     }
 
     /// <summary>

@@ -151,10 +151,7 @@ public sealed partial class MyImages : IDisposable
         var images = await ViewService.GetDiscoveryObservedImagesAsync()
                                       .ConfigureAwait(false);
 
-        await InvokeAsync(() =>
-                          {
-                              _images = images;
-                          }).ConfigureAwait(false);
+        await InvokeAsync(() => _images = images).ConfigureAwait(false);
     }
 
     /// <summary>

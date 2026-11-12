@@ -1,3 +1,5 @@
+using System.Globalization;
+
 using MudBlazor;
 
 namespace DockerUpdateGuard.UI;
@@ -135,8 +137,8 @@ internal static class ResourceUsageChartBuilder
         var localTime = recordedAtUtc.ToLocalTime();
 
         return index == 0 || index == labelCount - 1
-                   ? localTime.ToString("MM-dd HH:mm")
-                   : localTime.ToString("HH:mm");
+                   ? localTime.ToString("MM-dd HH:mm", CultureInfo.CurrentCulture)
+                   : localTime.ToString("HH:mm", CultureInfo.CurrentCulture);
     }
 
     /// <summary>

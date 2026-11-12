@@ -219,10 +219,7 @@ public sealed partial class Vulnerabilities : IDisposable
         var items = await ViewService.GetVulnerabilityOverviewAsync()
                                      .ConfigureAwait(false);
 
-        await InvokeAsync(() =>
-                          {
-                              _items = items;
-                          }).ConfigureAwait(false);
+        await InvokeAsync(() => _items = items).ConfigureAwait(false);
     }
 
     #endregion // ComponentBase

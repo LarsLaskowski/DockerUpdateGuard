@@ -150,7 +150,7 @@ internal static class ResponseBodyExcerpt
             cut--;
         }
 
-        return string.Concat(ReplaceControlCharacters(text.Substring(0, cut)), TruncationMarker);
+        return string.Concat(ReplaceControlCharacters(text[..cut]), TruncationMarker);
     }
 
     /// <summary>
