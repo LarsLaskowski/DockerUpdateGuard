@@ -166,5 +166,42 @@ public partial class NginxReleaseMetadataServiceTests
                         "The failure message must keep its text and carry the first 500 characters of the body followed by the ellipsis");
     }
 
+    /// <summary>
+    /// Verify a loaded listing serves repeated and further channel requests without another download
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task NginxReleaseMetadataServiceGetChannelReleaseAsyncWhenListingIsLoadedServesCacheAsync()
+    {
+        var requests = 0;
+        using var handler = new DelegateHttpMessageHandler(_ =>
+                                                           {
+                                                               requests++;
+
+                                                               return new HttpResponseMessage(HttpStatusCode.OK)
+                                                                      {
+                                                                          Content = new StringContent("<a href=\"nginx-1.29.8.tar.gz\">nginx-1.29.8.tar.gz</a>"),
+                                                                      };
+                                                           });
+        using var httpClient = new HttpClient(handler)
+                               {
+                                   BaseAddress = new Uri("https://nginx.example.test/"),
+                               };
+        var service = new NginxReleaseMetadataService(httpClient, new TestLogger<NginxReleaseMetadataService>());
+
+        var first = await service.GetChannelReleaseAsync("1.29", CancellationToken.None)
+                                 .ConfigureAwait(false);
+        var cached = await service.GetChannelReleaseAsync("1.29", CancellationToken.None)
+                                  .ConfigureAwait(false);
+        var missing = await service.GetChannelReleaseAsync("1.99", CancellationToken.None)
+                                   .ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, first.Status, "The first request must succeed");
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, cached.Status, "The cached request must succeed");
+        Assert.AreEqual(new Version(1, 29, 8), cached.Data?.LatestVersion, "The cached request must return the latest version");
+        Assert.AreEqual(ExternalOperationStatus.NotFound, missing.Status, "A channel missing from the loaded listing must be not found");
+        Assert.AreEqual(1, requests, "The listing must be downloaded once");
+    }
+
     #endregion // Methods
 }

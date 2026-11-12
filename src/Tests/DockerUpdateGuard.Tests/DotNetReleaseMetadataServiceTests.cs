@@ -230,5 +230,62 @@ public partial class DotNetReleaseMetadataServiceTests
                         "The failure message must keep its text and carry the first 500 characters of the body followed by the ellipsis");
     }
 
+    /// <summary>
+    /// Verify a loaded index serves repeated and further channel requests without another download
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DotNetReleaseMetadataServiceGetChannelReleaseAsyncWhenIndexIsLoadedServesCacheAsync()
+    {
+        var requests = 0;
+        using var handler = new DelegateHttpMessageHandler(_ =>
+                                                           {
+                                                               requests++;
+
+                                                               return new HttpResponseMessage(HttpStatusCode.OK)
+                                                                      {
+                                                                          Content = new StringContent("{\"releases-index\":[{\"channel-version\":\"9.0\",\"latest-runtime\":\"9.0.15\"}]}"),
+                                                                      };
+                                                           });
+        using var httpClient = new HttpClient(handler)
+                               {
+                                   BaseAddress = new Uri("https://dotnet.example.test/"),
+                               };
+        var service = new DotNetReleaseMetadataService(httpClient, new TestLogger<DotNetReleaseMetadataService>());
+
+        var first = await service.GetChannelReleaseAsync("9.0", CancellationToken.None)
+                                 .ConfigureAwait(false);
+        var cached = await service.GetChannelReleaseAsync("9.0", CancellationToken.None)
+                                  .ConfigureAwait(false);
+        var missing = await service.GetChannelReleaseAsync("1.0", CancellationToken.None)
+                                   .ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, first.Status, "The first request must succeed");
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, cached.Status, "The cached request must succeed");
+        Assert.AreEqual(ExternalOperationStatus.NotFound, missing.Status, "A channel missing from the loaded index must be not found");
+        Assert.AreEqual(1, requests, "The index must be downloaded once");
+    }
+
+    /// <summary>
+    /// Verify an index without a releases-index array is reported as failed
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DotNetReleaseMetadataServiceGetChannelReleaseAsyncWhenIndexHasNoReleasesArrayReturnsFailedAsync()
+    {
+        using var handler = new StaticHttpJsonMessageHandler("{}");
+        using var httpClient = new HttpClient(handler)
+                               {
+                                   BaseAddress = new Uri("https://dotnet.example.test/"),
+                               };
+        var service = new DotNetReleaseMetadataService(httpClient, new TestLogger<DotNetReleaseMetadataService>());
+
+        var result = await service.GetChannelReleaseAsync("9.0", CancellationToken.None)
+                                  .ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Failed, result.Status, "An index without a releases-index array must fail");
+        Assert.AreEqual("The .NET release index does not contain a valid releases-index array", result.Message, "The failure must name the missing array");
+    }
+
     #endregion // Methods
 }

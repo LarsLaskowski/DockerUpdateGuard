@@ -185,6 +185,40 @@ public partial class DockerInstanceClientTests
     }
 
     /// <summary>
+    /// Verify every operation of a disabled Docker instance returns a not-configured result naming the instance
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerInstanceClientOperationsWhenInstanceDisabledReturnNotConfiguredAsync()
+    {
+        var client = new DockerInstanceClient(new TestLogger<DockerInstanceClient>());
+        var instanceOptions = new DockerInstanceOptions
+                              {
+                                  Name = "Production",
+                                  BaseUrl = "https://docker.example.test",
+                                  Enabled = false,
+                              };
+
+        var usage = await client.CollectContainerResourceUsageAsync(instanceOptions, CancellationToken.None)
+                                .ConfigureAwait(false);
+        var inspect = await client.InspectImageAsync(instanceOptions, "app:latest", CancellationToken.None)
+                                  .ConfigureAwait(false);
+        var history = await client.GetImageHistoryAsync(instanceOptions, "app:latest", CancellationToken.None)
+                                  .ConfigureAwait(false);
+        var memory = await client.GetHostMemoryTotalAsync(instanceOptions, CancellationToken.None)
+                                 .ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.NotConfigured, usage.Status, "Resource usage of a disabled instance must be not configured");
+        Assert.AreEqual(ExternalOperationStatus.NotConfigured, inspect.Status, "Image inspection of a disabled instance must be not configured");
+        Assert.AreEqual(ExternalOperationStatus.NotConfigured, history.Status, "Image history of a disabled instance must be not configured");
+        Assert.AreEqual(ExternalOperationStatus.NotConfigured, memory.Status, "Host memory of a disabled instance must be not configured");
+        Assert.AreEqual("Docker instance 'Production' is disabled", usage.Message, "The resource usage message must name the instance");
+        Assert.AreEqual("Docker instance 'Production' is disabled", inspect.Message, "The inspection message must name the instance");
+        Assert.AreEqual("Docker instance 'Production' is disabled", history.Message, "The history message must name the instance");
+        Assert.AreEqual("Docker instance 'Production' is disabled", memory.Message, "The host memory message must name the instance");
+    }
+
+    /// <summary>
     /// Verify unsupported Docker endpoints return an unsupported result and log the warning
     /// </summary>
     /// <returns>Task</returns>
