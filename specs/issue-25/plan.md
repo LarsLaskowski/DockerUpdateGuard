@@ -79,8 +79,9 @@ callback, then answers the next login normally and checks it was sent.
 ## Approach
 
 - New `src/DockerUpdateGuard/DockerHub/DockerHubAccessTokenCache.cs`, a public sealed class implementing
-  `IDisposable`, with the injected `TimeProvider`, one `SemaphoreSlim(1, 1)` login lock, and one private immutable
-  entry (token, expiry, trimmed user name, SHA-256 of the UTF-8 PAT) held in one field that is read and replaced as a
+  `IDisposable`, with the injected `TimeProvider`, one `SemaphoreSlim(1, 1)` login lock, and one immutable entry
+  (token, expiry, login key, trimmed user name, SHA-256 of the UTF-8 PAT) — the `internal sealed` type
+  `DockerHubAccessTokenCacheEntry` in its own file, since Reihitsu RH2101 forbids a nested type — held in one private field that is read and replaced as a
   whole (`Volatile.Read`/`Volatile.Write`). The PAT itself is never stored.
 - `GetOrRequestAsync`: if the entry matches the login URL (compared as scheme, host, port and path, the form
   `LoginRetryAfterRegistry` keys by), the user name (ordinal) and the PAT fingerprint

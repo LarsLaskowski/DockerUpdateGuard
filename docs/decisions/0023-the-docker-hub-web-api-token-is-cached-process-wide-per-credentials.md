@@ -1,6 +1,6 @@
 # 0023: The Docker Hub web API token is cached process-wide, per credentials
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-12
 - **Area:** Registries
 - **Source:** Issue #25
