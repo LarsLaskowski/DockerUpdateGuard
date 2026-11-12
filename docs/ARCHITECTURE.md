@@ -376,9 +376,13 @@ exporter. A custom `ActivitySource` and `Meter` live in the telemetry
 project (`DockerUpdateGuardTelemetry`, `TelemetryActivityNames`);
 `ApplicationTelemetry` in the host project owns the application-specific
 instruments. Logging is structured, via `ILogger<T>` and source-generated
-`[LoggerMessage]` partial classes — every integration client and
-background job has a matching `*Logging.cs` partial class rather than
-ad-hoc `_logger.LogInformation(...)` calls. Switches, export conditions,
+`[LoggerMessage]` partial classes. The clients under `Docker/`,
+`DockerHub/`, `Portainer/` and `Vulnerabilities/` and the retry handler
+in `Infrastructure/` each have their own `*Logging.cs`; the host, `Images/`
+and the components share `HostLoggingExtensions.cs`,
+`Images/ImageHostLoggingExtensions.cs` and
+`Components/ComponentLoggingExtensions.cs`. The CA1848 analyzer rule
+rejects ad-hoc `_logger.LogInformation(...)` calls. Switches, export conditions,
 the emitted span and instrument names, and when the inventory gauges
 refresh are specified in [Telemetry](areas/telemetry.md).
 

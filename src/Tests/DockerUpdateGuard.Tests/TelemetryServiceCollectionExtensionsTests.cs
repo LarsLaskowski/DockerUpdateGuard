@@ -14,7 +14,7 @@ namespace DockerUpdateGuard.Tests;
 /// Tests for shared telemetry service registration behavior
 /// </summary>
 [TestClass]
-public class TelemetryServiceCollectionExtensionsTests
+public partial class TelemetryServiceCollectionExtensionsTests
 {
     #region Fields
 
@@ -25,6 +25,19 @@ public class TelemetryServiceCollectionExtensionsTests
                                                                           ];
 
     #endregion // Fields
+
+    #region Static methods
+
+    /// <summary>
+    /// Log the telemetry pipeline test message
+    /// </summary>
+    /// <param name="logger">Logger</param>
+    /// <param name="testValue">Test value</param>
+    [LoggerMessage(Level = LogLevel.Information,
+                   Message = "Telemetry logging pipeline test {TestValue}")]
+    private static partial void LogPipelineTest(ILogger logger, int testValue);
+
+    #endregion // Static methods
 
     #region Methods
 
@@ -64,7 +77,7 @@ public class TelemetryServiceCollectionExtensionsTests
 
         if (logger.IsEnabled(LogLevel.Information))
         {
-            logger.LogInformation("Telemetry logging pipeline test {TestValue}", 42);
+            LogPipelineTest(logger, 42);
         }
 
         Assert.IsNotNull(loggerFactory, "The telemetry registration must register an ILoggerFactory instance");

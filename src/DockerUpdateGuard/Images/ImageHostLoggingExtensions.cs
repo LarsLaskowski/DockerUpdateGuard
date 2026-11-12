@@ -721,5 +721,36 @@ internal static partial class ImageHostLoggingExtensions
                                                           string operationName,
                                                           string targetName);
 
+    /// <summary>
+    /// Log that loading the .NET release metadata failed with an exception
+    /// </summary>
+    /// <param name="logger">Logger</param>
+    /// <param name="exception">Exception that stopped the load</param>
+    [LoggerMessage(EventId = 2101,
+                   Level = LogLevel.Warning,
+                   Message = "Loading .NET release metadata failed")]
+    public static partial void DotNetReleaseMetadataLoadFailed(this ILogger logger, Exception exception);
+
+    /// <summary>
+    /// Log that loading the NGINX release metadata failed with an exception
+    /// </summary>
+    /// <param name="logger">Logger</param>
+    /// <param name="exception">Exception that stopped the load</param>
+    [LoggerMessage(EventId = 2102,
+                   Level = LogLevel.Warning,
+                   Message = "Loading NGINX release metadata failed")]
+    public static partial void NginxReleaseMetadataLoadFailed(this ILogger logger, Exception exception);
+
+    /// <summary>
+    /// Log that collecting the resource statistics of a Docker instance did not succeed
+    /// </summary>
+    /// <param name="logger">Logger</param>
+    /// <param name="dockerInstanceName">Docker instance name</param>
+    /// <param name="message">Message of the failed operation</param>
+    [LoggerMessage(EventId = 2103,
+                   Level = LogLevel.Warning,
+                   Message = "Resource statistics collection failed for Docker instance {DockerInstanceName}: {Message}")]
+    public static partial void ResourceStatisticsCollectionFailed(this ILogger logger, string dockerInstanceName, string? message);
+
     #endregion // Methods
 }
