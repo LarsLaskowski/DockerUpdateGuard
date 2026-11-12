@@ -217,7 +217,9 @@ Each external system has one hand-written client behind a narrow interface
 — there is no dependency on `Docker.DotNet`, a Portainer SDK, or a Trivy
 client library. Clients return plain DTOs wrapped in
 `ExternalOperationResult<T>` (`Infrastructure\ExternalOperationResult{T}.cs`)
-for expected failure modes, and orchestrators branch on that status instead
+for expected failure modes, created through the factories of the static `ExternalOperationResult`
+(`Infrastructure\ExternalOperationResult.cs`); a non-success result is passed on as a result of
+another payload type with `PropagateFailure`, and orchestrators branch on that status instead
 of on exceptions. The outcomes and where errors still escape are specified
 in [Integration failures](areas/integration-failures.md).
 

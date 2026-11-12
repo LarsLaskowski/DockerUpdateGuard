@@ -111,7 +111,7 @@ public partial class NginxReleaseMetadataService : INginxReleaseMetadataService
     {
         if (_indexLoaded)
         {
-            return ExternalOperationResult<bool>.Succeeded(true);
+            return ExternalOperationResult.Succeeded<bool>(true);
         }
 
         try
@@ -124,7 +124,7 @@ public partial class NginxReleaseMetadataService : INginxReleaseMetadataService
                 var body = await ResponseBodyExcerpt.ReadAsync(response.Content, cancellationToken)
                                                     .ConfigureAwait(false);
 
-                return ExternalOperationResult<bool>.Failed($"The NGINX download listing returned {(int)response.StatusCode}: {body}");
+                return ExternalOperationResult.Failed<bool>($"The NGINX download listing returned {(int)response.StatusCode}: {body}");
             }
 
             var content = await response.Content.ReadAsStringAsync(cancellationToken)
@@ -156,13 +156,13 @@ public partial class NginxReleaseMetadataService : INginxReleaseMetadataService
 
             _indexLoaded = true;
 
-            return ExternalOperationResult<bool>.Succeeded(true);
+            return ExternalOperationResult.Succeeded<bool>(true);
         }
         catch (Exception exception)
         {
-            _logger.LogWarning(exception, "Loading NGINX release metadata failed");
+            _logger.NginxReleaseMetadataLoadFailed(exception);
 
-            return ExternalOperationResult<bool>.Failed($"Loading NGINX release metadata failed: {FailureReason.FromException(exception, _httpClient.Timeout, cancellationToken)}");
+            return ExternalOperationResult.Failed<bool>($"Loading NGINX release metadata failed: {FailureReason.FromException(exception, _httpClient.Timeout, cancellationToken)}");
         }
     }
 
@@ -177,26 +177,19 @@ public partial class NginxReleaseMetadataService : INginxReleaseMetadataService
 
         if (_channelCache.TryGetValue(channelVersion, out var cachedChannelData))
         {
-            return ExternalOperationResult<NginxChannelReleaseData>.Succeeded(cachedChannelData);
+            return ExternalOperationResult.Succeeded<NginxChannelReleaseData>(cachedChannelData);
         }
 
         var indexResult = await LoadIndexAsync(cancellationToken).ConfigureAwait(false);
 
         if (indexResult.Status != ExternalOperationStatus.Succeeded)
         {
-            return indexResult.Status switch
-                   {
-                       ExternalOperationStatus.NotConfigured => ExternalOperationResult<NginxChannelReleaseData>.NotConfigured(indexResult.Message ?? "The NGINX release metadata source is not configured"),
-                       ExternalOperationStatus.Unsupported => ExternalOperationResult<NginxChannelReleaseData>.Unsupported(indexResult.Message ?? "The NGINX release metadata source is unsupported"),
-                       ExternalOperationStatus.NotFound => ExternalOperationResult<NginxChannelReleaseData>.NotFound(indexResult.Message ?? "The NGINX release metadata source could not be found"),
-                       ExternalOperationStatus.Unknown => ExternalOperationResult<NginxChannelReleaseData>.Unknown(indexResult.Message ?? "The NGINX release metadata source returned an unknown result"),
-                       _ => ExternalOperationResult<NginxChannelReleaseData>.Failed(indexResult.Message ?? "Loading NGINX release metadata failed"),
-                   };
+            return indexResult.PropagateFailure<NginxChannelReleaseData>("Loading NGINX release metadata failed");
         }
 
         return _channelCache.TryGetValue(channelVersion, out var channelData)
-                   ? ExternalOperationResult<NginxChannelReleaseData>.Succeeded(channelData)
-                   : ExternalOperationResult<NginxChannelReleaseData>.NotFound($"No NGINX release metadata is available for channel '{channelVersion}'");
+                   ? ExternalOperationResult.Succeeded<NginxChannelReleaseData>(channelData)
+                   : ExternalOperationResult.NotFound<NginxChannelReleaseData>($"No NGINX release metadata is available for channel '{channelVersion}'");
     }
 
     #endregion // INginxReleaseMetadataService

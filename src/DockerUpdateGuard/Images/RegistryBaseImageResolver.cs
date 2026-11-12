@@ -69,11 +69,11 @@ public class RegistryBaseImageResolver : IBaseImageResolver
 
         return status switch
                {
-                   ExternalOperationStatus.Unsupported => ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>.Unsupported(fallbackMessage),
-                   ExternalOperationStatus.NotFound => ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>.NotFound(fallbackMessage),
-                   ExternalOperationStatus.NotConfigured => ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>.NotConfigured(fallbackMessage),
-                   ExternalOperationStatus.Unknown => ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>.Unknown(fallbackMessage),
-                   _ => ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>.Failed(fallbackMessage),
+                   ExternalOperationStatus.Unsupported => ExternalOperationResult.Unsupported<IReadOnlyList<BaseImageDescriptor>>(fallbackMessage),
+                   ExternalOperationStatus.NotFound => ExternalOperationResult.NotFound<IReadOnlyList<BaseImageDescriptor>>(fallbackMessage),
+                   ExternalOperationStatus.NotConfigured => ExternalOperationResult.NotConfigured<IReadOnlyList<BaseImageDescriptor>>(fallbackMessage),
+                   ExternalOperationStatus.Unknown => ExternalOperationResult.Unknown<IReadOnlyList<BaseImageDescriptor>>(fallbackMessage),
+                   _ => ExternalOperationResult.Failed<IReadOnlyList<BaseImageDescriptor>>(fallbackMessage),
                };
     }
 
@@ -184,7 +184,7 @@ public class RegistryBaseImageResolver : IBaseImageResolver
                                     depth: 1,
                                     cancellationToken).ConfigureAwait(false);
 
-        return ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>.Succeeded(results);
+        return ExternalOperationResult.Succeeded<IReadOnlyList<BaseImageDescriptor>>(results);
     }
 
     #endregion // IBaseImageResolver

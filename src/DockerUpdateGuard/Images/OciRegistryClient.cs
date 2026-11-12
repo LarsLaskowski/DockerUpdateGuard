@@ -779,7 +779,7 @@ public partial class OciRegistryClient : IRegistryMetadataClient
     {
         var body = await ResponseBodyExcerpt.ReadAsync(response.Content, cancellationToken).ConfigureAwait(false);
 
-        return ExternalOperationResult<T>.Failed($"{messagePrefix}: {(int)response.StatusCode} {ResponseBodyExcerpt.Truncate(response.ReasonPhrase, ResponseBodyExcerpt.MaxReasonPhraseLength)}{(string.IsNullOrWhiteSpace(body) ? string.Empty : $" - {body}")}");
+        return ExternalOperationResult.Failed<T>($"{messagePrefix}: {(int)response.StatusCode} {ResponseBodyExcerpt.Truncate(response.ReasonPhrase, ResponseBodyExcerpt.MaxReasonPhraseLength)}{(string.IsNullOrWhiteSpace(body) ? string.Empty : $" - {body}")}");
     }
 
     /// <summary>
@@ -881,7 +881,7 @@ public partial class OciRegistryClient : IRegistryMetadataClient
 
         if (manifestUri is null)
         {
-            return ExternalOperationResult<ManifestMetadata>.NotFound(refusalMessage);
+            return ExternalOperationResult.NotFound<ManifestMetadata>(refusalMessage);
         }
 
         using var response = await SendManifestRequestAsync(manifestUri,
@@ -891,7 +891,7 @@ public partial class OciRegistryClient : IRegistryMetadataClient
 
         if (response.StatusCode == HttpStatusCode.NotFound)
         {
-            return ExternalOperationResult<ManifestMetadata>.NotFound($"Reference '{reference}' was not found for '{imageReference.Registry}/{imageReference.Repository}'");
+            return ExternalOperationResult.NotFound<ManifestMetadata>($"Reference '{reference}' was not found for '{imageReference.Registry}/{imageReference.Repository}'");
         }
 
         if (response.IsSuccessStatusCode == false)
@@ -919,7 +919,7 @@ public partial class OciRegistryClient : IRegistryMetadataClient
                                                                   architecture).ConfigureAwait(false);
             }
 
-            return ExternalOperationResult<ManifestMetadata>.Succeeded(new ManifestMetadata
+            return ExternalOperationResult.Succeeded<ManifestMetadata>(new ManifestMetadata
                                                                        {
                                                                            Digest = digest,
                                                                            ConfigDigest = jsonDocument.RootElement.TryGetProperty(ConfigPropertyName, out var configElement)
@@ -950,14 +950,14 @@ public partial class OciRegistryClient : IRegistryMetadataClient
         if (manifestListElement.TryGetProperty("manifests", out var manifestsElement) == false
             || manifestsElement.ValueKind != JsonValueKind.Array)
         {
-            return ExternalOperationResult<ManifestMetadata>.Failed($"Manifest list for '{imageReference.FullReference}' did not contain any platform manifests");
+            return ExternalOperationResult.Failed<ManifestMetadata>($"Manifest list for '{imageReference.FullReference}' did not contain any platform manifests");
         }
 
         var targetDigest = SelectPlatformManifestDigest(manifestsElement, operatingSystem, architecture);
 
         if (string.IsNullOrWhiteSpace(targetDigest))
         {
-            return ExternalOperationResult<ManifestMetadata>.Failed($"Manifest list for '{imageReference.FullReference}' did not expose a target manifest digest");
+            return ExternalOperationResult.Failed<ManifestMetadata>($"Manifest list for '{imageReference.FullReference}' did not expose a target manifest digest");
         }
 
         var platformManifestResult = await GetManifestMetadataAsync(imageReference,
@@ -1127,10 +1127,10 @@ public partial class OciRegistryClient : IRegistryMetadataClient
 
             if (string.IsNullOrWhiteSpace(token))
             {
-                return ExternalOperationResult<CachedBearerToken>.Failed($"Registry token response for '{tokenRequestUri}' did not contain a token");
+                return ExternalOperationResult.Failed<CachedBearerToken>($"Registry token response for '{tokenRequestUri}' did not contain a token");
             }
 
-            return ExternalOperationResult<CachedBearerToken>.Succeeded(new CachedBearerToken
+            return ExternalOperationResult.Succeeded<CachedBearerToken>(new CachedBearerToken
                                                                         {
                                                                             Token = token,
                                                                             ExpiresAtUtc = GetTokenExpirationUtc(jsonDocument.RootElement),
@@ -1206,7 +1206,7 @@ public partial class OciRegistryClient : IRegistryMetadataClient
         {
             _logger.OciRegistryOperationFailed(exception, operationName, targetName);
 
-            return ExternalOperationResult<T>.Failed($"{failureMessage}: {FailureReason.InvalidResponse}");
+            return ExternalOperationResult.Failed<T>($"{failureMessage}: {FailureReason.InvalidResponse}");
         }
     }
 
@@ -1236,7 +1236,7 @@ public partial class OciRegistryClient : IRegistryMetadataClient
 
             if (response.StatusCode == HttpStatusCode.NotFound)
             {
-                return ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.NotFound($"Repository '{repository}' was not found in registry '{normalizedRegistry}'");
+                return ExternalOperationResult.NotFound<IReadOnlyList<DockerHubTagData>>($"Repository '{repository}' was not found in registry '{normalizedRegistry}'");
             }
 
             if (response.IsSuccessStatusCode == false)
@@ -1274,13 +1274,13 @@ public partial class OciRegistryClient : IRegistryMetadataClient
 
                 _logger.OciRegistryPaginationLinkRejected(normalizedRegistry, repository, rejectedOrigin);
 
-                return ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Failed(PaginationLinkGuard.CreateRejectionMessage($"Registry tag listing for '{normalizedRegistry}/{repository}'", rejectedOrigin));
+                return ExternalOperationResult.Failed<IReadOnlyList<DockerHubTagData>>(PaginationLinkGuard.CreateRejectionMessage($"Registry tag listing for '{normalizedRegistry}/{repository}'", rejectedOrigin));
             }
 
             requestUri = nextUri;
         }
 
-        return ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Succeeded(tags);
+        return ExternalOperationResult.Succeeded<IReadOnlyList<DockerHubTagData>>(tags);
     }
 
     /// <summary>
@@ -1297,26 +1297,19 @@ public partial class OciRegistryClient : IRegistryMetadataClient
 
         if (manifestResult.Status != ExternalOperationStatus.Succeeded || manifestResult.Data is null)
         {
-            return manifestResult.Status switch
-                   {
-                       ExternalOperationStatus.Unsupported => ExternalOperationResult<RegistryImageConfigurationData>.Unsupported(manifestResult.Message ?? "Registry lookup is unsupported"),
-                       ExternalOperationStatus.NotFound => ExternalOperationResult<RegistryImageConfigurationData>.NotFound(manifestResult.Message ?? "Registry image was not found"),
-                       ExternalOperationStatus.NotConfigured => ExternalOperationResult<RegistryImageConfigurationData>.NotConfigured(manifestResult.Message ?? "Registry lookup is not configured"),
-                       ExternalOperationStatus.Unknown => ExternalOperationResult<RegistryImageConfigurationData>.Unknown(manifestResult.Message ?? "Registry lookup status is unknown"),
-                       _ => ExternalOperationResult<RegistryImageConfigurationData>.Failed(manifestResult.Message ?? "Registry image configuration lookup failed"),
-                   };
+            return manifestResult.PropagateFailure<RegistryImageConfigurationData>("Registry image configuration lookup failed");
         }
 
         if (string.IsNullOrWhiteSpace(manifestResult.Data.ConfigDigest))
         {
-            return ExternalOperationResult<RegistryImageConfigurationData>.NotFound($"Registry image '{imageReference.FullReference}' did not expose a config digest");
+            return ExternalOperationResult.NotFound<RegistryImageConfigurationData>($"Registry image '{imageReference.FullReference}' did not expose a config digest");
         }
 
         var blobUri = CreateBlobUri(imageReference.Registry, imageReference.Repository, manifestResult.Data.ConfigDigest, out var refusalMessage);
 
         if (blobUri is null)
         {
-            return ExternalOperationResult<RegistryImageConfigurationData>.NotFound(refusalMessage);
+            return ExternalOperationResult.NotFound<RegistryImageConfigurationData>(refusalMessage);
         }
 
         using var response = await SendRegistryRequestAsync(blobUri,
@@ -1327,7 +1320,7 @@ public partial class OciRegistryClient : IRegistryMetadataClient
 
         if (response.StatusCode == HttpStatusCode.NotFound)
         {
-            return ExternalOperationResult<RegistryImageConfigurationData>.NotFound($"Config blob '{manifestResult.Data.ConfigDigest}' was not found for '{imageReference.FullReference}'");
+            return ExternalOperationResult.NotFound<RegistryImageConfigurationData>($"Config blob '{manifestResult.Data.ConfigDigest}' was not found for '{imageReference.FullReference}'");
         }
 
         if (response.IsSuccessStatusCode == false)
@@ -1343,7 +1336,7 @@ public partial class OciRegistryClient : IRegistryMetadataClient
         {
             using var jsonDocument = await RemoteJsonDocument.ParseAsync(responseStream, cancellationToken).ConfigureAwait(false);
 
-            return ExternalOperationResult<RegistryImageConfigurationData>.Succeeded(ParseImageConfiguration(jsonDocument.RootElement));
+            return ExternalOperationResult.Succeeded<RegistryImageConfigurationData>(ParseImageConfiguration(jsonDocument.RootElement));
         }
     }
 
@@ -1368,12 +1361,12 @@ public partial class OciRegistryClient : IRegistryMetadataClient
 
         if (CanHandle(imageReference.Registry) == false)
         {
-            return ExternalOperationResult<DockerHubTagData>.Unsupported($"Registry '{imageReference.Registry}' is not supported by the OCI registry adapter");
+            return ExternalOperationResult.Unsupported<DockerHubTagData>($"Registry '{imageReference.Registry}' is not supported by the OCI registry adapter");
         }
 
         if (RegistryReferenceValidator.IsValidTag(imageReference.Tag) == false)
         {
-            return ExternalOperationResult<DockerHubTagData>.NotFound(RegistryReferenceValidator.InvalidTagMessage);
+            return ExternalOperationResult.NotFound<DockerHubTagData>(RegistryReferenceValidator.InvalidTagMessage);
         }
 
         return await ExecuteAsync(nameof(GetTagAsync),
@@ -1389,17 +1382,10 @@ public partial class OciRegistryClient : IRegistryMetadataClient
 
                                       if (manifestResult.Status != ExternalOperationStatus.Succeeded || manifestResult.Data is null)
                                       {
-                                          return manifestResult.Status switch
-                                                 {
-                                                     ExternalOperationStatus.Unsupported => ExternalOperationResult<DockerHubTagData>.Unsupported(manifestResult.Message ?? "Registry lookup is unsupported"),
-                                                     ExternalOperationStatus.NotFound => ExternalOperationResult<DockerHubTagData>.NotFound(manifestResult.Message ?? "Registry tag was not found"),
-                                                     ExternalOperationStatus.NotConfigured => ExternalOperationResult<DockerHubTagData>.NotConfigured(manifestResult.Message ?? "Registry lookup is not configured"),
-                                                     ExternalOperationStatus.Unknown => ExternalOperationResult<DockerHubTagData>.Unknown(manifestResult.Message ?? "Registry lookup status is unknown"),
-                                                     _ => ExternalOperationResult<DockerHubTagData>.Failed(manifestResult.Message ?? "Registry tag lookup failed"),
-                                                 };
+                                          return manifestResult.PropagateFailure<DockerHubTagData>("Registry tag lookup failed");
                                       }
 
-                                      return ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
+                                      return ExternalOperationResult.Succeeded<DockerHubTagData>(new DockerHubTagData
                                                                                                  {
                                                                                                      Tag = imageReference.Tag,
                                                                                                      Digest = RegistryReferenceValidator.ValidDigestOrNull(manifestResult.Data.Digest),
@@ -1418,12 +1404,12 @@ public partial class OciRegistryClient : IRegistryMetadataClient
     {
         if (CanHandle(registry) == false)
         {
-            return ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Unsupported($"Registry '{registry}' is not supported by the OCI registry adapter");
+            return ExternalOperationResult.Unsupported<IReadOnlyList<DockerHubTagData>>($"Registry '{registry}' is not supported by the OCI registry adapter");
         }
 
         if (RegistryReferenceValidator.IsValidRegistry(registry) == false)
         {
-            return ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.NotFound(RegistryReferenceValidator.InvalidRegistryMessage);
+            return ExternalOperationResult.NotFound<IReadOnlyList<DockerHubTagData>>(RegistryReferenceValidator.InvalidRegistryMessage);
         }
 
         var normalizedRegistry = NormalizeRegistry(registry);
@@ -1431,7 +1417,7 @@ public partial class OciRegistryClient : IRegistryMetadataClient
 
         if (allowedOrigin is null)
         {
-            return ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.NotFound(refusalMessage);
+            return ExternalOperationResult.NotFound<IReadOnlyList<DockerHubTagData>>(refusalMessage);
         }
 
         var lookupContext = new RegistryTagLookupContext
@@ -1456,7 +1442,7 @@ public partial class OciRegistryClient : IRegistryMetadataClient
 
         if (CanHandle(imageReference.Registry) == false)
         {
-            return ExternalOperationResult<RegistryImageConfigurationData>.Unsupported($"Registry '{imageReference.Registry}' is not supported by the OCI registry adapter");
+            return ExternalOperationResult.Unsupported<RegistryImageConfigurationData>($"Registry '{imageReference.Registry}' is not supported by the OCI registry adapter");
         }
 
         return await ExecuteAsync(nameof(GetImageConfigurationAsync),
