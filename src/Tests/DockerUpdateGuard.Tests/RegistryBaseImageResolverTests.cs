@@ -163,9 +163,9 @@ public class RegistryBaseImageResolverTests
         var debianConfiguration = CreateConfiguration($"docker.io/{new string('a', 256)}:1");
 
         registryMetadataService.GetImageConfigurationAsync(Arg.Is<ImageReference>(reference => reference.Repository == "library/app"), Arg.Any<CancellationToken>())
-                               .Returns(ExternalOperationResult<RegistryImageConfigurationData>.Succeeded(rootConfiguration));
+                               .Returns(ExternalOperationResult.Succeeded<RegistryImageConfigurationData>(rootConfiguration));
         registryMetadataService.GetImageConfigurationAsync(Arg.Is<ImageReference>(reference => reference.Repository == "library/debian"), Arg.Any<CancellationToken>())
-                               .Returns(ExternalOperationResult<RegistryImageConfigurationData>.Succeeded(debianConfiguration));
+                               .Returns(ExternalOperationResult.Succeeded<RegistryImageConfigurationData>(debianConfiguration));
 
         var resolver = new RegistryBaseImageResolver(registryMetadataService);
 
@@ -197,7 +197,7 @@ public class RegistryBaseImageResolverTests
         var registryMetadataService = Substitute.For<IRegistryMetadataService>();
 
         registryMetadataService.GetImageConfigurationAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
-                               .Returns(ExternalOperationResult<RegistryImageConfigurationData>.Succeeded(CreateConfiguration("/")));
+                               .Returns(ExternalOperationResult.Succeeded<RegistryImageConfigurationData>(CreateConfiguration("/")));
 
         var resolver = new RegistryBaseImageResolver(registryMetadataService);
 

@@ -249,7 +249,7 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
         var errorBody = await ResponseBodyExcerpt.ReadAsync(response.Content, cancellationToken)
                                                  .ConfigureAwait(false);
 
-        return ExternalOperationResult<T>.Failed($"{message}. Status code: {(int)response.StatusCode}. Body: {errorBody}");
+        return ExternalOperationResult.Failed<T>($"{message}. Status code: {(int)response.StatusCode}. Body: {errorBody}");
     }
 
     /// <summary>
@@ -887,7 +887,7 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
 
         _logger.DockerHubPaginationLinkRejected(operationName, targetName, rejectedOrigin);
 
-        return ExternalOperationResult<T>.Failed(PaginationLinkGuard.CreateRejectionMessage(listingDescription, rejectedOrigin));
+        return ExternalOperationResult.Failed<T>(PaginationLinkGuard.CreateRejectionMessage(listingDescription, rejectedOrigin));
     }
 
     /// <summary>
@@ -945,14 +945,14 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
 
         if (string.IsNullOrWhiteSpace(options.Pat))
         {
-            return ExternalOperationResult<bool>.Succeeded(true);
+            return ExternalOperationResult.Succeeded<bool>(true);
         }
 
         if (string.IsNullOrWhiteSpace(options.UserName))
         {
             _logger.DockerHubAuthenticationUserNameMissing();
 
-            return ExternalOperationResult<bool>.Failed("Docker Hub authentication requires 'DockerUpdateGuard:DockerHub:UserName' when a PAT is configured");
+            return ExternalOperationResult.Failed<bool>("Docker Hub authentication requires 'DockerUpdateGuard:DockerHub:UserName' when a PAT is configured");
         }
 
         var accessTokenResult = await GetAccessTokenAsync(options.UserName.Trim(),
@@ -962,12 +962,12 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
         if (accessTokenResult.Status != ExternalOperationStatus.Succeeded
             || string.IsNullOrWhiteSpace(accessTokenResult.Data))
         {
-            return ExternalOperationResult<bool>.Failed(accessTokenResult.Message ?? "Docker Hub authentication token request failed");
+            return ExternalOperationResult.Failed<bool>(accessTokenResult.Message ?? "Docker Hub authentication token request failed");
         }
 
         request.Headers.Authorization = new AuthenticationHeaderValue(BearerScheme, accessTokenResult.Data);
 
-        return ExternalOperationResult<bool>.Succeeded(true);
+        return ExternalOperationResult.Succeeded<bool>(true);
     }
 
     /// <summary>
@@ -983,7 +983,7 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
     {
         if (HasValidAccessToken())
         {
-            return ExternalOperationResult<string>.Succeeded(_accessToken!);
+            return ExternalOperationResult.Succeeded<string>(_accessToken!);
         }
 
         await _tokenRefreshLock.WaitAsync(cancellationToken)
@@ -993,12 +993,12 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
         {
             if (HasValidAccessToken())
             {
-                return ExternalOperationResult<string>.Succeeded(_accessToken!);
+                return ExternalOperationResult.Succeeded<string>(_accessToken!);
             }
 
             if (_loginRetryAfterRegistry.IsLoginDeferred(CreateLoginUri(), userName, out var retryAt))
             {
-                return ExternalOperationResult<string>.Failed(CreateLoginDeferredMessage(userName, retryAt));
+                return ExternalOperationResult.Failed<string>(CreateLoginDeferredMessage(userName, retryAt));
             }
 
             var tokenResult = await RequestAccessTokenAsync(userName,
@@ -1014,7 +1014,7 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
             _accessToken = tokenResult.Data;
             _accessTokenExpiresAtUtc = ResolveTokenExpiry(tokenResult.Data);
 
-            return ExternalOperationResult<string>.Succeeded(tokenResult.Data);
+            return ExternalOperationResult.Succeeded<string>(tokenResult.Data);
         }
         finally
         {
@@ -1069,8 +1069,8 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
             var token = TryGetString(jsonDocument.RootElement, "token");
 
             return string.IsNullOrWhiteSpace(token)
-                       ? ExternalOperationResult<string>.Failed("Docker Hub authentication token response did not contain a token")
-                       : ExternalOperationResult<string>.Succeeded(token);
+                       ? ExternalOperationResult.Failed<string>("Docker Hub authentication token response did not contain a token")
+                       : ExternalOperationResult.Succeeded<string>(token);
         }
     }
 
@@ -1106,7 +1106,7 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
         {
             _logger.DockerHubOperationFailed(exception, operationName, targetName);
 
-            return ExternalOperationResult<T>.Failed($"{failureMessage}: {FailureReason.InvalidResponse}");
+            return ExternalOperationResult.Failed<T>($"{failureMessage}: {FailureReason.InvalidResponse}");
         }
     }
 
@@ -1133,7 +1133,7 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
             {
                 _logger.DockerHubTargetNotFound(nameof(GetTagsAsync), repository);
 
-                return ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.NotFound($"Repository '{repository}' was not found in Docker Hub");
+                return ExternalOperationResult.NotFound<IReadOnlyList<DockerHubTagData>>($"Repository '{repository}' was not found in Docker Hub");
             }
 
             if (response.IsSuccessStatusCode == false)
@@ -1185,7 +1185,7 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
             requestUri = nextUri;
         }
 
-        return ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Succeeded(results);
+        return ExternalOperationResult.Succeeded<IReadOnlyList<DockerHubTagData>>(results);
     }
 
     #endregion // Methods
@@ -1199,7 +1199,7 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
         {
             _logger.DockerHubRegistryUnsupported(_optionsMonitor.CurrentValue.DockerHub.Registry, nameof(GetCurrentUserAsync));
 
-            return ExternalOperationResult<DockerHubAuthenticatedUserData>.Unsupported($"Registry '{_optionsMonitor.CurrentValue.DockerHub.Registry}' is not supported by the Docker Hub adapter");
+            return ExternalOperationResult.Unsupported<DockerHubAuthenticatedUserData>($"Registry '{_optionsMonitor.CurrentValue.DockerHub.Registry}' is not supported by the Docker Hub adapter");
         }
 
         return await ExecuteAsync(nameof(GetCurrentUserAsync),
@@ -1231,12 +1231,12 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
 
                                           if (string.IsNullOrWhiteSpace(userName))
                                           {
-                                              return ExternalOperationResult<DockerHubAuthenticatedUserData>.Failed("Docker Hub current user response did not contain a username");
+                                              return ExternalOperationResult.Failed<DockerHubAuthenticatedUserData>("Docker Hub current user response did not contain a username");
                                           }
 
                                           _logger.DockerHubAuthenticatedAccountResolved(userName);
 
-                                          return ExternalOperationResult<DockerHubAuthenticatedUserData>.Succeeded(new DockerHubAuthenticatedUserData
+                                          return ExternalOperationResult.Succeeded<DockerHubAuthenticatedUserData>(new DockerHubAuthenticatedUserData
                                                                                                                    {
                                                                                                                        UserName = userName,
                                                                                                                    });
@@ -1253,7 +1253,7 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
         {
             _logger.DockerHubRegistryUnsupported(_optionsMonitor.CurrentValue.DockerHub.Registry, nameof(GetRepositoriesAsync));
 
-            return ExternalOperationResult<IReadOnlyList<DockerHubRepositoryData>>.Unsupported($"Registry '{_optionsMonitor.CurrentValue.DockerHub.Registry}' is not supported by the Docker Hub adapter");
+            return ExternalOperationResult.Unsupported<IReadOnlyList<DockerHubRepositoryData>>($"Registry '{_optionsMonitor.CurrentValue.DockerHub.Registry}' is not supported by the Docker Hub adapter");
         }
 
         return await ExecuteAsync(nameof(GetRepositoriesAsync),
@@ -1273,7 +1273,7 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
                                           {
                                               _logger.DockerHubTargetNotFound(nameof(GetRepositoriesAsync), accountName);
 
-                                              return ExternalOperationResult<IReadOnlyList<DockerHubRepositoryData>>.NotFound($"Docker Hub account '{accountName}' was not found");
+                                              return ExternalOperationResult.NotFound<IReadOnlyList<DockerHubRepositoryData>>($"Docker Hub account '{accountName}' was not found");
                                           }
 
                                           if (response.IsSuccessStatusCode == false)
@@ -1324,7 +1324,7 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
 
                                       _logger.DockerHubRepositoriesListed(accountName, repositories.Count);
 
-                                      return ExternalOperationResult<IReadOnlyList<DockerHubRepositoryData>>.Succeeded(repositories);
+                                      return ExternalOperationResult.Succeeded<IReadOnlyList<DockerHubRepositoryData>>(repositories);
                                   }).ConfigureAwait(false);
     }
 
@@ -1335,14 +1335,14 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
         {
             _logger.DockerHubRegistryUnsupported(imageReference.Registry, nameof(GetRepositoryAsync));
 
-            return ExternalOperationResult<DockerHubRepositoryData>.Unsupported($"Registry '{imageReference.Registry}' is not supported by the Docker Hub adapter");
+            return ExternalOperationResult.Unsupported<DockerHubRepositoryData>($"Registry '{imageReference.Registry}' is not supported by the Docker Hub adapter");
         }
 
         var repositoryPath = CreateRepositoryPath(imageReference.Repository);
 
         if (repositoryPath is null)
         {
-            return ExternalOperationResult<DockerHubRepositoryData>.NotFound(RegistryReferenceValidator.DotSegmentMessage);
+            return ExternalOperationResult.NotFound<DockerHubRepositoryData>(RegistryReferenceValidator.DotSegmentMessage);
         }
 
         using var activity = DockerUpdateGuardTelemetry.ActivitySource.StartActivity(TelemetryActivityNames.DockerHubRequest, ActivityKind.Client);
@@ -1360,7 +1360,7 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
                                       {
                                           _logger.DockerHubTargetNotFound(nameof(GetRepositoryAsync), imageReference.Repository);
 
-                                          return ExternalOperationResult<DockerHubRepositoryData>.NotFound($"Repository '{imageReference.Repository}' was not found in Docker Hub");
+                                          return ExternalOperationResult.NotFound<DockerHubRepositoryData>($"Repository '{imageReference.Repository}' was not found in Docker Hub");
                                       }
 
                                       if (response.IsSuccessStatusCode == false)
@@ -1391,7 +1391,7 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
                                                                    LastUpdatedAtUtc = TryGetDateTimeOffset(root, "last_updated"),
                                                                };
 
-                                          return ExternalOperationResult<DockerHubRepositoryData>.Succeeded(repositoryData);
+                                          return ExternalOperationResult.Succeeded<DockerHubRepositoryData>(repositoryData);
                                       }
                                   }).ConfigureAwait(false);
     }
@@ -1406,19 +1406,19 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
         {
             _logger.DockerHubRegistryUnsupported(imageReference.Registry, nameof(GetTagAsync));
 
-            return ExternalOperationResult<DockerHubTagData>.Unsupported($"Registry '{imageReference.Registry}' is not supported by the Docker Hub adapter");
+            return ExternalOperationResult.Unsupported<DockerHubTagData>($"Registry '{imageReference.Registry}' is not supported by the Docker Hub adapter");
         }
 
         if (RegistryReferenceValidator.IsValidTag(imageReference.Tag) == false)
         {
-            return ExternalOperationResult<DockerHubTagData>.NotFound(RegistryReferenceValidator.InvalidTagMessage);
+            return ExternalOperationResult.NotFound<DockerHubTagData>(RegistryReferenceValidator.InvalidTagMessage);
         }
 
         var repositoryPath = CreateRepositoryPath(imageReference.Repository);
 
         if (repositoryPath is null)
         {
-            return ExternalOperationResult<DockerHubTagData>.NotFound(RegistryReferenceValidator.DotSegmentMessage);
+            return ExternalOperationResult.NotFound<DockerHubTagData>(RegistryReferenceValidator.DotSegmentMessage);
         }
 
         using var activity = DockerUpdateGuardTelemetry.ActivitySource.StartActivity(TelemetryActivityNames.DockerHubRequest, ActivityKind.Client);
@@ -1436,7 +1436,7 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
                                       {
                                           _logger.DockerHubTargetNotFound(nameof(GetTagAsync), imageReference.FullReference);
 
-                                          return ExternalOperationResult<DockerHubTagData>.NotFound($"Tag '{imageReference.Tag}' was not found for '{imageReference.Repository}'");
+                                          return ExternalOperationResult.NotFound<DockerHubTagData>($"Tag '{imageReference.Tag}' was not found for '{imageReference.Repository}'");
                                       }
 
                                       if (response.IsSuccessStatusCode == false)
@@ -1458,7 +1458,7 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
                                           using var jsonDocument = await RemoteJsonDocument.ParseAsync(responseStream, cancellationToken)
                                                                                            .ConfigureAwait(false);
 
-                                          return ExternalOperationResult<DockerHubTagData>.Succeeded(CreateTagData(jsonDocument.RootElement, imageReference.Tag));
+                                          return ExternalOperationResult.Succeeded<DockerHubTagData>(CreateTagData(jsonDocument.RootElement, imageReference.Tag));
                                       }
                                   }).ConfigureAwait(false);
     }
@@ -1475,14 +1475,14 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
         {
             _logger.DockerHubRegistryUnsupported(registry, nameof(GetTagsAsync));
 
-            return ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Unsupported($"Registry '{registry}' is not supported by the Docker Hub adapter");
+            return ExternalOperationResult.Unsupported<IReadOnlyList<DockerHubTagData>>($"Registry '{registry}' is not supported by the Docker Hub adapter");
         }
 
         var repositoryPath = CreateRepositoryPath(repository);
 
         if (repositoryPath is null)
         {
-            return ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.NotFound(RegistryReferenceValidator.DotSegmentMessage);
+            return ExternalOperationResult.NotFound<IReadOnlyList<DockerHubTagData>>(RegistryReferenceValidator.DotSegmentMessage);
         }
 
         return await ExecuteAsync(nameof(GetTagsAsync),
@@ -1510,14 +1510,14 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
         {
             _logger.DockerHubRegistryUnsupported(imageReference.Registry, nameof(GetImageConfigurationAsync));
 
-            return ExternalOperationResult<RegistryImageConfigurationData>.Unsupported($"Registry '{imageReference.Registry}' is not supported by the Docker Hub adapter");
+            return ExternalOperationResult.Unsupported<RegistryImageConfigurationData>($"Registry '{imageReference.Registry}' is not supported by the Docker Hub adapter");
         }
 
         var manifestUri = CreateRegistryRequestUri(imageReference.Repository, ManifestsResource, GetManifestReference(imageReference));
 
         if (manifestUri is null)
         {
-            return ExternalOperationResult<RegistryImageConfigurationData>.NotFound(RegistryReferenceValidator.DotSegmentMessage);
+            return ExternalOperationResult.NotFound<RegistryImageConfigurationData>(RegistryReferenceValidator.DotSegmentMessage);
         }
 
         try
@@ -1526,14 +1526,14 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
 
             if (registryToken is null)
             {
-                return ExternalOperationResult<RegistryImageConfigurationData>.Failed($"Registry token acquisition failed for '{imageReference.FullReference}'");
+                return ExternalOperationResult.Failed<RegistryImageConfigurationData>($"Registry token acquisition failed for '{imageReference.FullReference}'");
             }
 
             var configDigest = await GetImageConfigDigestAsync(imageReference, manifestUri, registryToken, cancellationToken).ConfigureAwait(false);
 
             if (string.IsNullOrWhiteSpace(configDigest))
             {
-                return ExternalOperationResult<RegistryImageConfigurationData>.NotFound($"Config blob digest could not be resolved for '{imageReference.FullReference}'");
+                return ExternalOperationResult.NotFound<RegistryImageConfigurationData>($"Config blob digest could not be resolved for '{imageReference.FullReference}'");
             }
 
             var imageConfiguration = await ExtractImageConfigurationAsync(imageReference,
@@ -1542,14 +1542,14 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
                                                                           cancellationToken).ConfigureAwait(false);
 
             return imageConfiguration is null
-                       ? ExternalOperationResult<RegistryImageConfigurationData>.Failed($"Image configuration blob could not be read for '{imageReference.FullReference}'")
-                       : ExternalOperationResult<RegistryImageConfigurationData>.Succeeded(imageConfiguration);
+                       ? ExternalOperationResult.Failed<RegistryImageConfigurationData>($"Image configuration blob could not be read for '{imageReference.FullReference}'")
+                       : ExternalOperationResult.Succeeded<RegistryImageConfigurationData>(imageConfiguration);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
             _logger.DockerHubImageConfigurationLookupFailed(exception, imageReference.FullReference);
 
-            return ExternalOperationResult<RegistryImageConfigurationData>.Failed($"Image configuration lookup failed for '{imageReference.FullReference}': {FailureReason.FromException(exception, null, cancellationToken)}");
+            return ExternalOperationResult.Failed<RegistryImageConfigurationData>($"Image configuration lookup failed for '{imageReference.FullReference}': {FailureReason.FromException(exception, null, cancellationToken)}");
         }
     }
 

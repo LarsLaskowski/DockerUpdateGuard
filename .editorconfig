@@ -543,8 +543,6 @@ dotnet_diagnostic.S8949.severity = error
 dotnet_diagnostic.SYSLIB1092.severity = error
 
 # Pending rules the baseline does not set
-# pending: #425 (DOTNET_RULES_PENDING)
-dotnet_diagnostic.CA1000.severity = suggestion
 # pending: #427 (DOTNET_RULES_PENDING)
 dotnet_diagnostic.CA1716.severity = suggestion
 # pending: #426 (DOTNET_RULES_PENDING)

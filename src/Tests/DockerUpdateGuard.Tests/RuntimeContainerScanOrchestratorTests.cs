@@ -73,7 +73,7 @@ public class RuntimeContainerScanOrchestratorTests
                                                                             optionsMonitor);
 
                 dockerInstanceClient.DiscoverContainersAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<CancellationToken>())
-                                    .Returns(ExternalOperationResult<IReadOnlyList<RuntimeContainerDescriptor>>.Succeeded([
+                                    .Returns(ExternalOperationResult.Succeeded<IReadOnlyList<RuntimeContainerDescriptor>>([
                                                                                                                               new RuntimeContainerDescriptor
                                                                                                                               {
                                                                                                                                   ContainerId = "container-1",
@@ -86,16 +86,16 @@ public class RuntimeContainerScanOrchestratorTests
                                                                                                                               },
                                                                                                                           ]));
                 dockerInstanceClient.InspectImageAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
-                                    .Returns(ExternalOperationResult<DockerImageInspectData>.NotFound("The local image inspect payload is not available"));
+                                    .Returns(ExternalOperationResult.NotFound<DockerImageInspectData>("The local image inspect payload is not available"));
                 dockerInstanceClient.GetImageHistoryAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
-                                    .Returns(ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>.NotFound("The local image history payload is not available"));
+                                    .Returns(ExternalOperationResult.NotFound<IReadOnlyList<DockerImageHistoryEntryData>>("The local image history payload is not available"));
                 registryMetadataService.GetTagsAsync("docker.io",
                                                      "library/nginx",
                                                      Arg.Any<string?>(),
                                                      Arg.Any<string?>(),
                                                      Arg.Any<RegistryTagQueryOptions?>(),
                                                      Arg.Any<CancellationToken>())
-                                       .Returns(ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Succeeded([
+                                       .Returns(ExternalOperationResult.Succeeded<IReadOnlyList<DockerHubTagData>>([
                                                                                                                        new DockerHubTagData
                                                                                                                        {
                                                                                                                            Tag = "1.1.0",
@@ -110,7 +110,7 @@ public class RuntimeContainerScanOrchestratorTests
                                                                                                                        },
                                                                                                                    ]));
                 registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), cancellationToken: Arg.Any<CancellationToken>())
-                                       .Returns(ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
+                                       .Returns(ExternalOperationResult.Succeeded<DockerHubTagData>(new DockerHubTagData
                                                                                                     {
                                                                                                         Tag = "1.0.0",
                                                                                                         Digest = "sha256:runtime-old",
@@ -229,7 +229,7 @@ public class RuntimeContainerScanOrchestratorTests
                                                                             optionsMonitor);
 
                 dockerInstanceClient.DiscoverContainersAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<CancellationToken>())
-                                    .Returns(ExternalOperationResult<IReadOnlyList<RuntimeContainerDescriptor>>.Succeeded([
+                                    .Returns(ExternalOperationResult.Succeeded<IReadOnlyList<RuntimeContainerDescriptor>>([
                                                                                                                               new RuntimeContainerDescriptor
                                                                                                                               {
                                                                                                                                   ContainerId = "container-1",
@@ -241,10 +241,10 @@ public class RuntimeContainerScanOrchestratorTests
                                                                                                                           ]));
 
                 dockerInstanceClient.InspectImageAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
-                                    .Returns(ExternalOperationResult<DockerImageInspectData>.NotFound("The local image inspect payload is not available"));
+                                    .Returns(ExternalOperationResult.NotFound<DockerImageInspectData>("The local image inspect payload is not available"));
 
                 dockerInstanceClient.GetImageHistoryAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
-                                    .Returns(ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>.NotFound("The local image history payload is not available"));
+                                    .Returns(ExternalOperationResult.NotFound<IReadOnlyList<DockerImageHistoryEntryData>>("The local image history payload is not available"));
 
                 registryMetadataService.GetTagsAsync("docker.io",
                                                      "library/nginx",
@@ -252,7 +252,7 @@ public class RuntimeContainerScanOrchestratorTests
                                                      Arg.Any<string?>(),
                                                      Arg.Any<RegistryTagQueryOptions?>(),
                                                      Arg.Any<CancellationToken>())
-                                       .Returns(ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Succeeded([
+                                       .Returns(ExternalOperationResult.Succeeded<IReadOnlyList<DockerHubTagData>>([
                                                                                                                        new DockerHubTagData
                                                                                                                        {
                                                                                                                            Tag = "1.1.0",
@@ -267,7 +267,7 @@ public class RuntimeContainerScanOrchestratorTests
                                                                                                                    ]));
 
                 registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), cancellationToken: Arg.Any<CancellationToken>())
-                                       .Returns(ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
+                                       .Returns(ExternalOperationResult.Succeeded<DockerHubTagData>(new DockerHubTagData
                                                                                                     {
                                                                                                         Tag = "1.0.0",
                                                                                                         Digest = "sha256:runtime-old",
@@ -344,7 +344,7 @@ public class RuntimeContainerScanOrchestratorTests
                                                                             optionsMonitor);
 
                 dockerInstanceClient.DiscoverContainersAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<CancellationToken>())
-                                    .Returns(ExternalOperationResult<IReadOnlyList<RuntimeContainerDescriptor>>.Succeeded([
+                                    .Returns(ExternalOperationResult.Succeeded<IReadOnlyList<RuntimeContainerDescriptor>>([
                                                                                                                               new RuntimeContainerDescriptor
                                                                                                                               {
                                                                                                                                   ContainerId = "container-1",
@@ -355,16 +355,16 @@ public class RuntimeContainerScanOrchestratorTests
                                                                                                                               },
                                                                                                                           ]));
                 dockerInstanceClient.InspectImageAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
-                                    .Returns(ExternalOperationResult<DockerImageInspectData>.NotFound("The local image inspect payload is not available"));
+                                    .Returns(ExternalOperationResult.NotFound<DockerImageInspectData>("The local image inspect payload is not available"));
                 dockerInstanceClient.GetImageHistoryAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
-                                    .Returns(ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>.NotFound("The local image history payload is not available"));
+                                    .Returns(ExternalOperationResult.NotFound<IReadOnlyList<DockerImageHistoryEntryData>>("The local image history payload is not available"));
                 registryMetadataService.GetTagsAsync("docker.io",
                                                      "library/nginx",
                                                      Arg.Any<string?>(),
                                                      Arg.Any<string?>(),
                                                      Arg.Any<RegistryTagQueryOptions?>(),
                                                      Arg.Any<CancellationToken>())
-                                       .Returns(ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Succeeded([
+                                       .Returns(ExternalOperationResult.Succeeded<IReadOnlyList<DockerHubTagData>>([
                                                                                                                        new DockerHubTagData
                                                                                                                        {
                                                                                                                            Tag = "1.1.0",
@@ -378,7 +378,7 @@ public class RuntimeContainerScanOrchestratorTests
                                                                                                                            PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
                                                                                                                        },
                                                                                                                    ]),
-                                                ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Succeeded([
+                                                ExternalOperationResult.Succeeded<IReadOnlyList<DockerHubTagData>>([
                                                                                                                        new DockerHubTagData
                                                                                                                        {
                                                                                                                            Tag = "1.0.0",
@@ -387,7 +387,7 @@ public class RuntimeContainerScanOrchestratorTests
                                                                                                                        },
                                                                                                                    ]));
                 registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), cancellationToken: Arg.Any<CancellationToken>())
-                                       .Returns(ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
+                                       .Returns(ExternalOperationResult.Succeeded<DockerHubTagData>(new DockerHubTagData
                                                                                                     {
                                                                                                         Tag = "1.0.0",
                                                                                                         Digest = "sha256:runtime-old",
@@ -467,7 +467,7 @@ public class RuntimeContainerScanOrchestratorTests
                                                                             optionsMonitor);
 
                 dockerInstanceClient.DiscoverContainersAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<CancellationToken>())
-                                    .Returns(ExternalOperationResult<IReadOnlyList<RuntimeContainerDescriptor>>.Succeeded([
+                                    .Returns(ExternalOperationResult.Succeeded<IReadOnlyList<RuntimeContainerDescriptor>>([
                                                                                                                               new RuntimeContainerDescriptor
                                                                                                                               {
                                                                                                                                   ContainerId = "container-1",
@@ -477,18 +477,18 @@ public class RuntimeContainerScanOrchestratorTests
                                                                                                                                   IsRunning = true,
                                                                                                                               },
                                                                                                                           ]),
-                                             ExternalOperationResult<IReadOnlyList<RuntimeContainerDescriptor>>.Failed("The Docker daemon is unreachable"));
+                                             ExternalOperationResult.Failed<IReadOnlyList<RuntimeContainerDescriptor>>("The Docker daemon is unreachable"));
                 dockerInstanceClient.InspectImageAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
-                                    .Returns(ExternalOperationResult<DockerImageInspectData>.NotFound("The local image inspect payload is not available"));
+                                    .Returns(ExternalOperationResult.NotFound<DockerImageInspectData>("The local image inspect payload is not available"));
                 dockerInstanceClient.GetImageHistoryAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
-                                    .Returns(ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>.NotFound("The local image history payload is not available"));
+                                    .Returns(ExternalOperationResult.NotFound<IReadOnlyList<DockerImageHistoryEntryData>>("The local image history payload is not available"));
                 registryMetadataService.GetTagsAsync("docker.io",
                                                      "library/nginx",
                                                      Arg.Any<string?>(),
                                                      Arg.Any<string?>(),
                                                      Arg.Any<RegistryTagQueryOptions?>(),
                                                      Arg.Any<CancellationToken>())
-                                       .Returns(ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Succeeded([
+                                       .Returns(ExternalOperationResult.Succeeded<IReadOnlyList<DockerHubTagData>>([
                                                                                                                        new DockerHubTagData
                                                                                                                        {
                                                                                                                            Tag = "1.1.0",
@@ -503,7 +503,7 @@ public class RuntimeContainerScanOrchestratorTests
                                                                                                                        },
                                                                                                                    ]));
                 registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), cancellationToken: Arg.Any<CancellationToken>())
-                                       .Returns(ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
+                                       .Returns(ExternalOperationResult.Succeeded<DockerHubTagData>(new DockerHubTagData
                                                                                                     {
                                                                                                         Tag = "1.0.0",
                                                                                                         Digest = "sha256:runtime-old",
@@ -580,7 +580,7 @@ public class RuntimeContainerScanOrchestratorTests
                                                                             optionsMonitor);
 
                 dockerInstanceClient.DiscoverContainersAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<CancellationToken>())
-                                    .Returns(ExternalOperationResult<IReadOnlyList<RuntimeContainerDescriptor>>.Succeeded([
+                                    .Returns(ExternalOperationResult.Succeeded<IReadOnlyList<RuntimeContainerDescriptor>>([
                                                                                                                               new RuntimeContainerDescriptor
                                                                                                                               {
                                                                                                                                   ContainerId = "container-1",
@@ -591,16 +591,16 @@ public class RuntimeContainerScanOrchestratorTests
                                                                                                                               },
                                                                                                                           ]));
                 dockerInstanceClient.InspectImageAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
-                                    .Returns(ExternalOperationResult<DockerImageInspectData>.NotFound("The local image inspect payload is not available"));
+                                    .Returns(ExternalOperationResult.NotFound<DockerImageInspectData>("The local image inspect payload is not available"));
                 dockerInstanceClient.GetImageHistoryAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
-                                    .Returns(ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>.NotFound("The local image history payload is not available"));
+                                    .Returns(ExternalOperationResult.NotFound<IReadOnlyList<DockerImageHistoryEntryData>>("The local image history payload is not available"));
                 registryMetadataService.GetTagsAsync("docker.io",
                                                      "library/nginx",
                                                      Arg.Any<string?>(),
                                                      Arg.Any<string?>(),
                                                      Arg.Any<RegistryTagQueryOptions?>(),
                                                      Arg.Any<CancellationToken>())
-                                       .Returns(ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Succeeded([
+                                       .Returns(ExternalOperationResult.Succeeded<IReadOnlyList<DockerHubTagData>>([
                                                                                                                        new DockerHubTagData
                                                                                                                        {
                                                                                                                            Tag = "1.1.0",
@@ -614,9 +614,9 @@ public class RuntimeContainerScanOrchestratorTests
                                                                                                                            PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
                                                                                                                        },
                                                                                                                    ]),
-                                                ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Failed("The registry is temporarily unavailable"));
+                                                ExternalOperationResult.Failed<IReadOnlyList<DockerHubTagData>>("The registry is temporarily unavailable"));
                 registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), cancellationToken: Arg.Any<CancellationToken>())
-                                       .Returns(ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
+                                       .Returns(ExternalOperationResult.Succeeded<DockerHubTagData>(new DockerHubTagData
                                                                                                     {
                                                                                                         Tag = "1.0.0",
                                                                                                         Digest = "sha256:runtime-old",
@@ -692,7 +692,7 @@ public class RuntimeContainerScanOrchestratorTests
                                                                             optionsMonitor);
 
                 dockerInstanceClient.DiscoverContainersAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<CancellationToken>())
-                                    .Returns(ExternalOperationResult<IReadOnlyList<RuntimeContainerDescriptor>>.Succeeded([
+                                    .Returns(ExternalOperationResult.Succeeded<IReadOnlyList<RuntimeContainerDescriptor>>([
                                                                                                                               new RuntimeContainerDescriptor
                                                                                                                               {
                                                                                                                                   ContainerId = "container-1",
@@ -705,18 +705,18 @@ public class RuntimeContainerScanOrchestratorTests
                                                                                                                               },
                                                                                                                           ]));
                 dockerInstanceClient.InspectImageAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
-                                    .Returns(ExternalOperationResult<DockerImageInspectData>.NotFound("The local image inspect payload is not available"));
+                                    .Returns(ExternalOperationResult.NotFound<DockerImageInspectData>("The local image inspect payload is not available"));
                 dockerInstanceClient.GetImageHistoryAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
-                                    .Returns(ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>.NotFound("The local image history payload is not available"));
+                                    .Returns(ExternalOperationResult.NotFound<IReadOnlyList<DockerImageHistoryEntryData>>("The local image history payload is not available"));
                 registryMetadataService.GetTagsAsync("docker.io",
                                                      "library/nginx",
                                                      Arg.Any<string?>(),
                                                      Arg.Any<string?>(),
                                                      Arg.Any<RegistryTagQueryOptions?>(),
                                                      Arg.Any<CancellationToken>())
-                                       .Returns(ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Unsupported("Registry adapters cannot evaluate this registry"));
+                                       .Returns(ExternalOperationResult.Unsupported<IReadOnlyList<DockerHubTagData>>("Registry adapters cannot evaluate this registry"));
                 registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), cancellationToken: Arg.Any<CancellationToken>())
-                                       .Returns(ExternalOperationResult<DockerHubTagData>.NotFound("No exact tag metadata is available"));
+                                       .Returns(ExternalOperationResult.NotFound<DockerHubTagData>("No exact tag metadata is available"));
 
                 var orchestrator = new RuntimeContainerScanOrchestrator(new ApplicationTelemetry(),
                                                                         dbContext,
@@ -788,7 +788,7 @@ public class RuntimeContainerScanOrchestratorTests
                                                                             optionsMonitor);
 
                 dockerInstanceClient.DiscoverContainersAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<CancellationToken>())
-                                    .Returns(ExternalOperationResult<IReadOnlyList<RuntimeContainerDescriptor>>.Succeeded([
+                                    .Returns(ExternalOperationResult.Succeeded<IReadOnlyList<RuntimeContainerDescriptor>>([
                                                                                                                               new RuntimeContainerDescriptor
                                                                                                                               {
                                                                                                                                   ContainerId = "container-1",
@@ -815,13 +815,13 @@ public class RuntimeContainerScanOrchestratorTests
                                                                                                                               },
                                                                                                                           ]));
                 dockerInstanceClient.InspectImageAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
-                                    .Returns(ExternalOperationResult<DockerImageInspectData>.NotFound("The local image inspect payload is not available"));
+                                    .Returns(ExternalOperationResult.NotFound<DockerImageInspectData>("The local image inspect payload is not available"));
                 dockerInstanceClient.GetImageHistoryAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
-                                    .Returns(ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>.NotFound("The local image history payload is not available"));
+                                    .Returns(ExternalOperationResult.NotFound<IReadOnlyList<DockerImageHistoryEntryData>>("The local image history payload is not available"));
                 registryMetadataService.GetTagsAsync("docker.io",
                                                      "library/nginx",
                                                      cancellationToken: Arg.Any<CancellationToken>())
-                                       .Returns(ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Succeeded([
+                                       .Returns(ExternalOperationResult.Succeeded<IReadOnlyList<DockerHubTagData>>([
                                                                                                                        new DockerHubTagData
                                                                                                                        {
                                                                                                                            Tag = "1.1.0",
@@ -836,7 +836,7 @@ public class RuntimeContainerScanOrchestratorTests
                                                                                                                        },
                                                                                                                    ]));
                 registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), cancellationToken: Arg.Any<CancellationToken>())
-                                       .Returns(ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
+                                       .Returns(ExternalOperationResult.Succeeded<DockerHubTagData>(new DockerHubTagData
                                                                                                     {
                                                                                                         Tag = "1.0.0",
                                                                                                         Digest = "sha256:old",
@@ -919,7 +919,7 @@ public class RuntimeContainerScanOrchestratorTests
                                                                             optionsMonitor);
 
                 dockerInstanceClient.DiscoverContainersAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<CancellationToken>())
-                                    .Returns(ExternalOperationResult<IReadOnlyList<RuntimeContainerDescriptor>>.Succeeded([
+                                    .Returns(ExternalOperationResult.Succeeded<IReadOnlyList<RuntimeContainerDescriptor>>([
                                                                                                                               new RuntimeContainerDescriptor
                                                                                                                               {
                                                                                                                                   ContainerId = "container-1",
@@ -930,16 +930,16 @@ public class RuntimeContainerScanOrchestratorTests
                                                                                                                               },
                                                                                                                           ]));
                 dockerInstanceClient.InspectImageAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
-                                    .Returns(ExternalOperationResult<DockerImageInspectData>.NotFound("The local image inspect payload is not available"));
+                                    .Returns(ExternalOperationResult.NotFound<DockerImageInspectData>("The local image inspect payload is not available"));
                 dockerInstanceClient.GetImageHistoryAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
-                                    .Returns(ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>.NotFound("The local image history payload is not available"));
+                                    .Returns(ExternalOperationResult.NotFound<IReadOnlyList<DockerImageHistoryEntryData>>("The local image history payload is not available"));
                 registryMetadataService.GetTagsAsync("docker.io",
                                                      "networlddev/f1-telemetry",
                                                      Arg.Any<string?>(),
                                                      Arg.Any<string?>(),
                                                      Arg.Any<RegistryTagQueryOptions?>(),
                                                      Arg.Any<CancellationToken>())
-                                       .Returns(ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Succeeded([
+                                       .Returns(ExternalOperationResult.Succeeded<IReadOnlyList<DockerHubTagData>>([
                                                                                                                        new DockerHubTagData
                                                                                                                        {
                                                                                                                            Tag = "2.4.1",
@@ -951,7 +951,7 @@ public class RuntimeContainerScanOrchestratorTests
                                                                                      && entity.Repository == "networlddev/f1-telemetry"
                                                                                      && entity.Tag == "latest"),
                                                     cancellationToken: Arg.Any<CancellationToken>())
-                                       .Returns(ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
+                                       .Returns(ExternalOperationResult.Succeeded<DockerHubTagData>(new DockerHubTagData
                                                                                                     {
                                                                                                         Tag = "latest",
                                                                                                         Digest = "sha256:new",
@@ -1034,7 +1034,7 @@ public class RuntimeContainerScanOrchestratorTests
                                                                             optionsMonitor);
 
                 dockerInstanceClient.DiscoverContainersAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<CancellationToken>())
-                                    .Returns(ExternalOperationResult<IReadOnlyList<RuntimeContainerDescriptor>>.Succeeded([
+                                    .Returns(ExternalOperationResult.Succeeded<IReadOnlyList<RuntimeContainerDescriptor>>([
                                                                                                                               new RuntimeContainerDescriptor
                                                                                                                               {
                                                                                                                                   ContainerId = "container-1",
@@ -1045,16 +1045,16 @@ public class RuntimeContainerScanOrchestratorTests
                                                                                                                               },
                                                                                                                           ]));
                 dockerInstanceClient.InspectImageAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
-                                    .Returns(ExternalOperationResult<DockerImageInspectData>.NotFound("The local image inspect payload is not available"));
+                                    .Returns(ExternalOperationResult.NotFound<DockerImageInspectData>("The local image inspect payload is not available"));
                 dockerInstanceClient.GetImageHistoryAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
-                                    .Returns(ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>.NotFound("The local image history payload is not available"));
+                                    .Returns(ExternalOperationResult.NotFound<IReadOnlyList<DockerImageHistoryEntryData>>("The local image history payload is not available"));
                 registryMetadataService.GetTagsAsync("docker.io",
                                                      "linuxserver/heimdall",
                                                      Arg.Any<string?>(),
                                                      Arg.Any<string?>(),
                                                      Arg.Any<RegistryTagQueryOptions?>(),
                                                      Arg.Any<CancellationToken>())
-                                       .Returns(ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Succeeded([
+                                       .Returns(ExternalOperationResult.Succeeded<IReadOnlyList<DockerHubTagData>>([
                                                                                                                        new DockerHubTagData
                                                                                                                        {
                                                                                                                            Tag = "2.7.6",
@@ -1078,7 +1078,7 @@ public class RuntimeContainerScanOrchestratorTests
                                                                                      && entity.Repository == "linuxserver/heimdall"
                                                                                      && entity.Tag == "latest"),
                                                     cancellationToken: Arg.Any<CancellationToken>())
-                                       .Returns(ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
+                                       .Returns(ExternalOperationResult.Succeeded<DockerHubTagData>(new DockerHubTagData
                                                                                                     {
                                                                                                         Tag = "latest",
                                                                                                         Digest = "sha256:new",
@@ -1151,7 +1151,7 @@ public class RuntimeContainerScanOrchestratorTests
                                                                             optionsMonitor);
 
                 dockerInstanceClient.DiscoverContainersAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<CancellationToken>())
-                                    .Returns(ExternalOperationResult<IReadOnlyList<RuntimeContainerDescriptor>>.Succeeded([
+                                    .Returns(ExternalOperationResult.Succeeded<IReadOnlyList<RuntimeContainerDescriptor>>([
                                                                                                                               new RuntimeContainerDescriptor
                                                                                                                               {
                                                                                                                                   ContainerId = "container-1",
@@ -1162,16 +1162,16 @@ public class RuntimeContainerScanOrchestratorTests
                                                                                                                               },
                                                                                                                           ]));
                 dockerInstanceClient.InspectImageAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
-                                    .Returns(ExternalOperationResult<DockerImageInspectData>.NotFound("The local image inspect payload is not available"));
+                                    .Returns(ExternalOperationResult.NotFound<DockerImageInspectData>("The local image inspect payload is not available"));
                 dockerInstanceClient.GetImageHistoryAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
-                                    .Returns(ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>.NotFound("The local image history payload is not available"));
+                                    .Returns(ExternalOperationResult.NotFound<IReadOnlyList<DockerImageHistoryEntryData>>("The local image history payload is not available"));
                 registryMetadataService.GetTagsAsync("docker.io",
                                                      "library/phpmyadmin",
                                                      Arg.Any<string?>(),
                                                      Arg.Any<string?>(),
                                                      Arg.Any<RegistryTagQueryOptions?>(),
                                                      Arg.Any<CancellationToken>())
-                                       .Returns(ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Succeeded([
+                                       .Returns(ExternalOperationResult.Succeeded<IReadOnlyList<DockerHubTagData>>([
                                                                                                                        new DockerHubTagData
                                                                                                                        {
                                                                                                                            Tag = "5.2.3",
@@ -1185,7 +1185,7 @@ public class RuntimeContainerScanOrchestratorTests
                                                                                                                            PublishedAtUtc = new DateTimeOffset(2026, 07, 03, 10, 00, 08, TimeSpan.Zero),
                                                                                                                        },
                                                                                                                    ]),
-                                                ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Succeeded([
+                                                ExternalOperationResult.Succeeded<IReadOnlyList<DockerHubTagData>>([
                                                                                                                        new DockerHubTagData
                                                                                                                        {
                                                                                                                            Tag = "5.2.3",
@@ -1203,13 +1203,13 @@ public class RuntimeContainerScanOrchestratorTests
                                                                                      && entity.Repository == "library/phpmyadmin"
                                                                                      && entity.Tag == "latest"),
                                                     cancellationToken: Arg.Any<CancellationToken>())
-                                       .Returns(ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
+                                       .Returns(ExternalOperationResult.Succeeded<DockerHubTagData>(new DockerHubTagData
                                                                                                     {
                                                                                                         Tag = "latest",
                                                                                                         Digest = "sha256:old",
                                                                                                         PublishedAtUtc = new DateTimeOffset(2026, 07, 03, 10, 00, 00, TimeSpan.Zero),
                                                                                                     }),
-                                                ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
+                                                ExternalOperationResult.Succeeded<DockerHubTagData>(new DockerHubTagData
                                                                                                     {
                                                                                                         Tag = "latest",
                                                                                                         Digest = "sha256:new",
@@ -1292,7 +1292,7 @@ public class RuntimeContainerScanOrchestratorTests
                                                                             optionsMonitor);
 
                 dockerInstanceClient.DiscoverContainersAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<CancellationToken>())
-                                    .Returns(ExternalOperationResult<IReadOnlyList<RuntimeContainerDescriptor>>.Succeeded([
+                                    .Returns(ExternalOperationResult.Succeeded<IReadOnlyList<RuntimeContainerDescriptor>>([
                                                                                                                               new RuntimeContainerDescriptor
                                                                                                                               {
                                                                                                                                   ContainerId = "container-1",
@@ -1304,16 +1304,16 @@ public class RuntimeContainerScanOrchestratorTests
                                                                                                                               },
                                                                                                                           ]));
                 dockerInstanceClient.InspectImageAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
-                                    .Returns(ExternalOperationResult<DockerImageInspectData>.NotFound("The local image inspect payload is not available"));
+                                    .Returns(ExternalOperationResult.NotFound<DockerImageInspectData>("The local image inspect payload is not available"));
                 dockerInstanceClient.GetImageHistoryAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
-                                    .Returns(ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>.NotFound("The local image history payload is not available"));
+                                    .Returns(ExternalOperationResult.NotFound<IReadOnlyList<DockerImageHistoryEntryData>>("The local image history payload is not available"));
                 registryMetadataService.GetTagsAsync("docker.io",
                                                      "networlddev/f1-telemetry",
                                                      Arg.Any<string?>(),
                                                      Arg.Any<string?>(),
                                                      Arg.Any<RegistryTagQueryOptions?>(),
                                                      Arg.Any<CancellationToken>())
-                                       .Returns(ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Succeeded([
+                                       .Returns(ExternalOperationResult.Succeeded<IReadOnlyList<DockerHubTagData>>([
                                                                                                                        new DockerHubTagData
                                                                                                                        {
                                                                                                                            Tag = "latest",
@@ -1337,7 +1337,7 @@ public class RuntimeContainerScanOrchestratorTests
                                                                                      && entity.Repository == "networlddev/f1-telemetry"
                                                                                      && entity.Tag == "latest"),
                                                     cancellationToken: Arg.Any<CancellationToken>())
-                                       .Returns(ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
+                                       .Returns(ExternalOperationResult.Succeeded<DockerHubTagData>(new DockerHubTagData
                                                                                                     {
                                                                                                         Tag = "latest",
                                                                                                         Digest = "sha256:241",
@@ -1416,7 +1416,7 @@ public class RuntimeContainerScanOrchestratorTests
                                                                             optionsMonitor);
 
                 dockerInstanceClient.DiscoverContainersAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<CancellationToken>())
-                                    .Returns(ExternalOperationResult<IReadOnlyList<RuntimeContainerDescriptor>>.Succeeded([
+                                    .Returns(ExternalOperationResult.Succeeded<IReadOnlyList<RuntimeContainerDescriptor>>([
                                                                                                                               new RuntimeContainerDescriptor
                                                                                                                               {
                                                                                                                                   ContainerId = "container-1",
@@ -1429,21 +1429,21 @@ public class RuntimeContainerScanOrchestratorTests
                                                                                                                               },
                                                                                                                           ]));
                 dockerInstanceClient.InspectImageAsync(Arg.Any<DockerInstanceOptions>(), "sha256:local-arm-image", Arg.Any<CancellationToken>())
-                                    .Returns(ExternalOperationResult<DockerImageInspectData>.Succeeded(new DockerImageInspectData
+                                    .Returns(ExternalOperationResult.Succeeded<DockerImageInspectData>(new DockerImageInspectData
                                                                                                        {
                                                                                                            Id = "sha256:local-arm-image",
                                                                                                            OperatingSystem = "linux",
                                                                                                            Architecture = "arm64",
                                                                                                        }));
                 dockerInstanceClient.GetImageHistoryAsync(Arg.Any<DockerInstanceOptions>(), "sha256:local-arm-image", Arg.Any<CancellationToken>())
-                                    .Returns(ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>.Succeeded([]));
+                                    .Returns(ExternalOperationResult.Succeeded<IReadOnlyList<DockerImageHistoryEntryData>>([]));
                 registryMetadataService.GetTagsAsync("docker.io",
                                                      "networlddev/f1-telemetry",
                                                      "linux",
                                                      "arm64",
                                                      Arg.Any<RegistryTagQueryOptions?>(),
                                                      Arg.Any<CancellationToken>())
-                                       .Returns(ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Succeeded([
+                                       .Returns(ExternalOperationResult.Succeeded<IReadOnlyList<DockerHubTagData>>([
                                                                                                                        new DockerHubTagData
                                                                                                                        {
                                                                                                                            Tag = "latest",
@@ -1469,7 +1469,7 @@ public class RuntimeContainerScanOrchestratorTests
                                                     "linux",
                                                     "arm64",
                                                     Arg.Any<CancellationToken>())
-                                       .Returns(ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
+                                       .Returns(ExternalOperationResult.Succeeded<DockerHubTagData>(new DockerHubTagData
                                                                                                     {
                                                                                                         Tag = "latest",
                                                                                                         Digest = "sha256:arm-new",
@@ -1563,7 +1563,7 @@ public class RuntimeContainerScanOrchestratorTests
                                                                             optionsMonitor);
 
                 dockerInstanceClient.DiscoverContainersAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<CancellationToken>())
-                                    .Returns(ExternalOperationResult<IReadOnlyList<RuntimeContainerDescriptor>>.Succeeded([
+                                    .Returns(ExternalOperationResult.Succeeded<IReadOnlyList<RuntimeContainerDescriptor>>([
                                                                                                                               new RuntimeContainerDescriptor
                                                                                                                               {
                                                                                                                                   ContainerId = "container-1",
@@ -1575,16 +1575,16 @@ public class RuntimeContainerScanOrchestratorTests
                                                                                                                               },
                                                                                                                           ]));
                 dockerInstanceClient.InspectImageAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
-                                    .Returns(ExternalOperationResult<DockerImageInspectData>.NotFound("The local image inspect payload is not available"));
+                                    .Returns(ExternalOperationResult.NotFound<DockerImageInspectData>("The local image inspect payload is not available"));
                 dockerInstanceClient.GetImageHistoryAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
-                                    .Returns(ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>.NotFound("The local image history payload is not available"));
+                                    .Returns(ExternalOperationResult.NotFound<IReadOnlyList<DockerImageHistoryEntryData>>("The local image history payload is not available"));
                 registryMetadataService.GetTagsAsync("mcr.microsoft.com",
                                                      "dotnet/runtime",
                                                      Arg.Any<string?>(),
                                                      Arg.Any<string?>(),
                                                      Arg.Any<RegistryTagQueryOptions?>(),
                                                      Arg.Any<CancellationToken>())
-                                       .Returns(ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Succeeded([
+                                       .Returns(ExternalOperationResult.Succeeded<IReadOnlyList<DockerHubTagData>>([
                                                                                                                        new DockerHubTagData
                                                                                                                        {
                                                                                                                            Tag = "10.0-alpine",
@@ -1614,7 +1614,7 @@ public class RuntimeContainerScanOrchestratorTests
                                                                                      && entity.Repository == "dotnet/runtime"
                                                                                      && entity.Tag == "10.0-alpine"),
                                                     cancellationToken: Arg.Any<CancellationToken>())
-                                       .Returns(ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
+                                       .Returns(ExternalOperationResult.Succeeded<DockerHubTagData>(new DockerHubTagData
                                                                                                     {
                                                                                                         Tag = "10.0-alpine",
                                                                                                         Digest = "sha256:current",
@@ -1702,7 +1702,7 @@ public class RuntimeContainerScanOrchestratorTests
                                .ConfigureAwait(false);
 
                 dockerInstanceClient.DiscoverContainersAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<CancellationToken>())
-                                    .Returns(ExternalOperationResult<IReadOnlyList<RuntimeContainerDescriptor>>.Succeeded([
+                                    .Returns(ExternalOperationResult.Succeeded<IReadOnlyList<RuntimeContainerDescriptor>>([
                                                                                                                               new RuntimeContainerDescriptor
                                                                                                                               {
                                                                                                                                   ContainerId = "container-1",
@@ -1714,15 +1714,15 @@ public class RuntimeContainerScanOrchestratorTests
                                                                                                                               },
                                                                                                                           ]));
                 dockerInstanceClient.InspectImageAsync(Arg.Any<DockerInstanceOptions>(), "sha256:local-image", Arg.Any<CancellationToken>())
-                                    .Returns(ExternalOperationResult<DockerImageInspectData>.Succeeded(new DockerImageInspectData
+                                    .Returns(ExternalOperationResult.Succeeded<DockerImageInspectData>(new DockerImageInspectData
                                                                                                        {
                                                                                                            Id = "sha256:local-image",
                                                                                                            EnvironmentVariables = ["DOTNET_VERSION=9.0.13"],
                                                                                                        }));
                 dockerInstanceClient.GetImageHistoryAsync(Arg.Any<DockerInstanceOptions>(), "sha256:local-image", Arg.Any<CancellationToken>())
-                                    .Returns(ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>.Succeeded([]));
+                                    .Returns(ExternalOperationResult.Succeeded<IReadOnlyList<DockerImageHistoryEntryData>>([]));
                 dotNetReleaseMetadataService.GetChannelReleaseAsync("9.0", Arg.Any<CancellationToken>())
-                                            .Returns(ExternalOperationResult<DotNetChannelReleaseData>.Succeeded(new DotNetChannelReleaseData
+                                            .Returns(ExternalOperationResult.Succeeded<DotNetChannelReleaseData>(new DotNetChannelReleaseData
                                                                                                                  {
                                                                                                                      ChannelVersion = "9.0",
                                                                                                                      LatestRuntimeVersion = new Version(9, 0, 15),
@@ -1734,7 +1734,7 @@ public class RuntimeContainerScanOrchestratorTests
                                                      Arg.Any<string?>(),
                                                      Arg.Any<RegistryTagQueryOptions?>(),
                                                      Arg.Any<CancellationToken>())
-                                       .Returns(ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Succeeded([
+                                       .Returns(ExternalOperationResult.Succeeded<IReadOnlyList<DockerHubTagData>>([
                                                                                                                        new DockerHubTagData
                                                                                                                        {
                                                                                                                            Tag = "1.0.0",
@@ -1743,7 +1743,7 @@ public class RuntimeContainerScanOrchestratorTests
                                                                                                                        },
                                                                                                                    ]));
                 registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), cancellationToken: Arg.Any<CancellationToken>())
-                                       .Returns(ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
+                                       .Returns(ExternalOperationResult.Succeeded<DockerHubTagData>(new DockerHubTagData
                                                                                                     {
                                                                                                         Tag = "1.0.0",
                                                                                                         Digest = "sha256:current",
@@ -1834,7 +1834,7 @@ public class RuntimeContainerScanOrchestratorTests
                                .ConfigureAwait(false);
 
                 dockerInstanceClient.DiscoverContainersAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<CancellationToken>())
-                                    .Returns(ExternalOperationResult<IReadOnlyList<RuntimeContainerDescriptor>>.Succeeded([
+                                    .Returns(ExternalOperationResult.Succeeded<IReadOnlyList<RuntimeContainerDescriptor>>([
                                                                                                                               new RuntimeContainerDescriptor
                                                                                                                               {
                                                                                                                                   ContainerId = "container-1",
@@ -1846,15 +1846,15 @@ public class RuntimeContainerScanOrchestratorTests
                                                                                                                               },
                                                                                                                           ]));
                 dockerInstanceClient.InspectImageAsync(Arg.Any<DockerInstanceOptions>(), "sha256:local-nginx-image", Arg.Any<CancellationToken>())
-                                    .Returns(ExternalOperationResult<DockerImageInspectData>.Succeeded(new DockerImageInspectData
+                                    .Returns(ExternalOperationResult.Succeeded<DockerImageInspectData>(new DockerImageInspectData
                                                                                                        {
                                                                                                            Id = "sha256:local-nginx-image",
                                                                                                            EnvironmentVariables = ["NGINX_VERSION=1.29.1"],
                                                                                                        }));
                 dockerInstanceClient.GetImageHistoryAsync(Arg.Any<DockerInstanceOptions>(), "sha256:local-nginx-image", Arg.Any<CancellationToken>())
-                                    .Returns(ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>.Succeeded([]));
+                                    .Returns(ExternalOperationResult.Succeeded<IReadOnlyList<DockerImageHistoryEntryData>>([]));
                 nginxReleaseMetadataService.GetChannelReleaseAsync("1.29", Arg.Any<CancellationToken>())
-                                           .Returns(ExternalOperationResult<NginxChannelReleaseData>.Succeeded(new NginxChannelReleaseData
+                                           .Returns(ExternalOperationResult.Succeeded<NginxChannelReleaseData>(new NginxChannelReleaseData
                                                                                                                {
                                                                                                                    ChannelVersion = "1.29",
                                                                                                                    LatestVersion = new Version(1, 29, 8),
@@ -1865,7 +1865,7 @@ public class RuntimeContainerScanOrchestratorTests
                                                      Arg.Any<string?>(),
                                                      Arg.Any<RegistryTagQueryOptions?>(),
                                                      Arg.Any<CancellationToken>())
-                                       .Returns(ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Succeeded([
+                                       .Returns(ExternalOperationResult.Succeeded<IReadOnlyList<DockerHubTagData>>([
                                                                                                                        new DockerHubTagData
                                                                                                                        {
                                                                                                                            Tag = "1.0.0",
@@ -1874,7 +1874,7 @@ public class RuntimeContainerScanOrchestratorTests
                                                                                                                        },
                                                                                                                    ]));
                 registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), cancellationToken: Arg.Any<CancellationToken>())
-                                       .Returns(ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
+                                       .Returns(ExternalOperationResult.Succeeded<DockerHubTagData>(new DockerHubTagData
                                                                                                     {
                                                                                                         Tag = "1.0.0",
                                                                                                         Digest = "sha256:web",
@@ -2018,7 +2018,7 @@ public class RuntimeContainerScanOrchestratorTests
                                                                                 optionsMonitor);
 
                     dockerInstanceClient.DiscoverContainersAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<CancellationToken>())
-                                        .Returns(ExternalOperationResult<IReadOnlyList<RuntimeContainerDescriptor>>.Succeeded([]));
+                                        .Returns(ExternalOperationResult.Succeeded<IReadOnlyList<RuntimeContainerDescriptor>>([]));
 
                     var orchestrator = new RuntimeContainerScanOrchestrator(new ApplicationTelemetry(),
                                                                             failingContext,
@@ -2177,7 +2177,7 @@ public class RuntimeContainerScanOrchestratorTests
                 var injected = new HttpRequestException(HttpRequestError.ConnectionError, "Connection refused (registry.internal.test:443)");
 
                 dockerInstanceClient.DiscoverContainersAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<CancellationToken>())
-                                    .Returns(ExternalOperationResult<IReadOnlyList<RuntimeContainerDescriptor>>.Succeeded([
+                                    .Returns(ExternalOperationResult.Succeeded<IReadOnlyList<RuntimeContainerDescriptor>>([
                                                                                                                               new RuntimeContainerDescriptor
                                                                                                                               {
                                                                                                                                   ContainerId = "container-1",
@@ -2188,9 +2188,9 @@ public class RuntimeContainerScanOrchestratorTests
                                                                                                                               },
                                                                                                                           ]));
                 dockerInstanceClient.InspectImageAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
-                                    .Returns(ExternalOperationResult<DockerImageInspectData>.NotFound("The local image inspect payload is not available"));
+                                    .Returns(ExternalOperationResult.NotFound<DockerImageInspectData>("The local image inspect payload is not available"));
                 dockerInstanceClient.GetImageHistoryAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
-                                    .Returns(ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>.NotFound("The local image history payload is not available"));
+                                    .Returns(ExternalOperationResult.NotFound<IReadOnlyList<DockerImageHistoryEntryData>>("The local image history payload is not available"));
                 registryMetadataService.GetTagsAsync("docker.io",
                                                      "library/nginx",
                                                      cancellationToken: Arg.Any<CancellationToken>())
@@ -2245,7 +2245,7 @@ public class RuntimeContainerScanOrchestratorTests
                     var orchestrator = CreateFailureOrchestrator(dbContext, dockerInstanceClient, registryMetadataService, logger);
 
                     dockerInstanceClient.DiscoverContainersAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<CancellationToken>())
-                                        .Returns(ExternalOperationResult<IReadOnlyList<RuntimeContainerDescriptor>>.Succeeded([
+                                        .Returns(ExternalOperationResult.Succeeded<IReadOnlyList<RuntimeContainerDescriptor>>([
                                                                                                                                   new RuntimeContainerDescriptor
                                                                                                                                   {
                                                                                                                                       ContainerId = "container-1",
@@ -2301,7 +2301,7 @@ public class RuntimeContainerScanOrchestratorTests
                 var orchestrator = CreateFailureOrchestrator(dbContext, dockerInstanceClient, registryMetadataService, logger);
 
                 dockerInstanceClient.DiscoverContainersAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<CancellationToken>())
-                                    .Returns(ExternalOperationResult<IReadOnlyList<RuntimeContainerDescriptor>>.Succeeded([
+                                    .Returns(ExternalOperationResult.Succeeded<IReadOnlyList<RuntimeContainerDescriptor>>([
                                                                                                                               new RuntimeContainerDescriptor
                                                                                                                               {
                                                                                                                                   ContainerId = "container-1",
@@ -2321,18 +2321,18 @@ public class RuntimeContainerScanOrchestratorTests
                                                                                                                               },
                                                                                                                           ]));
                 dockerInstanceClient.InspectImageAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
-                                    .Returns(ExternalOperationResult<DockerImageInspectData>.NotFound("The local image inspect payload is not available"));
+                                    .Returns(ExternalOperationResult.NotFound<DockerImageInspectData>("The local image inspect payload is not available"));
                 dockerInstanceClient.GetImageHistoryAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
-                                    .Returns(ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>.NotFound("The local image history payload is not available"));
+                                    .Returns(ExternalOperationResult.NotFound<IReadOnlyList<DockerImageHistoryEntryData>>("The local image history payload is not available"));
                 registryMetadataService.GetTagsAsync(Arg.Any<string>(),
                                                      Arg.Any<string>(),
                                                      Arg.Any<string?>(),
                                                      Arg.Any<string?>(),
                                                      Arg.Any<RegistryTagQueryOptions?>(),
                                                      Arg.Any<CancellationToken>())
-                                       .Returns(ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.NotFound("No tag data"));
+                                       .Returns(ExternalOperationResult.NotFound<IReadOnlyList<DockerHubTagData>>("No tag data"));
                 registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), cancellationToken: Arg.Any<CancellationToken>())
-                                       .Returns(ExternalOperationResult<DockerHubTagData>.NotFound("No exact tag metadata is available"));
+                                       .Returns(ExternalOperationResult.NotFound<DockerHubTagData>("No exact tag metadata is available"));
 
                 await orchestrator.ScanAllAsync(ScanTriggerSource.Scheduled, CancellationToken.None)
                                   .ConfigureAwait(false);
@@ -2367,7 +2367,7 @@ public class RuntimeContainerScanOrchestratorTests
                 var orchestrator = CreateFailureOrchestrator(dbContext, dockerInstanceClient, registryMetadataService, logger);
 
                 dockerInstanceClient.DiscoverContainersAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<CancellationToken>())
-                                    .Returns(ExternalOperationResult<IReadOnlyList<RuntimeContainerDescriptor>>.Succeeded([
+                                    .Returns(ExternalOperationResult.Succeeded<IReadOnlyList<RuntimeContainerDescriptor>>([
                                                                                                                               new RuntimeContainerDescriptor
                                                                                                                               {
                                                                                                                                   ContainerId = "container-1",
@@ -2386,25 +2386,25 @@ public class RuntimeContainerScanOrchestratorTests
                                                                                                                               },
                                                                                                                           ]));
                 dockerInstanceClient.InspectImageAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
-                                    .Returns(ExternalOperationResult<DockerImageInspectData>.NotFound("The local image inspect payload is not available"));
+                                    .Returns(ExternalOperationResult.NotFound<DockerImageInspectData>("The local image inspect payload is not available"));
                 dockerInstanceClient.GetImageHistoryAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
-                                    .Returns(ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>.NotFound("The local image history payload is not available"));
+                                    .Returns(ExternalOperationResult.NotFound<IReadOnlyList<DockerImageHistoryEntryData>>("The local image history payload is not available"));
                 registryMetadataService.GetTagsAsync("docker.io",
                                                      "library/nginx",
                                                      Arg.Any<string?>(),
                                                      Arg.Any<string?>(),
                                                      Arg.Any<RegistryTagQueryOptions?>(),
                                                      Arg.Any<CancellationToken>())
-                                       .Returns(ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Unknown(null!));
+                                       .Returns(ExternalOperationResult.Unknown<IReadOnlyList<DockerHubTagData>>(null!));
                 registryMetadataService.GetTagsAsync("docker.io",
                                                      "library/redis",
                                                      Arg.Any<string?>(),
                                                      Arg.Any<string?>(),
                                                      Arg.Any<RegistryTagQueryOptions?>(),
                                                      Arg.Any<CancellationToken>())
-                                       .Returns(ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Unsupported(null!));
+                                       .Returns(ExternalOperationResult.Unsupported<IReadOnlyList<DockerHubTagData>>(null!));
                 registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), cancellationToken: Arg.Any<CancellationToken>())
-                                       .Returns(ExternalOperationResult<DockerHubTagData>.NotFound("No exact tag metadata is available"));
+                                       .Returns(ExternalOperationResult.NotFound<DockerHubTagData>("No exact tag metadata is available"));
 
                 await orchestrator.ScanAllAsync(ScanTriggerSource.Scheduled, CancellationToken.None)
                                   .ConfigureAwait(false);
