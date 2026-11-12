@@ -6,7 +6,9 @@ Several majors may be installed side by side on a machine or in CI; a solution i
 `dotnet new` creates for the SDK of `global.json` gets that SDK's major, and Dependabot leaves the next major alone,
 so a jump shows here, in the diff that makes it: a `<TargetFramework>` or `<TargetFrameworks>` of another major in a
 `*.csproj`, `*.props` or `*.targets` file, a `global.json` on another SDK major, or a `FROM mcr.microsoft.com/dotnet/…`
-image of another major (named in the `FROM` or in the default of the build argument it uses). The major of
+image of another major (named in the `FROM` or in the default of the build argument it uses), or a `net<N>.0` moniker
+in a script or workflow (`bin/Release/net10.0-windows/` in a `*.sh`, `*.ps1` or `.github/workflows/*.yml` file), which
+breaks only once CI runs it (Censio#158; a version tag such as `v10.0.0` is no moniker). The major of
 `global.json` is the repository's; without one, the target frameworks must agree
 among themselves. A value built from an MSBuild property or a build argument (`$(…)`, `${…}`) is not read, and
 `netstandard`, `netcoreapp` and .NET Framework monikers name no major. Moving to the next major is one change of all of
@@ -30,6 +32,12 @@ IMAGE_REF = re.compile(r"^(?:mcr\.microsoft\.com/)?dotnet/[\w./-]+:(?P<major>\d+
 DOTNET_IMAGE = re.compile(r"^(?:mcr\.microsoft\.com/)?dotnet/[\w./-]+$", re.I)
 ARG = re.compile(r"^\s*ARG\s+(?P<name>\w+)=(?P<value>\S+)", re.I)
 PROJECT_FILES = (".csproj", ".props", ".targets")
+SCRIPT_FILES = (".sh", ".bash", ".ps1")
+WORKFLOW_DIR = ".github/workflows/"
+# A target-framework moniker in running text: `net10.0`, `net10.0-windows`; not part of a longer word or version.
+# A comment of a shell or PowerShell script or a workflow: from a `#` at the start of a line or after a blank.
+SCRIPT_COMMENT = re.compile(r"(?:^|\s)#.*$")
+SCRIPT_MONIKER = re.compile(r"(?<![\w.-])net(\d+)\.\d+(?:-[a-z][\w.]*)?(?![\w.])", re.I)
 GLOBAL_JSON = "global.json"
 LINE_COMMENT = re.compile(r"^\s*//.*$", re.M)
 
@@ -62,6 +70,22 @@ def target_majors(path, text):
             if parsed and int(parsed.group(1)) >= 5:
                 found.append((path, line, int(parsed.group(1)), moniker))
     return found
+
+
+def script_majors(path, text):
+    """[(path, line, major, what)] of the target-framework monikers a script or workflow names (an output path); a
+    comment is left out (`# SDK 11 builds a net10.0 project` in the managed session-start hook)."""
+    found = []
+    for number, line in enumerate(text.splitlines(), 1):
+        for match in SCRIPT_MONIKER.finditer(SCRIPT_COMMENT.sub("", line)):
+            if int(match.group(1)) >= 5:
+                found.append((path, number, int(match.group(1)), match.group(0)))
+    return found
+
+
+def is_script(path):
+    """A shell or PowerShell script, or a GitHub Actions workflow."""
+    return path.endswith(SCRIPT_FILES) or (path.startswith(WORKFLOW_DIR) and path.endswith((".yml", ".yaml")))
 
 
 def image_majors(path, text):
@@ -107,6 +131,8 @@ def places(files):
             found += target_majors(path, read(path))
         elif is_dockerfile(path):
             found += image_majors(path, read(path))
+        elif is_script(path):
+            found += script_majors(path, read(path))
     return sdk, found
 
 
@@ -141,7 +167,7 @@ def check(files=None):
         print(f"{path}:{line}: {what} is .NET {major}, but {source} .NET {expected}: every project and image stays on "
               "one major; the next major is one change of all of them")
     if not wrong:
-        print(f".NET major: {expected} everywhere ({len(found)} target framework(s) and image(s); {source} it)")
+        print(f".NET major: {expected} everywhere ({len(found)} target framework(s), image(s) and script path(s); {source} it)")
     return not wrong
 
 

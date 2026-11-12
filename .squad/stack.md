@@ -142,7 +142,10 @@ working tree can contain files the image never gets (Vandox#24: `_framework/blaz
 publish and missing from the image). The publish here restores again, which narrows that gap, but a change to the
 copy or restore lines can widen it. Where Docker runs, build the image. Where it does not (the sandbox),
 reproduce the Dockerfile's order in a scratch directory; every change to a `.csproj`, `Directory.*.props`, a
-`.razor` or other content item, a static web asset or the Dockerfile runs it before the review:
+`.razor` or other content item, a static web asset or the Dockerfile runs it before the review. The image build
+needs `.squad/dotnet-rules.globalconfig`, which `Directory.Build.props` names: the Dockerfile's `COPY . .` brings it
+into the build stage (a Dockerfile that copies files by name copies it by name), and `.dockerignore` does not leave
+out `.squad/` (or lets the file in with `!.squad/dotnet-rules.globalconfig`); `dotnet_config.py` checks both:
 
 ```bash
 scratch="$(mktemp -d)"

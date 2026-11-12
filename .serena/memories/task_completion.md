@@ -1,1 +1,1 @@
-After source changes in DockerUpdateGuard, run Format, Build, the Analyzer gate, Test with coverage and the Coverage gate from .squad/stack.md (at least 80 % line coverage on new/changed code and overall), and keep docs/ARCHITECTURE.md and .squad/project.md true.
+After source changes in DockerUpdateGuard, run Format, Build, the Analyzer gate, Test with coverage and the Coverage gate from .squad/stack.md (at least 80 % coverage on new/changed code, lines and branch conditions together, and 80 % line coverage overall), and keep docs/ARCHITECTURE.md and .squad/project.md true.

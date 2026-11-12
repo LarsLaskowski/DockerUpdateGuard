@@ -8,7 +8,9 @@
   `Directory.Build.props` sets REQUIRED with these values, references the analyzers of ANALYZERS and names
   `.squad/dotnet-rules.globalconfig` in `GlobalAnalyzerConfigFiles`, and no project file sets one of them again; the
   tool manifest is `.config/dotnet-tools.json` and its `reihitsu.cli` is the version of `Reihitsu.Analyzer`;
-  Git checks C# files out with CRLF;
+  Git checks C# files out with CRLF; a Dockerfile that builds .NET code brings `.squad/dotnet-rules.globalconfig` into
+  its build (by `COPY . .` or by name), and the root `.dockerignore` does not leave it out (MSBuild skips a missing global
+  config silently, so the image would build `.razor` code without the switched-off rules);
 - **rules**: no rule set (`*.ruleset`, `CodeAnalysisRuleSet`), no `.globalconfig`, no `NoWarn` or
   `WarningsNotAsErrors` that names a rule, no assembly-wide `SuppressMessage` (one without a `Target`); the blocks of
   `dotnet-rules.py` are current; and outside the blocks, a section of every C# file sets no rule or code-style option,
@@ -254,6 +256,53 @@ def blocks_findings(rules):
     return [f"{EDITORCONFIG}: the dotnet-rules blocks are missing or out of date; run python3 .squad/tools/dotnet-rules.py"]
 
 
+GLOBAL_CONFIG_PATH = ".squad/dotnet-rules.globalconfig"
+# COPY or ADD of the whole context (`.`, `./`) or of `.squad/`, not from another stage
+COPY_ALL = re.compile(r"^\s*(?:COPY|ADD)\b(?:\s+--(?!from=)\S+)*\s+(?:\./?|\.squad/?)\s+\S+\s*$", re.I | re.M)
+DOTNET_BUILD = re.compile(r"\bdotnet\s+(?:publish|build)\b")
+IGNORES_SQUAD = (".squad", ".squad/", ".squad/*", ".squad/**", "*", "**", ".*")
+KEEPS_CONFIG = ("!.squad", "!.squad/", "!.squad/*", "!.squad/**", "!.squad/*.globalconfig", "!" + GLOBAL_CONFIG_PATH)
+
+
+def is_dockerfile(path):
+    name = os.path.basename(path).lower()
+    return name.startswith(("dockerfile", "containerfile")) and not name.endswith(".dockerignore") \
+        or name.endswith(".dockerfile")
+
+
+def ignore_pattern(line):
+    """A `.dockerignore` line as the lists above compare it: a leading `/` or `**/` left aside, `!` kept."""
+    negated, pattern = line.startswith("!"), line.lstrip("!")
+    pattern = re.sub(r"^(?:/|\*\*/)+", "", pattern)
+    return ("!" if negated else "") + pattern
+
+
+def dockerignore_findings():
+    """The root `.dockerignore` when its last pattern that leaves out `.squad/` comes after every one that lets the
+    global config back in."""
+    patterns = [ignore_pattern(line.strip()) for line in read(".dockerignore").splitlines()
+                if line.strip() and not line.strip().startswith("#")]
+    last_ignore = max((index for index, line in enumerate(patterns) if line in IGNORES_SQUAD), default=-1)
+    last_keep = max((index for index, line in enumerate(patterns) if line in KEEPS_CONFIG), default=-1)
+    if last_ignore > last_keep:
+        return [f".dockerignore: leaves out {GLOBAL_CONFIG_PATH} ({patterns[last_ignore]}); add "
+                f"!{GLOBAL_CONFIG_PATH} after it"]
+    return []
+
+
+def docker_findings(files):
+    """A Dockerfile that builds .NET code and copies neither its whole context (nor `.squad/`) nor
+    `.squad/dotnet-rules.globalconfig`, and a root `.dockerignore` that leaves that file out. The check is per file,
+    not per stage."""
+    dockerfiles = [path for path in files if is_dockerfile(path) and DOTNET_BUILD.search(read(path))]
+    if not dockerfiles:
+        return []
+    found = [f"{path}: copies no {GLOBAL_CONFIG_PATH} into the build (COPY . . or COPY {GLOBAL_CONFIG_PATH} .squad/)"
+             for path in dockerfiles
+             if COPY_ALL.search(read(path)) is None and GLOBAL_CONFIG_PATH not in read(path)]
+    return found + dockerignore_findings()
+
+
 def findings(files=None):
     files = tracked_files() if files is None else files
     texts = [(path, read(path)) for path in files if path.endswith((*BUILD_FILES, ".cs"))]
@@ -263,7 +312,8 @@ def findings(files=None):
     rules = dotnet_rules()
     found = target_framework_findings(projects, props) + required_findings(projects, props) \
         + package_findings(projects, packages) + tool_findings(files, packages) + line_ending_findings() \
-        + rule_set_findings(files, texts) + blocks_findings(rules) + editorconfig_findings(rules)
+        + rule_set_findings(files, texts) + blocks_findings(rules) + editorconfig_findings(rules) \
+        + docker_findings(files)
     return found
 
 
