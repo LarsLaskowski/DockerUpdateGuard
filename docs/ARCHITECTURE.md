@@ -361,7 +361,7 @@ Pages, routes and what each page shows or triggers are specified in
   directly. This keeps EF Core change-tracking and entity shapes out of
   the component tree, at the cost of `ApplicationViewService` being a
   fairly wide surface (one method per page/section).
-- **`Components\Shared`** holds cross-page building blocks: loading
+- **`Components\Common`** holds cross-page building blocks: loading
   skeletons and the vulnerability widgets shared between the
   Vulnerabilities page and image/container detail pages.
 - **`DashboardRefreshState`** is a small singleton pub/sub class that
