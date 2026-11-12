@@ -1,3 +1,4 @@
+using System.IO.Pipelines;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
@@ -2261,6 +2262,166 @@ public partial class DockerHubClientTests
     }
 
     /// <summary>
+    /// Verify two instances sharing one token cache log in once and the second sends its request with the first instance's token
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC1")]
+    public async Task DockerHubClientTwoInstancesSharingTokenCacheLogInOnceAsync()
+    {
+        var now = new DateTimeOffset(2026, 3, 10, 12, 0, 0, TimeSpan.Zero);
+        var requests = new List<(string Uri, string? Authorization)>();
+
+        using var handler = new DelegateHttpMessageHandler(request =>
+                                                           {
+                                                               requests.Add((request.RequestUri!.AbsoluteUri, request.Headers.Authorization?.ToString()));
+
+                                                               return CreateHubResponse(request, () => CreateJsonResponse("""{ "username": "acme" }"""));
+                                                           });
+        using var firstHttpClient = new HttpClient(handler, false)
+                                    {
+                                        BaseAddress = new Uri("https://hub.docker.com/"),
+                                    };
+        using var secondHttpClient = new HttpClient(handler, false)
+                                     {
+                                         BaseAddress = new Uri("https://hub.docker.com/"),
+                                     };
+        using var tokenCache = new DockerHubAccessTokenCache(CreateClock(() => now));
+
+        var firstClient = CreateClient(firstHttpClient, accessTokenCache: tokenCache);
+        var secondClient = CreateClient(secondHttpClient, accessTokenCache: tokenCache);
+
+        var first = await firstClient.GetCurrentUserAsync(CancellationToken.None).ConfigureAwait(false);
+        var second = await secondClient.GetCurrentUserAsync(CancellationToken.None).ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, first.Status, "The request of the first instance must succeed");
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, second.Status, "The request of the second instance must succeed");
+        Assert.AreSequenceEqual(new[] { LoginUri, "https://hub.docker.com/v2/user/", "https://hub.docker.com/v2/user/" },
+                                requests.Select(request => request.Uri)
+                                        .ToArray(),
+                                "Two instances sharing one token cache must send one login for their requests");
+        Assert.AreEqual($"Bearer {LoginToken}", requests[^1].Authorization, "The second instance must send its request with the first instance's token");
+    }
+
+    /// <summary>
+    /// Verify a login deferred by a Retry-After window stores nothing in the shared cache, and the token of the login after the window is shared
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC4")]
+    public async Task DockerHubClientLoginRetryAfterDeferralWithSharedCacheStoresNothingAsync()
+    {
+        var now = new DateTimeOffset(2026, 3, 10, 12, 0, 0, TimeSpan.Zero);
+        var requests = new List<string>();
+        var registry = new LoginRetryAfterRegistry(CreateClock(() => now));
+
+        using var handler = CreateLoginSequenceHandler(requests,
+                                                       () => CreateTooManyRequests(new RetryConditionHeaderValue(TimeSpan.FromSeconds(120))),
+                                                       () => CreateJsonResponse(LoginResponseJson));
+        using var firstHttpClient = new HttpClient(handler, false)
+                                    {
+                                        BaseAddress = new Uri("https://hub.docker.com/"),
+                                    };
+        using var secondHttpClient = new HttpClient(handler, false)
+                                     {
+                                         BaseAddress = new Uri("https://hub.docker.com/"),
+                                     };
+        using var tokenCache = new DockerHubAccessTokenCache(CreateClock(() => now));
+
+        var firstClient = CreateClient(firstHttpClient, loginRetryAfterRegistry: registry, accessTokenCache: tokenCache);
+        var secondClient = CreateClient(secondHttpClient, loginRetryAfterRegistry: registry, accessTokenCache: tokenCache);
+
+        await firstClient.GetCurrentUserAsync(CancellationToken.None).ConfigureAwait(false);
+
+        var deferred = await secondClient.GetCurrentUserAsync(CancellationToken.None).ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Failed, deferred.Status, "A request inside the window must fail");
+        Assert.HasCount(1, requests, "A request inside the window must send nothing");
+
+        now = now.AddSeconds(120);
+
+        var loggedIn = await secondClient.GetCurrentUserAsync(CancellationToken.None).ConfigureAwait(false);
+        var reused = await firstClient.GetCurrentUserAsync(CancellationToken.None).ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, loggedIn.Status, "The deferred login must have stored nothing, so the request after the window logs in and succeeds");
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, reused.Status, "The other instance must succeed with the shared token");
+        Assert.AreSequenceEqual(new[] { LoginUri, LoginUri, "https://hub.docker.com/v2/user/", "https://hub.docker.com/v2/user/" },
+                                requests.ToArray(),
+                                "After the window one login must be sent and its token used by both instances");
+    }
+
+    /// <summary>
+    /// Verify a login whose body stalls is cancelled by the login timeout of the shared cache's clock, keeps nothing and lets the next call log in
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC7")]
+    public async Task DockerHubClientLoginBodyStalledReleasesTokenCacheAfterTimeoutAsync()
+    {
+        var now = new DateTimeOffset(2026, 3, 10, 12, 0, 0, TimeSpan.Zero);
+        var loginCount = 0;
+        var stalledBody = new Pipe();
+        TimerCallback? timerCallback = null;
+        object? timerState = null;
+        var clock = CreateClock(() => now);
+
+        clock.CreateTimer(Arg.Any<TimerCallback>(), Arg.Any<object?>(), Arg.Any<TimeSpan>(), Arg.Any<TimeSpan>())
+             .Returns(callInfo =>
+                      {
+                          timerCallback ??= callInfo.ArgAt<TimerCallback>(0);
+                          timerState ??= callInfo.ArgAt<object?>(1);
+
+                          return Substitute.For<ITimer>();
+                      });
+
+        using var handler = new DelegateHttpMessageHandler(request =>
+                                                           {
+                                                               if (request.RequestUri!.AbsolutePath.EndsWith("/users/login", StringComparison.Ordinal))
+                                                               {
+                                                                   loginCount++;
+
+                                                                   if (loginCount == 1)
+                                                                   {
+                                                                       return new HttpResponseMessage(HttpStatusCode.OK)
+                                                                              {
+                                                                                  Content = new StreamContent(stalledBody.Reader.AsStream()),
+                                                                              };
+                                                                   }
+                                                               }
+
+                                                               return CreateHubResponse(request, () => CreateJsonResponse("""{ "username": "acme" }"""));
+                                                           });
+        using var httpClient = new HttpClient(handler)
+                               {
+                                   BaseAddress = new Uri("https://hub.docker.com/"),
+                                   Timeout = TimeSpan.FromSeconds(30),
+                               };
+        using var tokenCache = new DockerHubAccessTokenCache(clock);
+        using var callerCancellation = new CancellationTokenSource();
+
+        var client = CreateClient(httpClient, accessTokenCache: tokenCache);
+
+        var stalled = client.GetCurrentUserAsync(callerCancellation.Token);
+
+        Assert.IsFalse(stalled.IsCompleted, "The request must still be waiting for the stalled login body");
+        Assert.IsNotNull(timerCallback, "The login timeout must be armed on the clock of the shared cache");
+
+        clock.Received(1).CreateTimer(Arg.Any<TimerCallback>(), Arg.Any<object?>(), TimeSpan.FromSeconds(30), Timeout.InfiniteTimeSpan);
+
+        timerCallback(timerState);
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() => stalled, "A login stopped by its timeout must throw OperationCanceledException")
+                    .ConfigureAwait(false);
+
+        Assert.IsFalse(callerCancellation.IsCancellationRequested, "The login timeout must not cancel the caller's token");
+
+        var next = await client.GetCurrentUserAsync(callerCancellation.Token).ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, next.Status, "The request after a timed-out login must log in and succeed");
+        Assert.AreEqual(2, loginCount, "The timed-out login must store nothing and free the lock, so the next request logs in again");
+    }
+
+    /// <summary>
     /// Create a clock that answers the given time
     /// </summary>
     /// <param name="now">Source of the current time</param>
@@ -2401,12 +2562,14 @@ public partial class DockerHubClientTests
     /// <param name="userName">Configured Docker Hub user name</param>
     /// <param name="logger">Logger that captures the client's entries; null creates a new one</param>
     /// <param name="loginRetryAfterRegistry">Registry of the login windows; null creates a new one</param>
+    /// <param name="accessTokenCache">Shared cache of the access token; null creates a new one</param>
     /// <returns>Docker Hub client</returns>
     private static DockerHubClient CreateClient(HttpClient httpClient,
                                                 string registry = "docker.io",
                                                 string? userName = "acme",
                                                 TestLogger<DockerHubClient>? logger = null,
-                                                LoginRetryAfterRegistry? loginRetryAfterRegistry = null)
+                                                LoginRetryAfterRegistry? loginRetryAfterRegistry = null,
+                                                DockerHubAccessTokenCache? accessTokenCache = null)
     {
         var options = new DockerUpdateGuardOptions
                       {
@@ -2423,7 +2586,7 @@ public partial class DockerHubClientTests
                                    logger ?? new TestLogger<DockerHubClient>(),
                                    new TestOptionsMonitor<DockerUpdateGuardOptions>(options),
                                    loginRetryAfterRegistry ?? new LoginRetryAfterRegistry(TimeProvider.System),
-                                   new DockerHubAccessTokenCache(TimeProvider.System));
+                                   accessTokenCache ?? new DockerHubAccessTokenCache(TimeProvider.System));
     }
 
     /// <summary>
