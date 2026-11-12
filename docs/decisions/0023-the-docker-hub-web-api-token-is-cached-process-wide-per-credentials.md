@@ -18,10 +18,12 @@ process-wide token must never answer for credentials it was not issued for.
 
 ## Options considered
 
-1. **A singleton token cache that the client instances share, keyed by the trimmed user name and a SHA-256 fingerprint
-   of the PAT (chosen)** — one login per token lifetime for the whole process; a reload of either credential makes the
-   next request log in with the new one; the PAT itself is not copied into the cache; a test clock drives the expiry.
-   The cost is a new singleton the client depends on, and one login lock for the whole process.
+1. **A singleton token cache that the client instances share, keyed by the login URL, the trimmed user name and a
+   SHA-256 fingerprint of the PAT, with a time limit on each login (chosen)** — one login per token lifetime for the
+   whole process; a reload of either credential makes the next request log in with the new one; a token is never sent
+   to another login origin; the PAT itself is not copied into the cache; a test clock drives the expiry and the limit.
+   The cost is a new singleton the client depends on, and one login lock for the whole process, which the time limit
+   keeps a stalled login (one whose body never completes, which `HttpClient.Timeout` does not bound) from holding.
 2. **Register `DockerHubClient` itself as a singleton** — a typed `HttpClient` captured in a singleton never gets a
    new handler from the factory (DNS changes go unnoticed), and it would also make the per-instance
    `MaxParallelRequests` throttle process-wide, which is #265's decision with its own reload semantics.
@@ -37,7 +39,8 @@ process-wide token must never answer for credentials it was not issued for.
 ## Decision
 
 Option 1: one process-wide `DockerHubAccessTokenCache` holds the Docker Hub web API token for every client instance and
-scope, reuses it only for the credentials it was obtained with, and lets one login run at a time. The behavior is
+scope, reuses it only for the login URL and credentials it was obtained with, and lets one login run at a time, for at
+most `RequestTimeoutSeconds`. The behavior is
 described in [Registries](../areas/registries.md#authentication).
 
 ## Consequences
@@ -47,7 +50,9 @@ described in [Registries](../areas/registries.md#authentication).
 - A token Docker Hub refuses before its expiry (a revoked PAT, say) is sent by every scope until one minute before
   that expiry; a changed PAT in the configuration or a restart clears it. Revisit with option 5 when such refusals are
   seen in practice.
-- While one login is in flight, every authenticated Docker Hub web API request of the process waits for it, at most for
-  the login's `RequestTimeoutSeconds`; each waiter honors its own cancellation.
+- While one login is in flight, every authenticated Docker Hub web API request of the process waits for it. The login
+  is cancelled once `RequestTimeoutSeconds` have passed since it started under the lock — its wait for a request slot,
+  the headers and the body included — so that is the longest wait; each waiter also honors its own cancellation, and a
+  cancelled login stores nothing.
 - The token lives in memory as long as it is valid rather than as long as a scope, which is no longer than the Docker
   Scout provider already keeps its token.
