@@ -163,9 +163,9 @@ public class RegistryBaseImageResolverTests
         var debianConfiguration = CreateConfiguration($"docker.io/{new string('a', 256)}:1");
 
         registryMetadataService.GetImageConfigurationAsync(Arg.Is<ImageReference>(reference => reference.Repository == "library/app"), Arg.Any<CancellationToken>())
-                               .Returns(ExternalOperationResult<RegistryImageConfigurationData>.Succeeded(rootConfiguration));
+                               .Returns(ExternalOperationResult.Succeeded<RegistryImageConfigurationData>(rootConfiguration));
         registryMetadataService.GetImageConfigurationAsync(Arg.Is<ImageReference>(reference => reference.Repository == "library/debian"), Arg.Any<CancellationToken>())
-                               .Returns(ExternalOperationResult<RegistryImageConfigurationData>.Succeeded(debianConfiguration));
+                               .Returns(ExternalOperationResult.Succeeded<RegistryImageConfigurationData>(debianConfiguration));
 
         var resolver = new RegistryBaseImageResolver(registryMetadataService);
 
@@ -197,7 +197,7 @@ public class RegistryBaseImageResolverTests
         var registryMetadataService = Substitute.For<IRegistryMetadataService>();
 
         registryMetadataService.GetImageConfigurationAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
-                               .Returns(ExternalOperationResult<RegistryImageConfigurationData>.Succeeded(CreateConfiguration("/")));
+                               .Returns(ExternalOperationResult.Succeeded<RegistryImageConfigurationData>(CreateConfiguration("/")));
 
         var resolver = new RegistryBaseImageResolver(registryMetadataService);
 
@@ -213,6 +213,48 @@ public class RegistryBaseImageResolverTests
         Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "An unparsable label must not fail the resolution");
         Assert.IsNotNull(result.Data, "The resolver must return the chain");
         Assert.IsEmpty(result.Data, "An unparsable label must give no base image");
+    }
+
+    /// <summary>
+    /// Verify a failed image configuration lookup is mapped to the same status with the lookup message
+    /// </summary>
+    /// <param name="status">Status of the configuration lookup</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [DataRow(ExternalOperationStatus.Unsupported)]
+    [DataRow(ExternalOperationStatus.NotFound)]
+    [DataRow(ExternalOperationStatus.NotConfigured)]
+    [DataRow(ExternalOperationStatus.Unknown)]
+    [DataRow(ExternalOperationStatus.Failed)]
+    public async Task RegistryBaseImageResolverResolveAsyncWhenConfigurationLookupFailsMapsStatusAndMessageAsync(ExternalOperationStatus status)
+    {
+        var registryMetadataService = Substitute.For<IRegistryMetadataService>();
+        var lookup = status switch
+                     {
+                         ExternalOperationStatus.Unsupported => ExternalOperationResult.Unsupported<RegistryImageConfigurationData>("lookup.internal.test"),
+                         ExternalOperationStatus.NotFound => ExternalOperationResult.NotFound<RegistryImageConfigurationData>("lookup.internal.test"),
+                         ExternalOperationStatus.NotConfigured => ExternalOperationResult.NotConfigured<RegistryImageConfigurationData>("lookup.internal.test"),
+                         ExternalOperationStatus.Unknown => ExternalOperationResult.Unknown<RegistryImageConfigurationData>("lookup.internal.test"),
+                         _ => ExternalOperationResult.Failed<RegistryImageConfigurationData>("lookup.internal.test"),
+                     };
+
+        registryMetadataService.GetImageConfigurationAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
+                               .Returns(lookup);
+
+        var resolver = new RegistryBaseImageResolver(registryMetadataService);
+
+        var result = await resolver.ResolveAsync(new ImageReference
+                                                 {
+                                                     Registry = "docker.io",
+                                                     Repository = "library/app",
+                                                     Tag = "latest",
+                                                 },
+                                                 CancellationToken.None)
+                                   .ConfigureAwait(false);
+
+        Assert.AreEqual(status, result.Status, "The status of the lookup must be kept");
+        Assert.AreEqual("lookup.internal.test", result.Message, "The message of the lookup must be kept");
+        Assert.IsNull(result.Data, "A failed resolution must carry no data");
     }
 
     /// <summary>

@@ -6,105 +6,60 @@ namespace DockerUpdateGuard.Infrastructure;
 /// <typeparam name="T">Payload type</typeparam>
 public class ExternalOperationResult<T>
 {
+    #region Constructors
+
+    /// <summary>
+    /// Constructor
+    /// </summary>
+    /// <param name="status">Result status</param>
+    /// <param name="data">Optional payload</param>
+    /// <param name="message">Optional human readable message</param>
+    internal ExternalOperationResult(ExternalOperationStatus status, T? data, string? message)
+    {
+        Status = status;
+        Data = data;
+        Message = message;
+    }
+
+    #endregion // Constructors
+
     #region Properties
 
     /// <summary>
     /// Result status
     /// </summary>
-    public ExternalOperationStatus Status { get; private set; }
+    public ExternalOperationStatus Status { get; }
 
     /// <summary>
     /// Optional payload
     /// </summary>
-    public T? Data { get; private set; }
+    public T? Data { get; }
 
     /// <summary>
     /// Optional human readable message
     /// </summary>
-    public string? Message { get; private set; }
+    public string? Message { get; }
 
     #endregion // Properties
 
-    #region Static methods
+    #region Methods
 
     /// <summary>
-    /// Create a successful result
+    /// Pass a non-success result on as a result of another payload type, keeping the status for not configured, unsupported, not found and unknown results and mapping every other status to failed
     /// </summary>
-    /// <param name="data">Payload</param>
-    /// <returns>Result</returns>
-    public static ExternalOperationResult<T> Succeeded(T data)
+    /// <typeparam name="TResult">Payload type of the returned result</typeparam>
+    /// <param name="fallbackMessage">Message used when this result carries none</param>
+    /// <returns>Result without payload</returns>
+    public ExternalOperationResult<TResult> PropagateFailure<TResult>(string fallbackMessage)
     {
-        return new ExternalOperationResult<T>
-               {
-                   Status = ExternalOperationStatus.Succeeded,
-                   Data = data,
-               };
+        var status = Status switch
+                     {
+                         ExternalOperationStatus.NotConfigured or ExternalOperationStatus.Unsupported or ExternalOperationStatus.NotFound or ExternalOperationStatus.Unknown => Status,
+                         _ => ExternalOperationStatus.Failed,
+                     };
+
+        return new ExternalOperationResult<TResult>(status, default, Message ?? fallbackMessage);
     }
 
-    /// <summary>
-    /// Create a not configured result
-    /// </summary>
-    /// <param name="message">Result message</param>
-    /// <returns>Result</returns>
-    public static ExternalOperationResult<T> NotConfigured(string message)
-    {
-        return Create(ExternalOperationStatus.NotConfigured, message);
-    }
-
-    /// <summary>
-    /// Create an unsupported result
-    /// </summary>
-    /// <param name="message">Result message</param>
-    /// <returns>Result</returns>
-    public static ExternalOperationResult<T> Unsupported(string message)
-    {
-        return Create(ExternalOperationStatus.Unsupported, message);
-    }
-
-    /// <summary>
-    /// Create a not found result
-    /// </summary>
-    /// <param name="message">Result message</param>
-    /// <returns>Result</returns>
-    public static ExternalOperationResult<T> NotFound(string message)
-    {
-        return Create(ExternalOperationStatus.NotFound, message);
-    }
-
-    /// <summary>
-    /// Create a failed result
-    /// </summary>
-    /// <param name="message">Result message</param>
-    /// <returns>Result</returns>
-    public static ExternalOperationResult<T> Failed(string message)
-    {
-        return Create(ExternalOperationStatus.Failed, message);
-    }
-
-    /// <summary>
-    /// Create an unknown result
-    /// </summary>
-    /// <param name="message">Result message</param>
-    /// <returns>Result</returns>
-    public static ExternalOperationResult<T> Unknown(string message)
-    {
-        return Create(ExternalOperationStatus.Unknown, message);
-    }
-
-    /// <summary>
-    /// Create a result without payload
-    /// </summary>
-    /// <param name="status">Result status</param>
-    /// <param name="message">Result message</param>
-    /// <returns>Result</returns>
-    private static ExternalOperationResult<T> Create(ExternalOperationStatus status, string message)
-    {
-        return new ExternalOperationResult<T>
-               {
-                   Status = status,
-                   Message = message,
-               };
-    }
-
-    #endregion // Static methods
+    #endregion // Methods
 }

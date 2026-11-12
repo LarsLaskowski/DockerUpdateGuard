@@ -71,7 +71,7 @@ public partial class RegistryMetadataService : IRegistryMetadataService
 
         if (TryGetClient(imageReference.Registry, out var client) == false)
         {
-            return Task.FromResult(ExternalOperationResult<DockerHubTagData>.Unsupported(CreateUnsupportedMessage(imageReference.Registry)));
+            return Task.FromResult(ExternalOperationResult.Unsupported<DockerHubTagData>(CreateUnsupportedMessage(imageReference.Registry)));
         }
 
         return client.GetTagAsync(imageReference, operatingSystem, architecture, cancellationToken);
@@ -90,7 +90,7 @@ public partial class RegistryMetadataService : IRegistryMetadataService
 
         if (TryGetClient(registry, out var client) == false)
         {
-            return Task.FromResult(ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Unsupported(CreateUnsupportedMessage(registry)));
+            return Task.FromResult(ExternalOperationResult.Unsupported<IReadOnlyList<DockerHubTagData>>(CreateUnsupportedMessage(registry)));
         }
 
         return client.GetTagsAsync(registry, repository, operatingSystem, architecture, queryOptions, cancellationToken);
@@ -103,7 +103,7 @@ public partial class RegistryMetadataService : IRegistryMetadataService
 
         if (TryGetClient(imageReference.Registry, out var client) == false)
         {
-            return Task.FromResult(ExternalOperationResult<RegistryImageConfigurationData>.Unsupported(CreateUnsupportedMessage(imageReference.Registry)));
+            return Task.FromResult(ExternalOperationResult.Unsupported<RegistryImageConfigurationData>(CreateUnsupportedMessage(imageReference.Registry)));
         }
 
         return client.GetImageConfigurationAsync(imageReference, cancellationToken);

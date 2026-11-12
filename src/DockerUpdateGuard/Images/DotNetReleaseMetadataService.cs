@@ -142,7 +142,7 @@ public partial class DotNetReleaseMetadataService : IDotNetReleaseMetadataServic
     {
         if (_indexLoaded)
         {
-            return ExternalOperationResult<bool>.Succeeded(true);
+            return ExternalOperationResult.Succeeded<bool>(true);
         }
 
         try
@@ -155,7 +155,7 @@ public partial class DotNetReleaseMetadataService : IDotNetReleaseMetadataServic
                 var body = await ResponseBodyExcerpt.ReadAsync(response.Content, cancellationToken)
                                                     .ConfigureAwait(false);
 
-                return ExternalOperationResult<bool>.Failed($"The .NET release index returned {(int)response.StatusCode}: {body}");
+                return ExternalOperationResult.Failed<bool>($"The .NET release index returned {(int)response.StatusCode}: {body}");
             }
 
             var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken)
@@ -169,7 +169,7 @@ public partial class DotNetReleaseMetadataService : IDotNetReleaseMetadataServic
                 if (jsonDocument.RootElement.TryGetProperty("releases-index", out var releasesIndexElement) == false
                     || releasesIndexElement.ValueKind != JsonValueKind.Array)
                 {
-                    return ExternalOperationResult<bool>.Failed("The .NET release index does not contain a valid releases-index array");
+                    return ExternalOperationResult.Failed<bool>("The .NET release index does not contain a valid releases-index array");
                 }
 
                 foreach (var releaseElement in releasesIndexElement.EnumerateArray())
@@ -199,13 +199,13 @@ public partial class DotNetReleaseMetadataService : IDotNetReleaseMetadataServic
 
             _indexLoaded = true;
 
-            return ExternalOperationResult<bool>.Succeeded(true);
+            return ExternalOperationResult.Succeeded<bool>(true);
         }
         catch (Exception exception)
         {
-            _logger.LogWarning(exception, "Loading .NET release metadata failed");
+            _logger.DotNetReleaseMetadataLoadFailed(exception);
 
-            return ExternalOperationResult<bool>.Failed($"Loading .NET release metadata failed: {FailureReason.FromException(exception, _httpClient.Timeout, cancellationToken)}");
+            return ExternalOperationResult.Failed<bool>($"Loading .NET release metadata failed: {FailureReason.FromException(exception, _httpClient.Timeout, cancellationToken)}");
         }
     }
 
@@ -220,26 +220,19 @@ public partial class DotNetReleaseMetadataService : IDotNetReleaseMetadataServic
 
         if (_channelCache.TryGetValue(channelVersion, out var cachedChannelData))
         {
-            return ExternalOperationResult<DotNetChannelReleaseData>.Succeeded(cachedChannelData);
+            return ExternalOperationResult.Succeeded<DotNetChannelReleaseData>(cachedChannelData);
         }
 
         var indexResult = await LoadIndexAsync(cancellationToken).ConfigureAwait(false);
 
         if (indexResult.Status != ExternalOperationStatus.Succeeded)
         {
-            return indexResult.Status switch
-                   {
-                       ExternalOperationStatus.NotConfigured => ExternalOperationResult<DotNetChannelReleaseData>.NotConfigured(indexResult.Message ?? "The .NET release metadata source is not configured"),
-                       ExternalOperationStatus.Unsupported => ExternalOperationResult<DotNetChannelReleaseData>.Unsupported(indexResult.Message ?? "The .NET release metadata source is unsupported"),
-                       ExternalOperationStatus.NotFound => ExternalOperationResult<DotNetChannelReleaseData>.NotFound(indexResult.Message ?? "The .NET release metadata source could not be found"),
-                       ExternalOperationStatus.Unknown => ExternalOperationResult<DotNetChannelReleaseData>.Unknown(indexResult.Message ?? "The .NET release metadata source returned an unknown result"),
-                       _ => ExternalOperationResult<DotNetChannelReleaseData>.Failed(indexResult.Message ?? "Loading .NET release metadata failed"),
-                   };
+            return indexResult.PropagateFailure<DotNetChannelReleaseData>("Loading .NET release metadata failed");
         }
 
         return _channelCache.TryGetValue(channelVersion, out var channelData)
-                   ? ExternalOperationResult<DotNetChannelReleaseData>.Succeeded(channelData)
-                   : ExternalOperationResult<DotNetChannelReleaseData>.NotFound($"No .NET release metadata is available for channel '{channelVersion}'");
+                   ? ExternalOperationResult.Succeeded<DotNetChannelReleaseData>(channelData)
+                   : ExternalOperationResult.NotFound<DotNetChannelReleaseData>($"No .NET release metadata is available for channel '{channelVersion}'");
     }
 
     #endregion // IDotNetReleaseMetadataService

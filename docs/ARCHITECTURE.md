@@ -217,7 +217,9 @@ Each external system has one hand-written client behind a narrow interface
 — there is no dependency on `Docker.DotNet`, a Portainer SDK, or a Trivy
 client library. Clients return plain DTOs wrapped in
 `ExternalOperationResult<T>` (`Infrastructure\ExternalOperationResult{T}.cs`)
-for expected failure modes, and orchestrators branch on that status instead
+for expected failure modes, created through the factories of the static `ExternalOperationResult`
+(`Infrastructure\ExternalOperationResult.cs`); a non-success result is passed on as a result of
+another payload type with `PropagateFailure`, and orchestrators branch on that status instead
 of on exceptions. The outcomes and where errors still escape are specified
 in [Integration failures](areas/integration-failures.md).
 
@@ -359,7 +361,7 @@ Pages, routes and what each page shows or triggers are specified in
   directly. This keeps EF Core change-tracking and entity shapes out of
   the component tree, at the cost of `ApplicationViewService` being a
   fairly wide surface (one method per page/section).
-- **`Components\Shared`** holds cross-page building blocks: loading
+- **`Components\Common`** holds cross-page building blocks: loading
   skeletons and the vulnerability widgets shared between the
   Vulnerabilities page and image/container detail pages.
 - **`DashboardRefreshState`** is a small singleton pub/sub class that
@@ -374,9 +376,13 @@ exporter. A custom `ActivitySource` and `Meter` live in the telemetry
 project (`DockerUpdateGuardTelemetry`, `TelemetryActivityNames`);
 `ApplicationTelemetry` in the host project owns the application-specific
 instruments. Logging is structured, via `ILogger<T>` and source-generated
-`[LoggerMessage]` partial classes — every integration client and
-background job has a matching `*Logging.cs` partial class rather than
-ad-hoc `_logger.LogInformation(...)` calls. Switches, export conditions,
+`[LoggerMessage]` partial classes. The clients under `Docker/`,
+`DockerHub/`, `Portainer/` and `Vulnerabilities/` and the retry handler
+in `Infrastructure/` each have their own `*Logging.cs`; the host, `Images/`
+and the components share `HostLoggingExtensions.cs`,
+`Images/ImageHostLoggingExtensions.cs` and
+`Components/ComponentLoggingExtensions.cs`. The CA1848 analyzer rule
+rejects ad-hoc `_logger.LogInformation(...)` calls. Switches, export conditions,
 the emitted span and instrument names, and when the inventory gauges
 refresh are specified in [Telemetry](areas/telemetry.md).
 

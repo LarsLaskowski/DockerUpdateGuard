@@ -2142,6 +2142,121 @@ public partial class DockerHubClientTests
     }
 
     /// <summary>
+    /// Verify an image configuration lookup refuses a registry that is not Docker Hub as unsupported without a request
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerHubClientGetImageConfigurationAsyncWhenRegistryIsNotDockerHubReturnsUnsupportedAsync()
+    {
+        using var handler = new StubHttpMessageHandler();
+        using var httpClient = new HttpClient(handler);
+
+        var client = CreateClient(httpClient, registry: "ghcr.io");
+
+        var result = await client.GetImageConfigurationAsync(new ImageReference
+                                                             {
+                                                                 Registry = "ghcr.io",
+                                                                 Repository = "acme/api",
+                                                                 Tag = "latest",
+                                                             },
+                                                             CancellationToken.None)
+                                 .ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Unsupported, result.Status, "A foreign registry must be refused");
+        Assert.AreEqual("Registry 'ghcr.io' is not supported by the Docker Hub adapter", result.Message, "The refusal must name the registry");
+        Assert.IsEmpty(handler.Requests, "No request may be sent for a foreign registry");
+    }
+
+    /// <summary>
+    /// Verify an image configuration lookup fails when the registry token request is refused
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerHubClientGetImageConfigurationAsyncWhenRegistryTokenIsRefusedReturnsFailedAsync()
+    {
+        using var handler = new DelegateHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.Unauthorized));
+        using var httpClient = new HttpClient(handler);
+
+        var client = CreateClient(httpClient);
+        var imageReference = new ImageReference
+                             {
+                                 Registry = "docker.io",
+                                 Repository = "library/app",
+                                 Tag = "latest",
+                             };
+
+        var result = await client.GetImageConfigurationAsync(imageReference, CancellationToken.None).ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Failed, result.Status, "A refused registry token must fail the lookup");
+        Assert.AreEqual($"Registry token acquisition failed for '{imageReference.FullReference}'", result.Message, "The failure must name the image");
+    }
+
+    /// <summary>
+    /// Verify a call fails without a request when a PAT is configured but the user name is not
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerHubClientGetCurrentUserAsyncWhenPatHasNoUserNameReturnsFailedAsync()
+    {
+        using var handler = new StubHttpMessageHandler();
+        using var httpClient = new HttpClient(handler)
+                               {
+                                   BaseAddress = new Uri("https://hub.docker.com/"),
+                               };
+
+        var client = CreateClient(httpClient, userName: null);
+
+        var result = await client.GetCurrentUserAsync(CancellationToken.None).ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Failed, result.Status, "A PAT without a user name must fail the call");
+        Assert.Contains("Docker Hub authentication requires 'DockerUpdateGuard:DockerHub:UserName' when a PAT is configured",
+                        result.Message ?? string.Empty,
+                        "The failure must name the missing option");
+        Assert.IsEmpty(handler.Requests, "No request may be sent without a user name");
+    }
+
+    /// <summary>
+    /// Verify a call that waited for the token refresh of another call uses the token that call obtained instead of logging in again
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerHubClientGetCurrentUserAsyncWhenAnotherCallRefreshesTokenLogsInOnlyOnceAsync()
+    {
+        var loginCount = 0;
+        DockerHubClient? client = null;
+        Task<ExternalOperationResult<DockerHubAuthenticatedUserData>>? waitingCall = null;
+
+        using var handler = new DelegateHttpMessageHandler(request =>
+                                                           {
+                                                               if (request.RequestUri!.AbsolutePath.EndsWith("/users/login", StringComparison.Ordinal))
+                                                               {
+                                                                   loginCount++;
+
+                                                                   // The second call starts here, inside the first call's login, and stops at the refresh lock
+                                                                   waitingCall ??= client!.GetCurrentUserAsync(CancellationToken.None);
+                                                               }
+
+                                                               return CreateHubResponse(request, () => CreateJsonResponse("""{ "username": "acme" }"""));
+                                                           });
+        using var httpClient = new HttpClient(handler)
+                               {
+                                   BaseAddress = new Uri("https://hub.docker.com/"),
+                               };
+
+        client = CreateClient(httpClient);
+
+        var first = await client.GetCurrentUserAsync(CancellationToken.None).ConfigureAwait(false);
+
+        Assert.IsNotNull(waitingCall, "The second call must have started during the login of the first");
+
+        var second = await waitingCall.ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, first.Status, "The first call must succeed");
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, second.Status, "The waiting call must succeed");
+        Assert.AreEqual(1, loginCount, "The waiting call must reuse the token of the first call");
+    }
+
+    /// <summary>
     /// Create a clock that answers the given time
     /// </summary>
     /// <param name="now">Source of the current time</param>

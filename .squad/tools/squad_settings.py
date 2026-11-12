@@ -23,7 +23,7 @@ SMALL_FEATURE_CRITERIA = 3
 # Rules of the template's baseline (.squad/dotnet-rules.editorconfig) or the SonarQube Cloud profile the code does not
 # meet yet, each with the issue that brings it up to them: .squad/tools/dotnet-rules.py and sonar-rules.py write them as
 # `suggestion`, which the Analyzer gate still reports in a changed file. The list only shrinks: {"S3776": "#123"}.
-DOTNET_RULES_PENDING = {"CA1000": "#425", "CA1716": "#427", "CA1848": "#426"}
+DOTNET_RULES_PENDING = {}
 
 # Solution or project file the analyzer gate builds.
 SOLUTION = "DockerUpdateGuard.slnx"

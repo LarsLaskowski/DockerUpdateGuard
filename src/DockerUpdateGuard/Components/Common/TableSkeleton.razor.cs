@@ -1,6 +1,6 @@
 using Microsoft.AspNetCore.Components;
 
-namespace DockerUpdateGuard.Components.Shared;
+namespace DockerUpdateGuard.Components.Common;
 
 /// <summary>
 /// Skeleton placeholder that mirrors a section table while data is loading

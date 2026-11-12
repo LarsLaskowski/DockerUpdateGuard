@@ -185,6 +185,40 @@ public partial class DockerInstanceClientTests
     }
 
     /// <summary>
+    /// Verify every operation of a disabled Docker instance returns a not-configured result naming the instance
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerInstanceClientOperationsWhenInstanceDisabledReturnNotConfiguredAsync()
+    {
+        var client = new DockerInstanceClient(new TestLogger<DockerInstanceClient>());
+        var instanceOptions = new DockerInstanceOptions
+                              {
+                                  Name = "Production",
+                                  BaseUrl = "https://docker.example.test",
+                                  Enabled = false,
+                              };
+
+        var usage = await client.CollectContainerResourceUsageAsync(instanceOptions, CancellationToken.None)
+                                .ConfigureAwait(false);
+        var inspect = await client.InspectImageAsync(instanceOptions, "app:latest", CancellationToken.None)
+                                  .ConfigureAwait(false);
+        var history = await client.GetImageHistoryAsync(instanceOptions, "app:latest", CancellationToken.None)
+                                  .ConfigureAwait(false);
+        var memory = await client.GetHostMemoryTotalAsync(instanceOptions, CancellationToken.None)
+                                 .ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.NotConfigured, usage.Status, "Resource usage of a disabled instance must be not configured");
+        Assert.AreEqual(ExternalOperationStatus.NotConfigured, inspect.Status, "Image inspection of a disabled instance must be not configured");
+        Assert.AreEqual(ExternalOperationStatus.NotConfigured, history.Status, "Image history of a disabled instance must be not configured");
+        Assert.AreEqual(ExternalOperationStatus.NotConfigured, memory.Status, "Host memory of a disabled instance must be not configured");
+        Assert.AreEqual("Docker instance 'Production' is disabled", usage.Message, "The resource usage message must name the instance");
+        Assert.AreEqual("Docker instance 'Production' is disabled", inspect.Message, "The inspection message must name the instance");
+        Assert.AreEqual("Docker instance 'Production' is disabled", history.Message, "The history message must name the instance");
+        Assert.AreEqual("Docker instance 'Production' is disabled", memory.Message, "The host memory message must name the instance");
+    }
+
+    /// <summary>
     /// Verify unsupported Docker endpoints return an unsupported result and log the warning
     /// </summary>
     /// <returns>Task</returns>
@@ -1619,6 +1653,141 @@ public partial class DockerInstanceClientTests
         Assert.AreEqual("/bin/sh -c #(nop)  ENV A=1 2", entry.CreatedBy, "The created-by command must be cleaned");
         Assert.AreEqual("fi nal  stage", entry.Comment, "The comment must be cleaned");
         Assert.AreSequenceEqual(["docker.io/co mp any/api:1.0.0"], entry.Tags.ToArray(), "The tags must be cleaned");
+    }
+
+    /// <summary>
+    /// Verify an image inspect and an image history of an image the engine does not know are answered as not found
+    /// </summary>
+    /// <param name="operation">Name of the call</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [DataRow("Inspect")]
+    [DataRow("History")]
+    public async Task DockerInstanceClientImageCallsWhenEngineAnswersNotFoundReturnNotFoundAsync(string operation)
+    {
+        using var handler = new SequenceHttpMessageHandler();
+        using var httpClient = new HttpClient(handler)
+                               {
+                                   BaseAddress = new Uri("https://docker.example.test/"),
+                               };
+
+        var suffix = operation == "Inspect" ? "json" : "history";
+
+        handler.AddResponse($"https://docker.example.test/v1.41/images/app%3Alatest/{suffix}", new HttpResponseMessage(HttpStatusCode.NotFound));
+
+        var client = new DockerInstanceClient(new TestLogger<DockerInstanceClient>(), (_, _) => httpClient);
+
+        ExternalOperationStatus status;
+        string? message;
+
+        if (operation == "Inspect")
+        {
+            var result = await client.InspectImageAsync(CreateInstanceOptions(), "app:latest", TestContext.CancellationToken).ConfigureAwait(false);
+
+            (status, message) = (result.Status, result.Message);
+        }
+        else
+        {
+            var result = await client.GetImageHistoryAsync(CreateInstanceOptions(), "app:latest", TestContext.CancellationToken).ConfigureAwait(false);
+
+            (status, message) = (result.Status, result.Message);
+        }
+
+        Assert.AreEqual(ExternalOperationStatus.NotFound, status, $"The {operation} call must answer an unknown image as not found");
+        Assert.AreEqual("Docker image 'app:latest' was not found", message, "The message must name the image");
+    }
+
+    /// <summary>
+    /// Verify the engine calls whose request times out return a failed result with the timeout text
+    /// </summary>
+    /// <param name="operation">Name of the call</param>
+    /// <param name="expectedMessage">Expected failure message</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [DataRow("Inspect", "Docker image inspect for 'app:latest' timed out after 1 seconds")]
+    [DataRow("History", "Docker image history for 'app:latest' timed out after 1 seconds")]
+    [DataRow("Resources", "Docker container resource sampling timed out for 'Production' after 1 seconds")]
+    [DataRow("HostMemory", "Docker host info request timed out for 'Production' after 1 seconds")]
+    public async Task DockerInstanceClientCallsWhenRequestTimesOutReturnFailedAsync(string operation, string expectedMessage)
+    {
+        using var httpClient = new HttpClient(new TimeoutHttpMessageHandler())
+                               {
+                                   BaseAddress = new Uri("https://docker.example.test/"),
+                                   Timeout = Timeout.InfiniteTimeSpan,
+                               };
+
+        var client = new DockerInstanceClient(new TestLogger<DockerInstanceClient>(), (_, _) => httpClient);
+        var instanceOptions = CreateInstanceOptions();
+
+        instanceOptions.RequestTimeoutSeconds = 1;
+
+        ExternalOperationStatus status;
+        string? message;
+
+        switch (operation)
+        {
+            case "Inspect":
+                {
+                    var result = await client.InspectImageAsync(instanceOptions, "app:latest", TestContext.CancellationToken).ConfigureAwait(false);
+
+                    (status, message) = (result.Status, result.Message);
+                }
+
+                break;
+
+            case "History":
+                {
+                    var result = await client.GetImageHistoryAsync(instanceOptions, "app:latest", TestContext.CancellationToken).ConfigureAwait(false);
+
+                    (status, message) = (result.Status, result.Message);
+                }
+
+                break;
+
+            case "Resources":
+                {
+                    var result = await client.CollectContainerResourceUsageAsync(instanceOptions, TestContext.CancellationToken).ConfigureAwait(false);
+
+                    (status, message) = (result.Status, result.Message);
+                }
+
+                break;
+
+            default:
+                {
+                    var result = await client.GetHostMemoryTotalAsync(instanceOptions, TestContext.CancellationToken).ConfigureAwait(false);
+
+                    (status, message) = (result.Status, result.Message);
+                }
+
+                break;
+        }
+
+        Assert.AreEqual(ExternalOperationStatus.Failed, status, $"The {operation} call must fail when the request times out");
+        Assert.AreEqual(expectedMessage, message, $"The {operation} call must report the timeout");
+    }
+
+    /// <summary>
+    /// Verify the host memory lookup returns the total memory of the engine
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DockerInstanceClientGetHostMemoryTotalAsyncWhenEngineAnswersReturnsMemTotalAsync()
+    {
+        using var handler = new SequenceHttpMessageHandler();
+        using var httpClient = new HttpClient(handler)
+                               {
+                                   BaseAddress = new Uri("https://docker.example.test/"),
+                               };
+
+        handler.AddJsonResponse("https://docker.example.test/v1.41/info", """{ "MemTotal": 8589934592 }""");
+
+        var client = new DockerInstanceClient(new TestLogger<DockerInstanceClient>(), (_, _) => httpClient);
+
+        var result = await client.GetHostMemoryTotalAsync(CreateInstanceOptions(), TestContext.CancellationToken).ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "A well-formed info answer must succeed");
+        Assert.AreEqual(8589934592L, result.Data, "The result must carry the MemTotal value");
     }
 
     /// <summary>

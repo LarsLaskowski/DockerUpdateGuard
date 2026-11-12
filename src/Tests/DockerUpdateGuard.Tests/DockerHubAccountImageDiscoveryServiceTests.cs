@@ -107,7 +107,7 @@ public class DockerHubAccountImageDiscoveryServiceTests
                                .ConfigureAwait(false);
 
                 dockerHubClient.GetRepositoriesAsync("acme", CancellationToken.None)
-                               .Returns(ExternalOperationResult<IReadOnlyList<DockerHubRepositoryData>>.Succeeded([
+                               .Returns(ExternalOperationResult.Succeeded<IReadOnlyList<DockerHubRepositoryData>>([
                                                                                                                       new DockerHubRepositoryData
                                                                                                                       {
                                                                                                                           Registry = "docker.io",
@@ -124,7 +124,7 @@ public class DockerHubAccountImageDiscoveryServiceTests
                 dockerHubClient.GetTagsAsync("docker.io",
                                              "acme/api",
                                              cancellationToken: CancellationToken.None)
-                               .Returns(ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Succeeded([
+                               .Returns(ExternalOperationResult.Succeeded<IReadOnlyList<DockerHubTagData>>([
                                                                                                                new DockerHubTagData
                                                                                                                {
                                                                                                                    Tag = "1.1.0",
@@ -135,7 +135,7 @@ public class DockerHubAccountImageDiscoveryServiceTests
                 dockerHubClient.GetTagsAsync("docker.io",
                                              "acme/web",
                                              cancellationToken: CancellationToken.None)
-                               .Returns(ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Succeeded([
+                               .Returns(ExternalOperationResult.Succeeded<IReadOnlyList<DockerHubTagData>>([
                                                                                                                new DockerHubTagData
                                                                                                                {
                                                                                                                    Tag = "latest",
@@ -240,7 +240,7 @@ public class DockerHubAccountImageDiscoveryServiceTests
                                .ConfigureAwait(false);
 
                 dockerHubClient.GetRepositoriesAsync("acme", CancellationToken.None)
-                               .Returns(ExternalOperationResult<IReadOnlyList<DockerHubRepositoryData>>.Succeeded([
+                               .Returns(ExternalOperationResult.Succeeded<IReadOnlyList<DockerHubRepositoryData>>([
                                                                                                                       new DockerHubRepositoryData
                                                                                                                       {
                                                                                                                           Registry = "docker.io",
@@ -255,7 +255,7 @@ public class DockerHubAccountImageDiscoveryServiceTests
                 dockerHubClient.GetTagsAsync("docker.io",
                                              Arg.Any<string>(),
                                              cancellationToken: CancellationToken.None)
-                               .Returns(ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Succeeded([
+                               .Returns(ExternalOperationResult.Succeeded<IReadOnlyList<DockerHubTagData>>([
                                                                                                                new DockerHubTagData
                                                                                                                {
                                                                                                                    Tag = "latest",

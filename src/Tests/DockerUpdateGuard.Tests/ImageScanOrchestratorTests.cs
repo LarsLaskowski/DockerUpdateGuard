@@ -75,7 +75,7 @@ public class ImageScanOrchestratorTests
                 var logger = new TestLogger<ImageScanOrchestrator>();
 
                 baseImageResolver.ResolveAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
-                                 .Returns(ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>.Succeeded([
+                                 .Returns(ExternalOperationResult.Succeeded<IReadOnlyList<BaseImageDescriptor>>([
                                                                                                                     new BaseImageDescriptor
                                                                                                                     {
                                                                                                                         Registry = "docker.io",
@@ -93,24 +93,24 @@ public class ImageScanOrchestratorTests
 
                                                     return imageReference.Repository switch
                                                            {
-                                                               "company/app" => ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
+                                                               "company/app" => ExternalOperationResult.Succeeded<DockerHubTagData>(new DockerHubTagData
                                                                                                                                     {
                                                                                                                                         Tag = "1.0.0",
                                                                                                                                         Digest = "sha256:app",
                                                                                                                                         PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
                                                                                                                                     }),
-                                                               "library/debian" => ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
+                                                               "library/debian" => ExternalOperationResult.Succeeded<DockerHubTagData>(new DockerHubTagData
                                                                                                                                        {
                                                                                                                                            Tag = "12.0.0",
                                                                                                                                            Digest = "sha256:base-old",
                                                                                                                                            PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
                                                                                                                                        }),
-                                                               _ => ExternalOperationResult<DockerHubTagData>.NotFound($"No tag metadata is available for '{imageReference.FullReference}'"),
+                                                               _ => ExternalOperationResult.NotFound<DockerHubTagData>($"No tag metadata is available for '{imageReference.FullReference}'"),
                                                            };
                                                 });
 
                 registryMetadataService.GetImageConfigurationAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
-                                       .Returns(ExternalOperationResult<RegistryImageConfigurationData>.NotFound("No registry config"));
+                                       .Returns(ExternalOperationResult.NotFound<RegistryImageConfigurationData>("No registry config"));
 
                 var orchestrator = new ImageScanOrchestrator(new ApplicationTelemetry(),
                                                              baseImageResolver,
@@ -232,7 +232,7 @@ public class ImageScanOrchestratorTests
                                .ConfigureAwait(false);
 
                 baseImageResolver.ResolveAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
-                                 .Returns(ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>.Succeeded([
+                                 .Returns(ExternalOperationResult.Succeeded<IReadOnlyList<BaseImageDescriptor>>([
                                                                                                                     new BaseImageDescriptor
                                                                                                                     {
                                                                                                                         Registry = "mcr.microsoft.com",
@@ -250,23 +250,23 @@ public class ImageScanOrchestratorTests
 
                                                     return imageReference.Repository switch
                                                            {
-                                                               "company/app" => ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
+                                                               "company/app" => ExternalOperationResult.Succeeded<DockerHubTagData>(new DockerHubTagData
                                                                                                                                     {
                                                                                                                                         Tag = "1.0.0-alpine",
                                                                                                                                         Digest = "sha256:app",
                                                                                                                                         PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
                                                                                                                                     }),
-                                                               "dotnet/runtime" => ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
+                                                               "dotnet/runtime" => ExternalOperationResult.Succeeded<DockerHubTagData>(new DockerHubTagData
                                                                                                                                        {
                                                                                                                                            Tag = "10.0-alpine",
                                                                                                                                            Digest = "sha256:base-current",
                                                                                                                                            PublishedAtUtc = new DateTimeOffset(2025, 06, 02, 12, 00, 00, TimeSpan.Zero),
                                                                                                                                        }),
-                                                               _ => ExternalOperationResult<DockerHubTagData>.NotFound($"No tag metadata is available for '{imageReference.FullReference}'"),
+                                                               _ => ExternalOperationResult.NotFound<DockerHubTagData>($"No tag metadata is available for '{imageReference.FullReference}'"),
                                                            };
                                                 });
                 registryMetadataService.GetImageConfigurationAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
-                                       .Returns(ExternalOperationResult<RegistryImageConfigurationData>.NotFound("No registry config"));
+                                       .Returns(ExternalOperationResult.NotFound<RegistryImageConfigurationData>("No registry config"));
                 registryMetadataService.GetTagsAsync("mcr.microsoft.com",
                                                      "dotnet/runtime",
                                                      Arg.Any<string?>(),
@@ -278,7 +278,7 @@ public class ImageScanOrchestratorTests
                                                                                                 && options.VersionLineTag == "10.0-alpine"
                                                                                                 && options.PublishedSinceUtc == new DateTimeOffset(2025, 06, 02, 12, 00, 00, TimeSpan.Zero)),
                                                      Arg.Any<CancellationToken>())
-                                       .Returns(ExternalOperationResult<IReadOnlyList<DockerHubTagData>>.Succeeded([
+                                       .Returns(ExternalOperationResult.Succeeded<IReadOnlyList<DockerHubTagData>>([
                                                                                                                        new DockerHubTagData
                                                                                                                        {
                                                                                                                            Tag = "10.0-alpine",
@@ -378,7 +378,7 @@ public class ImageScanOrchestratorTests
                                .ConfigureAwait(false);
 
                 baseImageResolver.ResolveAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
-                                 .Returns(ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>.Succeeded([
+                                 .Returns(ExternalOperationResult.Succeeded<IReadOnlyList<BaseImageDescriptor>>([
                                                                                                                     new BaseImageDescriptor
                                                                                                                     {
                                                                                                                         Registry = "docker.io",
@@ -397,19 +397,19 @@ public class ImageScanOrchestratorTests
 
                                                     return imageReference.Repository switch
                                                            {
-                                                               "company/app" => ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
+                                                               "company/app" => ExternalOperationResult.Succeeded<DockerHubTagData>(new DockerHubTagData
                                                                                                                                     {
                                                                                                                                         Tag = "1.0.0",
                                                                                                                                         Digest = "sha256:app",
                                                                                                                                         PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
                                                                                                                                     }),
-                                                               "library/debian" => ExternalOperationResult<DockerHubTagData>.Failed("The exact base image metadata is unavailable"),
-                                                               _ => ExternalOperationResult<DockerHubTagData>.NotFound($"No tag metadata is available for '{imageReference.FullReference}'"),
+                                                               "library/debian" => ExternalOperationResult.Failed<DockerHubTagData>("The exact base image metadata is unavailable"),
+                                                               _ => ExternalOperationResult.NotFound<DockerHubTagData>($"No tag metadata is available for '{imageReference.FullReference}'"),
                                                            };
                                                 });
 
                 registryMetadataService.GetImageConfigurationAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
-                                       .Returns(ExternalOperationResult<RegistryImageConfigurationData>.NotFound("No registry config"));
+                                       .Returns(ExternalOperationResult.NotFound<RegistryImageConfigurationData>("No registry config"));
 
                 var orchestrator = new ImageScanOrchestrator(new ApplicationTelemetry(),
                                                              baseImageResolver,
@@ -490,7 +490,7 @@ public class ImageScanOrchestratorTests
                                .ConfigureAwait(false);
 
                 baseImageResolver.ResolveAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
-                                 .Returns(ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>.Succeeded([
+                                 .Returns(ExternalOperationResult.Succeeded<IReadOnlyList<BaseImageDescriptor>>([
                                                                                                                     new BaseImageDescriptor
                                                                                                                     {
                                                                                                                         Registry = "docker.io",
@@ -503,10 +503,10 @@ public class ImageScanOrchestratorTests
                                                                                                                 ]));
 
                 registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), cancellationToken: Arg.Any<CancellationToken>())
-                                       .Returns(ExternalOperationResult<DockerHubTagData>.Failed("The registry is unavailable"));
+                                       .Returns(ExternalOperationResult.Failed<DockerHubTagData>("The registry is unavailable"));
 
                 registryMetadataService.GetImageConfigurationAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
-                                       .Returns(ExternalOperationResult<RegistryImageConfigurationData>.NotFound("No registry config"));
+                                       .Returns(ExternalOperationResult.NotFound<RegistryImageConfigurationData>("No registry config"));
 
                 var orchestrator = new ImageScanOrchestrator(new ApplicationTelemetry(),
                                                              baseImageResolver,
@@ -642,10 +642,10 @@ public class ImageScanOrchestratorTests
                                .ConfigureAwait(false);
 
                 baseImageResolver.ResolveAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
-                                 .Returns(ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>.Succeeded([]));
+                                 .Returns(ExternalOperationResult.Succeeded<IReadOnlyList<BaseImageDescriptor>>([]));
 
                 registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), cancellationToken: Arg.Any<CancellationToken>())
-                                       .Returns(ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
+                                       .Returns(ExternalOperationResult.Succeeded<DockerHubTagData>(new DockerHubTagData
                                                                                                     {
                                                                                                         Tag = "1.0.0",
                                                                                                         Digest = "sha256:app",
@@ -653,7 +653,7 @@ public class ImageScanOrchestratorTests
                                                                                                     }));
 
                 registryMetadataService.GetImageConfigurationAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
-                                       .Returns(ExternalOperationResult<RegistryImageConfigurationData>.NotFound("No registry config"));
+                                       .Returns(ExternalOperationResult.NotFound<RegistryImageConfigurationData>("No registry config"));
 
                 var orchestrator = new ImageScanOrchestrator(new ApplicationTelemetry(),
                                                              baseImageResolver,
@@ -874,16 +874,16 @@ public class ImageScanOrchestratorTests
                     var registryMetadataService = Substitute.For<IRegistryMetadataService>();
 
                     baseImageResolver.ResolveAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
-                                     .Returns(ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>.Succeeded([]));
+                                     .Returns(ExternalOperationResult.Succeeded<IReadOnlyList<BaseImageDescriptor>>([]));
                     registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), cancellationToken: Arg.Any<CancellationToken>())
-                                           .Returns(ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
+                                           .Returns(ExternalOperationResult.Succeeded<DockerHubTagData>(new DockerHubTagData
                                                                                                         {
                                                                                                             Tag = "1.0.0",
                                                                                                             Digest = "sha256:app",
                                                                                                             PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
                                                                                                         }));
                     registryMetadataService.GetImageConfigurationAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
-                                           .Returns(ExternalOperationResult<RegistryImageConfigurationData>.NotFound("No registry config"));
+                                           .Returns(ExternalOperationResult.NotFound<RegistryImageConfigurationData>("No registry config"));
 
                     var orchestrator = new ImageScanOrchestrator(new ApplicationTelemetry(),
                                                                  baseImageResolver,
@@ -1017,16 +1017,16 @@ public class ImageScanOrchestratorTests
                                .ConfigureAwait(false);
 
                 baseImageResolver.ResolveAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
-                                 .Returns(ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>.Succeeded([]));
+                                 .Returns(ExternalOperationResult.Succeeded<IReadOnlyList<BaseImageDescriptor>>([]));
                 registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), cancellationToken: Arg.Any<CancellationToken>())
-                                       .Returns(ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
+                                       .Returns(ExternalOperationResult.Succeeded<DockerHubTagData>(new DockerHubTagData
                                                                                                     {
                                                                                                         Tag = "1.0.0",
                                                                                                         Digest = "sha256:app",
                                                                                                         PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
                                                                                                     }));
                 registryMetadataService.GetImageConfigurationAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
-                                       .Returns(ExternalOperationResult<RegistryImageConfigurationData>.Succeeded(new RegistryImageConfigurationData
+                                       .Returns(ExternalOperationResult.Succeeded<RegistryImageConfigurationData>(new RegistryImageConfigurationData
                                                                                                                   {
                                                                                                                       EnvironmentVariables = [
                                                                                                                                                  "DOTNET_VERSION=9.0.13",
@@ -1040,7 +1040,7 @@ public class ImageScanOrchestratorTests
                                                        ChannelVersion = "9.0",
                                                    });
                 dotNetReleaseMetadataService.GetChannelReleaseAsync("9.0", Arg.Any<CancellationToken>())
-                                            .Returns(ExternalOperationResult<DotNetChannelReleaseData>.Succeeded(new DotNetChannelReleaseData
+                                            .Returns(ExternalOperationResult.Succeeded<DotNetChannelReleaseData>(new DotNetChannelReleaseData
                                                                                                                  {
                                                                                                                      ChannelVersion = "9.0",
                                                                                                                      LatestRuntimeVersion = new Version(9, 0, 15),
@@ -1121,16 +1121,16 @@ public class ImageScanOrchestratorTests
                                .ConfigureAwait(false);
 
                 baseImageResolver.ResolveAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
-                                 .Returns(ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>.Succeeded([]));
+                                 .Returns(ExternalOperationResult.Succeeded<IReadOnlyList<BaseImageDescriptor>>([]));
                 registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), cancellationToken: Arg.Any<CancellationToken>())
-                                       .Returns(ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
+                                       .Returns(ExternalOperationResult.Succeeded<DockerHubTagData>(new DockerHubTagData
                                                                                                     {
                                                                                                         Tag = "1.0.0",
                                                                                                         Digest = "sha256:web",
                                                                                                         PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
                                                                                                     }));
                 registryMetadataService.GetImageConfigurationAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
-                                       .Returns(ExternalOperationResult<RegistryImageConfigurationData>.Succeeded(new RegistryImageConfigurationData
+                                       .Returns(ExternalOperationResult.Succeeded<RegistryImageConfigurationData>(new RegistryImageConfigurationData
                                                                                                                   {
                                                                                                                       EnvironmentVariables = [
                                                                                                                                                  "NGINX_VERSION=1.29.1",
@@ -1144,7 +1144,7 @@ public class ImageScanOrchestratorTests
                                                        ChannelVersion = "1.29",
                                                    });
                 nginxReleaseMetadataService.GetChannelReleaseAsync("1.29", Arg.Any<CancellationToken>())
-                                           .Returns(ExternalOperationResult<NginxChannelReleaseData>.Succeeded(new NginxChannelReleaseData
+                                           .Returns(ExternalOperationResult.Succeeded<NginxChannelReleaseData>(new NginxChannelReleaseData
                                                                                                                {
                                                                                                                    ChannelVersion = "1.29",
                                                                                                                    LatestVersion = new Version(1, 29, 8),
@@ -1219,22 +1219,22 @@ public class ImageScanOrchestratorTests
                                .ConfigureAwait(false);
 
                 baseImageResolver.ResolveAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
-                                 .Returns(ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>.Succeeded([]));
+                                 .Returns(ExternalOperationResult.Succeeded<IReadOnlyList<BaseImageDescriptor>>([]));
                 registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), cancellationToken: Arg.Any<CancellationToken>())
-                                       .Returns(ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
+                                       .Returns(ExternalOperationResult.Succeeded<DockerHubTagData>(new DockerHubTagData
                                                                                                     {
                                                                                                         Tag = "1.0.0",
                                                                                                         Digest = "sha256:app",
                                                                                                         PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
                                                                                                     }));
                 registryMetadataService.GetImageConfigurationAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
-                                       .Returns(ExternalOperationResult<RegistryImageConfigurationData>.Succeeded(new RegistryImageConfigurationData
+                                       .Returns(ExternalOperationResult.Succeeded<RegistryImageConfigurationData>(new RegistryImageConfigurationData
                                                                                                                   {
                                                                                                                       EnvironmentVariables = [
                                                                                                                                                  "DOTNET_VERSION=9.0.13",
                                                                                                                                              ],
                                                                                                                   }),
-                                                ExternalOperationResult<RegistryImageConfigurationData>.Failed("The registry configuration is temporarily unavailable"));
+                                                ExternalOperationResult.Failed<RegistryImageConfigurationData>("The registry configuration is temporarily unavailable"));
                 derivedBaseRuntimeDetector.Detect(Arg.Any<DockerImageInspectData>(), Arg.Any<IReadOnlyList<DockerImageHistoryEntryData>>())
                                           .Returns(new DerivedBaseRuntimeDescriptor
                                                    {
@@ -1243,7 +1243,7 @@ public class ImageScanOrchestratorTests
                                                        ChannelVersion = "9.0",
                                                    });
                 dotNetReleaseMetadataService.GetChannelReleaseAsync("9.0", Arg.Any<CancellationToken>())
-                                            .Returns(ExternalOperationResult<DotNetChannelReleaseData>.Succeeded(new DotNetChannelReleaseData
+                                            .Returns(ExternalOperationResult.Succeeded<DotNetChannelReleaseData>(new DotNetChannelReleaseData
                                                                                                                  {
                                                                                                                      ChannelVersion = "9.0",
                                                                                                                      LatestRuntimeVersion = new Version(9, 0, 15),
@@ -1323,16 +1323,16 @@ public class ImageScanOrchestratorTests
                                .ConfigureAwait(false);
 
                 baseImageResolver.ResolveAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
-                                 .Returns(ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>.Succeeded([]));
+                                 .Returns(ExternalOperationResult.Succeeded<IReadOnlyList<BaseImageDescriptor>>([]));
                 registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), cancellationToken: Arg.Any<CancellationToken>())
-                                       .Returns(ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
+                                       .Returns(ExternalOperationResult.Succeeded<DockerHubTagData>(new DockerHubTagData
                                                                                                     {
                                                                                                         Tag = "1.0.0",
                                                                                                         Digest = "sha256:app",
                                                                                                         PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
                                                                                                     }));
                 registryMetadataService.GetImageConfigurationAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
-                                       .Returns(ExternalOperationResult<RegistryImageConfigurationData>.Succeeded(new RegistryImageConfigurationData
+                                       .Returns(ExternalOperationResult.Succeeded<RegistryImageConfigurationData>(new RegistryImageConfigurationData
                                                                                                                   {
                                                                                                                       EnvironmentVariables = [
                                                                                                                                                  "DOTNET_VERSION=9.0.13",
@@ -1346,13 +1346,13 @@ public class ImageScanOrchestratorTests
                                                        ChannelVersion = "9.0",
                                                    });
                 dotNetReleaseMetadataService.GetChannelReleaseAsync("9.0", Arg.Any<CancellationToken>())
-                                            .Returns(ExternalOperationResult<DotNetChannelReleaseData>.Succeeded(new DotNetChannelReleaseData
+                                            .Returns(ExternalOperationResult.Succeeded<DotNetChannelReleaseData>(new DotNetChannelReleaseData
                                                                                                                  {
                                                                                                                      ChannelVersion = "9.0",
                                                                                                                      LatestRuntimeVersion = new Version(9, 0, 15),
                                                                                                                      IsSecurityRelease = true,
                                                                                                                  }),
-                                                     ExternalOperationResult<DotNetChannelReleaseData>.Failed("The release feed is temporarily unavailable"));
+                                                     ExternalOperationResult.Failed<DotNetChannelReleaseData>("The release feed is temporarily unavailable"));
 
                 var orchestrator = new ImageScanOrchestrator(new ApplicationTelemetry(),
                                                              baseImageResolver,
@@ -1438,7 +1438,7 @@ public class ImageScanOrchestratorTests
                     var firstResolveStarted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
                     var releaseFirstResolve = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
                     var resolveCallCount = 0;
-                    var baseImageDescriptors = ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>.Succeeded([
+                    var baseImageDescriptors = ExternalOperationResult.Succeeded<IReadOnlyList<BaseImageDescriptor>>([
                                                                                                                          new BaseImageDescriptor
                                                                                                                          {
                                                                                                                              Registry = "docker.io",
@@ -1468,7 +1468,7 @@ public class ImageScanOrchestratorTests
                                                     {
                                                         var imageReference = callInfo.ArgAt<ImageReference>(0);
 
-                                                        return ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
+                                                        return ExternalOperationResult.Succeeded<DockerHubTagData>(new DockerHubTagData
                                                                                                                    {
                                                                                                                        Tag = imageReference.Tag,
                                                                                                                        Digest = imageReference.Digest,
@@ -1476,7 +1476,7 @@ public class ImageScanOrchestratorTests
                                                                                                                    });
                                                     });
                     registryMetadataService.GetImageConfigurationAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
-                                           .Returns(ExternalOperationResult<RegistryImageConfigurationData>.NotFound("No registry config"));
+                                           .Returns(ExternalOperationResult.NotFound<RegistryImageConfigurationData>("No registry config"));
 
                     var orchestrator1 = new ImageScanOrchestrator(new ApplicationTelemetry(),
                                                                   baseImageResolver,
@@ -1570,16 +1570,16 @@ public class ImageScanOrchestratorTests
                                .ConfigureAwait(false);
 
                 baseImageResolver.ResolveAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
-                                 .Returns(ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>.Succeeded([]));
+                                 .Returns(ExternalOperationResult.Succeeded<IReadOnlyList<BaseImageDescriptor>>([]));
                 registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), cancellationToken: Arg.Any<CancellationToken>())
-                                       .Returns(ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
+                                       .Returns(ExternalOperationResult.Succeeded<DockerHubTagData>(new DockerHubTagData
                                                                                                     {
                                                                                                         Tag = "1.0.0",
                                                                                                         Digest = "sha256:app",
                                                                                                         PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
                                                                                                     }));
                 registryMetadataService.GetImageConfigurationAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
-                                       .Returns(ExternalOperationResult<RegistryImageConfigurationData>.NotFound("No registry config"));
+                                       .Returns(ExternalOperationResult.NotFound<RegistryImageConfigurationData>("No registry config"));
 
                 var orchestrator = new ImageScanOrchestrator(new ApplicationTelemetry(),
                                                              baseImageResolver,
@@ -1691,7 +1691,7 @@ public class ImageScanOrchestratorTests
                                .ConfigureAwait(false);
 
                 baseImageResolver.ResolveAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
-                                 .Returns(ExternalOperationResult<IReadOnlyList<BaseImageDescriptor>>.Succeeded([
+                                 .Returns(ExternalOperationResult.Succeeded<IReadOnlyList<BaseImageDescriptor>>([
                                                                                                                     new BaseImageDescriptor
                                                                                                                     {
                                                                                                                         Registry = "docker.io",
@@ -1703,14 +1703,14 @@ public class ImageScanOrchestratorTests
                                                                                                                     },
                                                                                                                 ]));
                 registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), cancellationToken: Arg.Any<CancellationToken>())
-                                       .Returns(ExternalOperationResult<DockerHubTagData>.Succeeded(new DockerHubTagData
+                                       .Returns(ExternalOperationResult.Succeeded<DockerHubTagData>(new DockerHubTagData
                                                                                                     {
                                                                                                         Tag = "1.0.0",
                                                                                                         Digest = "sha256:app",
                                                                                                         PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
                                                                                                     }));
                 registryMetadataService.GetImageConfigurationAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
-                                       .Returns(ExternalOperationResult<RegistryImageConfigurationData>.NotFound("No registry config"));
+                                       .Returns(ExternalOperationResult.NotFound<RegistryImageConfigurationData>("No registry config"));
 
                 var orchestrator = new ImageScanOrchestrator(new ApplicationTelemetry(),
                                                              baseImageResolver,

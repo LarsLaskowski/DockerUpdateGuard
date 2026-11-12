@@ -912,7 +912,7 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
 
             if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
             {
-                return ExternalOperationResult<DockerImageInspectData>.NotFound($"Docker image '{imageReferenceOrId}' was not found");
+                return ExternalOperationResult.NotFound<DockerImageInspectData>($"Docker image '{imageReferenceOrId}' was not found");
             }
 
             if (response.IsSuccessStatusCode == false)
@@ -920,7 +920,7 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
                 var body = await ResponseBodyExcerpt.ReadAsync(response.Content, requestTimeoutSource.Token)
                                                     .ConfigureAwait(false);
 
-                return ExternalOperationResult<DockerImageInspectData>.Failed($"Docker image inspect for '{imageReferenceOrId}' returned {(int)response.StatusCode}: {body}");
+                return ExternalOperationResult.Failed<DockerImageInspectData>($"Docker image inspect for '{imageReferenceOrId}' returned {(int)response.StatusCode}: {body}");
             }
 
             var responseStream = await response.Content.ReadAsStreamAsync(requestTimeoutSource.Token)
@@ -931,7 +931,7 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
                 using var jsonDocument = await RemoteJsonDocument.ParseAsync(responseStream, requestTimeoutSource.Token)
                                                                  .ConfigureAwait(false);
 
-                return ExternalOperationResult<DockerImageInspectData>.Succeeded(ParseImageInspect(jsonDocument.RootElement));
+                return ExternalOperationResult.Succeeded<DockerImageInspectData>(ParseImageInspect(jsonDocument.RootElement));
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -940,7 +940,7 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
         }
         catch (OperationCanceledException)
         {
-            return ExternalOperationResult<DockerImageInspectData>.Failed($"Docker image inspect for '{imageReferenceOrId}' timed out after {requestTimeoutSeconds} seconds");
+            return ExternalOperationResult.Failed<DockerImageInspectData>($"Docker image inspect for '{imageReferenceOrId}' timed out after {requestTimeoutSeconds} seconds");
         }
     }
 
@@ -965,7 +965,7 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
 
             if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
             {
-                return ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>.NotFound($"Docker image '{imageReferenceOrId}' was not found");
+                return ExternalOperationResult.NotFound<IReadOnlyList<DockerImageHistoryEntryData>>($"Docker image '{imageReferenceOrId}' was not found");
             }
 
             if (response.IsSuccessStatusCode == false)
@@ -973,7 +973,7 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
                 var body = await ResponseBodyExcerpt.ReadAsync(response.Content, requestTimeoutSource.Token)
                                                     .ConfigureAwait(false);
 
-                return ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>.Failed($"Docker image history for '{imageReferenceOrId}' returned {(int)response.StatusCode}: {body}");
+                return ExternalOperationResult.Failed<IReadOnlyList<DockerImageHistoryEntryData>>($"Docker image history for '{imageReferenceOrId}' returned {(int)response.StatusCode}: {body}");
             }
 
             var responseStream = await response.Content.ReadAsStreamAsync(requestTimeoutSource.Token)
@@ -990,7 +990,7 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
                     historyEntries.Add(ParseImageHistoryEntry(historyElement));
                 }
 
-                return ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>.Succeeded(historyEntries);
+                return ExternalOperationResult.Succeeded<IReadOnlyList<DockerImageHistoryEntryData>>(historyEntries);
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -999,7 +999,7 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
         }
         catch (OperationCanceledException)
         {
-            return ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>.Failed($"Docker image history for '{imageReferenceOrId}' timed out after {requestTimeoutSeconds} seconds");
+            return ExternalOperationResult.Failed<IReadOnlyList<DockerImageHistoryEntryData>>($"Docker image history for '{imageReferenceOrId}' timed out after {requestTimeoutSeconds} seconds");
         }
     }
 
@@ -1016,14 +1016,14 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
         {
             _logger.DockerInstanceDiscoverySkippedDisabled(instanceOptions.Name);
 
-            return ExternalOperationResult<IReadOnlyList<RuntimeContainerDescriptor>>.NotConfigured($"Docker instance '{instanceOptions.Name}' is disabled");
+            return ExternalOperationResult.NotConfigured<IReadOnlyList<RuntimeContainerDescriptor>>($"Docker instance '{instanceOptions.Name}' is disabled");
         }
 
         if (TryCreateEngineUri(instanceOptions, out var engineUri) == false || engineUri is null)
         {
             _logger.DockerInstanceEndpointUnsupported(instanceOptions.Name, UrlRedaction.RedactUserInfo(instanceOptions.BaseUrl));
 
-            return ExternalOperationResult<IReadOnlyList<RuntimeContainerDescriptor>>.Unsupported($"Docker instance '{instanceOptions.Name}' uses an unsupported endpoint '{UrlRedaction.RedactUserInfo(instanceOptions.BaseUrl)}'");
+            return ExternalOperationResult.Unsupported<IReadOnlyList<RuntimeContainerDescriptor>>($"Docker instance '{instanceOptions.Name}' uses an unsupported endpoint '{UrlRedaction.RedactUserInfo(instanceOptions.BaseUrl)}'");
         }
 
         using var activity = DockerUpdateGuardTelemetry.ActivitySource.StartActivity(TelemetryActivityNames.DockerEngineRequest, ActivityKind.Client);
@@ -1044,7 +1044,7 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
 
                 _logger.DockerInstanceDiscoveryResponseFailed(instanceOptions.Name, (int)response.StatusCode);
 
-                return ExternalOperationResult<IReadOnlyList<RuntimeContainerDescriptor>>.Failed($"Docker instance '{instanceOptions.Name}' returned {(int)response.StatusCode}: {body}");
+                return ExternalOperationResult.Failed<IReadOnlyList<RuntimeContainerDescriptor>>($"Docker instance '{instanceOptions.Name}' returned {(int)response.StatusCode}: {body}");
             }
 
             var responseStreamTask = response.Content.ReadAsStreamAsync(requestTimeoutSource.Token);
@@ -1073,7 +1073,7 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
 
                 _logger.DockerInstanceDiscoverySucceeded(instanceOptions.Name, containers.Count);
 
-                return ExternalOperationResult<IReadOnlyList<RuntimeContainerDescriptor>>.Succeeded(containers);
+                return ExternalOperationResult.Succeeded<IReadOnlyList<RuntimeContainerDescriptor>>(containers);
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -1084,13 +1084,13 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
         {
             _logger.DockerInstanceDiscoveryTimedOut(instanceOptions.Name, instanceOptions.RequestTimeoutSeconds);
 
-            return ExternalOperationResult<IReadOnlyList<RuntimeContainerDescriptor>>.Failed($"Docker container discovery for '{instanceOptions.Name}' timed out after {instanceOptions.RequestTimeoutSeconds} seconds");
+            return ExternalOperationResult.Failed<IReadOnlyList<RuntimeContainerDescriptor>>($"Docker container discovery for '{instanceOptions.Name}' timed out after {instanceOptions.RequestTimeoutSeconds} seconds");
         }
         catch (Exception exception)
         {
             _logger.DockerInstanceDiscoveryFailed(exception, instanceOptions.Name);
 
-            return ExternalOperationResult<IReadOnlyList<RuntimeContainerDescriptor>>.Failed($"Docker container discovery failed for '{instanceOptions.Name}': {FailureReason.FromException(exception, TimeSpan.FromSeconds(instanceOptions.RequestTimeoutSeconds), cancellationToken)}");
+            return ExternalOperationResult.Failed<IReadOnlyList<RuntimeContainerDescriptor>>($"Docker container discovery failed for '{instanceOptions.Name}': {FailureReason.FromException(exception, TimeSpan.FromSeconds(instanceOptions.RequestTimeoutSeconds), cancellationToken)}");
         }
     }
 
@@ -1101,12 +1101,12 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
 
         if (instanceOptions.Enabled == false)
         {
-            return ExternalOperationResult<IReadOnlyList<RuntimeContainerResourceDescriptor>>.NotConfigured($"Docker instance '{instanceOptions.Name}' is disabled");
+            return ExternalOperationResult.NotConfigured<IReadOnlyList<RuntimeContainerResourceDescriptor>>($"Docker instance '{instanceOptions.Name}' is disabled");
         }
 
         if (TryCreateEngineUri(instanceOptions, out var engineUri) == false || engineUri is null)
         {
-            return ExternalOperationResult<IReadOnlyList<RuntimeContainerResourceDescriptor>>.Unsupported($"Docker instance '{instanceOptions.Name}' uses an unsupported endpoint '{UrlRedaction.RedactUserInfo(instanceOptions.BaseUrl)}'");
+            return ExternalOperationResult.Unsupported<IReadOnlyList<RuntimeContainerResourceDescriptor>>($"Docker instance '{instanceOptions.Name}' uses an unsupported endpoint '{UrlRedaction.RedactUserInfo(instanceOptions.BaseUrl)}'");
         }
 
         try
@@ -1121,7 +1121,7 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
                 var body = await ResponseBodyExcerpt.ReadAsync(response.Content, requestTimeoutSource.Token)
                                                     .ConfigureAwait(false);
 
-                return ExternalOperationResult<IReadOnlyList<RuntimeContainerResourceDescriptor>>.Failed($"Docker instance '{instanceOptions.Name}' returned {(int)response.StatusCode}: {body}");
+                return ExternalOperationResult.Failed<IReadOnlyList<RuntimeContainerResourceDescriptor>>($"Docker instance '{instanceOptions.Name}' returned {(int)response.StatusCode}: {body}");
             }
 
             var responseStream = await response.Content.ReadAsStreamAsync(requestTimeoutSource.Token)
@@ -1166,7 +1166,7 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
                     }
                 }
 
-                return ExternalOperationResult<IReadOnlyList<RuntimeContainerResourceDescriptor>>.Succeeded(samples);
+                return ExternalOperationResult.Succeeded<IReadOnlyList<RuntimeContainerResourceDescriptor>>(samples);
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -1175,13 +1175,13 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
         }
         catch (OperationCanceledException)
         {
-            return ExternalOperationResult<IReadOnlyList<RuntimeContainerResourceDescriptor>>.Failed($"Docker container resource sampling timed out for '{instanceOptions.Name}' after {instanceOptions.RequestTimeoutSeconds} seconds");
+            return ExternalOperationResult.Failed<IReadOnlyList<RuntimeContainerResourceDescriptor>>($"Docker container resource sampling timed out for '{instanceOptions.Name}' after {instanceOptions.RequestTimeoutSeconds} seconds");
         }
         catch (Exception exception)
         {
             _logger.DockerInstanceResourceSamplingFailed(exception, instanceOptions.Name);
 
-            return ExternalOperationResult<IReadOnlyList<RuntimeContainerResourceDescriptor>>.Failed($"Docker container resource sampling failed for '{instanceOptions.Name}': {FailureReason.FromException(exception, TimeSpan.FromSeconds(instanceOptions.RequestTimeoutSeconds), cancellationToken)}");
+            return ExternalOperationResult.Failed<IReadOnlyList<RuntimeContainerResourceDescriptor>>($"Docker container resource sampling failed for '{instanceOptions.Name}': {FailureReason.FromException(exception, TimeSpan.FromSeconds(instanceOptions.RequestTimeoutSeconds), cancellationToken)}");
         }
     }
 
@@ -1195,12 +1195,12 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
 
         if (instanceOptions.Enabled == false)
         {
-            return ExternalOperationResult<DockerImageInspectData>.NotConfigured($"Docker instance '{instanceOptions.Name}' is disabled");
+            return ExternalOperationResult.NotConfigured<DockerImageInspectData>($"Docker instance '{instanceOptions.Name}' is disabled");
         }
 
         if (TryCreateEngineUri(instanceOptions, out var engineUri) == false || engineUri is null)
         {
-            return ExternalOperationResult<DockerImageInspectData>.Unsupported($"Docker instance '{instanceOptions.Name}' uses an unsupported endpoint '{UrlRedaction.RedactUserInfo(instanceOptions.BaseUrl)}'");
+            return ExternalOperationResult.Unsupported<DockerImageInspectData>($"Docker instance '{instanceOptions.Name}' uses an unsupported endpoint '{UrlRedaction.RedactUserInfo(instanceOptions.BaseUrl)}'");
         }
 
         try
@@ -1220,7 +1220,7 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
         {
             _logger.DockerInstanceImageInspectFailed(exception, instanceOptions.Name);
 
-            return ExternalOperationResult<DockerImageInspectData>.Failed($"Docker image inspect failed for '{instanceOptions.Name}': {FailureReason.FromException(exception, TimeSpan.FromSeconds(instanceOptions.RequestTimeoutSeconds), cancellationToken)}");
+            return ExternalOperationResult.Failed<DockerImageInspectData>($"Docker image inspect failed for '{instanceOptions.Name}': {FailureReason.FromException(exception, TimeSpan.FromSeconds(instanceOptions.RequestTimeoutSeconds), cancellationToken)}");
         }
     }
 
@@ -1234,12 +1234,12 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
 
         if (instanceOptions.Enabled == false)
         {
-            return ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>.NotConfigured($"Docker instance '{instanceOptions.Name}' is disabled");
+            return ExternalOperationResult.NotConfigured<IReadOnlyList<DockerImageHistoryEntryData>>($"Docker instance '{instanceOptions.Name}' is disabled");
         }
 
         if (TryCreateEngineUri(instanceOptions, out var engineUri) == false || engineUri is null)
         {
-            return ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>.Unsupported($"Docker instance '{instanceOptions.Name}' uses an unsupported endpoint '{UrlRedaction.RedactUserInfo(instanceOptions.BaseUrl)}'");
+            return ExternalOperationResult.Unsupported<IReadOnlyList<DockerImageHistoryEntryData>>($"Docker instance '{instanceOptions.Name}' uses an unsupported endpoint '{UrlRedaction.RedactUserInfo(instanceOptions.BaseUrl)}'");
         }
 
         try
@@ -1259,7 +1259,7 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
         {
             _logger.DockerInstanceImageHistoryFailed(exception, instanceOptions.Name);
 
-            return ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>.Failed($"Docker image history failed for '{instanceOptions.Name}': {FailureReason.FromException(exception, TimeSpan.FromSeconds(instanceOptions.RequestTimeoutSeconds), cancellationToken)}");
+            return ExternalOperationResult.Failed<IReadOnlyList<DockerImageHistoryEntryData>>($"Docker image history failed for '{instanceOptions.Name}': {FailureReason.FromException(exception, TimeSpan.FromSeconds(instanceOptions.RequestTimeoutSeconds), cancellationToken)}");
         }
     }
 
@@ -1270,12 +1270,12 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
 
         if (instanceOptions.Enabled == false)
         {
-            return ExternalOperationResult<long>.NotConfigured($"Docker instance '{instanceOptions.Name}' is disabled");
+            return ExternalOperationResult.NotConfigured<long>($"Docker instance '{instanceOptions.Name}' is disabled");
         }
 
         if (TryCreateEngineUri(instanceOptions, out var engineUri) == false || engineUri is null)
         {
-            return ExternalOperationResult<long>.Unsupported($"Docker instance '{instanceOptions.Name}' uses an unsupported endpoint '{UrlRedaction.RedactUserInfo(instanceOptions.BaseUrl)}'");
+            return ExternalOperationResult.Unsupported<long>($"Docker instance '{instanceOptions.Name}' uses an unsupported endpoint '{UrlRedaction.RedactUserInfo(instanceOptions.BaseUrl)}'");
         }
 
         try
@@ -1290,7 +1290,7 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
                 var body = await ResponseBodyExcerpt.ReadAsync(response.Content, requestTimeoutSource.Token)
                                                     .ConfigureAwait(false);
 
-                return ExternalOperationResult<long>.Failed($"Docker instance '{instanceOptions.Name}' returned {(int)response.StatusCode}: {body}");
+                return ExternalOperationResult.Failed<long>($"Docker instance '{instanceOptions.Name}' returned {(int)response.StatusCode}: {body}");
             }
 
             var responseStream = await response.Content.ReadAsStreamAsync(requestTimeoutSource.Token)
@@ -1301,7 +1301,7 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
                 using var jsonDocument = await RemoteJsonDocument.ParseAsync(responseStream, requestTimeoutSource.Token)
                                                                  .ConfigureAwait(false);
 
-                return ExternalOperationResult<long>.Succeeded(TryGetInt64(jsonDocument.RootElement, "MemTotal"));
+                return ExternalOperationResult.Succeeded<long>(TryGetInt64(jsonDocument.RootElement, "MemTotal"));
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -1310,13 +1310,13 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
         }
         catch (OperationCanceledException)
         {
-            return ExternalOperationResult<long>.Failed($"Docker host info request timed out for '{instanceOptions.Name}' after {instanceOptions.RequestTimeoutSeconds} seconds");
+            return ExternalOperationResult.Failed<long>($"Docker host info request timed out for '{instanceOptions.Name}' after {instanceOptions.RequestTimeoutSeconds} seconds");
         }
         catch (Exception exception)
         {
             _logger.DockerInstanceHostInfoFailed(exception, instanceOptions.Name);
 
-            return ExternalOperationResult<long>.Failed($"Docker host info request failed for '{instanceOptions.Name}': {FailureReason.FromException(exception, TimeSpan.FromSeconds(instanceOptions.RequestTimeoutSeconds), cancellationToken)}");
+            return ExternalOperationResult.Failed<long>($"Docker host info request failed for '{instanceOptions.Name}': {FailureReason.FromException(exception, TimeSpan.FromSeconds(instanceOptions.RequestTimeoutSeconds), cancellationToken)}");
         }
     }
 
