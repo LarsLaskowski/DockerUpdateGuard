@@ -50,5 +50,73 @@ public class ExternalOperationResultTests
         }
     }
 
+    /// <summary>
+    /// Verify the pass-through statuses keep their status and message and carry no data
+    /// </summary>
+    [TestMethod]
+    [TestCategory("AC5")]
+    public void ExternalOperationResultPropagateFailureKeepsPassThroughStatusAndMessage()
+    {
+        var statuses = new[]
+                       {
+                           ExternalOperationStatus.NotConfigured,
+                           ExternalOperationStatus.Unsupported,
+                           ExternalOperationStatus.NotFound,
+                           ExternalOperationStatus.Unknown
+                       };
+
+        foreach (var status in statuses)
+        {
+            var source = new ExternalOperationResult<string>(status, "payload", "m.internal.test");
+
+            var result = source.PropagateFailure<int>("fallback.internal.test");
+
+            Assert.AreEqual(status, result.Status, $"The {status} status must be kept");
+            Assert.AreEqual("m.internal.test", result.Message, $"The message of the {status} source must be kept");
+            Assert.AreEqual(0, result.Data, $"The {status} result must carry default data");
+        }
+    }
+
+    /// <summary>
+    /// Verify every other status is mapped to Failed with the message kept
+    /// </summary>
+    [TestMethod]
+    [TestCategory("AC5")]
+    public void ExternalOperationResultPropagateFailureMapsOtherStatusesToFailed()
+    {
+        var statuses = new[]
+                       {
+                           ExternalOperationStatus.Succeeded,
+                           ExternalOperationStatus.Failed,
+                           ExternalOperationStatus.NotSet
+                       };
+
+        foreach (var status in statuses)
+        {
+            var source = new ExternalOperationResult<string>(status, "payload", "m.internal.test");
+
+            var result = source.PropagateFailure<string>("fallback.internal.test");
+
+            Assert.AreEqual(ExternalOperationStatus.Failed, result.Status, $"The {status} status must be mapped to Failed");
+            Assert.AreEqual("m.internal.test", result.Message, $"The message of the {status} source must be kept");
+            Assert.IsNull(result.Data, $"The {status} result must carry default data");
+        }
+    }
+
+    /// <summary>
+    /// Verify the fallback message is used when the source has none
+    /// </summary>
+    [TestMethod]
+    [TestCategory("AC5")]
+    public void ExternalOperationResultPropagateFailureUsesFallbackWhenMessageIsNull()
+    {
+        var source = new ExternalOperationResult<string>(ExternalOperationStatus.NotFound, null, null);
+
+        var result = source.PropagateFailure<string>("fallback.internal.test");
+
+        Assert.AreEqual(ExternalOperationStatus.NotFound, result.Status, "The status must be kept");
+        Assert.AreEqual("fallback.internal.test", result.Message, "The fallback message must be used when the source message is null");
+    }
+
     #endregion // Methods
 }

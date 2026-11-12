@@ -184,14 +184,7 @@ public partial class NginxReleaseMetadataService : INginxReleaseMetadataService
 
         if (indexResult.Status != ExternalOperationStatus.Succeeded)
         {
-            return indexResult.Status switch
-                   {
-                       ExternalOperationStatus.NotConfigured => ExternalOperationResult.NotConfigured<NginxChannelReleaseData>(indexResult.Message ?? "The NGINX release metadata source is not configured"),
-                       ExternalOperationStatus.Unsupported => ExternalOperationResult.Unsupported<NginxChannelReleaseData>(indexResult.Message ?? "The NGINX release metadata source is unsupported"),
-                       ExternalOperationStatus.NotFound => ExternalOperationResult.NotFound<NginxChannelReleaseData>(indexResult.Message ?? "The NGINX release metadata source could not be found"),
-                       ExternalOperationStatus.Unknown => ExternalOperationResult.Unknown<NginxChannelReleaseData>(indexResult.Message ?? "The NGINX release metadata source returned an unknown result"),
-                       _ => ExternalOperationResult.Failed<NginxChannelReleaseData>(indexResult.Message ?? "Loading NGINX release metadata failed"),
-                   };
+            return indexResult.PropagateFailure<NginxChannelReleaseData>("Loading NGINX release metadata failed");
         }
 
         return _channelCache.TryGetValue(channelVersion, out var channelData)

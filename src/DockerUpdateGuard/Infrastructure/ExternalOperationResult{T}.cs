@@ -41,4 +41,25 @@ public class ExternalOperationResult<T>
     public string? Message { get; }
 
     #endregion // Properties
+
+    #region Methods
+
+    /// <summary>
+    /// Pass a non-success result on as a result of another payload type, keeping the status for not configured, unsupported, not found and unknown results and mapping every other status to failed
+    /// </summary>
+    /// <typeparam name="TResult">Payload type of the returned result</typeparam>
+    /// <param name="fallbackMessage">Message used when this result carries none</param>
+    /// <returns>Result without payload</returns>
+    public ExternalOperationResult<TResult> PropagateFailure<TResult>(string fallbackMessage)
+    {
+        var status = Status switch
+                     {
+                         ExternalOperationStatus.NotConfigured or ExternalOperationStatus.Unsupported or ExternalOperationStatus.NotFound or ExternalOperationStatus.Unknown => Status,
+                         _ => ExternalOperationStatus.Failed,
+                     };
+
+        return new ExternalOperationResult<TResult>(status, default, Message ?? fallbackMessage);
+    }
+
+    #endregion // Methods
 }
