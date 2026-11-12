@@ -28,7 +28,8 @@ DOTNET_RULES_PENDING = {}
 # Solution or project file the analyzer gate builds.
 SOLUTION = "DockerUpdateGuard.slnx"
 
-# Coverage gate (.squad/tools/coverage-check.py): line coverage on new/changed production lines, and overall.
+# Coverage gate (.squad/tools/coverage-check.py): lines and branch conditions on new/changed production lines
+# (COVERAGE_CONDITIONS = False: lines only), and line coverage overall.
 # COVERAGE_OVERALL_THRESHOLD may start below COVERAGE_THRESHOLD in a repository adopted with a coverage debt;
 # it is never lowered and is raised towards COVERAGE_THRESHOLD as coverage improves.
 COVERAGE_THRESHOLD = 80
