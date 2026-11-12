@@ -103,12 +103,18 @@ All commands, with what each one checks, are listed in [`.squad/stack.md`](/.squ
 ## Project configuration
 
 <!-- stack:begin configuration -->
-- **Target framework** as set in the project files (see `.squad/stack.md`); **nullable reference types**, **implicit usings**, and
-  **documentation XML** generation are all enabled.
+- **Target framework** set once in `Directory.Build.props` (a project file names only a platform of the same major,
+  `net11.0-windows`), with **nullable reference types**, **implicit usings**, **documentation XML**,
+  `TreatWarningsAsErrors`, `EnforceCodeStyleInBuild` and `AnalysisLevel` `latest-recommended` for every project;
+  `dotnet_config.py` checks the build structure in the *Analyzer gate* (`.squad/stack.md`).
 - **Central Package Management** via `Directory.Packages.props`; never put versions in individual
   `.csproj` files.
 - **Reihitsu.Analyzer** and **SonarAnalyzer.CSharp** are dev dependencies in every project (via
   `Directory.Build.props`).
+- **Analyzer rules** and their severities come from the template, the same in every .NET repository: the
+  `squad:dotnet-rules` and `squad:sonar-rules` blocks of `.editorconfig`, written by `.squad/tools/dotnet-rules.py`
+  and `sonar-rules.py`; never set them outside the blocks (a rule the code does not meet yet: `DOTNET_RULES_PENDING`,
+  `.squad/stack.md`, *Analyzer gate*).
 - **Solution format** is `.slnx` (XML-based) at the repository root.
 <!-- stack:end configuration -->
 <!-- project:begin configuration -->

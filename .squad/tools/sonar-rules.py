@@ -7,18 +7,19 @@ otherwise learn of the difference only from the pull request's analysis. This sc
 *Sonar way core* from SonarQube Cloud and writes the difference into the marked block of `.editorconfig`:
 
     # squad:sonar-rules begin — …
-    dotnet_diagnostic.S3776.severity = suggestion
+    dotnet_diagnostic.S3776.severity = error
     dotnet_diagnostic.S1309.severity = none
     # squad:sonar-rules end
 
-- a rule the project's profile activates beyond *Sonar way core* gets `SONAR_RULES_SEVERITY` from
-  `.squad/tools/squad_settings.py` (default `suggestion`: the *Analyzer gate* reports every severity in a changed file,
-  while code the change leaves alone keeps building; `warning` or `error` make the build itself report them);
+- a rule the project's profile activates beyond *Sonar way core* gets `error`, the severity every .NET repository of
+  the template uses; one in `DOTNET_RULES_PENDING` of `.squad/tools/squad_settings.py` (a rule the code does not meet
+  yet, with its issue, `dotnet-rules.py`) gets `suggestion`, which the *Analyzer gate* still reports in a changed file;
 - a rule of *Sonar way core* the project's profile does not activate gets `none`;
-- a rule the file already sets outside the block for every C# file (`[*]`, `[*.cs]`, `[*.{cs,vb}]`) is the project's
-  own choice: it stays out of the block and is listed; one set only in a section of a path or of some file names
-  (`[tests/**.cs]`, `[*.g.cs]`) still gets its line in the block, so the rest of the code keeps it. Such a section
-  belongs after the block, or the block's line wins there too; the script warns about one before it.
+- a rule the file already sets outside the block for every C# file (`[*]`, `[*.cs]`, `[*.{cs,vb}]`), which is the
+  dotnet-rules block's (`dotnet_config.py` refuses any other place), stays out of the block and is listed; one set
+  only in a section of a path or of some file names (`[tests/**.cs]`, `[*.g.cs]`) still gets its line in the block, so
+  the rest of the code keeps it. Such a section belongs after the block, or the block's line wins there too; the
+  script warns about one before it.
 
 The block replaces the one between the markers. A file without them gets the block at the end of its first section of
 the C# files alone (`[*.cs]`), or a `[*.cs]` section at its end. Only `csharpsquid` rules are written; a rule's
@@ -53,8 +54,9 @@ HEADER = (f"{BEGIN} — written by .squad/tools/sonar-rules.py from the project'
           "\"Sonar way core\"; never edited by hand (.squad/stack.md, Analyzer gate)")
 CORE = "Sonar way core"
 REPOSITORY = "csharpsquid"
-SEVERITY = getattr(settings, "SONAR_RULES_SEVERITY", "suggestion")
-SEVERITIES = ("suggestion", "warning", "error")
+SEVERITY = "error"
+PENDING_SEVERITY = "suggestion"
+PENDING = getattr(settings, "DOTNET_RULES_PENDING", {})
 SECTION = re.compile(r"^\s*\[(?P<glob>.*)\]\s*$")
 OWN_RULE = re.compile(r"^\s*dotnet_diagnostic\.(?P<rule>S\d+)\.severity\s*=", re.I)
 CS_PATHS = ("Program.cs", "src/App/Widget.cs", "src/App/Form.Designer.cs", "src/App/obj/Widget.g.cs",
@@ -103,12 +105,17 @@ def profiles(sonar, key, token):
     return own[0], core, organization
 
 
+def severity_of(rule):
+    """The severity of a rule the project's profile adds: SEVERITY, or PENDING_SEVERITY while it is pending."""
+    return PENDING_SEVERITY if isinstance(PENDING, dict) and rule in PENDING else SEVERITY
+
+
 def wanted_lines(added, removed, own):
-    """The block's rule lines: the project's extra rules at SEVERITY, core rules it switched off at `none`; rules the
-    file sets itself are left out."""
+    """The block's rule lines: the project's extra rules at SEVERITY (a pending one at PENDING_SEVERITY), core rules it
+    switched off at `none`; rules the file sets itself are left out."""
     def number(rule):
         return int(rule[1:])
-    lines = [f"dotnet_diagnostic.{rule}.severity = {SEVERITY}" for rule in sorted(added - own, key=number)]
+    lines = [f"dotnet_diagnostic.{rule}.severity = {severity_of(rule)}" for rule in sorted(added - own, key=number)]
     lines += [f"dotnet_diagnostic.{rule}.severity = none" for rule in sorted(removed - own, key=number)]
     return lines
 
@@ -220,10 +227,15 @@ def insert_at(lines):
     return end
 
 
+DOTNET_RULES_END = "# squad:dotnet-rules end"
+
+
 def with_block(lines, body):
-    """`lines` without a block, with `body` at the end of the first `[*.cs]` section, or in a new one at the end; a
+    """`lines` without a block, with `body` right after the dotnet-rules block where there is one (never inside the
+    dotnet-rules-paths block after it), else at the end of the first `[*.cs]` section, or in a new one at the end; a
     blank line before it."""
-    at = insert_at(lines)
+    dotnet_end = next((i for i, line in enumerate(lines) if line.startswith(DOTNET_RULES_END)), None)
+    at = dotnet_end + 1 if dotnet_end is not None else insert_at(lines)
     if at is None:
         return lines + ([""] if lines and lines[-1].strip() else []) + ["[*.cs]", *body]
     return lines[:at] + ([""] if at and lines[at - 1].strip() else []) + body + lines[at:]
@@ -260,7 +272,7 @@ def report(own_profile, added, removed, own, ahead):
     if kept:
         print(f"Set by {EDITORCONFIG} itself, left out of the block: {', '.join(kept)}")
     for rule, (section, severity) in sorted(ahead.items(), key=lambda item: int(item[0][1:])):
-        written = SEVERITY if rule in added else "none"
+        written = severity_of(rule) if rule in added else "none"
         if rule in (added | removed) - own and severity != written:
             print(f"WARNING: {section} sets {rule} before the block, whose line comes later and wins there too: move "
                   "that section after the block")
@@ -270,8 +282,9 @@ def main(argv=None):
     parser = Usage(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--check", action="store_true", help="report a missing or outdated block, write nothing")
     options = parser.parse_args(argv)
-    if SEVERITY not in SEVERITIES:
-        parser.error(f"SONAR_RULES_SEVERITY must be one of {', '.join(SEVERITIES)}, not {SEVERITY!r}")
+    if hasattr(settings, "SONAR_RULES_SEVERITY"):
+        print("NOTE: SONAR_RULES_SEVERITY is no longer read (the block is at error; DOTNET_RULES_PENDING holds a rule the "
+              "code does not meet yet): remove it from squad_settings.py and the sentence of stack.md that names it")
     sonar = sonar_check()
     key = sonar.project_key()
     if key is None:
