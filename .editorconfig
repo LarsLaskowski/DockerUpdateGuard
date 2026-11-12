@@ -541,10 +541,6 @@ dotnet_diagnostic.S8949.severity = error
 
 # Diagnostics: SYSLIB
 dotnet_diagnostic.SYSLIB1092.severity = error
-
-# Pending rules the baseline does not set
-# pending: #427 (DOTNET_RULES_PENDING)
-dotnet_diagnostic.CA1716.severity = suggestion
 # squad:dotnet-rules end
 
 # squad:sonar-rules begin — written by .squad/tools/sonar-rules.py from the project's SonarQube Cloud C# profile against "Sonar way core"; never edited by hand (.squad/stack.md, Analyzer gate)
