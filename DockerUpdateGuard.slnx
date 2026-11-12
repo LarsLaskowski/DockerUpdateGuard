@@ -17,10 +17,6 @@
     <File Path=".github/copilot-instructions.md" />
     <File Path=".github/instructions/csharp.instructions.md" />
   </Folder>
-  <Folder Name="/00 Solution items/Rules/">
-    <File Path="rules/DockerUpdateGuard.Debug.ruleset" />
-    <File Path="rules/DockerUpdateGuard.Release.ruleset" />
-  </Folder>
   <Folder Name="/00 Solution items/Workflows/">
     <File Path=".github/workflows/ci.yml" />
     <File Path=".github/workflows/codeql.yml" />

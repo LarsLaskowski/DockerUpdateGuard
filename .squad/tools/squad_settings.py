@@ -20,9 +20,10 @@ SPEC_WORDS_PER_CRITERION = 200
 SPEC_MAX_WORDS = 2500
 SMALL_FEATURE_CRITERIA = 3
 
-# Severity of the rules .squad/tools/sonar-rules.py writes into .editorconfig (the project's SonarQube Cloud C# profile
-# beyond "Sonar way core"): "suggestion" (the Analyzer gate reports them in changed files only), "warning" or "error".
-SONAR_RULES_SEVERITY = "warning"
+# Rules of the template's baseline (.squad/dotnet-rules.editorconfig) or the SonarQube Cloud profile the code does not
+# meet yet, each with the issue that brings it up to them: .squad/tools/dotnet-rules.py and sonar-rules.py write them as
+# `suggestion`, which the Analyzer gate still reports in a changed file. The list only shrinks: {"S3776": "#123"}.
+DOTNET_RULES_PENDING = {}
 
 # Solution or project file the analyzer gate builds.
 SOLUTION = "DockerUpdateGuard.slnx"
