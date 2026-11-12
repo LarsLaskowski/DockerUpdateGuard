@@ -107,7 +107,8 @@ csharp_style_expression_bodied_accessors = when_on_single_line:error
 csharp_style_expression_bodied_constructors = false:error
 csharp_style_expression_bodied_indexers = when_on_single_line:error
 csharp_style_expression_bodied_lambdas = when_on_single_line:error
-csharp_style_expression_bodied_local_functions = when_on_single_line:error
+# local functions are block-bodied like methods: reihitsu-format writes expression bodies back into blocks, so IDE0061 could never be met (#337)
+csharp_style_expression_bodied_local_functions = false:silent
 csharp_style_expression_bodied_methods = false:silent
 csharp_style_expression_bodied_operators = when_on_single_line:error
 csharp_style_expression_bodied_properties = when_on_single_line:error
@@ -149,7 +150,8 @@ dotnet_style_predefined_type_for_locals_parameters_members = true:error
 dotnet_style_predefined_type_for_member_access = true:error
 dotnet_style_prefer_auto_properties = true:error
 dotnet_style_prefer_compound_assignment = true:error
-dotnet_style_prefer_conditional_expression_over_assignment = true:suggestion
+# IDE0045 stays silent: rewriting an if chain into an assignment nests ternaries, which S3358 rejects (#337)
+dotnet_style_prefer_conditional_expression_over_assignment = true:silent
 # IDE0046 stays silent: rewriting an if chain into returns nests ternaries, which S3358 rejects (#338)
 dotnet_style_prefer_conditional_expression_over_return = true:silent
 dotnet_style_prefer_inferred_anonymous_type_member_names = true:error

@@ -5,9 +5,10 @@
 - **structure**: `TargetFramework`/`TargetFrameworks` is set in `Directory.Build.props` and in no project file (its
   value is the project's; a project may name a platform of the same major, `net11.0-windows`); `Directory.Packages.props`
   turns on `ManagePackageVersionsCentrally` and no project file gives a `PackageReference` a version;
-  `Directory.Build.props` sets REQUIRED with these values and references the analyzers of ANALYZERS, and no project
-  file sets one of them again; the tool manifest is `.config/dotnet-tools.json` and its `reihitsu.cli` is the version
-  of `Reihitsu.Analyzer`; Git checks C# files out with CRLF;
+  `Directory.Build.props` sets REQUIRED with these values, references the analyzers of ANALYZERS and names
+  `.squad/dotnet-rules.globalconfig` in `GlobalAnalyzerConfigFiles`, and no project file sets one of them again; the
+  tool manifest is `.config/dotnet-tools.json` and its `reihitsu.cli` is the version of `Reihitsu.Analyzer`;
+  Git checks C# files out with CRLF;
 - **rules**: no rule set (`*.ruleset`, `CodeAnalysisRuleSet`), no `.globalconfig`, no `NoWarn` or
   `WarningsNotAsErrors` that names a rule, no assembly-wide `SuppressMessage` (one without a `Target`); the blocks of
   `dotnet-rules.py` are current; and outside the blocks, a section of every C# file sets no rule or code-style option,
@@ -41,6 +42,7 @@ BUILD_FILES = (PROJECT, ".props", ".targets")
 REQUIRED = {"TreatWarningsAsErrors": "true", "EnforceCodeStyleInBuild": "true", "AnalysisLevel": "latest-recommended",
             "Nullable": "enable", "ImplicitUsings": "enable", "GenerateDocumentationFile": "true"}
 ANALYZERS = ("Reihitsu.Analyzer", "SonarAnalyzer.CSharp")
+GLOBAL_CONFIG = re.compile(r'<GlobalAnalyzerConfigFiles\b[^>]*\bInclude="[^"]*\.squad[/\\]dotnet-rules\.globalconfig"', re.I)
 REIHITSU_TOOL = "reihitsu.cli"
 TARGET = re.compile(r"<(TargetFrameworks?)\b[^>]*>([^<]*)</TargetFrameworks?>", re.I)
 MONIKER = re.compile(r"net(\d+)\.\d+(?:-[\w.]+)?", re.I)
@@ -107,6 +109,9 @@ def required_findings(projects, props):
     referenced = {attribute(tag, "Include") for tag in PACKAGE_REFERENCE.findall(props)}
     findings += [f"{BUILD_PROPS}: no <PackageReference Include=\"{name}\"> for every project" for name in ANALYZERS
                  if name not in referenced]
+    if GLOBAL_CONFIG.search(props) is None:
+        findings.append(f"{BUILD_PROPS}: no <GlobalAnalyzerConfigFiles Include=\"$(MSBuildThisFileDirectory)"
+                        ".squad/dotnet-rules.globalconfig\" /> (the rules switched off, also in generated code)")
     for path, text in projects:
         findings += [f"{path}: <{name}> is set once in {BUILD_PROPS}" for name in REQUIRED
                      if property_value(text, name) is not None]

@@ -24,7 +24,8 @@ The template keeps one rule baseline for its .NET repositories, the stricter set
   over both blocks;
 - a rule in `DOTNET_RULES_PENDING` of `.squad/tools/squad_settings.py` (`{"S3776": "#123"}`: a rule id, or a
   code-style option, to the issue that brings the code up to it) is written as `suggestion` instead, with the issue
-  above it: the *Analyzer gate* still reports it in every changed file, while code no change touches keeps building.
+  above it, also one the baseline does not set (on only through `AnalysisLevel` or the analyzer's default, CA1848):
+  the *Analyzer gate* still reports it in every changed file, while code no change touches keeps building.
   An entry without an issue is refused;
 - a block below the header of a section that does not apply to every C# file is refused, since its settings would
   reach those files only; so is a paths block before the other blocks.
@@ -225,18 +226,34 @@ def render(text, general, paths):
     return newline.join(lines) + (newline if final else "")
 
 
+def unset_rules(names, pending):
+    """The block's lines for pending rules the baseline does not set: a rule that is on only through `AnalysisLevel`
+    or the analyzer's default (CA1848, CA1716) is lowered all the same, else `TreatWarningsAsErrors` keeps failing on
+    it; a Sonar rule written here is one `sonar-rules.py` then leaves to this block."""
+    lines = []
+    for name in (name for name in names if RULE.fullmatch(name)):
+        lines += [f"# pending: {pending[name].strip()} (DOTNET_RULES_PENDING)",
+                  f"{setting_key(name)} = {PENDING_SEVERITY}"]
+    return ["", "# Pending rules the baseline does not set", *lines] if lines else []
+
+
 def wanted(baseline, pending):
-    """(the general block's lines, [(glob, lines)] of the paths block, pending entries the baseline does not set)."""
+    """(the general block's lines, [(glob, lines)] of the paths block, pending options the baseline does not set,
+    which have nothing to lower)."""
     sections = baseline_sections(baseline)
     general = next((lines for glob, lines in sections if glob == "*.cs"), [])
-    general, unused = with_pending(general, pending)
+    general, unset = with_pending(general, pending)
+    unused = unset
     paths = []
     for glob, lines in sections:
         if glob != "*.cs":
             lowered_lines, rest = with_pending(lines, pending)
             paths.append((glob, lowered_lines))
             unused = sorted(set(unused) & set(rest))
-    return general, paths, unused
+    # A rule only a section of paths sets (BL0016 for tests) is lowered for every other C# file too; the section,
+    # later in the file, keeps its own value for its paths.
+    general += unset_rules(unset, pending)
+    return general, paths, [name for name in unused if not RULE.fullmatch(name)]
 
 
 def switched_off(baseline, pending):
@@ -276,7 +293,7 @@ def main(argv=None):
     general, paths, unused = wanted(baseline, PENDING)
     for name in sorted(PENDING):
         print(f"Pending: {name} at {PENDING_SEVERITY} until {PENDING[name].strip()}"
-              + (" (not in the baseline; sonar-rules.py lowers it if its profile has it)" if name in unused else ""))
+              + (" (no such option in the baseline: nothing to lower)" if name in unused else ""))
     updated = render(text, general, paths)
     if updated == text:
         print(f"{EDITORCONFIG}: the dotnet-rules blocks are current")
