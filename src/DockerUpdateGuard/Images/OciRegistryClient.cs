@@ -1297,14 +1297,7 @@ public partial class OciRegistryClient : IRegistryMetadataClient
 
         if (manifestResult.Status != ExternalOperationStatus.Succeeded || manifestResult.Data is null)
         {
-            return manifestResult.Status switch
-                   {
-                       ExternalOperationStatus.Unsupported => ExternalOperationResult.Unsupported<RegistryImageConfigurationData>(manifestResult.Message ?? "Registry lookup is unsupported"),
-                       ExternalOperationStatus.NotFound => ExternalOperationResult.NotFound<RegistryImageConfigurationData>(manifestResult.Message ?? "Registry image was not found"),
-                       ExternalOperationStatus.NotConfigured => ExternalOperationResult.NotConfigured<RegistryImageConfigurationData>(manifestResult.Message ?? "Registry lookup is not configured"),
-                       ExternalOperationStatus.Unknown => ExternalOperationResult.Unknown<RegistryImageConfigurationData>(manifestResult.Message ?? "Registry lookup status is unknown"),
-                       _ => ExternalOperationResult.Failed<RegistryImageConfigurationData>(manifestResult.Message ?? "Registry image configuration lookup failed"),
-                   };
+            return manifestResult.PropagateFailure<RegistryImageConfigurationData>("Registry image configuration lookup failed");
         }
 
         if (string.IsNullOrWhiteSpace(manifestResult.Data.ConfigDigest))
@@ -1389,14 +1382,7 @@ public partial class OciRegistryClient : IRegistryMetadataClient
 
                                       if (manifestResult.Status != ExternalOperationStatus.Succeeded || manifestResult.Data is null)
                                       {
-                                          return manifestResult.Status switch
-                                                 {
-                                                     ExternalOperationStatus.Unsupported => ExternalOperationResult.Unsupported<DockerHubTagData>(manifestResult.Message ?? "Registry lookup is unsupported"),
-                                                     ExternalOperationStatus.NotFound => ExternalOperationResult.NotFound<DockerHubTagData>(manifestResult.Message ?? "Registry tag was not found"),
-                                                     ExternalOperationStatus.NotConfigured => ExternalOperationResult.NotConfigured<DockerHubTagData>(manifestResult.Message ?? "Registry lookup is not configured"),
-                                                     ExternalOperationStatus.Unknown => ExternalOperationResult.Unknown<DockerHubTagData>(manifestResult.Message ?? "Registry lookup status is unknown"),
-                                                     _ => ExternalOperationResult.Failed<DockerHubTagData>(manifestResult.Message ?? "Registry tag lookup failed"),
-                                                 };
+                                          return manifestResult.PropagateFailure<DockerHubTagData>("Registry tag lookup failed");
                                       }
 
                                       return ExternalOperationResult.Succeeded<DockerHubTagData>(new DockerHubTagData

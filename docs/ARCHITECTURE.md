@@ -218,7 +218,8 @@ Each external system has one hand-written client behind a narrow interface
 client library. Clients return plain DTOs wrapped in
 `ExternalOperationResult<T>` (`Infrastructure\ExternalOperationResult{T}.cs`)
 for expected failure modes, created through the factories of the static `ExternalOperationResult`
-(`Infrastructure\ExternalOperationResult.cs`), and orchestrators branch on that status instead
+(`Infrastructure\ExternalOperationResult.cs`); a non-success result is passed on as a result of
+another payload type with `PropagateFailure`, and orchestrators branch on that status instead
 of on exceptions. The outcomes and where errors still escape are specified
 in [Integration failures](areas/integration-failures.md).
 

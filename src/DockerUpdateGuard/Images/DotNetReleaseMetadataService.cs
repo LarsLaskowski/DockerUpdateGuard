@@ -227,14 +227,7 @@ public partial class DotNetReleaseMetadataService : IDotNetReleaseMetadataServic
 
         if (indexResult.Status != ExternalOperationStatus.Succeeded)
         {
-            return indexResult.Status switch
-                   {
-                       ExternalOperationStatus.NotConfigured => ExternalOperationResult.NotConfigured<DotNetChannelReleaseData>(indexResult.Message ?? "The .NET release metadata source is not configured"),
-                       ExternalOperationStatus.Unsupported => ExternalOperationResult.Unsupported<DotNetChannelReleaseData>(indexResult.Message ?? "The .NET release metadata source is unsupported"),
-                       ExternalOperationStatus.NotFound => ExternalOperationResult.NotFound<DotNetChannelReleaseData>(indexResult.Message ?? "The .NET release metadata source could not be found"),
-                       ExternalOperationStatus.Unknown => ExternalOperationResult.Unknown<DotNetChannelReleaseData>(indexResult.Message ?? "The .NET release metadata source returned an unknown result"),
-                       _ => ExternalOperationResult.Failed<DotNetChannelReleaseData>(indexResult.Message ?? "Loading .NET release metadata failed"),
-                   };
+            return indexResult.PropagateFailure<DotNetChannelReleaseData>("Loading .NET release metadata failed");
         }
 
         return _channelCache.TryGetValue(channelVersion, out var channelData)
