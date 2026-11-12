@@ -202,3 +202,42 @@ Two minor objections:
 1. minor — The step-4 instruction "passing a `new DockerHubAccessTokenCache(TimeProvider.System)` in a `using`" cannot work at `DockerHubClientTests.cs:2418`. There it sits inside the static helper `CreateClient`, which returns the client and is called about 53 times. A `using` there would dispose the cache's `SemaphoreSlim` before the client uses it, and the first authenticated call would fail with `ObjectDisposedException`. Instruction for the Dev: use a `using` only at the inline sites (`:1038`, `DockerScoutVulnerabilityProviderTests.cs:1205`, `RegistryBaseImageResolverTests.cs:110`). In `CreateClient`, create the cache without disposing it, the same way those tests already leave the client undisposed. Alternatively, have the optional `accessTokenCache` parameter the Tester adds be owned and disposed by the calling test. Do not dispose it inside the helper.
 
 2. minor — The security-considerations bullet "a hanging login blocks other authenticated web API requests for at most its `RequestTimeoutSeconds`" understates the bound. The login goes through the throttle of the instance doing it (`RequestAccessTokenAsync` calls `SendThrottledAsync`, `DockerHubClient.cs:1047`, which waits on `_requestThrottle` at `:919` before the HTTP timeout starts). So every scope waits on the shared lock for that instance's throttle queue plus the timeout. Instruction for the Dev and Reviewer: if this bound appears in `registries.md` or record 0023, word it as "for as long as the login of the instance holding the lock takes (its throttle wait plus `RequestTimeoutSeconds`)", not as a flat `RequestTimeoutSeconds`.
+
+## Security notes
+
+Security plan review: specs/issue-25/plan.md (issue #25, tier `security`). The plan needs one change before it can go ahead.
+
+The tier is right: this changes how a credential is held. Both touched areas are listed under *Security areas touched*: Secrets in configuration (the PAT fingerprint) and Registry and Docker Scout calls (the bearer token). Nothing else is touched. There are no new log calls, messages or configuration keys, no change to parsing limits, and no CI, Docker or dependency change.
+
+## Blocking
+
+**B1. The plan's bound on a hanging login is wrong. With a process-wide lock, one stalled login can block every scope with no time limit.**
+
+- **The claim.** Plan, *Security considerations*, last bullet, repeated in record 0023 under *Consequences*: "a hanging login blocks other authenticated web API requests for at most its `RequestTimeoutSeconds`".
+- **Why it is wrong.** `RequestAccessTokenAsync` sends the login through `SendThrottledAsync`, which uses `HttpCompletionOption.ResponseHeadersRead` (`src/DockerUpdateGuard/DockerHub/DockerHubClient.cs`, `SendThrottledAsync`). It then reads the body with `RemoteJsonDocument.ParseAsync(responseStream, cancellationToken)`, guarded only by the caller's token. `TransientHttpRetryHandler` buffers only the request content (`src/DockerUpdateGuard/Infrastructure/TransientHttpRetryHandler.cs:318`), not the response. `HttpClient.Timeout` stops applying once the headers have arrived, so a login response that sends its headers and then stalls keeps the lock until the lock holder's caller cancels. A background scan's caller may never cancel.
+- **Measurement.** I ran a scratch console app, `/tmp/claude-0/-home-user-DockerUpdateGuard/0c03e925-bebf-5692-8483-8cda327431e0/scratchpad/probe/Program.cs`, with `timeout 120 dotnet run -c Release` on .NET SDK 10.0.404. It sets `HttpClient.Timeout = 2s` and a loopback server that sends `200`, `Content-Length: 100` and a partial body, then stalls. The body is read with `JsonDocument.ParseAsync(stream, CancellationToken.None)`, as `RemoteJsonDocument` does. Output:
+  ```
+  headers after 0.0s status 200
+  body read still pending after 8.1s (HttpClient.Timeout = 2s)
+  ```
+- **Why it matters now.** Today such a stall blocks only the logins of one scope's client instance. After this change the lock is process-wide: every authenticated Docker Hub web API request of every scan, discovery run and circuit waits behind it. Waiters can cancel their own wait (AC5), but background scans may pass a token that never fires. Nothing in the plan tests the bound.
+- **Required change.** Give the login delegate a real time limit that covers the whole `RequestAccessTokenAsync`, including the body read. For example, link a `CancellationTokenSource` to the delegate's token and cancel it after `RequestTimeoutSeconds`, built from the injected `TimeProvider` (`new CancellationTokenSource(TimeSpan, TimeProvider)`), or read the login response completely within the timeout. Then:
+  - Add an acceptance criterion and a Tester test: a login whose body never completes releases the lock after the timeout, stores nothing, and the next caller logs in.
+  - Keep the *Security considerations* bullet and 0023 *Consequences* sentence only once that holds; otherwise reword both so they state the real behavior.
+
+## Non-blocking
+
+**N1. The cache key leaves out the login origin.** The token is keyed only by user name and PAT fingerprint. `LoginRetryAfterRegistry`, which has the same process-wide reach, keys by login URI plus user name. There is no defect today: `ApiBaseUrl` is fixed at startup and `ServiceCollectionExtensions.cs:73` is the only `DockerHubClient` registration (fact 6; I found no other production construction). But the cache is a public singleton, and a token cached for one origin would otherwise be sent as a bearer to another. Smallest fix: add a `Uri loginUri` parameter to `GetOrRequestAsync` (from `CreateLoginUri()`) and compare it in the entry match, plus one test. Recommendation: fix now, since it costs one parameter and one test.
+
+## Checked and fine
+
+- Only a SHA-256 fingerprint of the PAT is held, never the PAT itself, compared with `FixedTimeEquals`. Docker Hub PATs are high-entropy, so an unsalted hash kept in memory is acceptable.
+- The user name is compared ordinally after trimming. A stricter match than needed only costs an extra login, never a wrong token.
+- The fast path without the lock reads one immutable entry with `Volatile.Read`/`Volatile.Write` and checks the credentials before returning it, so AC3 holds there as well as under the lock.
+- A failed or deferred login stores nothing. The Retry-After check stays under the lock, after the second cache check, as in today's `:994-1002`.
+- A malformed token payload still throws and stores nothing, matching fact 9 and the *Limits and errors* section of `docs/areas/registries.md`.
+- A token kept for its full lifetime and reused when refused early is accepted in option 5 and the record, and is no longer-lived than the Docker Scout provider's token.
+
+The plan's other library-behavior facts (typed client lifetime, `TimeProvider` registered as a singleton) are backed by code references. I measured only the timeout claim behind B1. Fact 11 (the token's lifetime) is honestly marked unverified and no security property depends on it.
+
+Files: /home/user/DockerUpdateGuard/specs/issue-25/plan.md, /home/user/DockerUpdateGuard/docs/decisions/0023-the-docker-hub-web-api-token-is-cached-process-wide-per-credentials.md, /home/user/DockerUpdateGuard/src/DockerUpdateGuard/DockerHub/DockerHubClient.cs, /home/user/DockerUpdateGuard/src/DockerUpdateGuard/Infrastructure/TransientHttpRetryHandler.cs, /home/user/DockerUpdateGuard/src/DockerUpdateGuard/ServiceCollectionExtensions.cs
