@@ -1919,6 +1919,167 @@ public partial class OciRegistryClientTests
                                 "The tag listing must request the lower-cased host with its port");
     }
 
+    /// <summary>
+    /// Verify a configuration lookup carries the status of a manifest answer that is not a success
+    /// </summary>
+    /// <param name="statusCode">Status of the manifest answer</param>
+    /// <param name="expected">Expected status of the lookup</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [DataRow(HttpStatusCode.NotFound, ExternalOperationStatus.NotFound)]
+    [DataRow(HttpStatusCode.InternalServerError, ExternalOperationStatus.Failed)]
+    public async Task OciRegistryClientGetImageConfigurationAsyncWhenManifestAnswersErrorCarriesStatusAsync(HttpStatusCode statusCode, ExternalOperationStatus expected)
+    {
+        using var handler = new SequenceHttpMessageHandler();
+        using var httpClient = new HttpClient(handler);
+
+        handler.AddResponse("https://mcr.microsoft.com/v2/dotnet/aspnet/manifests/8.0", new HttpResponseMessage(statusCode));
+
+        var client = new OciRegistryClient(httpClient, new TestLogger<OciRegistryClient>());
+
+        var result = await client.GetImageConfigurationAsync(CreateAspNetReference(), CancellationToken.None).ConfigureAwait(false);
+
+        Assert.AreEqual(expected, result.Status, "The lookup must carry the status of the manifest answer");
+        Assert.IsFalse(string.IsNullOrEmpty(result.Message), "The lookup must carry a message");
+    }
+
+    /// <summary>
+    /// Verify a configuration lookup of a manifest without a config digest is answered as not found
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task OciRegistryClientGetImageConfigurationAsyncWhenManifestHasNoConfigDigestReturnsNotFoundAsync()
+    {
+        using var handler = new SequenceHttpMessageHandler();
+        using var httpClient = new HttpClient(handler);
+
+        handler.AddResponse("https://mcr.microsoft.com/v2/dotnet/aspnet/manifests/8.0",
+                            CreateManifestResponse("sha256:aspnet", """{ "schemaVersion": 2 }"""));
+
+        var client = new OciRegistryClient(httpClient, new TestLogger<OciRegistryClient>());
+        var imageReference = CreateAspNetReference();
+
+        var result = await client.GetImageConfigurationAsync(imageReference, CancellationToken.None).ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.NotFound, result.Status, "A manifest without a config digest must be answered as not found");
+        Assert.AreEqual($"Registry image '{imageReference.FullReference}' did not expose a config digest", result.Message, "The message must name the image");
+    }
+
+    /// <summary>
+    /// Verify a configuration lookup carries the status of a config blob answer that is not a success
+    /// </summary>
+    /// <param name="statusCode">Status of the blob answer</param>
+    /// <param name="expected">Expected status of the lookup</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [DataRow(HttpStatusCode.NotFound, ExternalOperationStatus.NotFound)]
+    [DataRow(HttpStatusCode.InternalServerError, ExternalOperationStatus.Failed)]
+    public async Task OciRegistryClientGetImageConfigurationAsyncWhenBlobAnswersErrorCarriesStatusAsync(HttpStatusCode statusCode, ExternalOperationStatus expected)
+    {
+        using var handler = new SequenceHttpMessageHandler();
+        using var httpClient = new HttpClient(handler);
+
+        handler.AddResponse("https://mcr.microsoft.com/v2/dotnet/aspnet/manifests/8.0",
+                            CreateManifestResponse("sha256:aspnet", """{ "schemaVersion": 2, "config": { "digest": "sha256:aspnet-config" } }"""));
+        handler.AddResponse("https://mcr.microsoft.com/v2/dotnet/aspnet/blobs/sha256%3Aaspnet-config", new HttpResponseMessage(statusCode));
+
+        var client = new OciRegistryClient(httpClient, new TestLogger<OciRegistryClient>());
+
+        var result = await client.GetImageConfigurationAsync(CreateAspNetReference(), CancellationToken.None).ConfigureAwait(false);
+
+        Assert.AreEqual(expected, result.Status, "The lookup must carry the status of the blob answer");
+        Assert.IsFalse(string.IsNullOrEmpty(result.Message), "The lookup must carry a message");
+    }
+
+    /// <summary>
+    /// Verify a tag lookup fails when the manifest list has no usable platform manifest
+    /// </summary>
+    /// <param name="manifestListJson">Manifest list body</param>
+    /// <param name="expectedMessage">Expected failure message</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [DataRow("""{ "schemaVersion": 2 }""", "Manifest list for 'mcr.microsoft.com/mssql/server:latest' did not contain any platform manifests")]
+    [DataRow("""{ "schemaVersion": 2, "manifests": [] }""", "Manifest list for 'mcr.microsoft.com/mssql/server:latest' did not expose a target manifest digest")]
+    public async Task OciRegistryClientGetTagAsyncWhenManifestListHasNoPlatformManifestReturnsFailedAsync(string manifestListJson, string expectedMessage)
+    {
+        using var handler = new SequenceHttpMessageHandler();
+        using var httpClient = new HttpClient(handler);
+
+        handler.AddResponse("https://mcr.microsoft.com/v2/mssql/server/manifests/latest", CreateManifestListResponse("sha256:index", manifestListJson));
+
+        var client = new OciRegistryClient(httpClient, new TestLogger<OciRegistryClient>());
+
+        var result = await client.GetTagAsync(CreateSqlServerReference(), "linux", "arm64", CancellationToken.None).ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Failed, result.Status, "A manifest list without a platform manifest must fail");
+        Assert.AreEqual(expectedMessage, result.Message, "The failure must name the missing part of the manifest list");
+    }
+
+    /// <summary>
+    /// Verify a tag lookup carries the status of the platform manifest answer that is not a success
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task OciRegistryClientGetTagAsyncWhenPlatformManifestIsMissingReturnsNotFoundAsync()
+    {
+        using var handler = new SequenceHttpMessageHandler();
+        using var httpClient = new HttpClient(handler);
+
+        handler.AddResponse("https://mcr.microsoft.com/v2/mssql/server/manifests/latest",
+                            CreateManifestListResponse("sha256:index", """{ "schemaVersion": 2, "manifests": [ { "digest": "sha256:arm64", "platform": { "os": "linux", "architecture": "arm64" } } ] }"""));
+        handler.AddResponse("https://mcr.microsoft.com/v2/mssql/server/manifests/sha256%3Aarm64", new HttpResponseMessage(HttpStatusCode.NotFound));
+
+        var client = new OciRegistryClient(httpClient, new TestLogger<OciRegistryClient>());
+
+        var result = await client.GetTagAsync(CreateSqlServerReference(), "linux", "arm64", CancellationToken.None).ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.NotFound, result.Status, "A missing platform manifest must be answered as not found");
+    }
+
+    /// <summary>
+    /// Verify a token exchange whose answer carries no token fails the tag lookup
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task OciRegistryClientGetTagAsyncWhenTokenAnswerHasNoTokenReturnsFailedAsync()
+    {
+        using var handler = new SequenceHttpMessageHandler();
+        using var httpClient = new HttpClient(handler);
+
+        handler.AddResponse("https://mcr.microsoft.com/v2/mssql/server/manifests/latest",
+                            CreateUnauthorizedResponse("https://mcr.microsoft.com/oauth2/token",
+                                                       "mcr.microsoft.com",
+                                                       "repository:mssql/server:pull"));
+        handler.AddJsonResponse("https://mcr.microsoft.com/oauth2/token?service=mcr.microsoft.com&scope=repository%3Amssql%2Fserver%3Apull", """{ "expires_in": 60 }""");
+
+        var client = new OciRegistryClient(httpClient, new TestLogger<OciRegistryClient>());
+
+        var result = await client.GetTagAsync(CreateSqlServerReference(), "linux", "arm64", CancellationToken.None).ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Failed, result.Status, "A token answer without a token must fail the lookup");
+        Assert.IsFalse(string.IsNullOrEmpty(result.Message), "The lookup must carry a message");
+    }
+
+    /// <summary>
+    /// Verify a tag listing of a repository the registry does not know is answered as not found
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task OciRegistryClientGetTagsAsyncWhenRepositoryIsMissingReturnsNotFoundAsync()
+    {
+        using var handler = new SequenceHttpMessageHandler();
+        using var httpClient = new HttpClient(handler);
+
+        handler.AddResponse("https://mcr.microsoft.com/v2/mssql/server/tags/list?n=100", new HttpResponseMessage(HttpStatusCode.NotFound));
+
+        var client = new OciRegistryClient(httpClient, new TestLogger<OciRegistryClient>());
+
+        var result = await client.GetTagsAsync("mcr.microsoft.com", "mssql/server", cancellationToken: CancellationToken.None).ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.NotFound, result.Status, "A missing repository must be answered as not found");
+        Assert.AreEqual("Repository 'mssql/server' was not found in registry 'mcr.microsoft.com'", result.Message, "The message must name the repository and the registry");
+    }
+
     #endregion // Methods
 
     #region Static methods
@@ -2103,6 +2264,34 @@ public partial class OciRegistryClientTests
         Assert.IsNotNull(warning.Exception, "The warning must carry the exception");
         Assert.StartsWith("Registry ", warning.Message, "The warning must name the registry");
         Assert.EndsWith($" request for {targetName} failed", warning.Message, "The warning must name the target of the call");
+    }
+
+    /// <summary>
+    /// Create the reference of the ASP.NET image on the Microsoft registry
+    /// </summary>
+    /// <returns>Image reference</returns>
+    private static ImageReference CreateAspNetReference()
+    {
+        return new ImageReference
+               {
+                   Registry = "mcr.microsoft.com",
+                   Repository = "dotnet/aspnet",
+                   Tag = "8.0",
+               };
+    }
+
+    /// <summary>
+    /// Create the reference of the SQL Server image on the Microsoft registry
+    /// </summary>
+    /// <returns>Image reference</returns>
+    private static ImageReference CreateSqlServerReference()
+    {
+        return new ImageReference
+               {
+                   Registry = "mcr.microsoft.com",
+                   Repository = "mssql/server",
+                   Tag = "latest",
+               };
     }
 
     #endregion // Static methods
