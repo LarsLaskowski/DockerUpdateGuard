@@ -33,8 +33,7 @@ public class VulnerabilitiesTests
             var viewService = Substitute.For<IApplicationViewService>();
 
             viewService.GetVulnerabilityOverviewAsync(Arg.Any<CancellationToken>())
-                       .Returns(new List<VulnerabilityOverviewItemData>
-                                {
+                       .Returns([
                                     new()
                                     {
                                         AdvisoryId = "CVE-2026-7001",
@@ -55,7 +54,7 @@ public class VulnerabilitiesTests
                                                          ],
                                         AffectedContainerCount = 3,
                                     }
-                                });
+                                ]);
 
             testContext.Services.AddSingleton(viewService);
 
@@ -81,7 +80,7 @@ public class VulnerabilitiesTests
             var viewService = Substitute.For<IApplicationViewService>();
 
             viewService.GetVulnerabilityOverviewAsync(Arg.Any<CancellationToken>())
-                       .Returns(new List<VulnerabilityOverviewItemData>());
+                       .Returns([]);
 
             testContext.Services.AddSingleton(viewService);
 
@@ -107,8 +106,7 @@ public class VulnerabilitiesTests
             var viewService = Substitute.For<IApplicationViewService>();
 
             viewService.GetVulnerabilityOverviewAsync(Arg.Any<CancellationToken>())
-                       .Returns(new List<VulnerabilityOverviewItemData>
-                                {
+                       .Returns([
                                     new()
                                     {
                                         AdvisoryId = "CVE-2026-7002",
@@ -121,7 +119,7 @@ public class VulnerabilitiesTests
                                         Title = "Low advisory",
                                         Severity = "Low",
                                     }
-                                });
+                                ]);
 
             testContext.Services.AddSingleton(viewService);
 
@@ -148,15 +146,14 @@ public class VulnerabilitiesTests
             var viewService = Substitute.For<IApplicationViewService>();
 
             viewService.GetVulnerabilityOverviewAsync(Arg.Any<CancellationToken>())
-                       .Returns(new List<VulnerabilityOverviewItemData>
-                                {
+                       .Returns([
                                     new()
                                     {
                                         AdvisoryId = "CVE-2026-7004",
                                         Title = "Critical rail advisory",
                                         Severity = "Critical",
                                     }
-                                });
+                                ]);
 
             testContext.Services.AddSingleton(viewService);
 

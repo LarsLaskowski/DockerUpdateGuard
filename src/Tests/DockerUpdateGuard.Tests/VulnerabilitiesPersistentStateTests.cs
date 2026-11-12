@@ -46,15 +46,14 @@ public class VulnerabilitiesPersistentStateTests
             var persistentState = testContext.GetPersistentComponentState();
 
             persistentState.Persist<IReadOnlyList<VulnerabilityOverviewItemData>>(StateKey,
-                                                                                  new List<VulnerabilityOverviewItemData>
-                                                                                  {
+                                                                                  [
                                                                                       new()
                                                                                       {
                                                                                           AdvisoryId = "CVE-RESTORE-1",
                                                                                           Title = "Restored advisory",
                                                                                           Severity = "Critical",
                                                                                       }
-                                                                                  });
+                                                                                  ]);
 
             var component = testContext.Render<VulnerabilitiesPage>();
 
@@ -77,15 +76,14 @@ public class VulnerabilitiesPersistentStateTests
             var viewService = Substitute.For<IApplicationViewService>();
 
             viewService.GetVulnerabilityOverviewAsync(Arg.Any<CancellationToken>())
-                       .Returns(new List<VulnerabilityOverviewItemData>
-                                {
+                       .Returns([
                                     new()
                                     {
                                         AdvisoryId = "CVE-LOADED-1",
                                         Title = "Loaded advisory",
                                         Severity = "High",
                                     }
-                                });
+                                ]);
 
             testContext.Services.AddSingleton(viewService);
 

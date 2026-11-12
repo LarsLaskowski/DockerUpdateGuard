@@ -95,10 +95,7 @@ public sealed partial class MyImageDetail : IDisposable
         var detail = await ViewService.GetObservedImageDetailAsync(ObservedImageId)
                                       .ConfigureAwait(false);
 
-        await InvokeAsync(() =>
-                          {
-                              _detail = detail;
-                          }).ConfigureAwait(false);
+        await InvokeAsync(() => _detail = detail).ConfigureAwait(false);
     }
 
     /// <summary>

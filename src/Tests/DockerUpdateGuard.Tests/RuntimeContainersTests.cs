@@ -95,7 +95,7 @@ public class RuntimeContainersTests
             var exception = new InvalidOperationException("connection to db.internal.test:5432 refused");
 
             viewService.GetRuntimeContainersAsync(Arg.Any<CancellationToken>())
-                       .Returns(new List<RuntimeContainerListItemData>());
+                       .Returns([]);
             orchestrator.ScanAllAsync(Arg.Any<ScanTriggerSource>(), Arg.Any<CancellationToken>())
                         .Returns(Task.FromException(exception));
 

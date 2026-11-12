@@ -45,7 +45,7 @@ public class ImageScanOrchestrator : IImageScanOrchestrator
     /// <summary>
     /// Per-observed-image scan locks shared across orchestrator scopes, retained only while referenced
     /// </summary>
-    private static readonly Dictionary<Guid, ObservedImageScanLockEntry> _observedImageScanLocks = new();
+    private static readonly Dictionary<Guid, ObservedImageScanLockEntry> _observedImageScanLocks = [];
 
     /// <summary>
     /// Application telemetry

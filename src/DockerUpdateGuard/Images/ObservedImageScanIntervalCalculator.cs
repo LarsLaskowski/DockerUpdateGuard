@@ -26,7 +26,7 @@ public static class ObservedImageScanIntervalCalculator
 
         var scheduledBudget = options.DockerHubRequestLimitPerWindow - options.DockerHubReservedManualRequestsPerWindow;
         var windowMinutes = options.DockerHubRequestLimitWindowHours * 60d;
-        var calculatedIntervalMinutes = (int)Math.Ceiling((windowMinutes * observedImageCount) / scheduledBudget);
+        var calculatedIntervalMinutes = (int)Math.Ceiling(windowMinutes * observedImageCount / scheduledBudget);
 
         return TimeSpan.FromMinutes(Math.Max(options.OwnImageBaseScanIntervalMinutes, calculatedIntervalMinutes));
     }

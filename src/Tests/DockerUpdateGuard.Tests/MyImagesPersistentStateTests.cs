@@ -47,15 +47,14 @@ public class MyImagesPersistentStateTests
             var persistentState = testContext.GetPersistentComponentState();
 
             persistentState.Persist<IReadOnlyList<ObservedImageListItemData>>(StateKey,
-                                                                              new List<ObservedImageListItemData>
-                                                                              {
+                                                                              [
                                                                                   new()
                                                                                   {
                                                                                       Id = Guid.NewGuid(),
                                                                                       Name = "restored-image",
                                                                                       ImageReference = "docker.io/company/api:1.0.0",
                                                                                   }
-                                                                              });
+                                                                              ]);
 
             var component = testContext.Render<MyImages>();
 
@@ -78,15 +77,14 @@ public class MyImagesPersistentStateTests
             var viewService = Substitute.For<IApplicationViewService>();
 
             viewService.GetDiscoveryObservedImagesAsync(Arg.Any<CancellationToken>())
-                       .Returns(new List<ObservedImageListItemData>
-                                {
+                       .Returns([
                                     new()
                                     {
                                         Id = Guid.NewGuid(),
                                         Name = "loaded-image",
                                         ImageReference = "docker.io/company/api:1.0.0",
                                     }
-                                });
+                                ]);
 
             RegisterServices(testContext, viewService);
 

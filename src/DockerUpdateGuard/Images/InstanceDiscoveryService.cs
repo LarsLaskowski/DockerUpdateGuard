@@ -181,12 +181,12 @@ public class InstanceDiscoveryService : IInstanceDiscoveryService
                                                  .ToList();
         var obsoleteInstanceIds = obsoleteInstances.Select(entity => entity.Id)
                                                    .ToList();
-        List<ScanRun> obsoleteScanRuns = obsoleteInstanceIds.Count == 0
-                                             ? []
-                                             : await _dbContext.ScanRuns.Where(entity => entity.DockerInstanceId != null
-                                                                                         && obsoleteInstanceIds.Contains(entity.DockerInstanceId.Value))
-                                                                        .ToListAsync(cancellationToken)
-                                                                        .ConfigureAwait(false);
+        var obsoleteScanRuns = obsoleteInstanceIds.Count == 0
+                                   ? []
+                                   : await _dbContext.ScanRuns.Where(entity => entity.DockerInstanceId != null
+                                                                               && obsoleteInstanceIds.Contains(entity.DockerInstanceId.Value))
+                                                              .ToListAsync(cancellationToken)
+                                                              .ConfigureAwait(false);
 
         var enabledInstanceCount = configuredInstances.Count(instance => instance.Enabled);
         var disabledInstanceCount = configuredInstances.Count - enabledInstanceCount;

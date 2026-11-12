@@ -152,10 +152,7 @@ public sealed partial class ObservedImages : IDisposable
         var images = await ViewService.GetManualObservedImagesAsync()
                                       .ConfigureAwait(false);
 
-        await InvokeAsync(() =>
-                          {
-                              _images = images;
-                          }).ConfigureAwait(false);
+        await InvokeAsync(() => _images = images).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -191,28 +188,19 @@ public sealed partial class ObservedImages : IDisposable
 
             DashboardRefreshState.NotifyChanged();
 
-            await InvokeAsync(() =>
-                              {
-                                  NavigationManager.NavigateTo($"observed-images/{observedImage.Id}");
-                              }).ConfigureAwait(false);
+            await InvokeAsync(() => NavigationManager.NavigateTo($"observed-images/{observedImage.Id}")).ConfigureAwait(false);
         }
         catch (Exception exception)
         {
             Logger.UserActionFailed("RegisterObservedImage", exception);
 
-            await InvokeAsync(() =>
-                              {
-                                  _errorMessage = $"Registration failed: {FailureReason.FromException(exception, null, CancellationToken.None)}";
-                              }).ConfigureAwait(false);
+            await InvokeAsync(() => _errorMessage = $"Registration failed: {FailureReason.FromException(exception, null, CancellationToken.None)}").ConfigureAwait(false);
 
             await LoadAsync().ConfigureAwait(false);
         }
         finally
         {
-            await InvokeAsync(() =>
-                              {
-                                  _isBusy = false;
-                              }).ConfigureAwait(false);
+            await InvokeAsync(() => _isBusy = false).ConfigureAwait(false);
         }
     }
 

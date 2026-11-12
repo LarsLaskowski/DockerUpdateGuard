@@ -106,10 +106,7 @@ public sealed partial class SharedBaseImages : IDisposable
         var items = await ViewService.GetBaseImagesAsync()
                                      .ConfigureAwait(false);
 
-        await InvokeAsync(() =>
-                          {
-                              _items = items;
-                          }).ConfigureAwait(false);
+        await InvokeAsync(() => _items = items).ConfigureAwait(false);
     }
 
     #endregion // ComponentBase

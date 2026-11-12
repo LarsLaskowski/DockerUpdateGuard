@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Security.Cryptography;
 
 using DockerUpdateGuard.UI;
@@ -277,7 +278,7 @@ public sealed partial class MainLayout : LayoutComponentBase, IDisposable
         return _dashboardSummary.LatestScan
                                 .StartedAtUtc
                                 .ToLocalTime()
-                                .ToString("g");
+                                .ToString("g", CultureInfo.CurrentCulture);
     }
 
     #endregion // Methods

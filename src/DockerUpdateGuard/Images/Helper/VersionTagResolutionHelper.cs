@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.RegularExpressions;
 
 using DockerUpdateGuard.Images.Data;
@@ -339,7 +340,7 @@ public static partial class VersionTagResolutionHelper
             return false;
         }
 
-        year = int.Parse(match.Groups["year"].Value);
+        year = int.Parse(match.Groups["year"].Value, CultureInfo.InvariantCulture);
         suffix = match.Groups[SuffixGroupName].Value;
 
         return true;

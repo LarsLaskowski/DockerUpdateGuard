@@ -136,14 +136,9 @@ public partial class OciRegistryClient : IRegistryMetadataClient
             queryParameters["service"] = service;
         }
 
-        if (parameters.TryGetValue("scope", out var scope) && string.IsNullOrWhiteSpace(scope) == false)
-        {
-            queryParameters["scope"] = scope;
-        }
-        else
-        {
-            queryParameters["scope"] = $"repository:{repository}:pull";
-        }
+        queryParameters["scope"] = parameters.TryGetValue("scope", out var scope) && string.IsNullOrWhiteSpace(scope) == false
+                                       ? scope
+                                       : $"repository:{repository}:pull";
 
         builder.Query = string.Join("&",
                                     queryParameters.Select(entity => $"{Uri.EscapeDataString(entity.Key)}={Uri.EscapeDataString(entity.Value)}"));
@@ -1227,7 +1222,7 @@ public partial class OciRegistryClient : IRegistryMetadataClient
         var normalizedRegistry = lookupContext.Registry;
         var repository = lookupContext.Repository;
         var queryOptions = lookupContext.QueryOptions;
-        Uri requestUri = allowedOrigin;
+        var requestUri = allowedOrigin;
         var tags = new List<DockerHubTagData>();
         var inspectedTagCount = 0;
 

@@ -326,7 +326,7 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
                 throw new ReportableException($"The client certificate of Docker instance '{instanceOptions.Name}' could not be loaded: {ClientCertificateLoader.DescribeFailure(status)}");
             }
 
-            handler.SslOptions.ClientCertificates ??= new X509CertificateCollection();
+            handler.SslOptions.ClientCertificates ??= [];
             handler.SslOptions.ClientCertificates.Add(certificate);
         }
 

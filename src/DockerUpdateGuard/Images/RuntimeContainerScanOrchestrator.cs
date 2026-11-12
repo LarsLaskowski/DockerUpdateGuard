@@ -1163,12 +1163,7 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
 
         var registryRepository = await _dbContext.RegistryRepositories
                                                  .SingleOrDefaultAsync(entity => entity.Id == imageVersion.RegistryRepositoryId, cancellationToken)
-                                                 .ConfigureAwait(false);
-
-        if (registryRepository is null)
-        {
-            throw new InvalidOperationException($"Registry repository '{imageVersion.RegistryRepositoryId}' was not found for image version '{imageVersion.Id}'");
-        }
+                                                 .ConfigureAwait(false) ?? throw new InvalidOperationException($"Registry repository '{imageVersion.RegistryRepositoryId}' was not found for image version '{imageVersion.Id}'");
 
         imageVersion.RegistryRepository = registryRepository;
     }

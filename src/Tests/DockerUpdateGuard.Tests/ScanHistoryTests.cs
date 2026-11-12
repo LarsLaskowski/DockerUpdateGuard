@@ -1,3 +1,5 @@
+using System.Globalization;
+
 using Bunit;
 
 using DockerUpdateGuard.Components.Pages;
@@ -39,8 +41,7 @@ public class ScanHistoryTests
             var enrichmentService = Substitute.For<IVulnerabilityEnrichmentService>();
 
             viewService.GetScanHistoryAsync(Arg.Any<int>(), Arg.Any<CancellationToken>())
-                       .Returns(new List<ScanHistoryItemData>
-                                {
+                       .Returns([
                                     new()
                                     {
                                         Type = "Vulnerability",
@@ -48,7 +49,7 @@ public class ScanHistoryTests
                                         TriggerSource = "Manual",
                                         StartedAtUtc = DateTimeOffset.UtcNow,
                                     }
-                                });
+                                ]);
 
             testContext.Services.AddSingleton(viewService);
             testContext.Services.AddSingleton(enrichmentService);
@@ -79,7 +80,7 @@ public class ScanHistoryTests
             var viewService = Substitute.For<IApplicationViewService>();
 
             viewService.GetScanHistoryAsync(Arg.Any<int>(), Arg.Any<CancellationToken>())
-                       .Returns(new List<ScanHistoryItemData>());
+                       .Returns([]);
 
             testContext.Services.AddSingleton(viewService);
             testContext.Services.AddSingleton(Substitute.For<IVulnerabilityEnrichmentService>());
@@ -151,7 +152,7 @@ public class ScanHistoryTests
             var nextRefreshUtc = new DateTimeOffset(2026, 7, 29, 18, 30, 0, TimeSpan.Zero);
 
             viewService.GetScanHistoryAsync(Arg.Any<int>(), Arg.Any<CancellationToken>())
-                       .Returns(new List<ScanHistoryItemData>());
+                       .Returns([]);
             viewService.GetVulnerabilityScheduleAsync(Arg.Any<CancellationToken>())
                        .Returns(new VulnerabilityScheduleViewData
                                 {
@@ -169,7 +170,7 @@ public class ScanHistoryTests
             Assert.Contains("Next scheduled vulnerability refresh:",
                             component.Markup,
                             "The page header must show the estimated next scheduled vulnerability refresh");
-            Assert.Contains(nextRefreshUtc.ToLocalTime().ToString("g"),
+            Assert.Contains(nextRefreshUtc.ToLocalTime().ToString("g", CultureInfo.CurrentCulture),
                             component.Markup,
                             "The estimated next scheduled vulnerability refresh must be rendered as a local timestamp");
         }
@@ -189,7 +190,7 @@ public class ScanHistoryTests
             var viewService = Substitute.For<IApplicationViewService>();
 
             viewService.GetScanHistoryAsync(Arg.Any<int>(), Arg.Any<CancellationToken>())
-                       .Returns(new List<ScanHistoryItemData>());
+                       .Returns([]);
             viewService.GetVulnerabilityScheduleAsync(Arg.Any<CancellationToken>())
                        .Returns(new VulnerabilityScheduleViewData
                                 {
@@ -223,7 +224,7 @@ public class ScanHistoryTests
             var viewService = Substitute.For<IApplicationViewService>();
 
             viewService.GetScanHistoryAsync(Arg.Any<int>(), Arg.Any<CancellationToken>())
-                       .Returns(new List<ScanHistoryItemData>());
+                       .Returns([]);
             viewService.GetVulnerabilityScheduleAsync(Arg.Any<CancellationToken>())
                        .Returns(new VulnerabilityScheduleViewData());
 
@@ -253,7 +254,7 @@ public class ScanHistoryTests
         var enrichmentService = Substitute.For<IVulnerabilityEnrichmentService>();
 
         viewService.GetScanHistoryAsync(Arg.Any<int>(), Arg.Any<CancellationToken>())
-                   .Returns(new List<ScanHistoryItemData>());
+                   .Returns([]);
         enrichmentService.RefreshAsync(Arg.Any<ScanTriggerSource>(), Arg.Any<CancellationToken>())
                          .Returns(Task.FromException(exception));
 
