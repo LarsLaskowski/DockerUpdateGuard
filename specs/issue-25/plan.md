@@ -182,3 +182,23 @@ assumption unchanged; the cache is in memory only.
 - Process-wide `MaxParallelRequests`: #265.
 - Dropping the token on a 401: option 5, revisit per the record; no issue now.
 - The Docker Scout provider's real-clock expiry: unchanged.
+
+## Challenge notes
+
+Devil's Advocate, plan mode, specs/issue-25 (/home/user/DockerUpdateGuard/specs/issue-25/plan.md)
+
+The plan holds up. I checked its claims against the code:
+- Typed-client registration: `ServiceCollectionExtensions.cs:73-79`.
+- Scoped factories: `:114-115`.
+- Instance token fields: `DockerHubClient.cs:84,94,99`.
+- Real-clock expiry checks: `:202`, `:1084`.
+- The deferral check runs inside the lock, after the second cached-token check: `:994-1002`.
+- `SendGetAsync` authenticates before it takes a throttle slot (`:857-867`), so a shared login lock cannot deadlock with the per-instance throttle.
+
+All four call sites of the removed constructor are listed: `DockerHubClientTests.cs:1038` and `:2418`, `DockerScoutVulnerabilityProviderTests.cs:1205`, `RegistryBaseImageResolverTests.cs:110`. No test reaches the moved private members by reflection. The only reflection on a `ResolveTokenExpiry*` method is in `DockerScoutTokenExpiryTests.cs:142`, and it targets the Scout provider, which does not change. Record 0023 and its index line (`docs/decisions/README.md:86`) already exist.
+
+Two minor objections:
+
+1. minor — The step-4 instruction "passing a `new DockerHubAccessTokenCache(TimeProvider.System)` in a `using`" cannot work at `DockerHubClientTests.cs:2418`. There it sits inside the static helper `CreateClient`, which returns the client and is called about 53 times. A `using` there would dispose the cache's `SemaphoreSlim` before the client uses it, and the first authenticated call would fail with `ObjectDisposedException`. Instruction for the Dev: use a `using` only at the inline sites (`:1038`, `DockerScoutVulnerabilityProviderTests.cs:1205`, `RegistryBaseImageResolverTests.cs:110`). In `CreateClient`, create the cache without disposing it, the same way those tests already leave the client undisposed. Alternatively, have the optional `accessTokenCache` parameter the Tester adds be owned and disposed by the calling test. Do not dispose it inside the helper.
+
+2. minor — The security-considerations bullet "a hanging login blocks other authenticated web API requests for at most its `RequestTimeoutSeconds`" understates the bound. The login goes through the throttle of the instance doing it (`RequestAccessTokenAsync` calls `SendThrottledAsync`, `DockerHubClient.cs:1047`, which waits on `_requestThrottle` at `:919` before the HTTP timeout starts). So every scope waits on the shared lock for that instance's throttle queue plus the timeout. Instruction for the Dev and Reviewer: if this bound appears in `registries.md` or record 0023, word it as "for as long as the login of the instance holding the lock takes (its throttle wait plus `RequestTimeoutSeconds`)", not as a flat `RequestTimeoutSeconds`.
