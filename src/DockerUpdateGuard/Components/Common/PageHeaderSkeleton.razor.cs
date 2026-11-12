@@ -1,4 +1,4 @@
-namespace DockerUpdateGuard.Components.Shared;
+namespace DockerUpdateGuard.Components.Common;
 
 /// <summary>
 /// Skeleton placeholder that mirrors the hero page header while data is loading

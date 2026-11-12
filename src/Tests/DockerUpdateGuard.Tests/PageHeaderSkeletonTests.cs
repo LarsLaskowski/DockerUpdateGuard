@@ -1,6 +1,6 @@
 using Bunit;
 
-using DockerUpdateGuard.Components.Shared;
+using DockerUpdateGuard.Components.Common;
 using DockerUpdateGuard.Tests.Helper;
 
 namespace DockerUpdateGuard.Tests;

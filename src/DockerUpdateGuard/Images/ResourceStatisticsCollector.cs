@@ -127,9 +127,7 @@ public class ResourceStatisticsCollector : IResourceStatisticsCollector
 
         if (result.Status != Infrastructure.ExternalOperationStatus.Succeeded || result.Data is null)
         {
-            _logger.LogWarning("Resource statistics collection failed for Docker instance {DockerInstanceName}: {Message}",
-                               dockerInstance.Name,
-                               result.Message);
+            _logger.ResourceStatisticsCollectionFailed(dockerInstance.Name, result.Message);
 
             return;
         }
