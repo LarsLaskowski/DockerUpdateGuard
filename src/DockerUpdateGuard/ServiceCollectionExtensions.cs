@@ -101,6 +101,7 @@ public static class ServiceCollectionExtensions
                 .AddHttpMessageHandler<TransientHttpRetryHandler>();
         services.TryAddSingleton(TimeProvider.System);
         services.AddSingleton<LoginRetryAfterRegistry>();
+        services.AddSingleton<DockerHubAccessTokenCache>();
         services.AddSingleton<ApplicationTelemetry>();
         services.AddSingleton<IDockerInstanceClient, DockerInstanceClient>();
         services.AddSingleton<IPortainerClient, PortainerClient>();

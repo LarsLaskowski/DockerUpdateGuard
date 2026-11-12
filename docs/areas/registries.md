@@ -135,8 +135,14 @@ go through its retry of transient HTTP failures.
 ### Authentication
 
 - **Docker Hub web API.** Anonymous unless `DockerUpdateGuard:DockerHub:Pat` is set. With `Pat` and `UserName` (both
-  trimmed) the client logs in and sends the returned token as a bearer token. The token is kept in memory and renewed
-  one minute before its expiry (its `exp` claim, or five minutes after issue when it has none). `Pat` without
+  trimmed) the client logs in and sends the returned token as a bearer token. The token is kept in memory for the whole
+  process and shared by every client instance and scope, so one login serves them all, and renewed one minute before
+  its expiry (its `exp` claim, or five minutes after issue when it has none). It is reused only for the login URL, the
+  trimmed user name and the PAT it was obtained with: a reload of `UserName` or `Pat` makes the next request log in
+  again. One login runs at a time and the other requests wait for it, each honoring its own cancellation; a login not
+  complete within `RequestTimeoutSeconds` from its start (the wait for a request slot, the headers and the body
+  included) is cancelled and surfaces as *timed out*. A failed, deferred or cancelled login keeps nothing
+  ([0023](../decisions/0023-the-docker-hub-web-api-token-is-cached-process-wide-per-credentials.md)). `Pat` without
   `UserName` makes every web API request *failed*, naming the missing key. `UserName` without `Pat` is anonymous.
   After a login answered 429 with a `Retry-After`, no login is sent before the window ends: the request sends nothing
   and is *failed*, also in other client instances

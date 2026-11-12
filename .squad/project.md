@@ -36,7 +36,7 @@ limits, patterns or sequences. Paths below are under `src/DockerUpdateGuard/` un
   `Vulnerabilities/TrivyVulnerabilityProvider.cs`, `Infrastructure/ProcessRunner.cs` —
   [Vulnerabilities](../docs/areas/vulnerabilities.md#trivy)
 - **Registry and Docker Scout calls:** untrusted JSON, request paths, pagination origins, bearer tokens —
-  `DockerHub/DockerHubClient.cs`, `Images/OciRegistryClient.cs`, `Vulnerabilities/DockerScoutVulnerabilityProvider.cs`,
+  `DockerHub/DockerHubClient.cs`, `DockerHub/DockerHubAccessTokenCache.cs`, `Images/OciRegistryClient.cs`, `Vulnerabilities/DockerScoutVulnerabilityProvider.cs`,
   `Infrastructure/PaginationLinkGuard.cs`, `Infrastructure/RemoteJsonDocument.cs` — [Registries](../docs/areas/registries.md),
   [Vulnerabilities](../docs/areas/vulnerabilities.md#docker-scout)
 - **Failure messages and remote text:** what a result, a scan run or a page may carry of an error or a remote answer —
