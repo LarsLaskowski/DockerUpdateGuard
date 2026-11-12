@@ -79,6 +79,13 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
     private readonly LoginRetryAfterRegistry _loginRetryAfterRegistry;
 
     /// <summary>
+    /// Shared cache of the Docker Hub access token
+    /// </summary>
+#pragma warning disable S4487 // Skeleton: removed with the implementation
+    private readonly DockerHubAccessTokenCache _accessTokenCache;
+#pragma warning restore S4487 // Skeleton: removed with the implementation
+
+    /// <summary>
     /// Access-token refresh lock
     /// </summary>
     private readonly SemaphoreSlim _tokenRefreshLock = new(1, 1);
@@ -109,15 +116,18 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
     /// <param name="logger">Logger</param>
     /// <param name="optionsMonitor">Options monitor</param>
     /// <param name="loginRetryAfterRegistry">Registry of the login Retry-After windows</param>
+    /// <param name="accessTokenCache">Shared cache of the Docker Hub access token</param>
     public DockerHubClient(HttpClient httpClient,
                            ILogger<DockerHubClient> logger,
                            IOptionsMonitor<DockerUpdateGuardOptions> optionsMonitor,
-                           LoginRetryAfterRegistry loginRetryAfterRegistry)
+                           LoginRetryAfterRegistry loginRetryAfterRegistry,
+                           DockerHubAccessTokenCache accessTokenCache)
     {
         _httpClient = httpClient;
         _logger = logger;
         _optionsMonitor = optionsMonitor;
         _loginRetryAfterRegistry = loginRetryAfterRegistry;
+        _accessTokenCache = accessTokenCache;
 
         var maxParallelRequests = Math.Max(1, optionsMonitor.CurrentValue.DockerHub.MaxParallelRequests);
         _requestThrottle = new SemaphoreSlim(maxParallelRequests, maxParallelRequests);

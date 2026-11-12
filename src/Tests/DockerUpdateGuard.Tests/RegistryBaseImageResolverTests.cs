@@ -48,6 +48,8 @@ public class RegistryBaseImageResolverTests
                                                                                                 },
                                                                                 });
 
+        var tokenCache = new DockerHubAccessTokenCache(TimeProvider.System);
+
         try
         {
             handler.AddJsonResponse("https://auth.docker.io/token?service=registry.docker.io&scope=repository:library/app:pull",
@@ -110,7 +112,8 @@ public class RegistryBaseImageResolverTests
             var dockerHubClient = new DockerHubClient(httpClient,
                                                       new TestLogger<DockerHubClient>(),
                                                       dockerHubOptions,
-                                                      new LoginRetryAfterRegistry(TimeProvider.System));
+                                                      new LoginRetryAfterRegistry(TimeProvider.System),
+                                                      tokenCache);
             var ociRegistryClient = new OciRegistryClient(httpClient, new TestLogger<OciRegistryClient>());
             var registryMetadataService = new RegistryMetadataService([dockerHubClient, ociRegistryClient]);
             var resolver = new RegistryBaseImageResolver(registryMetadataService);
@@ -146,6 +149,7 @@ public class RegistryBaseImageResolverTests
         }
         finally
         {
+            tokenCache.Dispose();
             httpClient.Dispose();
             handler.Dispose();
         }

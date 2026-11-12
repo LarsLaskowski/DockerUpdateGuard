@@ -1022,6 +1022,8 @@ public partial class DockerHubClientTests
         var handler = new ConcurrencyTrackingHttpMessageHandler("""{ "username": "acme" }""", TimeSpan.FromMilliseconds(50));
         var httpClient = new HttpClient(handler);
 
+        var tokenCache = new DockerHubAccessTokenCache(TimeProvider.System);
+
         try
         {
             httpClient.BaseAddress = new Uri("https://hub.docker.com/");
@@ -1038,7 +1040,8 @@ public partial class DockerHubClientTests
             var client = new DockerHubClient(httpClient,
                                              new TestLogger<DockerHubClient>(),
                                              new TestOptionsMonitor<DockerUpdateGuardOptions>(options),
-                                             new LoginRetryAfterRegistry(TimeProvider.System));
+                                             new LoginRetryAfterRegistry(TimeProvider.System),
+                                             tokenCache);
             var requests = Enumerable.Range(0, 8)
                                      .Select(_ => client.GetCurrentUserAsync(CancellationToken.None))
                                      .ToArray();
@@ -1053,6 +1056,7 @@ public partial class DockerHubClientTests
         }
         finally
         {
+            tokenCache.Dispose();
             httpClient.Dispose();
             handler.Dispose();
         }
@@ -2418,7 +2422,8 @@ public partial class DockerHubClientTests
         return new DockerHubClient(httpClient,
                                    logger ?? new TestLogger<DockerHubClient>(),
                                    new TestOptionsMonitor<DockerUpdateGuardOptions>(options),
-                                   loginRetryAfterRegistry ?? new LoginRetryAfterRegistry(TimeProvider.System));
+                                   loginRetryAfterRegistry ?? new LoginRetryAfterRegistry(TimeProvider.System),
+                                   new DockerHubAccessTokenCache(TimeProvider.System));
     }
 
     /// <summary>
