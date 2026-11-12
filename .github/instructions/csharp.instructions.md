@@ -541,23 +541,20 @@ public class MyController : ControllerBase
 
 ---
 
-## Suppressed Rules (StyleCop / Analyzer)
+## Suppressed Rules (Analyzer)
 
-The following rules are intentionally disabled:
+The analyzer rules and their severities come from the rule baseline every .NET repository of
+Squad-Spec-Repository-Template shares: the `squad:dotnet-rules` and `squad:sonar-rules` blocks of `.editorconfig`,
+written by `.squad/tools/dotnet-rules.py` and `sonar-rules.py` (`.squad/stack.md`, *Analyzer gate*). No rule is
+switched off anywhere else (no rule set, no `NoWarn`, no assembly-wide `SuppressMessage`); a single member or type is
+exempted with a `SuppressMessage` that has a `Target` in `src/GlobalSuppressions.cs`. The baseline switches off:
 
 | Rule | Description |
 |---|---|
-| SA1101 | No `this.` prefix required |
-| SA1116 | Split parameters do not need to start on a new line |
-| SA1200 | Using directives outside the namespace |
-| SA1309 | Fields may begin with underscore |
-| SA1310 | Fields may contain underscores |
-| SA1413 | No trailing comma required |
-| SA1513 | No blank line required after closing brace |
-| SA1629 | Documentation text does not need to end with a period |
-| SA1633 | No file header required |
-| SA1642 | Constructor documentation freely formulated |
-| IDE0290 | No primary constructors |
-| CS8618 | Non-nullable field warning disabled |
-| CA1822 | Methods do not need to be static when possible |
-| CA2254 | Logger template warning disabled |
+| S1125 | Boolean literals are not redundant: `== false` is the binding style |
+| RH2102 | No rule against parameterized primary constructors (they are not used: `csharp_style_prefer_primary_constructors`) |
+| RH4124 | Single-letter lambda parameter names are allowed |
+| RH7004 | Using declarations are not reported (explicit `using` blocks are still preferred) |
+| RH8027 | Private fields are not checked for documentation (they are still documented) |
+| RH8306 | A property summary need not be a noun phrase |
+| CA2007, S107, BL0016 | Test code only (`**/*.Tests/**.cs`): no `ConfigureAwait`, more than seven parameters, JavaScript interop calls outside a `try`/`catch` (BL0016, a .NET 11 SDK rule) |

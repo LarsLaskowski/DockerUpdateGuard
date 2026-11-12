@@ -7,22 +7,33 @@ profile and owned by this repository: keep it true when the build changes.
 ## Toolchain
 
 - .NET SDK of `global.json` (seeded as the newest SDK of the major, `10.0.404`; `rollForward` `latestFeature`: the
-  newest installed feature band of that major, never the next major), target framework `net10.0`, solution
-  `DockerUpdateGuard.slnx`. Several majors may be installed side by side (a machine, CI); the repository is built for
+  newest installed feature band of that major, never the next major), target framework `net10.0` (set once in
+  `Directory.Build.props`), solution `DockerUpdateGuard.slnx`. Several majors may be installed side by side (a machine, CI); the repository is built for
   one: every project's target framework, `global.json` and every .NET image (the defaults of the `BASE_SDK` and
   `BASE_RUNTIME` build arguments of `src/DockerUpdateGuard/Dockerfile`) name the same major, which `dotnet_major.py`
   checks in the *Analyzer gate*, and a new project gets it from the SDK `global.json` selects. Dependabot keeps the
-  SDK and the packages current within that major, and the floating `10.0-alpine` tags of the two .NET images resolve to
-  the newest image of it whenever the image is built (Dependabot does not read an image named through a build
-  argument); the move to the next one (target frameworks, `global.json`, the Microsoft.Extensions, ASP.NET Core and EF
+  SDK and the packages current within that major. The Dockerfile names every image through a build argument (`FROM
+  ${BASE_SDK}`), which Dependabot does not read, so it has no `docker` entry: the floating `10.0-alpine` tags of the
+  two .NET images resolve to the newest image of that major whenever the image is built, and the digest of the
+  `TRIVY_IMAGE` default is refreshed by hand; the move to the next one (target frameworks, `global.json`, the Microsoft.Extensions, ASP.NET Core and EF
   Core packages, the image tags) is one change of its own.
 - Formatter: `reihitsu-format`, restored from the tool manifest `.config/dotnet-tools.json` (`dotnet tool restore`,
-  pinned there next to `dotnet-sonarscanner` so Dependabot raises them with the analyzer), on the same release line as the
-  **Reihitsu.Analyzer** version pinned in `Directory.Packages.props`; otherwise the formatter can revert
+  pinned there next to `dotnet-sonarscanner` so Dependabot raises them with the analyzer), at the same version as the
+  **Reihitsu.Analyzer** pinned in `Directory.Packages.props`; otherwise the formatter can revert
   code the analyzer considers correct.
 - Analyzers: **SonarAnalyzer.CSharp** in every project via `Directory.Build.props` (the Sonar C# rules locally,
   so SonarQube issues surface before the push), **Reihitsu.Analyzer** likewise via `Directory.Build.props`, both
-  configured by the rulesets in `rules/`, with warnings treated as errors; the MSTest analyzers come with the MSTest package in the test projects.
+  configured by the rule blocks of `.editorconfig` (*Analyzer gate*), with warnings treated as errors; the MSTest
+  analyzers come with the MSTest package, which `Directory.Build.props` gives every test project.
+- One build structure in every .NET repository of the template: `Directory.Build.props` sets the target framework
+  and `Nullable`, `ImplicitUsings`, `GenerateDocumentationFile`, `TreatWarningsAsErrors`, `EnforceCodeStyleInBuild`
+  and `AnalysisLevel` `latest-recommended` for every project, and no project file sets one again or gives a package a
+  version; every project whose name ends in `.Tests` gets `Microsoft.NET.Test.Sdk`, MSTest and `coverlet.collector`
+  there. There is no rule set, no rule in `NoWarn` and no assembly-wide `SuppressMessage`, and C# files are checked
+  out with CRLF. `dotnet_config.py` checks all of it in the *Analyzer gate*, also with `--lint-only`; the values of
+  the target framework, the SDK and the packages are the project's. The project's own settings stay:
+  `Deterministic` `false` for every project in `Directory.Build.props` (the wildcard `AssemblyVersion` of
+  `SharedAssemblyInfo.cs`, which every project links with `GenerateAssemblyInfo` `False`).
 - The SessionStart hook `.claude/hooks/session-start.sh` restores the formatter, sets `DOTNET_ROOT` and
   restores the solution in remote sessions.
 
@@ -30,7 +41,8 @@ profile and owned by this repository: keep it true when the build changes.
 
 - Production code: `src/` — `DockerUpdateGuard` (host, composition root, UI, scan engine),
   `DockerUpdateGuard.Data` (EF Core / PostgreSQL), `DockerUpdateGuard.Telemetry` (OpenTelemetry);
-  `src/GlobalSuppressions.cs` holds the centralized suppressions, `rules/` the per-configuration rulesets.
+  `src/GlobalSuppressions.cs` holds the centralized member- and type-scoped suppressions (each with a `Target`),
+  linked into the host project, the one their targets are in.
 - Tests: `src/Tests/DockerUpdateGuard.Tests/` (host/application layer) and
   `src/Tests/DockerUpdateGuard.Data.Tests/` (data layer), one test class per type under test in
   `{TypeUnderTest}Tests.cs` (or `…RenderTests` / `…PersistentStateTests` when split, `docs/UNIT_TESTS.md`).
@@ -64,15 +76,22 @@ anywhere. Do not grep console build output instead: an incremental build prints 
 Easy to get wrong by hand: `#region` blocks on every type, XML documentation on every member, no
 underscores in member names, a region for an interface implementation named after the interface.
 
+The C# rules and their severities are the template's, the same in every .NET repository: `python3
+.squad/tools/dotnet-rules.py` writes its baseline (`.squad/dotnet-rules.editorconfig`, the stricter setting of the
+repositories winning) into the `squad:dotnet-rules` blocks of `.editorconfig` (`--check` reports them out of date).
+No section of every C# file sets a rule or a code-style option outside the blocks; the project's own sections of paths
+(here `[**/Migrations/*.cs]`, which marks the EF Core migrations as generated code and switches S1192 off for them)
+come after them. A rule the code does not meet yet goes into `DOTNET_RULES_PENDING` in `squad_settings.py` with the
+issue that brings the code up to it: it is written as `suggestion`, which the *Analyzer gate* still reports in a
+changed file, and the entry goes once the issue is done.
+
 SonarAnalyzer.CSharp runs only the rules of *Sonar way core* by default. The rules the project's SonarQube Cloud C#
 profile adds (*Sonar way comprehensive*: S3776, S1192, S107, …), and the core rules it switches off, are set in the
 `squad:sonar-rules` block of `.editorconfig`, which `python3 .squad/tools/sonar-rules.py` writes from the two
-profiles (`--check` reports a block out of date; severity `SONAR_RULES_SEVERITY` in `squad_settings.py`): the
-*Analyzer gate* reports them in a changed file, so no rule of the profile is "one no local analyzer reports". Here the
-severity is `warning`, which `TreatWarningsAsErrors` turns into a build error everywhere, as the `Warning` action of
-the rulesets in `rules/` does: an `.editorconfig` severity overrides a ruleset's action, so a lower one would weaken
-the rules the rulesets enforce (S107, S3776). S1192 is in the block too; the `[**/Migrations/*.cs]` section after
-it switches the rule off for the EF Core migrations, and as the later section it wins there. SonarQube Cloud's non-Roslyn checks (hotspots,
+profiles at `error` (`--check` reports a block out of date; a pending rule at `suggestion`), except the rules the
+dotnet-rules baseline already sets, which keep the baseline's severity: the
+*Analyzer gate* reports them in a changed file, so no rule of the profile is "one no local analyzer reports". A Sonar
+rule the projects keep off is switched off in the baseline, since the built-in profile cannot be changed (S1125). SonarQube Cloud's non-Roslyn checks (hotspots,
 taint analysis, duplication) have no local equivalent: the *Sonar gate* below reports their issues and hotspots and
 the quality gate, duplication included, on the draft pull request.
 
