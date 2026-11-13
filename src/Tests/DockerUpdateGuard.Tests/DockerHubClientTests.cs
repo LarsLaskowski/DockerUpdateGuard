@@ -45,6 +45,16 @@ public partial class DockerHubClientTests
     /// </summary>
     private const string LoneSurrogateEscape = """\ud800""";
 
+    /// <summary>
+    /// Number of requests after which the repeated-link fixtures end the listing, so an implementation without the check does not loop forever
+    /// </summary>
+    private const int RepeatSafetyLimit = 3;
+
+    /// <summary>
+    /// Listing page without entries and without a next link
+    /// </summary>
+    private const string EmptyLastPageJson = """{ "next": null, "results": [] }""";
+
     #endregion // Constants
 
     #region Methods
@@ -1174,6 +1184,188 @@ public partial class DockerHubClientTests
             httpClient.Dispose();
             handler.Dispose();
         }
+    }
+
+    /// <summary>
+    /// Verify a Docker Hub tag listing that never ends stops failed after the page cap
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC1")]
+    public async Task DockerHubClientGetTagsAsyncEndlessNextLinkReturnsFailedAtPageCapAsync()
+    {
+        var listingRequests = 0;
+        using var handler = new DelegateHttpMessageHandler(request => CreateHubResponse(request,
+                                                                                        () =>
+                                                                                        {
+                                                                                            listingRequests++;
+
+                                                                                            return CreateTagListingPage(request.RequestUri!, PaginationLinkGuard.MaxListingPages * 2);
+                                                                                        }));
+        using var httpClient = new HttpClient(handler);
+
+        httpClient.BaseAddress = new Uri("https://hub.docker.com/");
+
+        var logger = new TestLogger<DockerHubClient>();
+        var client = CreateClient(httpClient, logger: logger);
+
+        var result = await client.GetTagsAsync("docker.io", "acme/api", cancellationToken: CancellationToken.None)
+                                 .ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Failed, result.Status, "A tag listing that does not end within the page cap must fail");
+        Assert.IsNull(result.Data, "A stopped tag listing must hand out no partial data");
+        Assert.AreEqual($"Docker Hub tag listing for 'acme/api' stopped: the listing did not end within {PaginationLinkGuard.MaxListingPages} pages",
+                        result.Message,
+                        "The failure message must name the listing and the page cap");
+        Assert.AreEqual(PaginationLinkGuard.MaxListingPages, listingRequests, "Exactly the page cap of listing requests must be sent");
+        Assert.ContainsSingle(entry => entry.EventId.Id == 3214 && entry.LogLevel == LogLevel.Warning,
+                              logger.Entries,
+                              "The page cap must be logged once as warning 3214");
+    }
+
+    /// <summary>
+    /// Verify a Docker Hub repository listing that never ends stops failed after the page cap
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC2")]
+    public async Task DockerHubClientGetRepositoriesAsyncEndlessNextLinkReturnsFailedAtPageCapAsync()
+    {
+        var listingRequests = 0;
+        using var handler = new DelegateHttpMessageHandler(request => CreateHubResponse(request,
+                                                                                        () =>
+                                                                                        {
+                                                                                            listingRequests++;
+
+                                                                                            return CreateRepositoryListingPage(request.RequestUri!, PaginationLinkGuard.MaxListingPages * 2);
+                                                                                        }));
+        using var httpClient = new HttpClient(handler);
+
+        httpClient.BaseAddress = new Uri("https://hub.docker.com/");
+
+        var logger = new TestLogger<DockerHubClient>();
+        var client = CreateClient(httpClient, logger: logger);
+
+        var result = await client.GetRepositoriesAsync("acme", CancellationToken.None)
+                                 .ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Failed, result.Status, "A repository listing that does not end within the page cap must fail");
+        Assert.IsNull(result.Data, "A stopped repository listing must hand out no partial data");
+        Assert.AreEqual($"Docker Hub repository listing for 'acme' stopped: the listing did not end within {PaginationLinkGuard.MaxListingPages} pages",
+                        result.Message,
+                        "The failure message must name the listing and the page cap");
+        Assert.AreEqual(PaginationLinkGuard.MaxListingPages, listingRequests, "Exactly the page cap of listing requests must be sent");
+        Assert.ContainsSingle(entry => entry.EventId.Id == 3214 && entry.LogLevel == LogLevel.Warning,
+                              logger.Entries,
+                              "The page cap must be logged once as warning 3214");
+    }
+
+    /// <summary>
+    /// Verify a Docker Hub tag listing stops failed when the next link names the page just read
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC5")]
+    public async Task DockerHubClientGetTagsAsyncRepeatedNextLinkReturnsFailedAsync()
+    {
+        const string firstPage = "https://hub.docker.com/v2/namespaces/acme/repositories/api/tags?page_size=100";
+
+        var listingRequests = 0;
+        using var handler = new DelegateHttpMessageHandler(request => CreateHubResponse(request,
+                                                                                        () =>
+                                                                                        {
+                                                                                            listingRequests++;
+
+                                                                                            return listingRequests > RepeatSafetyLimit ? CreateJsonResponse(EmptyLastPageJson) : CreateTagPageResponse(firstPage);
+                                                                                        }));
+        using var httpClient = new HttpClient(handler);
+
+        httpClient.BaseAddress = new Uri("https://hub.docker.com/");
+
+        var logger = new TestLogger<DockerHubClient>();
+        var client = CreateClient(httpClient, logger: logger);
+
+        var result = await client.GetTagsAsync("docker.io", "acme/api", cancellationToken: CancellationToken.None)
+                                 .ConfigureAwait(false);
+
+        AssertRepeatedLinkStop(result.Status,
+                               result.Data is null,
+                               result.Message,
+                               "Docker Hub tag listing for 'acme/api'",
+                               listingRequests,
+                               logger);
+    }
+
+    /// <summary>
+    /// Verify a Docker Hub tag listing stops failed when the next link names the page just read with another fragment
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC5")]
+    public async Task DockerHubClientGetTagsAsyncRepeatedNextLinkWithOtherFragmentReturnsFailedAsync()
+    {
+        const string firstPage = "https://hub.docker.com/v2/namespaces/acme/repositories/api/tags?page_size=100";
+
+        var listingRequests = 0;
+        using var handler = new DelegateHttpMessageHandler(request => CreateHubResponse(request,
+                                                                                        () =>
+                                                                                        {
+                                                                                            listingRequests++;
+
+                                                                                            return listingRequests > RepeatSafetyLimit ? CreateJsonResponse(EmptyLastPageJson) : CreateTagPageResponse($"{firstPage}#other");
+                                                                                        }));
+        using var httpClient = new HttpClient(handler);
+
+        httpClient.BaseAddress = new Uri("https://hub.docker.com/");
+
+        var logger = new TestLogger<DockerHubClient>();
+        var client = CreateClient(httpClient, logger: logger);
+
+        var result = await client.GetTagsAsync("docker.io", "acme/api", cancellationToken: CancellationToken.None)
+                                 .ConfigureAwait(false);
+
+        AssertRepeatedLinkStop(result.Status,
+                               result.Data is null,
+                               result.Message,
+                               "Docker Hub tag listing for 'acme/api'",
+                               listingRequests,
+                               logger);
+    }
+
+    /// <summary>
+    /// Verify a Docker Hub repository listing stops failed when the next link names the page just read
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC5")]
+    public async Task DockerHubClientGetRepositoriesAsyncRepeatedNextLinkReturnsFailedAsync()
+    {
+        const string firstPage = "https://hub.docker.com/v2/repositories/acme/?page_size=100";
+
+        var listingRequests = 0;
+        using var handler = new DelegateHttpMessageHandler(request => CreateHubResponse(request,
+                                                                                        () =>
+                                                                                        {
+                                                                                            listingRequests++;
+
+                                                                                            return CreateJsonResponse(listingRequests > RepeatSafetyLimit ? EmptyLastPageJson : $$"""{ "next": "{{firstPage}}", "results": [ { "namespace": "acme", "name": "api" } ] }""");
+                                                                                        }));
+        using var httpClient = new HttpClient(handler);
+
+        httpClient.BaseAddress = new Uri("https://hub.docker.com/");
+
+        var logger = new TestLogger<DockerHubClient>();
+        var client = CreateClient(httpClient, logger: logger);
+
+        var result = await client.GetRepositoriesAsync("acme", CancellationToken.None)
+                                 .ConfigureAwait(false);
+
+        AssertRepeatedLinkStop(result.Status,
+                               result.Data is null,
+                               result.Message,
+                               "Docker Hub repository listing for 'acme'",
+                               listingRequests,
+                               logger);
     }
 
     /// <summary>
@@ -2618,6 +2810,81 @@ public partial class DockerHubClientTests
                {
                    Content = new StringContent(new string('x', OversizedRemoteText.BodyLength)),
                };
+    }
+
+    /// <summary>
+    /// Assert a listing stopped failed without data because its next link repeated a page already read
+    /// </summary>
+    /// <param name="status">Result status</param>
+    /// <param name="hasNoData">Whether the result carries no data</param>
+    /// <param name="message">Result message</param>
+    /// <param name="listingDescription">Expected description of the listing</param>
+    /// <param name="listingRequests">Number of listing requests sent</param>
+    /// <param name="logger">Captured logger</param>
+    private static void AssertRepeatedLinkStop(ExternalOperationStatus status,
+                                               bool hasNoData,
+                                               string? message,
+                                               string listingDescription,
+                                               int listingRequests,
+                                               TestLogger<DockerHubClient> logger)
+    {
+        Assert.AreEqual(ExternalOperationStatus.Failed, status, "A repeated next-page link must fail the listing");
+        Assert.IsTrue(hasNoData, "A stopped listing must hand out no partial data");
+        Assert.AreEqual($"{listingDescription} stopped: the next-page link repeated a page already read",
+                        message,
+                        "The failure message must name the listing and the repeated link");
+        Assert.AreEqual(1, listingRequests, "No request may be sent for a page already read");
+        Assert.ContainsSingle(entry => entry.EventId.Id == 3215 && entry.LogLevel == LogLevel.Warning,
+                              logger.Entries,
+                              "A repeated next-page link must be logged once as warning 3215");
+    }
+
+    /// <summary>
+    /// Read the page number of a listing request; the first request carries none
+    /// </summary>
+    /// <param name="requestUri">Request address</param>
+    /// <returns>Page number</returns>
+    private static int GetListingPage(Uri requestUri)
+    {
+        var pageEntry = requestUri.Query.TrimStart('?')
+                                        .Split('&')
+                                        .FirstOrDefault(entry => entry.StartsWith("page=", StringComparison.Ordinal));
+
+        return pageEntry is null
+                   ? 1
+                   : int.Parse(pageEntry["page=".Length..], System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>
+    /// Create the tag listing page a request asks for; every page links to the next one up to the last page
+    /// </summary>
+    /// <param name="requestUri">Request address</param>
+    /// <param name="lastPage">Number of the last page</param>
+    /// <returns>Response</returns>
+    private static HttpResponseMessage CreateTagListingPage(Uri requestUri, int lastPage)
+    {
+        var page = GetListingPage(requestUri);
+        var next = page >= lastPage
+                       ? "null"
+                       : $"\"https://hub.docker.com/v2/namespaces/acme/repositories/api/tags?page={page + 1}&page_size=100\"";
+
+        return CreateJsonResponse($$"""{ "next": {{next}}, "results": [ { "name": "t{{page}}", "digest": "sha256:t{{page}}", "last_pushed": "2025-04-02T10:00:00Z" } ] }""");
+    }
+
+    /// <summary>
+    /// Create the repository listing page a request asks for; every page links to the next one up to the last page
+    /// </summary>
+    /// <param name="requestUri">Request address</param>
+    /// <param name="lastPage">Number of the last page</param>
+    /// <returns>Response</returns>
+    private static HttpResponseMessage CreateRepositoryListingPage(Uri requestUri, int lastPage)
+    {
+        var page = GetListingPage(requestUri);
+        var next = page >= lastPage
+                       ? "null"
+                       : $"\"https://hub.docker.com/v2/repositories/acme/?page={page + 1}&page_size=100\"";
+
+        return CreateJsonResponse($$"""{ "next": {{next}}, "results": [ { "namespace": "acme", "name": "r{{page}}" } ] }""");
     }
 
     /// <summary>

@@ -671,6 +671,79 @@ public partial class OciRegistryClientTests
     }
 
     /// <summary>
+    /// Verify an OCI tag listing that never ends and inspects no tag stops failed after the page cap
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC3")]
+    public async Task OciRegistryClientGetTagsAsyncEndlessLinkHeaderReturnsFailedAtPageCapAsync()
+    {
+        var listingRequests = 0;
+        using var handler = new DelegateHttpMessageHandler(request => CreateTagListingResponse(request, PaginationLinkGuard.MaxListingPages * 2, () => listingRequests++));
+        using var httpClient = new HttpClient(handler);
+
+        var logger = new TestLogger<OciRegistryClient>();
+        var client = new OciRegistryClient(httpClient, logger);
+
+        var result = await client.GetTagsAsync("mcr.microsoft.com",
+                                               "mssql/server",
+                                               queryOptions: new RegistryTagQueryOptions
+                                                             {
+                                                                 CurrentTag = "current-on-no-page",
+                                                                 MinimumVersionTag = "9.0.0",
+                                                             },
+                                               cancellationToken: CancellationToken.None)
+                                 .ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Failed, result.Status, "A tag listing that does not end within the page cap must fail");
+        Assert.IsNull(result.Data, "A stopped tag listing must hand out no partial data");
+        Assert.AreEqual($"Registry tag listing for 'mcr.microsoft.com/mssql/server' stopped: the listing did not end within {PaginationLinkGuard.MaxListingPages} pages",
+                        result.Message,
+                        "The failure message must name the listing and the page cap");
+        Assert.AreEqual(PaginationLinkGuard.MaxListingPages, listingRequests, "Exactly the page cap of tags/list requests must be sent");
+        Assert.ContainsSingle(entry => entry.EventId.Id == 2104 && entry.LogLevel == LogLevel.Warning,
+                              logger.Entries,
+                              "The page cap must be logged once as warning 2104");
+    }
+
+    /// <summary>
+    /// Verify an OCI tag listing stops failed when the Link header names the page just read
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC5")]
+    public async Task OciRegistryClientGetTagsAsyncRepeatedLinkHeaderReturnsFailedAsync()
+    {
+        var listingRequests = 0;
+        using var handler = new DelegateHttpMessageHandler(_ =>
+                                                           {
+                                                               listingRequests++;
+
+                                                               return CreateTagListResponse("""{ "name": "mssql/server", "tags": [] }""",
+                                                                                            listingRequests > 3 ? null : "<https://mcr.microsoft.com/v2/mssql/server/tags/list?n=100>; rel=\"next\"");
+                                                           });
+        using var httpClient = new HttpClient(handler);
+
+        var logger = new TestLogger<OciRegistryClient>();
+        var client = new OciRegistryClient(httpClient, logger);
+
+        var result = await client.GetTagsAsync("mcr.microsoft.com",
+                                               "mssql/server",
+                                               cancellationToken: CancellationToken.None)
+                                 .ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Failed, result.Status, "A repeated Link target must fail the tag listing");
+        Assert.IsNull(result.Data, "A stopped tag listing must hand out no partial data");
+        Assert.AreEqual("Registry tag listing for 'mcr.microsoft.com/mssql/server' stopped: the next-page link repeated a page already read",
+                        result.Message,
+                        "The failure message must name the listing and the repeated link");
+        Assert.AreEqual(1, listingRequests, "No request may be sent for a page already read");
+        Assert.ContainsSingle(entry => entry.EventId.Id == 2105 && entry.LogLevel == LogLevel.Warning,
+                              logger.Entries,
+                              "A repeated Link target must be logged once as warning 2105");
+    }
+
+    /// <summary>
     /// Verify OCI tag listing follows a root-relative Link target, the form ghcr.io sends
     /// </summary>
     /// <returns>Task</returns>
@@ -2145,6 +2218,47 @@ public partial class OciRegistryClientTests
                                         "arm64",
                                         CancellationToken.None)
                            .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Create the response of a registry request: the tag list page the request asks for, a manifest, or not found
+    /// </summary>
+    /// <param name="request">Request</param>
+    /// <param name="lastPage">Number of the last tag list page</param>
+    /// <param name="onTagListRequest">Action run for every tag list request</param>
+    /// <returns>Response</returns>
+    private static HttpResponseMessage CreateTagListingResponse(HttpRequestMessage request, int lastPage, Action onTagListRequest)
+    {
+        var uri = request.RequestUri!;
+
+        if (uri.AbsolutePath.Contains("/manifests/", StringComparison.Ordinal))
+        {
+            return CreateManifestResponse("sha256:manifest", """{ "schemaVersion": 2, "config": { "digest": "sha256:config" } }""");
+        }
+
+        if (uri.AbsolutePath.EndsWith("/tags/list", StringComparison.Ordinal) == false)
+        {
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        }
+
+        onTagListRequest();
+
+        var lastEntry = uri.Query.TrimStart('?')
+                                 .Split('&')
+                                 .FirstOrDefault(entry => entry.StartsWith("last=p", StringComparison.Ordinal));
+        var page = lastEntry is null
+                       ? 1
+                       : int.Parse(lastEntry["last=p".Length..], System.Globalization.CultureInfo.InvariantCulture);
+        var linkHeader = page >= lastPage
+                             ? null
+                             : $"</v2/mssql/server/tags/list?last=p{page + 1}&n=100>; rel=\"next\"";
+
+        // The endless fixture ends far beyond the cap, so a missing cap cannot loop forever; its tags are below the minimum version tag and skipped, those of the completed fixture are inspected
+        var tag = lastPage > PaginationLinkGuard.MaxListingPages
+                      ? $"1.0.{page}"
+                      : $"2.0.{page}";
+
+        return CreateTagListResponse($$"""{ "name": "mssql/server", "tags": [ "{{tag}}" ] }""", linkHeader);
     }
 
     /// <summary>
