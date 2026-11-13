@@ -24,7 +24,8 @@ internal sealed class TestScanCleanupBackgroundService : ScanCleanupBackgroundSe
                                             IServiceScopeFactory serviceScopeFactory)
         : base(logger,
                optionsMonitor,
-               serviceScopeFactory)
+               serviceScopeFactory,
+               TimeProvider.System)
     {
     }
 

@@ -59,10 +59,14 @@ public class ScanCleanupBackgroundService : ScheduledBackgroundService
     /// <param name="logger">Logger</param>
     /// <param name="optionsMonitor">Application options monitor</param>
     /// <param name="serviceScopeFactory">Service scope factory</param>
+    /// <param name="timeProvider">Time provider</param>
     public ScanCleanupBackgroundService(ILogger<ScanCleanupBackgroundService> logger,
                                         IOptionsMonitor<DockerUpdateGuardOptions> optionsMonitor,
-                                        IServiceScopeFactory serviceScopeFactory)
-        : base(logger)
+                                        IServiceScopeFactory serviceScopeFactory,
+                                        TimeProvider timeProvider)
+        : base(logger,
+               timeProvider,
+               GetConfiguredInterval(optionsMonitor.CurrentValue))
     {
         _logger = logger;
         _optionsMonitor = optionsMonitor;
@@ -72,6 +76,16 @@ public class ScanCleanupBackgroundService : ScheduledBackgroundService
     #endregion // Constructors
 
     #region Static methods
+
+    /// <summary>
+    /// Resolve the execution interval of the supplied options
+    /// </summary>
+    /// <param name="options">Application options</param>
+    /// <returns>Execution interval</returns>
+    private static TimeSpan GetConfiguredInterval(DockerUpdateGuardOptions options)
+    {
+        return TimeSpan.FromMinutes(options.Scanning.CleanupIntervalMinutes);
+    }
 
     /// <summary>
     /// Resolve the age a running scan run of the supplied type must reach before it is treated as abandoned
@@ -143,7 +157,7 @@ public class ScanCleanupBackgroundService : ScheduledBackgroundService
     /// <inheritdoc/>
     protected override TimeSpan GetInterval()
     {
-        return TimeSpan.FromMinutes(_optionsMonitor.CurrentValue.Scanning.CleanupIntervalMinutes);
+        return GetConfiguredInterval(_optionsMonitor.CurrentValue);
     }
 
     /// <inheritdoc/>

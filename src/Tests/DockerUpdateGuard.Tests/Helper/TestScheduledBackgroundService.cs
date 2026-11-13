@@ -52,7 +52,7 @@ internal sealed class TestScheduledBackgroundService : ScheduledBackgroundServic
     /// <param name="interval">Configured execution interval</param>
     /// <param name="startupException">Exception thrown by the startup step, or <see langword="null"/> when the startup step succeeds</param>
     public TestScheduledBackgroundService(ILogger logger, TimeSpan interval, Exception? startupException)
-        : base(logger)
+        : base(logger, TimeProvider.System, interval)
     {
         _executionSignal = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         _interval = interval;

@@ -34,10 +34,14 @@ public class OwnImageBaseRefreshBackgroundService : ScheduledBackgroundService
     /// <param name="logger">Logger</param>
     /// <param name="optionsMonitor">Application options monitor</param>
     /// <param name="serviceScopeFactory">Service scope factory</param>
+    /// <param name="timeProvider">Time provider</param>
     public OwnImageBaseRefreshBackgroundService(ILogger<OwnImageBaseRefreshBackgroundService> logger,
                                                 IOptionsMonitor<DockerUpdateGuardOptions> optionsMonitor,
-                                                IServiceScopeFactory serviceScopeFactory)
-        : base(logger)
+                                                IServiceScopeFactory serviceScopeFactory,
+                                                TimeProvider timeProvider)
+        : base(logger,
+               timeProvider,
+               TimeSpan.FromMinutes(optionsMonitor.CurrentValue.Scanning.OwnImageBaseScanIntervalMinutes))
     {
         _optionsMonitor = optionsMonitor;
         _serviceScopeFactory = serviceScopeFactory;

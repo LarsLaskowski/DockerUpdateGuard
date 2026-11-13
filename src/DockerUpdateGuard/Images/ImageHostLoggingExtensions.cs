@@ -75,6 +75,21 @@ internal static partial class ImageHostLoggingExtensions
                                                                 long elapsedMilliseconds);
 
     /// <summary>
+    /// Log that the interval of a scheduled background service could not be determined
+    /// </summary>
+    /// <param name="logger">Logger</param>
+    /// <param name="exception">Exception</param>
+    /// <param name="backgroundServiceName">Background service name</param>
+    /// <param name="fallbackIntervalMinutes">Last known interval in minutes</param>
+    [LoggerMessage(EventId = 2005,
+                   Level = LogLevel.Warning,
+                   Message = "Scheduled background service {BackgroundServiceName} could not determine its interval and uses its last known interval of {FallbackIntervalMinutes} minutes")]
+    public static partial void BackgroundServiceIntervalLookupFailed(this ILogger logger,
+                                                                     Exception exception,
+                                                                     string backgroundServiceName,
+                                                                     double fallbackIntervalMinutes);
+
+    /// <summary>
     /// Log configured Docker instance synchronization results
     /// </summary>
     /// <param name="logger">Logger</param>
