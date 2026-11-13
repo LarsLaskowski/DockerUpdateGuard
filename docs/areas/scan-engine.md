@@ -34,7 +34,11 @@ The host runs exactly seven recurring background jobs, all in the application pr
 - The jobs are independent of each other: they are neither ordered nor coordinated, and two different jobs may run
   at the same time.
 - The interval is read again before every wait. A changed interval key takes effect from the next wait without a
-  restart; a wait already in progress is not shortened or extended.
+  restart; a wait already in progress is not shortened or extended. When the read fails (an invalid reloaded
+  configuration; for the observed-image refresh also a database error while it counts the enabled images), the job
+  logs a warning with its name and the interval it falls back to and waits its last interval read successfully;
+  before its first successful read that is the interval of the configuration it read when the host started (for the
+  observed-image refresh `OwnImageBaseScanIntervalMinutes`). The next valid read takes effect from the next wait.
 - Each run works in its own unit of work (its own database context), so no state carries over between runs.
 
 ### Dynamic observed-image interval
@@ -105,6 +109,8 @@ resource statistics, cleanup) leave no scan-run record and report only through l
 
 - A run of a background job that fails with an error is logged with the job name and its duration and does not stop
   the job, the other jobs or the host; the job waits its interval and runs again.
+- A failing interval read stops neither the job, the other jobs nor the host (see *Background jobs*); the runs
+  during an invalid configuration fail and are logged like any other failed run.
 - Inside a batch, an error while scanning one observed image or one Docker instance is logged and the batch goes on
   with the next one.
 - A failed run is not retried before the next scheduled run. `DockerUpdateGuard:Scanning:RetryCount` applies to
@@ -188,10 +194,6 @@ may scan the same image at the same time. This is wasteful but does not corrupt 
 
 ### Known gaps
 
-- Reading a job's interval is outside the job's error handling. When it fails — a configuration reload with an
-  invalid value, or an unreachable database while the observed-image refresh counts the enabled images — the job
-  ends with an error and the host stops, instead of the job keeping its last known interval.
-  Tracked in [#281](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/281).
 - The 20 most recently completed scan runs are a cap, not a minimum: an unreferenced run completed before the
   `RetainScanRunsDays` cutoff is removed even when it is among the 20 most recent, so the scan history can be
   empty after a long pause. Tracked in [#290](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/290).
@@ -201,7 +203,8 @@ may scan the same image at the same time. This is wasteful but does not corrupt 
 
 ## Related decisions
 
-None yet.
+- [0025](../decisions/0025-a-failing-interval-lookup-keeps-the-jobs-last-known-interval.md): a failing interval
+  lookup keeps the job's last known interval.
 
 ## Not here
 

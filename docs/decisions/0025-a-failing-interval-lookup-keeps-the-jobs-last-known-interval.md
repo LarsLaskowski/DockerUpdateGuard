@@ -45,8 +45,8 @@ start. The behavior is described in [Scan engine](../areas/scan-engine.md#backgr
 
 - An invalid reload or a database outage no longer stops the host; each job keeps its rhythm and picks up a valid
   configuration again from its next wait.
-- While the configuration stays invalid, every job logs one warning per wait, and its runs, which read the
-  configuration themselves, fail and are logged as before.
+- While the configuration stays invalid, every job logs a warning for each failed lookup (before each wait, and
+  once more at its start), and its runs, which read the configuration themselves, fail and are logged as before.
 - The jobs read their configuration once more, in their constructors: an invalid configuration at that moment fails
   the host's start, as startup validation does.
 - The jobs take a `TimeProvider` for their wait, so a test drives the loop without the real clock.

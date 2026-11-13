@@ -22,9 +22,7 @@ public abstract class ScheduledBackgroundService : BackgroundService
     /// <summary>
     /// Last interval read successfully, the initial interval until the first successful read
     /// </summary>
-#pragma warning disable S4487, IDE0044 // Skeleton: removed with the implementation
     private TimeSpan _lastKnownInterval;
-#pragma warning restore S4487, IDE0044 // Skeleton: removed with the implementation
 
     #endregion // Fields
 
@@ -85,12 +83,29 @@ public abstract class ScheduledBackgroundService : BackgroundService
     /// <param name="backgroundServiceName">Background service name</param>
     /// <param name="stoppingToken">Cancellation token</param>
     /// <returns>Execution interval</returns>
-#pragma warning disable S1172 // Skeleton: removed with the implementation
     private TimeSpan GetIntervalSafely(string backgroundServiceName, CancellationToken stoppingToken)
-#pragma warning restore S1172 // Skeleton: removed with the implementation
     {
-        // Skeleton stub: an existing test drives ExecuteAsync, so the body keeps the former behavior
-        return GetInterval();
+        try
+        {
+            var interval = GetInterval();
+
+            _lastKnownInterval = interval;
+
+            return interval;
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            // Expected during host shutdown, the caller ends on the cancelled token
+            return _lastKnownInterval;
+        }
+        catch (Exception exception)
+        {
+            _logger.BackgroundServiceIntervalLookupFailed(exception,
+                                                          backgroundServiceName,
+                                                          _lastKnownInterval.TotalMinutes);
+
+            return _lastKnownInterval;
+        }
     }
 
     /// <summary>

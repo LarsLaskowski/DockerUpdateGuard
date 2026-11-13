@@ -106,7 +106,9 @@ registry never delays or prevents startup.
     timeout for generic registries and release-metadata feeds) and `DockerUpdateGuard:ReleaseMetadata:*`;
   - the whole `Telemetry` section.
 - A reloaded configuration is validated by the same rules as at startup when it is next read; a reload that fails
-  validation raises an error where it is read (see *Known gaps*). Because validation reads the client-certificate
+  validation raises an error where it is read: the host keeps running, the background jobs keep their last known
+  interval ([Scan engine](scan-engine.md#background-jobs)), and other reads fail where they are made and are logged
+  by their run or page. Because validation reads the client-certificate
   files again, a certificate file deleted or broken while the application runs makes the reloaded configuration
   invalid.
 
@@ -202,11 +204,6 @@ These properties hold today and must be provided for by the deployment:
 
 ### Known gaps
 
-- An invalid configuration reload is not rejected while the last valid configuration stays in use: the background
-  jobs read their interval from the reloaded configuration outside their error handling, so a reload that fails
-  validation can stop the host ([Scan engine](scan-engine.md)). Since validation also reads the client-certificate
-  files, this includes a reload while a configured certificate file is missing or unusable.
-  Tracked in [#281](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/281).
 - Forwarded headers from a reverse proxy are not supported. Behind a TLS-terminating proxy the application sees
   plain HTTP, so it never sends HSTS and HTTPS redirection cannot determine a port; both are left to the proxy.
   Tracked in [#283](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/283).
