@@ -336,8 +336,9 @@ dotnet test DockerUpdateGuard.slnx -c Release --no-build --collect:"XPlat Code C
 python3 .squad/tools/coverage-check.py
 ```
 
-The gate lists every changed production file with its covered/coverable changed lines and the uncovered line
-numbers. Lines that genuinely cannot be covered by a unit test (for example host startup glue) need an
+The gate lists every changed production file with its covered/coverable changed lines, the covered branch
+conditions on them (`+ m/n conditions`), the uncovered line numbers and the lines with an uncovered condition
+(`conditions not covered`). Lines that genuinely cannot be covered by a unit test (for example host startup glue) need an
 explicit, recorded decision — they are not silently accepted.
 
 This produces a `coverage.cobertura.xml` file per test project under `TestResults`. To turn those into a browsable HTML report locally,

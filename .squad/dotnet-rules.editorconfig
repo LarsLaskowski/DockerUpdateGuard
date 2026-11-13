@@ -206,6 +206,8 @@ dotnet_diagnostic.IDE0028.severity = error
 dotnet_diagnostic.IDE1006.severity = error
 
 # Diagnostics: MSTEST
+# every test assembly states its parallelization ([assembly: Parallelize] or [assembly: DoNotParallelize]); MSTest leaves it at suggestion (#379)
+dotnet_diagnostic.MSTEST0001.severity = error
 dotnet_diagnostic.MSTEST0016.severity = error
 dotnet_diagnostic.MSTEST0025.severity = error
 dotnet_diagnostic.MSTEST0037.severity = error
