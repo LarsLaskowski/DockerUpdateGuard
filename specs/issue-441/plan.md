@@ -151,3 +151,31 @@ clauses wrap the awaited lookup. Shutdown gets faster, never slower; no other gu
 ## Out of scope / follow-ups
 
 - none
+
+## Challenge notes
+
+I'm challenging the plan for issue #441 in plan mode. The plan holds up: I found no major objections and one minor note for the Tester.
+
+**What I checked against the code**
+- **Root cause:** confirmed.
+  - The synchronous `dbContext.ObservedImages.Count(entity => entity.IsEnabled)` is at `src/DockerUpdateGuard/Images/OwnImageBaseRefreshBackgroundService.cs:60`.
+  - The synchronous hook with no token is `GetInterval()` at `src/DockerUpdateGuard/Images/ScheduledBackgroundService.cs:52`. It is called through `GetIntervalSafely` (:86–110) for the start log (:178) and before every wait (:190).
+  - `EnableRetryOnFailure` is set at `src/DockerUpdateGuard/ServiceCollectionExtensions.cs:66`.
+- **Scope:** complete.
+  - All seven overrides plus `src/Tests/DockerUpdateGuard.Tests/Helper/TestScheduledBackgroundService.cs:133` are listed.
+  - Every doc reference to `GetInterval()` is covered: `docs/ARCHITECTURE.md` lines 325, 329 and 332, and decision 0025, which the Lead already renamed.
+  - The six other jobs, `ScanCleanupBackgroundService.cs:158` among them, only return `GetConfiguredInterval(...)` and never query the database.
+- **Need and alternatives:** the chosen option (one async hook that takes the token) is the least invasive one that avoids sync-over-async. Option 3, blocking inside the old hook, would leave the problem the issue asks to remove.
+- **Tests and the skeleton:**
+  - The skeleton's `Task.FromResult(synchronous count)` throws synchronously from inside the `try` of `GetIntervalSafelyAsync`, so it is caught like a faulted task. That means the two existing tests in `OwnImageBaseRefreshBackgroundServiceTests.cs` (lines 142 and 193) keep passing.
+  - The existing tests call `ExecuteAsync(token)` directly (`TestOwnImageBaseRefreshBackgroundService.cs:44–46`, `TestScheduledBackgroundService.cs:123–126`). So for AC1, "the run's token" really is the stopping token handed to the hook.
+  - The AC2 test fails on today's code as the plan says: the synchronous path retries to the limit and logs 2005 (`ImageHostLoggingExtensions.cs:84`). Event 2004 is the run failure (`:69`).
+
+**Minor objection**
+1. **minor:** in the AC2 test, the first count that fails is the start-log lookup, not one inside the loop. `TestLogger<T>.IsEnabled` returns `true` for every level (`src/Tests/DockerUpdateGuard.Tests/Data/TestLogger{TCategoryName}.cs:48–51`), so the lookup at `ScheduledBackgroundService.cs:178` runs first and the strategy cancels there. After that, `ExecuteSafelyAsync` still calls the orchestrator substitute once with the cancelled token, and the loop never starts, so no wait and no waiting log happen.
+   - **Instruction for the Tester:** don't assert that no scan ran, and don't wait for a timer wait (`WaitForNextWaitAsync`) in AC2. Await `runTask` directly, then assert:
+     - `ShouldRetryOn` was called exactly once;
+     - the task completed without fault;
+     - no 2005 or 2004 entry was logged.
+
+   Why it is only minor: the plan does not change, and the Tester can follow this when writing the test.
