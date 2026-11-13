@@ -77,15 +77,16 @@ on the snapshots and samples it produces.
 
 - `RequestTimeoutSeconds` (1–300, default 15) bounds each single Engine request (container list, each image inspect,
   each image history, each stats call, host info) separately; it is not a budget for a whole scan.
-- A request that exceeds it ends as *failed* with a message naming the instance and the timeout. Cancellation of the
+- A request that exceeds it ends as *failed* with a message naming the instance and the timeout; a stats call that
+  exceeds it only leaves its container out of the round (see [Resource statistics](#resource-statistics)). Cancellation of the
   calling job (for example at shutdown) is not reported as a failure; it stops the operation.
 
 ### Container discovery
 
 - Discovery lists **all** containers of an instance, including stopped ones. A container whose ID is longer than 200
   characters is left out.
-- Per container it records: the container ID; the name (the first listed name without its leading `/`, or the
-  container ID when it has no name); the image reference as the Engine reports it; the local image ID; the compose
+- Per container it records: the container ID; the name (the first listed name that is a string, without its leading `/`, or the
+  container ID when it has none); the image reference as the Engine reports it; the local image ID; the compose
   project (`com.docker.compose.project` label), the stack name (`com.docker.stack.namespace`) and the swarm service
   name (`com.docker.swarm.service.name`). These values arrive with control characters replaced by spaces
   ([Integration failures](integration-failures.md#remote-text-fields)). The name and the three labels are cut to 200 characters with a
@@ -136,9 +137,16 @@ on the snapshots and samples it produces.
 - Every `DockerUpdateGuard:Scanning:ResourceStatisticsIntervalMinutes` (1–1440, default 5) each enabled, configured
   instance is sampled ([Scan engine](scan-engine.md) owns the schedule).
 - Only **running** containers are sampled, one at a time, each with a single non-streaming stats request. A container
-  whose stats request answers non-success or whose stats body cannot be read (malformed JSON, or a string that does not decode)
-  is left out of that round, and so is one whose ID is longer than 200
-  characters (no request is sent for it). The container name of a sample is cut to 200 characters with a trailing `…`.
+  whose ID is longer than 200 characters is left out without a request. A container whose stats request answers
+  non-success, times out, fails at the transport level, or returns a body that is not valid JSON or not a JSON object
+  is left out of that round and the others are still sampled. Each one is logged once per round as warning 3111 with
+  the instance, the container name and ID and the reason: `returned <status code>`, `timed out after <n> seconds`,
+  `connection failed`, `invalid response` for a body that is not valid JSON (or has a string that does not decode),
+  `unexpected error` for a body that is not a JSON object. The container name of a sample is cut to 200 characters
+  with a trailing `…`.
+- A round sends one request after the other, so with hung containers it can take up to one `RequestTimeoutSeconds`
+  per container (plus the list and the host info request); rounds do not overlap ([Scan engine](scan-engine.md)), a
+  long round delays the next.
 - Per container sample:
   - CPU percent = (container CPU time delta ÷ system CPU time delta) × online CPUs × 100, rounded to 4 decimals; the
     CPU count falls back to the per-CPU usage list length and then to 1; 0 when either delta is not positive. A
@@ -149,11 +157,12 @@ on the snapshots and samples it produces.
   - Receive and transmit rates in bytes per second are computed against the previous sample of the same container ID
     on the same instance, rounded to 4 decimals. The rate is 0 for the first sample, when no time has passed, or when
     the total did not grow (for example after a container restart reset the counter).
-- Per instance, one sample per round: container count, CPU percent and memory usage as the sums over the container
-  samples, memory limit as the host's total memory reported by the Engine (0 when that request fails), network totals
-  as sums, rates against the previous instance sample by the same rule, and the latest container recording time (the
-  current time when no container was sampled). An instance with no running containers still gets a sample with
-  count 0.
+- Per instance, one sample per round: container count, CPU percent, memory usage and network totals as the sums over
+  the containers sampled in that round, memory limit as the host's total memory reported by the Engine (0 when that
+  request fails), the receive and transmit rates as the sums of those containers' rates (not computed against the
+  previous instance sample), and the latest container recording time (the current time when no container was
+  sampled). An instance with no container a stats request is sent for still gets a sample with count 0. A round that
+  requested stats for at least one container and sampled none fails (see *Limits and errors*).
 - Samples are kept until retention removes them ([Scan engine](scan-engine.md)); how they are charted belongs to
   [Web UI](web-ui.md).
 
@@ -189,9 +198,10 @@ on the snapshots and samples it produces.
   shown in the UI.
 - A message or log entry that names an endpoint shows its URL with the user info replaced by `***`; connecting still
   uses the configured URL.
-- A resource collection that fails for an instance (list request failed or timed out, or any stats request timed out
-  or broke) records **no** samples for that instance in that round and logs a warning; other instances are not
-  affected.
+- A resource collection fails for an instance when the list request fails or times out, or when stats were requested
+  and no container could be sampled (`Docker container resource sampling failed for '<name>': no container stats
+  could be read`); it records **no** samples for that instance in that round and logs one warning; other instances
+  are not affected.
 - `SkipCertificateValidation` and a mounted Docker socket are trust relaxations the operator chooses; the socket is
   root-equivalent on the host ([Hosting](hosting.md)).
 
@@ -201,9 +211,6 @@ on the snapshots and samples it produces.
   trimmed stored name, so an instance whose configured name has leading or trailing spaces is stored but always
   skipped as missing from configuration. Tracked in
   [#266](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/266).
-- A single timed-out or broken stats request discards the whole round of samples for its instance, while a
-  non-success stats answer only drops that container. Tracked in
-  [#270](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/270).
 
 ## Related decisions
 
@@ -211,6 +218,8 @@ on the snapshots and samples it produces.
   validated as PKCS#12 at startup.
 - [0019](../decisions/0019-remote-json-with-undecodable-strings-is-an-invalid-response.md): remote JSON with a string
   that does not decode is an invalid response.
+- [0026](../decisions/0026-a-failed-stats-request-drops-only-its-container-from-a-resource-round.md): a failed stats
+  request drops only its container from a resource round.
 
 ## Not here
 
