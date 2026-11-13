@@ -27,9 +27,19 @@ internal sealed class TestScheduledBackgroundService : ScheduledBackgroundServic
     private readonly Exception? _startupException;
 
     /// <summary>
+    /// Source of the interval of each lookup, receives the zero-based lookup number and may throw; <see langword="null"/> returns the configured interval
+    /// </summary>
+    private readonly Func<int, TimeSpan>? _intervalSource;
+
+    /// <summary>
     /// Number of scheduled executions
     /// </summary>
     private int _executionCount;
+
+    /// <summary>
+    /// Number of interval lookups
+    /// </summary>
+    private int _intervalLookupCount;
 
     /// <summary>
     /// Number of startup executions
@@ -52,8 +62,26 @@ internal sealed class TestScheduledBackgroundService : ScheduledBackgroundServic
     /// <param name="interval">Configured execution interval</param>
     /// <param name="startupException">Exception thrown by the startup step, or <see langword="null"/> when the startup step succeeds</param>
     public TestScheduledBackgroundService(ILogger logger, TimeSpan interval, Exception? startupException)
-        : base(logger, TimeProvider.System, interval)
+        : this(logger, TimeProvider.System, interval, null, startupException)
     {
+    }
+
+    /// <summary>
+    /// Constructor
+    /// </summary>
+    /// <param name="logger">Logger</param>
+    /// <param name="timeProvider">Time provider used for the wait</param>
+    /// <param name="interval">Configured execution interval, also the initial interval of the base class</param>
+    /// <param name="intervalSource">Source of the interval of each lookup, receives the zero-based lookup number and may throw; <see langword="null"/> returns the configured interval</param>
+    /// <param name="startupException">Exception thrown by the startup step, or <see langword="null"/> when the startup step succeeds</param>
+    public TestScheduledBackgroundService(ILogger logger,
+                                          TimeProvider timeProvider,
+                                          TimeSpan interval,
+                                          Func<int, TimeSpan>? intervalSource,
+                                          Exception? startupException)
+        : base(logger, timeProvider, interval)
+    {
+        _intervalSource = intervalSource;
         _executionSignal = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         _interval = interval;
         _startupException = startupException;
@@ -104,7 +132,9 @@ internal sealed class TestScheduledBackgroundService : ScheduledBackgroundServic
     /// <inheritdoc/>
     protected override TimeSpan GetInterval()
     {
-        return _interval;
+        var lookupNumber = Interlocked.Increment(ref _intervalLookupCount) - 1;
+
+        return _intervalSource is null ? _interval : _intervalSource(lookupNumber);
     }
 
     /// <inheritdoc/>

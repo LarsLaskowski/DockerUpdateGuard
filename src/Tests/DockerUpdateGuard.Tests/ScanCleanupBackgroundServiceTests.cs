@@ -9,6 +9,8 @@ using DockerUpdateGuard.Tests.Helper;
 
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace DockerUpdateGuard.Tests;
 
@@ -604,6 +606,84 @@ public partial class ScanCleanupBackgroundServiceTests
                                 remainingFindingIds,
                                 "A deactivated finding of a still-live image version must keep the age-based retention window");
             }
+        }
+    }
+
+    /// <summary>
+    /// Verify a reloaded configuration that fails validation keeps the job waiting its last valid interval
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC2")]
+    public async Task ScanCleanupBackgroundServiceExecuteAsyncReloadFailsValidationKeepsLastValidIntervalAsync()
+    {
+        var harness = new ScanCleanupReloadHarness(30);
+
+        await using (harness.ConfigureAwait(false))
+        {
+            harness.Reload(45);
+            harness.Start();
+
+            var firstWaitStarted = await harness.Clock.WaitForNextWaitAsync(harness.RunTask).ConfigureAwait(false);
+
+            Assert.IsTrue(firstWaitStarted, "The job must start its first wait with a valid configuration");
+
+            harness.Reload(0);
+            harness.Clock.ElapseLastWait();
+
+            var secondWaitStarted = await harness.Clock.WaitForNextWaitAsync(harness.RunTask).ConfigureAwait(false);
+
+            Assert.IsTrue(secondWaitStarted, "A reload that fails validation must not end the job's task");
+
+            await harness.StopAsync().ConfigureAwait(false);
+
+            Assert.AreSequenceEqual(new[] { TimeSpan.FromMinutes(45), TimeSpan.FromMinutes(45) },
+                                    harness.Clock.Waits,
+                                    "The job must keep waiting the last valid interval while the configuration is invalid");
+            Assert.Contains(entry => entry.EventId.Id == 2005
+                                     && entry.LogLevel == LogLevel.Warning
+                                     && entry.Exception is OptionsValidationException,
+                            harness.Logger.Entries,
+                            "The failed lookup must be logged as warning 2005 with the validation exception");
+        }
+    }
+
+    /// <summary>
+    /// Verify the next wait uses the new interval once a valid configuration is loaded again
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC2")]
+    public async Task ScanCleanupBackgroundServiceExecuteAsyncReloadValidAgainUsesNewIntervalAsync()
+    {
+        var harness = new ScanCleanupReloadHarness(30);
+
+        await using (harness.ConfigureAwait(false))
+        {
+            harness.Start();
+
+            var firstWaitStarted = await harness.Clock.WaitForNextWaitAsync(harness.RunTask).ConfigureAwait(false);
+
+            Assert.IsTrue(firstWaitStarted, "The job must start its first wait with a valid configuration");
+
+            harness.Reload(0);
+            harness.Clock.ElapseLastWait();
+
+            var secondWaitStarted = await harness.Clock.WaitForNextWaitAsync(harness.RunTask).ConfigureAwait(false);
+
+            Assert.IsTrue(secondWaitStarted, "A reload that fails validation must not end the job's task");
+
+            harness.Reload(60);
+            harness.Clock.ElapseLastWait();
+
+            var thirdWaitStarted = await harness.Clock.WaitForNextWaitAsync(harness.RunTask).ConfigureAwait(false);
+
+            await harness.StopAsync().ConfigureAwait(false);
+
+            Assert.IsTrue(thirdWaitStarted, "The job must keep running after the configuration is valid again");
+            Assert.AreSequenceEqual(new[] { TimeSpan.FromMinutes(30), TimeSpan.FromMinutes(30), TimeSpan.FromMinutes(60) },
+                                    harness.Clock.Waits,
+                                    "The first wait after a valid reload must use the new interval");
         }
     }
 
