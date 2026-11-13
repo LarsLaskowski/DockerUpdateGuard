@@ -15,3 +15,4 @@ are quoted in full.
 | 2026-11-13 19:47 | 6 Coverage | Tester | AC5 and AC8 tests plus null-message test added; coverage gate passes (95.5%). Deferred: none (sonnet/medium · 115,413 tokens · 20 tool uses · 242 s · 38 in · 11,382 out · 1,878,739 cache read · 60,843 cache write · 320,876 weighted) |
 | 2026-11-13 19:47 | 6 Documentation | Orchestrator | written in 6 Implement |
 | 2026-11-13 19:50 | 7 Gate stamp | Orchestrator | PASS on 3a0de5e24dba6cbeb50a25f6bae101df2e6817bb (tier standard): Format check pass; Analyzer gate pass; Test with coverage pass; Coverage gate pass; decision-check.py pass; scope-check.py pass · figure-check.py 47 hit(s) |
+| 2026-11-13 19:51 | 8 Review | Reviewer | VERDICT: BLOCKING 0 \| NON-BLOCKING 1 on 3a0de5e24dba6cbeb50a25f6bae101df2e6817bb; verbatim docs fix: blank line in Related decisions list (opus/medium · 78,626 tokens · 12 tool uses · 64 s · 24 in · 6,082 out · 613,945 cache read · 76,983 cache write · 314,720 weighted) |
