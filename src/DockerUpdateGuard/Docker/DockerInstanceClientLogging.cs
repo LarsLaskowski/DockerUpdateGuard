@@ -144,5 +144,24 @@ internal static partial class DockerInstanceClientLogging
                                                             Exception exception,
                                                             string dockerInstanceName);
 
+    /// <summary>
+    /// Log that a Docker container was left out of resource sampling
+    /// </summary>
+    /// <param name="logger">Logger</param>
+    /// <param name="exception">Failure exception, if any</param>
+    /// <param name="dockerInstanceName">Docker instance name</param>
+    /// <param name="containerName">Container name</param>
+    /// <param name="containerId">Container identifier</param>
+    /// <param name="reason">Reason the container was left out</param>
+    [LoggerMessage(EventId = 3111,
+                   Level = LogLevel.Warning,
+                   Message = "Docker container {ContainerName} ({ContainerId}) of {DockerInstanceName} was left out of resource sampling: {Reason}")]
+    public static partial void DockerInstanceResourceSampleSkipped(this ILogger logger,
+                                                                   Exception? exception,
+                                                                   string dockerInstanceName,
+                                                                   string containerName,
+                                                                   string containerId,
+                                                                   string reason);
+
     #endregion // Methods
 }

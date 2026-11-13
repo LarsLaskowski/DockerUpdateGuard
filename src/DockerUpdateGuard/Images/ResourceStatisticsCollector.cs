@@ -178,12 +178,6 @@ public class ResourceStatisticsCollector : IResourceStatisticsCollector
 
         _dbContext.RuntimeContainerResourceSamples.AddRange(currentSamples);
 
-        var latestInstanceSample = await _dbContext.DockerInstanceResourceSamples
-                                                   .Where(entity => entity.DockerInstanceId == dockerInstance.Id)
-                                                   .OrderByDescending(entity => entity.RecordedAtUtc)
-                                                   .AsNoTracking()
-                                                   .FirstOrDefaultAsync(cancellationToken)
-                                                   .ConfigureAwait(false);
         var recordedAtUtc = currentSamples.Count == 0
                                 ? DateTimeOffset.UtcNow
                                 : currentSamples.Max(entity => entity.RecordedAtUtc);
@@ -199,14 +193,8 @@ public class ResourceStatisticsCollector : IResourceStatisticsCollector
                                                          MemoryLimitBytes = hostMemoryTotalBytes,
                                                          NetworkRxBytesTotal = instanceRxTotal,
                                                          NetworkTxBytesTotal = instanceTxTotal,
-                                                         NetworkRxBytesPerSecond = CalculateBytesPerSecond(latestInstanceSample?.NetworkRxBytesTotal,
-                                                                                                           instanceRxTotal,
-                                                                                                           latestInstanceSample?.RecordedAtUtc,
-                                                                                                           recordedAtUtc),
-                                                         NetworkTxBytesPerSecond = CalculateBytesPerSecond(latestInstanceSample?.NetworkTxBytesTotal,
-                                                                                                           instanceTxTotal,
-                                                                                                           latestInstanceSample?.RecordedAtUtc,
-                                                                                                           recordedAtUtc),
+                                                         NetworkRxBytesPerSecond = currentSamples.Sum(entity => entity.NetworkRxBytesPerSecond),
+                                                         NetworkTxBytesPerSecond = currentSamples.Sum(entity => entity.NetworkTxBytesPerSecond),
                                                          RecordedAtUtc = recordedAtUtc,
                                                      });
     }

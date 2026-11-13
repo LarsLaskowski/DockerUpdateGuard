@@ -560,19 +560,12 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
     /// <param name="containerElement">Container element</param>
     /// <param name="statsStream">Stream of the stats body</param>
     /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>Resource descriptor, or null when the body cannot be read</returns>
-    private static async Task<RuntimeContainerResourceDescriptor?> ReadResourceSampleAsync(JsonElement containerElement, Stream statsStream, CancellationToken cancellationToken)
+    /// <returns>Resource descriptor</returns>
+    private static async Task<RuntimeContainerResourceDescriptor> ReadResourceSampleAsync(JsonElement containerElement, Stream statsStream, CancellationToken cancellationToken)
     {
-        try
-        {
-            using var statsDocument = await RemoteJsonDocument.ParseAsync(statsStream, cancellationToken).ConfigureAwait(false);
+        using var statsDocument = await RemoteJsonDocument.ParseAsync(statsStream, cancellationToken).ConfigureAwait(false);
 
-            return ParseResourceSample(containerElement, statsDocument.RootElement);
-        }
-        catch (JsonException)
-        {
-            return null;
-        }
+        return ParseResourceSample(containerElement, statsDocument.RootElement);
     }
 
     /// <summary>
@@ -598,6 +591,7 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
             && namesElement.ValueKind == JsonValueKind.Array)
         {
             var firstName = namesElement.EnumerateArray()
+                                        .Where(nameElement => nameElement.ValueKind == JsonValueKind.String)
                                         .Select(nameElement => ResponseBodyExcerpt.ReplaceControlCharacters(nameElement.GetString()))
                                         .FirstOrDefault(name => string.IsNullOrWhiteSpace(name) == false);
 
@@ -1005,6 +999,68 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
 
     #endregion // Static methods
 
+    #region Methods
+
+    /// <summary>
+    /// Read the resource sample of one container; a failure leaves only this container out
+    /// </summary>
+    /// <param name="httpClient">HTTP client of the instance</param>
+    /// <param name="instanceOptions">Docker instance options</param>
+    /// <param name="containerElement">Container element</param>
+    /// <param name="containerId">Container identifier</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Resource descriptor, or null when the container was left out</returns>
+    private async Task<RuntimeContainerResourceDescriptor?> TryReadContainerSampleAsync(HttpClient httpClient,
+                                                                                        DockerInstanceOptions instanceOptions,
+                                                                                        JsonElement containerElement,
+                                                                                        string containerId,
+                                                                                        CancellationToken cancellationToken)
+    {
+        var containerName = ResponseBodyExcerpt.CutToLength(GetPrimaryName(containerElement), MaxNameLength) ?? string.Empty;
+
+        try
+        {
+            using var statsTimeoutSource = CreateRequestTimeoutCancellationTokenSource(instanceOptions.RequestTimeoutSeconds, cancellationToken);
+            using var statsResponse = await httpClient.GetAsync($"v1.41/containers/{Uri.EscapeDataString(containerId)}/stats?stream=false", statsTimeoutSource.Token)
+                                                      .ConfigureAwait(false);
+
+            if (statsResponse.IsSuccessStatusCode == false)
+            {
+                _logger.DockerInstanceResourceSampleSkipped(null,
+                                                            instanceOptions.Name,
+                                                            containerName,
+                                                            containerId,
+                                                            $"returned {(int)statsResponse.StatusCode}");
+
+                return null;
+            }
+
+            var statsStream = await statsResponse.Content.ReadAsStreamAsync(statsTimeoutSource.Token)
+                                                         .ConfigureAwait(false);
+
+            await using (statsStream.ConfigureAwait(false))
+            {
+                return await ReadResourceSampleAsync(containerElement, statsStream, statsTimeoutSource.Token).ConfigureAwait(false);
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            _logger.DockerInstanceResourceSampleSkipped(exception,
+                                                        instanceOptions.Name,
+                                                        containerName,
+                                                        containerId,
+                                                        FailureReason.FromException(exception, TimeSpan.FromSeconds(instanceOptions.RequestTimeoutSeconds), cancellationToken));
+
+            return null;
+        }
+    }
+
+    #endregion // Methods
+
     #region IDockerInstanceClient
 
     /// <inheritdoc/>
@@ -1132,6 +1188,7 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
                 using var jsonDocument = await RemoteJsonDocument.ParseAsync(responseStream, requestTimeoutSource.Token)
                                                                  .ConfigureAwait(false);
                 var samples = new List<RuntimeContainerResourceDescriptor>();
+                var requestedCount = 0;
 
                 foreach (var containerElement in jsonDocument.RootElement.EnumerateArray())
                 {
@@ -1143,27 +1200,19 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
                         continue;
                     }
 
-                    using var statsTimeoutSource = CreateRequestTimeoutCancellationTokenSource(instanceOptions.RequestTimeoutSeconds, cancellationToken);
-                    using var statsResponse = await httpClient.GetAsync($"v1.41/containers/{Uri.EscapeDataString(containerId)}/stats?stream=false", statsTimeoutSource.Token)
-                                                              .ConfigureAwait(false);
+                    requestedCount++;
 
-                    if (statsResponse.IsSuccessStatusCode == false)
+                    var sample = await TryReadContainerSampleAsync(httpClient, instanceOptions, containerElement, containerId, cancellationToken).ConfigureAwait(false);
+
+                    if (sample is not null)
                     {
-                        continue;
+                        samples.Add(sample);
                     }
+                }
 
-                    var statsStream = await statsResponse.Content.ReadAsStreamAsync(statsTimeoutSource.Token)
-                                                                 .ConfigureAwait(false);
-
-                    await using (statsStream.ConfigureAwait(false))
-                    {
-                        var sample = await ReadResourceSampleAsync(containerElement, statsStream, statsTimeoutSource.Token).ConfigureAwait(false);
-
-                        if (sample is not null)
-                        {
-                            samples.Add(sample);
-                        }
-                    }
+                if (requestedCount > 0 && samples.Count == 0)
+                {
+                    return ExternalOperationResult.Failed<IReadOnlyList<RuntimeContainerResourceDescriptor>>($"Docker container resource sampling failed for '{instanceOptions.Name}': no container stats could be read");
                 }
 
                 return ExternalOperationResult.Succeeded<IReadOnlyList<RuntimeContainerResourceDescriptor>>(samples);

@@ -1189,6 +1189,7 @@ public partial class DockerInstanceClientTests
     /// </summary>
     /// <returns>Task</returns>
     [TestMethod]
+    [TestCategory("AC7")]
     public async Task DockerInstanceClientCollectContainerResourceUsageAsyncWhenErrorBodyIsLongReturnsBoundedExcerptAsync()
     {
         using var handler = new DelegateHttpMessageHandler(_ => CreateLongErrorBodyResponse());
@@ -1704,6 +1705,7 @@ public partial class DockerInstanceClientTests
     /// <param name="expectedMessage">Expected failure message</param>
     /// <returns>Task</returns>
     [TestMethod]
+    [TestCategory("AC7")]
     [DataRow("Inspect", "Docker image inspect for 'app:latest' timed out after 1 seconds")]
     [DataRow("History", "Docker image history for 'app:latest' timed out after 1 seconds")]
     [DataRow("Resources", "Docker container resource sampling timed out for 'Production' after 1 seconds")]
@@ -1788,6 +1790,246 @@ public partial class DockerInstanceClientTests
 
         Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "A well-formed info answer must succeed");
         Assert.AreEqual(8589934592L, result.Data, "The result must carry the MemTotal value");
+    }
+
+    /// <summary>
+    /// Verify resource sampling leaves out only the container whose stats request fails and requests the following ones
+    /// </summary>
+    /// <param name="failureKind">Kind of the failure of the second container</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC1")]
+    [DataRow("Timeout")]
+    [DataRow("Transport")]
+    [DataRow("NonSuccess")]
+    [DataRow("InvalidJson")]
+    [DataRow("WrongShape")]
+    public async Task DockerInstanceClientCollectContainerResourceUsageAsyncWhenOneStatsRequestFailsSkipsOnlyThatContainerAsync(string failureKind)
+    {
+        var requestedPaths = new List<string>();
+
+        using var handler = ResourceSamplingEngineHandlerFactory.Create(["c2"], failureKind, requestedPaths);
+        using var httpClient = CreateHttpClient(handler);
+
+        var client = new DockerInstanceClient(new TestLogger<DockerInstanceClient>(), (_, _) => httpClient);
+
+        var result = await client.CollectContainerResourceUsageAsync(CreateInstanceOptions(), TestContext.CancellationToken).ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, $"A {failureKind} failure of one stats request must not fail the sampling");
+        Assert.IsNotNull(result.Data, "Sampling must return the samples of the other containers");
+        Assert.AreSequenceEqual(["c1", "c3"],
+                                result.Data.Select(sample => sample.ContainerId).ToArray(),
+                                "Only the failing container must be left out and the samples must keep the list order");
+        Assert.Contains("/v1.41/containers/c3/stats", requestedPaths, "The stats of the container after the failing one must still be requested");
+    }
+
+    /// <summary>
+    /// Verify resource sampling logs each container it leaves out once as a warning with the reason
+    /// </summary>
+    /// <param name="failureKind">Kind of the failure of the second container</param>
+    /// <param name="expectedReason">Expected reason in the log entry</param>
+    /// <param name="hasException">Whether the log entry carries the exception</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC2")]
+    [DataRow("Timeout", "timed out after 15 seconds", true)]
+    [DataRow("Transport", "connection failed", true)]
+    [DataRow("NonSuccess", "returned 500", false)]
+    [DataRow("InvalidJson", "invalid response", true)]
+    [DataRow("WrongShape", "unexpected error", true)]
+    public async Task DockerInstanceClientCollectContainerResourceUsageAsyncWhenOneStatsRequestFailsLogsSkippedContainerAsync(string failureKind, string expectedReason, bool hasException)
+    {
+        var logger = new TestLogger<DockerInstanceClient>();
+
+        using var handler = ResourceSamplingEngineHandlerFactory.Create(["c2"], failureKind, []);
+        using var httpClient = CreateHttpClient(handler);
+
+        var client = new DockerInstanceClient(logger, (_, _) => httpClient);
+
+        await client.CollectContainerResourceUsageAsync(CreateInstanceOptions(), TestContext.CancellationToken).ConfigureAwait(false);
+
+        var entries = logger.Entries.Where(entry => entry.EventId.Id == 3111).ToList();
+        var skippedEntry = Assert.ContainsSingle(entries, "Exactly one entry with event id 3111 must be logged for the one container left out");
+
+        Assert.AreEqual(LogLevel.Warning, skippedEntry.LogLevel, "A container left out must be logged as a warning");
+        Assert.AreEqual($"Docker container web-2 (c2) of Production was left out of resource sampling: {expectedReason}",
+                        skippedEntry.Message,
+                        "The entry must name the container, its ID, the instance and the fixed reason");
+        Assert.AreEqual(hasException, skippedEntry.Exception is not null, "The entry must carry the exception for every reason but a non-success answer");
+    }
+
+    /// <summary>
+    /// Verify resource sampling fails when stats were requested and none could be read
+    /// </summary>
+    /// <param name="failureKind">Kind of the failure of every stats request</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC4")]
+    [DataRow("Timeout")]
+    [DataRow("NonSuccess")]
+    public async Task DockerInstanceClientCollectContainerResourceUsageAsyncWhenEveryStatsRequestFailsReturnsFailedAsync(string failureKind)
+    {
+        var logger = new TestLogger<DockerInstanceClient>();
+
+        using var handler = ResourceSamplingEngineHandlerFactory.Create(["c1", "c2", "c3"], failureKind, []);
+        using var httpClient = CreateHttpClient(handler);
+
+        var client = new DockerInstanceClient(logger, (_, _) => httpClient);
+
+        var result = await client.CollectContainerResourceUsageAsync(CreateInstanceOptions(), TestContext.CancellationToken).ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Failed, result.Status, $"A round in which every {failureKind} stats request fails must end as failed");
+        Assert.AreEqual("Docker container resource sampling failed for 'Production': no container stats could be read",
+                        result.Message,
+                        "The failure must carry the fixed message");
+        Assert.DoesNotContain(entry => entry.EventId.Id == 3107, logger.Entries, "The round must log nothing more than the containers left out");
+    }
+
+    /// <summary>
+    /// Verify a container whose Names hold no string element is named by its ID in discovery or by its remaining string name
+    /// </summary>
+    /// <param name="namesJson">JSON of the Names property</param>
+    /// <param name="expectedName">Expected container name</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC9")]
+    [DataRow("[1]", "c1")]
+    [DataRow("""[1, "/web-1"]""", "web-1")]
+    public async Task DockerInstanceClientDiscoverContainersAsyncWhenNamesHoldNoStringUsesContainerIdAsync(string namesJson, string expectedName)
+    {
+        var containersJson = $$"""[ { "Id": "c1", "Names": {{namesJson}}, "State": "running" } ]""";
+
+        using var handler = new DelegateHttpMessageHandler(_ => CreateJsonResponse(containersJson));
+        using var httpClient = CreateHttpClient(handler);
+
+        var client = new DockerInstanceClient(new TestLogger<DockerInstanceClient>(), (_, _) => httpClient);
+
+        var result = await client.DiscoverContainersAsync(CreateInstanceOptions(), TestContext.CancellationToken).ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "A Names element that is not a string must not fail the discovery");
+        Assert.IsNotNull(result.Data, "Discovery must return the container");
+
+        var container = Assert.ContainsSingle(result.Data, "The container must be discovered");
+
+        Assert.AreEqual(expectedName, container.Name, "Only string elements of Names must name the container, the ID otherwise");
+    }
+
+    /// <summary>
+    /// Verify a container whose Names hold no string element is sampled and named by its ID or by its remaining string name
+    /// </summary>
+    /// <param name="namesJson">JSON of the Names property</param>
+    /// <param name="expectedName">Expected container name</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC9")]
+    [DataRow("[1]", "c1")]
+    [DataRow("""[1, "/web-1"]""", "web-1")]
+    public async Task DockerInstanceClientCollectContainerResourceUsageAsyncWhenNamesHoldNoStringUsesContainerIdAsync(string namesJson, string expectedName)
+    {
+        var containersJson = $$"""[ { "Id": "c1", "Names": {{namesJson}} } ]""";
+
+        using var handler = new DelegateHttpMessageHandler(request => request.RequestUri?.AbsolutePath.EndsWith("/stats", StringComparison.Ordinal) == true
+                                                                          ? ResourceSamplingEngineHandlerFactory.CreateStatsResponse("2025-06-01T12:00:00Z", 1000)
+                                                                          : CreateJsonResponse(containersJson));
+        using var httpClient = CreateHttpClient(handler);
+
+        var client = new DockerInstanceClient(new TestLogger<DockerInstanceClient>(), (_, _) => httpClient);
+
+        var result = await client.CollectContainerResourceUsageAsync(CreateInstanceOptions(), TestContext.CancellationToken).ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "A Names element that is not a string must not fail the sampling");
+        Assert.IsNotNull(result.Data, "Sampling must return the sample");
+
+        var sample = Assert.ContainsSingle(result.Data, "The container must be sampled");
+
+        Assert.AreEqual(expectedName, sample.ContainerName, "Only string elements of Names must name the container, the ID otherwise");
+    }
+
+    /// <summary>
+    /// Verify resource sampling succeeds with no samples when no container qualifies for a stats request
+    /// </summary>
+    /// <param name="containersKind">Kind of the container list: Empty or OnlyLongIds</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC5")]
+    [DataRow("Empty")]
+    [DataRow("OnlyLongIds")]
+    public async Task DockerInstanceClientCollectContainerResourceUsageAsyncWhenNoStatsAreRequestedReturnsEmptySucceededAsync(string containersKind)
+    {
+        var containersJson = containersKind == "Empty"
+                                 ? "[]"
+                                 : $$"""[ { "Id": "{{new string('a', 201)}}", "Names": ["/web-1"] } ]""";
+        var requestedPaths = new List<string>();
+
+        using var handler = new DelegateHttpMessageHandler(request =>
+                                                           {
+                                                               requestedPaths.Add(request.RequestUri?.AbsolutePath ?? string.Empty);
+
+                                                               return CreateJsonResponse(containersJson);
+                                                           });
+        using var httpClient = CreateHttpClient(handler);
+
+        var client = new DockerInstanceClient(new TestLogger<DockerInstanceClient>(), (_, _) => httpClient);
+
+        var result = await client.CollectContainerResourceUsageAsync(CreateInstanceOptions(), TestContext.CancellationToken).ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, $"A {containersKind} container list must not fail the sampling");
+        Assert.IsNotNull(result.Data, "Sampling must return a sample list");
+        Assert.IsEmpty(result.Data, "No sample must be returned when no stats request is sent");
+        Assert.DoesNotContain(path => path.EndsWith("/stats", StringComparison.Ordinal), requestedPaths, "No stats request must be sent");
+    }
+
+    /// <summary>
+    /// Verify a cancellation of the caller during a stats request ends the call without a further request and without a log entry
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC6")]
+    public async Task DockerInstanceClientCollectContainerResourceUsageAsyncWhenCallerCancelsDuringStatsThrowsOperationCanceledAsync()
+    {
+        var logger = new TestLogger<DockerInstanceClient>();
+        var requestedPaths = new List<string>();
+
+        using var cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(TestContext.CancellationToken);
+        using var handler = new DelegateHttpMessageHandler(request =>
+                                                           {
+                                                               var path = request.RequestUri?.AbsolutePath ?? string.Empty;
+
+                                                               requestedPaths.Add(path);
+
+                                                               if (path.EndsWith("/containers/c2/stats", StringComparison.Ordinal))
+                                                               {
+                                                                   cancellationTokenSource.Cancel();
+
+                                                                   throw new OperationCanceledException(cancellationTokenSource.Token);
+                                                               }
+
+                                                               return path.EndsWith("/containers/json", StringComparison.Ordinal)
+                                                                          ? ResourceSamplingEngineHandlerFactory.CreateJsonResponse(ResourceSamplingEngineHandlerFactory.ThreeContainersJson)
+                                                                          : ResourceSamplingEngineHandlerFactory.CreateStatsResponse("2025-06-01T12:00:00Z", 1000);
+                                                           });
+        using var httpClient = CreateHttpClient(handler);
+
+        var client = new DockerInstanceClient(logger, (_, _) => httpClient);
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() => client.CollectContainerResourceUsageAsync(CreateInstanceOptions(), cancellationTokenSource.Token)).ConfigureAwait(false);
+
+        Assert.Contains("/v1.41/containers/c2/stats", requestedPaths, "The stats request that was cancelled must have been sent");
+        Assert.DoesNotContain("/v1.41/containers/c3/stats", requestedPaths, "No stats request must follow the cancellation");
+        Assert.DoesNotContain(entry => entry.EventId.Id == 3111 || entry.EventId.Id == 3107, logger.Entries, "A cancellation must be logged neither as a left-out container nor as a failed round");
+    }
+
+    /// <summary>
+    /// Create an HTTP client for the Docker Engine test double
+    /// </summary>
+    /// <param name="handler">Message handler</param>
+    /// <returns>HTTP client</returns>
+    private static HttpClient CreateHttpClient(HttpMessageHandler handler)
+    {
+        return new HttpClient(handler)
+               {
+                   BaseAddress = new Uri("https://docker.example.test/"),
+               };
     }
 
     /// <summary>
