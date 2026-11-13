@@ -28,7 +28,7 @@ valid interval, logs the failure and never stops the host.
    when it is needed, unless the job read it in its constructor, which is option 1 with a second options interface.
 3. **Set `HostOptions.BackgroundServiceExceptionBehavior` to `Ignore`** — the host survives, but the failed job's
    loop has ended and the job never runs again, silently.
-4. **Handle the failure in each job's `GetInterval()`** — seven copies of the same handling, and the next job
+4. **Handle the failure in each job's `GetIntervalAsync()`** — seven copies of the same handling, and the next job
    would have to remember it.
 5. **Keep the whole last valid configuration for every consumer** — would also shield runs and pages from an
    invalid reload, but changes how every consumer reads its options; beyond the issue, which keeps those reads
@@ -36,7 +36,7 @@ valid interval, logs the failure and never stops the host.
 
 ## Decision
 
-Option 1: `ScheduledBackgroundService` catches every exception of `GetInterval()` except a cancellation during
+Option 1: `ScheduledBackgroundService` catches every exception of `GetIntervalAsync()` except a cancellation during
 shutdown, logs it as a warning with the job name and waits the last interval it read successfully — before the first
 successful read, the initial interval the job passed to its constructor from the configuration it read at host
 start. The behavior is described in [Scan engine](../areas/scan-engine.md#background-jobs).

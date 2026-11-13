@@ -322,14 +322,14 @@ flowchart TD
 
 All seven scheduled jobs derive from `ScheduledBackgroundService`
 (`Images\ScheduledBackgroundService.cs`), a template-method
-`BackgroundService`: subclasses supply `GetInterval()` and
+`BackgroundService`: subclasses supply `GetIntervalAsync(CancellationToken)` and
 `ExecuteCoreAsync`, optionally `ExecuteStartupAsync` (runs once before the
 loop) and override `ShouldExecuteImmediately()` (default `true`). The base
 class takes an initial interval and a `TimeProvider` (used for the wait),
-re-evaluates `GetInterval()` every iteration (so config-reload changes apply
-live), creates a DI scope per run, and catches and logs exceptions from
+re-evaluates `GetIntervalAsync(CancellationToken)` every iteration, passing
+it the stopping token (so config-reload changes apply live), creates a DI scope per run, and catches and logs exceptions from
 `ExecuteCoreAsync`, so a failing run does not end the job. A failing
-`GetInterval()` (an invalid reloaded configuration, a database error) is
+`GetIntervalAsync(CancellationToken)` (an invalid reloaded configuration, a database error) is
 caught and logged as a warning too and the job keeps its last known interval,
 so neither the job nor the host stops
 ([decision 0025](decisions/0025-a-failing-interval-lookup-keeps-the-jobs-last-known-interval.md)).

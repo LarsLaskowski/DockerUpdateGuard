@@ -64,9 +64,9 @@ public class ResourceStatisticsRefreshBackgroundService : ScheduledBackgroundSer
     #region ScheduledBackgroundService
 
     /// <inheritdoc/>
-    protected override TimeSpan GetInterval()
+    protected override Task<TimeSpan> GetIntervalAsync(CancellationToken stoppingToken)
     {
-        return GetConfiguredInterval(_optionsMonitor.CurrentValue);
+        return Task.FromResult(GetConfiguredInterval(_optionsMonitor.CurrentValue));
     }
 
     /// <inheritdoc/>

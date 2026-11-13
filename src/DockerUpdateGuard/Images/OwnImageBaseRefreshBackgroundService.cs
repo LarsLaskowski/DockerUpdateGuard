@@ -3,6 +3,7 @@ using DockerUpdateGuard.Data;
 using DockerUpdateGuard.Data.Entities;
 using DockerUpdateGuard.Images.Interfaces;
 
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
 namespace DockerUpdateGuard.Images;
@@ -52,12 +53,15 @@ public class OwnImageBaseRefreshBackgroundService : ScheduledBackgroundService
     #region ScheduledBackgroundService
 
     /// <inheritdoc/>
-    protected override TimeSpan GetInterval()
+    protected override async Task<TimeSpan> GetIntervalAsync(CancellationToken stoppingToken)
     {
-        using (var scope = _serviceScopeFactory.CreateScope())
+        var scope = _serviceScopeFactory.CreateAsyncScope();
+
+        await using (scope.ConfigureAwait(false))
         {
             var dbContext = scope.ServiceProvider.GetRequiredService<DockerUpdateGuardDbContext>();
-            var observedImageCount = dbContext.ObservedImages.Count(entity => entity.IsEnabled);
+            var observedImageCount = await dbContext.ObservedImages.CountAsync(entity => entity.IsEnabled, stoppingToken)
+                                                                   .ConfigureAwait(false);
 
             return ObservedImageScanIntervalCalculator.CalculateInterval(_optionsMonitor.CurrentValue.Scanning, observedImageCount);
         }

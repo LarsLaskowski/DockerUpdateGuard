@@ -48,8 +48,9 @@ public abstract class ScheduledBackgroundService : BackgroundService
     /// <summary>
     /// Resolve the current execution interval
     /// </summary>
+    /// <param name="stoppingToken">Cancellation token</param>
     /// <returns>Execution interval</returns>
-    protected abstract TimeSpan GetInterval();
+    protected abstract Task<TimeSpan> GetIntervalAsync(CancellationToken stoppingToken);
 
     /// <summary>
     /// Determine whether the background operation should run immediately at startup
@@ -83,11 +84,11 @@ public abstract class ScheduledBackgroundService : BackgroundService
     /// <param name="backgroundServiceName">Background service name</param>
     /// <param name="stoppingToken">Cancellation token</param>
     /// <returns>Execution interval</returns>
-    private TimeSpan GetIntervalSafely(string backgroundServiceName, CancellationToken stoppingToken)
+    private async Task<TimeSpan> GetIntervalSafelyAsync(string backgroundServiceName, CancellationToken stoppingToken)
     {
         try
         {
-            var interval = GetInterval();
+            var interval = await GetIntervalAsync(stoppingToken).ConfigureAwait(false);
 
             _lastKnownInterval = interval;
 
@@ -175,7 +176,9 @@ public abstract class ScheduledBackgroundService : BackgroundService
 
         if (_logger.IsEnabled(LogLevel.Information))
         {
-            _logger.BackgroundServiceStarted(backgroundServiceName, GetIntervalSafely(backgroundServiceName, stoppingToken).TotalMinutes);
+            var startInterval = await GetIntervalSafelyAsync(backgroundServiceName, stoppingToken).ConfigureAwait(false);
+
+            _logger.BackgroundServiceStarted(backgroundServiceName, startInterval.TotalMinutes);
         }
 
         await ExecuteStartupSafelyAsync(stoppingToken).ConfigureAwait(false);
@@ -187,7 +190,7 @@ public abstract class ScheduledBackgroundService : BackgroundService
 
         while (stoppingToken.IsCancellationRequested == false)
         {
-            var interval = GetIntervalSafely(backgroundServiceName, stoppingToken);
+            var interval = await GetIntervalSafelyAsync(backgroundServiceName, stoppingToken).ConfigureAwait(false);
 
             _logger.BackgroundServiceWaiting(backgroundServiceName, interval.TotalMinutes);
 
