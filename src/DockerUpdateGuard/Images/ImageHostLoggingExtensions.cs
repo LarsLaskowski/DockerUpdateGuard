@@ -294,6 +294,17 @@ internal static partial class ImageHostLoggingExtensions
     public static partial void VulnerabilityStaleFindingsDeactivated(this ILogger logger, int deactivatedFindingCount);
 
     /// <summary>
+    /// Log that a vulnerability refresh could not save the results of an image version
+    /// </summary>
+    /// <param name="logger">Logger</param>
+    /// <param name="exception">Exception</param>
+    /// <param name="imageReference">Image reference</param>
+    [LoggerMessage(EventId = 2055,
+                   Level = LogLevel.Warning,
+                   Message = "Vulnerability refresh could not save the results for {ImageReference}")]
+    public static partial void VulnerabilityRefreshImageSaveFailed(this ILogger logger, Exception exception, string imageReference);
+
+    /// <summary>
     /// Log that observed image batch scanning has started
     /// </summary>
     /// <param name="logger">Logger</param>
