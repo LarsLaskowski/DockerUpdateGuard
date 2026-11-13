@@ -233,3 +233,31 @@ Integration clients are unchanged.
 - Deviations from the issue: no new helper (AC2 rests on the existing `CutToLength` tests; "shorter value" is the
   same branch as "exactly the limit"), the `…` on every cut value, and no `dotnet ef migrations add` run (the tool is not in
   the manifest; AC5's check replaces it).
+
+## Challenge notes
+
+Devil's Advocate, plan mode, issue #271 (`/home/user/DockerUpdateGuard/specs/issue-271/plan.md`)
+
+I checked the plan's claims against the code, and almost all of them hold:
+- **Root cause:** confirmed. The only handler is the run-level catch (`VulnerabilityEnrichmentService.cs:485`). The per-image save is at :464, and the final save and its retry are at :498-518.
+- **Navigations:** `ImageVersion.VulnerabilityFindings` (`ImageVersion.cs:118`) and `ScanRun.VulnerabilityFindings` (`ScanRun.cs:93`) both exist, so the detach step in plan step 4 has real collections to clean up.
+- **Pending entries:** the scan run is saved at :417 before the loop and only changed after it (:494). So "all pending entries belong to the current image version" is true, and leaving out `ChangeTracker.Clear()` is correct.
+- **The cut:** `ResponseBodyExcerpt.CutToLength` (`src/DockerUpdateGuard/Infrastructure/ResponseBodyExcerpt.cs:116-124`) cuts to limit − 1 and adds `…`, giving exactly the limit. It keeps surrogate pairs whole and replaces control characters one for one, so lengths are kept. The AC1 test design ("limit length, ends with `…`, starts with the first limit − 1 characters") fits it.
+- **AC3 order:** `VulnerabilitySeverity` has Low = 1 and High = 3, which matches "higher severity kept" in `DeduplicateAdvisories` (:150-157).
+- **AC6 reason:** the test's default exception is `InvalidOperationException` (`SaveChangesFailingDbContext.cs`), and `FailureReason.FromException` maps it to `unexpected error`.
+- **AC6 failing context:** `SaveChangesFailingDbContext` throws before `base.SaveChangesAsync`, so the entries stay pending. "Attempt count after the arrange + 2" hits the first image's save, because attempt 1 is the scan-run insert at :417.
+- **AC8:** a cancelled token makes `ToListAsync(cancellationToken)` in `UpsertVulnerabilityFindingsAsync` (:224-226) throw `OperationCanceledException`. That goes to the run-level catch ("cancelled"), and then `RefreshInventoryMetricsAsync` (:520) throws.
+- **Event id:** 2055 is free (`ImageHostLoggingExtensions.cs` uses 2050-2054 and 2060+).
+- **Docs and records:** the #271 Known-gaps entry exists (`docs/areas/vulnerabilities.md:191-193`). The scan-engine run-message bullet the plan names exists (`docs/areas/scan-engine.md:187-189`). 0027's "Supersedes: 0009 — amends it" follows the README rule for amending a released record (`docs/decisions/README.md:40-42`; `v*` tags exist), as 0019 does.
+- **Sibling writers:** none. `VulnerabilityAssessmentMessage` is only written by this service; `UI/ApplicationViewService.cs` only reads it.
+
+Objections:
+
+1. **minor:** The exception filter in plan step 4 lets a cancellation through as a per-image failure if it ever surfaces as anything other than `OperationCanceledException`. The filter is `exception is not OperationCanceledException || cancellationToken.IsCancellationRequested == false`. If a cancelled token produces some other exception type, the handler does three things:
+   - it sets the image version to *Failed* with the AC6 message and logs 2055;
+   - its re-save, which uses the cancelled token, then throws into the run-level catch;
+   - the final save at `VulnerabilityEnrichmentService.cs:500` uses `CancellationToken.None` and still holds the tracked *Failed* state, so it stores the AC6 message.
+
+   That breaks AC8 ("no assessment gets the AC6 message"). Why minor: EF Core, Npgsql and SQLite normally raise `OperationCanceledException`, so this needs no plan change. Instruction for the Dev: write the filter as `catch (Exception exception) when (cancellationToken.IsCancellationRequested == false)`. That way any exception raised while the refresh's token is cancelled goes to the run-level handler unchanged, and the AC8 test stays as designed.
+
+2. **minor:** Plan step 4 changes entry states while it walks the tracker. Iterating `_dbContext.ChangeTracker.Entries()` while setting `State` or detaching changes the collection being enumerated. Why minor: it is an implementation detail the Dev can follow without a plan change. Instruction for the Dev: take the list first (`ChangeTracker.Entries().Where(entry => entry.State is EntityState.Added or EntityState.Modified or EntityState.Deleted).ToList()`). Then, for each added `VulnerabilityFinding`, remove it from `image.VulnerabilityFindings` and `scanRun.VulnerabilityFindings` before setting it to `Detached`, so `DetectChanges` cannot treat it as an orphan or track it again (fact 12). AC6's "no `NEW` on the failed image version" assertion checks this.
