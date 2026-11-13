@@ -210,3 +210,22 @@ registers `TimeProvider`. Run overlap, wait semantics and the cleanup's delayed 
 - Related, proposed follow-up issue: "Observed-image interval lookup blocks on a synchronous database query" — the
   lookup's `Count` takes no stopping token and runs synchronously on the job's thread, so during a database outage
   the retrying execution strategy delays both the next wait and host shutdown.
+
+## Challenge notes
+
+The plan holds up. I found one minor wording problem and nothing major.
+
+What I checked against the code:
+- **Root cause.** `GetInterval()` is called outside any `try` at `src/DockerUpdateGuard/Images/ScheduledBackgroundService.cs:133` and `:145`. The only catches are at 80–89 and 110–119.
+- **The seventh job.** `VulnerabilityRefreshBackgroundService.cs:50-52`, which the issue's list leaves out, also reads `CurrentValue`. All seven jobs are registered with `AddHostedService` at `ServiceCollectionExtensions.cs:135-141`, so the new `TimeProvider` constructor parameter needs no change to the registrations.
+- **Sibling paths.** `ScheduledBackgroundService` is the only `BackgroundService` or `IHostedService` in `src/`, and nothing in `src/` calls `OnChange(`. So there is no other loop with the same defect.
+- **Observed-image floor.** The fallback is right: `ObservedImageScanIntervalCalculator.cs:24/31` never goes below `OwnImageBaseScanIntervalMinutes`.
+- **Constructor callers.** Outside production code, the job constructors are only called through `TestScheduledBackgroundService` (3 calls in `ScheduledBackgroundServiceTests.cs`) and `TestScanCleanupBackgroundService` (6 calls in `ScanCleanupBackgroundServiceTests.cs`). Those tests pass a `TestOptionsMonitor` with a filled `Scanning`, so a constructor that reads `CurrentValue` does not break them.
+- **Startup-site test.** `TestLogger` (`src/Tests/DockerUpdateGuard.Tests/Data/TestLogger{TCategoryName}.cs:48-51`) returns `true` from `IsEnabled`, so the lookup at line 133 does run in the AC1 test.
+- **AC3 test setup.** The host test project references `Microsoft.EntityFrameworkCore.Sqlite` and has `Data/SqliteTestDatabase.cs`, so failing the count by closing a SQLite database works there.
+- **Documents.** `docs/areas/scan-engine.md:191-194` and `docs/areas/hosting.md:109` and `:205-209` are where the plan says they are. `docs/ARCHITECTURE.md` §8 is at line 321.
+- **Fallback choice.** Rejecting the issue's option (a) and passing an initial interval instead is backed by experiment and recorded in 0025.
+
+Objection:
+
+1. minor: The planned message for event 2005 says "…could not determine its interval and waits its last known interval of {FallbackIntervalMinutes} minutes". But `GetIntervalSafely` is also called for the startup log line (line 133). No wait follows that call: the startup step and the immediate run come first. A warning logged there would say something that does not happen. Why it is minor: only the wording of a fixed text is wrong, and the Dev can fix it without changing the plan. Instruction for the Dev and Reviewer: word event 2005 so it holds at both call sites, e.g. "Scheduled background service {BackgroundServiceName} could not determine its interval and uses its last known interval of {FallbackIntervalMinutes} minutes". Keep the parameter names. Also don't write "one warning per wait" in `docs/areas/scan-engine.md` (or the consequences in 0025): when the startup lookup fails too, the first wait comes with an extra warning.
