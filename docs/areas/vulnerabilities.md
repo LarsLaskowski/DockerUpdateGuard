@@ -46,7 +46,8 @@ All keys live under `DockerUpdateGuard:Vulnerabilities`:
 - Every refresh is recorded as one scan run of type *vulnerability* with trigger *scheduled* or *manual*, also when it
   covers no image version.
 - Provider calls run in batches of `MaxParallelScans` image versions at a time; the results of a batch are applied and
-  saved one image version after the other.
+  saved one image version after the other. A failure to save the results of one image version does not stop the
+  others ([Limits and errors](#limits-and-errors)).
 
 ### Assessment per image version
 
@@ -61,18 +62,19 @@ scan run:
 | Not configured | Provider not configured (missing Trivy URL or Docker Hub credentials) | Provider message |
 | Unsupported | Provider cannot scan this image (Docker Scout and a registry other than `docker.io`) | Provider message |
 | Unavailable | Image or tag not found by the provider | Provider message |
-| Failed | Any other provider failure | Provider message |
+| Failed | Any other provider failure, or the results of the image version could not be saved | Provider message, cut to 2000 characters; or `Vulnerability results for '<reference>' could not be saved: <reason>` |
 
 - A failed assessment leaves the image version's findings untouched.
 - A failed assessment adds its message to the scan run. The run ends *failed* once any provider call returned
   *failed* (or the run itself failed), otherwise *partial* when any assessment was not successful, otherwise
-  *succeeded*.
+  *succeeded*. It also ends *failed* when the results of an image version could not be saved.
 
 ### Findings
 
 - A finding is identified within an image version by advisory id and affected package, compared case-insensitively.
-  When a provider reports the same pair more than once, the entry with the highest severity, then the highest CVSS
-  score, is kept.
+  Identity and deduplication use the values as stored, after the cut to the stored lengths ([Limits and errors](#limits-and-errors)):
+  two advisories that differ only beyond the stored length of the package are one finding. When a provider reports the
+  same pair more than once, the entry with the highest severity, then the highest CVSS score, is kept.
 - For each reported advisory: a matching active finding is updated; a matching inactive finding (the most recently
   resolved one) is reactivated with a new detection time and the current scan run, and updated; otherwise a new
   finding is created. Updating overwrites title, severity, source, installed and fixed version, fix status, package
@@ -179,7 +181,16 @@ The dashboard shows at most one hint about the vulnerability configuration:
   saved before stays saved. If saving the final run state fails, it is retried once.
 - Stored lengths: advisory id 100 characters, title 300, affected package 200, installed and fixed version 100 each,
   package class and type 50 each, CVSS score 5 digits with 2 decimals, assessment message 2000; summary and reference
-  URL are unlimited.
+  URL are unlimited. A longer advisory id, title, package, version, class or type, and a longer assessment message
+  (also in the scan run's message), is cut where the refresh stores it to the stored length including a final `…`,
+  never splitting a surrogate pair ([Integration failures](integration-failures.md#excerpts-of-remote-text)).
+- When applying or saving the results of one image version throws (not a cancellation), the refresh discards that
+  image version's pending changes, stores its assessment *Failed* with
+  `Vulnerability results for '<reference>' could not be saved: <reason>` (a fixed reason), leaves its findings as
+  they were, adds the message to the scan run, logs a warning with the image reference and continues with the remaining
+  image versions; the run ends *failed*. The stale-findings pass of a full refresh still runs and keeps the findings of
+  that image version. If saving the *Failed* assessment fails as well, the refresh ends as for an unexpected error.
+  A cancellation is not turned into such a failure: the run ends *failed* with `Vulnerability refresh failed: cancelled`.
 - Messages are built from the image reference and the provider's error output (Trivy's excerpt) or a fixed reason; no credentials or tokens are put into
   them.
 
@@ -188,9 +199,6 @@ The dashboard shows at most one hint about the vulnerability configuration:
 - Docker Scout requests do not go through the transient-failure retry the other outbound HTTP calls use, and Docker
   Scout scans the tag, not the digest, so an image version whose tag was republished is assessed with the advisories
   of the newer image. Tracked in [#267](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/267).
-- Provider values longer than the stored lengths (for example a Trivy title over 300 characters) are not shortened;
-  saving them fails and ends the whole refresh *failed*, leaving the remaining image versions unscanned. Tracked in
-  [#271](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/271).
 - Some values are kept although nothing produces them: validation makes the *Trivy base URL missing* hint and the
   Trivy *not configured* result unreachable (unless an invalid reloaded configuration is still served), and the
   finding sources *registry advisory* and *manual* exist in the data model but are never produced. Tracked in
@@ -206,6 +214,11 @@ The dashboard shows at most one hint about the vulnerability configuration:
   an end-of-options marker (`--`).
 - [0016](../decisions/0016-the-bundled-trivy-skips-its-update-check-and-telemetry.md): the bundled Trivy skips its
   update check and telemetry through the image's environment.
+
+- [0027](../decisions/0027-over-long-vulnerability-values-are-cut-to-their-column-length-where-the-refresh-stores-them.md):
+  over-long vulnerability values are cut to their column length where the refresh stores them.
+- [0028](../decisions/0028-a-failed-save-of-one-image-version-does-not-stop-the-vulnerability-refresh.md): a failed
+  save of one image version does not stop the vulnerability refresh.
 
 ## Not here
 

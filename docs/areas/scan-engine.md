@@ -186,7 +186,8 @@ may scan the same image at the same time. This is wasteful but does not corrupt 
 - A step that reports a failure or an unexpected error turns the run `Failed`; the error message of the run carries
   the step's message as returned by the integration, or, for an unexpected error, `<scan> failed: <reason>` (`Runtime container scan failed`, `Observed image scan
   failed`, `Vulnerability refresh failed`) or, for one container of a runtime scan, `Container '<name>' could not be
-  processed: <reason>`, with a fixed reason ([Integration failures](integration-failures.md#fixed-failure-reasons)). Integrations
+  processed: <reason>` or, for one image version of a vulnerability refresh, `Vulnerability results for '<reference>'
+  could not be saved: <reason>`, with a fixed reason ([Integration failures](integration-failures.md#fixed-failure-reasons)). Integrations
   report expected failures as results, not errors ([Integration failures](integration-failures.md#outcomes)).
 - A run that cannot be saved at its end (for example because the database became unreachable) stays `Running` until
   the stale-run repair marks it `Failed`. A vulnerability refresh retries this final save once on a fresh state

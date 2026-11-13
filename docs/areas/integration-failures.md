@@ -66,7 +66,8 @@ The text fields a client reads from a remote answer and passes on to its callers
 (the characters of the Unicode categories Cc, Cf, Zl and Zp become one space each; a lone surrogate becomes U+FFFD only
 in text that is not a JSON string, because a JSON answer with an undecodable string is an invalid response instead).
 The replacement happens where the client reads the field and, apart from the names that
-[Docker instances](docker-instances.md) cuts to their stored length, without a cut: the length stays as received, a
+[Docker instances](docker-instances.md) cuts to their stored length and the vulnerability values that the refresh
+cuts where it stores them ([Vulnerabilities](vulnerabilities.md#limits-and-errors)), without a cut: the length stays as received, a
 field without such a character is unchanged, and the replacement runs on the decoded string, so a JSON escape cannot
 bypass it. Logs, stored values and pages therefore never carry these characters from these fields:
 
