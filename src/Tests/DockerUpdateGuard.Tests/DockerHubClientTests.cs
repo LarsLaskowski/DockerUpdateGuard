@@ -1261,6 +1261,60 @@ public partial class DockerHubClientTests
     }
 
     /// <summary>
+    /// Verify a Docker Hub tag listing that ends exactly on the page cap succeeds with every tag
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC4")]
+    public async Task DockerHubClientGetTagsAsyncLastPageAtPageCapReturnsSucceededAsync()
+    {
+        using var handler = new DelegateHttpMessageHandler(request => CreateHubResponse(request, () => CreateTagListingPage(request.RequestUri!, PaginationLinkGuard.MaxListingPages)));
+        using var httpClient = new HttpClient(handler);
+
+        httpClient.BaseAddress = new Uri("https://hub.docker.com/");
+
+        var logger = new TestLogger<DockerHubClient>();
+        var client = CreateClient(httpClient, logger: logger);
+
+        var result = await client.GetTagsAsync("docker.io", "acme/api", cancellationToken: CancellationToken.None)
+                                 .ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "A tag listing of exactly the page cap must succeed");
+        Assert.IsNotNull(result.Data, "A completed tag listing must hand out its data");
+        Assert.HasCount(PaginationLinkGuard.MaxListingPages, result.Data, "Every page up to the cap must contribute its tag");
+        Assert.DoesNotContain(entry => entry.EventId.Id == 3214 || entry.EventId.Id == 3215,
+                              logger.Entries,
+                              "A listing that ends on the cap must log neither the page cap nor a repeated link");
+    }
+
+    /// <summary>
+    /// Verify a Docker Hub repository listing that ends exactly on the page cap succeeds with every repository
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC4")]
+    public async Task DockerHubClientGetRepositoriesAsyncLastPageAtPageCapReturnsSucceededAsync()
+    {
+        using var handler = new DelegateHttpMessageHandler(request => CreateHubResponse(request, () => CreateRepositoryListingPage(request.RequestUri!, PaginationLinkGuard.MaxListingPages)));
+        using var httpClient = new HttpClient(handler);
+
+        httpClient.BaseAddress = new Uri("https://hub.docker.com/");
+
+        var logger = new TestLogger<DockerHubClient>();
+        var client = CreateClient(httpClient, logger: logger);
+
+        var result = await client.GetRepositoriesAsync("acme", CancellationToken.None)
+                                 .ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "A repository listing of exactly the page cap must succeed");
+        Assert.IsNotNull(result.Data, "A completed repository listing must hand out its data");
+        Assert.HasCount(PaginationLinkGuard.MaxListingPages, result.Data, "Every page up to the cap must contribute its repository");
+        Assert.DoesNotContain(entry => entry.EventId.Id == 3214 || entry.EventId.Id == 3215,
+                              logger.Entries,
+                              "A listing that ends on the cap must log neither the page cap nor a repeated link");
+    }
+
+    /// <summary>
     /// Verify a Docker Hub tag listing stops failed when the next link names the page just read
     /// </summary>
     /// <returns>Task</returns>

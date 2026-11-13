@@ -707,6 +707,43 @@ public partial class OciRegistryClientTests
     }
 
     /// <summary>
+    /// Verify an OCI tag listing that ends exactly on the page cap succeeds with every inspected tag
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC4")]
+    public async Task OciRegistryClientGetTagsAsyncLastPageAtPageCapReturnsSucceededAsync()
+    {
+        using var handler = new DelegateHttpMessageHandler(request => CreateTagListingResponse(request,
+                                                                                               PaginationLinkGuard.MaxListingPages,
+                                                                                               () =>
+                                                                                               {
+                                                                                               }));
+        using var httpClient = new HttpClient(handler);
+
+        var logger = new TestLogger<OciRegistryClient>();
+        var client = new OciRegistryClient(httpClient, logger);
+
+        var result = await client.GetTagsAsync("mcr.microsoft.com",
+                                               "mssql/server",
+                                               queryOptions: new RegistryTagQueryOptions
+                                                             {
+                                                                 CurrentTag = "2.0.1",
+                                                                 MaximumTags = PaginationLinkGuard.MaxListingPages * 2,
+                                                                 MinimumVersionTag = "1.0.0",
+                                                             },
+                                               cancellationToken: CancellationToken.None)
+                                 .ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "A tag listing of exactly the page cap must succeed");
+        Assert.IsNotNull(result.Data, "A completed tag listing must hand out its data");
+        Assert.HasCount(PaginationLinkGuard.MaxListingPages, result.Data, "Every page up to the cap must contribute its tag");
+        Assert.DoesNotContain(entry => entry.EventId.Id == 2104 || entry.EventId.Id == 2105,
+                              logger.Entries,
+                              "A listing that ends on the cap must log neither the page cap nor a repeated link");
+    }
+
+    /// <summary>
     /// Verify an OCI tag listing stops failed when the Link header names the page just read
     /// </summary>
     /// <returns>Task</returns>
