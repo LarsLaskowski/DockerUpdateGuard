@@ -1,4 +1,4 @@
-# 0024: Registry listings stop with *failed* after a page cap
+# 0024: Registry listings stop with *failed* at a repeated link or after a page cap
 
 - **Status:** Proposed
 - **Date:** 2026-11-13
@@ -17,36 +17,43 @@ reach it. Docker Scout already stops after 50 pages and returns what it read as 
 that does not succeed as "no answer": discovery keeps the state of the account or the repository, a runtime scan marks
 the container's update assessment failed, the base-image resolution keeps the image's own tag.
 
+Real listings are long. Measured on 2026-11-13 (plan challenge of #301): the anonymous `tags/list` walk of
+`ghcr.io/renovatebot/renovate` with `n=100` followed 270 pages (26,988 tags), and Docker Hub reports a `count` of
+46,986 tags (470 pages of 100) for `renovate/renovate`. A scan with a pinned version tag reads an OCI listing by name
+until 250 tags qualify, and a Docker Hub listing without the current tag's publication time, or account discovery,
+reads every page, so a cap near these sizes would fail such images on every scan.
+
 ## Options considered
 
-1. **A fixed page cap per listing; a listing that would read past it ends *failed*, without the entries read** — the
-   same outcome as a rejected next-page link, so every caller already handles it, and no truncated list is ever
-   taken as complete. A repository with more entries than the cap reaches, whose listing has no earlier stop, fails
-   where it used to succeed slowly. Chosen.
-2. **The cap with the entries read so far as *succeeded*, as Docker Scout does** — keeps such huge listings working,
-   but a truncated account listing makes discovery disable the images beyond the cap, an OCI listing (lexically
-   ordered) loses an arbitrary part of its tags, a repeated link fills the result with copies of one page, and a
-   truncated tag list hides updates silently — the reason 0004 rejected partial results for a rejected link.
-3. **Stop only when a next link repeats** — ends the loop on one page, not an endless sequence of distinct links
-   (`page=2`, `page=3`, …).
-4. **A time budget per listing** — bounds the duration, not the requests; a fast server still gets an unbounded
-   number of them within it, and the count of pages needs no clock.
-5. **A configurable cap** — a new key with validation and documentation without a known operator need; the constant
-   can become one when a real repository needs it.
+1. **Stop *failed* when a next link names a page the listing already requested, and after a fixed page cap well above
+   the largest measured listing (1,000 pages of 100)** — a repeating link ends after one extra page, an endless
+   sequence of distinct links after the cap; no measured repository reaches it. Chosen.
+2. **The cap alone, at 100 pages** — the first proposal; breaks the measured repositories above.
+3. **The cap alone, at 1,000 pages** — bounds everything, but a link that repeats costs a thousand requests on every
+   scan before it fails, against the Docker Hub rate limit.
+4. **The cap with the entries read so far as *succeeded*, as Docker Scout does** — a truncated account listing makes
+   discovery disable the images beyond the cut, an OCI listing (ordered by name) loses an arbitrary part of its tags,
+   and a truncated tag list hides updates silently — the reason 0004 rejected partial results.
+5. **Repeated-link detection alone** — does not stop an endless sequence of distinct links (`page=2`, `page=3`, …).
+6. **A time budget per listing** — bounds the duration, not the requests; a fast server still gets an unbounded
+   number of them within it.
+7. **A configurable cap** — a new key with validation and documentation without a known operator need.
+8. **A cap counted in entries** — a server can send empty pages; pages are what bound the requests.
 
 ## Decision
 
-Each of the three listings reads at most a fixed number of pages; when the last allowed page still links to a next
-page on the listing's origin, the listing ends *failed* with a fixed message and a warning, and sends no further request.
-The cap, the message and the order against the origin check are in
+Each of the three listings ends *failed*, with a fixed message and a warning and without the entries read, when a
+same-origin next link names a page the listing already requested, or when the last of a fixed number of pages still
+links to a next page; no further request is sent. The cap, the messages and their order after the origin check are in
 [Registries](../areas/registries.md#pagination-links).
 
 ## Consequences
 
 - A registry can no longer keep a scan or a discovery run reading: every listing sends a bounded number of requests.
-- A listing that needs more pages than the cap (a repository with more tags than the cap holds whose scan has no
-  earlier stop, or account discovery, which reads every tag of each own repository) is *failed*: the container's update
-  assessment reports it, discovery skips the repository and keeps its observed image as it was.
+- A listing bounded in requests is not bounded in duration: a slow server can hold one for up to the page cap times
+  the request timeout. Nor is it bounded in memory beyond the entries of the pages read.
+- A listing that needs more than 1,000 pages is *failed*: the container's update assessment reports it, discovery
+  skips the repository and keeps its observed image as it was.
+- A server that varies a link only in a parameter it ignores is not caught as repeating; the cap still ends it.
 - Docker Scout keeps its own cap of 50 pages with a partial success; aligning it is a separate decision.
-- Revisit when a real repository is found that legitimately needs more pages, by raising the cap or making it
-  configurable (option 5).
+- Revisit when a real repository needs more than the cap, by raising it or making it configurable (option 7).
