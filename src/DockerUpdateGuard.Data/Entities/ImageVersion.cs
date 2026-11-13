@@ -5,6 +5,15 @@ namespace DockerUpdateGuard.Data.Entities;
 /// </summary>
 public class ImageVersion
 {
+    #region Constants
+
+    /// <summary>
+    /// Maximum length of the vulnerability assessment message
+    /// </summary>
+    public const int MaxVulnerabilityAssessmentMessageLength = 2000;
+
+    #endregion // Constants
+
     #region Properties
 
     /// <summary>

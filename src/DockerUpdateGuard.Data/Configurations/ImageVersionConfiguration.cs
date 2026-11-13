@@ -46,7 +46,7 @@ public class ImageVersionConfiguration : IEntityTypeConfiguration<ImageVersion>
                .IsRequired();
 
         builder.Property(entity => entity.VulnerabilityAssessmentMessage)
-               .HasMaxLength(2000);
+               .HasMaxLength(ImageVersion.MaxVulnerabilityAssessmentMessageLength);
 
         builder.Property(entity => entity.CreatedAtUtc)
                .IsRequired();

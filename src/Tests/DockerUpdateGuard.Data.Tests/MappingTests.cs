@@ -118,6 +118,38 @@ public class MappingTests
     }
 
     /// <summary>
+    /// Verify the vulnerability value columns use the maximum lengths the entities declare
+    /// </summary>
+    [TestMethod]
+    [TestCategory("AC5")]
+    public void DockerUpdateGuardDbContextModelVulnerabilityValueColumnsUseEntityMaxLengths()
+    {
+        using (var database = new SqliteTestDatabase())
+        {
+            using (var dbContext = database.CreateDbContext())
+            {
+                var findingEntity = dbContext.Model.FindEntityType(typeof(VulnerabilityFinding));
+                var imageVersionEntity = dbContext.Model.FindEntityType(typeof(ImageVersion));
+
+                Assert.IsNotNull(findingEntity, "Vulnerability finding entity must be part of the EF model");
+                Assert.IsNotNull(imageVersionEntity, "Image version entity must be part of the EF model");
+
+                AssertMaxLength(findingEntity, nameof(VulnerabilityFinding.AdvisoryId), VulnerabilityFinding.MaxAdvisoryIdLength, 100);
+                AssertMaxLength(findingEntity, nameof(VulnerabilityFinding.Title), VulnerabilityFinding.MaxTitleLength, 300);
+                AssertMaxLength(findingEntity, nameof(VulnerabilityFinding.AffectedPackage), VulnerabilityFinding.MaxAffectedPackageLength, 200);
+                AssertMaxLength(findingEntity, nameof(VulnerabilityFinding.InstalledVersion), VulnerabilityFinding.MaxInstalledVersionLength, 100);
+                AssertMaxLength(findingEntity, nameof(VulnerabilityFinding.FixedVersion), VulnerabilityFinding.MaxFixedVersionLength, 100);
+                AssertMaxLength(findingEntity, nameof(VulnerabilityFinding.PackageClass), VulnerabilityFinding.MaxPackageClassLength, 50);
+                AssertMaxLength(findingEntity, nameof(VulnerabilityFinding.PackageType), VulnerabilityFinding.MaxPackageTypeLength, 50);
+                AssertMaxLength(imageVersionEntity,
+                                nameof(ImageVersion.VulnerabilityAssessmentMessage),
+                                ImageVersion.MaxVulnerabilityAssessmentMessageLength,
+                                2000);
+            }
+        }
+    }
+
+    /// <summary>
     /// Verify the DbContext persists a representative data foundation graph
     /// </summary>
     /// <returns>Task</returns>
@@ -313,6 +345,22 @@ public class MappingTests
                                 "The reported package type must survive the persistence round-trip");
             }
         }
+    }
+
+    /// <summary>
+    /// Assert a property's mapped maximum length equals the entity constant and the unchanged column length
+    /// </summary>
+    /// <param name="entityType">Entity type metadata</param>
+    /// <param name="propertyName">Property name</param>
+    /// <param name="constantLength">Maximum length constant declared on the entity</param>
+    /// <param name="expectedLength">Column length that must stay unchanged</param>
+    private static void AssertMaxLength(IEntityType entityType, string propertyName, int constantLength, int expectedLength)
+    {
+        var property = entityType.FindProperty(propertyName);
+
+        Assert.IsNotNull(property, $"{propertyName} must be mapped");
+        Assert.AreEqual(constantLength, property.GetMaxLength(), $"{propertyName} must use the entity's maximum length constant");
+        Assert.AreEqual(expectedLength, constantLength, $"{propertyName} must keep its column length");
     }
 
     /// <summary>
