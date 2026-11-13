@@ -86,4 +86,5 @@ once in the [area document](../areas/README.md) of the record's area, and the re
 | [0023](0023-the-docker-hub-web-api-token-is-cached-process-wide-per-credentials.md) | The Docker Hub web API token is cached process-wide, per credentials | Accepted | 2026-11-12 |
 | [0024](0024-registry-listings-stop-failed-after-a-page-cap.md) | Registry listings stop with *failed* at a repeated link or after a page cap | Accepted | 2026-11-13 |
 | [0025](0025-a-failing-interval-lookup-keeps-the-jobs-last-known-interval.md) | A failing interval lookup keeps the job's last known interval | Accepted | 2026-11-13 |
+| [0026](0026-a-failed-stats-request-drops-only-its-container-from-a-resource-round.md) | A failed stats request drops only its container from a resource round | Proposed | 2026-11-13 |
 <!-- project:end index -->
