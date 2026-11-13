@@ -39,6 +39,8 @@ The host runs exactly seven recurring background jobs, all in the application pr
   logs a warning with its name and the interval it falls back to and waits its last interval read successfully;
   before its first successful read that is the interval of the configuration it read when the host started (for the
   observed-image refresh `OwnImageBaseScanIntervalMinutes`). The next valid read takes effect from the next wait.
+  A shutdown cancels a read in progress, including the observed-image count while the database retry policy repeats
+  it, and the job ends without the warning.
 - Each run works in its own unit of work (its own database context), so no state carries over between runs.
 
 ### Dynamic observed-image interval
