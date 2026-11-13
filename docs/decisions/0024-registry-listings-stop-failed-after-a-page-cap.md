@@ -51,7 +51,7 @@ links to a next page; no further request is sent. The cap, the messages and thei
 
 - A registry can no longer keep a scan or a discovery run reading: every listing sends a bounded number of requests.
 - A listing bounded in requests is not bounded in duration: a slow server can hold one for up to the page cap times
-  the request timeout. Nor is it bounded in memory beyond the entries of the pages read.
+  the request timeout. Nor is it bounded in memory beyond the entries and the request URIs of the pages read.
 - A listing that needs more than 1,000 pages is *failed*: the container's update assessment reports it, discovery
   skips the repository and keeps its observed image as it was.
 - A server that varies a link only in a parameter it ignores is not caught as repeating; the cap still ends it.
