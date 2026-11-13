@@ -14,3 +14,4 @@ are quoted in full.
 | 2026-11-13 19:43 | 6 Implement | Dev | Implemented cut, per-image isolation, configs and docs; 5 new tests green, coverage gate passes (94.3%) (sonnet/medium · 125,992 tokens · 14 tool uses · 220 s · 24 in · 10,232 out · 1,193,808 cache read · 71,061 cache write · 259,391 weighted) |
 | 2026-11-13 19:47 | 6 Coverage | Tester | AC5 and AC8 tests plus null-message test added; coverage gate passes (95.5%). Deferred: none (sonnet/medium · 115,413 tokens · 20 tool uses · 242 s · 38 in · 11,382 out · 1,878,739 cache read · 60,843 cache write · 320,876 weighted) |
 | 2026-11-13 19:47 | 6 Documentation | Orchestrator | written in 6 Implement |
+| 2026-11-13 19:50 | 7 Gate stamp | Orchestrator | PASS on 3a0de5e24dba6cbeb50a25f6bae101df2e6817bb (tier standard): Format check pass; Analyzer gate pass; Test with coverage pass; Coverage gate pass; decision-check.py pass; scope-check.py pass · figure-check.py 47 hit(s) |
