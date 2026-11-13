@@ -752,5 +752,31 @@ internal static partial class ImageHostLoggingExtensions
                    Message = "Resource statistics collection failed for Docker instance {DockerInstanceName}: {Message}")]
     public static partial void ResourceStatisticsCollectionFailed(this ILogger logger, string dockerInstanceName, string? message);
 
+    /// <summary>
+    /// Log that an OCI registry tag listing stopped at the page cap
+    /// </summary>
+    /// <param name="logger">Logger</param>
+    /// <param name="registry">Registry host</param>
+    /// <param name="repository">Repository name</param>
+    /// <param name="pageCap">Maximum number of pages</param>
+    [LoggerMessage(EventId = 2104,
+                   Level = LogLevel.Warning,
+                   Message = "Registry tag listing for {Registry}/{Repository} stopped at the page cap of {PageCap}")]
+    public static partial void OciRegistryPaginationPageCapReached(this ILogger logger,
+                                                                   string registry,
+                                                                   string repository,
+                                                                   int pageCap);
+
+    /// <summary>
+    /// Log that an OCI registry tag listing stopped because the next-page link repeated a page already read
+    /// </summary>
+    /// <param name="logger">Logger</param>
+    /// <param name="registry">Registry host</param>
+    /// <param name="repository">Repository name</param>
+    [LoggerMessage(EventId = 2105,
+                   Level = LogLevel.Warning,
+                   Message = "Registry tag listing for {Registry}/{Repository} stopped because the next-page link repeated a page already read")]
+    public static partial void OciRegistryPaginationLinkRepeated(this ILogger logger, string registry, string repository);
+
     #endregion // Methods
 }

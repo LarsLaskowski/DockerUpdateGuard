@@ -17,6 +17,11 @@ internal static class PaginationLinkGuard
     /// </summary>
     public const int MaxOriginDescriptionLength = 300;
 
+    /// <summary>
+    /// Maximum number of pages a paginated listing reads before it stops as failed
+    /// </summary>
+    public const int MaxListingPages = 1000;
+
     #endregion // Constants
 
     #region Methods
@@ -82,6 +87,26 @@ internal static class PaginationLinkGuard
     public static string CreateRejectionMessage(string listingDescription, string rejectedOrigin)
     {
         return $"{listingDescription} stopped: the next-page link pointed to a different origin ({rejectedOrigin})";
+    }
+
+    /// <summary>
+    /// Create the failure message of a listing stopped at the page cap
+    /// </summary>
+    /// <param name="listingDescription">Description of the listing</param>
+    /// <returns>Failure message</returns>
+    public static string CreatePageCapMessage(string listingDescription)
+    {
+        throw new InvalidOperationException("Skeleton: not implemented");
+    }
+
+    /// <summary>
+    /// Create the failure message of a listing stopped by a next-page link that repeated a page already read
+    /// </summary>
+    /// <param name="listingDescription">Description of the listing</param>
+    /// <returns>Failure message</returns>
+    public static string CreateRepeatedLinkMessage(string listingDescription)
+    {
+        throw new InvalidOperationException("Skeleton: not implemented");
     }
 
     #endregion // Methods
