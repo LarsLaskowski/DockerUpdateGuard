@@ -96,7 +96,7 @@ internal static class PaginationLinkGuard
     /// <returns>Failure message</returns>
     public static string CreatePageCapMessage(string listingDescription)
     {
-        throw new InvalidOperationException("Skeleton: not implemented");
+        return $"{listingDescription} stopped: the listing did not end within {MaxListingPages} pages";
     }
 
     /// <summary>
@@ -106,7 +106,17 @@ internal static class PaginationLinkGuard
     /// <returns>Failure message</returns>
     public static string CreateRepeatedLinkMessage(string listingDescription)
     {
-        throw new InvalidOperationException("Skeleton: not implemented");
+        return $"{listingDescription} stopped: the next-page link repeated a page already read";
+    }
+
+    /// <summary>
+    /// Create the identity of a listing request: scheme, host, port, path and query without user info and fragment
+    /// </summary>
+    /// <param name="requestUri">URI of the request</param>
+    /// <returns>Request identity</returns>
+    public static string CreateRequestKey(Uri requestUri)
+    {
+        return requestUri.GetComponents(UriComponents.HttpRequestUrl, UriFormat.UriEscaped);
     }
 
     #endregion // Methods

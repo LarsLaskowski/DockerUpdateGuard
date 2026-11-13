@@ -127,10 +127,22 @@ go through its retry of transient HTTP failures.
   the same origin is logged as a warning. The origin text is the scheme, host (in punycode) and, unless it is the
   default, the port; user info, path and query of the link are never written. A link that cannot be parsed is
   described as `unparseable link`. The origin text is cut to 300 characters followed by `…` and cleaned like an excerpt ([Integration failures](integration-failures.md#excerpts-of-remote-text)).
+- After the origin check, a link whose request (scheme, host, port, path and query, without user info and fragment) the
+  listing already sent makes the listing *failed* with
+  `<listing> stopped: the next-page link repeated a page already read`; a link that differs only in its fragment
+  repeats a page, a link that differs in a query parameter the server ignores does not. Then, when the listing has read
+  `PaginationLinkGuard.MaxListingPages` (1,000) pages and the last one still links to a next page, the listing is
+  *failed* with `<listing> stopped: the listing did not end within 1000 pages`. A page counts once its response was
+  read, the first included, so a listing of exactly 1,000 pages whose last page has no next link succeeds. Both stops
+  discard the entries read, send no further request and log a warning (Docker Hub tag and repository listings: event
+  3215 and 3214; OCI tag listing: 2105 and 2104). They apply to the Docker Hub tag and repository listings and the OCI
+  tag listing, not to Docker Scout. The cap bounds the number of requests of a listing, not its duration, memory or
+  the size of a response.
 - The guard applies only where a listing would follow the link: a listing that stops on its own condition (a Docker
   Hub bound, the maximum tag count) does not look at it, and an empty link ends the listing as before.
 - Not covered: the token service a `WWW-Authenticate` challenge names, and HTTP redirects.
-- Decision: [0004](../decisions/0004-pagination-follows-only-same-origin-links.md).
+- Decisions: [0004](../decisions/0004-pagination-follows-only-same-origin-links.md),
+  [0024](../decisions/0024-registry-listings-stop-failed-after-a-page-cap.md).
 
 ### Authentication
 
@@ -163,7 +175,7 @@ go through its retry of transient HTTP failures.
 - The account listing requires `DockerUpdateGuard:DockerHub:Registry` to name a Docker Hub host; otherwise it answers
   *unsupported* and the run ends without changes.
 - The account is the namespace equal to `UserName`. All its repositories are listed (pages of 100, following the `next` link as described in
-  [Pagination links](#pagination-links)), including private ones the token can see. Repository names are lowercased; duplicates collapse to the most recently updated one.
+  [Pagination links](#pagination-links)) up to 1,000 pages, including private ones the token can see. Repository names are lowercased; duplicates collapse to the most recently updated one.
 - For each repository the full tag list is read and one tag is tracked: the most recently pushed; on equal push time
   `latest` first, then alphabetical; tags without a push time come last.
 - Each repository becomes an observed image with source *discovery*, matched by registry and repository
@@ -226,7 +238,8 @@ go through its retry of transient HTTP failures.
 - *Failed*: any other non-success status, a token that cannot be obtained, a login deferred by the server's `Retry-After` window (the message names the end of
   the window), a PAT without user name, a multi-platform
   index without a usable entry. The message contains the status code and the bounded excerpt of the remote response body ([Integration failures](integration-failures.md#excerpts-of-remote-text)). A next-page link
-  to another origin also gives *failed*, with the message of [Pagination links](#pagination-links).
+  to another origin, a next-page link that repeats a page already read and a Docker Hub or OCI listing that does not
+  end within 1,000 pages also give *failed*, with the messages of [Pagination links](#pagination-links).
 - The Docker Hub current-user, account listing, repository, tag and tag-listing calls and the OCI tag, tag-listing and
   image configuration calls answer an unreadable body (malformed JSON, or a string that does not decode) as *failed*
   with `invalid response`, logging one warning with the exception.
@@ -237,8 +250,9 @@ go through its retry of transient HTTP failures.
   scan: `Container '<name>' could not be processed: <reason>` or `Observed image scan failed: <reason>`.
 - The PAT is never written to logs or messages. The user name appears in the log entry and the message of a failed
   Docker Hub login.
-- Registry responses are untrusted: missing or mistyped JSON fields are treated as unknown values. An unbounded
-  listing (account discovery) reads every page the registry offers. Tag names, digests, the image references of
+- Registry responses are untrusted: missing or mistyped JSON fields are treated as unknown values. A listing
+  (account discovery included) reads at most 1,000 pages, so its number of requests is bounded; no bound on duration,
+  memory or response size is claimed. Tag names, digests, the image references of
   base-image labels and the repository names of the account listing leave the clients only when they fit their
   grammars and lengths (see *What can be read*); the names of Docker Engine containers and discovered images are cut
   to their stored length, so these values fit every column they reach ([0014](../decisions/0014-registry-tag-names-and-digests-are-validated-where-they-are-read.md)).
@@ -261,6 +275,8 @@ go through its retry of transient HTTP failures.
 ## Related decisions
 
 - [0004](../decisions/0004-pagination-follows-only-same-origin-links.md): pagination follows only same-origin links.
+- [0024](../decisions/0024-registry-listings-stop-failed-after-a-page-cap.md): listings stop *failed* at a repeated
+  link or after a page cap.
 - [0019](../decisions/0019-remote-json-with-undecodable-strings-is-an-invalid-response.md): remote JSON with a string
   that does not decode is an invalid response.
 - [0014](../decisions/0014-registry-tag-names-and-digests-are-validated-where-they-are-read.md): remote tag names,
