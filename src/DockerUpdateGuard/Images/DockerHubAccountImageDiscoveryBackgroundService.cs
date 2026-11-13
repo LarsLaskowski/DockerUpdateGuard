@@ -32,10 +32,14 @@ public class DockerHubAccountImageDiscoveryBackgroundService : ScheduledBackgrou
     /// <param name="logger">Logger</param>
     /// <param name="optionsMonitor">Options monitor</param>
     /// <param name="serviceScopeFactory">Service scope factory</param>
+    /// <param name="timeProvider">Time provider</param>
     public DockerHubAccountImageDiscoveryBackgroundService(ILogger<DockerHubAccountImageDiscoveryBackgroundService> logger,
                                                            IOptionsMonitor<DockerUpdateGuardOptions> optionsMonitor,
-                                                           IServiceScopeFactory serviceScopeFactory)
-        : base(logger)
+                                                           IServiceScopeFactory serviceScopeFactory,
+                                                           TimeProvider timeProvider)
+        : base(logger,
+               timeProvider,
+               GetConfiguredInterval(optionsMonitor.CurrentValue))
     {
         _optionsMonitor = optionsMonitor;
         _serviceScopeFactory = serviceScopeFactory;
@@ -43,12 +47,26 @@ public class DockerHubAccountImageDiscoveryBackgroundService : ScheduledBackgrou
 
     #endregion // Constructors
 
+    #region Static methods
+
+    /// <summary>
+    /// Resolve the execution interval of the supplied options
+    /// </summary>
+    /// <param name="options">Application options</param>
+    /// <returns>Execution interval</returns>
+    private static TimeSpan GetConfiguredInterval(DockerUpdateGuardOptions options)
+    {
+        return TimeSpan.FromMinutes(options.Scanning.DockerHubAccountDiscoveryIntervalMinutes);
+    }
+
+    #endregion // Static methods
+
     #region ScheduledBackgroundService
 
     /// <inheritdoc/>
     protected override TimeSpan GetInterval()
     {
-        return TimeSpan.FromMinutes(_optionsMonitor.CurrentValue.Scanning.DockerHubAccountDiscoveryIntervalMinutes);
+        return GetConfiguredInterval(_optionsMonitor.CurrentValue);
     }
 
     /// <inheritdoc/>

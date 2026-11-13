@@ -22,15 +22,44 @@ internal sealed class TestScanCleanupBackgroundService : ScanCleanupBackgroundSe
     public TestScanCleanupBackgroundService(ILogger<ScanCleanupBackgroundService> logger,
                                             Microsoft.Extensions.Options.IOptionsMonitor<DockerUpdateGuardOptions> optionsMonitor,
                                             IServiceScopeFactory serviceScopeFactory)
+        : this(logger,
+               optionsMonitor,
+               serviceScopeFactory,
+               TimeProvider.System)
+    {
+    }
+
+    /// <summary>
+    /// Constructor
+    /// </summary>
+    /// <param name="logger">Logger</param>
+    /// <param name="optionsMonitor">Options monitor</param>
+    /// <param name="serviceScopeFactory">Service scope factory</param>
+    /// <param name="timeProvider">Time provider used for the wait</param>
+    public TestScanCleanupBackgroundService(ILogger<ScanCleanupBackgroundService> logger,
+                                            Microsoft.Extensions.Options.IOptionsMonitor<DockerUpdateGuardOptions> optionsMonitor,
+                                            IServiceScopeFactory serviceScopeFactory,
+                                            TimeProvider timeProvider)
         : base(logger,
                optionsMonitor,
-               serviceScopeFactory)
+               serviceScopeFactory,
+               timeProvider)
     {
     }
 
     #endregion // Constructors
 
     #region Methods
+
+    /// <summary>
+    /// Run the scheduled loop of the base class until the supplied token is cancelled
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Task</returns>
+    public Task RunAsync(CancellationToken cancellationToken)
+    {
+        return ExecuteAsync(cancellationToken);
+    }
 
     /// <summary>
     /// Execute one cleanup cycle

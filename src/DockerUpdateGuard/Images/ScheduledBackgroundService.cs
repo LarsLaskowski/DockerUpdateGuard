@@ -14,6 +14,16 @@ public abstract class ScheduledBackgroundService : BackgroundService
     /// </summary>
     private readonly ILogger _logger;
 
+    /// <summary>
+    /// Time provider used for the wait between two runs
+    /// </summary>
+    private readonly TimeProvider _timeProvider;
+
+    /// <summary>
+    /// Last interval read successfully, the initial interval until the first successful read
+    /// </summary>
+    private TimeSpan _lastKnownInterval;
+
     #endregion // Fields
 
     #region Constructors
@@ -22,9 +32,13 @@ public abstract class ScheduledBackgroundService : BackgroundService
     /// Constructor
     /// </summary>
     /// <param name="logger">Logger</param>
-    protected ScheduledBackgroundService(ILogger logger)
+    /// <param name="timeProvider">Time provider</param>
+    /// <param name="initialInterval">Interval the service waits until its interval was read successfully once</param>
+    protected ScheduledBackgroundService(ILogger logger, TimeProvider timeProvider, TimeSpan initialInterval)
     {
         _logger = logger;
+        _timeProvider = timeProvider;
+        _lastKnownInterval = initialInterval;
     }
 
     #endregion // Constructors
@@ -61,6 +75,37 @@ public abstract class ScheduledBackgroundService : BackgroundService
     protected virtual Task ExecuteStartupAsync(CancellationToken stoppingToken)
     {
         return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Resolve the current execution interval and fall back to the last known interval when the lookup fails
+    /// </summary>
+    /// <param name="backgroundServiceName">Background service name</param>
+    /// <param name="stoppingToken">Cancellation token</param>
+    /// <returns>Execution interval</returns>
+    private TimeSpan GetIntervalSafely(string backgroundServiceName, CancellationToken stoppingToken)
+    {
+        try
+        {
+            var interval = GetInterval();
+
+            _lastKnownInterval = interval;
+
+            return interval;
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            // Expected during host shutdown, the caller ends on the cancelled token
+            return _lastKnownInterval;
+        }
+        catch (Exception exception)
+        {
+            _logger.BackgroundServiceIntervalLookupFailed(exception,
+                                                          backgroundServiceName,
+                                                          _lastKnownInterval.TotalMinutes);
+
+            return _lastKnownInterval;
+        }
     }
 
     /// <summary>
@@ -130,7 +175,7 @@ public abstract class ScheduledBackgroundService : BackgroundService
 
         if (_logger.IsEnabled(LogLevel.Information))
         {
-            _logger.BackgroundServiceStarted(backgroundServiceName, GetInterval().TotalMinutes);
+            _logger.BackgroundServiceStarted(backgroundServiceName, GetIntervalSafely(backgroundServiceName, stoppingToken).TotalMinutes);
         }
 
         await ExecuteStartupSafelyAsync(stoppingToken).ConfigureAwait(false);
@@ -142,13 +187,13 @@ public abstract class ScheduledBackgroundService : BackgroundService
 
         while (stoppingToken.IsCancellationRequested == false)
         {
-            var interval = GetInterval();
+            var interval = GetIntervalSafely(backgroundServiceName, stoppingToken);
 
             _logger.BackgroundServiceWaiting(backgroundServiceName, interval.TotalMinutes);
 
             try
             {
-                await Task.Delay(interval, stoppingToken)
+                await Task.Delay(interval, _timeProvider, stoppingToken)
                           .ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)

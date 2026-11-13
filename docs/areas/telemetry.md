@@ -110,7 +110,9 @@ Every exported signal carries the same resource:
   host and port of a rejected next-page link (cut to 300 characters), the bounded excerpt of a remote error response (like the rejected origin, Docker Scout's unknown severity value and Trivy's error messages, with its control characters replaced; [Integration failures](integration-failures.md#excerpts-of-remote-text)), counts, durations, error messages from external tools (Trivy's only
   for a `TrivyBaseUrl` without `@`, [Vulnerabilities](vulnerabilities.md#trivy)) and, on the error entries of failed
   integration calls, scan steps and user actions, the exception with its message, which can name a registry, Docker or
-  database host. Retry log
+  database host. The warning of a failed interval lookup of a background job carries the exception too: its message
+  can name the database host or hold the configuration validation failures (key names, configured instance names, a
+  client certificate path). Retry log
   lines carry the request URL without its user info and query string.
 - HTTP client spans (`url.full`) and the HTTP client log lines carry scheme, host, port and path only, with query
   values as `*`, unless the platform's URI redaction is switched off
