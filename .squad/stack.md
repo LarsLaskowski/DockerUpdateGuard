@@ -46,6 +46,8 @@ profile and owned by this repository: keep it true when the build changes.
 - Tests: `src/Tests/DockerUpdateGuard.Tests/` (host/application layer) and
   `src/Tests/DockerUpdateGuard.Data.Tests/` (data layer), one test class per type under test in
   `{TypeUnderTest}Tests.cs` (or `…RenderTests` / `…PersistentStateTests` when split, `docs/UNIT_TESTS.md`).
+  Every test project has a `MSTestSettings.cs` with `[assembly: DoNotParallelize]` (MSTEST0001), and a new test
+  project adds the same file.
 
 ## Commands
 
