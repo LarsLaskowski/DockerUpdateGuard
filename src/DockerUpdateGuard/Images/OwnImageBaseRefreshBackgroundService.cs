@@ -52,14 +52,15 @@ public class OwnImageBaseRefreshBackgroundService : ScheduledBackgroundService
     #region ScheduledBackgroundService
 
     /// <inheritdoc/>
-    protected override TimeSpan GetInterval()
+    protected override Task<TimeSpan> GetIntervalAsync(CancellationToken stoppingToken)
     {
+        // Skeleton: removed with the implementation
         using (var scope = _serviceScopeFactory.CreateScope())
         {
             var dbContext = scope.ServiceProvider.GetRequiredService<DockerUpdateGuardDbContext>();
             var observedImageCount = dbContext.ObservedImages.Count(entity => entity.IsEnabled);
 
-            return ObservedImageScanIntervalCalculator.CalculateInterval(_optionsMonitor.CurrentValue.Scanning, observedImageCount);
+            return Task.FromResult(ObservedImageScanIntervalCalculator.CalculateInterval(_optionsMonitor.CurrentValue.Scanning, observedImageCount));
         }
     }
 

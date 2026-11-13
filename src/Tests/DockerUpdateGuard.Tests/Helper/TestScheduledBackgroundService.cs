@@ -130,11 +130,11 @@ internal sealed class TestScheduledBackgroundService : ScheduledBackgroundServic
     #region ScheduledBackgroundService
 
     /// <inheritdoc/>
-    protected override TimeSpan GetInterval()
+    protected override Task<TimeSpan> GetIntervalAsync(CancellationToken stoppingToken)
     {
         var lookupNumber = Interlocked.Increment(ref _intervalLookupCount) - 1;
 
-        return _intervalSource is null ? _interval : _intervalSource(lookupNumber);
+        return Task.FromResult(_intervalSource is null ? _interval : _intervalSource(lookupNumber));
     }
 
     /// <inheritdoc/>
