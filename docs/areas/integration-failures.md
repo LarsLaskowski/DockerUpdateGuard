@@ -57,7 +57,8 @@ operator's logs rely on it; each integration area states only what it adds.
   request URI (OCI) or the Docker Hub user name before the token endpoint's own body excerpt, so that body may be cut
   away.
 - A listing stopped by a rejected next-page link has neither a status code nor a body and names the rejected origin
-  instead ([Registries](registries.md#pagination-links)).
+  instead; a listing stopped by a repeated link or the page cap has neither a status code, a body nor an origin
+  ([Registries](registries.md#pagination-links)).
 
 ### Remote text fields
 

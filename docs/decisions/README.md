@@ -84,4 +84,5 @@ once in the [area document](../areas/README.md) of the record's area, and the re
 | [0021](0021-of-image-configuration-labels-with-colliding-names-the-last-one-wins.md) | Of image configuration labels with colliding names, the last one wins | Accepted | 2026-11-07 |
 | [0022](0022-a-logins-retry-after-window-is-remembered-process-wide.md) | A login's Retry-After window is remembered process-wide | Accepted | 2026-11-10 |
 | [0023](0023-the-docker-hub-web-api-token-is-cached-process-wide-per-credentials.md) | The Docker Hub web API token is cached process-wide, per credentials | Accepted | 2026-11-12 |
+| [0024](0024-registry-listings-stop-failed-after-a-page-cap.md) | Registry listings stop with *failed* at a repeated link or after a page cap | Accepted | 2026-11-13 |
 <!-- project:end index -->

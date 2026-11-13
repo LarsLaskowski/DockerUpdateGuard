@@ -17,6 +17,11 @@ internal static class PaginationLinkGuard
     /// </summary>
     public const int MaxOriginDescriptionLength = 300;
 
+    /// <summary>
+    /// Maximum number of pages a paginated listing reads before it stops as failed
+    /// </summary>
+    public const int MaxListingPages = 1000;
+
     #endregion // Constants
 
     #region Methods
@@ -82,6 +87,36 @@ internal static class PaginationLinkGuard
     public static string CreateRejectionMessage(string listingDescription, string rejectedOrigin)
     {
         return $"{listingDescription} stopped: the next-page link pointed to a different origin ({rejectedOrigin})";
+    }
+
+    /// <summary>
+    /// Create the failure message of a listing stopped at the page cap
+    /// </summary>
+    /// <param name="listingDescription">Description of the listing</param>
+    /// <returns>Failure message</returns>
+    public static string CreatePageCapMessage(string listingDescription)
+    {
+        return $"{listingDescription} stopped: the listing did not end within {MaxListingPages} pages";
+    }
+
+    /// <summary>
+    /// Create the failure message of a listing stopped by a next-page link that repeated a page already read
+    /// </summary>
+    /// <param name="listingDescription">Description of the listing</param>
+    /// <returns>Failure message</returns>
+    public static string CreateRepeatedLinkMessage(string listingDescription)
+    {
+        return $"{listingDescription} stopped: the next-page link repeated a page already read";
+    }
+
+    /// <summary>
+    /// Create the identity of a listing request: scheme, host, port, path and query without user info and fragment
+    /// </summary>
+    /// <param name="requestUri">URI of the request</param>
+    /// <returns>Request identity</returns>
+    public static string CreateRequestKey(Uri requestUri)
+    {
+        return requestUri.GetComponents(UriComponents.HttpRequestUrl, UriFormat.UriEscaped);
     }
 
     #endregion // Methods

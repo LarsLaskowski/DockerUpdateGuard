@@ -149,5 +149,31 @@ internal static partial class DockerHubClientLogging
                                                         string operationName,
                                                         string targetName);
 
+    /// <summary>
+    /// Log that a Docker Hub pagination stopped at the page cap
+    /// </summary>
+    /// <param name="logger">Logger</param>
+    /// <param name="operationName">Operation name</param>
+    /// <param name="targetName">Account or repository the listing belongs to</param>
+    /// <param name="pageCap">Maximum number of pages</param>
+    [LoggerMessage(EventId = 3214,
+                   Level = LogLevel.Warning,
+                   Message = "Docker Hub {OperationName} pagination for {TargetName} stopped at the page cap of {PageCap}")]
+    public static partial void DockerHubPaginationPageCapReached(this ILogger logger,
+                                                                 string operationName,
+                                                                 string targetName,
+                                                                 int pageCap);
+
+    /// <summary>
+    /// Log that a Docker Hub pagination stopped because the next-page link repeated a page already read
+    /// </summary>
+    /// <param name="logger">Logger</param>
+    /// <param name="operationName">Operation name</param>
+    /// <param name="targetName">Account or repository the listing belongs to</param>
+    [LoggerMessage(EventId = 3215,
+                   Level = LogLevel.Warning,
+                   Message = "Docker Hub {OperationName} pagination for {TargetName} stopped because the next-page link repeated a page already read")]
+    public static partial void DockerHubPaginationLinkRepeated(this ILogger logger, string operationName, string targetName);
+
     #endregion // Methods
 }

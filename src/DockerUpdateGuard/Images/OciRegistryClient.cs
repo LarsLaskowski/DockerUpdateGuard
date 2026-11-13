@@ -1225,6 +1225,10 @@ public partial class OciRegistryClient : IRegistryMetadataClient
         var requestUri = allowedOrigin;
         var tags = new List<DockerHubTagData>();
         var inspectedTagCount = 0;
+        var requestedPages = new HashSet<string>(StringComparer.Ordinal)
+                             {
+                                 PaginationLinkGuard.CreateRequestKey(requestUri)
+                             };
 
         while (true)
         {
@@ -1266,21 +1270,69 @@ public partial class OciRegistryClient : IRegistryMetadataClient
                 break;
             }
 
-            var nextUri = PaginationLinkGuard.ResolveNextLink(requestUri, allowedOrigin, nextLink);
+            var (nextUri, stopResult) = AdvanceTagListing(lookupContext,
+                                                          allowedOrigin,
+                                                          requestUri,
+                                                          nextLink,
+                                                          requestedPages);
 
-            if (nextUri is null)
+            if (stopResult is not null)
             {
-                var rejectedOrigin = PaginationLinkGuard.DescribeOrigin(requestUri, nextLink);
-
-                _logger.OciRegistryPaginationLinkRejected(normalizedRegistry, repository, rejectedOrigin);
-
-                return ExternalOperationResult.Failed<IReadOnlyList<DockerHubTagData>>(PaginationLinkGuard.CreateRejectionMessage($"Registry tag listing for '{normalizedRegistry}/{repository}'", rejectedOrigin));
+                return stopResult;
             }
 
-            requestUri = nextUri;
+            requestUri = nextUri!;
         }
 
         return ExternalOperationResult.Succeeded<IReadOnlyList<DockerHubTagData>>(tags);
+    }
+
+    /// <summary>
+    /// Resolve the next-page link of the tag listing and stop the listing on a foreign origin, a repeated page or the page cap
+    /// </summary>
+    /// <param name="lookupContext">Tag lookup context</param>
+    /// <param name="allowedOrigin">First tag listing address</param>
+    /// <param name="currentRequestUri">URI of the request that returned the link</param>
+    /// <param name="nextLink">Raw next-page link</param>
+    /// <param name="requestedPages">Identities of the requests sent so far, extended by the next request when the listing goes on</param>
+    /// <returns>Next request URI, or the failed result when the listing stops</returns>
+    private (Uri? NextUri, ExternalOperationResult<IReadOnlyList<DockerHubTagData>>? Stop) AdvanceTagListing(RegistryTagLookupContext lookupContext,
+                                                                                                             Uri allowedOrigin,
+                                                                                                             Uri currentRequestUri,
+                                                                                                             string nextLink,
+                                                                                                             HashSet<string> requestedPages)
+    {
+        var registry = lookupContext.Registry;
+        var repository = lookupContext.Repository;
+        var listingDescription = $"Registry tag listing for '{registry}/{repository}'";
+        var nextUri = PaginationLinkGuard.ResolveNextLink(currentRequestUri, allowedOrigin, nextLink);
+
+        if (nextUri is null)
+        {
+            var rejectedOrigin = PaginationLinkGuard.DescribeOrigin(currentRequestUri, nextLink);
+
+            _logger.OciRegistryPaginationLinkRejected(registry, repository, rejectedOrigin);
+
+            return (null, ExternalOperationResult.Failed<IReadOnlyList<DockerHubTagData>>(PaginationLinkGuard.CreateRejectionMessage(listingDescription, rejectedOrigin)));
+        }
+
+        if (requestedPages.Contains(PaginationLinkGuard.CreateRequestKey(nextUri)))
+        {
+            _logger.OciRegistryPaginationLinkRepeated(registry, repository);
+
+            return (null, ExternalOperationResult.Failed<IReadOnlyList<DockerHubTagData>>(PaginationLinkGuard.CreateRepeatedLinkMessage(listingDescription)));
+        }
+
+        if (requestedPages.Count >= PaginationLinkGuard.MaxListingPages)
+        {
+            _logger.OciRegistryPaginationPageCapReached(registry, repository, PaginationLinkGuard.MaxListingPages);
+
+            return (null, ExternalOperationResult.Failed<IReadOnlyList<DockerHubTagData>>(PaginationLinkGuard.CreatePageCapMessage(listingDescription)));
+        }
+
+        requestedPages.Add(PaginationLinkGuard.CreateRequestKey(nextUri));
+
+        return (nextUri, null);
     }
 
     /// <summary>

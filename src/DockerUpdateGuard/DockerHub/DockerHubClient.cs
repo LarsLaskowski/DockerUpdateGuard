@@ -837,6 +837,54 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
     }
 
     /// <summary>
+    /// Resolve the next-page link of a listing and stop the listing on a foreign origin, a repeated page or the page cap
+    /// </summary>
+    /// <typeparam name="T">Result payload type</typeparam>
+    /// <param name="operationName">Listing operation name</param>
+    /// <param name="targetName">Account or repository the listing belongs to</param>
+    /// <param name="listingDescription">Description of the listing for the failure message</param>
+    /// <param name="currentRequestUri">URI of the request that returned the link</param>
+    /// <param name="nextLink">Raw next-page link</param>
+    /// <param name="requestedPages">Identities of the requests sent so far, extended by the next request when the listing goes on</param>
+    /// <returns>Next request URI, or the failed result when the listing stops</returns>
+    private (Uri? NextUri, ExternalOperationResult<T>? Stop) AdvanceListing<T>(string operationName,
+                                                                               string targetName,
+                                                                               string listingDescription,
+                                                                               Uri currentRequestUri,
+                                                                               string nextLink,
+                                                                               HashSet<string> requestedPages)
+    {
+        var nextUri = PaginationLinkGuard.ResolveNextLink(currentRequestUri, GetApiBaseUri(), nextLink);
+
+        if (nextUri is null)
+        {
+            return (null, RejectPaginationLink<T>(operationName,
+                                                  targetName,
+                                                  listingDescription,
+                                                  currentRequestUri,
+                                                  nextLink));
+        }
+
+        if (requestedPages.Contains(PaginationLinkGuard.CreateRequestKey(nextUri)))
+        {
+            _logger.DockerHubPaginationLinkRepeated(operationName, targetName);
+
+            return (null, ExternalOperationResult.Failed<T>(PaginationLinkGuard.CreateRepeatedLinkMessage(listingDescription)));
+        }
+
+        if (requestedPages.Count >= PaginationLinkGuard.MaxListingPages)
+        {
+            _logger.DockerHubPaginationPageCapReached(operationName, targetName, PaginationLinkGuard.MaxListingPages);
+
+            return (null, ExternalOperationResult.Failed<T>(PaginationLinkGuard.CreatePageCapMessage(listingDescription)));
+        }
+
+        requestedPages.Add(PaginationLinkGuard.CreateRequestKey(nextUri));
+
+        return (nextUri, null);
+    }
+
+    /// <summary>
     /// Build the absolute URL of the Docker Hub login
     /// </summary>
     /// <returns>Login URL</returns>
@@ -1055,6 +1103,10 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
         var requestUri = new Uri(apiBaseUri, $"v2/namespaces/{CreateRepositoryApiPath(repositoryPath)}/tags?page_size=100");
         var results = new List<DockerHubTagData>();
         var resolvedCurrentVersionTag = false;
+        var requestedPages = new HashSet<string>(StringComparer.Ordinal)
+                             {
+                                 PaginationLinkGuard.CreateRequestKey(requestUri)
+                             };
 
         while (requestUri is not null)
         {
@@ -1102,18 +1154,19 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
                 continue;
             }
 
-            var nextUri = PaginationLinkGuard.ResolveNextLink(requestUri, apiBaseUri, nextLink);
+            var (nextUri, stopResult) = AdvanceListing<IReadOnlyList<DockerHubTagData>>(nameof(GetTagsAsync),
+                                                                                        repository,
+                                                                                        $"Docker Hub tag listing for '{repository}'",
+                                                                                        requestUri,
+                                                                                        nextLink,
+                                                                                        requestedPages);
 
-            if (nextUri is null)
+            if (stopResult is not null)
             {
-                return RejectPaginationLink<IReadOnlyList<DockerHubTagData>>(nameof(GetTagsAsync),
-                                                                             repository,
-                                                                             $"Docker Hub tag listing for '{repository}'",
-                                                                             requestUri,
-                                                                             nextLink);
+                return stopResult;
             }
 
-            requestUri = nextUri;
+            requestUri = nextUri!;
         }
 
         return ExternalOperationResult.Succeeded<IReadOnlyList<DockerHubTagData>>(results);
@@ -1195,6 +1248,10 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
                                       var repositories = new List<DockerHubRepositoryData>();
                                       var apiBaseUri = GetApiBaseUri();
                                       var requestUri = new Uri(apiBaseUri, $"v2/repositories/{Uri.EscapeDataString(accountName)}/?page_size=100");
+                                      var requestedPages = new HashSet<string>(StringComparer.Ordinal)
+                                                           {
+                                                               PaginationLinkGuard.CreateRequestKey(requestUri)
+                                                           };
 
                                       while (requestUri is not null)
                                       {
@@ -1239,18 +1296,19 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
                                               continue;
                                           }
 
-                                          var nextUri = PaginationLinkGuard.ResolveNextLink(requestUri, apiBaseUri, nextLink);
+                                          var (nextUri, stopResult) = AdvanceListing<IReadOnlyList<DockerHubRepositoryData>>(nameof(GetRepositoriesAsync),
+                                                                                                                             accountName,
+                                                                                                                             $"Docker Hub repository listing for '{accountName}'",
+                                                                                                                             requestUri,
+                                                                                                                             nextLink,
+                                                                                                                             requestedPages);
 
-                                          if (nextUri is null)
+                                          if (stopResult is not null)
                                           {
-                                              return RejectPaginationLink<IReadOnlyList<DockerHubRepositoryData>>(nameof(GetRepositoriesAsync),
-                                                                                                                  accountName,
-                                                                                                                  $"Docker Hub repository listing for '{accountName}'",
-                                                                                                                  requestUri,
-                                                                                                                  nextLink);
+                                              return stopResult;
                                           }
 
-                                          requestUri = nextUri;
+                                          requestUri = nextUri!;
                                       }
 
                                       _logger.DockerHubRepositoriesListed(accountName, repositories.Count);

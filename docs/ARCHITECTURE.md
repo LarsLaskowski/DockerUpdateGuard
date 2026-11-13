@@ -450,7 +450,11 @@ it links:
   and `DockerScoutVulnerabilityProvider` follow a next-page link only on the
   origin of the listing (`Infrastructure\PaginationLinkGuard`), so a remote
   side cannot send the Docker Hub bearer token, or any request, to another
-  host; any other link ends the call *failed*. The rule is in
+  host; any other link ends the call *failed*. The Docker Hub and OCI listings
+  also end *failed* at a link that repeats a page already read or after
+  `PaginationLinkGuard.MaxListingPages` pages
+  ([0024](decisions/0024-registry-listings-stop-failed-after-a-page-cap.md)).
+  The rule is in
   [Registries](areas/registries.md#pagination-links), the reasoning in
   [0004](decisions/0004-pagination-follows-only-same-origin-links.md).
 
