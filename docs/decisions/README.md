@@ -87,4 +87,6 @@ once in the [area document](../areas/README.md) of the record's area, and the re
 | [0024](0024-registry-listings-stop-failed-after-a-page-cap.md) | Registry listings stop with *failed* at a repeated link or after a page cap | Accepted | 2026-11-13 |
 | [0025](0025-a-failing-interval-lookup-keeps-the-jobs-last-known-interval.md) | A failing interval lookup keeps the job's last known interval | Accepted | 2026-11-13 |
 | [0026](0026-a-failed-stats-request-drops-only-its-container-from-a-resource-round.md) | A failed stats request drops only its container from a resource round | Accepted | 2026-11-13 |
+| [0027](0027-over-long-vulnerability-values-are-cut-to-their-column-length-where-the-refresh-stores-them.md) | Over-long vulnerability values are cut to their column length where the refresh stores them | Proposed | 2026-11-13 |
+| [0028](0028-a-failed-save-of-one-image-version-does-not-stop-the-vulnerability-refresh.md) | A failed save of one image version does not stop the vulnerability refresh | Proposed | 2026-11-13 |
 <!-- project:end index -->
