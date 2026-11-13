@@ -1946,6 +1946,80 @@ public partial class DockerInstanceClientTests
     }
 
     /// <summary>
+    /// Verify resource sampling succeeds with no samples when no container qualifies for a stats request
+    /// </summary>
+    /// <param name="containersKind">Kind of the container list: Empty or OnlyLongIds</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC5")]
+    [DataRow("Empty")]
+    [DataRow("OnlyLongIds")]
+    public async Task DockerInstanceClientCollectContainerResourceUsageAsyncWhenNoStatsAreRequestedReturnsEmptySucceededAsync(string containersKind)
+    {
+        var containersJson = containersKind == "Empty"
+                                 ? "[]"
+                                 : $$"""[ { "Id": "{{new string('a', 201)}}", "Names": ["/web-1"] } ]""";
+        var requestedPaths = new List<string>();
+
+        using var handler = new DelegateHttpMessageHandler(request =>
+                                                           {
+                                                               requestedPaths.Add(request.RequestUri?.AbsolutePath ?? string.Empty);
+
+                                                               return CreateJsonResponse(containersJson);
+                                                           });
+        using var httpClient = CreateHttpClient(handler);
+
+        var client = new DockerInstanceClient(new TestLogger<DockerInstanceClient>(), (_, _) => httpClient);
+
+        var result = await client.CollectContainerResourceUsageAsync(CreateInstanceOptions(), TestContext.CancellationToken).ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, $"A {containersKind} container list must not fail the sampling");
+        Assert.IsNotNull(result.Data, "Sampling must return a sample list");
+        Assert.IsEmpty(result.Data, "No sample must be returned when no stats request is sent");
+        Assert.DoesNotContain(path => path.EndsWith("/stats", StringComparison.Ordinal), requestedPaths, "No stats request must be sent");
+    }
+
+    /// <summary>
+    /// Verify a cancellation of the caller during a stats request ends the call without a further request and without a log entry
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC6")]
+    public async Task DockerInstanceClientCollectContainerResourceUsageAsyncWhenCallerCancelsDuringStatsThrowsOperationCanceledAsync()
+    {
+        var logger = new TestLogger<DockerInstanceClient>();
+        var requestedPaths = new List<string>();
+
+        using var cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(TestContext.CancellationToken);
+        using var handler = new DelegateHttpMessageHandler(request =>
+                                                           {
+                                                               var path = request.RequestUri?.AbsolutePath ?? string.Empty;
+
+                                                               requestedPaths.Add(path);
+
+                                                               if (path.EndsWith("/containers/c2/stats", StringComparison.Ordinal))
+                                                               {
+                                                                   cancellationTokenSource.Cancel();
+
+                                                                   throw new OperationCanceledException(cancellationTokenSource.Token);
+                                                               }
+
+                                                               return path.EndsWith("/containers/json", StringComparison.Ordinal)
+                                                                          ? ResourceSamplingEngineHandlerFactory.CreateJsonResponse(ResourceSamplingEngineHandlerFactory.ThreeContainersJson)
+                                                                          : ResourceSamplingEngineHandlerFactory.CreateStatsResponse("2025-06-01T12:00:00Z", 1000);
+                                                           });
+        using var httpClient = CreateHttpClient(handler);
+
+        var client = new DockerInstanceClient(logger, (_, _) => httpClient);
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() => client.CollectContainerResourceUsageAsync(CreateInstanceOptions(), cancellationTokenSource.Token)).ConfigureAwait(false);
+
+        Assert.Contains("/v1.41/containers/c2/stats", requestedPaths, "The stats request that was cancelled must have been sent");
+        Assert.DoesNotContain("/v1.41/containers/c3/stats", requestedPaths, "No stats request must follow the cancellation");
+        Assert.DoesNotContain(entry => entry.EventId.Id == 3111 || entry.EventId.Id == 3107, logger.Entries, "A cancellation must be logged neither as a left-out container nor as a failed round");
+    }
+
+    /// <summary>
     /// Create an HTTP client for the Docker Engine test double
     /// </summary>
     /// <param name="handler">Message handler</param>

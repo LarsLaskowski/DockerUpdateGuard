@@ -265,6 +265,33 @@ public class ResourceStatisticsCollectorTests
     }
 
     /// <summary>
+    /// A round without a running container records an instance sample with count 0
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC5")]
+    public async Task ResourceStatisticsCollectorCollectAsyncWhenNoContainerIsRunningRecordsEmptyInstanceSampleAsync()
+    {
+        await using var dbContext = await CreateDbContextAsync().ConfigureAwait(false);
+
+        using var handler = new DelegateHttpMessageHandler(request => request.RequestUri?.AbsolutePath.EndsWith("/containers/json", StringComparison.Ordinal) == true
+                                                                          ? ResourceSamplingEngineHandlerFactory.CreateJsonResponse("[]")
+                                                                          : new HttpResponseMessage(HttpStatusCode.NotFound));
+        using var httpClient = CreateHttpClient(handler);
+
+        var collector = CreateCollector(dbContext, httpClient, new TestLogger<ResourceStatisticsCollector>());
+
+        await collector.CollectAsync(TestContext.CancellationToken).ConfigureAwait(false);
+
+        var containerSampleCount = await dbContext.RuntimeContainerResourceSamples.CountAsync(TestContext.CancellationToken).ConfigureAwait(false);
+        var instanceSamples = await dbContext.DockerInstanceResourceSamples.ToListAsync(TestContext.CancellationToken).ConfigureAwait(false);
+        var instanceSample = Assert.ContainsSingle(instanceSamples, "One instance sample must be recorded for the empty round");
+
+        Assert.AreEqual(0, containerSampleCount, "No container sample must be recorded");
+        Assert.AreEqual(0, instanceSample.ContainerCount, "The instance sample must count no container");
+    }
+
+    /// <summary>
     /// Create a database holding the enabled Docker instance Production
     /// </summary>
     /// <returns>Database context</returns>
