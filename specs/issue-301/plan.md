@@ -171,3 +171,72 @@ Proposed issues for the orchestrator:
   `DockerHubAccountImageDiscoveryService.SynchronizeRepositoryAsync` calls `GetTagsAsync` without bounds, though it
   tracks only the most recently pushed tag; a repository with more than 10 000 tags now fails at the page cap (0024)
   and is skipped. A bounded query (first page, newest first) would serve it.
+
+## Security notes
+
+## Security plan review: issue #301, round 1
+
+I reviewed `/home/user/DockerUpdateGuard/specs/issue-301/plan.md` and `/home/user/DockerUpdateGuard/docs/decisions/0024-registry-listings-stop-failed-after-a-page-cap.md`. I checked them against the code at HEAD:
+- `src/DockerUpdateGuard/DockerHub/DockerHubClient.cs` (lines 1052–1117 and 1185–1254, plus `SendThrottledAsync` at around 870)
+- `src/DockerUpdateGuard/Images/OciRegistryClient.cs` (`ReadTagNamesAsync` at 804, `AppendInspectedTagsAsync`, `GetTagsCoreAsync` at 1229–1281)
+- `src/DockerUpdateGuard/Infrastructure/PaginationLinkGuard.cs` and `RemoteJsonDocument.cs`
+- `docs/areas/registries.md` (*Pagination links*, *Request timeout*, *Limits and errors*) and `docs/areas/integration-failures.md`
+
+I ran no measurements. The plan relies on no library or measured behavior for the property it adds: a page counter in the client's own loop. The request counts in AC1–AC3 pin it directly.
+
+**Tier `standard` is correct.** The cap decides nothing about what an attacker can reach. It only keeps endless input from stalling a listing, which is the "size bound" kind of check that `.squad/routing.md` (*Tiers*, `security` row) classes as input handling. The same-origin guard (0004) does not change and still runs before the cap.
+
+**Security areas are complete.** The plan lists *Registry and Docker Scout calls* and *Failure messages and remote text*. It also adds two log messages (`DockerHubClientLogging.cs` EventId 3214, `ImageHostLoggingExtensions.cs` EventId 2104), which falls under *Logging and telemetry of external data*. Their arguments are `operationName`, `targetName`, `pageCap`, `registry` and `repository`. These are the same values the existing rejection log entries already carry, and none matches a sensitive name. I don't count the missing area as a finding, but the Lead may add it to *Security areas touched* for completeness.
+
+**Checks that pass:**
+- **Cap message:** it is fixed text plus the listing descriptions that `CreateRejectionMessage` already uses. Those descriptions hold the repository or account name and the normalized registry, all validated before any request is sent. No remote text reaches the message, so the *Guarantees* rule (0009) still holds.
+- **Order in the loop:** empty link or the listing's own stop, then the origin guard, then the cap. A foreign link keeps its rejection message. At the cap no further request is sent, and the entries already read are thrown away rather than returned as a partial success, so no truncated account listing can disable discovered images (fact 5).
+- **No way around the cap:** the counter counts pages read, not entries. Empty pages, pages whose tags are all filtered out, and pages with names that fail validation all still count. Each page can add only a bounded number of extra requests: token exchange, the retries of the retry handler, and OCI tag inspections, which `MaximumTags` caps in every production caller (fact 2a). AC3 with the skip-all `MinimumVersionTag` pins exactly the OCI case the issue is about.
+- **No other listing missed:** `ResolveNextLink` is called only in the three listings this plan covers and in Docker Scout, which already has its own cap. The plan files Docker Scout's partial success as a follow-up issue, which is the right call.
+
+### Findings
+
+1. **non-blocking: the plan's *Security considerations* claims each body is bounded by the existing readers, and it is not.**
+   - **What the code does:** both clients send with `HttpCompletionOption.ResponseHeadersRead` (`DockerHubClient.cs` around 870, `OciRegistryClient.cs` 1094/1108). `RemoteJsonDocument.ParseAsync` then calls `JsonDocument.ParseAsync(stream)` and buffers the whole stream.
+   - **What limits a body:** nothing in bytes. The only limit is the per-request time in `DockerHub:RequestTimeoutSeconds` (`registries.md`, *Request timeout*).
+   - **Memory:** the list of entries can grow over up to 100 pages before a capped listing discards it.
+   - **What this change claims:** a bound on requests, and AC1–AC3 pin that. It neither claims nor needs a byte or memory bound, so this is not a defect of the change. The risk is that the false statement ends up in the area document the Dev writes.
+   - **Smallest fix:** replace the first checklist line under *Security considerations* in `plan.md`, verbatim, with:
+     `- [x] Limits: the cap bounds the number of listing requests (pages read), not bytes or memory: a body is bounded only in time by DockerHub:RequestTimeoutSeconds, and the entries of up to MaxListingPages pages are held until the listing ends.`
+   - In the *Areas* section, the Dev should state the cap as a bound on pages and requests only. In particular, the replacement for the `registries.md` sentence "An unbounded listing (account discovery) reads every page the registry offers" must not claim a size or memory bound.
+   - **Recommendation:** fix it now in the Lead's revision. The plan only needs this one edit.
+
+2. **non-blocking: the time bound per listing is worth naming, and no change is needed.** A slow same-origin server can still hold a capped listing for about `MaxListingPages × RequestTimeoutSeconds`, which is up to about 50 minutes at the defaults. Option 4 in 0024 already explains why the plan bounds requests rather than time, so this is consistent. If the Lead wants it on record, add it to 0024's *Consequences*, verbatim:
+   `- A listing is bounded in requests, not in duration: a slow server can hold one for up to the page cap times the request timeout.`
+   **Recommendation:** optional, fix now or leave out. It does not justify a new issue.
+
+No blocking findings.
+
+## Challenge notes
+
+Devil's Advocate, mode plan: /home/user/DockerUpdateGuard/specs/issue-301/plan.md (issue #301)
+
+I checked the plan's verified facts 1–8 against the code and they hold. Specifically:
+- The loops have no page counter: DockerHubClient.cs:1059–1117 and 1199–1254, OciRegistryClient.cs:1229–1281.
+- The callers treat any non-succeeded result as "no answer": DockerHubAccountImageDiscoveryService.cs:187–195 and 280–286, RuntimeContainerScanOrchestrator.cs:640–665.
+- RegistryMetadataService.cs:81–97 dispatches with no fallback client, so a capped listing cannot spill into a second client.
+- Option 2 (keep a partial result as *succeeded*) is rightly rejected, because a truncated account listing disables discovered images (DockerHubAccountImageDiscoveryService.cs:301–311).
+
+That leaves the size of the cap.
+
+## Objections
+
+1. **major — the cap of 100 pages breaks real public repositories today, and nobody measured it.** The plan and docs/decisions/0024-registry-listings-stop-failed-after-a-page-cap.md pick 100 pages (10,000 entries) only because there is "no known operator need". The record's own revisit condition is "a real repository is found that legitimately needs more pages". That condition is already met:
+   - The anonymous `tags/list` walk of `ghcr.io/renovatebot/renovate`, with n=100 as in OciRegistryClient.cs:455, followed `Link: rel="next"` for **270 pages (26,988 tags)**.
+   - Docker Hub reports `count` **46,986** for `renovate/renovate`, which is 470 pages of 100.
+
+   Where this bites:
+   - **OCI tag listing.** It is ordered by name, and its only early stop is `MaximumTags` (250) *inspected* tags (OciRegistryClient.cs:1257). With a pinned version tag, `MinimumVersionTag` filters out the lower versions without inspecting them (RegistryTagQueryHelper.cs:63–70, 131–143). A container on such a repository can reach page 100 before 250 tags qualify, and its update assessment would then fail on every scan where it succeeds today.
+   - **Docker Hub tag listing.** It stops early only through `PublishedSinceUtc` (RegistryTagQueryHelper.cs:27–38). When the current tag lookup fails, `PublishedSinceUtc` is null (RuntimeContainerScanOrchestrator.cs:262) and the listing reads every page.
+   - **Account discovery.** It reads all tags without bounds (DockerHubAccountImageDiscoveryService.cs:182).
+
+   The plan would turn listings that work today into permanent failures for well-known images, which is a regression the issue did not ask for.
+
+   Fix: size the cap from evidence and record the measured repositories in 0024. One way is a cap well above the largest known listing (for example 1,000 pages = 100,000 entries, which still bounds an endless sequence of distinct links). Another is to combine a larger cap with option 3 (stop failed on a repeated next link), which ends the issue's "same next link" case after one page. Add an acceptance criterion and test showing that a listing longer than 100 pages but shorter than the cap still succeeds, if the cap is above that.
+
+2. **minor — AC3's fixture must not let any tag be inspected, or it exercises `MaximumTags` instead of the cap.** Instruction for the Tester: in the OCI endless-link test, use only version tags that `VersionTagResolutionHelper.TryCompareDisplayVersionTags` can compare and that are lower than `MinimumVersionTag`. Set a `CurrentTag` that does not appear on the page. Tags that cannot be compared and the current tag are always inspected (RegistryTagQueryHelper.cs:56–61, 133–139), and that would add `GetTagAsync` requests to the count. Assert the number of `tags/list` requests, not the total number of requests.
