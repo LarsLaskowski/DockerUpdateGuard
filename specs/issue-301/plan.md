@@ -182,3 +182,47 @@ Proposed issues for the orchestrator:
   `DockerHubAccountImageDiscoveryService.SynchronizeRepositoryAsync` calls `GetTagsAsync` without bounds, though it
   tracks only the most recently pushed tag; a bounded query (first page, newest first) would serve it and keep large
   repositories far from the page cap (0024).
+
+## Security notes
+
+## Security plan review: issue #301, delta confirmation (round 2)
+
+I checked the revision through HEAD (1a21c36, plan revision 7b1a3d6). I read `/home/user/DockerUpdateGuard/specs/issue-301/plan.md` (*Acceptance criteria*, *Approach*, *Signatures*, *Areas*, *Security considerations*, *Security review*) and `/home/user/DockerUpdateGuard/docs/decisions/0024-registry-listings-stop-failed-after-a-page-cap.md` against the loops already read in round 1: `DockerHubClient.cs` 1052–1117 and 1185–1254, and `OciRegistryClient.cs` 1229–1281. I ran no measurements. The new check compares the client's own request URIs with an ordinal string set, and the plan claims no library or measured behavior for it.
+
+### My round-1 findings: both resolved
+1. **First *Security considerations* line:** replaced word for word with the line I gave. *Areas* now tells the Dev to claim a bound on pages and requests only, with no size, memory or time bound.
+2. **Time bound in 0024:** *Consequences* now says a listing is bounded in requests, not duration (page cap × request timeout), and not in memory. The wording differs from mine, which is fine for an unproposed record.
+3. **Logging area:** *Logging and telemetry of external data* is now listed under *Security areas touched*.
+
+### The revision
+- **Tier `standard` still holds.** Stopping on a repeated link and capping pages both keep endless input from stalling a listing. Neither decides what an attacker may reach, so both are input handling.
+- **Order: origin guard, then repeated link, then cap.** The 0004 origin rule runs first and keeps its rejection message. The repeat check runs on the resolved, same-origin link before any further request is sent, so AC5's "sends no further request" holds. At page 1000 a repeated link gets the repeat message; either way the listing fails with nothing sent. Both stops throw away the entries read, so a truncated account listing cannot disable discovered images.
+- **Messages:** `CreateRepeatedLinkMessage` and `CreatePageCapMessage` hold only fixed text and the listing descriptions that `CreateRejectionMessage` already uses. Those descriptions are built from validated repository, account and registry names. Neither the repeated URI nor the cap URI reaches a message or a log.
+- **Log calls 3214, 3215, 2104, 2105:** their arguments are `operationName`, `targetName`, `pageCap`, `registry` and `repository`. These match the existing rejection entries, and none is a sensitive name.
+- **Request bound:** at most `MaxListingPages` (1000) listing requests, plus the per-page token exchanges and retries that already exist. OCI tag inspections stay bounded by `MaximumTags` in every production caller.
+- **Set size:** at most `MaxListingPages` entries, because the set holds only requests actually sent.
+- **The repeat check is not the bound, the cap is.** Every way around the repeat check therefore costs at most the cap. 0024 states this for ignored parameters, and the cap tests (AC1–AC3) pin it with distinct links. These URI forms all evade the `AbsoluteUri` comparison while naming the same page:
+  - a varying fragment (`#x`)
+  - extra or ignored query parameters
+  - reordered query parameters
+  - percent-encoding variants that `Uri` does not normalize
+  - user info in the link (`https://u@host/...`): it passes the origin guard (scheme, IdnHost, port) and shows up in `AbsoluteUri`
+
+  Case of scheme and host, the default port and dot segments are normalized by `Uri`. A trailing-dot host fails the origin guard.
+
+### New findings (both non-blocking)
+1. **non-blocking: the fragment is part of the repeat key but is never sent.**
+   - **Problem:** `AbsoluteUri` includes `#fragment`, but HTTP never sends it, so `…?page=2#a` and `…?page=2#b` are the same request yet count as different pages. A server can then repeat one page with nothing more than a changing fragment, which costs 1000 requests instead of 2. This is exactly the cost 0024's option 3 rejects.
+   - **Smallest fix:** in *Approach*, replace "keeps the `AbsoluteUri` of every request it sent" with:
+     `keeps the request identity `uri.GetComponents(UriComponents.HttpRequestUrl, UriFormat.UriEscaped)` (scheme, host, port, path and query, without user info and fragment) of every request it sent`
+     Also add one AC5 test case: the same link with a different fragment ends *failed* with the repeat message.
+   - **Recommendation:** fix now. It is one expression in the Dev's change. Ignored or reordered query parameters stay out of scope, as 0024 already says.
+2. **non-blocking: 0024's memory sentence is now slightly inaccurate.**
+   - **Problem:** the request set keeps up to 1000 URIs in addition to the entries. Docker Hub `next` links come from the unbounded body, so the length of each URI is limited only by `Uri` itself.
+   - **Smallest fix:** in 0024 *Consequences*, replace
+     `Nor is it bounded in memory beyond the entries of the pages read.`
+     with
+     `Nor is it bounded in memory beyond the entries and the request URIs of the pages read.`
+   - **Recommendation:** fix now, alongside finding 1.
+
+No blocking findings.
