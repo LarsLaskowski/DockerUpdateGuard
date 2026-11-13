@@ -24,7 +24,7 @@ valid interval, logs the failure and never stops the host.
    access when the configuration is already invalid.
 2. **Seed the fallback from a virtual `GetFallbackInterval()` reading `IOptions<T>.Value`** (the issue's
    recommendation) — `IOptions<T>.Value` is created on its first read, not at startup, and validates then; read for
-   the first time after an invalid reload, it throws as well (measured in step 2), so the fallback would fail exactly
+   the first time after an invalid reload, it throws as well (measured with an in-memory configuration and the options validator), so the fallback would fail exactly
    when it is needed, unless the job read it in its constructor, which is option 1 with a second options interface.
 3. **Set `HostOptions.BackgroundServiceExceptionBehavior` to `Ignore`** — the host survives, but the failed job's
    loop has ended and the job never runs again, silently.

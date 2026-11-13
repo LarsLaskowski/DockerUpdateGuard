@@ -15,3 +15,4 @@ are quoted in full.
 | 2026-11-13 14:44 | 6 Coverage skipped | Orchestrator | skipped — Coverage gate passes (new/changed 90.0%, overall 90.9%), no deferred tests, no open test documentation |
 | 2026-11-13 14:44 | 6 Documentation | Orchestrator | written in 6 Implement |
 | 2026-11-13 14:46 | 7 Gate stamp | Orchestrator | PASS on 4d6d3d2594e5ec3b3b5f16171266aec4c8341d9f (tier standard): Format check pass; Analyzer gate pass; Test with coverage pass; Coverage gate pass; decision-check.py pass; scope-check.py pass · figure-check.py 0 hit(s) |
+| 2026-11-13 14:48 | 8 Review | Reviewer | VERDICT: BLOCKING 0 \| NON-BLOCKING 2 on 4d6d3d2594e5ec3b3b5f16171266aec4c8341d9f; two verbatim doc fixes (record 0025 wording, .squad/project.md Test doubles line) (opus/medium · 74,736 tokens · 13 tool uses · 72 s · 26 in · 7,126 out · 681,375 cache read · 63,442 cache write · 298,054 weighted) |

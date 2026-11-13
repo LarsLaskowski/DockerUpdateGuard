@@ -137,7 +137,7 @@ line here: the double, where it lives and what it stands in for; how it behaves 
 - `ConcurrencyTrackingVulnerabilityProvider` (`Helper/`) — a vulnerability provider that records concurrent scans
 - `CountingHttpContent`, `ByteCountingHttpContent`, `CountingReadStream` (`Helper/`) — request and response bodies
 - `TestImageCatalogRepository` (`Helper/`) — the image catalog repository, without persistence
-- `TestScheduledBackgroundService`, `TestScanCleanupBackgroundService` (`Helper/`) — the background job base and the cleanup job
+- `TestScheduledBackgroundService`, `TestScanCleanupBackgroundService`, `TestOwnImageBaseRefreshBackgroundService` (`Helper/`) — the background job base, the cleanup job and the observed-image refresh
 - `ClientCertificateTestData` (`Helper/`) — client certificate files, generated per test
 - `TestLogger<T>` with `TestLogEntry` and `NullScope` (`Data/`) — the logger
 - `TestOptionsMonitor<T>` with `NullDisposable` (`Data/`) — the options monitor of a reloadable configuration
