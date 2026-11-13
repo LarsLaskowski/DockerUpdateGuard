@@ -207,3 +207,95 @@ the only exception that leaves the method is the caller's cancellation, as today
 
 - Bounding the round's length when many containers hang (option 4): no issue proposed now; record 0026 names it.
 - #80 (the collector loads the instance's whole sample history per round): same method, independent.
+
+## Challenge notes
+
+Devil's Advocate, mode plan, issue #270 (specs/issue-270/plan.md, docs/decisions/0026-a-failed-stats-request-drops-only-its-container-from-a-resource-round.md)
+
+The plan's facts are right. I checked these myself:
+- The single `try` around the list and the stats loop is at `DockerInstanceClient.cs:1112-1186`.
+- `ReadResourceSampleAsync` catches `JsonException` (lines 564-576), and `RemoteJsonDocument.ParseAsync:35-39` turns a lone surrogate into `JsonException`.
+- A wrong-shaped body throws: `TryGetString` (line 619) and `ParseResourceSample` (line 540) call `TryGetProperty` on a non-object.
+- The `FailureReason.FromException` mapping is as stated (`FailureReason.cs:53-83`).
+- 3111 is the next free event id; the last one is 3110.
+- The client has no other loop that sends a request per item. The list loops at lines 988 and 1059 send no requests, so the fix has no sibling path to cover.
+- Every existing sampling test either keeps one container sampled or fails at the list: lines 80, 128-155, 1080, 1202 and 1709 (the handler fails every request).
+
+Fact 11 also holds, by reading rather than running. When the handler throws `TaskCanceledException` and the caller's token is not cancelled, `HttpClient` either passes it on or wraps it in a `TaskCanceledException` with an inner `TimeoutException`. Both are `OperationCanceledException`, so `FromException` returns `timed out after 15 seconds`.
+
+## Objections
+
+1. **major: once a dropped container comes back, the instance network rate spikes by that container's whole counter. Step 4 ("`ResourceStatisticsCollector` is not changed") leaves this in.**
+   - **Evidence:**
+     - `ResourceStatisticsCollector.cs:186-206` sets the instance `NetworkRx/TxBytesTotal` to the sum over the containers sampled this round.
+     - It computes `NetworkRx/TxBytesPerSecond` against the latest instance sample with `CalculateBytesPerSecond` (lines 81-104: delta of the totals, 0 when the delta is not positive).
+   - **Example:** `c1` (counter 10 GB) is dropped in round N and sampled again in round N+1.
+     - Round N: instance total falls by 10 GB, so the rate is 0.
+     - Round N+1: the delta against round N's sample contains `c1`'s whole 10 GB, so the chart shows about 10 GB divided by the interval.
+   - **Why this is new:** today a failed round writes no instance sample, so round N+1 compares against N-1, which already included `c1`. The plan makes partial rounds normal for a hung container, which is exactly the "misleading host sample" the PM rejected in option 3.
+   - **Record 0026:** its Consequences mention only understated totals. `docs/areas/docker-instances.md:153-154` ("rates against the previous instance sample by the same rule") would become wrong without anyone noticing.
+   - **Fix:** the plan should pick one rule and pin it with an AC and a collector test (round 1 with `c1`-`c3`, round 2 with `c2` dropped, round 3 with `c2` back). Either:
+     - compute the instance rate as the sum of the per-container rates of the round (each one is already computed against that container's own previous sample, lines 164-171, so gaps are handled); or
+     - take the instance delta only over containers sampled in both rounds.
+   - **Knock-on changes:** this changes the collector. The *Affected projects* table, step 4, record 0026's Consequences and the area document's instance-sample bullet need updating.
+
+2. **minor: the WrongShape reason in AC2 is `unexpected error`, while the planned area text calls the same case "a body that … is not a stats object".**
+   - **Evidence:** a root `[]` throws `InvalidOperationException` from `TryGetString` (line 619), which `FailureReason.FromException` maps to `UnexpectedError` (`FailureReason.cs:81`).
+   - **Instruction for the Dev:** keep AC2 as written, but in the *Resource statistics* bullet of `docs/areas/docker-instances.md` say that a stats body that is not a JSON object is logged with the reason `unexpected error`, and a body that is not valid JSON with `invalid response`. An operator should be able to match the log reason to the documented case.
+
+3. **minor: Fact 11 is listed as unverified; the Tester can treat it as settled.**
+   - **Instruction for the Tester:** throw `TaskCanceledException` from the `DelegateHttpMessageHandler` for the stats URI of `c2` without cancelling the test token. Assert the reason `timed out after 15 seconds` and that the log entry carries the exception. Never wait on a real timer; `TimeoutHttpMessageHandler` waits on a real one-second timer, so do not reuse it for AC1, AC2 or AC3.
+
+## Security notes
+
+Security review, mode `plan`, issue #270. I reviewed `/home/user/DockerUpdateGuard/specs/issue-270/plan.md` and `/home/user/DockerUpdateGuard/docs/decisions/0026-a-failed-stats-request-drops-only-its-container-from-a-resource-round.md` at branch head d1d533e. I found no blocking findings.
+
+**Tier and areas**
+- `standard` is the right tier. A per-container `catch` and the rule that a round reading no stats fails are behavior changes. They create, change and remove no security control: no limit, no redaction, no TLS setting, no credential handling.
+- The plan lists the two security areas the change touches: *Logging and telemetry of external data* and *Failure messages and remote text*. I found no third one.
+  - *Docker Engine access*: the stats URI, `Uri.EscapeDataString` and the request set stay the same.
+  - *TLS relaxation*: unchanged.
+  - The stats body is still parsed by `RemoteJsonDocument`, as today.
+
+**Logging of external data (new event 3111)**
+- The container ID comes from `TryGetString` (`DockerInstanceClient.cs:619-632`), so its control characters are already replaced, and the loop guarantees it is 200 characters or fewer before any request is sent (`:1146-1150`).
+- The container name follows `GetPrimaryName`, which replaces control characters (`:595-610`), and is then cut to 200 characters. `ReplaceControlCharacters` covers Cc, Cf, Zl and Zp plus lone surrogates (`ResponseBodyExcerpt.cs:76-165`), so the entry cannot be used to forge log lines.
+- The ID and name of a resource sample are already listed under `docs/areas/integration-failures.md`, *Remote text fields*. The plan's change to `telemetry.md` ("container IDs and names") brings that document in line.
+- The `returned <status>` reason reads no response body, so no remote text goes into it.
+- 3111 carries the exception, as the warnings 3107–3110 already do. Every exception it can carry (stats-body `JsonException`, `InvalidOperationException` from `TryGetProperty`, `OverflowException`, transport errors) could already reach 3107 today through the round's `catch (Exception)`. That is no new kind of exposure, and `telemetry.md` already allows "the exception with its message" on failed integration calls.
+- None of the new log arguments matches the sensitive-name list: instance name, container name, container ID, reason.
+
+**Failure messages and remote text**
+- The AC4 result message is fixed text plus the configured instance name.
+- The 3111 reasons come from `FailureReason.FromException` (`FailureReason.cs:53-83`, all fixed text) or are a status code.
+- `FailureReason.cs` is unchanged. Caller cancellation is still rethrown through the `when (cancellationToken.IsCancellationRequested)` filter, so the only exception that leaves the method is still the caller's cancellation (Guarantees, record 0009).
+
+**Bypass forms of the new per-container guard**
+The guard is a catch-all that is not under any security area, so no input form gets around it. These are all covered by the helper's `catch (Exception)`:
+- malformed JSON
+- a string that does not decode (re-raised as `JsonException` by `RemoteJsonDocument`)
+- a non-object root
+- a non-object `cpu_stats`
+- `decimal` overflow
+- a body that breaks off
+- the timeout
+
+**Resource bound**
+The plan claims no bound. The longer round (up to one `RequestTimeoutSeconds` per hung container) is stated in record 0026 and in the planned area-doc bullet. Rounds don't overlap (`scan-engine.md`), and each stats timeout source is created and disposed per iteration, so nothing extra is held across containers.
+
+**Measurement: fact 11, the test double for a real timeout**
+The plan listed this as unverified, so I ran it. A console program in `/tmp/claude-0/-home-user-DockerUpdateGuard/bb46b5ad-cc47-5a12-b40f-9a6249d15b9d/scratchpad/m11/Program.cs` sends an `HttpClient` request with a linked, not-cancelled caller token and `CancelAfter(200 ms)` through two handlers:
+- one throws `TaskCanceledException` (the planned test double);
+- one waits on `Task.Delay(Infinite, ct)` (a real timeout).
+
+Command: `dotnet run` in that folder (SDK 10.0.404). Output:
+```
+double-TaskCanceled: System.Threading.Tasks.TaskCanceledException isOCE=True callerCancelled=False inner=
+real-timeout: System.Threading.Tasks.TaskCanceledException isOCE=True callerCancelled=False inner=TaskCanceledException
+```
+Both reach the client as an `OperationCanceledException` while the caller token is not cancelled. They therefore take the same path, `catch (Exception)` → `FromException` → `timed out after 15 seconds`. Fact 11 holds; the double matches the real component.
+
+**Non-blocking finding (correctness rather than security)**
+- **Defect:** if a listed container's `Names` array holds a non-string element (e.g. `"Names":[1]`), `GetPrimaryName` throws `InvalidOperationException` from `JsonElement.GetString()` (`DockerInstanceClient.cs:601`). This happens both inside `ParseResourceSample` and again when the helper's `catch` works out the name for 3111. The second throw escapes the helper, and the whole round fails with 3107, which is the same as today. There is no exposure, but it is a leftover case where one container still fails the whole round.
+- **Smallest fix:** in the helper, compute the logged name once before the `try` with a non-throwing fallback to the ID, or filter `Names` items on `ValueKind == JsonValueKind.String`.
+- **My recommendation:** fix it now if the Dev touches that code anyway; otherwise open a linked issue. This is the Lead's call in step 8.
