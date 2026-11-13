@@ -6,7 +6,10 @@ ones such as the MSTest analyzer rules (MSTEST####), which never appear as build
 build therefore hides issues that the quality gate later reports. This script runs a full, non-incremental
 Release build with an SARIF error log per project and reports every non-suppressed diagnostic (RH####,
 S####, MSTEST####, CA####, ...) located in a file changed since the merge base with origin/main
-(working tree and untracked files included). Before it, `dotnet_major.py` checks that every project, `global.json`
+(working tree and untracked files included); a diagnostic without a location (an assembly-level rule such as
+MSTEST0001) counts for its project, reported with the project folder, when a file of that project changed. Every
+run deletes the SARIF logs (`obj/roslyn.sarif`) before its build: one read by hand is current only right after a
+run of this script. Before it, `dotnet_major.py` checks that every project, `global.json`
 and every .NET image name the same .NET major, and `dotnet_config.py` the build structure and the template's rules
 (the dotnet-rules blocks current, no rule switched off outside them), also with `--lint-only`.
 
@@ -57,21 +60,37 @@ def to_repo_path(uri, root):
 
 
 def diagnostics(root):
+    """(path, line, rule, level, message) of every diagnostic of the SARIF logs. A diagnostic without a location (an
+    assembly-level rule such as MSTEST0001) belongs to its project: its path is the project folder with a trailing
+    `/`, line 0 (Vandox#430)."""
     for log in glob.glob(os.path.join("**", SARIF_NAME), recursive=True):
         with open(log, encoding="utf-8-sig") as handle:
             data = json.load(handle)
+        project = os.path.dirname(os.path.dirname(log)).replace(os.sep, "/")
         for run in data.get("runs", []):
             for result in run.get("results", []):
                 if result.get("suppressions"):
                     continue
-                locations = result.get("locations") or []
-                if not locations:
-                    continue
-                physical = locations[0].get("physicalLocation", {})
-                path = to_repo_path(physical.get("artifactLocation", {}).get("uri", ""), root)
-                line = physical.get("region", {}).get("startLine", 0)
-                yield path, line, result.get("ruleId", "?"), result.get("level", "warning"), \
-                    result.get("message", {}).get("text", "")
+                yield located(result, project, root)
+
+
+def located(result, project, root):
+    locations = result.get("locations") or []
+    physical = locations[0].get("physicalLocation", {}) if locations else {}
+    uri = physical.get("artifactLocation", {}).get("uri", "")
+    folder = f"{project}/" if project else "./"
+    path = to_repo_path(uri, root) if uri else folder
+    line = physical.get("region", {}).get("startLine", 0)
+    return path, line, result.get("ruleId", "?"), result.get("level", "warning"), \
+        result.get("message", {}).get("text", "")
+
+
+def in_changed_file(path, changed):
+    """A diagnostic of a changed file, or one of a project (path ending in `/`) with a changed file in it."""
+    if path.endswith("/"):
+        prefix = "" if path == "./" else path
+        return any(name.startswith(prefix) for name in changed)
+    return path in changed
 
 
 def project_dirs():
@@ -110,7 +129,7 @@ def run_check():
 
     changed = changed_files()
     found = sorted(set(diagnostics(root)))
-    in_changed = [d for d in found if d[0] in changed]
+    in_changed = [d for d in found if in_changed_file(d[0], changed)]
     elsewhere = len(found) - len(in_changed)
 
     for path, line, rule, level, message in in_changed:

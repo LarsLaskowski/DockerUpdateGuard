@@ -46,6 +46,8 @@ profile and owned by this repository: keep it true when the build changes.
 - Tests: `src/Tests/DockerUpdateGuard.Tests/` (host/application layer) and
   `src/Tests/DockerUpdateGuard.Data.Tests/` (data layer), one test class per type under test in
   `{TypeUnderTest}Tests.cs` (or `…RenderTests` / `…PersistentStateTests` when split, `docs/UNIT_TESTS.md`).
+  Every test project has a `MSTestSettings.cs` with `[assembly: DoNotParallelize]` (MSTEST0001), and a new test
+  project adds the same file.
 
 ## Commands
 
@@ -69,7 +71,8 @@ profile and owned by this repository: keep it true when the build changes.
 `analyzer-check.py` runs a full, non-incremental Release build with a SARIF error log per project and
 reports every non-suppressed Roslyn diagnostic — `RH####`, `S####`, `MSTEST####`, `CA####`, at **any
 severity**, including info-level ones that never appear as build warnings but that SonarQube Cloud
-imports — located in a file changed since the merge base with `origin/main`. Its solution comes from
+imports — located in a file changed since the merge base with `origin/main`, and every diagnostic without a
+location (an assembly-level rule such as MSTEST0001) of a project with such a changed file. Its solution comes from
 `.squad/tools/squad_settings.py`. In addition the build must show **zero `RH####` warnings and errors**
 anywhere. Do not grep console build output instead: an incremental build prints no warnings at all.
 
