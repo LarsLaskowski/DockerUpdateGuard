@@ -1,6 +1,6 @@
 # 0024: Registry listings stop with *failed* at a repeated link or after a page cap
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-13
 - **Area:** Registries
 - **Source:** Issue #301
