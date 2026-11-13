@@ -1,6 +1,6 @@
 # 0026: A failed stats request drops only its container from a resource round
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-13
 - **Area:** Docker instances
 - **Source:** Issue #270

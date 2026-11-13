@@ -20,3 +20,4 @@ are quoted in full.
 | 2026-11-13 18:34 | 8 Review | Reviewer | VERDICT: BLOCKING 1 \| NON-BLOCKING 0 on caa5a17ebf0099e2619005de4f26986dd886c441 — docs sentence 'logs one warning' contradicts code (verbatim fix) (opus/medium · 71,947 tokens · 9 tool uses · 60 s · 18 in · 5,992 out · 405,534 cache read · 69,452 cache write · 274,139 weighted) |
 | 2026-11-13 18:36 | 7 Gate stamp | Orchestrator | PASS on 327937472ff3739d4d7a825530ad8bd342574318 (tier standard, verbatim): Format check pass; decision-check.py pass; scope-check.py pass |
 | 2026-11-13 18:36 | 8 Verbatim fix | Orchestrator | Applied [BLOCKING, verbatim] docs/areas/docker-instances.md Limits and errors (warning count wording) as proposed, commit 3279374; git diff confirmed only that text; Format check, scope-check, decision-check pass (stamp 327937472ff3) |
+| 2026-11-13 18:36 | 9 PR approval | Orchestrator | approved by checklist (record 0026 set to Accepted) |
