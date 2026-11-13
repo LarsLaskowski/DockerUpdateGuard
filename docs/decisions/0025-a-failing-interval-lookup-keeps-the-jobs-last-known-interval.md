@@ -1,6 +1,6 @@
 # 0025: A failing interval lookup keeps the job's last known interval
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-13
 - **Area:** Scan engine
 - **Source:** Issue #281
