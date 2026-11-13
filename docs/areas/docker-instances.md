@@ -200,8 +200,9 @@ on the snapshots and samples it produces.
   uses the configured URL.
 - A resource collection fails for an instance when the list request fails or times out, or when stats were requested
   and no container could be sampled (`Docker container resource sampling failed for '<name>': no container stats
-  could be read`); it records **no** samples for that instance in that round and logs one warning; other instances
-  are not affected.
+  could be read`); it records **no** samples for that instance in that round and logs the failure once as warning 2103, besides
+  warning 3107 for a list request that broke and warning 3111 for each container left out; other instances are not
+  affected.
 - `SkipCertificateValidation` and a mounted Docker socket are trust relaxations the operator chooses; the socket is
   root-equivalent on the host ([Hosting](hosting.md)).
 
