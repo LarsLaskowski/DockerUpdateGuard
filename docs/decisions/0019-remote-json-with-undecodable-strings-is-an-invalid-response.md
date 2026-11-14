@@ -61,7 +61,8 @@ answer both through one wrapper per client. The rules are stated in
   payload's JSON); the wrapper and the warning event of each client are the ones #272 widens.
 - Each string of a parsed body is decoded once more than before; the bodies are already held whole as a
   `JsonDocument`, so no limit changes.
-- Transport errors, timeouts, values of an unexpected type and a Docker Hub token payload that is not base64 still
-  escape the Docker Hub and OCI calls until #272.
+- Transport errors, timeouts, values of an unexpected type and a Docker Hub token payload that is not base64 are
+  answered by the same wrapper since #272
+  ([0029](0029-registry-calls-answer-every-error-but-the-callers-cancellation-as-failed.md)).
 - The release feeds keep reporting such a body as `unexpected error`: they are not covered, and their text reaches no
   message.
