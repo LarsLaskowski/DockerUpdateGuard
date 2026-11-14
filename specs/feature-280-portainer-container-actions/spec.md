@@ -160,3 +160,58 @@ or `restart`.
   Portainer lets anyone who reaches the UI start, stop and restart that instance's containers.
 - `docs/areas/scan-engine.md`: action runs are not cleaned up and keep their snapshots.
 - `docs/areas/telemetry.md`: the action's trace activity and its attributes.
+
+## Challenge notes
+
+Devil's Advocate, mode `spec`: feature #280, `/home/user/DockerUpdateGuard/specs/feature-280-portainer-container-actions/spec.md`
+
+I left Option A (Start/Stop/Restart only) alone. The spec's corrected code claims hold: the client succeeds only on 2xx (`PortainerClient.cs:514`), looks the container up by name (`PortainerClient.cs:215-240, 495`), and cuts names to 200 (`DockerInstanceClient.cs:34, 521`). My objections are below.
+
+## Major
+
+**M1. Stop and Restart will report *Failed* for actions that actually succeed (N4 and E4 cannot be met as written).**
+- Evidence: every Portainer request runs under `client.Timeout = RequestTimeoutSeconds` (`PortainerClient.cs:312`, default 15, `container-actions.md` *Actions*). The action is sent with no `t` parameter (`PortainerClient.cs:508`).
+- Docker's `POST /containers/{id}/stop` and `/restart` only answer once the container has stopped. That takes up to the container's stop timeout: 10 s by default, longer with compose `stop_grace_period`. Restart then adds the start time on top.
+- So a container that ignores SIGTERM, or has a grace period of about 15 s or more, makes Stop or Restart hit the timeout. Under E4 that becomes *Failed* "…timed out after 15 seconds; the action may have been applied", even though Docker completes the action. The operator is told to check, and may well repeat a destructive action that already worked.
+- N4 also says an action's lifetime is bounded by `RequestTimeoutSeconds`. In fact login, environment list, the ID lookup (needed for AC6) and the action each get their own timeout.
+- Instruction: the spec must say how long a Stop or Restart request may take relative to the container's stop timeout. Options:
+  - give the action request its own bound that is at least the stop timeout plus a margin, or
+  - pass a stated `t`, or
+  - state as a documented constraint that `RequestTimeoutSeconds` must exceed the longest stop grace period. N7's "no new configuration key" may then need revisiting.
+
+  Add a criterion: a Stop that Docker answers after more than the default timeout but within the stop timeout ends *Succeeded*. Restate N4's lifetime as the sum of the steps.
+
+## Minor
+
+**m1. `<environment>` in the S3 dialog is undefined.**
+When `EndpointId` is configured, the client never fetches the environment's name (`PortainerClient.cs:257-260`). The capability message only carries the ID (`"Portainer connected, endpoint {endpointId}"`, `PortainerClient.cs:437`). Instruction: state that `<environment>` is the endpoint ID, or the ID plus the name when Portainer reports one, and where the name comes from. N6's "environment names reach only the page" then covers that name.
+
+**m2. E5 will be shown for an unknown environment, not just an unknown container.**
+With `EndpointId` configured, the capability check reports "supported" without checking that the environment exists (`PortainerClient.cs:257-260, 433-438`). A wrong or deleted `EndpointId` makes Portainer answer 404 on `/api/endpoints/{id}/docker/...`, and E5 tells the operator to rescan, which never helps. Instruction: E5 applies only when the Docker Engine reports no such container for that ID. A 404 for an unknown environment ends *Failed* with a message naming `Portainer:EndpointId`.
+
+**m3. N8 can show a wrong own-container warning.**
+"ID starts with `HOSTNAME`" matches every container when `HOSTNAME` is empty or unset, for example outside Docker. It also matches some containers when a custom host name happens to be short hex, such as `cafe` or `a1`. That contradicts "never a wrong one". Instruction: treat the target as the app's own container only when `HOSTNAME` is exactly 12 lowercase hex characters (Docker's default) and the container ID starts with it.
+
+**m4. No behavior is defined for a failing database or configuration read.**
+Cases the spec leaves open:
+- The *Requested* run cannot be written.
+- The terminal status cannot be written after the action was sent. The run stays non-terminal, and E8 then blocks the container until a restart.
+- A reloaded configuration fails validation at confirmation. Reads then fail where they are made (`hosting.md` *Configuration reload*, lines 122-127).
+
+Instruction: add edge cases.
+- No run written → no action sent, and an error message on the page.
+- Terminal write fails → the outcome is still shown and logged, and the run is reconciled at startup.
+- Invalid configuration → no action and a page error. The service never throws for these.
+
+**m5. A disabled Docker instance (`Enabled: false`) with Portainer enabled is not covered.**
+The client only checks `Portainer.Enabled` (`PortainerClient.cs:379, 461`). A disabled instance keeps its last scan as its current set (`docker-instances.md`, lines 121-123 and 31-33). So the spec as written would offer actions on a host the app has been told not to contact. Instruction: state whether the section is shown for a disabled instance. Recommended: not shown, and a confirmation for one ends *Failed*.
+
+**m6. The documentation scope is narrower than the issue asks.**
+The issue's criteria require README (Portainer section: what enabling it allows, plus the no-auth consequence) and `docs/ARCHITECTURE.md` (*Integration clients*, *UI*, *Security posture*). Two passages will be stale:
+- `README.md:204`, which talks of "Portainer-backed actions"
+- `docs/ARCHITECTURE.md:235`, which says "endpoint and container listing"
+
+Instruction: add `README.md` and `docs/ARCHITECTURE.md` §6, §9 and §11 to *Area documents*.
+
+**m7. AC4 requires a "Portainer endpoint" that may not be stored yet.**
+The stored endpoint is only synchronized at startup, on discovery ticks and at the start of scans (`docker-instances.md`, lines 22-24). If Portainer is enabled by a configuration reload, an action before the next sync finds no endpoint record, or one still marked disabled. The run's endpoint link is optional (`container-actions.md` *Action runs*). Instruction: AC4 records the instance's stored Portainer endpoint when one exists, and the decision to act follows the current configuration, not the stored flag.
