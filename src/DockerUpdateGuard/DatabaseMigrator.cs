@@ -38,17 +38,16 @@ public static class DatabaseMigrator
     /// <param name="timeProvider">Time provider for all waits</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Task</returns>
-#pragma warning disable S1172 // Skeleton: removed with the implementation
     public static async Task MigrateAsync(DockerUpdateGuardDbContext dbContext,
                                           DatabaseOptions options,
                                           ILogger logger,
                                           TimeProvider timeProvider,
                                           CancellationToken cancellationToken)
-#pragma warning restore S1172 // Skeleton: removed with the implementation
     {
         ArgumentNullException.ThrowIfNull(dbContext);
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(logger);
+        ArgumentNullException.ThrowIfNull(timeProvider);
 
         if (dbContext.Database.IsRelational() == false)
         {
@@ -58,10 +57,11 @@ public static class DatabaseMigrator
             return;
         }
 
-        await WaitForDatabaseAsync(dbContext, options, logger, cancellationToken).ConfigureAwait(false);
+        await WaitForDatabaseAsync(dbContext, options, logger, timeProvider, cancellationToken).ConfigureAwait(false);
 
         var useAdvisoryLock = string.Equals(dbContext.Database.ProviderName, NpgsqlProviderName, StringComparison.Ordinal);
         var executionStrategy = dbContext.Database.CreateExecutionStrategy();
+        var waitStartedAt = timeProvider.GetUtcNow();
 
         try
         {
@@ -70,16 +70,10 @@ public static class DatabaseMigrator
             // delegate, so the session-scoped advisory lock is always re-acquired on the same
             // connection that the idempotent MigrateAsync then runs against instead of being
             // stranded on an abandoned connection
-            await executionStrategy.ExecuteAsync(token => RunMigrationAsync(dbContext, useAdvisoryLock, logger, token), cancellationToken)
+            await executionStrategy.ExecuteAsync(token => RunMigrationAsync(dbContext, useAdvisoryLock, options, waitStartedAt, logger, timeProvider, token), cancellationToken)
                                    .ConfigureAwait(false);
         }
-        catch (DbException exception)
-        {
-            logger.ApplicationDatabaseMigrationFailed(exception);
-
-            throw;
-        }
-        catch (InvalidOperationException exception)
+        catch (Exception exception) when (exception is not OperationCanceledException)
         {
             logger.ApplicationDatabaseMigrationFailed(exception);
 
@@ -97,16 +91,45 @@ public static class DatabaseMigrator
     /// <param name="timeProvider">Time provider for all waits</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Task</returns>
-#pragma warning disable S1172 // Skeleton: removed with the implementation
-    internal static Task WaitForMigrationLockAsync(Func<CancellationToken, Task<bool>> tryAcquireLock,
-                                                   DatabaseOptions options,
-                                                   DateTimeOffset waitStartedAt,
-                                                   ILogger logger,
-                                                   TimeProvider timeProvider,
-                                                   CancellationToken cancellationToken)
-#pragma warning restore S1172 // Skeleton: removed with the implementation
+    internal static async Task WaitForMigrationLockAsync(Func<CancellationToken, Task<bool>> tryAcquireLock,
+                                                         DatabaseOptions options,
+                                                         DateTimeOffset waitStartedAt,
+                                                         ILogger logger,
+                                                         TimeProvider timeProvider,
+                                                         CancellationToken cancellationToken)
     {
-        throw new InvalidOperationException("Skeleton: not implemented");
+        ArgumentNullException.ThrowIfNull(tryAcquireLock);
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(logger);
+        ArgumentNullException.ThrowIfNull(timeProvider);
+
+        var retryDelay = TimeSpan.FromSeconds(options.MigrationRetryDelaySeconds);
+        var deadline = waitStartedAt + TimeSpan.FromSeconds(options.MigrationLockTimeoutSeconds);
+        var attempt = 0;
+
+        while (true)
+        {
+            attempt++;
+
+            if (await tryAcquireLock(cancellationToken).ConfigureAwait(false))
+            {
+                return;
+            }
+
+            var now = timeProvider.GetUtcNow();
+
+            if (now >= deadline)
+            {
+                logger.ApplicationDatabaseMigrationLockTimedOut(options.MigrationLockTimeoutSeconds, attempt);
+
+                throw new InvalidOperationException($"The migration advisory lock was not acquired within '{DockerUpdateGuardOptions.SectionName}:Database:MigrationLockTimeoutSeconds' ({options.MigrationLockTimeoutSeconds} seconds); another instance may still be applying migrations");
+            }
+
+            logger.ApplicationDatabaseMigrationLockWaiting(attempt, (now - waitStartedAt).TotalSeconds, retryDelay.TotalSeconds);
+
+            await Task.Delay(retryDelay, timeProvider, cancellationToken)
+                      .ConfigureAwait(false);
+        }
     }
 
     /// <summary>
@@ -138,15 +161,17 @@ public static class DatabaseMigrator
     /// <param name="dbContext">Database context</param>
     /// <param name="options">Database resilience options</param>
     /// <param name="logger">Logger</param>
+    /// <param name="timeProvider">Time provider for all waits</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Task</returns>
     private static async Task WaitForDatabaseAsync(DockerUpdateGuardDbContext dbContext,
                                                    DatabaseOptions options,
                                                    ILogger logger,
+                                                   TimeProvider timeProvider,
                                                    CancellationToken cancellationToken)
     {
         var retryDelay = TimeSpan.FromSeconds(options.MigrationRetryDelaySeconds);
-        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(options.MigrationStartupTimeoutSeconds);
+        var deadline = timeProvider.GetUtcNow() + TimeSpan.FromSeconds(options.MigrationStartupTimeoutSeconds);
         var attempt = 0;
 
         while (true)
@@ -164,7 +189,7 @@ public static class DatabaseMigrator
             }
             catch (Exception exception) when (IsTransientConnectionFailure(exception))
             {
-                if (DateTimeOffset.UtcNow >= deadline)
+                if (timeProvider.GetUtcNow() >= deadline)
                 {
                     logger.ApplicationDatabaseUnavailable(attempt, exception);
 
@@ -173,7 +198,7 @@ public static class DatabaseMigrator
 
                 logger.ApplicationDatabaseConnectionRetrying(attempt, retryDelay.TotalSeconds, exception);
 
-                await Task.Delay(retryDelay, cancellationToken)
+                await Task.Delay(retryDelay, timeProvider, cancellationToken)
                           .ConfigureAwait(false);
             }
         }
@@ -184,12 +209,18 @@ public static class DatabaseMigrator
     /// </summary>
     /// <param name="dbContext">Database context</param>
     /// <param name="useAdvisoryLock">True when the provider supports the PostgreSQL advisory lock</param>
+    /// <param name="options">Database resilience options</param>
+    /// <param name="waitStartedAt">Time the lock wait started, from which the deadline is measured</param>
     /// <param name="logger">Logger</param>
+    /// <param name="timeProvider">Time provider for all waits</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Task</returns>
     private static async Task RunMigrationAsync(DockerUpdateGuardDbContext dbContext,
                                                 bool useAdvisoryLock,
+                                                DatabaseOptions options,
+                                                DateTimeOffset waitStartedAt,
                                                 ILogger logger,
+                                                TimeProvider timeProvider,
                                                 CancellationToken cancellationToken)
     {
         // Open the connection explicitly so that the advisory lock and the migration share one
@@ -202,8 +233,7 @@ public static class DatabaseMigrator
         {
             if (useAdvisoryLock)
             {
-                await dbContext.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_lock({MigrationAdvisoryLockKey})", cancellationToken)
-                                        .ConfigureAwait(false);
+                await WaitForMigrationLockAsync(token => TryAcquireMigrationLockAsync(dbContext, token), options, waitStartedAt, logger, timeProvider, cancellationToken).ConfigureAwait(false);
             }
 
             await dbContext.Database.MigrateAsync(cancellationToken)
@@ -216,6 +246,21 @@ public static class DatabaseMigrator
             await dbContext.Database.CloseConnectionAsync()
                                     .ConfigureAwait(false);
         }
+    }
+
+    /// <summary>
+    /// Try to take the migration advisory lock without blocking
+    /// </summary>
+    /// <param name="dbContext">Database context</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>True when the lock was acquired</returns>
+    private static async Task<bool> TryAcquireMigrationLockAsync(DockerUpdateGuardDbContext dbContext, CancellationToken cancellationToken)
+    {
+        var result = await dbContext.Database.SqlQuery<bool>($"SELECT pg_try_advisory_lock({MigrationAdvisoryLockKey}) AS \"Value\"")
+                                             .ToListAsync(cancellationToken)
+                                             .ConfigureAwait(false);
+
+        return result.Count > 0 && result[0];
     }
 
     /// <summary>

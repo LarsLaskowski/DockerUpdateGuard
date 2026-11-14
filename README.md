@@ -108,7 +108,8 @@ Rules: [Hosting and configuration](docs/areas/hosting.md).
 | `DockerUpdateGuard:Database:MaxConnectionRetryCount` | `8` | No | Retries of a transiently failing database command during normal operation |
 | `DockerUpdateGuard:Database:MaxConnectionRetryDelaySeconds` | `30` | No | Maximum back-off in seconds between those retries |
 | `DockerUpdateGuard:Database:MigrationStartupTimeoutSeconds` | `120` | No | How long startup waits for the database to become reachable |
-| `DockerUpdateGuard:Database:MigrationRetryDelaySeconds` | `5` | No | Delay in seconds between connection attempts while startup waits for the database |
+| `DockerUpdateGuard:Database:MigrationRetryDelaySeconds` | `5` | No | Delay in seconds between connection attempts while startup waits for the database, and between attempts to take the migration lock |
+| `DockerUpdateGuard:Database:MigrationLockTimeoutSeconds` | `900` | No | Total time in seconds startup waits for another instance to release the migration lock; raise it when a migration takes longer |
 
 \* At least one of `DockerUpdateGuard:ConnectionString` or `ConnectionStrings:{ConnectionStringName}` must be configured.
 

@@ -106,7 +106,9 @@ which blocks startup on three steps:
 
 1. `DatabaseMigrator.MigrateAsync` — waits for the database, then applies
    EF Core migrations under a PostgreSQL session-scoped advisory lock, so
-   concurrently starting instances never migrate at the same time.
+   concurrently starting instances never migrate at the same time. The lock
+   is polled until `MigrationLockTimeoutSeconds`
+   ([decision 0032](decisions/0032-the-migration-lock-is-awaited-by-polling-against-its-own-deadline.md)).
 2. `IInstanceDiscoveryService.SynchronizeConfiguredInstancesAsync` —
    reconciles the configured Docker instances against the database
    (local, DB-only work).
