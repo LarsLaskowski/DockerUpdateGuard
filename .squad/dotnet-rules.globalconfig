@@ -1,8 +1,13 @@
-# The rules the .NET rule baseline switches off for every C# file, as a global analyzer config:
-# an .editorconfig section reaches no generated code (Razor components), this file reaches every syntax tree of the
-# compilation. Directory.Build.props names it in GlobalAnalyzerConfigFiles (dotnet_config.py checks it). Written by
-# the template's tools/dotnet-baseline.py from dotnet-rules.editorconfig; never edit it in a repository.
+# The rules the .NET rule baseline switches off for every C# file, and the severity of the rules reported without a
+# location, as a global analyzer config: an .editorconfig section reaches no generated code (Razor components) and no
+# diagnostic without a source file (MSTEST0001), this file reaches the whole compilation. Directory.Build.props names
+# it in GlobalAnalyzerConfigFiles (dotnet_config.py checks it); .squad/dotnet-rules-pending.globalconfig, at a higher
+# global_level, lowers a rule of DOTNET_RULES_PENDING. Written by the template's tools/dotnet-baseline.py from
+# dotnet-rules.editorconfig; never edit it in a repository.
 is_global = true
+
+# every test assembly states its parallelization ([assembly: Parallelize] or [assembly: DoNotParallelize]); MSTest leaves it at suggestion (#379)
+dotnet_diagnostic.MSTEST0001.severity = error
 
 dotnet_diagnostic.RH2102.severity = none
 

@@ -485,7 +485,10 @@ the two production projects that matter for this split:
 - **CI** (`.github/workflows/ci.yml`): on every push to `main` and every
   pull request — restore, format check, build, test with coverage, and
   (when `SONAR_TOKEN` is available, i.e. not on forked/Dependabot PRs)
-  SonarQube Cloud analysis. `.github/workflows/codeql.yml` runs CodeQL
+  SonarQube Cloud analysis; a separate `decision-records` job runs
+  `.squad/tools/decision-check.py` on the full history and tags, so a
+  released decision record can change nothing but its status.
+  `.github/workflows/codeql.yml` runs CodeQL
   separately, for C# and for the GitHub Actions workflows.
 - **Release** (`.github/workflows/release.yml`): triggered by pushing a
   `v*.*.*` tag — builds, tests, then builds and pushes the multi-stage
