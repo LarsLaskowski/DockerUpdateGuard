@@ -21,6 +21,16 @@ internal sealed class ConcurrencyTrackingHttpMessageHandler : HttpMessageHandler
     private readonly TimeSpan _delay;
 
     /// <summary>
+    /// Gate that holds every request until it is opened; null in the delayed mode
+    /// </summary>
+    private readonly TaskCompletionSource? _gate;
+
+    /// <summary>
+    /// Signal released once per arrived request
+    /// </summary>
+    private readonly SemaphoreSlim _arrivals = new(0);
+
+    /// <summary>
     /// Number of requests currently in flight
     /// </summary>
     private int _currentConcurrency;
@@ -45,6 +55,16 @@ internal sealed class ConcurrencyTrackingHttpMessageHandler : HttpMessageHandler
         _delay = delay;
     }
 
+    /// <summary>
+    /// Constructor of the gated mode: every request is held until <see cref="OpenGate"/> is called
+    /// </summary>
+    /// <param name="jsonContent">JSON payload returned for every request</param>
+    public ConcurrencyTrackingHttpMessageHandler(string jsonContent)
+    {
+        _jsonContent = jsonContent;
+        _gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    }
+
     #endregion // Constructors
 
     #region Properties
@@ -54,9 +74,36 @@ internal sealed class ConcurrencyTrackingHttpMessageHandler : HttpMessageHandler
     /// </summary>
     public int MaxObservedConcurrency => Volatile.Read(ref _maxConcurrency);
 
+    /// <summary>
+    /// Number of requests currently in flight
+    /// </summary>
+    public int CurrentConcurrency => Volatile.Read(ref _currentConcurrency);
+
     #endregion // Properties
 
     #region Methods
+
+    /// <summary>
+    /// Open the gate so the held requests are answered
+    /// </summary>
+    public void OpenGate()
+    {
+        _gate?.TrySetResult();
+    }
+
+    /// <summary>
+    /// Wait until the given number of requests has arrived at the handler (arrival signal, no delay)
+    /// </summary>
+    /// <param name="count">Number of arrivals to wait for</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Task</returns>
+    public async Task WaitForArrivalsAsync(int count, CancellationToken cancellationToken)
+    {
+        for (var index = 0; index < count; index++)
+        {
+            await _arrivals.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+    }
 
     /// <summary>
     /// Raise the observed peak concurrency to the supplied value when it is higher
@@ -84,6 +131,17 @@ internal sealed class ConcurrencyTrackingHttpMessageHandler : HttpMessageHandler
     #region HttpMessageHandler
 
     /// <inheritdoc/>
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            _arrivals.Dispose();
+        }
+
+        base.Dispose(disposing);
+    }
+
+    /// <inheritdoc/>
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -91,10 +149,18 @@ internal sealed class ConcurrencyTrackingHttpMessageHandler : HttpMessageHandler
         var current = Interlocked.Increment(ref _currentConcurrency);
 
         UpdateMaxConcurrency(current);
+        _arrivals.Release();
 
         try
         {
-            await Task.Delay(_delay, cancellationToken).ConfigureAwait(false);
+            if (_gate is null)
+            {
+                await Task.Delay(_delay, cancellationToken).ConfigureAwait(false);
+            }
+            else
+            {
+                await _gate.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+            }
 
             return new HttpResponseMessage(HttpStatusCode.OK)
                    {

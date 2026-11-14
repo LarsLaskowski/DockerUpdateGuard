@@ -9,6 +9,15 @@ namespace DockerUpdateGuard.Tests.Data;
 internal sealed partial class TestOptionsMonitor<TOptions> : IOptionsMonitor<TOptions>
     where TOptions : class
 {
+    #region Fields
+
+    /// <summary>
+    /// Listeners registered through <see cref="OnChange"/>
+    /// </summary>
+    private readonly List<Action<TOptions, string?>> _listeners = [];
+
+    #endregion // Fields
+
     #region Constructors
 
     /// <summary>
@@ -27,11 +36,31 @@ internal sealed partial class TestOptionsMonitor<TOptions> : IOptionsMonitor<TOp
     #region Properties
 
     /// <inheritdoc/>
-    public TOptions CurrentValue { get; }
+    public TOptions CurrentValue { get; private set; }
 
     #endregion // Properties
 
     #region Methods
+
+    /// <summary>
+    /// Replace the current value and call the registered listeners, as a configuration reload does
+    /// </summary>
+    /// <param name="currentValue">New current value</param>
+    public void Reload(TOptions currentValue)
+    {
+        Action<TOptions, string?>[] listeners;
+
+        lock (_listeners)
+        {
+            CurrentValue = currentValue;
+            listeners = [.. _listeners];
+        }
+
+        foreach (var listener in listeners)
+        {
+            listener(currentValue, null);
+        }
+    }
 
     /// <inheritdoc/>
     public TOptions Get(string? name)
@@ -44,7 +73,18 @@ internal sealed partial class TestOptionsMonitor<TOptions> : IOptionsMonitor<TOp
     {
         ArgumentNullException.ThrowIfNull(listener);
 
-        return NullDisposable.Instance;
+        lock (_listeners)
+        {
+            _listeners.Add(listener);
+        }
+
+        return new ListenerRegistration(() =>
+                                        {
+                                            lock (_listeners)
+                                            {
+                                                _listeners.Remove(listener);
+                                            }
+                                        });
     }
 
     #endregion // Methods
