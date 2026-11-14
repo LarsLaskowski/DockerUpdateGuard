@@ -8,12 +8,14 @@ on:
 
 permissions:
   contents: read
-  checks: write
 
 jobs:
   build-test-analyze:
     name: Build, Test & Analyze
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      checks: write  # dorny/test-reporter publishes the test results as a check run
     env:
       # Secrets are not exposed to Dependabot or fork-triggered runs, so the
       # token is empty there. The SonarQube steps below are skipped in that
