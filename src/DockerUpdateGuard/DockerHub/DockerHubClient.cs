@@ -232,6 +232,40 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient
     }
 
     /// <summary>
+    /// Read the valid digests of the platform images of a Docker Hub tag payload
+    /// </summary>
+    /// <param name="element">Tag JSON element</param>
+    /// <returns>Platform image digests in document order</returns>
+    private static List<string> ReadPlatformDigests(JsonElement element)
+    {
+        var digests = new List<string>();
+
+        if (element.ValueKind != JsonValueKind.Object
+            || element.TryGetProperty("images", out var imagesElement) == false
+            || imagesElement.ValueKind != JsonValueKind.Array)
+        {
+            return digests;
+        }
+
+        foreach (var imageElement in imagesElement.EnumerateArray())
+        {
+            if (imageElement.ValueKind != JsonValueKind.Object)
+            {
+                continue;
+            }
+
+            var digest = RegistryReferenceValidator.ValidDigestOrNull(TryGetString(imageElement, DigestPropertyName));
+
+            if (digest is not null)
+            {
+                digests.Add(digest);
+            }
+        }
+
+        return digests;
+    }
+
+    /// <summary>
     /// Resolve the Docker Hub tag digest from the top-level payload
     /// </summary>
     /// <param name="element">Tag JSON element</param>
@@ -1456,7 +1490,11 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient
                                           using var jsonDocument = await RemoteJsonDocument.ParseAsync(responseStream, cancellationToken)
                                                                                            .ConfigureAwait(false);
 
-                                          return ExternalOperationResult.Succeeded<DockerHubTagData>(CreateTagData(jsonDocument.RootElement, imageReference.Tag));
+                                          var tagData = CreateTagData(jsonDocument.RootElement, imageReference.Tag);
+
+                                          tagData.PlatformDigests = ReadPlatformDigests(jsonDocument.RootElement);
+
+                                          return ExternalOperationResult.Succeeded<DockerHubTagData>(tagData);
                                       }
                                   },
                                   cancellationToken).ConfigureAwait(false);

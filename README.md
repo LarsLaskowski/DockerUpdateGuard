@@ -148,7 +148,7 @@ Rules: [Vulnerabilities](docs/areas/vulnerabilities.md#configuration).
 | `TrivyExecutablePath` | `trivy` | No | Path to the Trivy executable (resolved through `PATH` by default; bundled in the published container image) |
 | `DockerScoutLoginUrl` | `https://hub.docker.com/v2/users/login` | No | Docker Hub login endpoint used by the `DockerScout` provider |
 | `DockerScoutBaseUrl` | `https://api.scout.docker.com` | No | Base address of the Docker Scout API |
-| `RequestTimeoutSeconds` | `120` | No | Timeout for vulnerability provider requests |
+| `RequestTimeoutSeconds` | `120` | No | Timeout for vulnerability provider requests; for Docker Scout, per login or page request with its retries |
 | `MaxParallelScans` | `1` | No | Maximum number of vulnerability provider scans running at the same time |
 
 ### `DockerUpdateGuard:Scanning`

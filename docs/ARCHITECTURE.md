@@ -90,7 +90,7 @@ composition root, which in order:
 3. Registers OpenTelemetry via `DockerUpdateGuard.Telemetry`'s
    `AddDockerUpdateGuardTelemetry`.
 4. Registers the typed/named `HttpClient`s (Docker Hub, generic OCI
-   registry, .NET/nginx release metadata, Portainer) with
+   registry, .NET/nginx release metadata, Portainer, Docker Scout) with
    `TransientHttpRetryHandler` as their outbound message handler.
 5. Registers the integration clients, domain/orchestration services, the
    UI facade (`IApplicationViewService`), and all 7 background jobs
@@ -230,7 +230,7 @@ in [Integration failures](areas/integration-failures.md).
 | `OciRegistryClient` (`Images\`) | Any other OCI Distribution v2 registry. | [Registries](areas/registries.md) |
 | `PortainerClient` (`Portainer\`) | Portainer REST API (API key or JWT login), endpoint and container listing, container actions. | [Container actions](areas/container-actions.md) |
 | `TrivyVulnerabilityProvider` (`Vulnerabilities\`) | Trivy CLI (external process via `IProcessRunner`), client mode against a Trivy server. | [Vulnerabilities](areas/vulnerabilities.md) |
-| `DockerScoutVulnerabilityProvider` (`Vulnerabilities\`) | Docker Scout / Docker Hub HTTP API. | [Vulnerabilities](areas/vulnerabilities.md) |
+| `DockerScoutVulnerabilityProvider` (`Vulnerabilities\`) | Docker Scout / Docker Hub HTTP API through the named client `DockerScout`; checks the digest of an image reference against the tag through `IRegistryMetadataService` in a scope of its own ([0031](decisions/0031-docker-scout-assesses-a-digest-only-while-its-tag-still-points-to-it.md)). | [Vulnerabilities](areas/vulnerabilities.md) |
 | `DefaultVulnerabilityProvider` (`Vulnerabilities\`) | — (no-op fallback selected by `IVulnerabilityProviderResolver` when scanning is disabled). | [Vulnerabilities](areas/vulnerabilities.md) |
 
 `RegistryMetadataService` is the dispatcher in front of
@@ -242,7 +242,7 @@ implementation, not touching the dispatcher.
 
 `TransientHttpRetryHandler` (`Infrastructure\`) is attached to the
 typed/named `HttpClient`s registered in the composition root (§3). The
-Docker Engine client and Docker Scout create their `HttpClient`s without
+Docker Engine client creates its `HttpClient`s without
 it. The retry policy is specified in
 [Integration failures](areas/integration-failures.md#retry-of-transient-http-failures).
 The singleton `LoginRetryAfterRegistry` (`Infrastructure\`) remembers, per login URL and user name, the window a 429's

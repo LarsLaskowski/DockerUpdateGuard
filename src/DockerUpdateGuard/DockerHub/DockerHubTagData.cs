@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace DockerUpdateGuard.DockerHub;
 
 /// <summary>
@@ -21,6 +23,12 @@ public class DockerHubTagData
     /// Optional publication timestamp
     /// </summary>
     public DateTimeOffset? PublishedAtUtc { get; set; }
+
+    /// <summary>
+    /// Digests of the platform images of the tag
+    /// </summary>
+    [JsonIgnore]
+    public IReadOnlyList<string> PlatformDigests { get; set; } = [];
 
     #endregion // Properties
 }

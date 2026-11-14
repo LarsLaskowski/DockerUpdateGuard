@@ -11,7 +11,9 @@ using DockerUpdateGuard.Vulnerabilities.Interfaces;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Http;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace DockerUpdateGuard.Tests;
 
@@ -217,6 +219,41 @@ public class ServiceCollectionExtensionsTests
 
         Assert.IsNotNull(GetRequestLimiter(scoutProvider), "The Docker Scout provider must hold a request limiter");
         Assert.AreSame(requestLimiter, GetRequestLimiter(scoutProvider), "The Docker Scout provider must use the registered limiter");
+    }
+
+    /// <summary>
+    /// Verify the named Docker Scout client has the transient retry handler in its handler chain
+    /// </summary>
+    [TestMethod]
+    [TestCategory("AC1")]
+    public void ServiceCollectionExtensionsDockerScoutClientUsesRetryHandler()
+    {
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+                                                                             {
+                                                                                 ["DockerUpdateGuard:ConnectionString"] = "Host=database;Database=dug;Username=test;Password=test",
+                                                                                 ["Telemetry:EnableLogging"] = "true",
+                                                                                 ["Telemetry:EnableMetrics"] = "false",
+                                                                                 ["Telemetry:EnableTracing"] = "false",
+                                                                             })
+                                                      .Build();
+        var services = new ServiceCollection();
+
+        services.AddDockerUpdateGuardHost(configuration);
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        var clientOptions = serviceProvider.GetRequiredService<IOptionsMonitor<HttpClientFactoryOptions>>()
+                                           .Get(DockerScoutVulnerabilityProvider.HttpClientName);
+        var builder = serviceProvider.GetRequiredService<HttpMessageHandlerBuilder>();
+
+        foreach (var action in clientOptions.HttpMessageHandlerBuilderActions)
+        {
+            action(builder);
+        }
+
+        Assert.Contains(handler => handler is TransientHttpRetryHandler,
+                        builder.AdditionalHandlers,
+                        "The Docker Scout client must send through the transient HTTP retry handler");
     }
 
     /// <summary>
