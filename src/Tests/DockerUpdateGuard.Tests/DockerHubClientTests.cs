@@ -846,6 +846,46 @@ public partial class DockerHubClientTests
     }
 
     /// <summary>
+    /// Verify the Docker Hub tag listing leaves the platform digests empty
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC9")]
+    public async Task DockerHubClientGetTagsAsyncLeavesPlatformDigestsEmptyAsync()
+    {
+        using var handler = new StubHttpMessageHandler();
+        using var httpClient = new HttpClient(handler)
+                               {
+                                   BaseAddress = new Uri("https://hub.docker.com/"),
+                               };
+
+        handler.AddResponse("https://hub.docker.com/v2/users/login", LoginResponseJson);
+        handler.AddResponse("https://hub.docker.com/v2/namespaces/acme/repositories/api/tags?page_size=100",
+                            """
+                            {
+                              "next": null,
+                              "results": [
+                                {
+                                  "name": "latest",
+                                  "digest": "sha256:latest",
+                                  "last_pushed": "2025-04-02T10:00:00Z",
+                                  "images": [ { "architecture": "amd64", "os": "linux", "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" } ]
+                                }
+                              ]
+                            }
+                            """);
+
+        var client = CreateClient(httpClient);
+
+        var result = await client.GetTagsAsync("docker.io", "acme/api", cancellationToken: CancellationToken.None).ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "The tag listing must succeed");
+        Assert.IsNotNull(result.Data, "The tag listing must return tag metadata");
+        Assert.ContainsSingle(result.Data, "The listing must hold the one tag");
+        Assert.IsEmpty(result.Data[0].PlatformDigests, "The tag listing must not fill the platform digests");
+    }
+
+    /// <summary>
     /// Verify Docker Hub tag listing follows pagination links
     /// </summary>
     /// <returns>Task</returns>
