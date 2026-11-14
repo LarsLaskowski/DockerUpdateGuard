@@ -139,6 +139,9 @@ scan run:
   answered so: the lookup sends nothing and gives *failed* with `Docker Hub authentication token request for '<user>'
   not sent: Docker Hub answered HTTP 429 and asked to wait until <until>`, also on the refresh after a 401
   ([Integration failures](integration-failures.md#logins-inside-a-retry-after-window)).
+- A login takes a Docker Hub request slot (`DockerHub:MaxParallelRequests`,
+  [Registries](registries.md#docker-hub-request-budget-and-parallelism)) and waits for one after the `Retry-After`
+  check. Lookups with a cached token and the Docker Scout API requests take no slot.
 - Vulnerabilities are read from `<DockerScoutBaseUrl>/v1/repositories/<namespace>/<repository>/tags/<tag>/vulnerabilities`,
   following the `next` link of each page, for at most **50 pages**. Each segment is percent-encoded. A repository or tag
   with a `.` or `..` segment is not requested: the lookup logs nothing, does not log in, and gives *not found* with the
