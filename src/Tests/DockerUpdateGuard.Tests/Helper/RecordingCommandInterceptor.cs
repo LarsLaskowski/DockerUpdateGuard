@@ -14,7 +14,7 @@ internal sealed class RecordingCommandInterceptor : DbCommandInterceptor
     /// <summary>
     /// Guard of the recorded executions
     /// </summary>
-    private readonly object _lock = new();
+    private readonly Lock _lock = new();
 
     /// <summary>
     /// Tokens of the asynchronous reader executions in execution order

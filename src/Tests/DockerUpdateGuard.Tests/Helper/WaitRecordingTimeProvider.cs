@@ -23,7 +23,7 @@ internal sealed class WaitRecordingTimeProvider
     /// <summary>
     /// Guard of the recorded waits
     /// </summary>
-    private readonly object _lock;
+    private readonly Lock _lock;
 
     /// <summary>
     /// Signal written once per started wait
@@ -54,7 +54,7 @@ internal sealed class WaitRecordingTimeProvider
     /// </summary>
     public WaitRecordingTimeProvider()
     {
-        _lock = new object();
+        _lock = new Lock();
         _waitStarted = Channel.CreateUnbounded<bool>();
         _waits = [];
         TimeProvider = Substitute.For<TimeProvider>();
