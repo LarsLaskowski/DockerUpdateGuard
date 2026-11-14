@@ -1,6 +1,6 @@
 # 0033: Migration statements run under a command timeout of their own
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-14
 - **Area:** Hosting and configuration
 - **Source:** Issue #470
@@ -43,7 +43,7 @@ value it had before. The key's default and validation are in the area document.
 
 - A migration statement may run up to the configured time; operators with longer statements raise the key.
 - A statement that still exceeds it remains a transient fault to the execution strategy, so lock and migration are
-  re-run up to `MaxConnectionRetryCount` times before startup fails: the worst case is that many times the timeout.
+  re-run up to `MaxConnectionRetryCount` times before startup fails: that statement alone can hold startup for `MaxConnectionRetryCount` + 1 times the timeout.
 - Instances waiting for the lock still give up after `MigrationLockTimeoutSeconds`; a migration that runs longer
   needs both keys raised.
 - The advisory lock queries keep the database command timeout; they never block.

@@ -93,5 +93,5 @@ once in the [area document](../areas/README.md) of the record's area, and the re
 | [0030](0030-docker-hub-request-parallelism-is-limited-process-wide-and-follows-reloads.md) | Docker Hub request parallelism is limited process-wide and follows reloads | Accepted | 2026-11-14 |
 | [0031](0031-docker-scout-assesses-a-digest-only-while-its-tag-still-points-to-it.md) | Docker Scout assesses a digest only while its tag still points to it | Accepted | 2026-11-14 |
 | [0032](0032-the-migration-lock-is-awaited-by-polling-against-its-own-deadline.md) | The migration lock is awaited by polling against its own deadline | Accepted | 2026-11-14 |
-| [0033](0033-migration-statements-run-under-a-command-timeout-of-their-own.md) | Migration statements run under a command timeout of their own | Proposed | 2026-11-14 |
+| [0033](0033-migration-statements-run-under-a-command-timeout-of-their-own.md) | Migration statements run under a command timeout of their own | Accepted | 2026-11-14 |
 <!-- project:end index -->

@@ -210,7 +210,7 @@ These properties hold today and must be provided for by the deployment:
 | Non-transient database error while waiting | Startup fails immediately. |
 | Migration fails | Logged; startup fails. |
 | Migration lock not acquired within `MigrationLockTimeoutSeconds` | Logged with the key; startup fails. |
-| A migration statement exceeds `MigrationCommandTimeoutSeconds` | Retried with lock and migration up to `MaxConnectionRetryCount` times, so startup can wait up to the timeout × (`MaxConnectionRetryCount` + 1); then logged and startup fails. |
+| A migration statement exceeds `MigrationCommandTimeoutSeconds` | Retried with lock and migration up to `MaxConnectionRetryCount` times, so that statement alone can hold startup for the timeout × (`MaxConnectionRetryCount` + 1), plus the retry back-off and the migration's other statements; then logged and startup fails. |
 | Advisory lock cannot be released | Logged; the migration outcome stands. |
 | Mounted settings file not readable by the container user | Entrypoint exits with code `1` and a fix-it message. |
 | No usable certificate in `/app/certs` (missing directory, no files, nothing that is a PEM certificate block) | A message is printed; only the system CA certificates apply; the container starts. |
