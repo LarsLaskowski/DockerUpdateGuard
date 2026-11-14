@@ -123,8 +123,8 @@ or `restart`.
 
 ## Out of scope
 
-- Redeploying stacks and updating Swarm services (`RedeployStack`, `UpdateService`), pending Open question 1, and
-  redeploying to a selected tag (#291).
+- Redeploying stacks and updating Swarm services (`RedeployStack`, `UpdateService`) and redeploying to a selected
+  tag: a follow-up issue linked to #291 (Open question 1).
 - `kill`, `pause`, `unpause`; actions from list pages or background jobs; an automatic rescan after an action.
 - Recording a user identity (no sign-in) and a retention for action runs (N7).
 - Detecting the database container as a self-target (only the app's own container, N8).
@@ -132,10 +132,9 @@ or `restart`.
 
 ## Open questions
 
-1. Do the update actions (`RedeployStack`, `UpdateService`) ship in this feature? The session cannot reach a Portainer
-   server, the stack redeploy re-sends the stack file and environment (a wrong request rewrites the stack), and the
-   update target depends on #291. Escalated to the Product Manager; this draft follows the recommendation (container
-   lifecycle now, update actions as a follow-up issue).
+1. Do the update actions (`RedeployStack`, `UpdateService`) ship in this feature? Answered: no (Product Manager,
+   option A). Start, Stop and Restart ship now; `RedeployStack` and `UpdateService` stay as stored action types but
+   are neither offered nor executable; redeploy and update become a follow-up issue linked to #291.
 2. Which actions, and on which status? Answered: issue's recommendation (Start / Stop / Restart; kill removed as
    destructive, pause/unpause not needed for update management); paused and restarting containers count as running,
    dead ones get none (E12).
