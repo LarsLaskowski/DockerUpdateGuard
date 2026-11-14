@@ -50,7 +50,8 @@ Hub request are in [Vulnerabilities](../areas/vulnerabilities.md#docker-scout).
   *unavailable* with its findings untouched, as Trivy does for a digest that is gone.
 - Each Docker Scout lookup of an image version with a digest costs one Docker Hub web API request, which takes a
   Docker Hub request slot ([0030](0030-docker-hub-request-parallelism-is-limited-process-wide-and-follows-reloads.md))
-  and counts against Docker Hub's rate limit.
+  and counts against Docker Hub's rate limit; its time limit is `DockerHub:RequestTimeoutSeconds`, not the Docker
+  Scout timeout.
 - A platform digest of the current tag counts as a match, although Docker Scout's tag answer may describe another
   platform of that release; this imprecision already holds for the index digest.
 - A tag republished between the check and the Docker Scout request is not detected; the window is one lookup long.

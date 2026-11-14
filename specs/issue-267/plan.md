@@ -6,11 +6,9 @@ Security areas touched: Registry and Docker Scout calls (`DockerScoutVulnerabili
 
 ## Problem / root cause
 
-1. `DockerScoutVulnerabilityProvider.GetVulnerabilitiesAsync` asks for the default client,
-   `_httpClientFactory.CreateClient()` (`src/DockerUpdateGuard/Vulnerabilities/DockerScoutVulnerabilityProvider.cs:500`),
-   which `ServiceCollectionExtensions.cs:72-101` never gives a `TransientHttpRetryHandler`; the provider is a plain
-   singleton (`ServiceCollectionExtensions.cs:112`). Neither the login (`AuthenticateAsync`, line 279) nor the page
-   requests (`FetchVulnerabilitiesAsync`, line 391) are retried.
+1. The provider asks for the default client (`DockerScoutVulnerabilityProvider.cs:500`), which
+   `ServiceCollectionExtensions.cs:72-101` never gives a `TransientHttpRetryHandler`; neither the login (line 279)
+   nor the page requests (line 391) are retried.
 2. `CreateVulnerabilitiesUri` (line 127-138) builds the `tags/<tag>` URL and nothing checks `imageReference.Digest`,
    which is used only in `FullReference` for logs and messages; a republished tag gives the advisories of the new image.
 
@@ -18,29 +16,19 @@ Security areas touched: Registry and Docker Scout calls (`DockerScoutVulnerabili
 
 | # | Claim | Evidence | Status |
 | - | ----- | -------- | ------ |
-| 1 | The typed/named clients get the retry handler at `ServiceCollectionExtensions.cs:72-101` | read | confirmed |
-| 2 | Scout is registered as a singleton at line 108 | now line 112 (main moved since the issue) | confirmed |
-| 3 | The provider uses the default client at lines 400-402, login at 226, pages at 323 | now lines 500-502, 279, 391 | confirmed |
+| 2 | Issue's lines 108, 400-402, 226, 323 (registration, default client, login, pages) | now 112, 500-502, 279, 391 (main moved) | confirmed |
 | 4 | `docs/areas/registries.md` says the retry "does not apply to … Docker Scout" | the sentence and the *Retry of transient HTTP failures* section are in `docs/areas/integration-failures.md:99-104`; `registries.md` has no such section | refuted |
 | 5 | The login would be retried on 408/429/5xx like any other request | a `POST`: `TransientHttpRetryHandler.cs:341`, `integration-failures.md:112-119` retry it only on a 429 with `Retry-After` missing or at most 30 s and on an error before any byte was sent | refuted |
 | 5a | Page `GET`s get the full rule (408/429/5xx, transport errors) | `TransientHttpRetryHandler.cs:92-112,332` | confirmed |
-| 6 | A 401 is not retried by the handler | `TransientHttpRetryHandler.cs:92-97` | confirmed |
-| 7 | The handler buffers the login body before the first attempt | `TransientHttpRetryHandler.cs:316-319` | confirmed |
 | 8 | With the handler inside the client, `HttpClient.Timeout` covers all attempts and waits | documented and relied on for Docker Hub, `integration-failures.md:125-127`; the provider sets `client.Timeout` per call (line 502) | confirmed |
 | 9 | Only the final login response reaches `LoginRetryAfterRegistry`, so a 429 the handler waits out opens no window; a 429 with `Retry-After` > 30 s is returned and opens one | `DockerScoutVulnerabilityProvider.cs:279-284`; `integration-failures.md:156-158` | confirmed |
 | 10 | The lookup URL uses the tag; the digest is used only in `FullReference` | `DockerScoutVulnerabilityProvider.cs:127-138`, `ImageReference.cs:28,33` | confirmed |
 | 11 | No documented Docker Scout digest endpoint exists | to verify: not needed — the plan does not use one (0031, option 1); the session has no Docker Hub account to probe | unverified |
-| 12 | Docker Hub's tag record has the index digest at top level and the platform image digests under `images[].digest`, including `unknown/unknown` attestation entries | real sample `specs/issue-267/docker-hub-tag-sample.json` (`library/nginx:1.27`, fetched 2026-11-14, `media_type` index, 16 `images`, ids and user name replaced, checked against the real values) | confirmed |
-| 13 | `DockerHubTagData` carries only the top-level digest | `DockerHubClient.cs:224-242`, `DockerHubTagData.cs` | confirmed |
+| 12 | Docker Hub's tag record has the index digest at top level and the platform image digests under `images[].digest`, including `unknown/unknown` attestation entries | real sample `specs/issue-267/docker-hub-tag-sample.json` (`library/nginx:1.27`, 16 `images`, ids and user name anonymized and checked) | confirmed |
 | 14 | `DockerHubTagData` is serialized into `ImageVersion.MetadataJson`, a 4000-character column | `ImageScanOrchestrator.cs:607,730`; `ImageVersionConfiguration.cs:39-40`; 16 platform digests add about 1,200 characters | confirmed |
-| 15 | `IRegistryMetadataService` is scoped, the provider a singleton; typed clients are transient | `ServiceCollectionExtensions.cs:112,119` | confirmed |
-| 16 | `docker.io` is dispatched to `DockerHubClient`, whose `GetTagAsync` answers *not found* for a 404 and *failed* with a fixed message for other failures and errors | `DockerHubClient.cs:322-335,1398-1463`; decision 0029 | confirmed |
 | 17 | Stored digests are the index digest for runtime containers pulled by tag (`RepoDigests`) and for observed images (tag record); a base-image label digest may be a platform digest | to verify: not needed, both kinds match (AC6); read: `DockerInstanceClient.cs:135,170-202`, `ImageScanOrchestrator.cs:725-730`, `RegistryBaseImageResolver.cs:93` | unverified |
-| 18 | Event id 3408 is free | `grep "EventId = 3408,"` over `src/` | confirmed |
 
-Related defect found: `VulnerabilityEnrichmentService.cs:260,343,364,448` records the assessment source from the live options,
-not from the provider resolved for the refresh, so a reload during a refresh can label an assessment with the wrong
-provider (follow-up issue below).
+Related defect found: the assessment source comes from the live options (follow-up issue below).
 
 ## Acceptance criteria
 
@@ -55,15 +43,20 @@ provider (follow-up issue below).
 - AC5: For an image reference with a digest that equals neither the tag record's digest nor any of its platform
   digests (compared case-insensitively), or a tag record without any digest, the result is *not found* with the
   message `The tag of '<FullReference>' now points to a different digest; Docker Scout looks up tags only and cannot assess this version.`,
-  and neither the login nor a Docker Scout request is sent.
+  and neither the login nor a Docker Scout request is sent. A non-cancellation exception from resolving the registry
+  service or from `GetTagAsync` gives *failed* (`Docker Scout scan failed: ` prefix), sending nothing; the scope is
+  disposed after every tag lookup.
 - AC6: For an image reference whose digest equals the tag record's digest, or one of its platform digests, the Docker
   Scout tag endpoint is read as today and the result is *succeeded*.
 - AC7: When the tag lookup gives *not found*, the result is *not found* with the registry's message; any other
   unsuccessful status gives *failed* with the registry's message (`Tag digest lookup failed for '<FullReference>'`
   when it has none). Neither the login nor a Docker Scout request is sent.
-- AC8: An image reference without a digest makes no tag lookup and reads the tag endpoint as today.
+- AC8: An image reference without a digest makes no tag lookup and reads the tag endpoint as today; one with a
+  digest makes no tag lookup when the credentials, registry or path check answers first (*not configured*,
+  *unsupported*, *not found* with `DotSegmentMessage`, as today).
 - AC9: `DockerHubClient.GetTagAsync` fills `DockerHubTagData.PlatformDigests` with every `images[].digest` that passes
-  `RegistryReferenceValidator.ValidDigestOrNull`, in document order, skipping the others; the tag listing leaves it
+  `RegistryReferenceValidator.ValidDigestOrNull`, in document order, skipping the others, including entries that are
+  not JSON objects (the lookup still succeeds with its top-level digest); the tag listing leaves it
   empty; `JsonSerializer.Serialize` of a `DockerHubTagData` does not contain it.
 - AC10: The documentation updates below describe the new behavior, and the *Known gaps* entry of #267 is gone.
 
@@ -75,10 +68,10 @@ provider (follow-up issue below).
 | AC2 | `DockerScoutVulnerabilityProviderGetVulnerabilitiesAsyncTransientFailureIsRetried` | `DockerScoutVulnerabilityProviderTests.cs` |
 | AC3 | `DockerScoutVulnerabilityProviderGetVulnerabilitiesAsyncUnauthorizedIsNotRetriedByHandler` | `DockerScoutVulnerabilityProviderTests.cs` |
 | AC4 | `DockerScoutVulnerabilityProviderGetVulnerabilitiesAsyncLoginTooManyRequestsIsRetried`; `DockerScoutVulnerabilityProviderGetVulnerabilitiesAsyncLoginServiceUnavailableIsNotRetried` | `DockerScoutVulnerabilityProviderTests.cs` |
-| AC5 | `DockerScoutVulnerabilityProviderGetVulnerabilitiesAsyncWithRepublishedTagReturnsNotFound`; `DockerScoutVulnerabilityProviderGetVulnerabilitiesAsyncWithTagWithoutDigestReturnsNotFound` | `DockerScoutVulnerabilityProviderTests.cs` |
+| AC5 | `DockerScoutVulnerabilityProviderGetVulnerabilitiesAsyncWithRepublishedTagReturnsNotFound`; `DockerScoutVulnerabilityProviderGetVulnerabilitiesAsyncWithTagWithoutDigestReturnsNotFound`; `DockerScoutVulnerabilityProviderGetVulnerabilitiesAsyncWithDigestTagLookupThrowsReturnsFailed` | `DockerScoutVulnerabilityProviderTests.cs` |
 | AC6 | `DockerScoutVulnerabilityProviderGetVulnerabilitiesAsyncWithDigestOfTagQueriesTag`; `DockerScoutVulnerabilityProviderGetVulnerabilitiesAsyncWithPlatformDigestOfTagQueriesTag` | `DockerScoutVulnerabilityProviderTests.cs` |
 | AC7 | `DockerScoutVulnerabilityProviderGetVulnerabilitiesAsyncWithTagNotFoundReturnsNotFound`; `DockerScoutVulnerabilityProviderGetVulnerabilitiesAsyncWithTagLookupFailedReturnsFailed` | `DockerScoutVulnerabilityProviderTests.cs` |
-| AC8 | `DockerScoutVulnerabilityProviderGetVulnerabilitiesAsyncWithoutDigestSkipsTagLookup` | `DockerScoutVulnerabilityProviderTests.cs` |
+| AC8 | `DockerScoutVulnerabilityProviderGetVulnerabilitiesAsyncWithoutDigestSkipsTagLookup`; `DockerScoutVulnerabilityProviderGetVulnerabilitiesAsyncWithDigestNotConfiguredSkipsTagLookup`; `DockerScoutVulnerabilityProviderGetVulnerabilitiesAsyncWithDigestUnsupportedRegistrySkipsTagLookup`; `DockerScoutVulnerabilityProviderGetVulnerabilitiesAsyncWithDigestDotSegmentSkipsTagLookup` | `DockerScoutVulnerabilityProviderTests.cs` |
 | AC9 | `DockerHubClientGetTagAsyncReadsPlatformDigests`; `DockerHubClientGetTagAsyncSkipsInvalidPlatformDigest`; `DockerHubTagDataSerializeOmitsPlatformDigests` | `DockerHubClientTests.cs`; `DockerHubTagDataTests.cs` |
 | AC10 | manual: the Reviewer, step 8, reads the listed documents against the code | — |
 
@@ -88,11 +81,17 @@ Test notes for the Tester:
   once) in front of `SequenceHttpMessageHandler`, returned by the factory substitute for the named client.
 - AC5–AC8: the digest test cases set up the `IServiceScopeFactory` substitute so that its scope's `IServiceProvider`
   returns an `IRegistryMetadataService` substitute; "no tag lookup" (AC8) is asserted as no received
-  `CreateScope` call, "no login and no Docker Scout request" as no request in the HTTP handler.
+  `CreateScope` call, "no login and no Docker Scout request" as no request in the HTTP handler. Stub
+  `GetService(typeof(IRegistryMetadataService))`: a substitute `IServiceProvider` is no `ISupportRequiredService`,
+  so `GetRequiredService` falls back to it. The AC5 and AC6 tests also assert that the scope was disposed.
+- AC1's chain test resolves `IOptionsMonitor<HttpClientFactoryOptions>`, takes `.Get(DockerScoutVulnerabilityProvider.HttpClientName)`,
+  runs its `HttpMessageHandlerBuilderActions` on an `HttpMessageHandlerBuilder` from the service provider and asserts
+  that `AdditionalHandlers` contains a `TransientHttpRetryHandler`.
 - AC9's `DockerHubClientGetTagAsyncReadsPlatformDigests` reads the content of `specs/issue-267/docker-hub-tag-sample.json`
   copied verbatim into a raw string literal constant (the stack has no test data folder) and expects its 16 digests in
   document order and the top-level index digest unchanged. `…SkipsInvalidPlatformDigest` uses one entry without
-  `digest` and one whose digest breaks the grammar.
+  `digest`, one whose digest breaks the grammar, and one `null`, one number and one string entry; it expects
+  *succeeded* with the top-level digest unchanged and only the valid digests.
 
 ## Approach
 
@@ -117,8 +116,9 @@ scope after the call. Then:
 A cancellation still propagates; any other exception falls into the existing `catch` (`Docker Scout scan failed: <fixed reason>`).
 
 **Platform digests.** `DockerHubTagData` gets `PlatformDigests`, marked `[JsonIgnore]` so `MetadataJson` keeps its
-size. Only `DockerHubClient.GetTagAsync` fills it (a private helper reading `images` when it is an array; each
-element's `digest` through `ValidDigestOrNull`); `CreateTagData` for listings stays as it is, so listing pages hold no
+size. Only `DockerHubClient.GetTagAsync` fills it (a private helper reading `images` when it is an array; it skips
+every element whose `ValueKind` is not `JsonValueKind.Object`, as `DockerHubClient.cs:759,769-771` do, because
+`TryGetProperty` throws on other kinds; each object's `digest` goes through `ValidDigestOrNull`); `CreateTagData` for listings stays as it is, so listing pages hold no
 extra strings. No new limit: the tag record is parsed whole by `RemoteJsonDocument` as today.
 
 No new user-visible output besides the AC5 and AC7 messages, which appear in the existing assessment message and scan
@@ -179,11 +179,16 @@ All by the Dev, after the code is green:
 
 - `docs/areas/vulnerabilities.md`, *Docker Scout*: replace "by tag; the digest is not used" with the digest check
   (order after the path check, match rule, AC5/AC7 outcomes, one Docker Hub web API request per lookup with a digest,
-  which takes a Docker Hub request slot); the slot sentence "Lookups with a cached token and the Docker Scout API
+  which takes a Docker Hub request slot and is limited by `DockerHub:RequestTimeoutSeconds`, linking
+  [Registries](registries.md#request-timeout), not by `Vulnerabilities:RequestTimeoutSeconds`); the slot sentence "Lookups with a cached token and the Docker Scout API
   requests take no slot" names the tag lookup; "Each HTTP request is limited to `RequestTimeoutSeconds`" becomes
   "…, its retries and waits included", with a link to the retry rules; the login is retried as a non-idempotent
   request. Assessment table, *Unavailable*: add "or, for Docker Scout, the tag now points to another digest". Remove
-  the #267 entry from *Known gaps*; add 0031 to *Related decisions*.
+  the #267 entry from *Known gaps*; add 0031 to *Related decisions*. `:197-198` (*Limits and errors*) reads:
+  "Messages are built from the image reference and the provider's error output (Trivy's excerpt, or for Docker
+  Scout the failure message of Docker Hub's tag lookup with its body excerpt,
+  [Integration failures](integration-failures.md#excerpts-of-remote-text)) or a fixed reason; no tokens or
+  passwords are put into them."
 - `docs/areas/integration-failures.md:101-104`: Docker Scout (login and vulnerability pages) joins the list and leaves
   the "does not apply" sentence; `:118-119`: the Docker Scout login joins "The requests concerned".
 - `docs/areas/registries.md:65-66` (*Tag lookup*, Docker Hub): the platform image digests of the tag record are read
@@ -193,7 +198,7 @@ All by the Dev, after the code is green:
   `IRegistryMetadataService` in a scope of its own (link 0031); `:243-246`: only the Docker Engine client creates its
   `HttpClient`s without the retry handler.
 - `README.md:151` (`Vulnerabilities:RequestTimeoutSeconds`): "Timeout for vulnerability provider requests; for Docker
-  Scout, per request with its retries".
+  Scout, per login or page request with its retries".
 
 Sweep (`grep -i scout` over `docs/`, `README.md`, `INSTALL.md`): the hits not listed stay true.
 
@@ -212,9 +217,8 @@ stays free of I/O. No configuration key, entity or migration changes.
 - [x] Exceptions reaching a message: none new. The AC5 message holds only `FullReference` (validated reference); the
   AC7 message is the registry's, built by `DockerHubClient` from fixed text and `ResponseBodyExcerpt`; other exceptions
   become `Docker Scout scan failed: <fixed reason>` as today.
-- The PAT is resent only by the handler's rules for a non-idempotent request (a 429 within 30 s, or an error before
-  any byte was sent), to the same URL; the handler's log omits the body and the query string.
-- The tag lookup uses `DockerHubClient` unchanged: its token cache, request limiter and path validation apply.
+- The PAT is resent only under the handler's non-idempotent rule, to the same URL; the tag lookup uses `DockerHubClient`
+  with its token cache, limiter and path validation.
 
 ## Decision records
 
@@ -229,91 +233,23 @@ stays free of I/O. No configuration key, entity or migration changes.
 - A Docker Scout digest endpoint (0031, *Consequences*).
 - The shared User-Agent on the Docker Scout client.
 
-## Challenge notes
+## Challenge
 
-I found no major objections and 4 minor ones. The plan holds up against the code. Its two root causes are correct:
-- The provider asks for the default client (`DockerScoutVulnerabilityProvider.cs:500`), and `ServiceCollectionExtensions.cs:72-101` gives the retry handler only to the typed and named clients.
-- The lookup is built by tag (`DockerScoutVulnerabilityProvider.cs:127-138`), and the digest is used only in `FullReference`.
+1. minor — no test pins the order of the checks. Accepted: AC8 now covers a digest-bearing reference that the
+   credentials, registry or path check answers first, with three tests asserting the existing outcome and no
+   `CreateScope` call.
+2. minor — error path and scope disposal untested. Accepted: AC5 gains the exception case (`…WithDigestTagLookupThrowsReturnsFailed`)
+   and scope disposal; the test notes name the `GetService(Type)` stub.
+3. minor — the tag lookup's timeout is not documented. Accepted: the `vulnerabilities.md` edit states that it is bound by
+   `DockerHub:RequestTimeoutSeconds` with a link to Registries; the README line names only the login and page requests.
+4. minor — AC1's chain test technique. Accepted: the test notes name the `HttpClientFactoryOptions` technique.
 
-**Claims I checked and found true**
-- **Retry rules:** a `POST` is retried only on a 429 whose `Retry-After` is missing or at most 30 s, and a 401 is never retried (`TransientHttpRetryHandler.cs:92-122,318-345`). So AC4 "429 retried, 503 not" and AC3 are right.
-- **Findings stay untouched:** a *not found* result changes only the assessment (`VulnerabilityEnrichmentService.cs:332-352`, NotFound → Unavailable at :129). Image versions enriched in the run are excluded from the stale-findings pass (:474), so the issue's "findings untouched" holds.
-- **Tag lookup:** `docker.io` goes to `DockerHubClient.GetTagAsync` (`RegistryMetadataService.cs:65-77`, `DockerHubClient.cs:1398-1463`), which has the not-found and failure messages AC7 relies on.
-- **Scope per lookup is cheap:** the Docker Hub token cache and request limiter are singletons (`ServiceCollectionExtensions.cs:104-105`), so a new scope per lookup does not mean a new login. The digest check runs before the Scout login, so no limiter slot is held twice.
-- **Constructor call sites:** exactly the four the plan lists (`DockerScoutTokenExpiryTests.cs:159`, `DockerScoutVulnerabilityProviderTests.cs:609,1870`, `VulnerabilityProviderResolverTests.cs:84`).
-- **Factory substitutes:** only `CreateClient()` is stubbed at `DockerScoutVulnerabilityProviderTests.cs:607,1863,1867`, and no existing Scout test uses a digest.
-- **Event id:** 3408 is free; 3409–3419 are taken.
-- **Sample:** `specs/issue-267/docker-hub-tag-sample.json` is a real index record with 16 `images[].digest` entries, all valid, so AC9's expected count of 16 matches the fixture.
+## Security review
 
-**Objections (all minor)**
-
-1. **minor — no test pins the order of the checks, which is decision 0031's main reason for option 2.** Instruct the Tester to add tests with a digest-bearing reference for three cases: no Docker Hub credentials, a registry other than `docker.io`, and a repository with a `.` segment. Each asserts the existing outcome (*not configured*, *unsupported*, *not found* with `DotSegmentMessage`) and that no `CreateScope` call was received. Why minor: AC5–AC8 test the digest check alone, so a Dev who put it before the guards (`DockerScoutVulnerabilityProvider.cs:470-492`) would pass every planned test.
-
-2. **minor — the lookup's error path and scope disposal are untested.** Instruct the Tester:
-   - Add a test where the scope's `GetService(typeof(IRegistryMetadataService))` or `GetTagAsync` throws a non-cancellation exception. Expect *failed* with the `Docker Scout scan failed: ` prefix and no HTTP request.
-   - In the AC5 and AC6 tests, assert that the scope was disposed.
-
-   Note for the Tester: an NSubstitute `IServiceProvider` does not implement `ISupportRequiredService`, so `GetRequiredService` falls back to `GetService(Type)`. Stub that overload.
-
-   Why minor: the plan says "dispose the scope after the call" and "any other exception falls into the existing catch", but no criterion checks either.
-
-3. **minor — the documentation does not say which timeout the tag lookup uses.** It goes through `DockerHubClient`, whose timeout is `DockerHub:RequestTimeoutSeconds` (`ServiceCollectionExtensions.cs:76`), not `Vulnerabilities:RequestTimeoutSeconds`. Instruct the Dev to state this in the `vulnerabilities.md` Docker Scout section, next to the slot sentence, with a link to the Docker Hub request timeout in Registries. Keep the README line at `README.md:151` limited to the Scout login and page requests. Why minor: as planned, the docs would suggest `Vulnerabilities:RequestTimeoutSeconds` covers the whole lookup, including the tag lookup.
-
-4. **minor — AC1's handler-chain test has no existing pattern.** `ServiceCollectionExtensionsTests.cs:58` only checks that the handler is registered. Instruct the Tester to:
-   - resolve `IOptionsMonitor<HttpClientFactoryOptions>`;
-   - call `.Get(DockerScoutVulnerabilityProvider.HttpClientName)`;
-   - run its `HttpMessageHandlerBuilderActions` on an `HttpMessageHandlerBuilder` from the provider;
-   - assert that `AdditionalHandlers` contains a `TransientHttpRetryHandler`.
-
-   Why minor: it is a test-technique detail; the criterion itself is right.
-
-Files: `/home/user/DockerUpdateGuard/specs/issue-267/plan.md`, `/home/user/DockerUpdateGuard/docs/decisions/0031-docker-scout-assesses-a-digest-only-while-its-tag-still-points-to-it.md`, `/home/user/DockerUpdateGuard/src/DockerUpdateGuard/Vulnerabilities/DockerScoutVulnerabilityProvider.cs`, `/home/user/DockerUpdateGuard/src/DockerUpdateGuard/ServiceCollectionExtensions.cs`.
-
-## Security notes
-
-I reviewed the security side of the plan for issue #267 and found one blocking defect and one non-blocking documentation gap. Files reviewed: `/home/user/DockerUpdateGuard/specs/issue-267/plan.md` and `/home/user/DockerUpdateGuard/docs/decisions/0031-docker-scout-assesses-a-digest-only-while-its-tag-still-points-to-it.md`, base `origin/main`.
-
-**Tier check:** `standard` is correct. The digest check keeps wrong advisories out of the stored data. It does not decide what an attacker may reach or do, so it is not a security control. The retry handler is reused unchanged and no security control is created, changed or removed. The four security areas the plan lists are complete. I found no area it touches but does not list.
-
-## Findings
-
-**1. [BLOCKING] Untrusted JSON: a non-object entry in `images[]` makes every Docker Hub tag lookup fail, not just Docker Scout's**
-
-- **Where:** plan, *Approach*, "Platform digests": "a private helper reading `images` when it is an array; each element's `digest` through `ValidDigestOrNull`". AC9 and its tests only cover an entry without `digest` and an entry whose digest breaks the grammar.
-- **Defect:** the existing helper `DockerHubClient.TryGetString` (`src/DockerUpdateGuard/DockerHub/DockerHubClient.cs:443-452`) calls `element.TryGetProperty`. That method throws `InvalidOperationException` when the element is not a JSON object.
-  - The exception lands in `ExecuteAsync`'s `catch (Exception)` (`DockerHubClient.cs:1090-1094`), so `GetTagAsync` answers *failed* with `Tag metadata lookup failed for '<ref>': unexpected error`.
-  - `GetTagAsync` is shared by `ImageScanOrchestrator.cs:588,725`, `RuntimeContainerScanOrchestrator.cs:626` and the new Docker Scout check. One tag record with `"images":[null]`, a number or a string in the array (Docker Hub schema drift, or a proxy's answer) would turn update detection and base-image lookups for that tag from *succeeded* into *failed*. Today those lookups ignore `images` entirely.
-- **Measured** with `dotnet run probe.cs` (.NET 11.0.100) in `/tmp/claude-0/-home-user-DockerUpdateGuard/e7ae24c7-201e-5267-8c20-61c33483e83c/scratchpad/probe.cs`. The probe parsed `{"images":[null,1,"x",{"digest":"sha256:ab"}]}` and called `TryGetProperty("digest", …)` on each element. Output:
-  ```
-  Null: InvalidOperationException
-  Number: InvalidOperationException
-  String: InvalidOperationException
-  Object: True
-  ```
-- **Required change:**
-  - In *Approach*, add that the helper skips every `images` element whose `ValueKind` is not `JsonValueKind.Object` (as the existing reads at `DockerHubClient.cs:759,769-771` do).
-  - Extend AC9 to say "…skipping the others, including entries that are not JSON objects".
-  - Add one entry each of `null`, a number and a string to `DockerHubClientGetTagAsyncSkipsInvalidPlatformDigest`, expecting *succeeded* with the top-level digest unchanged.
-
-**2. [NON-BLOCKING] Failure messages and remote text: a statement in `docs/areas/vulnerabilities.md` goes stale**
-
-- **Where:** `docs/areas/vulnerabilities.md:197-198`, *Limits and errors*, says messages are built from "the provider's error output (Trivy's excerpt) or a fixed reason".
-- **Defect:** with AC7, a Docker Scout assessment message (and the scan run's message) can carry Docker Hub's failure message. That includes a response body excerpt (`DockerHubClient.CreateFailureResultAsync`, line 191-199) and, after a failed token exchange, the Docker Hub user name (`integration-failures.md:57-58`). The excerpt is already bounded and cleaned, so nothing new is exposed. Only the documented list of message contents becomes incomplete, and the plan's *Documentation updates* for `vulnerabilities.md` do not cover this line.
-- **Smallest fix (recommend fixing now):** add this edit to the plan's documentation updates, verbatim:
-  ```
-  - Messages are built from the image reference and the provider's error output (Trivy's excerpt, or for Docker
-    Scout the failure message of Docker Hub's tag lookup with its body excerpt,
-    [Integration failures](integration-failures.md#excerpts-of-remote-text)) or a fixed reason; no tokens or
-    passwords are put into them.
-  ```
-
-## Confirmed without findings
-
-- **Login PAT resent:** the handler buffers the body (`TransientHttpRetryHandler.cs:316-319`). It resends a `POST` only on a 429 with `Retry-After` missing or at most 30 s, or on a send error before any byte left (`TransientHttpRetryHandler.cs:111-134`, `integration-failures.md:112-119`). The resend goes to the same URL. The handler's log uses `GetLeftPart(UriPartial.Path)` with user info redacted, and never the body.
-- **Bearer token on page retries:** the same `HttpRequestMessage` is resent to the same URI. Next-page links still pass `PaginationLinkGuard` (DockerScoutVulnerabilityProvider.cs, `FetchVulnerabilitiesAsync`). A 401 is not retried by the handler, so the re-login and token cache are unchanged.
-- **Retry-After window:** only the final login response reaches `LoginRetryAfterRegistry`. A 429 whose `Retry-After` is over 30 s is returned at once, so no login is sent inside the window the server named.
-- **Request slot:** the tag lookup runs before `GetOrCreateTokenAsync`, so no Docker Hub request slot is held while it waits for another. The login slot plus its retries is bounded by the per-call `client.Timeout`.
-- **Scoped service from a singleton:** the scope is created and disposed per lookup, and no scoped instance is captured.
-- **New log event 3408:** it carries only `FullReference`, a validated reference (`RegistryReferenceValidator`, the digest through `ValidDigestOrNull` at line 165), which existing events already log. No remote text is logged.
-- **AC5 message:** built from fixed text and `FullReference` only.
-- **Platform digests:** each passes `ValidDigestOrNull` (grammar, at most 255 characters). With `[JsonIgnore]` they never reach `MetadataJson`, and listings do not fill them. The values derived from a tag record are a subset of a document `RemoteJsonDocument` already holds whole, so they add no new unbounded memory.
+1. BLOCKING — non-object `images[]` entries make `TryGetProperty` throw and every Docker Hub tag lookup fail.
+   Resolved: *Approach* skips every element that is not a JSON object, AC9 says so, and
+   `DockerHubClientGetTagAsyncSkipsInvalidPlatformDigest` adds a `null`, a number and a string entry expecting
+   *succeeded*. Re-check of the accepted forms: `images` absent or not an array → empty list; element not an object →
+   skipped; object without `digest`, or `digest` not a string (`TryGetString` returns null) → skipped; string outside the
+   digest grammar or over 255 characters → skipped (`ValidDigestOrNull`); valid digest → kept, in document order.
+2. non-blocking — `vulnerabilities.md:197-198` goes stale. Fixed now: the stated sentence is in *Documentation updates*.
