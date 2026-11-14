@@ -186,3 +186,26 @@ one explicitly opened connection and one retriable unit. Layering unchanged.
   command timeout"; body: on the migrating instance each migration statement runs under Npgsql's 30 s default command
   timeout, so a long index build fails and is retried by the execution strategy; a migration-specific command timeout
   (`Database.SetCommandTimeout` around `MigrateAsync`) would lift it. Found in #287.
+
+## Challenge notes
+
+Devil's Advocate, mode plan, issue #287 (`/home/user/DockerUpdateGuard/specs/issue-287/plan.md`)
+
+I checked the plan's load-bearing claims against the code and found no major problem.
+
+- **Root cause confirmed.** The lock is taken with a blocking call at `src/DockerUpdateGuard/DatabaseMigrator.cs:177-181`, inside the strategy delegate at `:69`. The method only catches `DbException` and `InvalidOperationException` (`:72-83`), so a `RetryLimitExceededException` skips event 1005. `pg_advisory_lock` is used nowhere else; the only other advisory-lock SQL is the unlock at `:211`. There is no sibling code path to fix.
+- **Event ids are free.** 1007 and 1008 are unused; the ids in use are 1000–1006 and 1010.
+- **The time fake can drive the waits.** `WaitRecordingTimeProvider` (`src/Tests/DockerUpdateGuard.Tests/Helper/WaitRecordingTimeProvider.cs:60-67`) records each delay's due time and lets the test end the wait. It does not move `GetUtcNow` forward, but the plan already says the test configures that.
+- **The AC1 and AC2 counts hold.** I traced Approach step 5:
+  - AC2 (10 s deadline, 5 s delay): the lock is tried at 0, 5 and 10 s. At 10 s the check `now >= deadline` is true, so event 1008 is logged once and the exception is thrown.
+  - AC1: event 1007 is logged with elapsed seconds 0 to 45, and the 11th attempt (at 50 s) gets the lock.
+- **The two refuted claims are refuted correctly.** `docs/areas/hosting.md` has no open questions; the topic is the *Known gaps* entry at lines 210-213. `docs/ARCHITECTURE.md` §4 (lines 126-156) names no database keys, so it needs no change. The README states the environment-variable form once, at line 83, which supports adding a plain table row.
+- **The options validator test is unaffected.** It keeps passing because the new key's default is valid, as the plan says.
+
+Objections:
+
+1. **minor** — The plan moves `WaitForDatabaseAsync` to the injected `TimeProvider` (Approach 3) but keeps the existing test `DatabaseMigratorUnreachableDatabaseThrowsAfterTimeoutAsync` on `TimeProvider.System` (`src/Tests/DockerUpdateGuard.Tests/DatabaseMigratorTests.cs:105-132`, call at :121). That test sets `MigrationStartupTimeoutSeconds = 1` and `MigrationRetryDelaySeconds = 0` (:111-112) and passes only because a real second goes by. That breaks `docs/UNIT_TESTS.md:283-288` ("Tests never depend on the real clock") for a test this change edits anyway. Why minor: the Tester can fix it without changing the plan. **Instruction for the Tester:** pass that test a substituted `TimeProvider` whose `GetUtcNow` returns a time past the deadline from the second read on. Do not pass a bare substitute: its `GetUtcNow` returns a fixed value, and a zero delay creates no timer, so the loop never reaches the deadline and the test hangs.
+
+The plan otherwise holds up. The two claims it leaves unverified are already assigned:
+- Fact 11 (`SqlQuery<bool>` runs on the opened connection) is checked by the Reviewer in the manual AC7 run.
+- Fact 14 (whether `ApplicationStopping` fires before `RunAsync()`) is checked by the Dev before writing the shutdown sentence in `docs/areas/hosting.md`.
