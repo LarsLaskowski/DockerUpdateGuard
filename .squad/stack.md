@@ -88,8 +88,11 @@ come after them. A rule the code does not meet yet goes into `DOTNET_RULES_PENDI
 issue that brings the code up to it: it is written as `suggestion`, which the *Analyzer gate* still reports in a
 changed file, and the entry goes once the issue is done; that holds for a rule the baseline does not set too (one on
 only through `AnalysisLevel`, CA1848). The blocks do not reach the code the Razor compiler generates from a `.razor`
-file's markup; the rules the baseline switches off (S1125) are off there too through the template-managed global
-analyzer config `.squad/dotnet-rules.globalconfig`, which `Directory.Build.props` names in `GlobalAnalyzerConfigFiles`.
+file's markup, nor a diagnostic without a location (MSTEST0001): the template-managed global analyzer config
+`.squad/dotnet-rules.globalconfig` switches the baseline's off rules (S1125) off there too and sets the severity of the
+rules reported without a location. A pending entry for one of those is written by `dotnet-rules.py` into
+`.squad/dotnet-rules-pending.globalconfig`, whose higher `global_level` wins over the managed file;
+`Directory.Build.props` names both in `GlobalAnalyzerConfigFiles`.
 
 SonarAnalyzer.CSharp runs only the rules of *Sonar way core* by default. The rules the project's SonarQube Cloud C#
 profile adds (*Sonar way comprehensive*: S3776, S1192, S107, …), and the core rules it switches off, are set in the
@@ -146,9 +149,11 @@ publish and missing from the image). The publish here restores again, which narr
 copy or restore lines can widen it. Where Docker runs, build the image. Where it does not (the sandbox),
 reproduce the Dockerfile's order in a scratch directory; every change to a `.csproj`, `Directory.*.props`, a
 `.razor` or other content item, a static web asset or the Dockerfile runs it before the review. The image build
-needs `.squad/dotnet-rules.globalconfig`, which `Directory.Build.props` names: the Dockerfile's `COPY . .` brings it
-into the build stage (a Dockerfile that copies files by name copies it by name), and `.dockerignore` does not leave
-out `.squad/` (or lets the file in with `!.squad/dotnet-rules.globalconfig`); `dotnet_config.py` checks both:
+needs both global configs of `.squad/` that `Directory.Build.props` names (`.squad/dotnet-rules.globalconfig` and
+`.squad/dotnet-rules-pending.globalconfig`): the Dockerfile's `COPY . .` brings them into the build stage (a
+Dockerfile that copies files by name copies them by name), and `.dockerignore` does not leave out `.squad/` (or lets
+both in with `!.squad/dotnet-rules.globalconfig` and `!.squad/dotnet-rules-pending.globalconfig`);
+`dotnet_config.py` checks both:
 
 ```bash
 scratch="$(mktemp -d)"

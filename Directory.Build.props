@@ -32,9 +32,12 @@
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
   </ItemGroup>
-  <!-- The rules the baseline switches off, also for generated code (Razor components) that .editorconfig misses -->
+  <!-- The rules the baseline switches off, also for generated code (Razor components) that .editorconfig misses, the
+       rules reported without a location (MSTEST0001), which .editorconfig never reaches, and the pending ones of
+       those (written by dotnet-rules.py) -->
   <ItemGroup>
     <GlobalAnalyzerConfigFiles Include="$(MSBuildThisFileDirectory).squad/dotnet-rules.globalconfig" />
+    <GlobalAnalyzerConfigFiles Include="$(MSBuildThisFileDirectory).squad/dotnet-rules-pending.globalconfig" />
   </ItemGroup>
   <!-- Every test project (name ending in .Tests): MSTest, which brings MSTest.Analyzers, and coverage -->
   <ItemGroup Condition="$(MSBuildProjectName.EndsWith('.Tests'))">
