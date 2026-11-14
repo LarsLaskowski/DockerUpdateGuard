@@ -13,3 +13,4 @@ are quoted in full.
 | 2026-11-14 19:08 | 5 Tests first | Tester | 6 tests added (AC1-AC4), confirmed compiling and failing (6 failed); existing substitutes report Trivy. Deferred: none (sonnet/medium · 121,467 tokens · 15 tool uses · 175 s · 30 in · 12,094 out · 1,504,865 cache read · 69,718 cache write · 298,134 weighted) |
 | 2026-11-14 19:12 | 6 Implement | Dev | Source read once after Resolve() and passed to the four writes; MapSource deleted; providers return constants; docs updated; build clean, 1348+22 tests pass, coverage gate PASS (new lines 100%) (sonnet/medium · 106,003 tokens · 29 tool uses · 208 s · 18 in · 8,086 out · 822,393 cache read · 51,758 cache write · 187,385 weighted) |
 | 2026-11-14 19:13 | 6 Coverage skipped | Orchestrator | skipped — gate passes (new 100%, overall 92.1%), no uncovered lines, no deferred tests |
+| 2026-11-14 19:13 | 6 Documentation | Orchestrator | written in 6 Implement |
