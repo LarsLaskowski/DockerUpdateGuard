@@ -411,6 +411,26 @@ public class DockerUpdateGuardOptionsValidatorTests
     }
 
     /// <summary>
+    /// Verify the default migration lock timeout is 900 seconds and valid
+    /// </summary>
+    [TestMethod]
+    [TestCategory("AC5")]
+    public void DockerUpdateGuardOptionsValidatorMigrationLockTimeoutSecondsDefaultIsValid()
+    {
+        var configuration = CreateConfiguration(new Dictionary<string, string?>
+                                                {
+                                                    ["ConnectionStrings:DockerUpdateGuard"] = "Host=database;Database=dug",
+                                                });
+        var validator = new DockerUpdateGuardOptionsValidator(configuration);
+        var options = CreateValidOptions();
+
+        var validationResult = validator.Validate(Options.DefaultName, options);
+
+        Assert.AreEqual(900, new DatabaseOptions().MigrationLockTimeoutSeconds, "The migration lock timeout must default to 900 seconds");
+        Assert.IsFalse(validationResult.Failed, "The default migration lock timeout must validate");
+    }
+
+    /// <summary>
     /// Verify the development configuration sample exposes the complete host configuration schema
     /// </summary>
     [TestMethod]

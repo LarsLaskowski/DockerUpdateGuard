@@ -303,6 +303,90 @@ public class DatabaseMigratorTests
     }
 
     /// <summary>
+    /// Verify a cancellation from the execution strategy is rethrown without logging a migration failure
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC3")]
+    [TestCategory("AC6")]
+    public async Task DatabaseMigratorMigrateCancelledDoesNotLogFailureAsync()
+    {
+        var cancellation = new OperationCanceledException("cancelled");
+        var logger = new TestLogger<DatabaseMigratorTests>();
+        var startedAt = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        var timeProvider = Substitute.For<TimeProvider>();
+
+        timeProvider.GetUtcNow().Returns(startedAt);
+
+        var connection = new SqliteConnection("Data Source=:memory:");
+
+        await connection.OpenAsync(TestContext.CancellationToken)
+                        .ConfigureAwait(false);
+
+        using (connection)
+        {
+            var options = new DbContextOptionsBuilder<DockerUpdateGuardDbContext>().UseSqlite(connection,
+                                                                                              sqlite => sqlite.ExecutionStrategy(_ => new ThrowingExecutionStrategy(cancellation, 1)))
+                                                                                   .Options;
+            var dbContext = new DockerUpdateGuardDbContext(options);
+
+            await using (dbContext.ConfigureAwait(false))
+            {
+                var thrown = await Assert.ThrowsExactlyAsync<OperationCanceledException>(() => DatabaseMigrator.MigrateAsync(dbContext, new DatabaseOptions(), logger, timeProvider, CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5), TestContext.CancellationToken))
+                                         .ConfigureAwait(false);
+
+                Assert.AreSame(cancellation, thrown, "The cancellation must be rethrown as the same instance");
+            }
+        }
+
+        Assert.DoesNotContain(entry => entry.EventId.Id == 1005,
+                              logger.Entries,
+                              "A cancellation must not be logged as a migration failure");
+    }
+
+    /// <summary>
+    /// Verify a transient connection failure before the startup deadline is retried after the retry delay
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task DatabaseMigratorUnreachableDatabaseRetriesBeforeDeadlineAsync()
+    {
+        var options = new DbContextOptionsBuilder<DockerUpdateGuardDbContext>().UseNpgsql("Host=127.0.0.1;Port=1;Database=dug;Timeout=1;Command Timeout=1")
+                                                                               .Options;
+        var databaseOptions = new DatabaseOptions
+                              {
+                                  MigrationStartupTimeoutSeconds = 1,
+                                  MigrationRetryDelaySeconds = 0,
+                              };
+        var logger = new TestLogger<DatabaseMigratorTests>();
+        var dbContext = new DockerUpdateGuardDbContext(options);
+        var startedAt = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        var timeProvider = Substitute.For<TimeProvider>();
+        Exception? caught = null;
+
+        // The deadline read and the first failure are before the deadline, the second failure is past it
+        timeProvider.GetUtcNow().Returns(startedAt, startedAt, startedAt.AddHours(1));
+
+        await using (dbContext.ConfigureAwait(false))
+        {
+            try
+            {
+                await DatabaseMigrator.MigrateAsync(dbContext, databaseOptions, logger, timeProvider, CancellationToken.None)
+                                      .ConfigureAwait(false);
+            }
+            catch (InvalidOperationException exception)
+            {
+                caught = exception;
+            }
+        }
+
+        Assert.IsNotNull(caught, "The connection failure must surface once the deadline has passed");
+        Assert.HasCount(2,
+                        logger.Entries.Where(entry => entry.Exception is not null),
+                        "The first failure must be logged as a retry and the second as the final failure");
+    }
+
+    /// <summary>
     /// Verify transient connectivity failures are classified as retryable
     /// </summary>
     [TestMethod]
