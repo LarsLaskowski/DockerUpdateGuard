@@ -122,19 +122,6 @@ internal static partial class DockerHubClientLogging
                                                                string rejectedOrigin);
 
     /// <summary>
-    /// Log that a Docker Hub image configuration lookup failed with an exception
-    /// </summary>
-    /// <param name="logger">Logger</param>
-    /// <param name="exception">Exception</param>
-    /// <param name="imageReference">Image reference</param>
-    [LoggerMessage(EventId = 3212,
-                   Level = LogLevel.Warning,
-                   Message = "Docker Hub image configuration lookup failed for {ImageReference}")]
-    public static partial void DockerHubImageConfigurationLookupFailed(this ILogger logger,
-                                                                       Exception exception,
-                                                                       string imageReference);
-
-    /// <summary>
     /// Log that a Docker Hub operation failed with an exception
     /// </summary>
     /// <param name="logger">Logger</param>

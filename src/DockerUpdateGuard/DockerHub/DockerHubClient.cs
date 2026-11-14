@@ -1064,28 +1064,34 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
     }
 
     /// <summary>
-    /// Run an operation and answer an unexpected exception as a failed result
+    /// Run an operation and answer an error other than the caller's cancellation as a failed result
     /// </summary>
     /// <typeparam name="T">Result value type</typeparam>
     /// <param name="operationName">Operation name for the log entry</param>
     /// <param name="targetName">Target the operation belongs to</param>
     /// <param name="failureMessage">Failure message of the failed result</param>
     /// <param name="operation">Operation to run</param>
+    /// <param name="cancellationToken">Cancellation token of the caller</param>
     /// <returns>Result of the operation or a failed result</returns>
     private async Task<ExternalOperationResult<T>> ExecuteAsync<T>(string operationName,
                                                                    string targetName,
                                                                    string failureMessage,
-                                                                   Func<Task<ExternalOperationResult<T>>> operation)
+                                                                   Func<Task<ExternalOperationResult<T>>> operation,
+                                                                   CancellationToken cancellationToken)
     {
         try
         {
             return await operation().ConfigureAwait(false);
         }
-        catch (JsonException exception)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
         {
             _logger.DockerHubOperationFailed(exception, operationName, targetName);
 
-            return ExternalOperationResult.Failed<T>($"{failureMessage}: {FailureReason.InvalidResponse}");
+            return ExternalOperationResult.Failed<T>($"{failureMessage}: {FailureReason.FromException(exception, _httpClient.Timeout, cancellationToken)}");
         }
     }
 
@@ -1225,7 +1231,8 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
                                                                                                                        UserName = userName,
                                                                                                                    });
                                       }
-                                  }).ConfigureAwait(false);
+                                  },
+                                  cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc/>
@@ -1314,7 +1321,8 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
                                       _logger.DockerHubRepositoriesListed(accountName, repositories.Count);
 
                                       return ExternalOperationResult.Succeeded<IReadOnlyList<DockerHubRepositoryData>>(repositories);
-                                  }).ConfigureAwait(false);
+                                  },
+                                  cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc/>
@@ -1382,7 +1390,8 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
 
                                           return ExternalOperationResult.Succeeded<DockerHubRepositoryData>(repositoryData);
                                       }
-                                  }).ConfigureAwait(false);
+                                  },
+                                  cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc/>
@@ -1449,7 +1458,8 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
 
                                           return ExternalOperationResult.Succeeded<DockerHubTagData>(CreateTagData(jsonDocument.RootElement, imageReference.Tag));
                                       }
-                                  }).ConfigureAwait(false);
+                                  },
+                                  cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc/>
@@ -1477,7 +1487,8 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
         return await ExecuteAsync(nameof(GetTagsAsync),
                                   repository,
                                   $"Tag lookup failed for '{repository}'",
-                                  () => GetTagsCoreAsync(repository, repositoryPath, queryOptions, cancellationToken)).ConfigureAwait(false);
+                                  () => GetTagsCoreAsync(repository, repositoryPath, queryOptions, cancellationToken),
+                                  cancellationToken).ConfigureAwait(false);
     }
 
     #endregion // IDockerHubClient
@@ -1509,37 +1520,35 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
             return ExternalOperationResult.NotFound<RegistryImageConfigurationData>(RegistryReferenceValidator.DotSegmentMessage);
         }
 
-        try
-        {
-            var registryToken = await GetRegistryTokenAsync(imageReference, cancellationToken).ConfigureAwait(false);
+        return await ExecuteAsync(nameof(GetImageConfigurationAsync),
+                                  imageReference.FullReference,
+                                  $"Image configuration lookup failed for '{imageReference.FullReference}'",
+                                  async () =>
+                                  {
+                                      var registryToken = await GetRegistryTokenAsync(imageReference, cancellationToken).ConfigureAwait(false);
 
-            if (registryToken is null)
-            {
-                return ExternalOperationResult.Failed<RegistryImageConfigurationData>($"Registry token acquisition failed for '{imageReference.FullReference}'");
-            }
+                                      if (registryToken is null)
+                                      {
+                                          return ExternalOperationResult.Failed<RegistryImageConfigurationData>($"Registry token acquisition failed for '{imageReference.FullReference}'");
+                                      }
 
-            var configDigest = await GetImageConfigDigestAsync(imageReference, manifestUri, registryToken, cancellationToken).ConfigureAwait(false);
+                                      var configDigest = await GetImageConfigDigestAsync(imageReference, manifestUri, registryToken, cancellationToken).ConfigureAwait(false);
 
-            if (string.IsNullOrWhiteSpace(configDigest))
-            {
-                return ExternalOperationResult.NotFound<RegistryImageConfigurationData>($"Config blob digest could not be resolved for '{imageReference.FullReference}'");
-            }
+                                      if (string.IsNullOrWhiteSpace(configDigest))
+                                      {
+                                          return ExternalOperationResult.NotFound<RegistryImageConfigurationData>($"Config blob digest could not be resolved for '{imageReference.FullReference}'");
+                                      }
 
-            var imageConfiguration = await ExtractImageConfigurationAsync(imageReference,
-                                                                          configDigest,
-                                                                          registryToken,
-                                                                          cancellationToken).ConfigureAwait(false);
+                                      var imageConfiguration = await ExtractImageConfigurationAsync(imageReference,
+                                                                                                    configDigest,
+                                                                                                    registryToken,
+                                                                                                    cancellationToken).ConfigureAwait(false);
 
-            return imageConfiguration is null
-                       ? ExternalOperationResult.Failed<RegistryImageConfigurationData>($"Image configuration blob could not be read for '{imageReference.FullReference}'")
-                       : ExternalOperationResult.Succeeded<RegistryImageConfigurationData>(imageConfiguration);
-        }
-        catch (Exception exception) when (exception is not OperationCanceledException)
-        {
-            _logger.DockerHubImageConfigurationLookupFailed(exception, imageReference.FullReference);
-
-            return ExternalOperationResult.Failed<RegistryImageConfigurationData>($"Image configuration lookup failed for '{imageReference.FullReference}': {FailureReason.FromException(exception, null, cancellationToken)}");
-        }
+                                      return imageConfiguration is null
+                                                 ? ExternalOperationResult.Failed<RegistryImageConfigurationData>($"Image configuration blob could not be read for '{imageReference.FullReference}'")
+                                                 : ExternalOperationResult.Succeeded<RegistryImageConfigurationData>(imageConfiguration);
+                                  },
+                                  cancellationToken).ConfigureAwait(false);
     }
 
     #endregion // IRegistryMetadataClient

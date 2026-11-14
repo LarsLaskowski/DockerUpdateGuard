@@ -31,7 +31,8 @@ operator's logs rely on it; each integration area states only what it adds.
   failed` (transport failures and responses that break off), `invalid response` or `unexpected error`. The error
   itself is logged with the failure.
 - `invalid response` covers malformed JSON and a JSON string that does not decode as Unicode text, such as a lone
-  surrogate escape like `\ud800` or bytes that are not UTF-8. The Docker Hub, OCI and Docker Engine clients refuse the
+  surrogate escape like `\ud800` or bytes that are not UTF-8, and a Docker Hub access token whose payload segment is not
+  base64url. The Docker Hub, OCI and Docker Engine clients refuse the
   whole body for one in any string value or property name; the Portainer client and the vulnerability providers for one
   in a field they read; the release feeds report it as `unexpected error`.
 - A message the application composed itself from fixed text, configuration names and masked URLs
@@ -160,8 +161,6 @@ which stay until they are written again.
 ## Limits and errors
 
 - No outcome message, scan run or page carries an error's own text; the error is in the log entry of the failure.
-- Some registry calls still let errors escape instead of answering an outcome; which ones is listed in
-  [Registries](registries.md#limits-and-errors).
 
 ## Related decisions
 
@@ -173,6 +172,8 @@ which stay until they are written again.
   remembered process-wide.
 - [0019](../decisions/0019-remote-json-with-undecodable-strings-is-an-invalid-response.md): remote JSON with a string
   that does not decode is an invalid response.
+- [0029](../decisions/0029-registry-calls-answer-every-error-but-the-callers-cancellation-as-failed.md): registry calls
+  answer every error but the caller's cancellation as *failed*.
 
 ## Not here
 

@@ -220,7 +220,7 @@ client library. Clients return plain DTOs wrapped in
 for expected failure modes, created through the factories of the static `ExternalOperationResult`
 (`Infrastructure\ExternalOperationResult.cs`); a non-success result is passed on as a result of
 another payload type with `PropagateFailure`, and orchestrators branch on that status instead
-of on exceptions. The outcomes and where errors still escape are specified
+of on exceptions. The outcomes are specified
 in [Integration failures](areas/integration-failures.md).
 
 | Client | Talks to | Area |

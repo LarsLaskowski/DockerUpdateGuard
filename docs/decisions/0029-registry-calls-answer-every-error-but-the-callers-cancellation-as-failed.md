@@ -1,6 +1,6 @@
 # 0029: Registry calls answer every error but the caller's cancellation as *failed*
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-14
 - **Area:** Registries
 - **Source:** Issue #272
