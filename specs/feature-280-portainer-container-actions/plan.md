@@ -253,3 +253,63 @@ All by the Dev, against the code as built:
 - Follow-up issue (orchestrator): "[Container actions] Redeploy Portainer stacks and update Swarm services from the runtime container page", body as in the step-2a result (depends on #291; real stack/service samples; manual test).
 - Verification issue (step 10): Verified facts 14–15 on the first image with the change, by the Product Manager.
 - #83 (`portainer.request` spans), #36 (server time zone in the history) stay open.
+
+## Security notes
+
+I'm approving the plan for feature #280 (Start/Stop/Restart through Portainer, option A). I found no blocking defects and four non-blocking ones.
+
+**Files reviewed:** `specs/feature-280-portainer-container-actions/spec.md`, `plan.md` and `tasks.md`, decision records 0034–0037, `docs/areas/container-actions.md`, *Security posture* in `docs/areas/hosting.md`, *Credentials and external data* in `docs/areas/telemetry.md`, `src/DockerUpdateGuard/Portainer/PortainerClient.cs`, `Infrastructure/TransientHttpRetryHandler.cs`, `Infrastructure/FailureReason.cs`, the Portainer section of `Configuration/DockerUpdateGuardOptionsValidator.cs`, `ContainerActionRunConfiguration.cs`, and the snapshot load in `ApplicationViewService.GetRuntimeContainerDetailAsync`.
+
+**Tier:** `security` is correct. The plan adds the guards that decide what anyone on the network may do to a container: the allow-list by action type, the 64-hex container ID guard, the server-side recheck at confirmation, and the in-process guard.
+
+## Measurement (Verified fact 12, the AC12 seam)
+
+A per-request deadline is now the only time bound, because `HttpClient.Timeout` becomes infinite. So I checked that `CancellationTokenSource(TimeSpan, TimeProvider)` creates its timer through the provider and cancels a linked token when that timer fires. I ran this in the scratch project `/tmp/claude-0/-home-user-DockerUpdateGuard/3f282fb3-74f5-58ed-8975-902bfeaa0df0/scratchpad/ctsprobe` (net10.0, the repository's target framework):
+
+`cd …/scratchpad/ctsprobe && dotnet run`
+
+The program builds the token source with 315 s and a recording `TimeProvider` (it records each `CreateTimer` due time and fires the stored callback on demand). It links that token with an outer one and then fires the callback. Output:
+```
+CreateTimer calls: 1; due: 00:05:15; cancelled before fire: False
+after fire: cts=True linked=True outer=False
+```
+Fact 12 holds: one `CreateTimer` call carrying the bound, and firing it cancels the linked request token but not the caller's. The `WaitRecordingTimeProvider` seam is sound. The plan can mark fact 12 confirmed, citing this measurement.
+
+## Checks that pass
+- **Untrusted input in URLs:** the container ID reaches a URL path only as exactly 64 lowercase hex characters (step 2). The list lookup matches `Id` exactly, so Docker's prefix-matching `id` filter and an ignored filter (fact 14, unverified) both fail closed. No container is matched by name any more.
+- **No retry of a processed action:** the stop/restart POST stays under decision 0008. `TransientHttpRetryHandler` retries a non-idempotent request only when it cannot have been processed. Once the per-request linked token is cancelled it stops retrying (`cancellationToken.IsCancellationRequested == false` in its catch filter), and 5xx or a transport error after sending maps to *unknown*.
+- **Fixed failure reasons:** every outcome goes through `FailureReason.FromException` or fixed text. The page error is `Container action failed: <fixed reason>`, and the exception goes only to the log (allowed for user-action error entries by telemetry.md).
+- **Credentials:** they stay in request headers. Logs and spans carry only action, container name (control characters already replaced at scan), instance name and HTTP status, which telemetry.md allows. AC5 and AC11 pin this.
+- **Database:** `ErrorMessage` is `text`, so no truncation or save failure from long messages. The snapshot load is scoped by instance and container ID, and a mismatched pair is caught by the not-current check.
+- **Triggers:** only an interactive `@onclick` after the dialog can start an action. No route or prerender path, and `ExecuteAsync` rechecks everything on the server.
+- **Insecure HTTP warning:** EventId 3311 sits in the shared `CreateAuthenticatedClientAsync`, so both new members inherit it. The type and ID guards run before it, which matches *Transport security* ("no warning when rejected by the allow-list").
+
+## Findings (all non-blocking)
+
+1. **[NON-BLOCKING] "Insecure Portainer HTTP" is touched but not listed.** `plan.md` line 5 omits it. The plan edits `PortainerClient.CreateAuthenticatedClientAsync`, the method that holds both the 3311 warning and the `client.Timeout` line it replaces. It also lists a *Transport security* update in *Areas*. `.squad/project.md` names `Portainer/PortainerClient.cs` for this area.
+   - **Smallest fix:** add `Insecure Portainer HTTP (the 3311 warning, now reached by CheckCapabilityAsync and ExecuteContainerActionAsync)` to *Security areas touched*.
+   - **Recommendation:** fix now.
+
+2. **[NON-BLOCKING] The environment check can be sidestepped by a non-numeric `EndpointId`.** The value is never validated (only `IsNullOrWhiteSpace`, `PortainerClient.cs:257-260`; no rule in the validator). The new `GET /api/endpoints/{id}` puts it into the path unescaped. Forms Portainer would accept differently:
+   - dot segments: `1/../../users` normalizes to `GET /api/users`, which answers 200, so *supported*;
+   - a query or fragment: `1?x=` or `1#` cuts off the rest of the action path;
+   - leading/trailing whitespace or percent-encoded dot segments.
+
+   The action itself still fails closed: the container lookup or POST lands on another path and answers non-success, and only an operator sets the key. But the new check would report *supported* and the dialog would name an environment that does not exist.
+   - **Smallest fix, with no new configuration rule:** in the client, treat an `EndpointId` that is not all ASCII digits like an unknown environment (*unsupported*, `Portainer environment <id> not found; …`) before any request. Add a row to `PortainerClientCheckCapabilityAsyncWithUnknownEndpointIdReportsEnvironmentNotFoundAsync` (`1/../../users`, `1?x=`, ` 1 `).
+   - **Recommendation:** fix now (one guard beside the container ID guard). Alternatively, a linked issue for a validator rule.
+
+3. **[NON-BLOCKING] N6 says environment names reach "only the page", but the plan also stores them.**
+   - **What happens:** at confirmation, step 3 can end with the ambiguity message (after a config reload, or `X-Total-Count` changes since page load). That message holds environment names and goes into the run's `ErrorMessage`, from where the history table shows it. The plan's *Security considerations* bullet admits the message reaches the page but not that it is stored.
+   - **Impact:** harmless in itself (names are already sanitized and cut to 64; MudTable encodes them). But the statement in the spec and in container-actions.md *Limits and errors* would be untrue.
+   - **Smallest fix:** N6 reads `Portainer environment names reach only the page, HTML-encoded, and the run's stored message.` The Dev's container-actions.md text says the same.
+   - **Recommendation:** fix now (wording).
+
+4. **[NON-BLOCKING] Exposure to DNS rebinding grows.** No `AllowedHosts` is configured (nothing in `src/DockerUpdateGuard/appsettings*.json`). A web page an operator visits inside the trusted perimeter can therefore rebind its own host name to the app, read the prerendered circuit descriptors as same-origin, and drive the Blazor circuit. Before this change that reached scans and tag selection; with it, Stop/Restart of every container on Portainer-enabled instances. This is a perimeter-hardening gap, not a defect of this plan.
+   - **Recommendation:** a linked issue: document `AllowedHosts` in the README and *Security posture*, and/or check the hub's Origin. Optionally the README Portainer sentence this plan adds also names `AllowedHosts`.
+
+5. **[NON-BLOCKING] The time bound now rests on every request having its own deadline.** With `HttpClient.Timeout` infinite, any Portainer request that misses its per-request token source waits without limit. The AC12 row "other requests R" should therefore list each kind separately so a missed one fails a test: login (`/api/auth`), `/api/system/status`, `/api/endpoints`, `/api/endpoints/{id}`, the container list, plus start.
+   - **Recommendation:** fix now, in the plan's AC12 row (Tester).
+
+## Not measured
+- Facts 13–15 are not security properties: each fails closed, so there is no gate on approval. Fact 13 (bUnit static renderer) is the Tester's; facts 14–15 are the after-merge real-Portainer check.
