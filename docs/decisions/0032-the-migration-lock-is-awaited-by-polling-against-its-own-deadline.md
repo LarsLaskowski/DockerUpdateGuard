@@ -21,8 +21,8 @@ minutes with the defaults), and a migration running longer on one instance faile
 
 1. **Poll `pg_try_advisory_lock` every `MigrationRetryDelaySeconds` until a deadline of its own,
    `MigrationLockTimeoutSeconds`, computed once before the execution strategy runs (chosen)** — no statement ever
-   blocks on the server, so the command timeout no longer bounds the wait; each wait is logged; a shutdown ends the
-   wait at the next delay; the polling and deadline logic is unit-testable through a seam that takes the try-lock
+   blocks on the server, so the command timeout no longer bounds the wait; each wait is logged; a cancelled token ends
+   the wait during its delay; the polling and deadline logic is unit-testable through a seam that takes the try-lock
    call and a `TimeProvider`. Costs one query per delay and a new key.
 2. **Keep `pg_advisory_lock` and give that one statement a longer or infinite command timeout, or a server-side
    `lock_timeout`** — one statement changed, but the wait stays a server-side block: no progress can be logged, the
@@ -48,6 +48,8 @@ fails. Every exception but a cancellation that fails the migration is logged thr
   failing after the retry policy runs out; operators with migrations longer than 15 minutes raise the key.
 - A transient fault during the wait re-runs lock and migration on a new connection but does not restart the
   deadline.
+- The wait runs before the host starts, when no shutdown signal handling is registered yet, so `ApplicationStopping`
+  never cancels it: a termination signal ends the process at once, and a lock it held ends with its session.
 - The statements of the migration itself are still bounded by the command timeout on the migrating instance; that is
   a separate gap with its own issue.
 - The production try-lock query is not covered by unit tests; it is checked once against a real PostgreSQL by hand.

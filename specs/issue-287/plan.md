@@ -22,7 +22,7 @@ timeout; the retrying strategy (`:69`, `ServiceCollectionExtensions.cs:66-68`) r
 | 6 | `WaitRecordingTimeProvider` (`Helper/`) can drive `Task.Delay(TimeSpan, TimeProvider, CancellationToken)`; a zero delay creates no timer | `WaitRecordingTimeProvider.cs`, `ScheduledBackgroundServiceTests` | confirmed |
 | 7 | (formerly fact 11) `SqlQuery<bool>` of `pg_try_advisory_lock` with `ToListAsync` runs on the opened connection, sends the key as an `Int64` parameter and competes correctly with a blocking holder | Security's measurement on PostgreSQL 16.15 (*Security notes*) | confirmed |
 | 8 | "Open question 4" of `hosting.md`; `ARCHITECTURE.md` §4 must change | `hosting.md` has only a *Known gaps* entry; §4 names no database key | refuted |
-| 9 | (formerly fact 14) `ApplicationStopping`, passed to `MigrateAsync`, fires before `app.RunAsync()` | to verify: Dev, step 6, reads the `ConsoleLifetime` source before writing the area sentence on shutdown | unverified |
+| 9 | (formerly fact 14) `ApplicationStopping`, passed to `MigrateAsync`, fires before `app.RunAsync()` | `Program.cs` awaits initialization before `RunAsync`; Lead's scratch Web app on ASP.NET Core 10.0.15, waiting on the token before `RunAsync`: SIGTERM and SIGINT (also as PID 1) end the process at once (143, 130), the token never fires. The issue's "shutdown ends the wait promptly" holds by process exit (`hosting.md` step 3, decision 0032) | refuted |
 
 ## Acceptance criteria
 
