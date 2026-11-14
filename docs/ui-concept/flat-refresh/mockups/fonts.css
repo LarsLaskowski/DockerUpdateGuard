@@ -1,0 +1,16 @@
+/* Fonts of the static mockups. Inter is the copy the application ships; Space Grotesk (SIL OFL 1.1) is local to the concept. */
+@font-face {
+    font-family: "Inter";
+    src: url("../../../../src/DockerUpdateGuard/wwwroot/fonts/InterVariable.woff2") format("woff2");
+    font-weight: 100 900;
+    font-style: normal;
+    font-display: block;
+}
+
+@font-face {
+    font-family: "Space Grotesk";
+    src: url("fonts/SpaceGrotesk-Variable-latin.woff2") format("woff2");
+    font-weight: 300 700;
+    font-style: normal;
+    font-display: block;
+}

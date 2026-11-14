@@ -11,6 +11,9 @@ The redesign keeps the existing technology stack — **Blazor Server + MudBlazor
 9.7** — and is delivered entirely through a new CSS design-token layer, a few
 markup adjustments, and small shared components. MudBlazor is **not** replaced.
 
+> A later concept, the [flat UI refresh](flat-refresh/README.md), changes the look this document describes: flat
+> surfaces, a top navigation and a dashboard that lists what needs attention.
+
 > The mockups below are static HTML previews (see `mockups/`) rendered with the
 > target design tokens. They illustrate the intended result; the actual
 > implementation is split into the seven issues listed at the end.

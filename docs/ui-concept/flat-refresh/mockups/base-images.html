@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Base Images — flat refresh mockup</title>
+<link rel="stylesheet" href="fonts.css">
+<style>
+body{margin:0}
+a{color:inherit;text-decoration:none}
+a:hover{color:#1d4ed8}
+</style>
+</head>
+<body>
+<div style="min-height: 100vh; background: rgb(246, 247, 249); color: rgb(22, 25, 29); font-family: Inter, &quot;Segoe UI&quot;, Arial, sans-serif; font-size: 14px; line-height: 1.45;">
+<header style="background: #FFFFFF; border-bottom: 1px solid #E3E6EB">
+<div style="max-width: 1280px; margin: 0 auto; padding: 0 32px; display: flex; flex-wrap: wrap; align-items: center; column-gap: 28px; row-gap: 0">
+<a href="#" style="display: flex; align-items: center; gap: 10px; min-height: 60px">
+<svg width="26" height="26" viewBox="0 0 128 128" role="img" aria-label="DockerUpdateGuard logo"><path d="M64 8c20 14 37 18 52 20v34c0 28-18 47-52 58C30 109 12 90 12 62V28c15-2 32-6 52-20Z" fill="#2563EB"></path></svg>
+<span style="font-family: 'Space Grotesk', Inter, sans-serif; font-weight: 700; font-size: 16px; letter-spacing: -0.01em">DockerUpdateGuard</span>
+</a>
+<nav aria-label="Main" style="display: flex; flex-wrap: wrap; column-gap: 4px; flex: 1 1 520px">
+<a href="#" style="min-height: 60px; display: flex; align-items: center; padding: 0 10px; color: #5B6471">Dashboard</a>
+<a href="#" style="min-height: 60px; display: flex; align-items: center; padding: 0 10px; color: #5B6471">My Images</a>
+<a href="#" style="min-height: 60px; display: flex; align-items: center; padding: 0 10px; color: #5B6471">Observed Images</a>
+<a href="#" style="min-height: 60px; display: flex; align-items: center; padding: 0 10px; color: #5B6471">Runtime Containers</a>
+<a href="#" style="min-height: 60px; display: flex; align-items: center; padding: 0 10px; color: #5B6471">Docker Instances</a>
+<a href="#" aria-current="page" style="min-height: 60px; display: flex; align-items: center; padding: 0 10px; font-weight: 600; color: #16191D; box-shadow: inset 0 -2px 0 #2563EB">Base Images</a>
+<a href="#" style="min-height: 60px; display: flex; align-items: center; padding: 0 10px; color: #5B6471">Vulnerabilities</a>
+<a href="#" style="min-height: 60px; display: flex; align-items: center; padding: 0 10px; color: #5B6471">Scan History</a>
+</nav>
+<button type="button" aria-label="Toggle dark mode" style="width: 44px; height: 44px; display: grid; place-items: center; background: transparent; border: 1px solid #E3E6EB; border-radius: 6px; color: #16191D; cursor: pointer">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z"></path></svg>
+</button>
+</div>
+</header>
+<main style="max-width: 1280px; margin: 0 auto; padding: 36px 32px 48px; display: flex; flex-direction: column; gap: 24px">
+<div style="display: flex; flex-direction: column; gap: 4px">
+<h1 style="margin: 0; font-family: 'Space Grotesk', Inter, sans-serif; font-size: 28px; font-weight: 600; letter-spacing: -0.02em">Base Images</h1>
+<p style="margin: 0; color: #5B6471">Resolved base images with the images built on them, the containers that run them and their vulnerability status.</p>
+</div>
+<section style="background: #FFFFFF; border: 1px solid #E3E6EB; border-radius: 8px">
+<div style="padding: 16px 20px; display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 16px">
+<h2 style="margin: 0; font-size: 15px; font-weight: 600">Base image overview</h2>
+<span style="color: #5B6471; font-size: 13px">5 base images</span>
+</div>
+<div style="overflow-x: auto">
+<div style="min-width: 1000px">
+<div style="display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.8fr) minmax(0, 1.5fr) minmax(0, 0.7fr) minmax(0, 1.1fr); column-gap: 16px; padding: 10px 20px; border-top: 1px solid #E3E6EB; color: #5B6471; font-size: 13px; font-weight: 500">
+<span>Base image</span><span>Parent images</span><span>Runtime containers</span><span>Observed images</span><span>Vulnerabilities</span>
+</div>
+<div style="display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.8fr) minmax(0, 1.5fr) minmax(0, 0.7fr) minmax(0, 1.1fr); column-gap: 16px; padding: 14px 20px; border-top: 1px solid #EEF0F3; align-items: start">
+<strong style="font-weight: 600; overflow-wrap: anywhere">debian:bookworm-slim</strong>
+<div style="display: flex; flex-direction: column; gap: 2px">
+<a href="#" style="color: #1D4ED8; font-weight: 500; overflow-wrap: anywhere">library/nginx:1.27.0</a>
+<a href="#" style="color: #1D4ED8; font-weight: 500; overflow-wrap: anywhere">library/postgres:16.3</a>
+<a href="#" style="color: #1D4ED8; font-weight: 500; overflow-wrap: anywhere">library/mariadb:11.4.2</a>
+</div>
+<div style="display: flex; flex-direction: column; gap: 2px">
+<a href="#" style="color: #1D4ED8; font-weight: 500">nginx</a>
+<a href="#" style="color: #1D4ED8; font-weight: 500">postgres</a>
+<a href="#" style="color: #1D4ED8; font-weight: 500">mariadb</a>
+</div>
+<span style="font-variant-numeric: tabular-nums">3</span>
+<div style="display: flex; flex-direction: column; align-items: flex-start; gap: 4px">
+<span style="font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 4px; background: #7A1C12; color: #FFFFFF">Critical</span>
+<span style="font-size: 13px; color: #5B6471">3 active · 1 critical, 2 high</span>
+</div>
+</div>
+<div style="display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.8fr) minmax(0, 1.5fr) minmax(0, 0.7fr) minmax(0, 1.1fr); column-gap: 16px; padding: 14px 20px; border-top: 1px solid #EEF0F3; align-items: start">
+<strong style="font-weight: 600; overflow-wrap: anywhere">dotnet/aspnet:8.0.8</strong>
+<div style="display: flex; flex-direction: column; gap: 2px">
+<a href="#" style="color: #1D4ED8; font-weight: 500; overflow-wrap: anywhere">acme/billing-api:2.8.0</a>
+</div>
+<div style="display: flex; flex-direction: column; gap: 2px">
+<a href="#" style="color: #1D4ED8; font-weight: 500">billing-api</a>
+</div>
+<span style="font-variant-numeric: tabular-nums">1</span>
+<div style="display: flex; flex-direction: column; align-items: flex-start; gap: 4px">
+<span style="font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 4px; background: #FFF1E6; color: #9A3D00">High</span>
+<span style="font-size: 13px; color: #5B6471">1 active · 1 high</span>
+</div>
+</div>
+<div style="display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.8fr) minmax(0, 1.5fr) minmax(0, 0.7fr) minmax(0, 1.1fr); column-gap: 16px; padding: 14px 20px; border-top: 1px solid #EEF0F3; align-items: start">
+<strong style="font-weight: 600; overflow-wrap: anywhere">python:3.12-slim</strong>
+<div style="display: flex; flex-direction: column; gap: 2px">
+<a href="#" style="color: #1D4ED8; font-weight: 500; overflow-wrap: anywhere">paperless-ngx/paperless-ngx:2.12.1</a>
+</div>
+<div style="display: flex; flex-direction: column; gap: 2px">
+<a href="#" style="color: #1D4ED8; font-weight: 500">paperless</a>
+</div>
+<span style="font-variant-numeric: tabular-nums">1</span>
+<div style="display: flex; flex-direction: column; align-items: flex-start; gap: 4px">
+<span style="font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 4px; background: #FFF1E6; color: #9A3D00">High</span>
+<span style="font-size: 13px; color: #5B6471">4 active · 1 high, 3 medium</span>
+</div>
+</div>
+<div style="display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.8fr) minmax(0, 1.5fr) minmax(0, 0.7fr) minmax(0, 1.1fr); column-gap: 16px; padding: 14px 20px; border-top: 1px solid #EEF0F3; align-items: start">
+<strong style="font-weight: 600; overflow-wrap: anywhere">node:20.15</strong>
+<div style="display: flex; flex-direction: column; gap: 2px">
+<a href="#" style="color: #1D4ED8; font-weight: 500; overflow-wrap: anywhere">acme/report-worker:1.4.2</a>
+<a href="#" style="color: #1D4ED8; font-weight: 500; overflow-wrap: anywhere">acme/web-frontend:3.2.0</a>
+</div>
+<div style="display: flex; flex-direction: column; gap: 2px">
+<a href="#" style="color: #1D4ED8; font-weight: 500">report-worker</a>
+</div>
+<span style="font-variant-numeric: tabular-nums">2</span>
+<div style="display: flex; flex-direction: column; align-items: flex-start; gap: 4px">
+<span style="font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 4px; background: #FDF3D7; color: #7A5200">Medium</span>
+<span style="font-size: 13px; color: #5B6471">1 active · 1 medium</span>
+</div>
+</div>
+<div style="display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.8fr) minmax(0, 1.5fr) minmax(0, 0.7fr) minmax(0, 1.1fr); column-gap: 16px; padding: 14px 20px; border-top: 1px solid #EEF0F3; align-items: start">
+<strong style="font-weight: 600; overflow-wrap: anywhere">alpine:3.20</strong>
+<div style="display: flex; flex-direction: column; gap: 2px">
+<a href="#" style="color: #1D4ED8; font-weight: 500; overflow-wrap: anywhere">library/traefik:v3.1.2</a>
+<a href="#" style="color: #1D4ED8; font-weight: 500; overflow-wrap: anywhere">library/redis:7.2.5</a>
+<a href="#" style="color: #1D4ED8; font-weight: 500; overflow-wrap: anywhere">vaultwarden/server:1.32.0</a>
+</div>
+<div style="display: flex; flex-direction: column; gap: 2px">
+<a href="#" style="color: #1D4ED8; font-weight: 500">traefik</a>
+<a href="#" style="color: #1D4ED8; font-weight: 500">redis</a>
+<a href="#" style="color: #1D4ED8; font-weight: 500">vaultwarden</a>
+</div>
+<span style="font-variant-numeric: tabular-nums">3</span>
+<div style="display: flex; flex-direction: column; align-items: flex-start; gap: 4px">
+<span style="font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 4px; background: #E6F4EC; color: #05603A">No findings</span>
+<span style="font-size: 13px; color: #5B6471"></span>
+</div>
+</div>
+</div>
+</div>
+</section>
+</main>
+</div>
+</body>
+</html>

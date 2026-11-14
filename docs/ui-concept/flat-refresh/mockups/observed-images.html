@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Observed Images — flat refresh mockup</title>
+<link rel="stylesheet" href="fonts.css">
+<style>
+body{margin:0}
+a{color:inherit;text-decoration:none}
+a:hover{color:#1d4ed8}
+</style>
+</head>
+<body>
+<div style="min-height: 100vh; background: rgb(246, 247, 249); color: rgb(22, 25, 29); font-family: Inter, &quot;Segoe UI&quot;, Arial, sans-serif; font-size: 14px; line-height: 1.45;">
+<header style="background: #FFFFFF; border-bottom: 1px solid #E3E6EB">
+<div style="max-width: 1280px; margin: 0 auto; padding: 0 32px; display: flex; flex-wrap: wrap; align-items: center; column-gap: 28px; row-gap: 0">
+<a href="#" style="display: flex; align-items: center; gap: 10px; min-height: 60px">
+<svg width="26" height="26" viewBox="0 0 128 128" role="img" aria-label="DockerUpdateGuard logo"><path d="M64 8c20 14 37 18 52 20v34c0 28-18 47-52 58C30 109 12 90 12 62V28c15-2 32-6 52-20Z" fill="#2563EB"></path></svg>
+<span style="font-family: 'Space Grotesk', Inter, sans-serif; font-weight: 700; font-size: 16px; letter-spacing: -0.01em">DockerUpdateGuard</span>
+</a>
+<nav aria-label="Main" style="display: flex; flex-wrap: wrap; column-gap: 4px; flex: 1 1 520px">
+<a href="#" style="min-height: 60px; display: flex; align-items: center; padding: 0 10px; color: #5B6471">Dashboard</a>
+<a href="#" style="min-height: 60px; display: flex; align-items: center; padding: 0 10px; color: #5B6471">My Images</a>
+<a href="#" aria-current="page" style="min-height: 60px; display: flex; align-items: center; padding: 0 10px; font-weight: 600; color: #16191D; box-shadow: inset 0 -2px 0 #2563EB">Observed Images</a>
+<a href="#" style="min-height: 60px; display: flex; align-items: center; padding: 0 10px; color: #5B6471">Runtime Containers</a>
+<a href="#" style="min-height: 60px; display: flex; align-items: center; padding: 0 10px; color: #5B6471">Docker Instances</a>
+<a href="#" style="min-height: 60px; display: flex; align-items: center; padding: 0 10px; color: #5B6471">Base Images</a>
+<a href="#" style="min-height: 60px; display: flex; align-items: center; padding: 0 10px; color: #5B6471">Vulnerabilities</a>
+<a href="#" style="min-height: 60px; display: flex; align-items: center; padding: 0 10px; color: #5B6471">Scan History</a>
+</nav>
+<button type="button" aria-label="Toggle dark mode" style="width: 44px; height: 44px; display: grid; place-items: center; background: transparent; border: 1px solid #E3E6EB; border-radius: 6px; color: #16191D; cursor: pointer">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z"></path></svg>
+</button>
+</div>
+</header>
+<main style="max-width: 1280px; margin: 0 auto; padding: 36px 32px 48px; display: flex; flex-direction: column; gap: 24px">
+<div style="display: flex; flex-direction: column; gap: 4px">
+<h1 style="margin: 0; font-family: 'Space Grotesk', Inter, sans-serif; font-size: 28px; font-weight: 600; letter-spacing: -0.02em">Observed Images</h1>
+<p style="margin: 0; color: #5B6471">Manually tracked images. Register a registry reference to scan it right away.</p>
+</div>
+<section style="background: #FFFFFF; border: 1px solid #E3E6EB; border-radius: 8px; padding: 16px 20px 20px; display: flex; flex-direction: column; gap: 14px">
+<h2 style="margin: 0; font-size: 15px; font-weight: 600">Register image</h2>
+<form style="margin: 0; display: flex; flex-wrap: wrap; align-items: flex-end; gap: 16px">
+<div style="flex: 1 1 180px; min-width: 0; display: flex; flex-direction: column; gap: 6px">
+<label for="reg-name" style="font-size: 13px; font-weight: 500">Name</label>
+<input id="reg-name" type="text" style="min-height: 44px; box-sizing: border-box; width: 100%; padding: 0 12px; border: 1px solid #C9CED6; border-radius: 6px; font: inherit; color: #16191D; background: #FFFFFF">
+</div>
+<div style="flex: 2 1 280px; min-width: 0; display: flex; flex-direction: column; gap: 6px">
+<label for="reg-ref" style="font-size: 13px; font-weight: 500">Image reference</label>
+<input id="reg-ref" type="text" placeholder="registry/repository:tag" style="min-height: 44px; box-sizing: border-box; width: 100%; padding: 0 12px; border: 1px solid #C9CED6; border-radius: 6px; font: inherit; color: #16191D; background: #FFFFFF">
+</div>
+<div style="flex: 2 1 240px; min-width: 0; display: flex; flex-direction: column; gap: 6px">
+<label for="reg-desc" style="font-size: 13px; font-weight: 500">Description <span style="color: #5B6471; font-weight: 400">(optional)</span></label>
+<input id="reg-desc" type="text" style="min-height: 44px; box-sizing: border-box; width: 100%; padding: 0 12px; border: 1px solid #C9CED6; border-radius: 6px; font: inherit; color: #16191D; background: #FFFFFF">
+</div>
+<button type="button" style="min-height: 44px; padding: 0 18px; background: #2563EB; color: #FFFFFF; border: 0; border-radius: 6px; font: inherit; font-weight: 600; cursor: pointer">Register and scan</button>
+</form>
+</section>
+<section style="background: #FFFFFF; border: 1px solid #E3E6EB; border-radius: 8px">
+<div style="padding: 16px 20px; display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 16px">
+<h2 style="margin: 0; font-size: 15px; font-weight: 600">Manual images</h2>
+<span style="color: #5B6471; font-size: 13px">14 images</span>
+</div>
+<div style="overflow-x: auto">
+<div style="min-width: 1040px">
+<div style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.7fr) minmax(0, 1.4fr) minmax(0, 0.8fr) minmax(0, 1.1fr) minmax(0, 1.5fr); column-gap: 16px; padding: 10px 20px; border-top: 1px solid #E3E6EB; color: #5B6471; font-size: 13px; font-weight: 500">
+<span>Name</span><span>Image</span><span>Latest scan</span><span>Updates</span><span>Base runtime</span><span>Vulnerabilities</span>
+</div>
+<div style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.7fr) minmax(0, 1.4fr) minmax(0, 0.8fr) minmax(0, 1.1fr) minmax(0, 1.5fr); column-gap: 16px; padding: 12px 20px; border-top: 1px solid #EEF0F3; align-items: start">
+<a href="#" style="font-weight: 600; color: #1D4ED8">Grafana</a>
+<span style="overflow-wrap: anywhere; font-variant-numeric: tabular-nums">grafana/grafana:11.1.0</span>
+<div style="display: flex; flex-direction: column; gap: 2px">
+<span style="display: flex; align-items: center; gap: 8px"><span style="width: 8px; height: 8px; border-radius: 50%; background: #067647"></span>Succeeded</span>
+<span style="font-size: 13px; color: #5B6471">14.11.2026 08:30</span>
+</div>
+<span style="font-weight: 500; font-variant-numeric: tabular-nums">1 · 11.3.0</span>
+<span style="color: #5B6471">—</span>
+<div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 8px">
+<div style="display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0">
+<span style="font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 4px; background: #FDF3D7; color: #7A5200">Medium</span>
+<span style="font-size: 13px; color: #5B6471">2 active · checked 14.11.2026 08:15</span>
+</div>
+<button type="button" aria-label="Rescan vulnerabilities" style="flex: 0 0 auto; width: 44px; height: 44px; display: grid; place-items: center; background: transparent; border: 1px solid #E3E6EB; border-radius: 6px; color: #3D4551; cursor: pointer">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.6-5.9"></path><path d="M20 4v5h-5"></path></svg>
+</button>
+</div>
+</div>
+<div style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.7fr) minmax(0, 1.4fr) minmax(0, 0.8fr) minmax(0, 1.1fr) minmax(0, 1.5fr); column-gap: 16px; padding: 12px 20px; border-top: 1px solid #EEF0F3; align-items: start">
+<a href="#" style="font-weight: 600; color: #1D4ED8">Nginx</a>
+<span style="overflow-wrap: anywhere; font-variant-numeric: tabular-nums">library/nginx:1.27.0</span>
+<div style="display: flex; flex-direction: column; gap: 2px">
+<span style="display: flex; align-items: center; gap: 8px"><span style="width: 8px; height: 8px; border-radius: 50%; background: #067647"></span>Succeeded</span>
+<span style="font-size: 13px; color: #5B6471">14.11.2026 08:30</span>
+</div>
+<span style="font-weight: 500; font-variant-numeric: tabular-nums">—</span>
+<span style="color: #5B6471">—</span>
+<div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 8px">
+<div style="display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0">
+<span style="font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 4px; background: #7A1C12; color: #FFFFFF">Critical</span>
+<span style="font-size: 13px; color: #5B6471">3 active · checked 14.11.2026 09:15</span>
+</div>
+<button type="button" aria-label="Rescan vulnerabilities" style="flex: 0 0 auto; width: 44px; height: 44px; display: grid; place-items: center; background: transparent; border: 1px solid #E3E6EB; border-radius: 6px; color: #3D4551; cursor: pointer">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.6-5.9"></path><path d="M20 4v5h-5"></path></svg>
+</button>
+</div>
+</div>
+<div style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.7fr) minmax(0, 1.4fr) minmax(0, 0.8fr) minmax(0, 1.1fr) minmax(0, 1.5fr); column-gap: 16px; padding: 12px 20px; border-top: 1px solid #EEF0F3; align-items: start">
+<a href="#" style="font-weight: 600; color: #1D4ED8">Postgres</a>
+<span style="overflow-wrap: anywhere; font-variant-numeric: tabular-nums">library/postgres:16</span>
+<div style="display: flex; flex-direction: column; gap: 2px">
+<span style="display: flex; align-items: center; gap: 8px"><span style="width: 8px; height: 8px; border-radius: 50%; background: #067647"></span>Succeeded</span>
+<span style="font-size: 13px; color: #5B6471">14.11.2026 08:30</span>
+</div>
+<span style="font-weight: 500; font-variant-numeric: tabular-nums">1 · 16.4</span>
+<span style="color: #5B6471">—</span>
+<div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 8px">
+<div style="display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0">
+<span style="font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 4px; background: #E6F4EC; color: #05603A">No findings</span>
+<span style="font-size: 13px; color: #5B6471">Checked 14.11.2026 08:15</span>
+</div>
+<button type="button" aria-label="Rescan vulnerabilities" style="flex: 0 0 auto; width: 44px; height: 44px; display: grid; place-items: center; background: transparent; border: 1px solid #E3E6EB; border-radius: 6px; color: #3D4551; cursor: pointer">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.6-5.9"></path><path d="M20 4v5h-5"></path></svg>
+</button>
+</div>
+</div>
+<div style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.7fr) minmax(0, 1.4fr) minmax(0, 0.8fr) minmax(0, 1.1fr) minmax(0, 1.5fr); column-gap: 16px; padding: 12px 20px; border-top: 1px solid #EEF0F3; align-items: start">
+<a href="#" style="font-weight: 600; color: #1D4ED8">Traefik</a>
+<span style="overflow-wrap: anywhere; font-variant-numeric: tabular-nums">library/traefik:v3.1.2</span>
+<div style="display: flex; flex-direction: column; gap: 2px">
+<span style="display: flex; align-items: center; gap: 8px"><span style="width: 8px; height: 8px; border-radius: 50%; background: #067647"></span>Succeeded</span>
+<span style="font-size: 13px; color: #5B6471">14.11.2026 08:30</span>
+</div>
+<span style="font-weight: 500; font-variant-numeric: tabular-nums">1 · v3.2.0</span>
+<span style="color: #5B6471">—</span>
+<div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 8px">
+<div style="display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0">
+<span style="font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 4px; background: #FFF1E6; color: #9A3D00">High</span>
+<span style="font-size: 13px; color: #5B6471">3 active · checked 14.11.2026 09:15</span>
+</div>
+<button type="button" aria-label="Rescan vulnerabilities" style="flex: 0 0 auto; width: 44px; height: 44px; display: grid; place-items: center; background: transparent; border: 1px solid #E3E6EB; border-radius: 6px; color: #3D4551; cursor: pointer">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.6-5.9"></path><path d="M20 4v5h-5"></path></svg>
+</button>
+</div>
+</div>
+<div style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.7fr) minmax(0, 1.4fr) minmax(0, 0.8fr) minmax(0, 1.1fr) minmax(0, 1.5fr); column-gap: 16px; padding: 12px 20px; border-top: 1px solid #EEF0F3; align-items: start">
+<a href="#" style="font-weight: 600; color: #1D4ED8">Home Assistant</a>
+<span style="overflow-wrap: anywhere; font-variant-numeric: tabular-nums">ghcr.io/home-assistant/home-assistant:2026.10.1</span>
+<div style="display: flex; flex-direction: column; gap: 2px">
+<span style="display: flex; align-items: center; gap: 8px"><span style="width: 8px; height: 8px; border-radius: 50%; background: #B54708"></span><strong style="font-weight: 600; color: #9A3D00">Partial</strong></span>
+<span style="font-size: 13px; color: #5B6471">Registry lookup failed: rate limited</span>
+</div>
+<span style="font-weight: 500; font-variant-numeric: tabular-nums">—</span>
+<span style="color: #5B6471">—</span>
+<div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 8px">
+<div style="display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0">
+<span style="font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 4px; background: #EEF0F3; color: #3D4551">Not scanned</span>
+<span style="font-size: 13px; color: #5B6471">Never scanned</span>
+</div>
+<button type="button" aria-label="Rescan vulnerabilities" style="flex: 0 0 auto; width: 44px; height: 44px; display: grid; place-items: center; background: transparent; border: 1px solid #E3E6EB; border-radius: 6px; color: #3D4551; cursor: pointer">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.6-5.9"></path><path d="M20 4v5h-5"></path></svg>
+</button>
+</div>
+</div>
+<div style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.7fr) minmax(0, 1.4fr) minmax(0, 0.8fr) minmax(0, 1.1fr) minmax(0, 1.5fr); column-gap: 16px; padding: 12px 20px; border-top: 1px solid #EEF0F3; align-items: start">
+<a href="#" style="font-weight: 600; color: #1D4ED8">Paperless</a>
+<span style="overflow-wrap: anywhere; font-variant-numeric: tabular-nums">ghcr.io/paperless-ngx/paperless-ngx:2.12.1</span>
+<div style="display: flex; flex-direction: column; gap: 2px">
+<span style="display: flex; align-items: center; gap: 8px"><span style="width: 8px; height: 8px; border-radius: 50%; background: #B42318"></span><strong style="font-weight: 600; color: #B42318">Failed</strong></span>
+<span style="font-size: 13px; color: #5B6471">Registry lookup failed: connection failed</span>
+</div>
+<span style="font-weight: 500; font-variant-numeric: tabular-nums">—</span>
+<span style="color: #5B6471">python 3.12 · 3.13 available</span>
+<div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 8px">
+<div style="display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0">
+<span style="font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 4px; background: #FFF1E6; color: #9A3D00">High</span>
+<span style="font-size: 13px; color: #5B6471">4 active · checked 13.11.2026 21:15</span>
+</div>
+<button type="button" aria-label="Rescan vulnerabilities" style="flex: 0 0 auto; width: 44px; height: 44px; display: grid; place-items: center; background: transparent; border: 1px solid #E3E6EB; border-radius: 6px; color: #3D4551; cursor: pointer">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.6-5.9"></path><path d="M20 4v5h-5"></path></svg>
+</button>
+</div>
+</div>
+</div>
+</div>
+</section>
+</main>
+</div>
+</body>
+</html>
