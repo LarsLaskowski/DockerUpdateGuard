@@ -236,8 +236,22 @@ public static class DatabaseMigrator
                 await WaitForMigrationLockAsync(token => TryAcquireMigrationLockAsync(dbContext, token), options, waitStartedAt, logger, timeProvider, cancellationToken).ConfigureAwait(false);
             }
 
-            await dbContext.Database.MigrateAsync(cancellationToken)
-                                    .ConfigureAwait(false);
+            // The migration statements run under their own command timeout; the lock queries before and
+            // the unlock after keep the database command timeout, and the value the context had is restored
+            // so that the later commands on this scoped context keep it.
+            var previousCommandTimeout = dbContext.Database.GetCommandTimeout();
+
+            dbContext.Database.SetCommandTimeout(options.MigrationCommandTimeoutSeconds);
+
+            try
+            {
+                await dbContext.Database.MigrateAsync(cancellationToken)
+                                        .ConfigureAwait(false);
+            }
+            finally
+            {
+                dbContext.Database.SetCommandTimeout(previousCommandTimeout);
+            }
         }
         finally
         {
