@@ -1,3 +1,4 @@
+using System.IO.Pipelines;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
@@ -37,6 +38,15 @@ public partial class OciRegistryClientTests
     private const string LoneSurrogateEscape = """\ud800""";
 
     #endregion // Constants
+
+    #region Properties
+
+    /// <summary>
+    /// Context for the tests
+    /// </summary>
+    public TestContext TestContext { get; set; }
+
+    #endregion // Properties
 
     #region Methods
 
@@ -2190,6 +2200,289 @@ public partial class OciRegistryClientTests
         Assert.AreEqual("Repository 'mssql/server' was not found in registry 'mcr.microsoft.com'", result.Message, "The message must name the repository and the registry");
     }
 
+    /// <summary>
+    /// Verify every OCI call answers a transport error as failed with the connection-failed reason and logs it once
+    /// </summary>
+    /// <param name="operation">Name of the call</param>
+    /// <param name="expectedMessage">Expected failure message</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC1")]
+    [DataRow("Tag", "Registry tag lookup failed for 'mcr.microsoft.com/mssql/server:latest': connection failed")]
+    [DataRow("Tags", "Tag lookup failed for 'mcr.microsoft.com/mssql/server': connection failed")]
+    [DataRow("Configuration", "Registry image configuration lookup failed for 'mcr.microsoft.com/mssql/server:latest': connection failed")]
+    public async Task OciRegistryClientCallTransportErrorReturnsConnectionFailedAsync(string operation, string expectedMessage)
+    {
+        var injected = new HttpRequestException(HttpRequestError.ConnectionError, "Connection refused (registry.internal.test:443)");
+        var logger = new TestLogger<OciRegistryClient>();
+
+        using var handler = new DelegateHttpMessageHandler(_ => throw injected);
+        using var httpClient = CreateRegistryHttpClient(handler);
+
+        var client = new OciRegistryClient(httpClient, logger);
+
+        var (status, message) = await RunCallAsync(client, operation, TestContext.CancellationToken).ConfigureAwait(false);
+
+        var warning = AssertSingleFailureWarning(logger);
+
+        Assert.AreEqual(ExternalOperationStatus.Failed, status, $"The {operation} call must answer a transport error as failed");
+        Assert.AreEqual(expectedMessage, message, "The transport error must be reported with the fixed connection-failed reason");
+        Assert.AreSame(injected, warning.Exception, "The warning must carry the transport exception");
+    }
+
+    /// <summary>
+    /// Verify every OCI call answers a body read error as failed with the connection-failed reason and logs it once
+    /// </summary>
+    /// <param name="operation">Name of the call</param>
+    /// <param name="expectedMessage">Expected failure message</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC1")]
+    [DataRow("Tag", "Registry tag lookup failed for 'mcr.microsoft.com/mssql/server:latest': connection failed")]
+    [DataRow("Tags", "Tag lookup failed for 'mcr.microsoft.com/mssql/server': connection failed")]
+    [DataRow("Configuration", "Registry image configuration lookup failed for 'mcr.microsoft.com/mssql/server:latest': connection failed")]
+    public async Task OciRegistryClientCallBodyReadErrorReturnsConnectionFailedAsync(string operation, string expectedMessage)
+    {
+        var logger = new TestLogger<OciRegistryClient>();
+
+        using var handler = new DelegateHttpMessageHandler(_ => CreateFailingBodyResponse());
+        using var httpClient = CreateRegistryHttpClient(handler);
+
+        var client = new OciRegistryClient(httpClient, logger);
+
+        var (status, message) = await RunCallAsync(client, operation, TestContext.CancellationToken).ConfigureAwait(false);
+
+        var warning = AssertSingleFailureWarning(logger);
+
+        Assert.AreEqual(ExternalOperationStatus.Failed, status, $"The {operation} call must answer a body read error as failed");
+        Assert.AreEqual(expectedMessage, message, "The body read error must be reported with the fixed connection-failed reason");
+        Assert.IsInstanceOfType<IOException>(warning.Exception, "The warning must carry the I/O exception");
+    }
+
+    /// <summary>
+    /// Verify every OCI call answers a request timeout as failed with the timed-out reason and logs it once
+    /// </summary>
+    /// <param name="operation">Name of the call</param>
+    /// <param name="expectedMessage">Expected failure message</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC2")]
+    [DataRow("Tag", "Registry tag lookup failed for 'mcr.microsoft.com/mssql/server:latest': timed out after 30 seconds")]
+    [DataRow("Tags", "Tag lookup failed for 'mcr.microsoft.com/mssql/server': timed out after 30 seconds")]
+    [DataRow("Configuration", "Registry image configuration lookup failed for 'mcr.microsoft.com/mssql/server:latest': timed out after 30 seconds")]
+    public async Task OciRegistryClientCallTimeoutReturnsTimedOutAsync(string operation, string expectedMessage)
+    {
+        var logger = new TestLogger<OciRegistryClient>();
+
+        using var handler = new DelegateHttpMessageHandler(_ => throw new TaskCanceledException("The request was canceled due to the configured HttpClient.Timeout of 30 seconds elapsing.", new TimeoutException()));
+        using var httpClient = CreateRegistryHttpClient(handler);
+
+        var client = new OciRegistryClient(httpClient, logger);
+
+        var (status, message) = await RunCallAsync(client, operation, TestContext.CancellationToken).ConfigureAwait(false);
+
+        AssertSingleFailureWarning(logger);
+
+        Assert.AreEqual(ExternalOperationStatus.Failed, status, $"The {operation} call must answer a request timeout as failed");
+        Assert.AreEqual(expectedMessage, message, "The timeout must be reported with the request timeout in seconds");
+    }
+
+    /// <summary>
+    /// Verify every OCI call throws the caller's cancellation and logs no failure warning
+    /// </summary>
+    /// <param name="operation">Name of the call</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC3")]
+    [DataRow("Tag")]
+    [DataRow("Tags")]
+    [DataRow("Configuration")]
+    public async Task OciRegistryClientCallCallerCancelledThrowsOperationCanceledExceptionAsync(string operation)
+    {
+        var logger = new TestLogger<OciRegistryClient>();
+
+        using var callerCancellation = new CancellationTokenSource();
+        using var handler = new DelegateHttpMessageHandler(_ => CancelCaller(callerCancellation));
+        using var httpClient = CreateRegistryHttpClient(handler);
+
+        var client = new OciRegistryClient(httpClient, logger);
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() => RunCallAsync(client, operation, callerCancellation.Token),
+                                                             $"The {operation} call must let the caller's cancellation propagate").ConfigureAwait(false);
+
+        Assert.DoesNotContain(entry => entry.EventId.Id == 2100, logger.Entries, "A cancellation by the caller must not be logged as a failed call");
+    }
+
+    /// <summary>
+    /// Verify a cancellation by the caller during a tag's manifest lookup is not swallowed as a tag listed by name
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC3")]
+    public async Task OciRegistryClientGetTagsAsyncCallerCancelledDuringTagLookupThrowsOperationCanceledExceptionAsync()
+    {
+        var logger = new TestLogger<OciRegistryClient>();
+
+        using var callerCancellation = new CancellationTokenSource();
+        using var handler = new DelegateHttpMessageHandler(request => request.RequestUri!.AbsolutePath.EndsWith("/tags/list", StringComparison.Ordinal)
+                                                                          ? CreateTagListResponse("""{ "name": "mssql/server", "tags": [ "1.0", "2.0" ] }""", null)
+                                                                          : CancelCaller(callerCancellation));
+        using var httpClient = CreateRegistryHttpClient(handler);
+
+        var client = new OciRegistryClient(httpClient, logger);
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() => client.GetTagsAsync("mcr.microsoft.com", "mssql/server", cancellationToken: callerCancellation.Token),
+                                                             "The cancellation inside a tag lookup must propagate out of the tag listing").ConfigureAwait(false);
+
+        Assert.DoesNotContain(entry => entry.EventId.Id == 2100, logger.Entries, "A cancellation by the caller must not be logged as a failed call");
+    }
+
+    /// <summary>
+    /// Verify a missing image reference is refused with an argument null exception for the tag lookup
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC9")]
+    public async Task OciRegistryClientGetTagAsyncNullReferenceThrowsArgumentNullExceptionAsync()
+    {
+        using var handler = new DelegateHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK));
+        using var httpClient = CreateRegistryHttpClient(handler);
+
+        var client = new OciRegistryClient(httpClient, new TestLogger<OciRegistryClient>());
+
+        await Assert.ThrowsExactlyAsync<ArgumentNullException>(() => client.GetTagAsync(null!, "linux", "amd64", TestContext.CancellationToken),
+                                                               "A missing reference must stay an argument error and not become a failed result").ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Verify a tag list whose entries are not strings is answered as an unexpected error
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC4")]
+    public async Task OciRegistryClientGetTagsAsyncNonStringTagReturnsUnexpectedErrorAsync()
+    {
+        using var handler = new SequenceHttpMessageHandler();
+        using var httpClient = new HttpClient(handler);
+
+        handler.AddJsonResponse("https://mcr.microsoft.com/v2/mssql/server/tags/list?n=100", """{ "tags": [1, 2] }""");
+
+        var logger = new TestLogger<OciRegistryClient>();
+        var client = new OciRegistryClient(httpClient, logger);
+
+        var result = await client.GetTagsAsync("mcr.microsoft.com", "mssql/server", cancellationToken: CancellationToken.None).ConfigureAwait(false);
+
+        var warning = AssertSingleFailureWarning(logger);
+
+        Assert.AreEqual(ExternalOperationStatus.Failed, result.Status, "A tag of an unexpected JSON kind must be answered as failed");
+        Assert.AreEqual("Tag lookup failed for 'mcr.microsoft.com/mssql/server': unexpected error", result.Message, "A tag of an unexpected JSON kind must be reported as an unexpected error");
+        Assert.IsNotNull(warning.Exception, "The warning must carry the exception");
+    }
+
+    /// <summary>
+    /// Verify a configuration blob whose environment entry is not a string is answered as an unexpected error
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC4")]
+    public async Task OciRegistryClientGetImageConfigurationAsyncNonStringEnvironmentEntryReturnsUnexpectedErrorAsync()
+    {
+        using var handler = new SequenceHttpMessageHandler();
+        using var httpClient = new HttpClient(handler);
+
+        handler.AddResponse("https://mcr.microsoft.com/v2/dotnet/aspnet/manifests/8.0",
+                            CreateManifestResponse("sha256:aspnet", """{ "schemaVersion": 2, "config": { "digest": "sha256:aspnet-config" } }"""));
+        handler.AddJsonResponse("https://mcr.microsoft.com/v2/dotnet/aspnet/blobs/sha256%3Aaspnet-config", """{ "config": { "Env": [1] } }""");
+
+        var logger = new TestLogger<OciRegistryClient>();
+        var client = new OciRegistryClient(httpClient, logger);
+        var imageReference = CreateAspNetReference();
+
+        var result = await client.GetImageConfigurationAsync(imageReference, CancellationToken.None).ConfigureAwait(false);
+
+        var warning = AssertSingleFailureWarning(logger);
+
+        Assert.AreEqual(ExternalOperationStatus.Failed, result.Status, "An environment entry of an unexpected JSON kind must be answered as failed");
+        Assert.AreEqual($"Registry image configuration lookup failed for '{imageReference.FullReference}': unexpected error",
+                        result.Message,
+                        "An environment entry of an unexpected JSON kind must be reported as an unexpected error");
+        Assert.IsNotNull(warning.Exception, "The warning must carry the exception");
+    }
+
+    /// <summary>
+    /// Verify a token answer whose expiry fields cannot be read as a lifetime still lets the lookup succeed
+    /// </summary>
+    /// <param name="tokenJson">Token answer</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC6")]
+    [DataRow("""{ "access_token": "mcr-token", "expires_in": "300" }""")]
+    [DataRow("""{ "access_token": "mcr-token", "expires_in": 300, "issued_at": "9999-12-31T23:59:59Z" }""")]
+    [DataRow("""{ "access_token": "mcr-token", "expires_in": 99999999999 }""")]
+    public async Task OciRegistryClientGetTagAsyncTokenExpiresInNotNumberSucceedsAsync(string tokenJson)
+    {
+        using var handler = new SequenceHttpMessageHandler();
+        using var httpClient = new HttpClient(handler);
+
+        handler.AddResponse("https://mcr.microsoft.com/v2/mssql/server/manifests/latest",
+                            CreateUnauthorizedResponse("https://mcr.microsoft.com/oauth2/token",
+                                                       "mcr.microsoft.com",
+                                                       "repository:mssql/server:pull"));
+        handler.AddJsonResponse("https://mcr.microsoft.com/oauth2/token?service=mcr.microsoft.com&scope=repository%3Amssql%2Fserver%3Apull", tokenJson);
+        handler.AddResponse("https://mcr.microsoft.com/v2/mssql/server/manifests/latest",
+                            CreateManifestResponse("sha256:manifest", """{ "schemaVersion": 2, "config": { "digest": "sha256:config" } }"""));
+
+        var client = new OciRegistryClient(httpClient, new TestLogger<OciRegistryClient>());
+
+        var result = await client.GetTagAsync(CreateSqlServerReference(), "linux", "arm64", CancellationToken.None).ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "A token answer with an unreadable expiry must not fail the lookup");
+        Assert.IsNotNull(result.Data, "The lookup must return the tag");
+        Assert.AreEqual("sha256:manifest", result.Data.Digest, "The lookup must return the digest of the manifest");
+    }
+
+    /// <summary>
+    /// Verify a tag listing in which one manifest request fails with a transport error lists that tag by name and logs one warning
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC8")]
+    public async Task OciRegistryClientGetTagsAsyncTagLookupTransportErrorListsTagByNameAsync()
+    {
+        var logger = new TestLogger<OciRegistryClient>();
+
+        using var handler = new DelegateHttpMessageHandler(request =>
+                                                           {
+                                                               var path = request.RequestUri!.AbsolutePath;
+
+                                                               if (path.EndsWith("/tags/list", StringComparison.Ordinal))
+                                                               {
+                                                                   return CreateTagListResponse("""{ "name": "mssql/server", "tags": [ "1.0", "2.0" ] }""", null);
+                                                               }
+
+                                                               return path.EndsWith("/manifests/1.0", StringComparison.Ordinal)
+                                                                          ? throw new HttpRequestException(HttpRequestError.ConnectionError, "Connection refused")
+                                                                          : CreateManifestResponse("sha256:two", """{ "schemaVersion": 2, "config": { "digest": "sha256:config2" } }""");
+                                                           });
+        using var httpClient = CreateRegistryHttpClient(handler);
+
+        var client = new OciRegistryClient(httpClient, logger);
+
+        var result = await client.GetTagsAsync("mcr.microsoft.com", "mssql/server", cancellationToken: CancellationToken.None).ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "One failed tag lookup must not fail the tag listing");
+        Assert.IsNotNull(result.Data, "The tag listing must return its tags");
+        Assert.HasCount(2, result.Data, "Both listed tags must be returned");
+
+        var failed = Assert.ContainsSingle(entry => entry.Tag == "1.0", result.Data, "The tag whose lookup failed must be listed by name");
+        var readable = Assert.ContainsSingle(entry => entry.Tag == "2.0", result.Data, "The tag with a readable manifest must be listed");
+
+        Assert.IsNull(failed.Digest, "The tag whose lookup failed must be listed without a digest");
+        Assert.AreEqual("sha256:two", readable.Digest, "The readable tag must keep its digest");
+
+        AssertSingleFailureWarning(logger);
+    }
+
     #endregion // Methods
 
     #region Static methods
@@ -2443,6 +2736,97 @@ public partial class OciRegistryClientTests
                    Repository = "mssql/server",
                    Tag = "latest",
                };
+    }
+
+    /// <summary>
+    /// Run one OCI call by name against the SQL Server image of the Microsoft registry
+    /// </summary>
+    /// <param name="client">Client under test</param>
+    /// <param name="operation">Name of the call: Tag, Tags or Configuration</param>
+    /// <param name="cancellationToken">Cancellation token of the caller</param>
+    /// <returns>Status and message of the result</returns>
+    private static async Task<(ExternalOperationStatus Status, string Message)> RunCallAsync(OciRegistryClient client,
+                                                                                             string operation,
+                                                                                             CancellationToken cancellationToken)
+    {
+        var imageReference = CreateSqlServerReference();
+
+        switch (operation)
+        {
+            case "Tag":
+                {
+                    var result = await client.GetTagAsync(imageReference, "linux", "amd64", cancellationToken).ConfigureAwait(false);
+
+                    return (result.Status, result.Message ?? string.Empty);
+                }
+
+            case "Tags":
+                {
+                    var result = await client.GetTagsAsync(imageReference.Registry, imageReference.Repository, cancellationToken: cancellationToken).ConfigureAwait(false);
+
+                    return (result.Status, result.Message ?? string.Empty);
+                }
+
+            default:
+                {
+                    var result = await client.GetImageConfigurationAsync(imageReference, cancellationToken).ConfigureAwait(false);
+
+                    return (result.Status, result.Message ?? string.Empty);
+                }
+        }
+    }
+
+    /// <summary>
+    /// Create an HTTP client with the request timeout of the options
+    /// </summary>
+    /// <param name="handler">Handler that answers the requests</param>
+    /// <returns>HTTP client</returns>
+    private static HttpClient CreateRegistryHttpClient(HttpMessageHandler handler)
+    {
+        return new HttpClient(handler)
+               {
+                   Timeout = TimeSpan.FromSeconds(30),
+               };
+    }
+
+    /// <summary>
+    /// Cancel the caller's token and raise the cancellation the way a cancelled request does
+    /// </summary>
+    /// <param name="callerCancellation">Cancellation source of the caller</param>
+    /// <returns>Never returns</returns>
+    private static HttpResponseMessage CancelCaller(CancellationTokenSource callerCancellation)
+    {
+        callerCancellation.Cancel();
+
+        throw new OperationCanceledException(callerCancellation.Token);
+    }
+
+    /// <summary>
+    /// Create a response whose body fails with an I/O error as soon as it is read
+    /// </summary>
+    /// <returns>Response</returns>
+    private static HttpResponseMessage CreateFailingBodyResponse()
+    {
+        var body = new Pipe();
+
+        body.Writer.Complete(new IOException("Connection reset by peer"));
+
+        return new HttpResponseMessage(HttpStatusCode.OK)
+               {
+                   Content = new StreamContent(body.Reader.AsStream()),
+               };
+    }
+
+    /// <summary>
+    /// Assert exactly one warning 2100 was logged and return it
+    /// </summary>
+    /// <param name="logger">Captured logger</param>
+    /// <returns>Logged warning</returns>
+    private static TestLogEntry AssertSingleFailureWarning(TestLogger<OciRegistryClient> logger)
+    {
+        return Assert.ContainsSingle(entry => entry.EventId.Id == 2100 && entry.LogLevel == LogLevel.Warning,
+                                     logger.Entries,
+                                     "A failed call must be logged once as warning 2100");
     }
 
     #endregion // Static methods

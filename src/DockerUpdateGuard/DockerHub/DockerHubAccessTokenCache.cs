@@ -25,6 +25,16 @@ public sealed class DockerHubAccessTokenCache : IDisposable
     /// </summary>
     private const int FallbackLifetimeMinutes = 5;
 
+    /// <summary>
+    /// Smallest expiry in Unix seconds that <see cref="DateTimeOffset"/> can represent
+    /// </summary>
+    private const long MinimumExpirationUnixTimeSeconds = -62135596800;
+
+    /// <summary>
+    /// Largest expiry in Unix seconds that <see cref="DateTimeOffset"/> can represent
+    /// </summary>
+    private const long MaximumExpirationUnixTimeSeconds = 253402300799;
+
     #endregion // Constants
 
     #region Fields
@@ -95,7 +105,14 @@ public sealed class DockerHubAccessTokenCache : IDisposable
         var paddingLength = (4 - (normalizedValue.Length % 4)) % 4;
         var paddedValue = normalizedValue.PadRight(normalizedValue.Length + paddingLength, '=');
 
-        return Convert.FromBase64String(paddedValue);
+        try
+        {
+            return Convert.FromBase64String(paddedValue);
+        }
+        catch (FormatException exception)
+        {
+            throw new JsonException("The access token payload is not base64url", exception);
+        }
     }
 
     #endregion // Static methods
@@ -208,8 +225,12 @@ public sealed class DockerHubAccessTokenCache : IDisposable
             {
                 using var jsonDocument = JsonDocument.Parse(payloadBytes);
 
-                if (jsonDocument.RootElement.TryGetProperty("exp", out var expirationElement)
-                    && expirationElement.TryGetInt64(out var expirationUnixTimeSeconds))
+                if (jsonDocument.RootElement.ValueKind == JsonValueKind.Object
+                    && jsonDocument.RootElement.TryGetProperty("exp", out var expirationElement)
+                    && expirationElement.ValueKind == JsonValueKind.Number
+                    && expirationElement.TryGetInt64(out var expirationUnixTimeSeconds)
+                    && expirationUnixTimeSeconds >= MinimumExpirationUnixTimeSeconds
+                    && expirationUnixTimeSeconds <= MaximumExpirationUnixTimeSeconds)
                 {
                     return DateTimeOffset.FromUnixTimeSeconds(expirationUnixTimeSeconds);
                 }

@@ -55,7 +55,21 @@ public partial class DockerHubClientTests
     /// </summary>
     private const string EmptyLastPageJson = """{ "next": null, "results": [] }""";
 
+    /// <summary>
+    /// Fake personal access token that no result message or log entry may carry
+    /// </summary>
+    private const string FakePat = "dckr_pat_FAKE272SECRET";
+
     #endregion // Constants
+
+    #region Properties
+
+    /// <summary>
+    /// Context for the tests
+    /// </summary>
+    public TestContext TestContext { get; set; }
+
+    #endregion // Properties
 
     #region Methods
 
@@ -80,7 +94,7 @@ public partial class DockerHubClientTests
 
         var client = CreateClient(httpClient, registry: "ghcr.io");
 
-        var (status, message) = await RunCallAsync(client, operation, "ghcr.io").ConfigureAwait(false);
+        var (status, message) = await RunCallAsync(client, operation, "ghcr.io", TestContext.CancellationToken).ConfigureAwait(false);
 
         Assert.AreEqual(ExternalOperationStatus.Unsupported, status, $"The {operation} call must refuse a foreign registry");
         Assert.AreEqual("Registry 'ghcr.io' is not supported by the Docker Hub adapter", message, "The refusal must name the registry");
@@ -108,7 +122,7 @@ public partial class DockerHubClientTests
 
         var client = CreateClient(httpClient);
 
-        var (status, message) = await RunCallAsync(client, operation, "docker.io").ConfigureAwait(false);
+        var (status, message) = await RunCallAsync(client, operation, "docker.io", TestContext.CancellationToken).ConfigureAwait(false);
 
         Assert.AreEqual(ExternalOperationStatus.NotFound, status, $"The {operation} call must answer a 404 as not found");
         Assert.AreEqual(expectedMessage, message, "The not-found message must be the fixed text");
@@ -137,7 +151,7 @@ public partial class DockerHubClientTests
         var logger = new TestLogger<DockerHubClient>();
         var client = CreateClient(httpClient, logger: logger);
 
-        var (status, message) = await RunCallAsync(client, operation, "docker.io").ConfigureAwait(false);
+        var (status, message) = await RunCallAsync(client, operation, "docker.io", TestContext.CancellationToken).ConfigureAwait(false);
 
         Assert.AreEqual(ExternalOperationStatus.Failed, status, $"The {operation} call must answer a server error as failed");
         Assert.StartsWith(expectedPrefix, message, "The failure message must start with the call's prefix");
@@ -1450,7 +1464,7 @@ public partial class DockerHubClientTests
                         "A transport failure must report the fixed connection-failed reason");
         Assert.IsNotNull(result.Message, "A failed result must carry a message");
         Assert.DoesNotContain("internal.test", result.Message, "The exception text must not reach the result message");
-        Assert.Contains(entry => entry.EventId.Id == 3212 && ReferenceEquals(entry.Exception, injected),
+        Assert.Contains(entry => entry.EventId.Id == 3213 && ReferenceEquals(entry.Exception, injected),
                         logger.Entries,
                         "The transport failure must be logged with the exception");
     }
@@ -2597,11 +2611,12 @@ public partial class DockerHubClientTests
     }
 
     /// <summary>
-    /// Verify a login whose body stalls is cancelled by the login timeout of the shared cache's clock, keeps nothing and lets the next call log in
+    /// Verify a login whose body stalls is cancelled by the login timeout of the shared cache's clock, is answered as a timed-out failure, keeps nothing and lets the next call log in
     /// </summary>
     /// <returns>Task</returns>
     [TestMethod]
     [TestCategory("AC7")]
+    [TestCategory("AC2")]
     public async Task DockerHubClientLoginBodyStalledReleasesTokenCacheAfterTimeoutAsync()
     {
         var now = new DateTimeOffset(2026, 3, 10, 12, 0, 0, TimeSpan.Zero);
@@ -2656,15 +2671,289 @@ public partial class DockerHubClientTests
 
         timerCallback(timerState);
 
-        await Assert.ThrowsAsync<OperationCanceledException>(() => stalled, "A login stopped by its timeout must throw OperationCanceledException")
-                    .ConfigureAwait(false);
+        var timedOut = await stalled.ConfigureAwait(false);
 
+        Assert.AreEqual(ExternalOperationStatus.Failed, timedOut.Status, "A login stopped by its timeout must be answered as failed");
+        Assert.AreEqual("Docker Hub current user lookup failed: timed out after 30 seconds",
+                        timedOut.Message,
+                        "A login stopped by its timeout must report the fixed timed-out reason with the request timeout");
         Assert.IsFalse(callerCancellation.IsCancellationRequested, "The login timeout must not cancel the caller's token");
 
         var next = await client.GetCurrentUserAsync(callerCancellation.Token).ConfigureAwait(false);
 
         Assert.AreEqual(ExternalOperationStatus.Succeeded, next.Status, "The request after a timed-out login must log in and succeed");
         Assert.AreEqual(2, loginCount, "The timed-out login must store nothing and free the lock, so the next request logs in again");
+    }
+
+    /// <summary>
+    /// Verify every Docker Hub call answers a transport error as failed with the connection-failed reason and logs it once
+    /// </summary>
+    /// <param name="operation">Name of the call</param>
+    /// <param name="expectedPrefix">Message of the call</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC1")]
+    [DataRow("CurrentUser", "Docker Hub current user lookup failed")]
+    [DataRow("Repositories", "Docker Hub repository listing failed for 'acme'")]
+    [DataRow("Repository", "Repository metadata lookup failed for 'acme/api'")]
+    [DataRow("Tag", "Tag metadata lookup failed for 'docker.io/acme/api:latest'")]
+    [DataRow("Tags", "Tag lookup failed for 'acme/api'")]
+    [DataRow("ImageConfiguration", "Image configuration lookup failed for 'docker.io/acme/api:latest'")]
+    public async Task DockerHubClientCallTransportErrorReturnsConnectionFailedAsync(string operation, string expectedPrefix)
+    {
+        var injected = new HttpRequestException(HttpRequestError.ConnectionError, "Connection refused (hub.internal.test:443)");
+        var logger = new TestLogger<DockerHubClient>();
+
+        using var handler = new DelegateHttpMessageHandler(request => CreateHubResponse(request, () => throw injected));
+        using var httpClient = CreateHubHttpClient(handler);
+
+        var client = CreateClient(httpClient, logger: logger);
+
+        var (status, message) = await RunCallAsync(client, operation, "docker.io", TestContext.CancellationToken).ConfigureAwait(false);
+
+        var warning = AssertSingleFailureWarning(logger);
+
+        Assert.AreEqual(ExternalOperationStatus.Failed, status, $"The {operation} call must answer a transport error as failed");
+        Assert.AreEqual($"{expectedPrefix}: connection failed", message, "The transport error must be reported with the fixed connection-failed reason");
+        Assert.AreSame(injected, warning.Exception, "The warning must carry the transport exception");
+    }
+
+    /// <summary>
+    /// Verify every Docker Hub call answers a body read error as failed with the connection-failed reason and logs it once
+    /// </summary>
+    /// <param name="operation">Name of the call</param>
+    /// <param name="expectedPrefix">Message of the call</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC1")]
+    [DataRow("CurrentUser", "Docker Hub current user lookup failed")]
+    [DataRow("Repositories", "Docker Hub repository listing failed for 'acme'")]
+    [DataRow("Repository", "Repository metadata lookup failed for 'acme/api'")]
+    [DataRow("Tag", "Tag metadata lookup failed for 'docker.io/acme/api:latest'")]
+    [DataRow("Tags", "Tag lookup failed for 'acme/api'")]
+    [DataRow("ImageConfiguration", "Image configuration lookup failed for 'docker.io/acme/api:latest'")]
+    public async Task DockerHubClientCallBodyReadErrorReturnsConnectionFailedAsync(string operation, string expectedPrefix)
+    {
+        var logger = new TestLogger<DockerHubClient>();
+
+        using var handler = new DelegateHttpMessageHandler(request => CreateHubResponse(request, CreateFailingBodyResponse));
+        using var httpClient = CreateHubHttpClient(handler);
+
+        var client = CreateClient(httpClient, logger: logger);
+
+        var (status, message) = await RunCallAsync(client, operation, "docker.io", TestContext.CancellationToken).ConfigureAwait(false);
+
+        var warning = AssertSingleFailureWarning(logger);
+
+        Assert.AreEqual(ExternalOperationStatus.Failed, status, $"The {operation} call must answer a body read error as failed");
+        Assert.AreEqual($"{expectedPrefix}: connection failed", message, "The body read error must be reported with the fixed connection-failed reason");
+        Assert.IsInstanceOfType<IOException>(warning.Exception, "The warning must carry the I/O exception");
+    }
+
+    /// <summary>
+    /// Verify every Docker Hub call answers a request timeout as failed with the timed-out reason and logs it once
+    /// </summary>
+    /// <param name="operation">Name of the call</param>
+    /// <param name="expectedPrefix">Message of the call</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC2")]
+    [DataRow("CurrentUser", "Docker Hub current user lookup failed")]
+    [DataRow("Repositories", "Docker Hub repository listing failed for 'acme'")]
+    [DataRow("Repository", "Repository metadata lookup failed for 'acme/api'")]
+    [DataRow("Tag", "Tag metadata lookup failed for 'docker.io/acme/api:latest'")]
+    [DataRow("Tags", "Tag lookup failed for 'acme/api'")]
+    [DataRow("ImageConfiguration", "Image configuration lookup failed for 'docker.io/acme/api:latest'")]
+    public async Task DockerHubClientCallTimeoutReturnsTimedOutAsync(string operation, string expectedPrefix)
+    {
+        var logger = new TestLogger<DockerHubClient>();
+
+        using var handler = new DelegateHttpMessageHandler(request => CreateHubResponse(request, () => throw CreateRequestTimeout()));
+        using var httpClient = CreateHubHttpClient(handler);
+
+        var client = CreateClient(httpClient, logger: logger);
+
+        var (status, message) = await RunCallAsync(client, operation, "docker.io", TestContext.CancellationToken).ConfigureAwait(false);
+
+        AssertSingleFailureWarning(logger);
+
+        Assert.AreEqual(ExternalOperationStatus.Failed, status, $"The {operation} call must answer a request timeout as failed");
+        Assert.AreEqual($"{expectedPrefix}: timed out after 30 seconds", message, "The timeout must be reported with the request timeout in seconds");
+    }
+
+    /// <summary>
+    /// Verify every Docker Hub call throws the caller's cancellation and logs no failure warning
+    /// </summary>
+    /// <param name="operation">Name of the call</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC3")]
+    [DataRow("CurrentUser")]
+    [DataRow("Repositories")]
+    [DataRow("Repository")]
+    [DataRow("Tag")]
+    [DataRow("Tags")]
+    [DataRow("ImageConfiguration")]
+    public async Task DockerHubClientCallCallerCancelledThrowsOperationCanceledExceptionAsync(string operation)
+    {
+        var logger = new TestLogger<DockerHubClient>();
+
+        using var callerCancellation = new CancellationTokenSource();
+        using var handler = new DelegateHttpMessageHandler(request => CreateHubResponse(request,
+                                                                                        () =>
+                                                                                        {
+                                                                                            callerCancellation.Cancel();
+
+                                                                                            throw new OperationCanceledException(callerCancellation.Token);
+                                                                                        }));
+        using var httpClient = CreateHubHttpClient(handler);
+
+        var client = CreateClient(httpClient, logger: logger);
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() => RunCallAsync(client, operation, "docker.io", callerCancellation.Token),
+                                                             $"The {operation} call must let the caller's cancellation propagate").ConfigureAwait(false);
+
+        Assert.DoesNotContain(entry => entry.EventId.Id == 3213, logger.Entries, "A cancellation by the caller must not be logged as a failed call");
+    }
+
+    /// <summary>
+    /// Verify a blank account is refused with an argument exception before any request
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC9")]
+    public async Task DockerHubClientGetRepositoriesAsyncBlankAccountThrowsArgumentExceptionAsync()
+    {
+        using var handler = new DelegateHttpMessageHandler(request => CreateHubResponse(request, () => CreateJsonResponse("{}")));
+        using var httpClient = CreateHubHttpClient(handler);
+
+        var client = CreateClient(httpClient);
+
+        await Assert.ThrowsExactlyAsync<ArgumentException>(() => client.GetRepositoriesAsync(" ", TestContext.CancellationToken),
+                                                           "A blank account must stay an argument error and not become a failed result").ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Verify a missing image reference is refused with an argument null exception for the image configuration
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC9")]
+    public async Task DockerHubClientGetImageConfigurationAsyncNullReferenceThrowsArgumentNullExceptionAsync()
+    {
+        using var handler = new DelegateHttpMessageHandler(request => CreateHubResponse(request, () => CreateJsonResponse("{}")));
+        using var httpClient = CreateHubHttpClient(handler);
+
+        var client = CreateClient(httpClient);
+
+        await Assert.ThrowsExactlyAsync<ArgumentNullException>(() => client.GetImageConfigurationAsync(null!, TestContext.CancellationToken),
+                                                               "A missing reference must stay an argument error and not become a failed result").ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Verify a tag page that is a JSON array instead of an object is answered as an unexpected error
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC4")]
+    public async Task DockerHubClientGetTagsAsyncArrayBodyReturnsUnexpectedErrorAsync()
+    {
+        var logger = new TestLogger<DockerHubClient>();
+
+        using var handler = new DelegateHttpMessageHandler(request => CreateHubResponse(request, () => CreateJsonResponse("[]")));
+        using var httpClient = CreateHubHttpClient(handler);
+
+        var client = CreateClient(httpClient, logger: logger);
+
+        var result = await client.GetTagsAsync("docker.io", "acme/api", cancellationToken: CancellationToken.None).ConfigureAwait(false);
+
+        var warning = AssertSingleFailureWarning(logger);
+
+        Assert.AreEqual(ExternalOperationStatus.Failed, result.Status, "A page of an unexpected JSON kind must be answered as failed");
+        Assert.AreEqual("Tag lookup failed for 'acme/api': unexpected error", result.Message, "A page of an unexpected JSON kind must be reported as an unexpected error");
+        Assert.IsNotNull(warning.Exception, "The warning must carry the exception");
+    }
+
+    /// <summary>
+    /// Verify a login token whose payload segment cannot be decoded fails the call as an invalid response, logs it once, caches nothing and the next call logs in again
+    /// </summary>
+    /// <param name="payloadSegment">Payload segment of the login token</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC5")]
+    [DataRow("@@@")]
+    [DataRow("bm90IGpzb24")]
+    public async Task DockerHubClientGetTagAsyncAccessTokenPayloadNotBase64ReturnsInvalidResponseAsync(string payloadSegment)
+    {
+        var loginCount = 0;
+        var logger = new TestLogger<DockerHubClient>();
+
+        using var handler = new DelegateHttpMessageHandler(request =>
+                                                           {
+                                                               if (request.RequestUri!.AbsolutePath.EndsWith("/users/login", StringComparison.Ordinal))
+                                                               {
+                                                                   loginCount++;
+
+                                                                   return CreateJsonResponse($$"""{ "token": "header.{{payloadSegment}}.signature" }""");
+                                                               }
+
+                                                               return CreateJsonResponse("""{ "digest": "sha256:abc" }""");
+                                                           });
+        using var httpClient = CreateHubHttpClient(handler);
+
+        var client = CreateClient(httpClient, logger: logger);
+        var imageReference = new ImageReference
+                             {
+                                 Registry = "docker.io",
+                                 Repository = "acme/api",
+                                 Tag = "latest",
+                             };
+
+        var first = await client.GetTagAsync(imageReference, "linux", "amd64", CancellationToken.None).ConfigureAwait(false);
+
+        AssertInvalidResponse(first,
+                              $"Tag metadata lookup failed for '{imageReference.FullReference}': invalid response",
+                              "docker.io/acme/api:latest",
+                              logger);
+
+        var second = await client.GetTagAsync(imageReference, "linux", "amd64", CancellationToken.None).ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Failed, second.Status, "The next call must fail the same way");
+        Assert.AreEqual(2, loginCount, "A token that could not be read must not be cached, so the next call logs in again");
+    }
+
+    /// <summary>
+    /// Verify neither the result message nor the log entries of a failed call carry the personal access token or the login token
+    /// </summary>
+    /// <param name="scenario">Name of the failing scenario: transport, timeout or payload</param>
+    /// <param name="loginToken">Token the login hands out</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC7")]
+    [DataRow("transport", LoginToken)]
+    [DataRow("timeout", LoginToken)]
+    [DataRow("payload", "header.@@@.signature")]
+    public async Task DockerHubClientCallFailureMessagesOmitPatAndTokenAsync(string scenario, string loginToken)
+    {
+        var logger = new TestLogger<DockerHubClient>();
+
+        using var handler = CreateFailingScenarioHandler(scenario, loginToken);
+        using var httpClient = CreateHubHttpClient(handler);
+
+        var client = CreateClient(httpClient, logger: logger, pat: FakePat);
+
+        var (status, message) = await RunCallAsync(client, "Tag", "docker.io", TestContext.CancellationToken).ConfigureAwait(false);
+
+        var warning = AssertSingleFailureWarning(logger);
+
+        Assert.AreEqual(ExternalOperationStatus.Failed, status, "The call must fail");
+        Assert.DoesNotContain(FakePat, message, "The result message must not carry the personal access token");
+        Assert.DoesNotContain(loginToken, message, "The result message must not carry the login token");
+        Assert.DoesNotContain(FakePat, warning.Message, "The log message must not carry the personal access token");
+        Assert.DoesNotContain(loginToken, warning.Message, "The log message must not carry the login token");
+        Assert.IsNotNull(warning.Exception, "The warning must carry the exception");
+        Assert.DoesNotContain(FakePat, warning.Exception.ToString(), "The logged exception must not carry the personal access token");
+        Assert.DoesNotContain(loginToken, warning.Exception.ToString(), "The logged exception must not carry the login token");
     }
 
     /// <summary>
@@ -2809,13 +3098,15 @@ public partial class DockerHubClientTests
     /// <param name="logger">Logger that captures the client's entries; null creates a new one</param>
     /// <param name="loginRetryAfterRegistry">Registry of the login windows; null creates a new one</param>
     /// <param name="accessTokenCache">Shared cache of the access token; null creates a new one</param>
+    /// <param name="pat">Configured personal access token</param>
     /// <returns>Docker Hub client</returns>
     private static DockerHubClient CreateClient(HttpClient httpClient,
                                                 string registry = "docker.io",
                                                 string? userName = "acme",
                                                 TestLogger<DockerHubClient>? logger = null,
                                                 LoginRetryAfterRegistry? loginRetryAfterRegistry = null,
-                                                DockerHubAccessTokenCache? accessTokenCache = null)
+                                                DockerHubAccessTokenCache? accessTokenCache = null,
+                                                string pat = "test-pat")
     {
         var options = new DockerUpdateGuardOptions
                       {
@@ -2823,7 +3114,7 @@ public partial class DockerHubClientTests
                                       {
                                           Registry = registry,
                                           UserName = userName,
-                                          Pat = "test-pat",
+                                          Pat = pat,
                                           RequestTimeoutSeconds = 30,
                                       },
                       };
@@ -3017,8 +3308,12 @@ public partial class DockerHubClientTests
     /// <param name="client">Client under test</param>
     /// <param name="operation">Name of the call</param>
     /// <param name="registry">Registry of the references</param>
+    /// <param name="cancellationToken">Cancellation token of the caller</param>
     /// <returns>Status and message of the result</returns>
-    private static async Task<(ExternalOperationStatus Status, string Message)> RunCallAsync(DockerHubClient client, string operation, string registry)
+    private static async Task<(ExternalOperationStatus Status, string Message)> RunCallAsync(DockerHubClient client,
+                                                                                             string operation,
+                                                                                             string registry,
+                                                                                             CancellationToken cancellationToken)
     {
         var imageReference = new ImageReference
                              {
@@ -3031,39 +3326,121 @@ public partial class DockerHubClientTests
         {
             case "CurrentUser":
                 {
-                    var result = await client.GetCurrentUserAsync(CancellationToken.None).ConfigureAwait(false);
+                    var result = await client.GetCurrentUserAsync(cancellationToken).ConfigureAwait(false);
 
                     return (result.Status, result.Message ?? string.Empty);
                 }
 
             case "Repositories":
                 {
-                    var result = await client.GetRepositoriesAsync("acme", CancellationToken.None).ConfigureAwait(false);
+                    var result = await client.GetRepositoriesAsync("acme", cancellationToken).ConfigureAwait(false);
 
                     return (result.Status, result.Message ?? string.Empty);
                 }
 
             case "Repository":
                 {
-                    var result = await client.GetRepositoryAsync(imageReference, CancellationToken.None).ConfigureAwait(false);
+                    var result = await client.GetRepositoryAsync(imageReference, cancellationToken).ConfigureAwait(false);
 
                     return (result.Status, result.Message ?? string.Empty);
                 }
 
             case "Tag":
                 {
-                    var result = await client.GetTagAsync(imageReference, "linux", "amd64", CancellationToken.None).ConfigureAwait(false);
+                    var result = await client.GetTagAsync(imageReference, "linux", "amd64", cancellationToken).ConfigureAwait(false);
+
+                    return (result.Status, result.Message ?? string.Empty);
+                }
+
+            case "ImageConfiguration":
+                {
+                    var result = await client.GetImageConfigurationAsync(imageReference, cancellationToken).ConfigureAwait(false);
 
                     return (result.Status, result.Message ?? string.Empty);
                 }
 
             default:
                 {
-                    var result = await client.GetTagsAsync(registry, "acme/api", cancellationToken: CancellationToken.None).ConfigureAwait(false);
+                    var result = await client.GetTagsAsync(registry, "acme/api", cancellationToken: cancellationToken).ConfigureAwait(false);
 
                     return (result.Status, result.Message ?? string.Empty);
                 }
         }
+    }
+
+    /// <summary>
+    /// Create an HTTP client for the Docker Hub API with the request timeout of the options
+    /// </summary>
+    /// <param name="handler">Handler that answers the requests</param>
+    /// <returns>HTTP client</returns>
+    private static HttpClient CreateHubHttpClient(HttpMessageHandler handler)
+    {
+        return new HttpClient(handler)
+               {
+                   BaseAddress = new Uri("https://hub.docker.com/"),
+                   Timeout = TimeSpan.FromSeconds(30),
+               };
+    }
+
+    /// <summary>
+    /// Create a response whose body fails with an I/O error as soon as it is read
+    /// </summary>
+    /// <returns>Response</returns>
+    private static HttpResponseMessage CreateFailingBodyResponse()
+    {
+        var body = new Pipe();
+
+        body.Writer.Complete(new IOException("Connection reset by peer"));
+
+        return new HttpResponseMessage(HttpStatusCode.OK)
+               {
+                   Content = new StreamContent(body.Reader.AsStream()),
+               };
+    }
+
+    /// <summary>
+    /// Create the exception a request raises when the HTTP client's timeout elapses
+    /// </summary>
+    /// <returns>Exception</returns>
+    private static TaskCanceledException CreateRequestTimeout()
+    {
+        return new TaskCanceledException("The request was canceled due to the configured HttpClient.Timeout of 30 seconds elapsing.", new TimeoutException());
+    }
+
+    /// <summary>
+    /// Assert exactly one warning 3213 was logged and return it
+    /// </summary>
+    /// <param name="logger">Captured logger</param>
+    /// <returns>Logged warning</returns>
+    private static TestLogEntry AssertSingleFailureWarning(TestLogger<DockerHubClient> logger)
+    {
+        return Assert.ContainsSingle(entry => entry.EventId.Id == 3213 && entry.LogLevel == LogLevel.Warning,
+                                     logger.Entries,
+                                     "A failed call must be logged once as warning 3213");
+    }
+
+    /// <summary>
+    /// Create the handler of a failing Docker Hub login scenario for the secret-leak test
+    /// </summary>
+    /// <param name="scenario">Name of the scenario: transport, timeout or payload</param>
+    /// <param name="loginToken">Token the login hands out</param>
+    /// <returns>Handler</returns>
+    private static DelegateHttpMessageHandler CreateFailingScenarioHandler(string scenario, string loginToken)
+    {
+        return new DelegateHttpMessageHandler(request =>
+                                              {
+                                                  if (request.RequestUri!.AbsolutePath.EndsWith("/users/login", StringComparison.Ordinal))
+                                                  {
+                                                      return CreateJsonResponse($$"""{ "token": "{{loginToken}}" }""");
+                                                  }
+
+                                                  return scenario switch
+                                                         {
+                                                             "transport" => throw new HttpRequestException(HttpRequestError.ConnectionError, "Connection refused (hub.internal.test:443)"),
+                                                             "timeout" => throw CreateRequestTimeout(),
+                                                             _ => CreateJsonResponse("""{ "digest": "sha256:abc" }"""),
+                                                         };
+                                              });
     }
 
     #endregion // Methods

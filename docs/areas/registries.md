@@ -153,7 +153,7 @@ go through its retry of transient HTTP failures.
   trimmed user name and the PAT it was obtained with: a reload of `UserName` or `Pat` makes the next request log in
   again. One login runs at a time and the other requests wait for it, each honoring its own cancellation; a login not
   complete within `RequestTimeoutSeconds` from its start (the wait for a request slot, the headers and the body
-  included) is cancelled and surfaces as *timed out*. A failed, deferred or cancelled login keeps nothing
+  included) is cancelled and the call answers *failed* with `timed out after <n> seconds`. A failed, deferred or cancelled login keeps nothing
   ([0023](../decisions/0023-the-docker-hub-web-api-token-is-cached-process-wide-per-credentials.md)). `Pat` without
   `UserName` makes every web API request *failed*, naming the missing key. `UserName` without `Pat` is anonymous.
   After a login answered 429 with a `Retry-After`, no login is sent before the window ends: the request sends nothing
@@ -240,17 +240,20 @@ go through its retry of transient HTTP failures.
   index without a usable entry. The message contains the status code and the bounded excerpt of the remote response body ([Integration failures](integration-failures.md#excerpts-of-remote-text)). A next-page link
   to another origin, a next-page link that repeats a page already read and a Docker Hub or OCI listing that does not
   end within 1,000 pages also give *failed*, with the messages of [Pagination links](#pagination-links).
-- The Docker Hub current-user, account listing, repository, tag and tag-listing calls and the OCI tag, tag-listing and
-  image configuration calls answer an unreadable body (malformed JSON, or a string that does not decode) as *failed*
-  with `invalid response`, logging one warning with the exception.
-- Some failures still surface as errors instead of outcomes: transport errors and timeouts that remain after the
-  retries, a JSON value of the wrong type and a Docker Hub token payload that is not base64, during tag lookups, tag
-  listings and the account listing (both clients) and during image configuration lookups on other registries. A Docker Hub configuration lookup turns them into *failed* with a fixed reason
-  ([Integration failures](integration-failures.md#fixed-failure-reasons)). The scan that made the call records such an error as a failed
-  scan: `Container '<name>' could not be processed: <reason>` or `Observed image scan failed: <reason>`.
+- The Docker Hub current-user, account listing, repository, tag, tag-listing and image configuration calls and the OCI
+  tag, tag-listing and image configuration calls answer an error raised during the call as *failed* with
+  `<call message>: <reason>`, a fixed reason ([Integration failures](integration-failures.md#fixed-failure-reasons)):
+  `connection failed` (a transport error or a body read error left after the retries), `timed out after <n> seconds`
+  (`RequestTimeoutSeconds`), `invalid response` (malformed JSON, a string that does not decode, a Docker Hub token
+  payload that is not base64url) or `unexpected error` (anything else, such as a JSON value of an unexpected kind in a
+  list or as the root). Each logs one warning with the error (3213 Docker Hub, 2100 OCI). The caller's own
+  cancellation is thrown, not answered. A listing fails as a whole; an OCI tag whose own lookup fails is listed by
+  name only
+  ([0029](../decisions/0029-registry-calls-answer-every-error-but-the-callers-cancellation-as-failed.md)).
 - The PAT is never written to logs or messages. The user name appears in the log entry and the message of a failed
   Docker Hub login.
-- Registry responses are untrusted: missing or mistyped JSON fields are treated as unknown values. A listing
+- Registry responses are untrusted: missing or mistyped JSON fields are treated as unknown values, the token expiry fields included: an unreadable or out-of-range `exp` or `expires_in`
+  gives the fallback lifetime, and an unreadable or out-of-range `issued_at` counts as the time of the answer. A listing
   (account discovery included) reads at most 1,000 pages, so its number of requests is bounded; no bound on duration,
   memory or response size is claimed. Tag names, digests, the image references of
   base-image labels and the repository names of the account listing leave the clients only when they fit their
@@ -265,8 +268,6 @@ go through its retry of transient HTTP failures.
 - `DockerHub:Registry` does not decide which registries the Docker Hub client serves (that host list is fixed); it
   only gates the account listing and, when set to an absolute URL with a non-Docker-Hub host, replaces the web API
   base address. Tracked in [#268](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/268).
-- Transport errors, timeouts, JSON values of an unexpected type and an unreadable Docker Hub token payload escape as
-  errors from several calls instead of being answered as *failed* outcomes. Tracked in [#272](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/272).
 - For other registries an image configuration lookup without a platform takes the first index entry, which can be an
   attestation manifest, and publication times come only from a top-level `created` field of the manifest, which most
   registries do not send, so their tags usually have no publication time. Tracked in
@@ -279,6 +280,8 @@ go through its retry of transient HTTP failures.
   link or after a page cap.
 - [0019](../decisions/0019-remote-json-with-undecodable-strings-is-an-invalid-response.md): remote JSON with a string
   that does not decode is an invalid response.
+- [0029](../decisions/0029-registry-calls-answer-every-error-but-the-callers-cancellation-as-failed.md): registry calls
+  answer every error but the caller's cancellation as *failed*.
 - [0014](../decisions/0014-registry-tag-names-and-digests-are-validated-where-they-are-read.md): remote tag names,
   digests, image references and names are validated or bounded where they are read.
 - [0018](../decisions/0018-the-docker-hub-user-name-is-validated-as-a-namespace-at-startup.md): the Docker Hub user

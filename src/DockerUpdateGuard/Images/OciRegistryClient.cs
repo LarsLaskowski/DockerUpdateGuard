@@ -550,11 +550,21 @@ public partial class OciRegistryClient : IRegistryMetadataClient
         var issuedAtUtc = DateTimeOffset.TryParse(issuedAtValue, CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsedIssuedAtUtc)
                               ? parsedIssuedAtUtc
                               : DateTimeOffset.UtcNow;
-        var expiresInSeconds = rootElement.TryGetProperty("expires_in", out var expiresInElement) && expiresInElement.TryGetInt32(out var parsedExpiresInSeconds)
+        var expiresInSeconds = rootElement.ValueKind == JsonValueKind.Object
+                               && rootElement.TryGetProperty("expires_in", out var expiresInElement)
+                               && expiresInElement.ValueKind == JsonValueKind.Number
+                               && expiresInElement.TryGetInt32(out var parsedExpiresInSeconds)
                                    ? parsedExpiresInSeconds
                                    : (int)_defaultTokenLifetime.TotalSeconds;
 
-        return issuedAtUtc.AddSeconds(expiresInSeconds) - _tokenExpiryBuffer;
+        try
+        {
+            return issuedAtUtc.AddSeconds(expiresInSeconds) - _tokenExpiryBuffer;
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            return DateTimeOffset.UtcNow.AddSeconds(expiresInSeconds) - _tokenExpiryBuffer;
+        }
     }
 
     /// <summary>
@@ -1185,28 +1195,34 @@ public partial class OciRegistryClient : IRegistryMetadataClient
     }
 
     /// <summary>
-    /// Run an operation and answer an unexpected exception as a failed result
+    /// Run an operation and answer an error other than the caller's cancellation as a failed result
     /// </summary>
     /// <typeparam name="T">Result value type</typeparam>
     /// <param name="operationName">Operation name for the log entry</param>
     /// <param name="targetName">Target the operation belongs to</param>
     /// <param name="failureMessage">Failure message of the failed result</param>
     /// <param name="operation">Operation to run</param>
+    /// <param name="cancellationToken">Cancellation token of the caller</param>
     /// <returns>Result of the operation or a failed result</returns>
     private async Task<ExternalOperationResult<T>> ExecuteAsync<T>(string operationName,
                                                                    string targetName,
                                                                    string failureMessage,
-                                                                   Func<Task<ExternalOperationResult<T>>> operation)
+                                                                   Func<Task<ExternalOperationResult<T>>> operation,
+                                                                   CancellationToken cancellationToken)
     {
         try
         {
             return await operation().ConfigureAwait(false);
         }
-        catch (JsonException exception)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
         {
             _logger.OciRegistryOperationFailed(exception, operationName, targetName);
 
-            return ExternalOperationResult.Failed<T>($"{failureMessage}: {FailureReason.InvalidResponse}");
+            return ExternalOperationResult.Failed<T>($"{failureMessage}: {FailureReason.FromException(exception, _httpClient.Timeout, cancellationToken)}");
         }
     }
 
@@ -1443,7 +1459,8 @@ public partial class OciRegistryClient : IRegistryMetadataClient
                                                                                                      Digest = RegistryReferenceValidator.ValidDigestOrNull(manifestResult.Data.Digest),
                                                                                                      PublishedAtUtc = manifestResult.Data.PublishedAtUtc,
                                                                                                  });
-                                  }).ConfigureAwait(false);
+                                  },
+                                  cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc/>
@@ -1484,7 +1501,8 @@ public partial class OciRegistryClient : IRegistryMetadataClient
         return await ExecuteAsync(nameof(GetTagsAsync),
                                   $"{normalizedRegistry}/{repository}",
                                   $"Tag lookup failed for '{normalizedRegistry}/{repository}'",
-                                  () => GetTagsCoreAsync(lookupContext, allowedOrigin, cancellationToken)).ConfigureAwait(false);
+                                  () => GetTagsCoreAsync(lookupContext, allowedOrigin, cancellationToken),
+                                  cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc/>
@@ -1500,7 +1518,8 @@ public partial class OciRegistryClient : IRegistryMetadataClient
         return await ExecuteAsync(nameof(GetImageConfigurationAsync),
                                   imageReference.FullReference,
                                   $"Registry image configuration lookup failed for '{imageReference.FullReference}'",
-                                  () => GetImageConfigurationCoreAsync(imageReference, cancellationToken)).ConfigureAwait(false);
+                                  () => GetImageConfigurationCoreAsync(imageReference, cancellationToken),
+                                  cancellationToken).ConfigureAwait(false);
     }
 
     #endregion // IRegistryMetadataClient

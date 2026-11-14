@@ -229,6 +229,45 @@ public class DockerHubAccessTokenCacheTests
     }
 
     /// <summary>
+    /// Verify a token whose exp claim cannot be read as a Unix time is kept for the fallback five minutes instead of throwing
+    /// </summary>
+    /// <param name="payloadJson">JSON of the token payload</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC6")]
+    [DataRow("""{ "exp": "4102444800" }""")]
+    [DataRow("""{ "exp": 253402300800 }""")]
+    [DataRow("""[ 1, 2 ]""")]
+    public async Task DockerHubAccessTokenCacheGetOrRequestAsyncUnreadableExpiryKeepsTokenFiveMinutesAsync(string payloadJson)
+    {
+        var calls = new List<int>();
+        var firstToken = CreateToken(payloadJson);
+        var secondToken = CreateToken("""{ "sub": "second" }""");
+        var request = CreateRequest(calls, firstToken, secondToken);
+
+        using var cache = new DockerHubAccessTokenCache(CreateClock());
+
+        var first = await GetAsync(cache, request, TestContext.CancellationToken).ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, first.Status, "A token with an unreadable expiry must still be handed out");
+        Assert.AreEqual(firstToken, first.Data, "The login token must be returned unchanged");
+
+        _now = _now.AddMinutes(4).AddSeconds(-1);
+
+        var reused = await GetAsync(cache, request, TestContext.CancellationToken).ConfigureAwait(false);
+
+        Assert.AreEqual(firstToken, reused.Data, "A token with an unreadable expiry must be reused until one minute before the fallback five minutes");
+        Assert.HasCount(1, calls, "A token with an unreadable expiry must not send another login within its fallback lifetime");
+
+        _now = _now.AddSeconds(1);
+
+        var renewed = await GetAsync(cache, request, TestContext.CancellationToken).ConfigureAwait(false);
+
+        Assert.AreEqual(secondToken, renewed.Data, "A token with an unreadable expiry must be replaced one minute before the fallback five minutes");
+        Assert.HasCount(2, calls, "A token with an unreadable expiry must log in again once its fallback lifetime is within one minute of its end");
+    }
+
+    /// <summary>
     /// Verify a changed PAT logs in again and replaces the entry
     /// </summary>
     /// <param name="changedPat">PAT of the second login</param>
