@@ -22,3 +22,5 @@ are quoted in full.
 | 2026-11-14 18:44 | 7 Gate stamp | Orchestrator | PASS on 5c7e33fd3a435ad5c47269e389d860abf570b7a8 (tier standard, verbatim): Format check pass; decision-check.py pass; scope-check.py pass |
 | 2026-11-14 18:44 | 8 Verbatim fix | Orchestrator | Applied [BLOCKING, verbatim] docs/ARCHITECTURE.md §3 step 4 (Docker Scout added to the client list) in 5c7e33f; git diff confirmed nothing else; Format check, scope-check, decision-check pass |
 | 2026-11-14 18:45 | 9 PR approval | Lead | RESULT: APPROVED; follow-up issue to be filed (assessment source from live options) (opus/medium · 44,394 tokens · 8 tool uses · 37 s · 16 in · 3,086 out · 251,933 cache read · 42,978 cache write · 163,530 weighted) |
+| 2026-11-14 18:47 | 7 Gate stamp | Orchestrator | PASS on 5c379d653ac1af47341215346c851d486ad0f464 (tier standard, verbatim): Format check pass; decision-check.py pass; scope-check.py pass |
+| 2026-11-14 18:47 | 9 Record status | Orchestrator | Decision record 0031 and index row set to Accepted; stamped verbatim on 5c379d6; follow-up issue #466 filed |
