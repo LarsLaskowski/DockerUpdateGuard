@@ -6,16 +6,17 @@
   value is the project's; a project may name a platform of the same major, `net11.0-windows`); `Directory.Packages.props`
   turns on `ManagePackageVersionsCentrally` and no project file gives a `PackageReference` a version;
   `Directory.Build.props` sets REQUIRED with these values, references the analyzers of ANALYZERS and names
-  `.squad/dotnet-rules.globalconfig` in `GlobalAnalyzerConfigFiles`, and no project file sets one of them again; the
+  `.squad/dotnet-rules.globalconfig` and `.squad/dotnet-rules-pending.globalconfig` in `GlobalAnalyzerConfigFiles`,
+  and no project file sets one of them again; the
   tool manifest is `.config/dotnet-tools.json` and its `reihitsu.cli` is the version of `Reihitsu.Analyzer`;
-  Git checks C# files out with CRLF; a Dockerfile that builds .NET code brings `.squad/dotnet-rules.globalconfig` into
-  its build (by `COPY . .` or by name), and the root `.dockerignore` does not leave it out (MSBuild skips a missing global
-  config silently, so the image would build `.razor` code without the switched-off rules);
+  Git checks C# files out with CRLF; a Dockerfile that builds .NET code brings both global configs into its build (by
+  `COPY . .` or by name), and the root `.dockerignore` does not leave them out (MSBuild skips a missing global config
+  silently, so the image would build `.razor` code without the switched-off rules, or without the pending ones);
 - **rules**: no rule set (`*.ruleset`, `CodeAnalysisRuleSet`), no `.globalconfig`, no `NoWarn` or
   `WarningsNotAsErrors` that names a rule, no assembly-wide `SuppressMessage` (one without a `Target`); the blocks of
-  `dotnet-rules.py` are current; and outside the blocks, a section of every C# file sets no rule or code-style option,
-  and no other setting of the baseline with another value. A pending entry for a rule the baseline switches off (S1125)
-  is refused.
+  `dotnet-rules.py` and its pending global config are current; and outside the blocks, a section of every C# file sets
+  no rule or code-style option, and no other setting of the baseline with another value. A pending entry for a rule
+  the baseline switches off (S1125) is refused.
 
 What it does not check: the .NET major and the SDK (`dotnet_major.py` keeps them one per repository), any package
 version, `Deterministic`.
@@ -44,7 +45,10 @@ BUILD_FILES = (PROJECT, ".props", ".targets")
 REQUIRED = {"TreatWarningsAsErrors": "true", "EnforceCodeStyleInBuild": "true", "AnalysisLevel": "latest-recommended",
             "Nullable": "enable", "ImplicitUsings": "enable", "GenerateDocumentationFile": "true"}
 ANALYZERS = ("Reihitsu.Analyzer", "SonarAnalyzer.CSharp")
-GLOBAL_CONFIG = re.compile(r'<GlobalAnalyzerConfigFiles\b[^>]*\bInclude="[^"]*\.squad[/\\]dotnet-rules\.globalconfig"', re.I)
+GLOBAL_CONFIGS = (".squad/dotnet-rules.globalconfig", ".squad/dotnet-rules-pending.globalconfig")
+GLOBAL_CONFIG_ROLES = {GLOBAL_CONFIGS[0]: "the rules switched off, also in generated code, and those reported without a "
+                                          "location",
+                       GLOBAL_CONFIGS[1]: "the pending entries of those"}
 REIHITSU_TOOL = "reihitsu.cli"
 TARGET = re.compile(r"<(TargetFrameworks?)\b[^>]*>([^<]*)</TargetFrameworks?>", re.I)
 MONIKER = re.compile(r"net(\d+)\.\d+(?:-[\w.]+)?", re.I)
@@ -111,13 +115,20 @@ def required_findings(projects, props):
     referenced = {attribute(tag, "Include") for tag in PACKAGE_REFERENCE.findall(props)}
     findings += [f"{BUILD_PROPS}: no <PackageReference Include=\"{name}\"> for every project" for name in ANALYZERS
                  if name not in referenced]
-    if GLOBAL_CONFIG.search(props) is None:
-        findings.append(f"{BUILD_PROPS}: no <GlobalAnalyzerConfigFiles Include=\"$(MSBuildThisFileDirectory)"
-                        ".squad/dotnet-rules.globalconfig\" /> (the rules switched off, also in generated code)")
+    for path, why in GLOBAL_CONFIG_ROLES.items():
+        if global_config_item(path).search(props) is None:
+            findings.append(f"{BUILD_PROPS}: no <GlobalAnalyzerConfigFiles Include=\"$(MSBuildThisFileDirectory)"
+                            f"{path}\" /> ({why})")
     for path, text in projects:
         findings += [f"{path}: <{name}> is set once in {BUILD_PROPS}" for name in REQUIRED
                      if property_value(text, name) is not None]
     return findings
+
+
+def global_config_item(path):
+    """The `GlobalAnalyzerConfigFiles` item that names a global config of `.squad/`."""
+    folder, name = path.split("/")
+    return re.compile(rf'<GlobalAnalyzerConfigFiles\b[^>]*\bInclude="[^"]*{re.escape(folder)}[/\\]{re.escape(name)}"', re.I)
 
 
 def package_findings(projects, packages):
@@ -251,17 +262,20 @@ def blocks_findings(rules):
     if refused:
         return refused
     general, paths, _ = rules.wanted(baseline, rules.PENDING)
-    if rules.render(text, general, paths) == text:
-        return []
-    return [f"{EDITORCONFIG}: the dotnet-rules blocks are missing or out of date; run python3 .squad/tools/dotnet-rules.py"]
+    found = [] if rules.render(text, general, paths) == text else [
+        f"{EDITORCONFIG}: the dotnet-rules blocks are missing or out of date; run python3 .squad/tools/dotnet-rules.py"]
+    current = rules.read_file(rules.PENDING_CONFIG)
+    if rules.pending_global(rules.read_file(rules.GLOBAL_BASELINE), rules.PENDING,
+                            rules.line_ending(current, text)) != current:
+        found.append(f"{rules.PENDING_CONFIG}: missing or out of date; run python3 .squad/tools/dotnet-rules.py")
+    return found
 
 
-GLOBAL_CONFIG_PATH = ".squad/dotnet-rules.globalconfig"
 # COPY or ADD of the whole context (`.`, `./`) or of `.squad/`, not from another stage
 COPY_ALL = re.compile(r"^\s*(?:COPY|ADD)\b(?:\s+--(?!from=)\S+)*\s+(?:\./?|\.squad/?)\s+\S+\s*$", re.I | re.M)
 DOTNET_BUILD = re.compile(r"\bdotnet\s+(?:publish|build)\b")
 IGNORES_SQUAD = (".squad", ".squad/", ".squad/*", ".squad/**", "*", "**", ".*")
-KEEPS_CONFIG = ("!.squad", "!.squad/", "!.squad/*", "!.squad/**", "!.squad/*.globalconfig", "!" + GLOBAL_CONFIG_PATH)
+KEEPS_CONFIGS = ("!.squad", "!.squad/", "!.squad/*", "!.squad/**", "!.squad/*.globalconfig")
 
 
 def is_dockerfile(path):
@@ -278,28 +292,29 @@ def ignore_pattern(line):
 
 
 def dockerignore_findings():
-    """The root `.dockerignore` when its last pattern that leaves out `.squad/` comes after every one that lets the
+    """The root `.dockerignore` when its last pattern that leaves out `.squad/` comes after every one that lets a
     global config back in."""
     patterns = [ignore_pattern(line.strip()) for line in read(".dockerignore").splitlines()
                 if line.strip() and not line.strip().startswith("#")]
     last_ignore = max((index for index, line in enumerate(patterns) if line in IGNORES_SQUAD), default=-1)
-    last_keep = max((index for index, line in enumerate(patterns) if line in KEEPS_CONFIG), default=-1)
-    if last_ignore > last_keep:
-        return [f".dockerignore: leaves out {GLOBAL_CONFIG_PATH} ({patterns[last_ignore]}); add "
-                f"!{GLOBAL_CONFIG_PATH} after it"]
-    return []
+    found = []
+    for config in GLOBAL_CONFIGS:
+        keeps = (*KEEPS_CONFIGS, "!" + config)
+        last_keep = max((index for index, line in enumerate(patterns) if line in keeps), default=-1)
+        if last_ignore > last_keep:
+            found.append(f".dockerignore: leaves out {config} ({patterns[last_ignore]}); add !{config} after it")
+    return found
 
 
 def docker_findings(files):
-    """A Dockerfile that builds .NET code and copies neither its whole context (nor `.squad/`) nor
-    `.squad/dotnet-rules.globalconfig`, and a root `.dockerignore` that leaves that file out. The check is per file,
-    not per stage."""
+    """A Dockerfile that builds .NET code and copies neither its whole context (nor `.squad/`) nor each global config,
+    and a root `.dockerignore` that leaves one out. The check is per file, not per stage."""
     dockerfiles = [path for path in files if is_dockerfile(path) and DOTNET_BUILD.search(read(path))]
     if not dockerfiles:
         return []
-    found = [f"{path}: copies no {GLOBAL_CONFIG_PATH} into the build (COPY . . or COPY {GLOBAL_CONFIG_PATH} .squad/)"
-             for path in dockerfiles
-             if COPY_ALL.search(read(path)) is None and GLOBAL_CONFIG_PATH not in read(path)]
+    found = [f"{path}: copies no {config} into the build (COPY . . or COPY {config} .squad/)"
+             for path in dockerfiles if COPY_ALL.search(read(path)) is None
+             for config in GLOBAL_CONFIGS if config not in read(path)]
     return found + dockerignore_findings()
 
 
