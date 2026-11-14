@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Text;
 
 using DockerUpdateGuard.Configuration;
+using DockerUpdateGuard.Data.Entities;
 using DockerUpdateGuard.Infrastructure;
 using DockerUpdateGuard.Portainer;
 using DockerUpdateGuard.Portainer.Data;
@@ -39,24 +40,54 @@ public class PortainerClientTests
     private const string EndpointsUrl = "https://portainer.example.test/api/endpoints";
 
     /// <summary>
+    /// Portainer environment check of environment 7
+    /// </summary>
+    private const string EndpointCheckUrl = "https://portainer.example.test/api/endpoints/7";
+
+    /// <summary>
     /// Portainer authentication endpoint
     /// </summary>
     private const string AuthUrl = "https://portainer.example.test/api/auth";
 
     /// <summary>
-    /// Portainer container listing endpoint filtered by container name "my-container" within endpoint 7
+    /// Full container identifier of the snapshot used by the tests, 64 lowercase hexadecimal characters
     /// </summary>
-    private const string ContainersUrl = "https://portainer.example.test/api/endpoints/7/docker/containers/json?all=true&filters=%7B%22name%22%3A%5B%22my-container%22%5D%7D";
+    private const string ContainerId = "f907e278af7c63d535c4c440b720247f8c2dca219ffc8167dd3865b16004319e";
 
     /// <summary>
-    /// Portainer container restart action endpoint for endpoint 7 and container "container-abc"
+    /// Another full container identifier, used for a container of the same name that was recreated since the scan
     /// </summary>
-    private const string RestartActionUrl = "https://portainer.example.test/api/endpoints/7/docker/containers/container-abc/restart";
+    private const string OtherContainerId = "d9298a10d1b0735837dc4bd85dac641b0f3cef27a47e5d53a54f2f3f5b2fcffa";
 
     /// <summary>
-    /// Portainer container listing response containing a single matching container
+    /// Path of the container list within environment 7
     /// </summary>
-    private const string ContainerFoundJson = """[{"Id":"container-abc","Names":["/my-container"]}]""";
+    private const string ContainerListPath = "/api/endpoints/7/docker/containers/json";
+
+    /// <summary>
+    /// Path prefix of the container actions of the test container within environment 7
+    /// </summary>
+    private const string ActionPathPrefix = "/api/endpoints/7/docker/containers/" + ContainerId + "/";
+
+    /// <summary>
+    /// Portainer container listing endpoint filtered by the container identifier within endpoint 7
+    /// </summary>
+    private const string ContainersUrl = BaseUrl + ContainerListPath + "?all=true&filters=%7B%22id%22%3A%5B%22" + ContainerId + "%22%5D%7D";
+
+    /// <summary>
+    /// Portainer container restart action endpoint for endpoint 7 and the test container
+    /// </summary>
+    private const string RestartActionUrl = BaseUrl + ActionPathPrefix + "restart";
+
+    /// <summary>
+    /// Portainer container listing response containing the test container
+    /// </summary>
+    private const string ContainerFoundJson = """[{"Id":"f907e278af7c63d535c4c440b720247f8c2dca219ffc8167dd3865b16004319e","Names":["/my-container"]}]""";
+
+    /// <summary>
+    /// Portainer environment answer of environment 7
+    /// </summary>
+    private const string EndpointJson = """{"Id":7,"Name":"local"}""";
 
     /// <summary>
     /// Docker instance display name used by the tests
@@ -69,7 +100,7 @@ public class PortainerClientTests
     private const string ContainerName = "my-container";
 
     /// <summary>
-    /// Allow-listed Portainer action name used by the tests
+    /// Action name of a restart in messages, logs and paths
     /// </summary>
     private const string RestartAction = "restart";
 
@@ -123,6 +154,26 @@ public class PortainerClientTests
     /// </summary>
     private const string HostMarker = "portainer.internal.test";
 
+    /// <summary>
+    /// Message of a container the Docker Engine does not know by the snapshot's identifier (E5)
+    /// </summary>
+    private const string ContainerChangedMessage = "Container changed since the last scan; run a runtime scan and try again";
+
+    /// <summary>
+    /// Suffix of an outcome whose action request may have reached the Docker Engine (E4)
+    /// </summary>
+    private const string MayHaveBeenAppliedSuffix = "; the action may have been applied, check the container before repeating it";
+
+    /// <summary>
+    /// Request timeout in seconds of the bound tests, distinct from the default of 15 seconds
+    /// </summary>
+    private const int BoundTestTimeoutSeconds = 20;
+
+    /// <summary>
+    /// Seconds a test handler waits for a fired bound to cancel its request before it answers anyway
+    /// </summary>
+    private const int SafetyDelaySeconds = 5;
+
     #endregion // Constants
 
     #region Properties
@@ -137,11 +188,11 @@ public class PortainerClientTests
     #region Methods
 
     /// <summary>
-    /// Verify capability lookups for disabled Portainer integrations return a not-configured result without contacting Portainer
+    /// Verify capability checks for disabled Portainer integrations return a not-configured outcome without contacting Portainer
     /// </summary>
     /// <returns>Task</returns>
     [TestMethod]
-    public async Task PortainerClientGetCapabilityAsyncWhenPortainerDisabledReturnsNotConfiguredResultAsync()
+    public async Task PortainerClientCheckCapabilityAsyncWhenPortainerDisabledReturnsNotConfiguredAsync()
     {
         var handler = new SequenceHttpMessageHandler();
         var httpClient = new HttpClient(handler);
@@ -155,11 +206,13 @@ public class PortainerClientTests
                                              TimeProvider.System);
             var instanceOptions = CreateInstanceOptions(InstanceName, options => options.Enabled = false);
 
-            var result = await client.GetCapabilityAsync(instanceOptions, CancellationToken.None)
+            var result = await client.CheckCapabilityAsync(instanceOptions, CancellationToken.None)
                                      .ConfigureAwait(false);
 
-            Assert.IsFalse(result.IsConfigured, "A disabled Portainer integration must be reported as not configured");
-            Assert.IsFalse(result.SupportsActions, "A disabled Portainer integration must not support actions");
+            Assert.AreEqual(ExternalOperationStatus.NotConfigured, result.Status, "A disabled Portainer integration must be reported as not configured");
+            Assert.AreEqual("Portainer is not configured for this Docker instance",
+                            result.Message,
+                            "A disabled Portainer integration must keep today's capability message");
             Assert.IsEmpty(handler.Requests, "A disabled Portainer integration must not contact Portainer");
             Assert.Contains(entry => entry.EventId.Id == 3300
                                      && entry.LogLevel == LogLevel.Information
@@ -175,11 +228,11 @@ public class PortainerClientTests
     }
 
     /// <summary>
-    /// Verify capability lookups without a configured base URL return a not-configured result without contacting Portainer
+    /// Verify capability checks without a configured base URL return a not-configured outcome without contacting Portainer
     /// </summary>
     /// <returns>Task</returns>
     [TestMethod]
-    public async Task PortainerClientGetCapabilityAsyncWhenBaseUrlMissingReturnsNotConfiguredResultAsync()
+    public async Task PortainerClientCheckCapabilityAsyncWhenBaseUrlMissingReturnsNotConfiguredAsync()
     {
         var handler = new SequenceHttpMessageHandler();
         var httpClient = new HttpClient(handler);
@@ -198,10 +251,10 @@ public class PortainerClientTests
                                                             options.BaseUrl = null;
                                                         });
 
-            var result = await client.GetCapabilityAsync(instanceOptions, CancellationToken.None)
+            var result = await client.CheckCapabilityAsync(instanceOptions, CancellationToken.None)
                                      .ConfigureAwait(false);
 
-            Assert.IsFalse(result.IsConfigured, "A missing Portainer base URL must be reported as not configured");
+            Assert.AreEqual(ExternalOperationStatus.NotConfigured, result.Status, "A missing Portainer base URL must be reported as not configured");
             Assert.AreEqual("Portainer base URL is not configured",
                             result.Message,
                             "A missing Portainer base URL must produce a clear capability message");
@@ -219,7 +272,7 @@ public class PortainerClientTests
     /// </summary>
     /// <returns>Task</returns>
     [TestMethod]
-    public async Task PortainerClientGetCapabilityAsyncWhenStatusRequestFailsReturnsUnsupportedResultAndLogsWarningAsync()
+    public async Task PortainerClientCheckCapabilityAsyncWhenStatusRequestFailsReturnsUnsupportedAndLogsWarningAsync()
     {
         var handler = new SequenceHttpMessageHandler();
         var httpClient = new HttpClient(handler);
@@ -233,21 +286,14 @@ public class PortainerClientTests
                                              logger,
                                              new LoginRetryAfterRegistry(TimeProvider.System),
                                              TimeProvider.System);
-            var instanceOptions = CreateInstanceOptions(InstanceName,
-                                                        options =>
-                                                        {
-                                                            options.ApiToken = PatToken;
-                                                            options.EndpointId = EndpointId;
-                                                        });
 
-            var result = await client.GetCapabilityAsync(instanceOptions, CancellationToken.None)
+            var result = await client.CheckCapabilityAsync(CreateFailureInstanceOptions(), CancellationToken.None)
                                      .ConfigureAwait(false);
 
-            Assert.IsTrue(result.IsConfigured, "A configured Portainer integration with a failing status check must still be reported as configured");
-            Assert.IsFalse(result.SupportsActions, "A failing status check must not support actions");
-            Assert.Contains("HTTP 500",
+            Assert.AreEqual(ExternalOperationStatus.Unsupported, result.Status, "A failing status check must not support actions");
+            Assert.AreEqual("Portainer connection failed: HTTP 500",
                             result.Message,
-                            "A failing status check must surface the returned HTTP status code");
+                            "A failing status check must keep today's message with the returned HTTP status code");
             Assert.Contains(entry => entry.EventId.Id == 3305
                                      && entry.LogLevel == LogLevel.Warning
                                      && entry.Message.Contains(InstanceName, StringComparison.Ordinal),
@@ -266,7 +312,7 @@ public class PortainerClientTests
     /// </summary>
     /// <returns>Task</returns>
     [TestMethod]
-    public async Task PortainerClientGetCapabilityAsyncResolvesEndpointAutomaticallyAndLogsResolutionAsync()
+    public async Task PortainerClientCheckCapabilityAsyncResolvesEndpointAutomaticallyAndLogsResolutionAsync()
     {
         var handler = new SequenceHttpMessageHandler();
         var httpClient = new HttpClient(handler);
@@ -276,6 +322,7 @@ public class PortainerClientTests
         {
             handler.AddResponse(StatusUrl, new HttpResponseMessage(HttpStatusCode.OK));
             handler.AddJsonResponse(EndpointsUrl, """[{"Id":7,"Name":"local"}]""");
+            handler.AddJsonResponse(EndpointCheckUrl, EndpointJson);
 
             var client = new PortainerClient(CreateHttpClientFactory(httpClient),
                                              logger,
@@ -283,14 +330,14 @@ public class PortainerClientTests
                                              TimeProvider.System);
             var instanceOptions = CreateInstanceOptions(InstanceName, options => options.ApiToken = PatToken);
 
-            var result = await client.GetCapabilityAsync(instanceOptions, CancellationToken.None)
+            var result = await client.CheckCapabilityAsync(instanceOptions, CancellationToken.None)
                                      .ConfigureAwait(false);
 
-            Assert.IsTrue(result.IsConfigured, "A reachable Portainer integration must be reported as configured");
-            Assert.IsTrue(result.SupportsActions, "A resolved endpoint must support actions");
-            Assert.Contains("endpoint 7",
-                            result.Message,
-                            "The automatically resolved endpoint identifier must be reported in the capability message");
+            Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "A resolved endpoint must support actions");
+            Assert.IsNotNull(result.Data, "A succeeded capability check must carry its data");
+            Assert.AreEqual(EndpointId,
+                            result.Data.EndpointId,
+                            "The automatically resolved endpoint identifier must be reported");
             Assert.Contains(entry => entry.EventId.Id == 3304
                                      && entry.LogLevel == LogLevel.Information
                                      && entry.Message.Contains(EndpointId, StringComparison.Ordinal),
@@ -305,11 +352,11 @@ public class PortainerClientTests
     }
 
     /// <summary>
-    /// Verify capability lookups report unsupported actions when no Portainer endpoint can be resolved
+    /// Verify capability checks report unsupported actions when no Portainer endpoint can be resolved
     /// </summary>
     /// <returns>Task</returns>
     [TestMethod]
-    public async Task PortainerClientGetCapabilityAsyncWhenNoEndpointFoundReturnsUnsupportedResultAsync()
+    public async Task PortainerClientCheckCapabilityAsyncWhenNoEndpointFoundReturnsUnsupportedAsync()
     {
         var handler = new SequenceHttpMessageHandler();
         var httpClient = new HttpClient(handler);
@@ -326,11 +373,10 @@ public class PortainerClientTests
                                              TimeProvider.System);
             var instanceOptions = CreateInstanceOptions(InstanceName, options => options.ApiToken = PatToken);
 
-            var result = await client.GetCapabilityAsync(instanceOptions, CancellationToken.None)
+            var result = await client.CheckCapabilityAsync(instanceOptions, CancellationToken.None)
                                      .ConfigureAwait(false);
 
-            Assert.IsTrue(result.IsConfigured, "A reachable Portainer integration without endpoints must still be reported as configured");
-            Assert.IsFalse(result.SupportsActions, "No resolvable endpoint must not support actions");
+            Assert.AreEqual(ExternalOperationStatus.Unsupported, result.Status, "No resolvable endpoint must not support actions");
             Assert.AreEqual("No Portainer endpoint found",
                             result.Message,
                             "An empty endpoint list must produce a clear capability message");
@@ -343,11 +389,11 @@ public class PortainerClientTests
     }
 
     /// <summary>
-    /// Verify capability lookups catch authentication exceptions and report an unsupported result
+    /// Verify capability checks catch authentication exceptions and report a failed outcome
     /// </summary>
     /// <returns>Task</returns>
     [TestMethod]
-    public async Task PortainerClientGetCapabilityAsyncWhenLoginFailsReturnsUnsupportedResultAndLogsExceptionAsync()
+    public async Task PortainerClientCheckCapabilityAsyncWhenLoginFailsReturnsFailedAndLogsExceptionAsync()
     {
         var handler = new SequenceHttpMessageHandler();
         var httpClient = new HttpClient(handler);
@@ -369,14 +415,17 @@ public class PortainerClientTests
                                                             options.EndpointId = EndpointId;
                                                         });
 
-            var result = await client.GetCapabilityAsync(instanceOptions, CancellationToken.None)
+            var result = await client.CheckCapabilityAsync(instanceOptions, CancellationToken.None)
                                      .ConfigureAwait(false);
 
-            Assert.IsTrue(result.IsConfigured, "A capability check that fails during login must still be reported as configured");
-            Assert.IsFalse(result.SupportsActions, "A failed login must not support actions");
-            Assert.Contains("Portainer connection error",
+            Assert.AreEqual(ExternalOperationStatus.Failed, result.Status, "A failed login must fail the capability check");
+            Assert.IsNotNull(result.Message, "A failed login must produce a capability message");
+            Assert.StartsWith("Portainer connection error: ",
+                              result.Message,
+                              "A failed login during capability checks must surface a connection-error message");
+            Assert.Contains("HTTP 401",
                             result.Message,
-                            "A failed login during capability checks must surface a connection-error message");
+                            "A failed login during capability checks must keep today's authentication error");
             Assert.Contains(entry => entry.EventId.Id == 3306
                                      && entry.LogLevel == LogLevel.Error,
                             logger.Entries,
@@ -390,11 +439,64 @@ public class PortainerClientTests
     }
 
     /// <summary>
-    /// Verify action execution for disabled Portainer integrations returns a not-configured result without contacting Portainer
+    /// Verify a configured environment Portainer does not know, or an EndpointId that is not all digits, is reported as an unknown environment
+    /// </summary>
+    /// <param name="endpointId">Configured EndpointId</param>
+    /// <param name="expectedCheckRequests">Number of requests expected besides the status request</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC2")]
+    [DataRow("7", 1)]
+    [DataRow("1/../../users", 0)]
+    [DataRow("1?x=", 0)]
+    [DataRow(" 1 ", 0)]
+    public async Task PortainerClientCheckCapabilityAsyncWithUnknownEndpointIdReportsEnvironmentNotFoundAsync(string endpointId, int expectedCheckRequests)
+    {
+        var handler = new SequenceHttpMessageHandler();
+        var logger = new TestLogger<PortainerClient>();
+
+        try
+        {
+            handler.AddResponse(StatusUrl, new HttpResponseMessage(HttpStatusCode.OK));
+            handler.AddResponse(EndpointCheckUrl, new HttpResponseMessage(HttpStatusCode.NotFound));
+
+            var client = new PortainerClient(CreateHttpClientFactory(handler),
+                                             logger,
+                                             new LoginRetryAfterRegistry(TimeProvider.System),
+                                             TimeProvider.System);
+            var instanceOptions = CreateInstanceOptions(InstanceName,
+                                                        options =>
+                                                        {
+                                                            options.ApiToken = PatToken;
+                                                            options.EndpointId = endpointId;
+                                                        });
+
+            var result = await client.CheckCapabilityAsync(instanceOptions, TestContext.CancellationToken)
+                                     .ConfigureAwait(false);
+
+            Assert.AreEqual(ExternalOperationStatus.Unsupported, result.Status, $"The environment '{endpointId}' must not support actions");
+            Assert.AreEqual($"Portainer environment {endpointId} not found; check Portainer:EndpointId of Docker instance 'Production'",
+                            result.Message,
+                            $"The environment '{endpointId}' must be reported as not found with the key to check");
+            Assert.AreEqual(expectedCheckRequests,
+                            handler.Requests.Count(request => request.RequestUri != StatusUrl),
+                            $"The environment '{endpointId}' must be checked only when it is all digits, so no other value reaches a URL");
+            Assert.DoesNotContain(entry => entry.EventId.Id == 3304,
+                                  logger.Entries,
+                                  "An unknown environment must never be reported as resolved");
+        }
+        finally
+        {
+            handler.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Verify action execution for disabled Portainer integrations returns a not-configured outcome without contacting Portainer
     /// </summary>
     /// <returns>Task</returns>
     [TestMethod]
-    public async Task PortainerClientExecuteActionAsyncWhenPortainerDisabledReturnsNotConfiguredResultAsync()
+    public async Task PortainerClientExecuteContainerActionAsyncWhenPortainerDisabledReturnsNotConfiguredAsync()
     {
         var handler = new SequenceHttpMessageHandler();
         var httpClient = new HttpClient(handler);
@@ -407,19 +509,14 @@ public class PortainerClientTests
                                              new LoginRetryAfterRegistry(TimeProvider.System),
                                              TimeProvider.System);
             var instanceOptions = CreateInstanceOptions(InstanceName, options => options.Enabled = false);
-            var actionRequest = new PortainerActionRequest
-                                {
-                                    ActionName = RestartAction,
-                                    ResourceName = ContainerName,
-                                };
 
-            var result = await client.ExecuteActionAsync(instanceOptions, actionRequest, CancellationToken.None)
+            var result = await client.ExecuteContainerActionAsync(instanceOptions, CreateRestartRequest(), CancellationToken.None)
                                      .ConfigureAwait(false);
 
-            Assert.IsFalse(result.Succeeded, "Action execution against a disabled Portainer integration must fail");
-            Assert.AreEqual("Portainer is not configured",
+            Assert.AreEqual(ExternalOperationStatus.NotConfigured, result.Status, "Action execution against a disabled Portainer integration must not run");
+            Assert.AreEqual("Portainer is not configured for this Docker instance",
                             result.Message,
-                            "A disabled Portainer integration must produce a clear action-result message");
+                            "A disabled Portainer integration must produce the capability check's message");
             Assert.IsEmpty(handler.Requests, "A disabled Portainer integration must not contact Portainer");
         }
         finally
@@ -430,44 +527,82 @@ public class PortainerClientTests
     }
 
     /// <summary>
-    /// Verify actions outside the allow-list are rejected before Portainer is contacted
+    /// Verify action types other than start, stop and restart of a container are rejected before Portainer is contacted
     /// </summary>
+    /// <param name="actionType">Requested action type</param>
     /// <returns>Task</returns>
     [TestMethod]
-    public async Task PortainerClientExecuteActionAsyncWithActionOutsideAllowListRejectsWithoutContactingPortainerAsync()
+    [TestCategory("AC1")]
+    [DataRow(ContainerActionType.NotSet)]
+    [DataRow(ContainerActionType.RedeployStack)]
+    [DataRow(ContainerActionType.UpdateService)]
+    public async Task PortainerClientExecuteContainerActionAsyncWithUnsupportedActionTypeRejectsWithoutContactingPortainerAsync(ContainerActionType actionType)
     {
         var handler = new SequenceHttpMessageHandler();
-        var httpClient = new HttpClient(handler);
-        var logger = new TestLogger<PortainerClient>();
 
         try
         {
-            var client = new PortainerClient(CreateHttpClientFactory(httpClient),
-                                             logger,
+            AddLookupResponses(handler);
+
+            var client = new PortainerClient(CreateHttpClientFactory(handler),
+                                             new TestLogger<PortainerClient>(),
                                              new LoginRetryAfterRegistry(TimeProvider.System),
                                              TimeProvider.System);
-            var instanceOptions = CreateInstanceOptions(InstanceName, options => options.ApiToken = PatToken);
-            var actionRequest = new PortainerActionRequest
-                                {
-                                    ActionName = "remove",
-                                    ResourceName = ContainerName,
-                                };
 
-            var result = await client.ExecuteActionAsync(instanceOptions, actionRequest, CancellationToken.None)
+            var result = await client.ExecuteContainerActionAsync(CreateFailureInstanceOptions(), CreateActionRequest(actionType), TestContext.CancellationToken)
                                      .ConfigureAwait(false);
 
-            Assert.IsFalse(result.Succeeded, "Actions outside the allow-list must be rejected");
-            Assert.Contains("is not supported",
+            Assert.AreEqual(ExternalOperationStatus.Unsupported, result.Status, $"The action type {actionType} must be rejected");
+            Assert.AreEqual($"Action '{actionType}' is not supported; allowed: start, stop, restart",
                             result.Message,
-                            "A rejected action must explain that it is not supported");
-            Assert.Contains(RestartAction,
-                            result.Message,
-                            "A rejected action must list the allowed actions");
-            Assert.IsEmpty(handler.Requests, "Actions outside the allow-list must not contact Portainer");
+                            $"The rejection of {actionType} must name the type and the allowed actions");
+            Assert.IsEmpty(handler.Requests, $"The action type {actionType} must be rejected before Portainer is contacted");
         }
         finally
         {
-            httpClient.Dispose();
+            handler.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Verify each executable action type posts the Docker action path of its action to the snapshot's container identifier
+    /// </summary>
+    /// <param name="actionType">Requested action type</param>
+    /// <param name="actionName">Docker action expected in the path</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC1")]
+    [DataRow(ContainerActionType.StartContainer, "start")]
+    [DataRow(ContainerActionType.StopContainer, "stop")]
+    [DataRow(ContainerActionType.RestartContainer, "restart")]
+    public async Task PortainerClientExecuteContainerActionAsyncPostsActionPathOfActionTypeAsync(ContainerActionType actionType, string actionName)
+    {
+        var handler = new SequenceHttpMessageHandler();
+
+        try
+        {
+            AddLookupResponses(handler);
+            handler.AddResponse($"{BaseUrl}{ActionPathPrefix}{actionName}", new HttpResponseMessage(HttpStatusCode.NoContent));
+
+            var client = new PortainerClient(CreateHttpClientFactory(handler),
+                                             new TestLogger<PortainerClient>(),
+                                             new LoginRetryAfterRegistry(TimeProvider.System),
+                                             TimeProvider.System);
+
+            var result = await client.ExecuteContainerActionAsync(CreateFailureInstanceOptions(), CreateActionRequest(actionType), TestContext.CancellationToken)
+                                     .ConfigureAwait(false);
+
+            var posts = handler.Requests.Where(request => request.Method == "POST")
+                                        .ToList();
+
+            Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, $"The action type {actionType} must be executed");
+            Assert.HasCount(1, posts, $"The action type {actionType} must send exactly one action request");
+            Assert.AreEqual($"{BaseUrl}{ActionPathPrefix}{actionName}",
+                            posts[0].RequestUri,
+                            $"The action type {actionType} must post the '{actionName}' path of the snapshot's container identifier");
+        }
+        finally
+        {
             handler.Dispose();
         }
     }
@@ -477,7 +612,7 @@ public class PortainerClientTests
     /// </summary>
     /// <returns>Task</returns>
     [TestMethod]
-    public async Task PortainerClientExecuteActionAsyncWithApiTokenUsesApiKeyHeaderAndSkipsLoginAsync()
+    public async Task PortainerClientExecuteContainerActionAsyncWithApiTokenUsesApiKeyHeaderAndSkipsLoginAsync()
     {
         var handler = new SequenceHttpMessageHandler();
         var httpClient = new HttpClient(handler);
@@ -485,29 +620,18 @@ public class PortainerClientTests
 
         try
         {
-            handler.AddJsonResponse(ContainersUrl, ContainerFoundJson);
+            AddLookupResponses(handler);
             handler.AddResponse(RestartActionUrl, new HttpResponseMessage(HttpStatusCode.NoContent));
 
             var client = new PortainerClient(CreateHttpClientFactory(httpClient),
                                              logger,
                                              new LoginRetryAfterRegistry(TimeProvider.System),
                                              TimeProvider.System);
-            var instanceOptions = CreateInstanceOptions(InstanceName,
-                                                        options =>
-                                                        {
-                                                            options.ApiToken = PatToken;
-                                                            options.EndpointId = EndpointId;
-                                                        });
-            var actionRequest = new PortainerActionRequest
-                                {
-                                    ActionName = RestartAction,
-                                    ResourceName = ContainerName,
-                                };
 
-            var result = await client.ExecuteActionAsync(instanceOptions, actionRequest, CancellationToken.None)
+            var result = await client.ExecuteContainerActionAsync(CreateFailureInstanceOptions(), CreateRestartRequest(), CancellationToken.None)
                                      .ConfigureAwait(false);
 
-            Assert.IsTrue(result.Succeeded, "A configured API token must allow the action to succeed");
+            Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "A configured API token must allow the action to succeed");
             Assert.DoesNotContain(request => request.RequestUri == AuthUrl,
                                   handler.Requests,
                                   "A configured API token must skip the username/password login");
@@ -528,7 +652,7 @@ public class PortainerClientTests
     /// </summary>
     /// <returns>Task</returns>
     [TestMethod]
-    public async Task PortainerClientExecuteActionAsyncWithUsernamePasswordLogsInAndUsesBearerTokenAsync()
+    public async Task PortainerClientExecuteContainerActionAsyncWithUsernamePasswordLogsInAndUsesBearerTokenAsync()
     {
         var handler = new SequenceHttpMessageHandler();
         var httpClient = new HttpClient(handler);
@@ -537,30 +661,18 @@ public class PortainerClientTests
         try
         {
             handler.AddJsonResponse(AuthUrl, """{"jwt":"jwt-token-xyz"}""");
-            handler.AddJsonResponse(ContainersUrl, ContainerFoundJson);
+            AddLookupResponses(handler);
             handler.AddResponse(RestartActionUrl, new HttpResponseMessage(HttpStatusCode.NoContent));
 
             var client = new PortainerClient(CreateHttpClientFactory(httpClient),
                                              logger,
                                              new LoginRetryAfterRegistry(TimeProvider.System),
                                              TimeProvider.System);
-            var instanceOptions = CreateInstanceOptions(InstanceName,
-                                                        options =>
-                                                        {
-                                                            options.Username = AdminUsername;
-                                                            options.Password = "correct-password";
-                                                            options.EndpointId = EndpointId;
-                                                        });
-            var actionRequest = new PortainerActionRequest
-                                {
-                                    ActionName = RestartAction,
-                                    ResourceName = ContainerName,
-                                };
 
-            var result = await client.ExecuteActionAsync(instanceOptions, actionRequest, CancellationToken.None)
+            var result = await client.ExecuteContainerActionAsync(CreateLoginInstanceOptions(InstanceName), CreateRestartRequest(), CancellationToken.None)
                                      .ConfigureAwait(false);
 
-            Assert.IsTrue(result.Succeeded, "A successful username/password login must allow the action to succeed");
+            Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "A successful username/password login must allow the action to succeed");
             Assert.Contains(request => request.RequestUri == ContainersUrl
                                        && request.AuthorizationScheme == "Bearer"
                                        && request.AuthorizationParameter == "jwt-token-xyz",
@@ -579,7 +691,7 @@ public class PortainerClientTests
     /// </summary>
     /// <returns>Task</returns>
     [TestMethod]
-    public async Task PortainerClientExecuteActionAsyncWhenLoginReturnsNoJwtFailsAndLogsAuthFailedAsync()
+    public async Task PortainerClientExecuteContainerActionAsyncWhenLoginReturnsNoJwtFailsAndLogsAuthFailedAsync()
     {
         var handler = new SequenceHttpMessageHandler();
         var httpClient = new HttpClient(handler);
@@ -593,25 +705,13 @@ public class PortainerClientTests
                                              logger,
                                              new LoginRetryAfterRegistry(TimeProvider.System),
                                              TimeProvider.System);
-            var instanceOptions = CreateInstanceOptions(InstanceName,
-                                                        options =>
-                                                        {
-                                                            options.Username = AdminUsername;
-                                                            options.Password = "correct-password";
-                                                            options.EndpointId = EndpointId;
-                                                        });
-            var actionRequest = new PortainerActionRequest
-                                {
-                                    ActionName = RestartAction,
-                                    ResourceName = ContainerName,
-                                };
 
-            var result = await client.ExecuteActionAsync(instanceOptions, actionRequest, CancellationToken.None)
+            var result = await client.ExecuteContainerActionAsync(CreateLoginInstanceOptions(InstanceName), CreateRestartRequest(), CancellationToken.None)
                                      .ConfigureAwait(false);
 
-            Assert.IsFalse(result.Succeeded, "A login response without a JWT must fail the action");
+            Assert.AreEqual(ExternalOperationStatus.Failed, result.Status, "A login response without a JWT must fail the action");
             Assert.Contains("returned no JWT token",
-                            result.Message,
+                            result.Message ?? string.Empty,
                             "A missing JWT must produce a clear failure message");
             Assert.Contains(entry => entry.EventId.Id == 3303
                                      && entry.LogLevel == LogLevel.Warning
@@ -631,7 +731,7 @@ public class PortainerClientTests
     /// </summary>
     /// <returns>Task</returns>
     [TestMethod]
-    public async Task PortainerClientExecuteActionAsyncWhenLoginFailsFailsAndLogsAuthFailedAsync()
+    public async Task PortainerClientExecuteContainerActionAsyncWhenLoginFailsFailsAndLogsAuthFailedAsync()
     {
         var handler = new SequenceHttpMessageHandler();
         var httpClient = new HttpClient(handler);
@@ -652,19 +752,17 @@ public class PortainerClientTests
                                                             options.Password = "wrong-password";
                                                             options.EndpointId = EndpointId;
                                                         });
-            var actionRequest = new PortainerActionRequest
-                                {
-                                    ActionName = RestartAction,
-                                    ResourceName = ContainerName,
-                                };
 
-            var result = await client.ExecuteActionAsync(instanceOptions, actionRequest, CancellationToken.None)
+            var result = await client.ExecuteContainerActionAsync(instanceOptions, CreateRestartRequest(), CancellationToken.None)
                                      .ConfigureAwait(false);
 
-            Assert.IsFalse(result.Succeeded, "A failing login request must fail the action");
+            Assert.AreEqual(ExternalOperationStatus.Failed, result.Status, "A failing login request must fail the action");
             Assert.Contains("HTTP 401",
-                            result.Message,
+                            result.Message ?? string.Empty,
                             "A failing login request must surface the returned HTTP status code");
+            Assert.DoesNotContain(request => request.Method == "POST" && request.RequestUri != AuthUrl,
+                                  handler.Requests,
+                                  "A failing login must send no action request");
             Assert.Contains(entry => entry.EventId.Id == 3303
                                      && entry.LogLevel == LogLevel.Warning,
                             logger.Entries,
@@ -678,11 +776,11 @@ public class PortainerClientTests
     }
 
     /// <summary>
-    /// Verify action execution fails when no Portainer endpoint can be resolved
+    /// Verify action execution is unsupported when no Portainer endpoint can be resolved
     /// </summary>
     /// <returns>Task</returns>
     [TestMethod]
-    public async Task PortainerClientExecuteActionAsyncWhenNoEndpointFoundReturnsFailureResultAsync()
+    public async Task PortainerClientExecuteContainerActionAsyncWhenNoEndpointFoundReturnsUnsupportedAsync()
     {
         var handler = new SequenceHttpMessageHandler();
         var httpClient = new HttpClient(handler);
@@ -690,6 +788,7 @@ public class PortainerClientTests
 
         try
         {
+            handler.AddResponse(StatusUrl, new HttpResponseMessage(HttpStatusCode.OK));
             handler.AddJsonResponse(EndpointsUrl, "[]");
 
             var client = new PortainerClient(CreateHttpClientFactory(httpClient),
@@ -697,16 +796,11 @@ public class PortainerClientTests
                                              new LoginRetryAfterRegistry(TimeProvider.System),
                                              TimeProvider.System);
             var instanceOptions = CreateInstanceOptions(InstanceName, options => options.ApiToken = PatToken);
-            var actionRequest = new PortainerActionRequest
-                                {
-                                    ActionName = RestartAction,
-                                    ResourceName = ContainerName,
-                                };
 
-            var result = await client.ExecuteActionAsync(instanceOptions, actionRequest, CancellationToken.None)
+            var result = await client.ExecuteContainerActionAsync(instanceOptions, CreateRestartRequest(), CancellationToken.None)
                                      .ConfigureAwait(false);
 
-            Assert.IsFalse(result.Succeeded, "Action execution must fail when no Portainer endpoint can be resolved");
+            Assert.AreEqual(ExternalOperationStatus.Unsupported, result.Status, "Action execution must not run when no Portainer endpoint can be resolved");
             Assert.AreEqual("No Portainer endpoint found",
                             result.Message,
                             "An unresolved endpoint must produce a clear action-result message");
@@ -719,43 +813,44 @@ public class PortainerClientTests
     }
 
     /// <summary>
-    /// Verify action execution fails and logs a warning when the target container cannot be found
+    /// Verify a container the Docker Engine does not know by the snapshot's identifier, also one of the same name with another identifier, ends without an action request
     /// </summary>
+    /// <param name="containerListJson">Answer of the container list filtered by the identifier</param>
     /// <returns>Task</returns>
     [TestMethod]
-    public async Task PortainerClientExecuteActionAsyncWhenContainerNotFoundReturnsFailureAndLogsWarningAsync()
+    [TestCategory("AC6")]
+    [DataRow("[]")]
+    [DataRow("""[{"Id":"d9298a10d1b0735837dc4bd85dac641b0f3cef27a47e5d53a54f2f3f5b2fcffa","Names":["/my-container"]}]""")]
+    [DataRow("""[{"Id":"F907E278AF7C63D535C4C440B720247F8C2DCA219FFC8167DD3865B16004319E","Names":["/my-container"]}]""")]
+    public async Task PortainerClientExecuteContainerActionAsyncWhenIdUnknownReportsContainerChangedWithoutActionAsync(string containerListJson)
     {
         var handler = new SequenceHttpMessageHandler();
-        var httpClient = new HttpClient(handler);
         var logger = new TestLogger<PortainerClient>();
 
         try
         {
-            handler.AddJsonResponse(ContainersUrl, "[]");
+            handler.AddResponse(StatusUrl, new HttpResponseMessage(HttpStatusCode.OK));
+            handler.AddJsonResponse(EndpointCheckUrl, EndpointJson);
+            handler.AddJsonResponse(ContainersUrl, containerListJson);
+            handler.AddResponse(RestartActionUrl, new HttpResponseMessage(HttpStatusCode.NoContent));
+            handler.AddResponse(BaseUrl + "/api/endpoints/7/docker/containers/" + OtherContainerId + "/restart", new HttpResponseMessage(HttpStatusCode.NoContent));
 
-            var client = new PortainerClient(CreateHttpClientFactory(httpClient),
+            var client = new PortainerClient(CreateHttpClientFactory(handler),
                                              logger,
                                              new LoginRetryAfterRegistry(TimeProvider.System),
                                              TimeProvider.System);
-            var instanceOptions = CreateInstanceOptions(InstanceName,
-                                                        options =>
-                                                        {
-                                                            options.ApiToken = PatToken;
-                                                            options.EndpointId = EndpointId;
-                                                        });
-            var actionRequest = new PortainerActionRequest
-                                {
-                                    ActionName = RestartAction,
-                                    ResourceName = ContainerName,
-                                };
 
-            var result = await client.ExecuteActionAsync(instanceOptions, actionRequest, CancellationToken.None)
+            var result = await client.ExecuteContainerActionAsync(CreateFailureInstanceOptions(), CreateRestartRequest(), TestContext.CancellationToken)
                                      .ConfigureAwait(false);
 
-            Assert.IsFalse(result.Succeeded, "Action execution must fail when the target container cannot be found");
-            Assert.Contains("not found",
-                            result.Message,
-                            "A missing container must produce a clear action-result message");
+            Assert.AreEqual(ExternalOperationStatus.NotFound, result.Status, $"The container list {containerListJson} holds no container with the snapshot's identifier");
+            Assert.AreEqual(ContainerChangedMessage, result.Message, "A container unknown by its identifier must be reported as changed since the scan");
+            Assert.Contains(request => request.RequestUri == ContainersUrl,
+                            handler.Requests,
+                            "The container must be looked up by the snapshot's identifier");
+            Assert.DoesNotContain(request => request.Method == "POST",
+                                  handler.Requests,
+                                  "No action request may be sent for a container unknown by its identifier, whatever its name");
             Assert.Contains(entry => entry.EventId.Id == 3307
                                      && entry.LogLevel == LogLevel.Warning
                                      && entry.Message.Contains(ContainerName, StringComparison.Ordinal)
@@ -765,50 +860,179 @@ public class PortainerClientTests
         }
         finally
         {
-            httpClient.Dispose();
             handler.Dispose();
         }
     }
 
     /// <summary>
-    /// Verify a failing Portainer action request fails the result and logs a warning
+    /// Verify a container identifier that is not exactly 64 lowercase hexadecimal characters is rejected before any request
+    /// </summary>
+    /// <param name="containerId">Container identifier of the request</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC6")]
+    [DataRow("")]
+    [DataRow("f907e278af7c")]
+    [DataRow("f907e278af7c63d535c4c440b720247f8c2dca219ffc8167dd3865b16004319")]
+    [DataRow("f907e278af7c63d535c4c440b720247f8c2dca219ffc8167dd3865b16004319e0")]
+    [DataRow("F907E278AF7C63D535C4C440B720247F8C2DCA219FFC8167DD3865B16004319E")]
+    [DataRow("f907e278af7c63d535c4c440b720247f8c2dca219ffc8167dd3865b16004319g")]
+    [DataRow("f907e278af7c63d535c4c440b720247f8c2dca219ffc8167dd3865b16004/../")]
+    [DataRow("my-container")]
+    public async Task PortainerClientExecuteContainerActionAsyncWithMalformedContainerIdRejectsWithoutContactingPortainerAsync(string containerId)
+    {
+        var handler = new SequenceHttpMessageHandler();
+
+        try
+        {
+            AddLookupResponses(handler);
+
+            var client = new PortainerClient(CreateHttpClientFactory(handler),
+                                             new TestLogger<PortainerClient>(),
+                                             new LoginRetryAfterRegistry(TimeProvider.System),
+                                             TimeProvider.System);
+            var actionRequest = new PortainerContainerActionRequest
+                                {
+                                    ActionType = ContainerActionType.RestartContainer,
+                                    ContainerId = containerId,
+                                    ContainerName = ContainerName,
+                                };
+
+            var result = await client.ExecuteContainerActionAsync(CreateFailureInstanceOptions(), actionRequest, TestContext.CancellationToken)
+                                     .ConfigureAwait(false);
+
+            Assert.AreEqual(ExternalOperationStatus.NotFound, result.Status, $"The container identifier '{containerId}' must be rejected");
+            Assert.AreEqual(ContainerChangedMessage, result.Message, $"The container identifier '{containerId}' must be reported like an unknown container");
+            Assert.IsEmpty(handler.Requests, $"The container identifier '{containerId}' must never reach a request");
+        }
+        finally
+        {
+            handler.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Verify a successful action reports the E1 message, logs the execution and sends exactly one action request
     /// </summary>
     /// <returns>Task</returns>
     [TestMethod]
-    public async Task PortainerClientExecuteActionAsyncWhenActionRequestFailsReturnsFailureAndLogsWarningAsync()
+    [TestCategory("AC5")]
+    public async Task PortainerClientExecuteContainerActionAsyncWhenActionSucceedsReportsExecutedSuccessfullyAsync()
     {
         var handler = new SequenceHttpMessageHandler();
-        var httpClient = new HttpClient(handler);
         var logger = new TestLogger<PortainerClient>();
 
         try
         {
-            handler.AddJsonResponse(ContainersUrl, ContainerFoundJson);
-            handler.AddResponse(RestartActionUrl, new HttpResponseMessage(HttpStatusCode.InternalServerError));
+            AddLookupResponses(handler);
+            handler.AddResponse(RestartActionUrl, new HttpResponseMessage(HttpStatusCode.NoContent));
 
-            var client = new PortainerClient(CreateHttpClientFactory(httpClient),
+            var client = new PortainerClient(CreateHttpClientFactory(handler),
                                              logger,
                                              new LoginRetryAfterRegistry(TimeProvider.System),
                                              TimeProvider.System);
-            var instanceOptions = CreateInstanceOptions(InstanceName,
-                                                        options =>
-                                                        {
-                                                            options.ApiToken = PatToken;
-                                                            options.EndpointId = EndpointId;
-                                                        });
-            var actionRequest = new PortainerActionRequest
-                                {
-                                    ActionName = RestartAction,
-                                    ResourceName = ContainerName,
-                                };
 
-            var result = await client.ExecuteActionAsync(instanceOptions, actionRequest, CancellationToken.None)
+            var result = await client.ExecuteContainerActionAsync(CreateFailureInstanceOptions(), CreateRestartRequest(), TestContext.CancellationToken)
                                      .ConfigureAwait(false);
 
-            Assert.IsFalse(result.Succeeded, "A failing Portainer action request must fail the result");
-            Assert.Contains("HTTP 500",
+            Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "A successful Portainer action must report success");
+            Assert.IsNotNull(result.Data, "A successful action must carry its outcome data");
+            Assert.AreEqual("Action 'restart' on 'my-container' executed successfully",
+                            result.Data.Message,
+                            "A successful action must carry the message of E1");
+            Assert.IsFalse(result.Data.AlreadyInRequestedState, "A 2xx answer must not be reported as already in the requested state");
+            Assert.HasCount(1,
+                            handler.Requests.Where(request => request.Method == "POST").ToList(),
+                            "Exactly one action request must be sent");
+            Assert.Contains(entry => entry.EventId.Id == 3308
+                                     && entry.LogLevel == LogLevel.Information
+                                     && entry.Message.Contains(RestartAction, StringComparison.Ordinal)
+                                     && entry.Message.Contains(ContainerName, StringComparison.Ordinal)
+                                     && entry.Message.Contains(InstanceName, StringComparison.Ordinal),
+                            logger.Entries,
+                            "A successful Portainer action must log the action, container and Docker instance");
+        }
+        finally
+        {
+            handler.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Verify a 304 answer of the Docker Engine succeeds as already in the requested state with the E2 message
+    /// </summary>
+    /// <param name="actionType">Requested action type</param>
+    /// <param name="actionName">Docker action of the type</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC5")]
+    [DataRow(ContainerActionType.StartContainer, "start")]
+    [DataRow(ContainerActionType.StopContainer, "stop")]
+    public async Task PortainerClientExecuteContainerActionAsyncWhenEngineAnswersNotModifiedSucceedsAlreadyInStateAsync(ContainerActionType actionType, string actionName)
+    {
+        var handler = new SequenceHttpMessageHandler();
+
+        try
+        {
+            AddLookupResponses(handler);
+            handler.AddResponse($"{BaseUrl}{ActionPathPrefix}{actionName}", new HttpResponseMessage(HttpStatusCode.NotModified));
+
+            var client = new PortainerClient(CreateHttpClientFactory(handler),
+                                             new TestLogger<PortainerClient>(),
+                                             new LoginRetryAfterRegistry(TimeProvider.System),
+                                             TimeProvider.System);
+
+            var result = await client.ExecuteContainerActionAsync(CreateFailureInstanceOptions(), CreateActionRequest(actionType), TestContext.CancellationToken)
+                                     .ConfigureAwait(false);
+
+            Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, $"A 304 answer to '{actionName}' must succeed");
+            Assert.IsNotNull(result.Data, "A succeeded action must carry its outcome data");
+            Assert.IsTrue(result.Data.AlreadyInRequestedState, $"A 304 answer to '{actionName}' must be reported as already in the requested state");
+            Assert.AreEqual($"Action '{actionName}' on 'my-container' had no effect: the container was already in the requested state",
+                            result.Data.Message,
+                            $"A 304 answer to '{actionName}' must carry the message of E2");
+        }
+        finally
+        {
+            handler.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Verify a client error answer to the action request fails with its HTTP status after one action request
+    /// </summary>
+    /// <param name="statusCode">HTTP status of the action answer</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC5")]
+    [DataRow(401)]
+    [DataRow(403)]
+    [DataRow(404)]
+    public async Task PortainerClientExecuteContainerActionAsyncWhenActionAnswersClientErrorFailsWithStatusAsync(int statusCode)
+    {
+        var handler = new SequenceHttpMessageHandler();
+        var logger = new TestLogger<PortainerClient>();
+
+        try
+        {
+            AddLookupResponses(handler);
+            handler.AddResponse(RestartActionUrl, new HttpResponseMessage((HttpStatusCode)statusCode));
+
+            var client = new PortainerClient(CreateHttpClientFactory(handler),
+                                             logger,
+                                             new LoginRetryAfterRegistry(TimeProvider.System),
+                                             TimeProvider.System);
+
+            var result = await client.ExecuteContainerActionAsync(CreateFailureInstanceOptions(), CreateRestartRequest(), TestContext.CancellationToken)
+                                     .ConfigureAwait(false);
+
+            Assert.AreEqual(ExternalOperationStatus.Failed, result.Status, $"An HTTP {statusCode} answer to the action must fail it");
+            Assert.AreEqual($"Action 'restart' failed: HTTP {statusCode}",
                             result.Message,
-                            "A failing Portainer action request must surface the returned HTTP status code");
+                            $"An HTTP {statusCode} answer must carry the message of E3");
+            Assert.HasCount(1,
+                            handler.Requests.Where(request => request.Method == "POST").ToList(),
+                            "Exactly one action request must be sent");
             Assert.Contains(entry => entry.EventId.Id == 3309
                                      && entry.LogLevel == LogLevel.Warning
                                      && entry.Message.Contains(RestartAction, StringComparison.Ordinal)
@@ -818,68 +1042,20 @@ public class PortainerClientTests
         }
         finally
         {
-            httpClient.Dispose();
             handler.Dispose();
         }
     }
 
     /// <summary>
-    /// Verify a successful Portainer action logs the successful execution
+    /// Verify a server error answer to the action request is sent once through the real retry handler and reported as possibly applied
     /// </summary>
+    /// <param name="statusCode">HTTP status of the action answer</param>
     /// <returns>Task</returns>
     [TestMethod]
-    public async Task PortainerClientExecuteActionAsyncWhenActionSucceedsLogsExecutionAsync()
-    {
-        var handler = new SequenceHttpMessageHandler();
-        var httpClient = new HttpClient(handler);
-        var logger = new TestLogger<PortainerClient>();
-
-        try
-        {
-            handler.AddJsonResponse(ContainersUrl, ContainerFoundJson);
-            handler.AddResponse(RestartActionUrl, new HttpResponseMessage(HttpStatusCode.NoContent));
-
-            var client = new PortainerClient(CreateHttpClientFactory(httpClient),
-                                             logger,
-                                             new LoginRetryAfterRegistry(TimeProvider.System),
-                                             TimeProvider.System);
-            var instanceOptions = CreateInstanceOptions(InstanceName,
-                                                        options =>
-                                                        {
-                                                            options.ApiToken = PatToken;
-                                                            options.EndpointId = EndpointId;
-                                                        });
-            var actionRequest = new PortainerActionRequest
-                                {
-                                    ActionName = RestartAction,
-                                    ResourceName = ContainerName,
-                                };
-
-            var result = await client.ExecuteActionAsync(instanceOptions, actionRequest, CancellationToken.None)
-                                     .ConfigureAwait(false);
-
-            Assert.IsTrue(result.Succeeded, "A successful Portainer action must report success");
-            Assert.Contains(entry => entry.EventId.Id == 3308
-                                     && entry.LogLevel == LogLevel.Information
-                                     && entry.Message.Contains(RestartAction, StringComparison.Ordinal)
-                                     && entry.Message.Contains(ContainerName, StringComparison.Ordinal)
-                                     && entry.Message.Contains(InstanceName, StringComparison.Ordinal),
-                            logger.Entries,
-                            "A successful Portainer action must log the action, resource and Docker instance");
-        }
-        finally
-        {
-            httpClient.Dispose();
-            handler.Dispose();
-        }
-    }
-
-    /// <summary>
-    /// Verify an action request answered with 503 is sent once through the real retry handler and reported failed
-    /// </summary>
-    /// <returns>Task</returns>
-    [TestMethod]
-    public async Task PortainerClientExecuteActionAsyncWhenActionRequestAnswersServiceUnavailableExecutesOnceAndFailsAsync()
+    [TestCategory("AC5")]
+    [DataRow(500)]
+    [DataRow(503)]
+    public async Task PortainerClientExecuteContainerActionAsyncWhenActionAnswersServerErrorReportsMayHaveBeenAppliedAfterOneAttemptAsync(int statusCode)
     {
         var sequenceHandler = new SequenceHttpMessageHandler();
         var retryHandler = new TransientHttpRetryHandler(new TestOptionsMonitor<DockerUpdateGuardOptions>(new DockerUpdateGuardOptions
@@ -897,39 +1073,35 @@ public class PortainerClientTests
                                InnerHandler = sequenceHandler,
                            };
         var httpClient = new HttpClient(retryHandler);
+        var logger = new TestLogger<PortainerClient>();
 
         try
         {
-            sequenceHandler.AddJsonResponse(ContainersUrl, ContainerFoundJson);
-            sequenceHandler.AddResponse(RestartActionUrl, new HttpResponseMessage(HttpStatusCode.ServiceUnavailable));
+            AddLookupResponses(sequenceHandler);
+            sequenceHandler.AddResponse(RestartActionUrl, new HttpResponseMessage((HttpStatusCode)statusCode));
             sequenceHandler.AddResponse(RestartActionUrl, new HttpResponseMessage(HttpStatusCode.OK));
 
             var client = new PortainerClient(CreateHttpClientFactory(httpClient),
-                                             new TestLogger<PortainerClient>(),
+                                             logger,
                                              new LoginRetryAfterRegistry(TimeProvider.System),
                                              TimeProvider.System);
-            var instanceOptions = CreateInstanceOptions(InstanceName,
-                                                        options =>
-                                                        {
-                                                            options.ApiToken = PatToken;
-                                                            options.EndpointId = EndpointId;
-                                                        });
-            var actionRequest = new PortainerActionRequest
-                                {
-                                    ActionName = RestartAction,
-                                    ResourceName = ContainerName,
-                                };
 
-            var result = await client.ExecuteActionAsync(instanceOptions, actionRequest, CancellationToken.None)
+            var result = await client.ExecuteContainerActionAsync(CreateFailureInstanceOptions(), CreateRestartRequest(), TestContext.CancellationToken)
                                      .ConfigureAwait(false);
 
-            Assert.IsFalse(result.Succeeded, "An action request answered with 503 must fail the result");
-            Assert.Contains("HTTP 503",
+            Assert.AreEqual(ExternalOperationStatus.Unknown, result.Status, $"An HTTP {statusCode} answer may come after the action was applied");
+            Assert.AreEqual($"Action 'restart' failed: HTTP {statusCode}{MayHaveBeenAppliedSuffix}",
                             result.Message,
-                            "The failed result must surface the returned HTTP status code");
+                            $"An HTTP {statusCode} answer must carry the message of E4");
             Assert.HasCount(1,
                             sequenceHandler.Requests.Where(request => request.Method == "POST").ToList(),
                             "The action request must be sent exactly once because the server may already have executed it");
+            Assert.Contains(entry => entry.EventId.Id == 3309
+                                     && entry.LogLevel == LogLevel.Warning
+                                     && entry.Message.Contains(RestartAction, StringComparison.Ordinal)
+                                     && entry.Message.Contains(ContainerName, StringComparison.Ordinal),
+                            logger.Entries,
+                            "A failing Portainer action request must log a warning naming the action and container");
         }
         finally
         {
@@ -940,37 +1112,149 @@ public class PortainerClientTests
     }
 
     /// <summary>
+    /// Verify an action request that breaks off is reported as possibly applied with the fixed reason and without the exception text
+    /// </summary>
+    /// <param name="error">Transport error of the injected exception</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC5")]
+    [DataRow(HttpRequestError.ConnectionError)]
+    [DataRow(HttpRequestError.ResponseEnded)]
+    public async Task PortainerClientExecuteContainerActionAsyncWhenActionRequestBreaksOffReportsMayHaveBeenAppliedAsync(HttpRequestError error)
+    {
+        var injected = new HttpRequestException(error, "Error while copying content to a stream. portainer.internal.test");
+        var logger = new TestLogger<PortainerClient>();
+        var requests = new List<string>();
+        using var handler = new DelegateHttpMessageHandler((request, _) => AnswerOrThrowAsync(request, "POST " + ActionPathPrefix + RestartAction, injected, requests));
+
+        var client = new PortainerClient(CreateHttpClientFactory(handler),
+                                         logger,
+                                         new LoginRetryAfterRegistry(TimeProvider.System),
+                                         TimeProvider.System);
+
+        var result = await client.ExecuteContainerActionAsync(CreateRoutedInstanceOptions(15, EndpointId), CreateRestartRequest(), TestContext.CancellationToken)
+                                 .ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Unknown, result.Status, "An action request that breaks off may have been applied");
+        Assert.AreEqual($"Action 'restart' failed: connection failed{MayHaveBeenAppliedSuffix}",
+                        result.Message,
+                        "An action request that breaks off must carry the fixed reason and the suffix of E4");
+        Assert.HasCount(1,
+                        requests.Where(request => request.StartsWith("POST " + ActionPathPrefix, StringComparison.Ordinal)).ToList(),
+                        "The action request must be sent exactly once");
+        Assert.Contains(entry => entry.EventId.Id == 3310 && ReferenceEquals(entry.Exception, injected),
+                        logger.Entries,
+                        "The failure must still be logged with the exception");
+    }
+
+    /// <summary>
+    /// Verify each request of an action runs under its own bound: the request timeout, except a stop or restart request with 300 seconds more
+    /// </summary>
+    /// <param name="requestKind">Method and path of the request whose bound is checked</param>
+    /// <param name="actionType">Requested action type</param>
+    /// <param name="configureEndpointId">Whether the Docker instance configures an EndpointId</param>
+    /// <param name="expectedBoundSeconds">Expected bound of the request in seconds</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC12")]
+    [DataRow("POST /api/auth", ContainerActionType.StartContainer, true, 20)]
+    [DataRow("GET /api/system/status", ContainerActionType.StartContainer, true, 20)]
+    [DataRow("GET /api/endpoints", ContainerActionType.StopContainer, false, 20)]
+    [DataRow("GET /api/endpoints/7", ContainerActionType.StopContainer, true, 20)]
+    [DataRow("GET " + ContainerListPath, ContainerActionType.RestartContainer, true, 20)]
+    [DataRow("POST " + ActionPathPrefix + "start", ContainerActionType.StartContainer, true, 20)]
+    [DataRow("POST " + ActionPathPrefix + "stop", ContainerActionType.StopContainer, true, 320)]
+    [DataRow("POST " + ActionPathPrefix + "restart", ContainerActionType.RestartContainer, true, 320)]
+    public async Task PortainerClientExecuteContainerActionAsyncBoundsActionRequestByActionTypeAsync(string requestKind,
+                                                                                                     ContainerActionType actionType,
+                                                                                                     bool configureEndpointId,
+                                                                                                     int expectedBoundSeconds)
+    {
+        var clock = new WaitRecordingTimeProvider();
+        var observed = new List<(string Request, int WaitCount, TimeSpan Bound)>();
+        using var handler = new DelegateHttpMessageHandler((request, _) => RecordBoundAndAnswerAsync(request, clock, observed));
+
+        var client = new PortainerClient(CreateHttpClientFactory(handler),
+                                         new TestLogger<PortainerClient>(),
+                                         new LoginRetryAfterRegistry(TimeProvider.System),
+                                         clock.TimeProvider);
+        var instanceOptions = CreateRoutedInstanceOptions(BoundTestTimeoutSeconds, configureEndpointId ? EndpointId : null);
+
+        var result = await client.ExecuteContainerActionAsync(instanceOptions, CreateActionRequest(actionType), TestContext.CancellationToken)
+                                 .ConfigureAwait(false);
+
+        var index = observed.FindIndex(entry => entry.Request == requestKind);
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, $"The {actionType} must succeed while no bound fires");
+        Assert.IsGreaterThanOrEqualTo(0, index, $"The request '{requestKind}' must be sent");
+
+        var previousWaitCount = index > 0 ? observed[index - 1].WaitCount : 0;
+
+        Assert.AreEqual(TimeSpan.FromSeconds(expectedBoundSeconds),
+                        observed[index].Bound,
+                        $"The request '{requestKind}' of a {actionType} must be bounded by {expectedBoundSeconds} seconds");
+        Assert.IsGreaterThan(previousWaitCount,
+                             observed[index].WaitCount,
+                             $"The request '{requestKind}' must run under its own bound, started after the previous request");
+    }
+
+    /// <summary>
+    /// Verify a stop the Docker Engine does not answer within 300 seconds plus the request timeout ends as possibly applied
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC12")]
+    public async Task PortainerClientExecuteContainerActionAsyncWhenStopExceedsBoundReportsMayHaveBeenAppliedAsync()
+    {
+        var (result, requests) = await RunActionWithElapsedBoundAsync("POST " + ActionPathPrefix + "stop", ContainerActionType.StopContainer, BoundTestTimeoutSeconds).ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Unknown, result.Status, "A stop that exceeds its bound may have been applied");
+        Assert.AreEqual($"Action 'stop' failed: timed out after 320 seconds{MayHaveBeenAppliedSuffix}",
+                        result.Message,
+                        "A stop that exceeds its bound must name the bound and carry the suffix of E4");
+        Assert.HasCount(1,
+                        requests.Where(request => request.StartsWith("POST " + ActionPathPrefix, StringComparison.Ordinal)).ToList(),
+                        "The stop request must be sent exactly once");
+    }
+
+    /// <summary>
+    /// Verify a login or container lookup that exceeds its bound fails the action with the request timeout and sends no action request
+    /// </summary>
+    /// <param name="requestKind">Method and path of the request that exceeds its bound</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [DataRow("POST /api/auth")]
+    [DataRow("GET " + ContainerListPath)]
+    public async Task PortainerClientExecuteContainerActionAsyncWhenRequestTimesOutReportsTimedOutAsync(string requestKind)
+    {
+        var (result, requests) = await RunActionWithElapsedBoundAsync(requestKind, ContainerActionType.RestartContainer, 15).ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Failed, result.Status, $"A timed-out '{requestKind}' must fail the action");
+        Assert.AreEqual("Action 'restart' failed: timed out after 15 seconds", result.Message, "A timeout must report the fixed timed-out reason with the request timeout");
+        Assert.DoesNotContain("POST " + ActionPathPrefix + RestartAction, requests, "No action request may follow a timed-out request");
+    }
+
+    /// <summary>
     /// Verify the action request carries an empty body so that the runtime never resends it on its own
     /// </summary>
     /// <returns>Task</returns>
     [TestMethod]
-    public async Task PortainerClientExecuteActionAsyncSendsActionRequestWithEmptyContentAsync()
+    public async Task PortainerClientExecuteContainerActionAsyncSendsActionRequestWithEmptyContentAsync()
     {
         var handler = new SequenceHttpMessageHandler();
         var httpClient = new HttpClient(handler);
 
         try
         {
-            handler.AddJsonResponse(ContainersUrl, ContainerFoundJson);
+            AddLookupResponses(handler);
             handler.AddResponse(RestartActionUrl, new HttpResponseMessage(HttpStatusCode.NoContent));
 
             var client = new PortainerClient(CreateHttpClientFactory(httpClient),
                                              new TestLogger<PortainerClient>(),
                                              new LoginRetryAfterRegistry(TimeProvider.System),
                                              TimeProvider.System);
-            var instanceOptions = CreateInstanceOptions(InstanceName,
-                                                        options =>
-                                                        {
-                                                            options.ApiToken = PatToken;
-                                                            options.EndpointId = EndpointId;
-                                                        });
-            var actionRequest = new PortainerActionRequest
-                                {
-                                    ActionName = RestartAction,
-                                    ResourceName = ContainerName,
-                                };
 
-            await client.ExecuteActionAsync(instanceOptions, actionRequest, CancellationToken.None)
+            await client.ExecuteContainerActionAsync(CreateFailureInstanceOptions(), CreateRestartRequest(), CancellationToken.None)
                         .ConfigureAwait(false);
 
             var observed = handler.Requests.Single(request => request.Method == "POST");
@@ -992,7 +1276,7 @@ public class PortainerClientTests
     /// </summary>
     /// <returns>Task</returns>
     [TestMethod]
-    public async Task PortainerClientGetCapabilityAsyncWithUserInfoAndFailedLoginMasksUserInfoAsync()
+    public async Task PortainerClientCheckCapabilityAsyncWithUserInfoAndFailedLoginMasksUserInfoAsync()
     {
         var handler = new SequenceHttpMessageHandler();
         var httpClient = new HttpClient(handler);
@@ -1015,7 +1299,7 @@ public class PortainerClientTests
                                                             options.EndpointId = EndpointId;
                                                         });
 
-            var result = await client.GetCapabilityAsync(instanceOptions, CancellationToken.None)
+            var result = await client.CheckCapabilityAsync(instanceOptions, CancellationToken.None)
                                      .ConfigureAwait(false);
 
             var authFailedEntry = logger.Entries.Single(entry => entry.EventId.Id == 3303);
@@ -1048,7 +1332,7 @@ public class PortainerClientTests
     /// </summary>
     /// <returns>Task</returns>
     [TestMethod]
-    public async Task PortainerClientGetCapabilityAsyncWithUserInfoAndMissingJwtMasksUserInfoAsync()
+    public async Task PortainerClientCheckCapabilityAsyncWithUserInfoAndMissingJwtMasksUserInfoAsync()
     {
         var handler = new SequenceHttpMessageHandler();
         var httpClient = new HttpClient(handler);
@@ -1071,7 +1355,7 @@ public class PortainerClientTests
                                                             options.EndpointId = EndpointId;
                                                         });
 
-            var result = await client.GetCapabilityAsync(instanceOptions, CancellationToken.None)
+            var result = await client.CheckCapabilityAsync(instanceOptions, CancellationToken.None)
                                      .ConfigureAwait(false);
 
             var authFailedEntry = logger.Entries.Single(entry => entry.EventId.Id == 3303);
@@ -1123,15 +1407,10 @@ public class PortainerClientTests
                                                             options.ApiToken = PatToken;
                                                             options.EndpointId = EndpointId;
                                                         });
-            var actionRequest = new PortainerActionRequest
-                                {
-                                    ActionName = RestartAction,
-                                    ResourceName = ContainerName,
-                                };
 
-            await client.GetCapabilityAsync(instanceOptions, CancellationToken.None)
+            await client.CheckCapabilityAsync(instanceOptions, CancellationToken.None)
                         .ConfigureAwait(false);
-            await client.ExecuteActionAsync(instanceOptions, actionRequest, CancellationToken.None)
+            await client.ExecuteContainerActionAsync(instanceOptions, CreateRestartRequest(), CancellationToken.None)
                         .ConfigureAwait(false);
 
             var warnings = logger.Entries.Where(entry => entry.EventId.Id == InsecureHttpEventId)
@@ -1182,11 +1461,11 @@ public class PortainerClientTests
                                                               options.EndpointId = EndpointId;
                                                           });
 
-            await client.GetCapabilityAsync(lowerCaseInstance, CancellationToken.None)
+            await client.CheckCapabilityAsync(lowerCaseInstance, CancellationToken.None)
                         .ConfigureAwait(false);
-            await client.GetCapabilityAsync(upperCaseInstance, CancellationToken.None)
+            await client.CheckCapabilityAsync(upperCaseInstance, CancellationToken.None)
                         .ConfigureAwait(false);
-            await client.GetCapabilityAsync(lowerCaseInstance, CancellationToken.None)
+            await client.CheckCapabilityAsync(lowerCaseInstance, CancellationToken.None)
                         .ConfigureAwait(false);
 
             var warnings = logger.Entries.Where(entry => entry.EventId.Id == InsecureHttpEventId)
@@ -1211,7 +1490,7 @@ public class PortainerClientTests
     /// </summary>
     /// <returns>Task</returns>
     [TestMethod]
-    public async Task PortainerClientExecuteActionAsyncWithHttpsAndAllowInsecureHttpDoesNotLogInsecureWarningAsync()
+    public async Task PortainerClientExecuteContainerActionAsyncWithHttpsAndAllowInsecureHttpDoesNotLogInsecureWarningAsync()
     {
         var handler = new SequenceHttpMessageHandler();
         var httpClient = new HttpClient(handler);
@@ -1219,7 +1498,7 @@ public class PortainerClientTests
 
         try
         {
-            handler.AddJsonResponse(ContainersUrl, ContainerFoundJson);
+            AddLookupResponses(handler);
             handler.AddResponse(RestartActionUrl, new HttpResponseMessage(HttpStatusCode.NoContent));
 
             var client = new PortainerClient(CreateHttpClientFactory(httpClient),
@@ -1233,16 +1512,11 @@ public class PortainerClientTests
                                                             options.ApiToken = PatToken;
                                                             options.EndpointId = EndpointId;
                                                         });
-            var actionRequest = new PortainerActionRequest
-                                {
-                                    ActionName = RestartAction,
-                                    ResourceName = ContainerName,
-                                };
 
-            var result = await client.ExecuteActionAsync(instanceOptions, actionRequest, CancellationToken.None)
+            var result = await client.ExecuteContainerActionAsync(instanceOptions, CreateRestartRequest(), CancellationToken.None)
                                      .ConfigureAwait(false);
 
-            Assert.IsTrue(result.Succeeded, "The https action must succeed so that the request path was exercised");
+            Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "The https action must succeed so that the request path was exercised");
             Assert.DoesNotContain(entry => entry.EventId.Id == InsecureHttpEventId,
                                   logger.Entries,
                                   "An https base URL must not log the plaintext HTTP warning even with AllowInsecureHttp enabled");
@@ -1295,9 +1569,9 @@ public class PortainerClientTests
                                                           options.EndpointId = EndpointId;
                                                       });
 
-            await client.GetCapabilityAsync(tokenInstance, CancellationToken.None)
+            await client.CheckCapabilityAsync(tokenInstance, CancellationToken.None)
                         .ConfigureAwait(false);
-            await client.GetCapabilityAsync(loginInstance, CancellationToken.None)
+            await client.CheckCapabilityAsync(loginInstance, CancellationToken.None)
                         .ConfigureAwait(false);
 
             var warnings = logger.Entries.Where(entry => entry.EventId.Id == InsecureHttpEventId)
@@ -1327,7 +1601,7 @@ public class PortainerClientTests
     /// </summary>
     /// <returns>Task</returns>
     [TestMethod]
-    public async Task PortainerClientGetCapabilityAsyncWithInsecureHttpAndFailedLoginLogsWarningBeforeAuthFailureAsync()
+    public async Task PortainerClientCheckCapabilityAsyncWithInsecureHttpAndFailedLoginLogsWarningBeforeAuthFailureAsync()
     {
         var handler = new SequenceHttpMessageHandler();
         var httpClient = new HttpClient(handler);
@@ -1351,7 +1625,7 @@ public class PortainerClientTests
                                                             options.EndpointId = EndpointId;
                                                         });
 
-            await client.GetCapabilityAsync(instanceOptions, CancellationToken.None)
+            await client.CheckCapabilityAsync(instanceOptions, CancellationToken.None)
                         .ConfigureAwait(false);
 
             var warningIndex = -1;
@@ -1382,7 +1656,7 @@ public class PortainerClientTests
     }
 
     /// <summary>
-    /// Verify a transport failure during an action reports the fixed connection-failed reason without the exception text
+    /// Verify a transport failure before the action request reports the fixed connection-failed reason without the exception text
     /// </summary>
     /// <param name="error">Transport error of the injected exception</param>
     /// <param name="exceptionMessage">Message of the injected exception</param>
@@ -1390,34 +1664,34 @@ public class PortainerClientTests
     [TestMethod]
     [DataRow(HttpRequestError.ConnectionError, "Connection refused (portainer.internal.test:9443)")]
     [DataRow(HttpRequestError.ResponseEnded, "Error while copying content to a stream. portainer.internal.test")]
-    public async Task PortainerClientExecuteActionAsyncWhenTransportFailsReportsConnectionFailedAsync(HttpRequestError error, string exceptionMessage)
+    public async Task PortainerClientExecuteContainerActionAsyncWhenTransportFailsReportsConnectionFailedAsync(HttpRequestError error, string exceptionMessage)
     {
         var injected = new HttpRequestException(error, exceptionMessage);
         var logger = new TestLogger<PortainerClient>();
         var result = await RunFailingActionAsync(() => injected, logger, CancellationToken.None).ConfigureAwait(false);
 
-        Assert.IsFalse(result.Succeeded, "A transport failure must fail the action");
+        Assert.AreEqual(ExternalOperationStatus.Failed, result.Status, "A transport failure before the action request must fail the action");
         Assert.AreEqual("Action 'restart' failed: connection failed", result.Message, "A transport failure must report the fixed connection-failed reason");
-        Assert.DoesNotContain(HostMarker, result.Message, "The exception text must not reach the action message");
+        Assert.DoesNotContain(HostMarker, result.Message ?? string.Empty, "The exception text must not reach the action message");
         Assert.Contains(entry => entry.EventId.Id == 3310 && ReferenceEquals(entry.Exception, injected),
                         logger.Entries,
                         "The transport failure must still be logged with the exception");
     }
 
     /// <summary>
-    /// Verify a response that breaks off while it is read during an action reports the fixed connection-failed reason
+    /// Verify a response that breaks off while it is read before the action request reports the fixed connection-failed reason
     /// </summary>
     /// <returns>Task</returns>
     [TestMethod]
-    public async Task PortainerClientExecuteActionAsyncWhenResponseBreaksOffReportsConnectionFailedAsync()
+    public async Task PortainerClientExecuteContainerActionAsyncWhenResponseBreaksOffReportsConnectionFailedAsync()
     {
         var injected = new HttpIOException(HttpRequestError.ResponseEnded, "The response ended prematurely. portainer.internal.test");
         var logger = new TestLogger<PortainerClient>();
         var result = await RunFailingActionAsync(() => injected, logger, CancellationToken.None).ConfigureAwait(false);
 
-        Assert.IsFalse(result.Succeeded, "A response that breaks off must fail the action");
+        Assert.AreEqual(ExternalOperationStatus.Failed, result.Status, "A response that breaks off before the action request must fail the action");
         Assert.AreEqual("Action 'restart' failed: connection failed", result.Message, "A response that breaks off must report the fixed connection-failed reason");
-        Assert.DoesNotContain(HostMarker, result.Message, "The exception text must not reach the action message");
+        Assert.DoesNotContain(HostMarker, result.Message ?? string.Empty, "The exception text must not reach the action message");
         Assert.Contains(entry => entry.EventId.Id == 3310 && ReferenceEquals(entry.Exception, injected),
                         logger.Entries,
                         "The failure must still be logged with the exception");
@@ -1428,45 +1702,44 @@ public class PortainerClientTests
     /// </summary>
     /// <returns>Task</returns>
     [TestMethod]
-    public async Task PortainerClientGetCapabilityAsyncWhenTransportFailsReportsConnectionFailedAsync()
+    public async Task PortainerClientCheckCapabilityAsyncWhenTransportFailsReportsConnectionFailedAsync()
     {
         var injected = new HttpRequestException(HttpRequestError.ConnectionError, "Connection refused (portainer.internal.test:9443)");
         var logger = new TestLogger<PortainerClient>();
         var result = await RunFailingCapabilityAsync(() => injected, logger, CancellationToken.None).ConfigureAwait(false);
 
-        Assert.IsTrue(result.IsConfigured, "A failed capability check must still be reported as configured");
-        Assert.IsFalse(result.SupportsActions, "A failed capability check must not support actions");
+        Assert.AreEqual(ExternalOperationStatus.Failed, result.Status, "A failed capability check must not support actions");
         Assert.AreEqual("Portainer connection error: connection failed", result.Message, "A transport failure must report the fixed connection-failed reason");
-        Assert.DoesNotContain(HostMarker, result.Message, "The exception text must not reach the capability message");
+        Assert.DoesNotContain(HostMarker, result.Message ?? string.Empty, "The exception text must not reach the capability message");
         Assert.Contains(entry => entry.EventId.Id == 3306 && ReferenceEquals(entry.Exception, injected),
                         logger.Entries,
                         "The transport failure must still be logged with the exception");
     }
 
     /// <summary>
-    /// Verify a request timeout during an action reports the timed-out reason with the configured seconds
+    /// Verify a login or status request that exceeds its bound during a capability check reports the timed-out reason with the request timeout
     /// </summary>
+    /// <param name="requestKind">Method and path of the request that exceeds its bound</param>
     /// <returns>Task</returns>
     [TestMethod]
-    public async Task PortainerClientExecuteActionAsyncWhenRequestTimesOutReportsTimedOutAsync()
+    [DataRow("POST /api/auth")]
+    [DataRow("GET /api/system/status")]
+    public async Task PortainerClientCheckCapabilityAsyncWhenRequestTimesOutReportsTimedOutAsync(string requestKind)
     {
-        var result = await RunFailingActionAsync(CreateTimeoutException, new TestLogger<PortainerClient>(), CancellationToken.None).ConfigureAwait(false);
+        var clock = new WaitRecordingTimeProvider();
+        var requests = new List<string>();
+        using var handler = new DelegateHttpMessageHandler((request, token) => AnswerOrElapseAsync(request, requestKind, clock, requests, token));
 
-        Assert.IsFalse(result.Succeeded, "A timed-out request must fail the action");
-        Assert.AreEqual("Action 'restart' failed: timed out after 15 seconds", result.Message, "A timeout must report the fixed timed-out reason");
-    }
+        var client = new PortainerClient(CreateHttpClientFactory(handler),
+                                         new TestLogger<PortainerClient>(),
+                                         new LoginRetryAfterRegistry(TimeProvider.System),
+                                         clock.TimeProvider);
 
-    /// <summary>
-    /// Verify a request timeout during a capability check reports the timed-out reason with the configured seconds
-    /// </summary>
-    /// <returns>Task</returns>
-    [TestMethod]
-    public async Task PortainerClientGetCapabilityAsyncWhenRequestTimesOutReportsTimedOutAsync()
-    {
-        var result = await RunFailingCapabilityAsync(CreateTimeoutException, new TestLogger<PortainerClient>(), CancellationToken.None).ConfigureAwait(false);
+        var result = await client.CheckCapabilityAsync(CreateRoutedInstanceOptions(15, EndpointId), TestContext.CancellationToken)
+                                 .ConfigureAwait(false);
 
-        Assert.IsFalse(result.SupportsActions, "A timed-out capability check must not support actions");
-        Assert.AreEqual("Portainer connection error: timed out after 15 seconds", result.Message, "A timeout must report the fixed timed-out reason");
+        Assert.AreEqual(ExternalOperationStatus.Failed, result.Status, $"A timed-out '{requestKind}' must fail the capability check");
+        Assert.AreEqual("Portainer connection error: timed out after 15 seconds", result.Message, "A timeout must report the fixed timed-out reason with the request timeout");
     }
 
     /// <summary>
@@ -1474,7 +1747,7 @@ public class PortainerClientTests
     /// </summary>
     /// <returns>Task</returns>
     [TestMethod]
-    public async Task PortainerClientExecuteActionAsyncWhenCallerCancelsReportsCancelledAsync()
+    public async Task PortainerClientExecuteContainerActionAsyncWhenCallerCancelsReportsCancelledAsync()
     {
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.CancellationToken);
 
@@ -1483,7 +1756,7 @@ public class PortainerClientTests
         var token = cts.Token;
         var result = await RunFailingActionAsync(() => new TaskCanceledException("A task was canceled.", null, token), new TestLogger<PortainerClient>(), token).ConfigureAwait(false);
 
-        Assert.IsFalse(result.Succeeded, "A cancelled action must fail the result");
+        Assert.AreEqual(ExternalOperationStatus.Failed, result.Status, "A cancelled action must fail the result");
         Assert.AreEqual("Action 'restart' failed: cancelled", result.Message, "A cancelled caller token must report the fixed cancelled reason");
     }
 
@@ -1492,7 +1765,7 @@ public class PortainerClientTests
     /// </summary>
     /// <returns>Task</returns>
     [TestMethod]
-    public async Task PortainerClientGetCapabilityAsyncWhenCallerCancelsReportsCancelledAsync()
+    public async Task PortainerClientCheckCapabilityAsyncWhenCallerCancelsReportsCancelledAsync()
     {
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.CancellationToken);
 
@@ -1501,16 +1774,16 @@ public class PortainerClientTests
         var token = cts.Token;
         var result = await RunFailingCapabilityAsync(() => new TaskCanceledException("A task was canceled.", null, token), new TestLogger<PortainerClient>(), token).ConfigureAwait(false);
 
-        Assert.IsFalse(result.SupportsActions, "A cancelled capability check must not support actions");
+        Assert.AreEqual(ExternalOperationStatus.Failed, result.Status, "A cancelled capability check must not support actions");
         Assert.AreEqual("Portainer connection error: cancelled", result.Message, "A cancelled caller token must report the fixed cancelled reason");
     }
 
     /// <summary>
-    /// Verify an answer that is not valid JSON reports the invalid-response reason without the parser text
+    /// Verify a container list that is not valid JSON reports the invalid-response reason without the parser text
     /// </summary>
     /// <returns>Task</returns>
     [TestMethod]
-    public async Task PortainerClientExecuteActionAsyncWhenResponseIsNotJsonReportsInvalidResponseAsync()
+    public async Task PortainerClientExecuteContainerActionAsyncWhenResponseIsNotJsonReportsInvalidResponseAsync()
     {
         var handler = new SequenceHttpMessageHandler();
         var httpClient = new HttpClient(handler);
@@ -1518,16 +1791,18 @@ public class PortainerClientTests
 
         try
         {
+            handler.AddResponse(StatusUrl, new HttpResponseMessage(HttpStatusCode.OK));
+            handler.AddJsonResponse(EndpointCheckUrl, EndpointJson);
             handler.AddJsonResponse(ContainersUrl, "<html>nope</html>");
 
             var client = new PortainerClient(CreateHttpClientFactory(httpClient),
                                              logger,
                                              new LoginRetryAfterRegistry(TimeProvider.System),
                                              TimeProvider.System);
-            var result = await client.ExecuteActionAsync(CreateFailureInstanceOptions(), CreateRestartRequest(), CancellationToken.None)
+            var result = await client.ExecuteContainerActionAsync(CreateFailureInstanceOptions(), CreateRestartRequest(), CancellationToken.None)
                                      .ConfigureAwait(false);
 
-            Assert.IsFalse(result.Succeeded, "An answer that is not JSON must fail the action");
+            Assert.AreEqual(ExternalOperationStatus.Failed, result.Status, "An answer that is not JSON must fail the action");
             Assert.AreEqual("Action 'restart' failed: invalid response", result.Message, "An answer that is not JSON must report the fixed invalid-response reason");
         }
         finally
@@ -1538,17 +1813,17 @@ public class PortainerClientTests
     }
 
     /// <summary>
-    /// Verify an unexpected exception during an action reports the fixed unexpected-error reason without the exception text
+    /// Verify an unexpected exception before the action request reports the fixed unexpected-error reason without the exception text
     /// </summary>
     /// <returns>Task</returns>
     [TestMethod]
-    public async Task PortainerClientExecuteActionAsyncWhenUnexpectedExceptionReportsUnexpectedErrorAsync()
+    public async Task PortainerClientExecuteContainerActionAsyncWhenUnexpectedExceptionReportsUnexpectedErrorAsync()
     {
         var result = await RunFailingActionAsync(CreateUnexpectedException, new TestLogger<PortainerClient>(), CancellationToken.None).ConfigureAwait(false);
 
-        Assert.IsFalse(result.Succeeded, "An unexpected exception must fail the action");
+        Assert.AreEqual(ExternalOperationStatus.Failed, result.Status, "An unexpected exception must fail the action");
         Assert.AreEqual("Action 'restart' failed: unexpected error", result.Message, "An unexpected exception must report the fixed unexpected-error reason");
-        Assert.DoesNotContain(HostMarker, result.Message, "The exception text must not reach the action message");
+        Assert.DoesNotContain(HostMarker, result.Message ?? string.Empty, "The exception text must not reach the action message");
     }
 
     /// <summary>
@@ -1556,29 +1831,28 @@ public class PortainerClientTests
     /// </summary>
     /// <returns>Task</returns>
     [TestMethod]
-    public async Task PortainerClientGetCapabilityAsyncWhenUnexpectedExceptionReportsUnexpectedErrorAsync()
+    public async Task PortainerClientCheckCapabilityAsyncWhenUnexpectedExceptionReportsUnexpectedErrorAsync()
     {
         var result = await RunFailingCapabilityAsync(CreateUnexpectedException, new TestLogger<PortainerClient>(), CancellationToken.None).ConfigureAwait(false);
 
-        Assert.IsFalse(result.SupportsActions, "An unexpected exception must not support actions");
+        Assert.AreEqual(ExternalOperationStatus.Failed, result.Status, "An unexpected exception must not support actions");
         Assert.AreEqual("Portainer connection error: unexpected error", result.Message, "An unexpected exception must report the fixed unexpected-error reason");
-        Assert.DoesNotContain(HostMarker, result.Message, "The exception text must not reach the capability message");
+        Assert.DoesNotContain(HostMarker, result.Message ?? string.Empty, "The exception text must not reach the capability message");
     }
 
     /// <summary>
-    /// Verify a capability lookup without an endpoint identifier refuses to pick one of several environments and lists them by identifier
+    /// Verify a capability check without an endpoint identifier refuses to pick one of several environments and lists them by identifier
     /// </summary>
     /// <returns>Task</returns>
     [TestMethod]
-    public async Task PortainerClientGetCapabilityAsyncWithMultipleEnvironmentsAndNoEndpointIdReportsAmbiguousAsync()
+    public async Task PortainerClientCheckCapabilityAsyncWithMultipleEnvironmentsAndNoEndpointIdReportsAmbiguousAsync()
     {
         var logger = new TestLogger<PortainerClient>();
         var listResponse = CreateEnvironmentListResponse("""[{"Id":5,"Name":"edge"},{"Id":1,"Name":"local"},{"Id":2,"Name":"nas"}]""");
 
         var (result, _) = await RunCapabilityWithoutEndpointIdAsync(listResponse, logger).ConfigureAwait(false);
 
-        Assert.IsTrue(result.IsConfigured, "An ambiguous environment list must still be reported as configured");
-        Assert.IsFalse(result.SupportsActions, "An ambiguous environment list must not support actions");
+        Assert.AreEqual(ExternalOperationStatus.Unsupported, result.Status, "An ambiguous environment list must not support actions");
         Assert.AreEqual("Portainer manages 3 environments; set Portainer:EndpointId of Docker instance 'Production' to one of: 1 (local), 2 (nas), 5 (edge)",
                         result.Message,
                         "The message must name the key relative to the instance and list the environments by ascending identifier");
@@ -1601,20 +1875,23 @@ public class PortainerClientTests
     /// </summary>
     /// <returns>Task</returns>
     [TestMethod]
-    public async Task PortainerClientExecuteActionAsyncWithMultipleEnvironmentsAndNoEndpointIdFailsWithoutActionAsync()
+    public async Task PortainerClientExecuteContainerActionAsyncWithMultipleEnvironmentsAndNoEndpointIdFailsWithoutActionAsync()
     {
         var logger = new TestLogger<PortainerClient>();
         var listResponse = CreateEnvironmentListResponse("""[{"Id":2,"Name":"nas"},{"Id":1,"Name":"local"}]""");
 
         var (result, requests) = await RunActionWithoutEndpointIdAsync(listResponse, logger).ConfigureAwait(false);
 
-        Assert.IsFalse(result.Succeeded, "An action must fail when several environments are listed and none is configured");
+        Assert.AreEqual(ExternalOperationStatus.Unsupported, result.Status, "An action must not run when several environments are listed and none is configured");
         Assert.AreEqual("Portainer manages 2 environments; set Portainer:EndpointId of Docker instance 'Production' to one of: 1 (local), 2 (nas)",
                         result.Message,
                         "The action message must use the same format as the capability message");
-        Assert.HasCount(1, requests, "Only the environment list may be requested");
-        Assert.AreEqual(EndpointsUrl, requests[0].RequestUri, "The only request must be the environment list");
-        Assert.AreEqual("GET", requests[0].Method, "The only request must be the environment list read, not an action");
+        Assert.Contains(request => request.RequestUri == EndpointsUrl && request.Method == "GET",
+                        requests,
+                        "The environment list must be read");
+        Assert.DoesNotContain(request => request.RequestUri != StatusUrl && request.RequestUri != EndpointsUrl,
+                              requests,
+                              "Only the status and the environment list may be requested, no container lookup and no action");
     }
 
     /// <summary>
@@ -1622,14 +1899,14 @@ public class PortainerClientTests
     /// </summary>
     /// <returns>Task</returns>
     [TestMethod]
-    public async Task PortainerClientExecuteActionAsyncWithSingleEnvironmentAndNoEndpointIdUsesItAsync()
+    public async Task PortainerClientExecuteContainerActionAsyncWithSingleEnvironmentAndNoEndpointIdUsesItAsync()
     {
         var logger = new TestLogger<PortainerClient>();
         var listResponse = CreateEnvironmentListResponse("""[{"Id":7,"Name":"local"}]""");
 
         var (result, requests) = await RunActionWithoutEndpointIdAsync(listResponse, logger).ConfigureAwait(false);
 
-        Assert.IsTrue(result.Succeeded, "An action must run when exactly one environment is listed");
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "An action must run when exactly one environment is listed");
         Assert.Contains(request => request.RequestUri == RestartActionUrl && request.Method == "POST",
                         requests,
                         "The action must be sent to the only listed environment");
@@ -1640,14 +1917,13 @@ public class PortainerClientTests
     /// </summary>
     /// <returns>Task</returns>
     [TestMethod]
-    public async Task PortainerClientGetCapabilityAsyncWhenEnvironmentListIsNullReturnsNoEndpointFoundAsync()
+    public async Task PortainerClientCheckCapabilityAsyncWhenEnvironmentListIsNullReturnsNoEndpointFoundAsync()
     {
         var listResponse = CreateEnvironmentListResponse("null");
 
         var (result, _) = await RunCapabilityWithoutEndpointIdAsync(listResponse, new TestLogger<PortainerClient>()).ConfigureAwait(false);
 
-        Assert.IsTrue(result.IsConfigured, "A null environment list must still be reported as configured");
-        Assert.IsFalse(result.SupportsActions, "A null environment list must not support actions");
+        Assert.AreEqual(ExternalOperationStatus.Unsupported, result.Status, "A null environment list must not support actions");
         Assert.AreEqual("No Portainer endpoint found",
                         result.Message,
                         "A null environment list must be reported like an empty one");
@@ -1658,15 +1934,14 @@ public class PortainerClientTests
     /// </summary>
     /// <returns>Task</returns>
     [TestMethod]
-    public async Task PortainerClientGetCapabilityAsyncWhenEnvironmentListFailsReportsStatusCodeAsync()
+    public async Task PortainerClientCheckCapabilityAsyncWhenEnvironmentListFailsReportsStatusCodeAsync()
     {
         var logger = new TestLogger<PortainerClient>();
         var listResponse = new HttpResponseMessage(HttpStatusCode.InternalServerError);
 
         var (result, _) = await RunCapabilityWithoutEndpointIdAsync(listResponse, logger).ConfigureAwait(false);
 
-        Assert.IsTrue(result.IsConfigured, "A failing environment list must still be reported as configured");
-        Assert.IsFalse(result.SupportsActions, "A failing environment list must not support actions");
+        Assert.AreEqual(ExternalOperationStatus.Unsupported, result.Status, "A failing environment list must not support actions");
         Assert.AreEqual("Portainer environment list failed: HTTP 500",
                         result.Message,
                         "The message must carry the status code of the environment list");
@@ -1683,18 +1958,20 @@ public class PortainerClientTests
     /// </summary>
     /// <returns>Task</returns>
     [TestMethod]
-    public async Task PortainerClientExecuteActionAsyncWhenEnvironmentListFailsReportsStatusCodeWithoutActionAsync()
+    public async Task PortainerClientExecuteContainerActionAsyncWhenEnvironmentListFailsReportsStatusCodeWithoutActionAsync()
     {
         var logger = new TestLogger<PortainerClient>();
         var listResponse = new HttpResponseMessage(HttpStatusCode.InternalServerError);
 
         var (result, requests) = await RunActionWithoutEndpointIdAsync(listResponse, logger).ConfigureAwait(false);
 
-        Assert.IsFalse(result.Succeeded, "An action must fail when the environment list fails");
+        Assert.AreEqual(ExternalOperationStatus.Unsupported, result.Status, "An action must not run when the environment list fails");
         Assert.AreEqual("Portainer environment list failed: HTTP 500",
                         result.Message,
                         "The action message must carry the status code of the environment list");
-        Assert.HasCount(1, requests, "No container lookup or action may follow a failed environment list");
+        Assert.DoesNotContain(request => request.RequestUri != StatusUrl && request.RequestUri != EndpointsUrl,
+                              requests,
+                              "No container lookup or action may follow a failed environment list");
         Assert.Contains(entry => entry.EventId.Id == ListFailedEventId
                                  && entry.LogLevel == LogLevel.Warning
                                  && entry.Message.Contains(InstanceName, StringComparison.Ordinal)
@@ -1704,11 +1981,11 @@ public class PortainerClientTests
     }
 
     /// <summary>
-    /// Verify a capability lookup with a configured endpoint identifier never requests the environment list
+    /// Verify a capability check with a configured endpoint identifier checks that environment and never requests the environment list
     /// </summary>
     /// <returns>Task</returns>
     [TestMethod]
-    public async Task PortainerClientGetCapabilityAsyncWithEndpointIdDoesNotRequestEnvironmentListAsync()
+    public async Task PortainerClientCheckCapabilityAsyncWithEndpointIdDoesNotRequestEnvironmentListAsync()
     {
         var handler = new SequenceHttpMessageHandler();
         var logger = new TestLogger<PortainerClient>();
@@ -1717,22 +1994,22 @@ public class PortainerClientTests
         {
             handler.AddResponse(StatusUrl, new HttpResponseMessage(HttpStatusCode.OK));
             handler.AddResponse(EndpointsUrl, CreateEnvironmentListResponse("""[{"Id":1,"Name":"local"},{"Id":2,"Name":"nas"}]"""));
+            handler.AddJsonResponse(EndpointCheckUrl, EndpointJson);
 
             var client = new PortainerClient(CreateHttpClientFactory(handler),
                                              logger,
                                              new LoginRetryAfterRegistry(TimeProvider.System),
                                              TimeProvider.System);
-            var instanceOptions = CreateInstanceOptions(InstanceName,
-                                                        options =>
-                                                        {
-                                                            options.ApiToken = PatToken;
-                                                            options.EndpointId = EndpointId;
-                                                        });
 
-            var result = await client.GetCapabilityAsync(instanceOptions, TestContext.CancellationToken)
+            var result = await client.CheckCapabilityAsync(CreateFailureInstanceOptions(), TestContext.CancellationToken)
                                      .ConfigureAwait(false);
 
-            Assert.IsTrue(result.SupportsActions, "A configured endpoint identifier must support actions");
+            Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "A configured endpoint identifier Portainer knows must support actions");
+            Assert.IsNotNull(result.Data, "A succeeded capability check must carry its data");
+            Assert.AreEqual(EndpointId, result.Data.EndpointId, "The configured endpoint identifier must be reported");
+            Assert.Contains(request => request.RequestUri == EndpointCheckUrl && request.Method == "GET",
+                            handler.Requests,
+                            "A configured endpoint identifier must be checked against Portainer");
             Assert.DoesNotContain(request => request.RequestUri == EndpointsUrl,
                                   handler.Requests,
                                   "A configured endpoint identifier must not trigger the environment list request");
@@ -1748,7 +2025,7 @@ public class PortainerClientTests
     /// </summary>
     /// <returns>Task</returns>
     [TestMethod]
-    public async Task PortainerClientExecuteActionAsyncWithEndpointIdDoesNotRequestEnvironmentListAsync()
+    public async Task PortainerClientExecuteContainerActionAsyncWithEndpointIdDoesNotRequestEnvironmentListAsync()
     {
         var handler = new SequenceHttpMessageHandler();
         var logger = new TestLogger<PortainerClient>();
@@ -1756,25 +2033,18 @@ public class PortainerClientTests
         try
         {
             handler.AddResponse(EndpointsUrl, CreateEnvironmentListResponse("""[{"Id":1,"Name":"local"},{"Id":2,"Name":"nas"}]"""));
-            handler.AddJsonResponse(ContainersUrl, ContainerFoundJson);
+            AddLookupResponses(handler);
             handler.AddResponse(RestartActionUrl, new HttpResponseMessage(HttpStatusCode.NoContent));
 
             var client = new PortainerClient(CreateHttpClientFactory(handler),
                                              logger,
                                              new LoginRetryAfterRegistry(TimeProvider.System),
                                              TimeProvider.System);
-            var instanceOptions = CreateInstanceOptions(InstanceName,
-                                                        options =>
-                                                        {
-                                                            options.ApiToken = PatToken;
-                                                            options.EndpointId = EndpointId;
-                                                        });
-            var actionRequest = CreateRestartRequest();
 
-            var result = await client.ExecuteActionAsync(instanceOptions, actionRequest, TestContext.CancellationToken)
+            var result = await client.ExecuteContainerActionAsync(CreateFailureInstanceOptions(), CreateRestartRequest(), TestContext.CancellationToken)
                                      .ConfigureAwait(false);
 
-            Assert.IsTrue(result.Succeeded, "An action with a configured endpoint identifier must run");
+            Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "An action with a configured endpoint identifier must run");
             Assert.DoesNotContain(request => request.RequestUri == EndpointsUrl,
                                   handler.Requests,
                                   "A configured endpoint identifier must not trigger the environment list request");
@@ -1790,7 +2060,7 @@ public class PortainerClientTests
     /// </summary>
     /// <returns>Task</returns>
     [TestMethod]
-    public async Task PortainerClientGetCapabilityAsyncWithMoreThanTenEnvironmentsListsFirstTenAsync()
+    public async Task PortainerClientCheckCapabilityAsyncWithMoreThanTenEnvironmentsListsFirstTenAsync()
     {
         var listResponse = CreateEnvironmentListResponse("""
                                                          [{"Id":12,"Name":"e12"},{"Id":3,"Name":"e3"},{"Id":11,"Name":"e11"},{"Id":1,"Name":"e1"},
@@ -1810,14 +2080,14 @@ public class PortainerClientTests
     /// </summary>
     /// <returns>Task</returns>
     [TestMethod]
-    public async Task PortainerClientGetCapabilityAsyncWithTotalCountAboveListedEnvironmentsReportsAmbiguousAsync()
+    public async Task PortainerClientCheckCapabilityAsyncWithTotalCountAboveListedEnvironmentsReportsAmbiguousAsync()
     {
         var logger = new TestLogger<PortainerClient>();
         var listResponse = CreateEnvironmentListResponse("""[{"Id":7,"Name":"local"}]""", "3");
 
         var (result, _) = await RunCapabilityWithoutEndpointIdAsync(listResponse, logger).ConfigureAwait(false);
 
-        Assert.IsFalse(result.SupportsActions, "A truncated list must not make its only environment usable");
+        Assert.AreEqual(ExternalOperationStatus.Unsupported, result.Status, "A truncated list must not make its only environment usable");
         Assert.AreEqual("Portainer manages 3 environments; set Portainer:EndpointId of Docker instance 'Production' to one of: 7 (local), …",
                         result.Message,
                         "The message must use the reported total and mark the list as incomplete");
@@ -1833,17 +2103,19 @@ public class PortainerClientTests
     /// </summary>
     /// <returns>Task</returns>
     [TestMethod]
-    public async Task PortainerClientExecuteActionAsyncWithEmptyListAndTotalCountReportsAmbiguousWithoutActionAsync()
+    public async Task PortainerClientExecuteContainerActionAsyncWithEmptyListAndTotalCountReportsAmbiguousWithoutActionAsync()
     {
         var listResponse = CreateEnvironmentListResponse("[]", "3");
 
         var (result, requests) = await RunActionWithoutEndpointIdAsync(listResponse, new TestLogger<PortainerClient>()).ConfigureAwait(false);
 
-        Assert.IsFalse(result.Succeeded, "An action must fail when Portainer reports environments but lists none");
+        Assert.AreEqual(ExternalOperationStatus.Unsupported, result.Status, "An action must not run when Portainer reports environments but lists none");
         Assert.AreEqual("Portainer manages 3 environments; set Portainer:EndpointId of Docker instance 'Production'",
                         result.Message,
                         "The message must end after the instance name when no environment is listed");
-        Assert.HasCount(1, requests, "No container lookup may follow an ambiguous resolution");
+        Assert.DoesNotContain(request => request.RequestUri != StatusUrl && request.RequestUri != EndpointsUrl,
+                              requests,
+                              "No container lookup may follow an ambiguous resolution");
     }
 
     /// <summary>
@@ -1856,14 +2128,13 @@ public class PortainerClientTests
     [DataRow("abc", null)]
     [DataRow("-1", null)]
     [DataRow("1", "1")]
-    public async Task PortainerClientGetCapabilityAsyncWithInvalidTotalCountAndSingleEnvironmentReportsUnknownCountAsync(string firstValue, string? secondValue)
+    public async Task PortainerClientCheckCapabilityAsyncWithInvalidTotalCountAndSingleEnvironmentReportsUnknownCountAsync(string firstValue, string? secondValue)
     {
         var listResponse = CreateEnvironmentListResponse("""[{"Id":7,"Name":"local"}]""", firstValue, secondValue);
 
         var (result, _) = await RunCapabilityWithoutEndpointIdAsync(listResponse, new TestLogger<PortainerClient>()).ConfigureAwait(false);
 
-        Assert.IsTrue(result.IsConfigured, "An invalid total count must still be reported as configured");
-        Assert.IsFalse(result.SupportsActions, "An invalid total count must fail closed");
+        Assert.AreEqual(ExternalOperationStatus.Unsupported, result.Status, "An invalid total count must fail closed");
         Assert.AreEqual("Portainer reported no valid environment count; set Portainer:EndpointId of Docker instance 'Production' to one of: 7 (local), …",
                         result.Message,
                         $"The header value '{firstValue}' / '{secondValue}' must be reported as an unknown count");
@@ -1877,14 +2148,13 @@ public class PortainerClientTests
     [TestMethod]
     [DataRow("abc")]
     [DataRow("-1")]
-    public async Task PortainerClientGetCapabilityAsyncWithEmptyEnvironmentListAndInvalidTotalCountReturnsNoEndpointFoundAsync(string headerValue)
+    public async Task PortainerClientCheckCapabilityAsyncWithEmptyEnvironmentListAndInvalidTotalCountReturnsNoEndpointFoundAsync(string headerValue)
     {
         var listResponse = CreateEnvironmentListResponse("[]", headerValue);
 
         var (result, _) = await RunCapabilityWithoutEndpointIdAsync(listResponse, new TestLogger<PortainerClient>()).ConfigureAwait(false);
 
-        Assert.IsTrue(result.IsConfigured, "An empty environment list must still be reported as configured");
-        Assert.IsFalse(result.SupportsActions, "An empty environment list must not support actions");
+        Assert.AreEqual(ExternalOperationStatus.Unsupported, result.Status, "An empty environment list must not support actions");
         Assert.AreEqual("No Portainer endpoint found",
                         result.Message,
                         $"An empty list with the invalid header '{headerValue}' must not be reported as ambiguous");
@@ -1898,17 +2168,19 @@ public class PortainerClientTests
     [TestMethod]
     [DataRow("abc")]
     [DataRow("-1")]
-    public async Task PortainerClientExecuteActionAsyncWithEmptyEnvironmentListAndInvalidTotalCountFailsWithNoEndpointFoundAsync(string headerValue)
+    public async Task PortainerClientExecuteContainerActionAsyncWithEmptyEnvironmentListAndInvalidTotalCountFailsWithNoEndpointFoundAsync(string headerValue)
     {
         var listResponse = CreateEnvironmentListResponse("[]", headerValue);
 
         var (result, requests) = await RunActionWithoutEndpointIdAsync(listResponse, new TestLogger<PortainerClient>()).ConfigureAwait(false);
 
-        Assert.IsFalse(result.Succeeded, "An action must fail when no environment is listed");
+        Assert.AreEqual(ExternalOperationStatus.Unsupported, result.Status, "An action must not run when no environment is listed");
         Assert.AreEqual("No Portainer endpoint found",
                         result.Message,
                         $"An empty list with the invalid header '{headerValue}' must not be reported as ambiguous");
-        Assert.HasCount(1, requests, "Only the environment list may be requested");
+        Assert.DoesNotContain(request => request.RequestUri != StatusUrl && request.RequestUri != EndpointsUrl,
+                              requests,
+                              "Only the status and the environment list may be requested");
     }
 
     /// <summary>
@@ -1916,7 +2188,7 @@ public class PortainerClientTests
     /// </summary>
     /// <returns>Task</returns>
     [TestMethod]
-    public async Task PortainerClientGetCapabilityAsyncWithAmbiguousEnvironmentsSanitizesEnvironmentNamesAsync()
+    public async Task PortainerClientCheckCapabilityAsyncWithAmbiguousEnvironmentsSanitizesEnvironmentNamesAsync()
     {
         var longName = new string('n', 100);
         var prefix = new string('p', 63);
@@ -1960,14 +2232,13 @@ public class PortainerClientTests
                                              TimeProvider.System);
             var instanceOptions = CreateLoginInstanceOptions(InstanceName);
 
-            await client.GetCapabilityAsync(instanceOptions, CancellationToken.None).ConfigureAwait(false);
+            await client.CheckCapabilityAsync(instanceOptions, CancellationToken.None).ConfigureAwait(false);
 
             Assert.HasCount(1, handler.Requests, "The first capability check must send exactly the login");
 
-            var result = await client.GetCapabilityAsync(instanceOptions, CancellationToken.None).ConfigureAwait(false);
+            var result = await client.CheckCapabilityAsync(instanceOptions, CancellationToken.None).ConfigureAwait(false);
 
-            Assert.IsTrue(result.IsConfigured, "A deferred capability check must still be reported as configured");
-            Assert.IsFalse(result.SupportsActions, "A deferred capability check must not support actions");
+            Assert.AreEqual(ExternalOperationStatus.Failed, result.Status, "A deferred capability check must not support actions");
             Assert.AreEqual($"Portainer connection error: {DeferredMessage("2026-03-10T12:02:00Z")}",
                             result.Message,
                             "The capability message must carry the authentication error with the end of the window");
@@ -2004,12 +2275,12 @@ public class PortainerClientTests
                                                    registry,
                                                    TimeProvider.System);
 
-            await firstClient.GetCapabilityAsync(CreateLoginInstanceOptions(InstanceName), CancellationToken.None).ConfigureAwait(false);
+            await firstClient.CheckCapabilityAsync(CreateLoginInstanceOptions(InstanceName), CancellationToken.None).ConfigureAwait(false);
 
-            var result = await secondClient.ExecuteActionAsync(CreateLoginInstanceOptions("Staging"), CreateRestartRequest(), CancellationToken.None)
+            var result = await secondClient.ExecuteContainerActionAsync(CreateLoginInstanceOptions("Staging"), CreateRestartRequest(), CancellationToken.None)
                                            .ConfigureAwait(false);
 
-            Assert.IsFalse(result.Succeeded, "An action inside the window must fail");
+            Assert.AreEqual(ExternalOperationStatus.Failed, result.Status, "An action inside the window must fail");
             Assert.AreEqual($"Action 'restart' failed: {DeferredMessage("2026-03-10T12:02:00Z")}",
                             result.Message,
                             "The action message must carry the authentication error with the end of the window");
@@ -2043,17 +2314,17 @@ public class PortainerClientTests
                                              TimeProvider.System);
             var instanceOptions = CreateLoginInstanceOptions(InstanceName);
 
-            await client.GetCapabilityAsync(instanceOptions, CancellationToken.None).ConfigureAwait(false);
+            await client.CheckCapabilityAsync(instanceOptions, CancellationToken.None).ConfigureAwait(false);
 
             now = now.AddSeconds(119);
 
-            await client.GetCapabilityAsync(instanceOptions, CancellationToken.None).ConfigureAwait(false);
+            await client.CheckCapabilityAsync(instanceOptions, CancellationToken.None).ConfigureAwait(false);
 
             Assert.HasCount(1, handler.Requests, "A capability check one second before the end of the window must send nothing");
 
             now = now.AddSeconds(1);
 
-            await client.GetCapabilityAsync(instanceOptions, CancellationToken.None).ConfigureAwait(false);
+            await client.CheckCapabilityAsync(instanceOptions, CancellationToken.None).ConfigureAwait(false);
 
             Assert.AreEqual(2,
                             handler.Requests.Count(request => request.RequestUri == AuthUrl),
@@ -2088,12 +2359,114 @@ public class PortainerClientTests
     }
 
     /// <summary>
-    /// Create the exception of a request that timed out in the HTTP client
+    /// Create a successful JSON response
     /// </summary>
-    /// <returns>Exception</returns>
-    private static Exception CreateTimeoutException()
+    /// <param name="json">Response body</param>
+    /// <returns>Response</returns>
+    private static HttpResponseMessage CreateJsonResponse(string json)
     {
-        return new TaskCanceledException("The request was canceled due to the configured HttpClient.Timeout of 15 seconds elapsing.", new TimeoutException());
+        return new HttpResponseMessage(HttpStatusCode.OK)
+               {
+                   Content = new StringContent(json, Encoding.UTF8, "application/json"),
+               };
+    }
+
+    /// <summary>
+    /// Name a request by its method and path, without the query
+    /// </summary>
+    /// <param name="request">Request</param>
+    /// <returns>Method and path</returns>
+    private static string GetRequestKind(HttpRequestMessage request)
+    {
+        return $"{request.Method.Method} {request.RequestUri?.AbsolutePath}";
+    }
+
+    /// <summary>
+    /// Answer a request of a successful action by its method and path: login, status, environment list and check, container list, and the action
+    /// </summary>
+    /// <param name="request">Request</param>
+    /// <returns>Response</returns>
+    private static HttpResponseMessage CreateRoutedResponse(HttpRequestMessage request)
+    {
+        return GetRequestKind(request) switch
+               {
+                   "POST /api/auth" => CreateJsonResponse("""{"jwt":"jwt-token-xyz"}"""),
+                   "GET /api/system/status" => new HttpResponseMessage(HttpStatusCode.OK),
+                   "GET /api/endpoints" => CreateJsonResponse("""[{"Id":7,"Name":"local"}]"""),
+                   "GET /api/endpoints/7" => CreateJsonResponse(EndpointJson),
+                   "GET " + ContainerListPath => CreateJsonResponse(ContainerFoundJson),
+                   _ => new HttpResponseMessage(HttpStatusCode.NoContent),
+               };
+    }
+
+    /// <summary>
+    /// Record the bound that runs while a request is sent, then answer it as a successful action would be answered
+    /// </summary>
+    /// <param name="request">Request</param>
+    /// <param name="clock">Clock recording the bounds</param>
+    /// <param name="observed">Requests with the number of bounds started so far and the latest bound</param>
+    /// <returns>Response</returns>
+    private static Task<HttpResponseMessage> RecordBoundAndAnswerAsync(HttpRequestMessage request,
+                                                                       WaitRecordingTimeProvider clock,
+                                                                       List<(string Request, int WaitCount, TimeSpan Bound)> observed)
+    {
+        var waits = clock.Waits;
+        var latestBound = waits.Count > 0 ? waits[^1] : TimeSpan.Zero;
+
+        observed.Add((GetRequestKind(request), waits.Count, latestBound));
+
+        return Task.FromResult(CreateRoutedResponse(request));
+    }
+
+    /// <summary>
+    /// Answer a request as a successful action would be answered, except the given one, which lets its bound elapse and waits for the cancellation
+    /// </summary>
+    /// <param name="request">Request</param>
+    /// <param name="elapsedRequestKind">Method and path of the request whose bound elapses</param>
+    /// <param name="clock">Clock recording the bounds</param>
+    /// <param name="requests">Methods and paths of the requests sent so far</param>
+    /// <param name="cancellationToken">Token of the request</param>
+    /// <returns>Response</returns>
+    private static async Task<HttpResponseMessage> AnswerOrElapseAsync(HttpRequestMessage request,
+                                                                       string elapsedRequestKind,
+                                                                       WaitRecordingTimeProvider clock,
+                                                                       List<string> requests,
+                                                                       CancellationToken cancellationToken)
+    {
+        var requestKind = GetRequestKind(request);
+
+        requests.Add(requestKind);
+
+        if (requestKind == elapsedRequestKind)
+        {
+            clock.ElapseLastWait();
+
+            await Task.Delay(TimeSpan.FromSeconds(SafetyDelaySeconds), cancellationToken).ConfigureAwait(false);
+        }
+
+        return CreateRoutedResponse(request);
+    }
+
+    /// <summary>
+    /// Answer a request as a successful action would be answered, except the given one, which throws the given exception
+    /// </summary>
+    /// <param name="request">Request</param>
+    /// <param name="failingRequestKind">Method and path of the request that throws</param>
+    /// <param name="exception">Exception thrown by that request</param>
+    /// <param name="requests">Methods and paths of the requests sent so far</param>
+    /// <returns>Response</returns>
+    private static Task<HttpResponseMessage> AnswerOrThrowAsync(HttpRequestMessage request,
+                                                                string failingRequestKind,
+                                                                Exception exception,
+                                                                List<string> requests)
+    {
+        var requestKind = GetRequestKind(request);
+
+        requests.Add(requestKind);
+
+        return requestKind == failingRequestKind
+                   ? Task.FromException<HttpResponseMessage>(exception)
+                   : Task.FromResult(CreateRoutedResponse(request));
     }
 
     /// <summary>
@@ -2160,7 +2533,25 @@ public class PortainerClientTests
     }
 
     /// <summary>
-    /// Create Docker instance options using an API token and an endpoint identifier, so the first request is the container list or the status request
+    /// Create Docker instance options that log in to Portainer, for the tests whose requests are answered by method and path
+    /// </summary>
+    /// <param name="requestTimeoutSeconds">Request timeout in seconds</param>
+    /// <param name="endpointId">Configured EndpointId; null resolves the environment from the list</param>
+    /// <returns>Docker instance options</returns>
+    private static DockerInstanceOptions CreateRoutedInstanceOptions(int requestTimeoutSeconds, string? endpointId)
+    {
+        return CreateInstanceOptions(InstanceName,
+                                     options =>
+                                     {
+                                         options.Username = AdminUsername;
+                                         options.Password = "correct-password";
+                                         options.EndpointId = endpointId;
+                                         options.RequestTimeoutSeconds = requestTimeoutSeconds;
+                                     });
+    }
+
+    /// <summary>
+    /// Create Docker instance options using an API token and an endpoint identifier, so the first request is the status request
     /// </summary>
     /// <returns>Docker instance options</returns>
     private static DockerInstanceOptions CreateFailureInstanceOptions()
@@ -2174,16 +2565,38 @@ public class PortainerClientTests
     }
 
     /// <summary>
-    /// Create the restart action request used by the failure tests
+    /// Create an action request of the given type for the test container
+    /// </summary>
+    /// <param name="actionType">Action type</param>
+    /// <returns>Action request</returns>
+    private static PortainerContainerActionRequest CreateActionRequest(ContainerActionType actionType)
+    {
+        return new PortainerContainerActionRequest
+               {
+                   ActionType = actionType,
+                   ContainerId = ContainerId,
+                   ContainerName = ContainerName,
+               };
+    }
+
+    /// <summary>
+    /// Create the restart action request used by most tests
     /// </summary>
     /// <returns>Action request</returns>
-    private static PortainerActionRequest CreateRestartRequest()
+    private static PortainerContainerActionRequest CreateRestartRequest()
     {
-        return new PortainerActionRequest
-               {
-                   ActionName = RestartAction,
-                   ResourceName = ContainerName,
-               };
+        return CreateActionRequest(ContainerActionType.RestartContainer);
+    }
+
+    /// <summary>
+    /// Answer the status request, the check of environment 7 and the container list of the test container
+    /// </summary>
+    /// <param name="handler">Handler that answers the requests</param>
+    private static void AddLookupResponses(SequenceHttpMessageHandler handler)
+    {
+        handler.AddResponse(StatusUrl, new HttpResponseMessage(HttpStatusCode.OK));
+        handler.AddJsonResponse(EndpointCheckUrl, EndpointJson);
+        handler.AddJsonResponse(ContainersUrl, ContainerFoundJson);
     }
 
     /// <summary>
@@ -2192,10 +2605,10 @@ public class PortainerClientTests
     /// <param name="failureFactory">Factory of the exception thrown by the first request</param>
     /// <param name="logger">Logger that captures the entries</param>
     /// <param name="cancellationToken">Token passed to the client</param>
-    /// <returns>Action result</returns>
-    private static async Task<PortainerActionResult> RunFailingActionAsync(Func<Exception> failureFactory,
-                                                                           TestLogger<PortainerClient> logger,
-                                                                           CancellationToken cancellationToken)
+    /// <returns>Action outcome</returns>
+    private static async Task<ExternalOperationResult<PortainerActionOutcomeData>> RunFailingActionAsync(Func<Exception> failureFactory,
+                                                                                                         TestLogger<PortainerClient> logger,
+                                                                                                         CancellationToken cancellationToken)
     {
         using var handler = new RetryProbeHttpMessageHandler([null], HttpStatusCode.OK)
                             {
@@ -2208,7 +2621,7 @@ public class PortainerClientTests
                                          new LoginRetryAfterRegistry(TimeProvider.System),
                                          TimeProvider.System);
 
-        return await client.ExecuteActionAsync(CreateFailureInstanceOptions(), CreateRestartRequest(), cancellationToken)
+        return await client.ExecuteContainerActionAsync(CreateFailureInstanceOptions(), CreateRestartRequest(), cancellationToken)
                            .ConfigureAwait(false);
     }
 
@@ -2218,10 +2631,10 @@ public class PortainerClientTests
     /// <param name="failureFactory">Factory of the exception thrown by the first request</param>
     /// <param name="logger">Logger that captures the entries</param>
     /// <param name="cancellationToken">Token passed to the client</param>
-    /// <returns>Capability data</returns>
-    private static async Task<PortainerCapabilityData> RunFailingCapabilityAsync(Func<Exception> failureFactory,
-                                                                                 TestLogger<PortainerClient> logger,
-                                                                                 CancellationToken cancellationToken)
+    /// <returns>Capability outcome</returns>
+    private static async Task<ExternalOperationResult<PortainerCapabilityData>> RunFailingCapabilityAsync(Func<Exception> failureFactory,
+                                                                                                          TestLogger<PortainerClient> logger,
+                                                                                                          CancellationToken cancellationToken)
     {
         using var handler = new RetryProbeHttpMessageHandler([null], HttpStatusCode.OK)
                             {
@@ -2234,7 +2647,7 @@ public class PortainerClientTests
                                          new LoginRetryAfterRegistry(TimeProvider.System),
                                          TimeProvider.System);
 
-        return await client.GetCapabilityAsync(CreateFailureInstanceOptions(), cancellationToken)
+        return await client.CheckCapabilityAsync(CreateFailureInstanceOptions(), cancellationToken)
                            .ConfigureAwait(false);
     }
 
@@ -2269,7 +2682,7 @@ public class PortainerClientTests
     /// </summary>
     /// <param name="handler">Shared message handler</param>
     /// <returns>HTTP client factory stub</returns>
-    private static IHttpClientFactory CreateHttpClientFactory(SequenceHttpMessageHandler handler)
+    private static IHttpClientFactory CreateHttpClientFactory(HttpMessageHandler handler)
     {
         var httpClientFactory = Substitute.For<IHttpClientFactory>();
 
@@ -2293,12 +2706,38 @@ public class PortainerClientTests
     }
 
     /// <summary>
-    /// Run a capability lookup of an instance without an endpoint identifier against the given environment list response
+    /// Run an action whose requests are answered by method and path, letting the bound of the given request elapse
+    /// </summary>
+    /// <param name="elapsedRequestKind">Method and path of the request whose bound elapses</param>
+    /// <param name="actionType">Requested action type</param>
+    /// <param name="requestTimeoutSeconds">Request timeout in seconds</param>
+    /// <returns>Action outcome and the methods and paths of the requests sent</returns>
+    private async Task<(ExternalOperationResult<PortainerActionOutcomeData> Result, IReadOnlyList<string> Requests)> RunActionWithElapsedBoundAsync(string elapsedRequestKind,
+                                                                                                                                                    ContainerActionType actionType,
+                                                                                                                                                    int requestTimeoutSeconds)
+    {
+        var clock = new WaitRecordingTimeProvider();
+        var requests = new List<string>();
+        using var handler = new DelegateHttpMessageHandler((request, token) => AnswerOrElapseAsync(request, elapsedRequestKind, clock, requests, token));
+
+        var client = new PortainerClient(CreateHttpClientFactory(handler),
+                                         new TestLogger<PortainerClient>(),
+                                         new LoginRetryAfterRegistry(TimeProvider.System),
+                                         clock.TimeProvider);
+
+        var result = await client.ExecuteContainerActionAsync(CreateRoutedInstanceOptions(requestTimeoutSeconds, EndpointId), CreateActionRequest(actionType), TestContext.CancellationToken)
+                                 .ConfigureAwait(false);
+
+        return (result, requests);
+    }
+
+    /// <summary>
+    /// Run a capability check of an instance without an endpoint identifier against the given environment list response
     /// </summary>
     /// <param name="listResponse">Response of the environment list request</param>
     /// <param name="logger">Logger collecting the entries</param>
-    /// <returns>Capability and the observed requests</returns>
-    private async Task<(PortainerCapabilityData Result, IReadOnlyList<ObservedRequest> Requests)> RunCapabilityWithoutEndpointIdAsync(HttpResponseMessage listResponse, TestLogger<PortainerClient> logger)
+    /// <returns>Capability outcome and the observed requests</returns>
+    private async Task<(ExternalOperationResult<PortainerCapabilityData> Result, IReadOnlyList<ObservedRequest> Requests)> RunCapabilityWithoutEndpointIdAsync(HttpResponseMessage listResponse, TestLogger<PortainerClient> logger)
     {
         var handler = new SequenceHttpMessageHandler();
 
@@ -2306,6 +2745,7 @@ public class PortainerClientTests
         {
             handler.AddResponse(StatusUrl, new HttpResponseMessage(HttpStatusCode.OK));
             handler.AddResponse(EndpointsUrl, listResponse);
+            handler.AddJsonResponse(EndpointCheckUrl, EndpointJson);
 
             var client = new PortainerClient(CreateHttpClientFactory(handler),
                                              logger,
@@ -2313,7 +2753,7 @@ public class PortainerClientTests
                                              TimeProvider.System);
             var instanceOptions = CreateInstanceOptions(InstanceName, options => options.ApiToken = PatToken);
 
-            var result = await client.GetCapabilityAsync(instanceOptions, TestContext.CancellationToken)
+            var result = await client.CheckCapabilityAsync(instanceOptions, TestContext.CancellationToken)
                                      .ConfigureAwait(false);
 
             return (result, handler.Requests);
@@ -2329,15 +2769,15 @@ public class PortainerClientTests
     /// </summary>
     /// <param name="listResponse">Response of the environment list request</param>
     /// <param name="logger">Logger collecting the entries</param>
-    /// <returns>Action result and the observed requests</returns>
-    private async Task<(PortainerActionResult Result, IReadOnlyList<ObservedRequest> Requests)> RunActionWithoutEndpointIdAsync(HttpResponseMessage listResponse, TestLogger<PortainerClient> logger)
+    /// <returns>Action outcome and the observed requests</returns>
+    private async Task<(ExternalOperationResult<PortainerActionOutcomeData> Result, IReadOnlyList<ObservedRequest> Requests)> RunActionWithoutEndpointIdAsync(HttpResponseMessage listResponse, TestLogger<PortainerClient> logger)
     {
         var handler = new SequenceHttpMessageHandler();
 
         try
         {
             handler.AddResponse(EndpointsUrl, listResponse);
-            handler.AddJsonResponse(ContainersUrl, ContainerFoundJson);
+            AddLookupResponses(handler);
             handler.AddResponse(RestartActionUrl, new HttpResponseMessage(HttpStatusCode.NoContent));
 
             var client = new PortainerClient(CreateHttpClientFactory(handler),
@@ -2346,7 +2786,7 @@ public class PortainerClientTests
                                              TimeProvider.System);
             var instanceOptions = CreateInstanceOptions(InstanceName, options => options.ApiToken = PatToken);
 
-            var result = await client.ExecuteActionAsync(instanceOptions, CreateRestartRequest(), TestContext.CancellationToken)
+            var result = await client.ExecuteContainerActionAsync(instanceOptions, CreateRestartRequest(), TestContext.CancellationToken)
                                      .ConfigureAwait(false);
 
             return (result, handler.Requests);

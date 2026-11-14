@@ -7,7 +7,10 @@ internal sealed class DelegateHttpMessageHandler : HttpMessageHandler
 {
     #region Fields
 
-    private readonly Func<HttpRequestMessage, HttpResponseMessage> _responseFactory;
+    /// <summary>
+    /// Factory that creates the response of a request, observing the request's cancellation token
+    /// </summary>
+    private readonly Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> _responseFactory;
 
     #endregion // Fields
 
@@ -19,6 +22,15 @@ internal sealed class DelegateHttpMessageHandler : HttpMessageHandler
     /// <param name="responseFactory">Factory that creates the response of a request</param>
     public DelegateHttpMessageHandler(Func<HttpRequestMessage, HttpResponseMessage> responseFactory)
     {
+        _responseFactory = (request, _) => Task.FromResult(responseFactory(request));
+    }
+
+    /// <summary>
+    /// Constructor
+    /// </summary>
+    /// <param name="responseFactory">Factory that creates the response of a request and receives the request's cancellation token</param>
+    public DelegateHttpMessageHandler(Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> responseFactory)
+    {
         _responseFactory = responseFactory;
     }
 
@@ -27,13 +39,13 @@ internal sealed class DelegateHttpMessageHandler : HttpMessageHandler
     #region HttpMessageHandler
 
     /// <inheritdoc/>
-    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
-        var response = _responseFactory(request);
+        var response = await _responseFactory(request, cancellationToken).ConfigureAwait(false);
 
         response.RequestMessage = request;
 
-        return Task.FromResult(response);
+        return response;
     }
 
     #endregion // HttpMessageHandler
