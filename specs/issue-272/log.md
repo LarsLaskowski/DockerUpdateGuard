@@ -18,3 +18,4 @@ are quoted in full.
 | 2026-11-14 09:00 | 8 Review | Reviewer | VERDICT: BLOCKING 1 \| NON-BLOCKING 0 on 9c29e573133766a8f0b6a7d83cea166575e479e7; registries.md issued_at sentence (verbatim fix) (opus/medium · 72,410 tokens · 12 tool uses · 82 s · 20 in · 8,215 out · 440,555 cache read · 60,129 cache write · 276,568 weighted) |
 | 2026-11-14 09:02 | 7 Gate stamp | Orchestrator | PASS on fc1978272c5fd2d347f71fdc3feecda1d24f1af5 (tier standard, verbatim): Format check pass; decision-check.py pass; scope-check.py pass |
 | 2026-11-14 09:02 | 8 Fix verbatim | Orchestrator | applied the Reviewer's verbatim documentation fix to registries.md; stamped with --verbatim on fc1978272c5f |
+| 2026-11-14 09:02 | 9 PR approval | Orchestrator | approved by checklist |
