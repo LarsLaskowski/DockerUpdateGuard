@@ -178,17 +178,18 @@ The summary cards become one *Details* column; status and available update sit n
 
 ## Implementation issues
 
-The work is split into nine dependency-ordered issues. Order: **1 → 2 → (3, 5, 6, 7, 8) → 4 → 9**.
+The work is split into nine dependency-ordered issues under the tracking issue #450. Order:
+**1 → 2 → (3, 5, 6, 7) → (4 after 3, 8 after 5 and 6) → 9**.
 
-1. Design tokens, typography and MudBlazor theme
-2. Shared components: status indicators, severity chip and bar, page header, section panel, table styling
-3. Dashboard that lists what needs attention
-4. App shell: top navigation replaces the drawer
-5. Runtime Containers list
-6. Runtime Container detail
-7. Vulnerabilities page
-8. List pages: My Images, Observed Images, Base Images, Docker Instances, Scan History
-9. Remaining detail pages, error pages and removal of the old styles
+1. Design tokens, typography and MudBlazor theme (#451)
+2. Shared components: status indicators, severity chip and bar, page header, section panel, table styling (#452)
+3. Dashboard that lists what needs attention (#453)
+4. App shell: top navigation replaces the drawer (#454)
+5. Runtime Containers list (#455)
+6. Runtime Container detail (#456)
+7. Vulnerabilities page (#457)
+8. List pages: My Images, Observed Images, Base Images, Docker Instances, Scan History (#458)
+9. Remaining detail pages, error pages and removal of the old styles (#459)
 
 ## Regenerating the images
 
