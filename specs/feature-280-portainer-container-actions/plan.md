@@ -313,3 +313,39 @@ Fact 12 holds: one `CreateTimer` call carrying the bound, and firing it cancels 
 
 ## Not measured
 - Facts 13–15 are not security properties: each fails closed, so there is no gate on approval. Fact 13 (bUnit static renderer) is the Tester's; facts 14–15 are the after-merge real-Portainer check.
+
+## Challenge notes
+
+Devil's Advocate, mode `plan`: feature #280 (specs/feature-280-portainer-container-actions/)
+
+The plan holds up on substance. I checked its claims against the code and found none that fail:
+- No caller exists for `IPortainerClient`.
+- Today's client treats 304 as a failure: it succeeds only on 2xx (`PortainerClient.cs:514`).
+- The container is found by name (`PortainerClient.cs:215-240`).
+- A configured `EndpointId` is used without any check (`:257-260`).
+- `ExternalOperationStatus.Unknown` exists (`Infrastructure/ExternalOperationStatus.cs:41`).
+- `FailureReason.FromException` already tells "cancelled" (the caller's token) from "timed out after <n> seconds".
+- A per-request bound keeps today's documented meaning, "each request including its retries" (`docs/areas/container-actions.md:105`). The retry handler sits inside the `HttpClient` (`ServiceCollectionExtensions.cs` named client `Portainer` + `TransientHttpRetryHandler`), so the linked token still covers the retries. POST is retried only on 429 or failures raised before sending.
+- Snapshots keep the Engine's full `Id` (`DockerInstanceClient.cs:520`). The "current set" definition matches `docs/areas/docker-instances.md:121-123`.
+- The test counts are right: 36 `new PortainerClient(` lines, 90 old-member call sites and 53 test methods in `PortainerClientTests.cs`.
+- `WaitRecordingTimeProvider` records `CreateTimer` due times, which is the seam the AC12 test needs.
+- Event IDs 3320–3324 are free (the highest used is 3313), and `TelemetryActivityNames.PortainerAction` ("portainer.action") already exists.
+
+I found nothing that should be redesigned. Three test gaps remain, all minor:
+
+1. **minor — the existing page tests will break, not stay unchanged.** In bUnit 2.15.2, a component that reads `RendererInfo` without the test calling `SetRendererInfo` throws `Bunit.Rendering.MissingRendererInfoException` (bunit.xml in the package). No test under `src/Tests` calls `SetRendererInfo` today. The plan (line 199) says `RuntimeContainerDetailTests.cs`, `RuntimeContainerDetailRenderTests.cs` and `RuntimeContainerDetailPersistentStateTests.cs` only need an `IContainerActionService` substitute.
+   Instruction for the Tester: in every existing test that renders `RuntimeContainerDetail`, also set an interactive `RendererInfo` on the bUnit context (per test or in `Helper/BlazorTestContextFactory.cs`). The AC2 prerender test sets a non-interactive one. The dialog tests (AC3, and the AC10/AC13 page tests that confirm) must render a `MudDialogProvider` next to the page, because the provider sits only in `MainLayout.razor:5`.
+
+2. **minor — AC7 passes on a wrong build.** The one-action-per-container guard is a set inside the service (0036), so it only works across tabs or circuits if `IContainerActionService` is registered as a singleton. The planned AC7 test builds one service instance directly. If the service were registered as scoped, it would still pass, while two tabs would each get their own set.
+   Instruction for the Tester: add a test with `[TestCategory("AC7")]` to `ServiceCollectionExtensionsTests.cs` that resolves `IContainerActionService` from two scopes of `AddDockerUpdateGuardHost` and asserts both are the same instance. The existing shared-singleton test at `ServiceCollectionExtensionsTests.cs:92-119` shows the pattern.
+
+3. **minor — no test checks that startup actually runs the reconciliation.** AC9 is covered only by a test of the static `ContainerActionRunReconciler.ReconcileInterruptedRunsAsync`. The plan (line 200) keeps `ApplicationInitializationExtensionsTests.cs` unchanged, and the existing startup test already executes `InitializeDockerUpdateGuardAsync`. So if the call were left out of `ApplicationInitializationExtensions.cs` (after the instance sync at line 49-50), every test would still pass and coverage would not notice.
+   Instruction for the Tester: add a test with `[TestCategory("AC9")]` to `ApplicationInitializationExtensionsTests.cs`. It uses the InMemory database of line 33, seeds one *Running* and one *Succeeded* run for a configured instance, calls `InitializeDockerUpdateGuardAsync`, and asserts that the open run became *Failed* with E10's "Interrupted" message and that the terminal run is unchanged.
+
+Files:
+- /home/user/DockerUpdateGuard/specs/feature-280-portainer-container-actions/plan.md
+- /home/user/DockerUpdateGuard/specs/feature-280-portainer-container-actions/tasks.md
+- /home/user/DockerUpdateGuard/src/Tests/DockerUpdateGuard.Tests/ServiceCollectionExtensionsTests.cs
+- /home/user/DockerUpdateGuard/src/Tests/DockerUpdateGuard.Tests/ApplicationInitializationExtensionsTests.cs
+- /home/user/DockerUpdateGuard/src/Tests/DockerUpdateGuard.Tests/Helper/BlazorTestContextFactory.cs
+- /home/user/DockerUpdateGuard/src/DockerUpdateGuard/ApplicationInitializationExtensions.cs
