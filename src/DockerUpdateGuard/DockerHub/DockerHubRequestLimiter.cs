@@ -90,6 +90,7 @@ public sealed class DockerHubRequestLimiter : IDisposable
     private static void CancelWaiter(object? state)
     {
         var (limiter, waiter, cancellationToken) = ((DockerHubRequestLimiter, TaskCompletionSource, CancellationToken))state!;
+
         CancellationTokenRegistration registration;
         bool removed;
 
