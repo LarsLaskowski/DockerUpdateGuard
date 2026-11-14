@@ -252,6 +252,9 @@ it ([Integration failures](areas/integration-failures.md#logins-inside-a-retry-a
 The singleton `DockerHubAccessTokenCache` (`DockerHub\`) holds the Docker Hub web API token for all scopes
 ([Registries](areas/registries.md#authentication),
 [0023](decisions/0023-the-docker-hub-web-api-token-is-cached-process-wide-per-credentials.md)).
+The singleton `DockerHubRequestLimiter` (`DockerHub\`) bounds the Docker Hub requests in flight for the whole process
+([Registries](areas/registries.md#docker-hub-request-budget-and-parallelism),
+[0030](decisions/0030-docker-hub-request-parallelism-is-limited-process-wide-and-follows-reloads.md)).
 
 ## 7. Domain / orchestration layer and the scan engine
 

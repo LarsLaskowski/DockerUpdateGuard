@@ -123,7 +123,7 @@ Rules: [Registries](docs/areas/registries.md).
 | `UserName` | none | No | Docker Hub user name (Docker ID) for authenticated requests |
 | `Pat` | none | No | Docker Hub personal access token |
 | `RequestTimeoutSeconds` | `30` | No | Timeout of one Docker Hub, OCI registry or release-feed request, retries included |
-| `MaxParallelRequests` | `4` | No | Maximum logical request parallelism for registry operations |
+| `MaxParallelRequests` | `4` | No | Maximum number of Docker Hub requests in flight at once for the whole process (1–32); applied on configuration reload |
 
 ### `DockerUpdateGuard:ReleaseMetadata`
 

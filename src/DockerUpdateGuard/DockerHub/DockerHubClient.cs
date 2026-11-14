@@ -20,7 +20,7 @@ namespace DockerUpdateGuard.DockerHub;
 /// <summary>
 /// Conservative first iteration Docker Hub adapter
 /// </summary>
-public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient, IDisposable
+public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient
 {
     #region Constants
 
@@ -84,17 +84,9 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
     private readonly DockerHubAccessTokenCache _accessTokenCache;
 
     /// <summary>
-    /// Throttle bounding the number of concurrent outbound Docker Hub and registry requests
-    /// </summary>
-    private readonly SemaphoreSlim _requestThrottle;
-
-    // Skeleton: removed with the implementation
-#pragma warning disable S4487
-    /// <summary>
     /// Process-wide limiter of the Docker Hub requests in flight
     /// </summary>
     private readonly DockerHubRequestLimiter _requestLimiter;
-#pragma warning restore S4487
 
     #endregion // Fields
 
@@ -116,15 +108,12 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
                            DockerHubAccessTokenCache accessTokenCache,
                            DockerHubRequestLimiter requestLimiter)
     {
-        _requestLimiter = requestLimiter;
         _httpClient = httpClient;
         _logger = logger;
         _optionsMonitor = optionsMonitor;
         _loginRetryAfterRegistry = loginRetryAfterRegistry;
         _accessTokenCache = accessTokenCache;
-
-        var maxParallelRequests = Math.Max(1, optionsMonitor.CurrentValue.DockerHub.MaxParallelRequests);
-        _requestThrottle = new SemaphoreSlim(maxParallelRequests, maxParallelRequests);
+        _requestLimiter = requestLimiter;
     }
 
     #endregion // Constructors
@@ -921,7 +910,7 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
     /// <returns>HTTP response</returns>
     private async Task<HttpResponseMessage> SendThrottledAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
-        await _requestThrottle.WaitAsync(cancellationToken).ConfigureAwait(false);
+        await _requestLimiter.WaitAsync(cancellationToken).ConfigureAwait(false);
 
         try
         {
@@ -932,7 +921,7 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
         }
         finally
         {
-            _requestThrottle.Release();
+            _requestLimiter.Release();
         }
     }
 
@@ -1563,14 +1552,4 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
     }
 
     #endregion // IRegistryMetadataClient
-
-    #region IDisposable
-
-    /// <inheritdoc/>
-    public void Dispose()
-    {
-        _requestThrottle.Dispose();
-    }
-
-    #endregion // IDisposable
 }
