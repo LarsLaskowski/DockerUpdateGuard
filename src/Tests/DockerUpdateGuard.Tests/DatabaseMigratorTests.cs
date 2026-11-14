@@ -1,11 +1,16 @@
 using System.Data.Common;
 using System.Net.Sockets;
+using System.Runtime.CompilerServices;
 
 using DockerUpdateGuard.Configuration;
 using DockerUpdateGuard.Data;
+using DockerUpdateGuard.Tests.Data;
+using DockerUpdateGuard.Tests.Helper;
 
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
 using NSubstitute;
@@ -112,13 +117,18 @@ public class DatabaseMigratorTests
                                   MigrationRetryDelaySeconds = 0,
                               };
         var dbContext = new DockerUpdateGuardDbContext(options);
+        var startedAt = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        var timeProvider = Substitute.For<TimeProvider>();
         Exception? caught = null;
+
+        // The first read fixes the deadline, every later read is past it, so no real second has to elapse
+        timeProvider.GetUtcNow().Returns(startedAt, startedAt.AddHours(1));
 
         await using (dbContext.ConfigureAwait(false))
         {
             try
             {
-                await DatabaseMigrator.MigrateAsync(dbContext, databaseOptions, NullLogger.Instance, TimeProvider.System, CancellationToken.None)
+                await DatabaseMigrator.MigrateAsync(dbContext, databaseOptions, NullLogger.Instance, timeProvider, CancellationToken.None)
                                       .ConfigureAwait(false);
             }
             catch (InvalidOperationException exception)
@@ -129,6 +139,167 @@ public class DatabaseMigratorTests
 
         Assert.IsNotNull(caught,
                          "An unreachable database must surface a connection failure once the startup timeout elapses");
+    }
+
+    /// <summary>
+    /// Verify a lock held longer than the command timeout is polled until it is released
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC1")]
+    [TestCategory("AC6")]
+    public async Task DatabaseMigratorLockHeldLongerThanCommandTimeoutWaitsAndAcquiresAsync()
+    {
+        var databaseOptions = new DatabaseOptions
+                              {
+                                  MigrationLockTimeoutSeconds = 900,
+                                  MigrationRetryDelaySeconds = 5,
+                              };
+        var logger = new TestLogger<DatabaseMigratorTests>();
+        var clock = CreateLockClock(out var now);
+        var attempts = new StrongBox<int>();
+
+        var waitTask = StartLockWait(attempts, 10, databaseOptions, now.Value, logger, clock.TimeProvider, CancellationToken.None);
+
+        await DriveWaitsAsync(clock, now, TimeSpan.FromSeconds(5), waitTask).ConfigureAwait(false);
+        await waitTask.ConfigureAwait(false);
+
+        Assert.AreEqual(11, attempts.Value, "The lock must be tried ten times while held and once more when released");
+        Assert.HasCount(10,
+                        clock.Waits,
+                        "Every failed attempt must be followed by one wait");
+        Assert.IsTrue(clock.Waits.All(wait => wait == TimeSpan.FromSeconds(5)),
+                      "Every wait must last the configured retry delay");
+        Assert.AreSequenceEqual(Enumerable.Range(1, 10)
+                                          .Select(attempt => $"DockerUpdateGuard migration advisory lock is held by another instance; attempt {attempt} after {(attempt - 1) * 5} seconds, retrying in 5 seconds")
+                                          .ToArray(),
+                                logger.Entries.Where(entry => entry.EventId.Id == 1007)
+                                              .Select(entry => entry.Message)
+                                              .ToArray(),
+                                "Each failed attempt must log the attempt number and the seconds waited so far");
+        Assert.DoesNotContain(entry => entry.EventId.Id == 1008 || entry.EventId.Id == 1005,
+                              logger.Entries,
+                              "A lock that is acquired in time must log neither the timeout nor a migration failure");
+    }
+
+    /// <summary>
+    /// Verify a lock that is not acquired before the deadline fails with a logged error
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC2")]
+    [TestCategory("AC6")]
+    public async Task DatabaseMigratorLockNotAcquiredBeforeDeadlineFailsWithLoggedErrorAsync()
+    {
+        var databaseOptions = new DatabaseOptions
+                              {
+                                  MigrationLockTimeoutSeconds = 10,
+                                  MigrationRetryDelaySeconds = 5,
+                              };
+        var logger = new TestLogger<DatabaseMigratorTests>();
+        var clock = CreateLockClock(out var now);
+        var attempts = new StrongBox<int>();
+
+        var waitTask = StartLockWait(attempts, int.MaxValue, databaseOptions, now.Value, logger, clock.TimeProvider, CancellationToken.None);
+
+        await DriveWaitsAsync(clock, now, TimeSpan.FromSeconds(5), waitTask).ConfigureAwait(false);
+
+        var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => waitTask)
+                                    .ConfigureAwait(false);
+
+        Assert.AreEqual("The migration advisory lock was not acquired within 'DockerUpdateGuard:Database:MigrationLockTimeoutSeconds' (10 seconds); another instance may still be applying migrations",
+                        exception.Message,
+                        "The failure must name the configuration key and the configured timeout");
+        Assert.AreEqual(3, attempts.Value, "The lock must be tried at 0, 5 and 10 seconds");
+        Assert.HasCount(2,
+                        clock.Waits,
+                        "No wait may follow the attempt that reached the deadline");
+        Assert.HasCount(1,
+                        logger.Entries.Where(entry => entry.EventId.Id == 1008 && entry.LogLevel == LogLevel.Error),
+                        "The timeout must be logged once as an error");
+        Assert.Contains(entry => entry.EventId.Id == 1008
+                                 && entry.Message.Contains("within 10 seconds after 3 attempts", StringComparison.Ordinal),
+                        logger.Entries,
+                        "The timeout entry must carry the timeout and the number of attempts");
+    }
+
+    /// <summary>
+    /// Verify cancelling the token during a wait ends the wait without a further attempt
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC3")]
+    [TestCategory("AC6")]
+    public async Task DatabaseMigratorLockWaitCancelledStopsWaitingAsync()
+    {
+        var databaseOptions = new DatabaseOptions
+                              {
+                                  MigrationLockTimeoutSeconds = 900,
+                                  MigrationRetryDelaySeconds = 5,
+                              };
+        var logger = new TestLogger<DatabaseMigratorTests>();
+        var clock = CreateLockClock(out var now);
+        var attempts = new StrongBox<int>();
+
+        using (var cancellationTokenSource = new CancellationTokenSource())
+        {
+            var waitTask = StartLockWait(attempts, int.MaxValue, databaseOptions, now.Value, logger, clock.TimeProvider, cancellationTokenSource.Token);
+
+            var waitStarted = await clock.WaitForNextWaitAsync(waitTask).ConfigureAwait(false);
+
+            Assert.IsTrue(waitStarted, "The first failed attempt must start a wait");
+
+            await cancellationTokenSource.CancelAsync().ConfigureAwait(false);
+            await Assert.ThrowsAsync<OperationCanceledException>(() => waitTask).ConfigureAwait(false);
+        }
+
+        Assert.AreEqual(1, attempts.Value, "No attempt may follow the cancellation");
+        Assert.DoesNotContain(entry => entry.EventId.Id == 1008,
+                              logger.Entries,
+                              "A cancelled wait must not be reported as a timeout");
+    }
+
+    /// <summary>
+    /// Verify exhausted execution strategy retries are logged and rethrown unchanged
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC4")]
+    [TestCategory("AC6")]
+    public async Task DatabaseMigratorRetryLimitExceededIsLoggedAsync()
+    {
+        var retryLimitExceeded = new RetryLimitExceededException("retries exhausted", new InvalidOperationException("lock wait"));
+        var logger = new TestLogger<DatabaseMigratorTests>();
+        var startedAt = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        var timeProvider = Substitute.For<TimeProvider>();
+
+        timeProvider.GetUtcNow().Returns(startedAt);
+
+        var connection = new SqliteConnection("Data Source=:memory:");
+
+        await connection.OpenAsync(TestContext.CancellationToken)
+                        .ConfigureAwait(false);
+
+        using (connection)
+        {
+            var options = new DbContextOptionsBuilder<DockerUpdateGuardDbContext>().UseSqlite(connection,
+                                                                                              sqlite => sqlite.ExecutionStrategy(_ => new ThrowingExecutionStrategy(retryLimitExceeded, 1)))
+                                                                                   .Options;
+            var dbContext = new DockerUpdateGuardDbContext(options);
+
+            await using (dbContext.ConfigureAwait(false))
+            {
+                var thrown = await Assert.ThrowsExactlyAsync<RetryLimitExceededException>(() => DatabaseMigrator.MigrateAsync(dbContext, new DatabaseOptions(), logger, timeProvider, CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5), TestContext.CancellationToken))
+                                         .ConfigureAwait(false);
+
+                Assert.AreSame(retryLimitExceeded, thrown, "The exhausted retries must be rethrown as the same instance");
+            }
+        }
+
+        Assert.Contains(entry => entry.EventId.Id == 1005
+                                 && ReferenceEquals(entry.Exception, retryLimitExceeded),
+                        logger.Entries,
+                        "The exhausted retries must be logged as a migration failure with the exception");
     }
 
     /// <summary>
@@ -168,4 +339,72 @@ public class DatabaseMigratorTests
     }
 
     #endregion // Methods
+
+    #region Static methods
+
+    /// <summary>
+    /// Create a time provider whose current time a test moves forward by hand
+    /// </summary>
+    /// <param name="now">Current time of the returned provider</param>
+    /// <returns>Time provider recording every wait</returns>
+    private static WaitRecordingTimeProvider CreateLockClock(out StrongBox<DateTimeOffset> now)
+    {
+        var clock = new WaitRecordingTimeProvider();
+        var current = new StrongBox<DateTimeOffset>(new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero));
+
+        clock.TimeProvider.GetUtcNow().Returns(_ => current.Value);
+        now = current;
+
+        return clock;
+    }
+
+    /// <summary>
+    /// Start the lock wait with a try-lock that fails a number of times and then succeeds
+    /// </summary>
+    /// <param name="attempts">Counter of the try-lock calls</param>
+    /// <param name="failures">Number of calls that report the lock as held</param>
+    /// <param name="databaseOptions">Database options</param>
+    /// <param name="waitStartedAt">Time the wait started</param>
+    /// <param name="logger">Logger</param>
+    /// <param name="timeProvider">Time provider</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Task of the wait</returns>
+    private static Task StartLockWait(StrongBox<int> attempts,
+                                      int failures,
+                                      DatabaseOptions databaseOptions,
+                                      DateTimeOffset waitStartedAt,
+                                      ILogger logger,
+                                      TimeProvider timeProvider,
+                                      CancellationToken cancellationToken)
+    {
+        return Task.Run(() => DatabaseMigrator.WaitForMigrationLockAsync(_ => Task.FromResult(++attempts.Value > failures),
+                                                                         databaseOptions,
+                                                                         waitStartedAt,
+                                                                         logger,
+                                                                         timeProvider,
+                                                                         cancellationToken),
+                        CancellationToken.None);
+    }
+
+    /// <summary>
+    /// Move the clock by the delay of every started wait and let that wait elapse until the lock wait ends
+    /// </summary>
+    /// <param name="clock">Time provider recording the waits</param>
+    /// <param name="now">Current time of the clock</param>
+    /// <param name="delay">Delay of each wait</param>
+    /// <param name="waitTask">Task of the lock wait</param>
+    /// <returns>Task</returns>
+    private static async Task DriveWaitsAsync(WaitRecordingTimeProvider clock,
+                                              StrongBox<DateTimeOffset> now,
+                                              TimeSpan delay,
+                                              Task waitTask)
+    {
+        while (await clock.WaitForNextWaitAsync(waitTask).ConfigureAwait(false))
+        {
+            now.Value += delay;
+            clock.ElapseLastWait();
+        }
+    }
+
+    #endregion // Static methods
 }
