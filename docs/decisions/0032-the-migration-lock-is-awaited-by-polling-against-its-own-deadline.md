@@ -1,6 +1,6 @@
 # 0032: The migration lock is awaited by polling against its own deadline
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-14
 - **Area:** Hosting and configuration
 - **Source:** Issue #287
