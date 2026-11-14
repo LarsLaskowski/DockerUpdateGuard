@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-11-14
 - **Area:** Registries
-- **Source:** Issue #265
+- **Source:** Issue #265, Issue #462
 - **Supersedes:** —
 
 ## Context
@@ -35,12 +35,18 @@ limiter must not let a slot holder wait for that lock.
    raised one above the initial count is impossible without replacing it.
 5. **Register `DockerHubClient` as a singleton** — rejected in 0023 already: a typed `HttpClient` captured in a
    singleton never gets a new handler from the factory, and the limit would still be read only once.
+6. **The Docker Scout provider's Docker Hub login (#462): the same limiter, waited for after the `Retry-After` check and
+   held for the login call as sent today, its buffered body read included (chosen)** — the login goes to Docker Hub
+   with the Docker Hub credentials, so it belongs to the one limit; the span keeps `Vulnerabilities:RequestTimeoutSeconds`
+   over the body. Holding only until the headers would drop that timeout over the body; a `DelegatingHandler` on the
+   provider's client would count its Docker Scout API requests too, which #462 leaves uncounted; moving the login onto
+   `DockerHubClient` would merge two tokens and caches, beyond the issue.
 
 ## Decision
 
 Option 1: one process-wide `DockerHubRequestLimiter` bounds the requests every `DockerHubClient` instance sends to Docker
-Hub (web API, login, token service, registry) and takes a reloaded `MaxParallelRequests` for the next admission; the
-client owns no throttle of its own. The behavior is described in
+Hub (web API, login, token service, registry) and, by option 6, the Docker Scout provider's Docker Hub login, and takes
+a reloaded `MaxParallelRequests` for the next admission; neither owns a throttle of its own. The behavior is described in
 [Registries](../areas/registries.md#docker-hub-request-budget-and-parallelism).
 
 ## Consequences
@@ -52,4 +58,6 @@ client owns no throttle of its own. The behavior is described in
   low limit and many concurrent operations a login is more likely to time out than before.
 - A slot is held through the retries and `Retry-After` waits of a request, so a 429 storm slows every Docker Hub caller
   of the process; revisit with option 2 (inside the retry handler) if that proves too strict.
-- Requests to other registries and the Docker Scout provider's own Docker Hub login are not counted.
+- Requests to other registries and the Docker Scout API requests are not counted. The Docker Scout login waits for its
+  slot while it holds the provider's own login lock; no slot holder waits for that lock, so the two cannot block each
+  other, and its slot wait lies outside `Vulnerabilities:RequestTimeoutSeconds`.

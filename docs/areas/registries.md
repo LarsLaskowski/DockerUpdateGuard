@@ -200,13 +200,14 @@ go through its retry of transient HTTP failures.
   (token, manifests, configuration blobs, tag lookups and listings), manual scans are not limited, and no request is
   refused for budget reasons.
 - `DockerUpdateGuard:DockerHub:MaxParallelRequests` (default 4, range 1–32) caps the Docker Hub requests in flight at
-  once for the whole process, over every Docker Hub client instance and scope (web API, login, token service and
-  registry requests). A slot is held from sending until the response headers arrive, retries and `Retry-After` waits
-  included, the body read not. Waiters are admitted in arrival order, and the wait honors cancellation. A configuration
+  once for the whole process, over every Docker Hub client instance and scope (the Docker Hub client's web API, login,
+  token service and registry requests) and the Docker Scout provider's login. A slot of the Docker Hub client is held
+  from sending until the response headers arrive, retries and `Retry-After` waits included, the body read not; the
+  slot of the Docker Scout login covers the whole login call, its buffered body read included. Waiters are admitted in arrival order, and the wait honors cancellation. A configuration
   reload applies to the next admission: raised, waiting requests are admitted at once; lowered, requests in flight
   finish and new ones wait until the count is below the new value
   ([0030](../decisions/0030-docker-hub-request-parallelism-is-limited-process-wide-and-follows-reloads.md)). Requests
-  to other registries and the Docker Scout provider's requests are not capped.
+  to other registries and the Docker Scout provider's vulnerability requests are not capped.
 - Docker Hub rate limiting (HTTP 429) is handled by the retry of
   [Integration failures](integration-failures.md#retry-of-transient-http-failures); the web API login additionally
   honors a `Retry-After` window ([Integration failures](integration-failures.md#logins-inside-a-retry-after-window)).
@@ -216,7 +217,8 @@ go through its retry of transient HTTP failures.
 - `DockerUpdateGuard:DockerHub:RequestTimeoutSeconds` (default 30, range 1–300) is the total time one request may
   take including all retries and waits ([Integration failures](integration-failures.md#retry-of-transient-http-failures)),
   for Docker Hub, other registries and the release feeds. The wait for a Docker Hub request slot
-  (`MaxParallelRequests`) is not part of it, except for the login ([Authentication](#authentication)).
+  (`MaxParallelRequests`) is not part of it, except for the Docker Hub client's login ([Authentication](#authentication)).
+  The wait for a slot before the Docker Scout login lies outside `Vulnerabilities:RequestTimeoutSeconds`.
 
 ### Configuration reload
 
