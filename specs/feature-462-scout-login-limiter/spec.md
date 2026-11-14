@@ -1,7 +1,7 @@
 # Spec: Count Docker Scout's Docker Hub login against DockerHub:MaxParallelRequests
 
 Source: Issue #462
-Status: Draft
+Status: Approved by Lead
 
 ## Problem
 
