@@ -2288,6 +2288,73 @@ public partial class OciRegistryClientTests
     }
 
     /// <summary>
+    /// Verify every OCI call throws the caller's cancellation and logs no failure warning
+    /// </summary>
+    /// <param name="operation">Name of the call</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC3")]
+    [DataRow("Tag")]
+    [DataRow("Tags")]
+    [DataRow("Configuration")]
+    public async Task OciRegistryClientCallCallerCancelledThrowsOperationCanceledExceptionAsync(string operation)
+    {
+        var logger = new TestLogger<OciRegistryClient>();
+
+        using var callerCancellation = new CancellationTokenSource();
+        using var handler = new DelegateHttpMessageHandler(_ => CancelCaller(callerCancellation));
+        using var httpClient = CreateRegistryHttpClient(handler);
+
+        var client = new OciRegistryClient(httpClient, logger);
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() => RunCallAsync(client, operation, callerCancellation.Token),
+                                                             $"The {operation} call must let the caller's cancellation propagate").ConfigureAwait(false);
+
+        Assert.DoesNotContain(entry => entry.EventId.Id == 2100, logger.Entries, "A cancellation by the caller must not be logged as a failed call");
+    }
+
+    /// <summary>
+    /// Verify a cancellation by the caller during a tag's manifest lookup is not swallowed as a tag listed by name
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC3")]
+    public async Task OciRegistryClientGetTagsAsyncCallerCancelledDuringTagLookupThrowsOperationCanceledExceptionAsync()
+    {
+        var logger = new TestLogger<OciRegistryClient>();
+
+        using var callerCancellation = new CancellationTokenSource();
+        using var handler = new DelegateHttpMessageHandler(request => request.RequestUri!.AbsolutePath.EndsWith("/tags/list", StringComparison.Ordinal)
+                                                                          ? CreateTagListResponse("""{ "name": "mssql/server", "tags": [ "1.0", "2.0" ] }""", null)
+                                                                          : CancelCaller(callerCancellation));
+        using var httpClient = CreateRegistryHttpClient(handler);
+
+        var client = new OciRegistryClient(httpClient, logger);
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() => client.GetTagsAsync("mcr.microsoft.com", "mssql/server", cancellationToken: callerCancellation.Token),
+                                                             "The cancellation inside a tag lookup must propagate out of the tag listing").ConfigureAwait(false);
+
+        Assert.DoesNotContain(entry => entry.EventId.Id == 2100, logger.Entries, "A cancellation by the caller must not be logged as a failed call");
+    }
+
+    /// <summary>
+    /// Verify a missing image reference is refused with an argument null exception for the tag lookup
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC9")]
+    public async Task OciRegistryClientGetTagAsyncNullReferenceThrowsArgumentNullExceptionAsync()
+    {
+        using var handler = new DelegateHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK));
+        using var httpClient = CreateRegistryHttpClient(handler);
+
+        var client = new OciRegistryClient(httpClient, new TestLogger<OciRegistryClient>());
+
+        await Assert.ThrowsExactlyAsync<ArgumentNullException>(() => client.GetTagAsync(null!, "linux", "amd64", TestContext.CancellationToken),
+                                                               "A missing reference must stay an argument error and not become a failed result").ConfigureAwait(false);
+    }
+
+    /// <summary>
     /// Verify a tag list whose entries are not strings is answered as an unexpected error
     /// </summary>
     /// <returns>Task</returns>
@@ -2351,6 +2418,7 @@ public partial class OciRegistryClientTests
     [TestCategory("AC6")]
     [DataRow("""{ "access_token": "mcr-token", "expires_in": "300" }""")]
     [DataRow("""{ "access_token": "mcr-token", "expires_in": 300, "issued_at": "9999-12-31T23:59:59Z" }""")]
+    [DataRow("""{ "access_token": "mcr-token", "expires_in": 99999999999 }""")]
     public async Task OciRegistryClientGetTagAsyncTokenExpiresInNotNumberSucceedsAsync(string tokenJson)
     {
         using var handler = new SequenceHttpMessageHandler();
@@ -2719,6 +2787,18 @@ public partial class OciRegistryClientTests
                {
                    Timeout = TimeSpan.FromSeconds(30),
                };
+    }
+
+    /// <summary>
+    /// Cancel the caller's token and raise the cancellation the way a cancelled request does
+    /// </summary>
+    /// <param name="callerCancellation">Cancellation source of the caller</param>
+    /// <returns>Never returns</returns>
+    private static HttpResponseMessage CancelCaller(CancellationTokenSource callerCancellation)
+    {
+        callerCancellation.Cancel();
+
+        throw new OperationCanceledException(callerCancellation.Token);
     }
 
     /// <summary>

@@ -2782,6 +2782,75 @@ public partial class DockerHubClientTests
     }
 
     /// <summary>
+    /// Verify every Docker Hub call throws the caller's cancellation and logs no failure warning
+    /// </summary>
+    /// <param name="operation">Name of the call</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC3")]
+    [DataRow("CurrentUser")]
+    [DataRow("Repositories")]
+    [DataRow("Repository")]
+    [DataRow("Tag")]
+    [DataRow("Tags")]
+    [DataRow("ImageConfiguration")]
+    public async Task DockerHubClientCallCallerCancelledThrowsOperationCanceledExceptionAsync(string operation)
+    {
+        var logger = new TestLogger<DockerHubClient>();
+
+        using var callerCancellation = new CancellationTokenSource();
+        using var handler = new DelegateHttpMessageHandler(request => CreateHubResponse(request,
+                                                                                        () =>
+                                                                                        {
+                                                                                            callerCancellation.Cancel();
+
+                                                                                            throw new OperationCanceledException(callerCancellation.Token);
+                                                                                        }));
+        using var httpClient = CreateHubHttpClient(handler);
+
+        var client = CreateClient(httpClient, logger: logger);
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() => RunCallAsync(client, operation, "docker.io", callerCancellation.Token),
+                                                             $"The {operation} call must let the caller's cancellation propagate").ConfigureAwait(false);
+
+        Assert.DoesNotContain(entry => entry.EventId.Id == 3213, logger.Entries, "A cancellation by the caller must not be logged as a failed call");
+    }
+
+    /// <summary>
+    /// Verify a blank account is refused with an argument exception before any request
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC9")]
+    public async Task DockerHubClientGetRepositoriesAsyncBlankAccountThrowsArgumentExceptionAsync()
+    {
+        using var handler = new DelegateHttpMessageHandler(request => CreateHubResponse(request, () => CreateJsonResponse("{}")));
+        using var httpClient = CreateHubHttpClient(handler);
+
+        var client = CreateClient(httpClient);
+
+        await Assert.ThrowsExactlyAsync<ArgumentException>(() => client.GetRepositoriesAsync(" ", TestContext.CancellationToken),
+                                                           "A blank account must stay an argument error and not become a failed result").ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Verify a missing image reference is refused with an argument null exception for the image configuration
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC9")]
+    public async Task DockerHubClientGetImageConfigurationAsyncNullReferenceThrowsArgumentNullExceptionAsync()
+    {
+        using var handler = new DelegateHttpMessageHandler(request => CreateHubResponse(request, () => CreateJsonResponse("{}")));
+        using var httpClient = CreateHubHttpClient(handler);
+
+        var client = CreateClient(httpClient);
+
+        await Assert.ThrowsExactlyAsync<ArgumentNullException>(() => client.GetImageConfigurationAsync(null!, TestContext.CancellationToken),
+                                                               "A missing reference must stay an argument error and not become a failed result").ConfigureAwait(false);
+    }
+
+    /// <summary>
     /// Verify a tag page that is a JSON array instead of an object is answered as an unexpected error
     /// </summary>
     /// <returns>Task</returns>
