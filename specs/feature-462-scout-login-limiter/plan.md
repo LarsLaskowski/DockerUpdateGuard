@@ -145,3 +145,25 @@ parameter from the existing singleton.
 ## Out of scope / follow-ups
 
 As the spec's *Out of scope*.
+
+## Challenge notes
+
+Devil's Advocate, mode `plan`, for feature 462 (`/home/user/DockerUpdateGuard/specs/feature-462-scout-login-limiter/plan.md`).
+
+The plan holds up. I checked each of its verified facts that the change depends on against the code, and all are correct:
+
+- **Login path:** the login is sent at `DockerScoutVulnerabilityProvider.cs:267` with `PostAsJsonAsync`. The client comes from `CreateClient()` at :483 and its timeout is set at :485.
+- **Where the wait goes:** the `Retry-After` check runs at :315–321, under `_tokenSemaphore` (:302), before `AuthenticateAsync`. A wait placed inside `AuthenticateAsync` therefore never runs for a cached token or a deferred login (AC3).
+- **Cancellation:** a caller's cancellation is rethrown at :523–526.
+- **Release is safe:** `Release()` throws only when no slot is taken (`DockerHubRequestLimiter.cs:175–178`). It cannot happen after a granted `WaitAsync`.
+- **No deadlock:** `SendThrottledAsync` (`DockerHubClient.cs:911–926`) holds a slot only for its own `SendAsync`, and no slot holder calls the Scout provider. Holding `_tokenSemaphore` while waiting for a slot cannot deadlock.
+- **Dependency injection:** the limiter and the provider are singletons (`ServiceCollectionExtensions.cs:105`, `:112`).
+- **Call sites:** the four existing constructor calls are exactly the ones the plan lists (`DockerScoutVulnerabilityProviderTests.cs:600` and `:1463`, `DockerScoutTokenExpiryTests.cs:158`, `VulnerabilityProviderResolverTests.cs:83`). Each has an options monitor at hand. Building `new DockerHubRequestLimiter(...)` inline already happens in `DockerHubClientTests.cs:3265`.
+- **Record 0030 is unreleased:** no tag contains 6b97e2a, so editing it in place is allowed.
+- **Tier:** `standard` matches the `.squad/routing.md` table (line 88). No security control changes.
+
+Minor objections (for the plan's *Challenge notes*):
+
+1. **minor: cancellation assertion type.** For DockerScoutVulnerabilityProviderCancelledWhileWaitingForSlotSendsNoLoginAsync, use `Assert.ThrowsAsync<OperationCanceledException>`, not `ThrowsExactlyAsync`. The limiter cancels a queued waiter with `TrySetCanceled` (`DockerHubRequestLimiter.cs:110`), so the exception is a `TaskCanceledException`, and the provider rethrows it unchanged (provider :523–526). An exact-type assertion on `OperationCanceledException` would fail. `DockerHubRequestLimiterTests.cs:127` uses the same pattern. Why minor: it is a test detail the Tester can follow without a plan change.
+2. **minor: how the DI test checks the limiter.** In ServiceCollectionExtensionsDockerScoutProviderSharesDockerHubRequestLimiter, resolve `DockerScoutVulnerabilityProvider` and `DockerHubRequestLimiter` from the same root provider. Then assert `AreSame` using the existing reflection helper `GetRequestLimiter` (`ServiceCollectionExtensionsTests.cs:199–205`, which finds the field by type). Do not add a public accessor to the provider: the plan's *Signatures* allow no other API change. Why minor: the plan names the test but not how it observes the private field.
+3. **minor: one more sentence in the Registries document.** In `docs/areas/registries.md`, qualify line 205 as well: "A slot is held from sending until the response headers arrive, retries and `Retry-After` waits included, the body read not". After this change that is true only for the Docker Hub client. The Scout login's slot also covers the buffered body. The plan's *Documentation updates* adds the Scout sentence and rewrites line 209, but does not mention line 205, which would then contradict it. Also keep the client list on line 204, "(web API, login, token service and registry requests)", clearly about the Docker Hub client. Why minor: it is wording the Dev can fix in the same documentation task.
