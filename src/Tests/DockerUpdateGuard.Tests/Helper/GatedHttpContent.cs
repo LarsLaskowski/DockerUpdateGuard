@@ -11,7 +11,14 @@ internal sealed class GatedHttpContent : HttpContent
 {
     #region Fields
 
+    /// <summary>
+    /// Task that completes when the content may be read
+    /// </summary>
     private readonly Task _gate;
+
+    /// <summary>
+    /// UTF-8 bytes of the JSON content
+    /// </summary>
     private readonly byte[] _bytes;
 
     #endregion // Fields
