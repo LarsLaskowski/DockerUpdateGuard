@@ -173,8 +173,10 @@ one explicitly opened connection and one retriable unit. Layering unchanged.
 ## Security considerations
 
 - [x] No limits on parsed input.
-- [x] Exceptions reaching a message: none user-visible (startup failure, before requests are served); log texts are
-  the fixed templates above and the AC2 exception text, which name a key and a configured number only.
+- [x] Exceptions reaching a message: none user-visible (startup failure, before requests are served); 1007,
+  1008 and the AC2 exception text carry only a key name and numbers; 1005 now logs every non-cancellation
+  exception with its message (a RetryLimitExceededException's inner Npgsql error can name the database host,
+  as the telemetry area allows for failed database calls), never the connection string.
 
 ## Decision records
 
@@ -209,3 +211,57 @@ Objections:
 The plan otherwise holds up. The two claims it leaves unverified are already assigned:
 - Fact 11 (`SqlQuery<bool>` runs on the opened connection) is checked by the Reviewer in the manual AC7 run.
 - Fact 14 (whether `ApplicationStopping` fires before `RunAsync()`) is checked by the Dev before writing the shutdown sentence in `docs/areas/hosting.md`.
+
+## Security notes
+
+## Security plan review: issue #287 (mode `plan`)
+
+I reviewed `/home/user/DockerUpdateGuard/specs/issue-287/plan.md` as of commit `aa0e35f`. The later commit `b12f13b` only adds the Devil's Advocate challenge notes, and I did not review those. I checked the plan against `src/DockerUpdateGuard/DatabaseMigrator.cs`, `HostLoggingExtensions.cs`, `.squad/project.md` (*Security areas*, *Guarantees*), `docs/areas/hosting.md` (*Startup sequence*) and `docs/areas/telemetry.md` (*Credentials and external data*).
+
+### Tier and areas
+- **Tier `standard` is correct.** The migration advisory lock only coordinates instances. It does not decide what an attacker may reach, so it is not a security control under the `security` row of *Tiers*. No control is created, changed or removed.
+- **The listed areas are complete.** They are *Database and migrations* and *Logging and telemetry of external data*. The plan adds no dependency and changes no CI, Docker or build configuration. The `appsettings.json` key is plain configuration.
+
+### Measurement (fact 11, which the migration-serialization guarantee rests on)
+I ran this once on a scratch PostgreSQL 16.15 (`initdb` and `pg_ctl` as user `postgres`, TCP port 55432). The harness was a scratch console app outside the repository: `Microsoft.EntityFrameworkCore.Relational` 10.0.15 and `Npgsql.EntityFrameworkCore.PostgreSQL` 10.0.3, `UseNpgsql(...; Command Timeout=5, o => o.EnableRetryOnFailure())`. Inside `strategy.ExecuteAsync` it does `OpenConnectionAsync`, then polls `SqlQuery<bool>($"SELECT pg_try_advisory_lock({Key}) AS \"Value\"").ToListAsync()` every 2 s, then reads `pg_locks` and unlocks in `finally`.
+
+The holder ran `psql -h 127.0.0.1 -p 55432 -U postgres -c "SELECT pg_advisory_lock(5410320540103205), pg_backend_pid(); SELECT pg_sleep(9);"` in the background, so it used today's blocking call. Then `dotnet bin/Release/net10.0/harness.dll`. Output excerpt:
+
+```
+Executed DbCommand (11ms) [Parameters=[p0='?' (DbType = Int64)], CommandType='Text', CommandTimeout='5']
+SELECT pg_try_advisory_lock(@p0) AS "Value"
+MEASURE backend pid=1711
+MEASURE attempt=1 t=0.0s got=False pid=1711
+...
+MEASURE attempt=4 t=6.0s got=False pid=1711
+MEASURE attempt=5 t=8.1s got=True pid=1711
+MEASURE lock holders: 1711
+SELECT pg_advisory_unlock(@p0)
+MEASURE done
+holder: pg_backend_pid 1696
+afterwards: SELECT count(*) FROM pg_locks WHERE locktype='advisory'  ->  0
+```
+
+What this shows:
+- The try-lock runs on the explicitly opened connection: the backend pid is the same for every attempt and is the lock holder in `pg_locks`.
+- The key is sent as an `Int64` parameter, so no SQL is built from text.
+- Polling continues past the 5 s command timeout.
+- `pg_try_advisory_lock` competes correctly with an instance still on the blocking `pg_advisory_lock`, so a mixed-version rollout stays serialized.
+- After release and close, no advisory lock is left.
+
+I also checked the deadline and cancellation path, where `finally` unlocks a lock this session never got. `psql ... -c "SELECT pg_advisory_unlock(5410320540103205)"` returns `f` with `WARNING: you don't own a lock of type ExclusiveLock` and raises no exception. So event 1006 is not logged and the AC2 exception is not hidden.
+
+The Reviewer's AC7 manual check is still worth running on the built head. With the measurement above, fact 11 no longer blocks this plan.
+
+### Other checks
+- **Logging.** Events 1007 and 1008 carry only `attempt`, `elapsedSeconds`, `delaySeconds`, `timeoutSeconds` and `attempts`. None of these is on the sensitive-name list (`.squad/stack.md`, *Logger arguments*). The AC2 exception text names only a key and a configured number. No connection string, host or credential appears.
+- **SQL.** The only new statement takes a compile-time constant through a `FormattableString` and is parameterized, as measured above. No user input reaches a query.
+- **Bounds.** `MigrationLockTimeoutSeconds` must be greater than zero. Even `int.MaxValue` seconds added to the start time stays within the `DateTimeOffset` range. A database user holding the lock now fails startup after the configured deadline instead of after about 6–7 minutes, which is the intended, logged failure.
+
+### Findings
+1. **[NON-BLOCKING]** plan.md, *Security considerations*, second bullet. It says the log texts are "the fixed templates above and the AC2 exception text". Approach 2, however, widens 1005 from `DbException`/`InvalidOperationException` to every exception except cancellation, and logs it with its message. That includes `RetryLimitExceededException`, whose inner `NpgsqlException` can name the database host. `docs/areas/telemetry.md` allows exception messages naming a database host on the error entries of failed integration calls, so this is allowed. The bullet just does not say so.
+   - Smallest fix, which I recommend making now, verbatim. Replace the bullet with:
+     `- [x] Exceptions reaching a message: none user-visible (startup failure, before requests are served); 1007,
+       1008 and the AC2 exception text carry only a key name and numbers; 1005 now logs every non-cancellation
+       exception with its message (a RetryLimitExceededException's inner Npgsql error can name the database host,
+       as the telemetry area allows for failed database calls), never the connection string.`
