@@ -18,3 +18,4 @@ are quoted in full.
 | 2026-11-14 21:41 | 8 Review | Reviewer | VERDICT: BLOCKING 2 \| NON-BLOCKING 1 on 5a29164b71c9e85d14fe5676990e8d5049d02124; all three verbatim documentation fixes applied by the orchestrator (opus/medium · 64,376 tokens · 8 tool uses · 73 s · 16 in · 7,236 out · 324,102 cache read · 62,386 cache write · 260,767 weighted) |
 | 2026-11-14 21:41 | 8 Verbatim | Orchestrator | verbatim: [BLOCKING, verbatim] docs/decisions/0033…md:45-46, docs/areas/hosting.md:213; [NON-BLOCKING, verbatim] .squad/project.md:148 |
 | 2026-11-14 21:43 | 7 Gate stamp | Orchestrator | PASS on 54abcdfc1de83ae6b49f77acff5bde52aafd1636 (tier standard, verbatim): Format check pass; decision-check.py pass; scope-check.py pass |
+| 2026-11-14 21:43 | 8 Verbatim | Orchestrator | verbatim: [BLOCKING, verbatim] docs/areas/hosting.md:213 (second blocking finding, applied in the same commit) |
