@@ -146,3 +146,4 @@ line here: the double, where it lives and what it stands in for; how it behaves 
 - `SqliteTestDatabase` (`Data/` of both test projects) — the PostgreSQL database, as SQLite
 - `ThrowingExecutionStrategy` (`Helper/`) — the EF Core execution strategy, which fails every operation after the first ones with a given exception
 - `CommandTimeoutRecordingInterceptor` (`Helper/`) — the EF Core command pipeline, which records each executed command's timeout and fails every command with its own exception
+- `ContainerActionRunWriteFailingInterceptor` (`Helper/`) — the database's save of a container action run, which fails for the given statuses in every context and scope
