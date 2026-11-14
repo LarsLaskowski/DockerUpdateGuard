@@ -235,3 +235,65 @@ registry clients; reasons stay fixed (0009); layering and the `ExternalOperation
   carries no credential and is documented.
 - An empty JWT payload segment (`header..signature`) raises the `ArgumentException` of `DecodeBase64Url`'s guard and
   now reads `unexpected error`; Docker Hub issues no such token.
+
+## Challenge notes
+
+Devil's Advocate, mode plan, specs/issue-272 (/home/user/DockerUpdateGuard/specs/issue-272/plan.md)
+
+I checked the plan against the code and it holds up. Every claim I tested is correct:
+- Both `ExecuteAsync` wrappers catch only `JsonException`: DockerHubClient.cs:1075-1090 and OciRegistryClient.cs:1196-1211.
+- Docker Hub `GetImageConfigurationAsync` filters with `is not OperationCanceledException` and passes `timeout: null`: DockerHubClient.cs:1537-1541.
+- The login timeout uses a linked source and leaves the caller's token alone (DockerHubAccessTokenCache.cs:141-144). The wrapper, with `FromException(…, _httpClient.Timeout, token)`, therefore returns `timed out after 30 seconds`. The adapted test at DockerHubClientTests.cs:2659 already sets `Timeout = 30 s`.
+- `DecodeBase64Url` turns `@@@` into `@@@=`, which throws `FormatException` (:89-99).
+- `TryGetProperty` on a root that is an array throws, so AC4's Docker Hub `[]` page fails as planned (DockerHubClient.cs:545). OCI `GetString()` on numbers throws at :589 and :821.
+- The nested OCI `GetTagsAsync` → `GetTagAsync` passes the caller's token, so AC3 and AC8 hold (OciRegistryClient.cs:1150-1190).
+- Event 3212 is used only by DockerHubClient.cs:1539, DockerHubClientLogging.cs:130 and the test at DockerHubClientTests.cs:1453. No document lists it.
+- No other production consumer relies on these exceptions. RegistryBaseImageResolver branches on the result status, and Scout has its own handler. No other test pins a thrown exception except the two the plan adapts and the cache test it keeps.
+- The catch-all keeps the argument guards throwing, because they sit outside the wrapper.
+
+Objections:
+
+1. minor — OCI token expiry has a second field that can break: `issued_at` (OciRegistryClient.cs:549-556). AC6 makes `expires_in` tolerant but leaves `issued_at` alone. `DateTimeOffset.TryParse` accepts `issued_at` "9999-12-31T23:59:59Z" (and "0001-01-01T00:00:00Z"). The next step, `issuedAtUtc.AddSeconds(expiresInSeconds) - _tokenExpiryBuffer`, then throws `ArgumentOutOfRangeException`. After this change that turns the lookup into *failed* `unexpected error` instead of an unknown value, which goes against registries.md:253 ("mistyped fields are treated as unknown values"). Why minor: the catch-all already stops the exception escaping, so only the outcome differs. Instruction for the Dev: in step 4, also fall back to the current time (the existing behaviour for an unreadable `issued_at`) when `issued_at` plus `expires_in` would leave `DateTimeOffset`'s range. Instruction for the Tester: add a row to `OciRegistryClientGetTagAsyncTokenExpiresInNotNumberSucceedsAsync` with `issued_at` "9999-12-31T23:59:59Z" and assert that the lookup succeeds.
+
+2. minor — The issue's criterion "a JWT whose payload is not valid base64/JSON yields Failed" is tested only for the base64 half (AC5). A payload that decodes as base64url but is not JSON reaches `JsonDocument.Parse` (DockerHubAccessTokenCache.cs:207). The `JsonException` it raises is caught by today's wrapper, so the case passes today, but nothing pins it. Why minor: there is no defect, only a regression pin missing from the issue's own criterion. Instruction for the Tester: add a row to `DockerHubClientGetTagAsyncAccessTokenPayloadNotBase64ReturnsInvalidResponseAsync` whose payload segment is the base64url of `not json`. Assert `invalid response` and that the next call logs in again.
+
+## Security notes
+
+Security plan review: specs/issue-272/plan.md and docs/decisions/0029-registry-calls-answer-every-error-but-the-callers-cancellation-as-failed.md (mode `plan`, round 1)
+
+I found no blocking issues. There are two non-blocking findings below.
+
+**Tier and listed security areas**
+- `standard` is the right tier. Nothing here adds, changes or removes a security control in the sense of the `security` row (.squad/routing.md:87). The change is about how errors are handled.
+- The tolerant `exp` and `expires_in` reading does change how long an access token stays cached. Now a token with an unreadable expiry is kept for the existing 5-minute fallback, where today an exception escapes. That is not a credential-handling control: the server still decides whether the token is valid, and the same fallback already applies when `exp` is missing.
+- The base64url failure still caches nothing. The throw happens before `Volatile.Write`, and the lock is released in `finally` (DockerHubAccessTokenCache.cs, `GetOrRequestAsync`).
+- The four security areas the plan lists are complete. Docker Scout, `TransientHttpRetryHandler`, `PaginationLinkGuard` and `FailureReason` are not changed.
+
+**Checks that passed (what I read)**
+- **Fixed reasons only.** `FailureReason.FromException` (src/DockerUpdateGuard/Infrastructure/FailureReason.cs) passes exception text only for a `ReportableException`. A grep for `new ReportableException` / `: ReportableException` finds only DockerInstanceClient, ImageRegistrationService and PortainerAuthenticationException, none of them reachable from the nine calls. Every other exception gets a fixed reason, so result messages cannot carry remote text or credentials.
+- **Caller cancellation.** `catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }` comes before the catch-all, and the caller's token is passed into both wrappers, so cancellation still propagates through the nested OCI wrappers (`GetTagsAsync` → `GetTagAsync`). AC3 covers this, including cancellation during a tag lookup.
+- **PAT and tokens.** The PAT goes only into the Basic `Authorization` header (DockerHubClient.cs `GetRegistryTokenAsync`) and the login request. Transport exceptions do not carry headers or bodies. The new `JsonException("The access token payload is not base64url", FormatException)` has a fixed message, and the `FormatException` from `Convert.FromBase64String` does not repeat its input. The OCI token request URI (fact 15) carries only `service`/`scope`, is already documented, and is unchanged.
+- **Logging.** Events 3213 and 2100 keep their templates (`OperationName`, `TargetName`). No argument name is on the sensitive-name list. 3212, which is deleted, logged the same `FullReference`. The exceptions that now go to 3213/2100 were previously escaping to the orchestrators' handlers, so nothing new reaches the log.
+- **Measurement rule.** No security property depends on measured library behavior. Whether a cancellation is rethrown is decided by the caller's token, not by the shape of the `TaskCanceledException` from `HttpClient.Timeout`; fact 8 only affects which fixed reason is chosen. I ran no measurement.
+
+**Non-blocking findings**
+
+1. **AC7 checks the formatted log message but not the logged exception chain.** The plan's security section says the exception goes to the log only, so the exception (and its `ToString()`, also exported over OTLP) is what the log actually carries. For the transport and timeout rows the test double makes the exception, so checking it would prove nothing. For the AC5 row, though, the code under test makes the exception: the new `JsonException` and its inner `FormatException`.
+   - Smallest fix: in `DockerHubClientCallFailureMessagesOmitPatAndTokenAsync`, for the "token payload not base64url" row, also assert that the captured log entry's `Exception?.ToString()` contains neither `dckr_pat_FAKE272SECRET` nor the token.
+   - Recommendation: fix now (Tester, step 5).
+
+2. **OCI `issued_at` + `expires_in` can overflow, so the AC6 rule is not fully met.** `OciRegistryClient.GetTokenExpirationUtc` (src/DockerUpdateGuard/Images/OciRegistryClient.cs:548-556) parses `issued_at` from the remote answer and calls `issuedAtUtc.AddSeconds(expiresInSeconds)`. With `issued_at` near 9999-12-31 this throws `ArgumentOutOfRangeException`. The plan already fixes the matching Docker Hub case (`exp` beyond 253402300799). After this change that OCI answer becomes a failed result reading `unexpected error`, not an escape, so it is not a security defect. It does contradict the rule AC6 cites: "mistyped fields are unknown values".
+   - Smallest fix, in approach step 4: use the fallback lifetime when `issued_at` is more than `int.MaxValue` seconds before `DateTimeOffset.MaxValue`, or compute the sum in a `checked` range test.
+   - Recommendation: fix now if the Lead extends AC6 by one row; otherwise open a linked issue.
+
+**Note, no finding: resource bound in 0029, consequence 3**
+An OCI listing whose tag lookups time out now costs one timeout per inspected tag instead of failing at the first one. Without query bounds that is up to 1000 pages × 100 tags (`PaginationLinkGuard.MaxListingPages` = 1000) × `RequestTimeoutSeconds` (≤ 300). That risk already exists: a registry that answers each manifest just before the timeout with a 5xx gets the same per-tag cost today, because non-success tags are already listed by name. So the change adds no new denial-of-service class, and 0029 records the trade-off. A total time budget per listing would be general hardening and belongs in a separate issue, not in this change.
+
+Files reviewed:
+- /home/user/DockerUpdateGuard/specs/issue-272/plan.md
+- /home/user/DockerUpdateGuard/docs/decisions/0029-registry-calls-answer-every-error-but-the-callers-cancellation-as-failed.md
+- /home/user/DockerUpdateGuard/src/DockerUpdateGuard/Infrastructure/FailureReason.cs
+- /home/user/DockerUpdateGuard/src/DockerUpdateGuard/DockerHub/DockerHubAccessTokenCache.cs
+- /home/user/DockerUpdateGuard/src/DockerUpdateGuard/DockerHub/DockerHubClient.cs
+- /home/user/DockerUpdateGuard/src/DockerUpdateGuard/DockerHub/DockerHubClientLogging.cs
+- /home/user/DockerUpdateGuard/src/DockerUpdateGuard/Images/OciRegistryClient.cs
