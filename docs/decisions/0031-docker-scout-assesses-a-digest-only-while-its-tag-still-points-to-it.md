@@ -1,6 +1,6 @@
 # 0031: Docker Scout assesses a digest only while its tag still points to it
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-14
 - **Area:** Vulnerabilities
 - **Source:** Issue #267
