@@ -2,44 +2,35 @@
 
 Source: Issue #280 | [spec.md](spec.md)
 Tier: security — the change adds guards that decide what anyone on the network may do to a container (the action allow-list, the server-side target, instance and in-progress checks) on a page reachable without sign-in.
-Security areas touched: Container actions (`Portainer/`, the runtime container detail page that now triggers them); Secrets in configuration (Portainer credentials used by the new calls); Database and migrations (new writes of `ContainerActionRuns` and a startup step, no schema change); Logging and telemetry of external data (new log events, the `portainer.action` span with container names); Failure messages and remote text (new outcome messages shown on a page and stored)
+Security areas touched: Container actions (`Portainer/`, the detail page that triggers them); Insecure Portainer HTTP (the 3311 warning in `CreateAuthenticatedClientAsync`, now reached by both new members); Secrets in configuration (Portainer credentials); Database and migrations (new run writes, a startup step, no schema change); Logging and telemetry of external data (new log events, the `portainer.action` span); Failure messages and remote text (outcome messages shown and stored)
 
 ## Problem / root cause
 
-See [spec.md](spec.md), *Problem*. The client exists but has no caller (Verified facts 1–3).
+See [spec.md](spec.md), *Problem*. The client exists but has no caller (Verified fact 1).
 
 ## Verified facts
 
 | # | Claim | Evidence | Status |
 | - | ----- | -------- | ------ |
-| 1 | `IPortainerClient` is registered as a singleton and never injected | `ServiceCollectionExtensions.cs:110`; no other reference outside `Portainer/` and tests | confirmed |
-| 2 | The client succeeds only on 2xx, so 304 is a failure today | `PortainerClient.cs:514` | confirmed |
-| 3 | The target is looked up by name in the container list; the actions are a string allow-list of six | `PortainerClient.cs:43-51, 215-240, 495` | confirmed |
-| 4 | Every Portainer request runs under one `HttpClient.Timeout` of `RequestTimeoutSeconds` | `PortainerClient.cs:312` | confirmed |
-| 5 | With `EndpointId` configured, the environment is used unchecked | `PortainerClient.cs:257-260, 433-438` | confirmed |
-| 6 | Snapshots store the Engine's full container `Id` and a name cut to 200 characters, control characters replaced | `DockerInstanceClient.cs:34, 520-521`; `integration-failures.md` *Remote text fields* | confirmed |
-| 7 | The detail page loads the latest snapshot of the container ID whether or not it is current | `ApplicationViewService.cs:1943-1945` | confirmed |
-| 8 | Docker instances map to their options by name, case-insensitive | `RuntimeContainerScanOrchestrator.cs:1199` | confirmed |
-| 9 | Action types, statuses and resource types are stored as integers; adding enum members needs no migration | `ContainerActionRunConfiguration.cs` (no conversion), `ContainerActionType.cs:11-26` | confirmed |
-| 10 | Startup has `DockerUpdateGuardDbContext` and `TimeProvider` in scope after the instance synchronization | `ApplicationInitializationExtensions.cs` | confirmed |
-| 11 | `TimeProvider` is registered as a singleton; `IDialogService` comes with `AddMudServices`, which the page tests' context already adds | `ServiceCollectionExtensions.cs:104`; `Helper/BlazorTestContextFactory.cs:32` | confirmed |
-| 12 | A `CancellationTokenSource(TimeSpan, TimeProvider)` creates its timer through the provider, so `WaitRecordingTimeProvider` records each request bound | to verify: the AC12 test of step 5 records the due times, Tester | unverified |
-| 13 | bUnit 2 can render the page with a non-interactive `RendererInfo`, under which the page must not call the availability check | to verify: the AC2 prerender test of step 5, Tester | unverified |
-| 14 | Through Portainer's Docker proxy, the container list honors `filters={"id":[…]}`, start or stop of a container already in that state answers 304, stop and restart answer only after the container stopped, and `GET /api/endpoints/{id}` answers 404 for an unknown environment | to verify: after merge, Product Manager on the first image with the change against a real Portainer (linked verification issue, step 10); source: Docker Engine and Portainer API references, not reachable from the session; safe either way (exact `Id` match, any non-success fails closed) | unverified |
-| 15 | Docker sets `HOSTNAME` to the first 12 hexadecimal characters of the container ID unless a host name is configured | to verify: the same after-merge check; source: Docker run reference; N8 shows no warning for anything else | unverified |
+| 1 | The client has no caller, succeeds only on 2xx, looks the container up by name, uses a configured `EndpointId` unchecked and unvalidated, and bounds every request by one `HttpClient.Timeout` | `ServiceCollectionExtensions.cs:110`; `PortainerClient.cs:43-51, 215-240, 257-260, 312, 514` | confirmed |
+| 2 | Snapshots store the full container `Id` and a cleaned name of at most 200 characters; the detail page loads the latest snapshot whether current or not; instances map to options by name | `DockerInstanceClient.cs:34, 520-521`; `ApplicationViewService.cs:1943`; `RuntimeContainerScanOrchestrator.cs:1199` | confirmed |
+| 3 | Enum columns are integers, so new members need no migration; startup has the context and `TimeProvider` after the instance sync; `IDialogService` comes with `AddMudServices` | `ContainerActionRunConfiguration.cs`; `ApplicationInitializationExtensions.cs`; `BlazorTestContextFactory.cs:32` | confirmed |
+| 4 | `CancellationTokenSource(TimeSpan, TimeProvider)` creates one timer through the provider with the bound, and firing it cancels the linked request token but not the caller's | Security's measurement in a net10.0 scratch probe (*Security review*) | confirmed |
+| 5 | bUnit 2 renders with a set `RendererInfo` (it throws `MissingRendererInfoException` when a component reads one that was not set) | to verify: the AC2 prerender test of step 5, Tester | unverified |
+| 6 | Through Portainer's Docker proxy, the container list honors `filters={"id":[…]}`, start or stop of a container already in that state answers 304, stop and restart answer only after the container stopped, and `GET /api/endpoints/{id}` answers 404 for an unknown environment | to verify: after merge, Product Manager on the first image with the change against a real Portainer (linked verification issue, step 10); source: Docker Engine and Portainer API references, not reachable from the session; safe either way (exact `Id` match, any non-success fails closed) | unverified |
+| 7 | Docker sets `HOSTNAME` to the first 12 hexadecimal characters of the container ID unless a host name is configured | to verify: the same after-merge check; source: Docker run reference; N8 shows no warning for anything else | unverified |
 
 ## Tests per criterion
 
-Every test carries `[TestCategory("AC<n>")]`. Service tests build a `ServiceCollection` with EF Core InMemory, the real
-`ContainerActionService`, a real `PortainerClient` over `SequenceHttpMessageHandler`/`DelegateHttpMessageHandler`, and
-NSubstitute for `IHostApplicationLifetime` and `TimeProvider`.
+Service tests use EF Core InMemory, a real `PortainerClient` over the HTTP test handlers, and NSubstitute for
+`IHostApplicationLifetime` and `TimeProvider`.
 
 | AC | Test(s) | Test file |
 | -- | ------- | --------- |
 | AC1 | `PortainerClientExecuteContainerActionAsyncWithUnsupportedActionTypeRejectsWithoutContactingPortainerAsync` (rows NotSet, RedeployStack, UpdateService); `PortainerClientExecuteContainerActionAsyncPostsActionPathOfActionTypeAsync` (rows start, stop, restart) | `src/Tests/DockerUpdateGuard.Tests/PortainerClientTests.cs` |
 | AC1 | `ContainerActionTypeValuesKeepStoredNumbers` | `src/Tests/DockerUpdateGuard.Data.Tests/ContainerActionTypeTests.cs` |
 | AC2 | `ContainerActionServiceGetAvailabilityAsyncOffersActionsOfSnapshotStatusAsync` (rows per `ContainerRuntimeStatus`); `…WhenPortainerOrInstanceDisabledIsNotShownAsync` (rows); `…WhenNotInLatestScanShowsNotCurrentMessageWithoutContactingPortainerAsync`; `…WhenCapabilityUnsupportedShowsItsMessageWithoutActionsAsync`; `…WhenActionInProgressShowsInProgressMessageAsync` | `src/Tests/DockerUpdateGuard.Tests/ContainerActionServiceTests.cs` |
-| AC2 | `PortainerClientCheckCapabilityAsyncWithUnknownEndpointIdReportsEnvironmentNotFoundAsync` | `src/Tests/DockerUpdateGuard.Tests/PortainerClientTests.cs` |
+| AC2 | `PortainerClientCheckCapabilityAsyncWithUnknownEndpointIdReportsEnvironmentNotFoundAsync` (rows: 404; `1/../../users`, `1?x=`, ` 1 ` without any request) | `src/Tests/DockerUpdateGuard.Tests/PortainerClientTests.cs` |
 | AC2 | `RuntimeContainerDetailWithStaticRendererDoesNotCheckContainerActionsAsync`; `RuntimeContainerDetailRendersOfferedActionsOrAvailabilityMessageAsync` (rows) | `src/Tests/DockerUpdateGuard.Tests/RuntimeContainerDetailTests.cs` |
 | AC3 | `ContainerActionConfirmationForStopShowsTextConsequenceAndDestructiveButton` (rows start, stop, restart); `ContainerActionConfirmationForOwnContainerShowsWarning` | `src/Tests/DockerUpdateGuard.Tests/ContainerActionConfirmationTests.cs` |
 | AC3 | `ContainerActionServiceGetAvailabilityAsyncDetectsOwnContainerOnlyForDockerHostNameAsync` (rows: 12 lowercase hex prefix; empty; unset; `cafe`; uppercase hex; 12 hex not a prefix) | `src/Tests/DockerUpdateGuard.Tests/ContainerActionServiceTests.cs` |
@@ -50,13 +41,15 @@ NSubstitute for `IHostApplicationLifetime` and `TimeProvider`.
 | AC6 | `PortainerClientExecuteContainerActionAsyncWhenIdUnknownReportsContainerChangedWithoutActionAsync` (also a listed container of the same name and another ID); `…WithMalformedContainerIdRejectsWithoutContactingPortainerAsync` (rows) | `src/Tests/DockerUpdateGuard.Tests/PortainerClientTests.cs` |
 | AC6 | `ContainerActionServiceExecuteAsyncWhenNotInLatestScanRecordsFailedWithoutContactingPortainerAsync` | `src/Tests/DockerUpdateGuard.Tests/ContainerActionServiceTests.cs` |
 | AC7 | `ContainerActionServiceExecuteAsyncWithOverlappingRequestsExecutesOneAndRecordsOneInProgressAsync` | `src/Tests/DockerUpdateGuard.Tests/ContainerActionServiceTests.cs` |
+| AC7 | `ServiceCollectionExtensionsAddDockerUpdateGuardHostSharesContainerActionServiceAcrossScopes` | `src/Tests/DockerUpdateGuard.Tests/ServiceCollectionExtensionsTests.cs` |
 | AC8 | `ContainerActionServiceExecuteAsyncWhenInstanceOrPortainerDisabledRecordsFailedWithoutContactingPortainerAsync` (rows); `…WhenEnvironmentUnknownRecordsFailedWithoutActionRequestAsync` | `src/Tests/DockerUpdateGuard.Tests/ContainerActionServiceTests.cs` |
 | AC9 | `ContainerActionServiceExecuteAsyncFinalizesRunAfterCallerScopeIsDisposedAsync`; `…WhenStoppingBeforeSendRecordsCancelledAsync`; `…WhenStoppingDuringActionLeavesRunRunningAsync` | `src/Tests/DockerUpdateGuard.Tests/ContainerActionServiceTests.cs` |
 | AC9 | `ContainerActionRunReconcilerReconcileInterruptedRunsAsyncFailsOpenRunsAndKeepsTerminalOnesAsync` | `src/Tests/DockerUpdateGuard.Tests/ContainerActionRunReconcilerTests.cs` |
+| AC9 | `ApplicationInitializationExtensionsInitializeDockerUpdateGuardReconcilesInterruptedRunsAsync` | `src/Tests/DockerUpdateGuard.Tests/ApplicationInitializationExtensionsTests.cs` |
 | AC10 | `RuntimeContainerDetailWhileActionRunsDisablesAllActionButtonsAsync`; `RuntimeContainerDetailAfterActionShowsOutcomeAndReloadsHistoryAsync`; `RuntimeContainerDetailWithoutActionRunsShowsEmptyHistoryAsync` | `src/Tests/DockerUpdateGuard.Tests/RuntimeContainerDetailTests.cs` |
 | AC10 | `ApplicationViewServiceGetRuntimeContainerDetailAsyncLoadsTwentyMostRecentActionRunsOfContainerAsync` | `src/Tests/DockerUpdateGuard.Tests/ApplicationViewServiceTests.cs` |
 | AC11 | `ContainerActionServiceExecuteAsyncEmitsOneActionActivityWithAllowedTagsAsync`; `ContainerActionServiceExecuteAsyncLogsOnlyAllowedValuesAsync` | `src/Tests/DockerUpdateGuard.Tests/ContainerActionServiceTests.cs` |
-| AC12 | `PortainerClientExecuteContainerActionAsyncBoundsActionRequestByActionTypeAsync` (rows: start R, stop and restart 300 + R; other requests R); `…WhenStopExceedsBoundReportsMayHaveBeenAppliedAsync` | `src/Tests/DockerUpdateGuard.Tests/PortainerClientTests.cs` |
+| AC12 | `PortainerClientExecuteContainerActionAsyncBoundsActionRequestByActionTypeAsync` (rows, each request kind its own: login `/api/auth`, `/api/system/status`, `/api/endpoints`, `/api/endpoints/{id}`, the container list, start → R; stop, restart → 300 + R); `…WhenStopExceedsBoundReportsMayHaveBeenAppliedAsync` | `src/Tests/DockerUpdateGuard.Tests/PortainerClientTests.cs` |
 | AC13 | `ContainerActionServiceExecuteAsyncWhenRequestedRunCannotBeWrittenSendsNoActionAndThrowsAsync`; `…WhenConfigurationInvalidSendsNoActionAndThrowsAsync`; `…WhenTerminalWriteFailsReturnsOutcomeAndReleasesContainerAsync` | `src/Tests/DockerUpdateGuard.Tests/ContainerActionServiceTests.cs` |
 | AC13 | `RuntimeContainerDetailFailedContainerActionShowsFixedReasonAndLogsAsync` | `src/Tests/DockerUpdateGuard.Tests/RuntimeContainerDetailTests.cs` |
 
@@ -67,14 +60,14 @@ NSubstitute for `IHostApplicationLifetime` and `TimeProvider`.
 - `CheckCapabilityAsync` answers an `ExternalOperationResult`:
   - Portainer disabled or without `BaseUrl` → *not configured*, with today's texts.
   - Status endpoint non-success, or environment resolution failing → *unsupported*, with today's messages.
-  - A configured `EndpointId` is checked with `GET /api/endpoints/{id}`:
+  - A configured `EndpointId` that is not all ASCII digits counts as unknown before any request (URL path guard); otherwise it is checked with `GET /api/endpoints/{id}`:
     - 404 → *unsupported*, `Portainer environment <id> not found; check Portainer:EndpointId of Docker instance '<instance>'`;
     - any other non-success → *unsupported*, `Portainer environment <id> check failed: HTTP <status>`.
   - Success → *succeeded* with `EndpointId` set.
   - Error → *failed*, `Portainer connection error: <reason>`.
 - `ExecuteContainerActionAsync`, in order:
   1. Action type other than start/stop/restart → *unsupported*, `Action '<type>' is not supported; allowed: start, stop, restart`.
-  2. Container ID not exactly 64 lowercase hexadecimal characters → *not found* with E5's message. This is a guard on the URL path; no request is sent for either step 1 or 2.
+  2. Container ID not exactly 64 lowercase hexadecimal characters → *not found* with E5's message (URL path guard; no request for steps 1–2).
   3. Login, environment resolution and the check above, exactly as `CheckCapabilityAsync` (its failures as *not configured*/*unsupported*/*failed*).
   4. `GET …/docker/containers/json?all=true&filters={"id":["<id>"]}`: non-success → *failed* `Action '<action>' failed: HTTP <status>`; no item whose `Id` equals the ID exactly → *not found* with E5's message.
   5. `POST …/docker/containers/<id>/<start|stop|restart>` with an empty body:
@@ -87,11 +80,10 @@ NSubstitute for `IHostApplicationLifetime` and `TimeProvider`.
 - **Bounds.**
   - `HttpClient.Timeout` becomes infinite. Each request runs under a `CancellationTokenSource(bound, TimeProvider)` linked to the caller's token.
   - The bound is `RequestTimeoutSeconds`, except a stop or restart request: 300 s plus `RequestTimeoutSeconds` (0037).
-  - `FailureReason.FromException` gets the bound that fired and the caller's token, so a timeout reads `timed out after <bound> seconds` and a caller cancellation `cancelled`.
-  - Seam for AC12: the provider's `CreateTimer` due times (`WaitRecordingTimeProvider`).
+  - `FailureReason.FromException` gets the bound that fired and the caller's token (`timed out after <bound> seconds`, `cancelled`). Seam for AC12: `WaitRecordingTimeProvider`'s due times.
 - Logging keeps EventIds 3304–3310 with the action name `start`/`stop`/`restart`.
 
-**Service (`ContainerActionService`, singleton).** It creates an `IServiceScopeFactory` scope per database step and never uses the circuit's `DbContext`. Its process-wide in-progress set is a `ConcurrentDictionary` keyed by instance ID and container ID (0036). Instance options are found by name from `IOptionsMonitor.CurrentValue`.
+**Service (`ContainerActionService`, singleton).** An `IServiceScopeFactory` scope per database step, never the circuit's `DbContext`; the in-progress set is a `ConcurrentDictionary` keyed by instance and container ID (0036); instance options by name from `IOptionsMonitor.CurrentValue`.
 
 - `GetAvailabilityAsync`:
   - not shown when the instance is unknown, missing from configuration, disabled, or has Portainer disabled;
@@ -101,7 +93,7 @@ NSubstitute for `IHostApplicationLifetime` and `TimeProvider`.
   - `IsOwnContainer` per N8, from `IConfiguration["HOSTNAME"]`.
 - `ExecuteAsync`, in order:
   1. Read the options; a validation error propagates (E15).
-  2. Load the instance and the latest snapshot of the container ID. No instance or snapshot → *failed* result without a run, logged (no page shows such a container).
+  2. Load the instance and the container ID's latest snapshot; none → *failed* result without a run, logged (no page shows it).
   3. Checks that each write one *Failed* run and return: instance missing from configuration or disabled (E14); Portainer disabled (E7); not current (E6); container in the set (E8, added atomically).
   4. Write *Requested*. Fields: instance, stored endpoint if any, the snapshot (the current one, else the latest), type, *Container*, name, `UI`, `TimeProvider` time. Then write *Running*. A failure of either releases the set entry and propagates (E15).
   5. Call the client with `IHostApplicationLifetime.ApplicationStopping` as its token (never the caller's: ExecuteAsync takes none).
@@ -120,7 +112,7 @@ NSubstitute for `IHostApplicationLifetime` and `TimeProvider`.
   - 3322 rejected with the check (Warning);
   - 3323 terminal write failed (Error, exception);
   - 3324 runs reconciled with count (Information).
-- **Startup.** `ContainerActionRunReconciler.ReconcileInterruptedRunsAsync`, called by `InitializeDockerUpdateGuardAsync` after the instance synchronization. It sets every *Requested*/*Running* run to *Failed*, `Interrupted: the application stopped before the action completed`, now, and logs 3324 when it changed any.
+- **Startup.** `InitializeDockerUpdateGuardAsync` calls `ContainerActionRunReconciler.ReconcileInterruptedRunsAsync` after the instance sync: every *Requested*/*Running* run becomes *Failed* with E10's "Interrupted" text and the current time; 3324 is logged when any changed.
 
 **UI layout** (new output; texts from the spec):
 
@@ -142,25 +134,18 @@ NSubstitute for `IHostApplicationLifetime` and `TimeProvider`.
 
 ## Options considered
 
-1. Scoped action service with `IDbContextFactory` (issue's suggestion) — scoped dies with the circuit and holds no process-wide guard; `IDbContextFactory` is not registered, and the scope pattern already exists (`VulnerabilityRescanControl`). Lost to a singleton with `IServiceScopeFactory`.
-2. Guard by a non-terminal run in the database, or a partial unique index — rejected in 0036.
-3. Bound by the container's stop timeout (inspect), Docker's `t`, or a new key — rejected in 0037.
-4. Change `GetCapabilityAsync`/`ExecuteActionAsync` in place — 90 call sites in `PortainerClientTests` would stop compiling with assertion changes the Dev may not make; new members coexist until the Tester moved the tests.
-5. Keep `PortainerActionResult` instead of `ExternalOperationResult` (the issue allows a recorded reason) — the guarantee of `.squad/project.md` applies, and *unknown* is exactly the "may have been applied" case.
-6. *Running* when the action request is sent, through a callback from the client — two writes inside the client's call for a state the user cannot tell apart; the spec now says *Running* once Portainer is contacted, and *Cancelled* versus left open follows from the outcome.
-7. Container lookup by `GET /containers/{id}/json` — a new reader of the inspect format without a real sample; the list with an `id` filter uses the existing `DockerContainerItem`.
+1. Scoped service with `IDbContextFactory` (the issue's suggestion) — dies with the circuit, holds no process-wide guard, and the factory is not registered; a singleton with `IServiceScopeFactory` follows `VulnerabilityRescanControl`.
+2. Database guard or partial unique index — rejected in 0036. Container stop timeout, Docker's `t`, a new key — rejected in 0037.
+3. Change the old client members in place — 90 test call sites would need assertion changes in the skeleton step.
+4. Keep `PortainerActionResult` — the outcome guarantee of `.squad/project.md` applies, and *unknown* is the "may have been applied" case.
+5. *Running* set by a client callback when the request is sent — a state the user cannot tell apart; the spec says *Running* once Portainer is contacted.
+6. Lookup by `GET /containers/{id}/json` — a new inspect reader without a real sample; the `id`-filtered list reuses `DockerContainerItem`.
 
 ## Affected projects and types
 
 | Project | Type / file | Change |
 | ------- | ----------- | ------ |
-| Data | `Entities/ContainerActionType.cs` | two appended members |
-| Telemetry | `TelemetryTagNames.cs` | `container.name` |
-| Host | `Portainer/PortainerClient.cs`, `PortainerClientLogging.cs`, `Interfaces/IPortainerClient.cs`, `Data/PortainerCapabilityData.cs`, new `Data/PortainerContainerActionRequest.cs`, `Data/PortainerActionOutcomeData.cs`; deleted `Data/PortainerActionRequest.cs`, `Data/PortainerActionResult.cs` | new contract |
-| Host | new `Portainer/Interfaces/IContainerActionService.cs`, `Portainer/ContainerActionService.cs`, `Portainer/ContainerActionServiceLogging.cs`, `Portainer/ContainerActionRunReconciler.cs`, `Portainer/Data/ContainerActionAvailabilityData.cs`, `Portainer/Data/ContainerActionRunResultData.cs` | service |
-| Host | `ServiceCollectionExtensions.cs`, `ApplicationInitializationExtensions.cs` | singleton registration, startup step |
-| Host | `UI/RuntimeContainerDetailViewData.cs`, `UI/ApplicationViewService.cs`, new `UI/ContainerActionRunViewData.cs`, `UI/ContainerActionDisplayNames.cs` | history |
-| Host | `Components/Pages/RuntimeContainerDetail.razor(.cs)`, new `Components/Common/ContainerActionConfirmation.razor(.cs)` | section, dialog |
+| Data, Telemetry, Host | the files of *Signatures*, plus `PortainerClientLogging.cs`, `ContainerActionServiceLogging.cs`, `ServiceCollectionExtensions.cs` (singleton), `ApplicationInitializationExtensions.cs`, `ApplicationViewService.cs`, the page's `.razor` | as *Approach* says |
 
 ## Signatures (for the Dev's skeleton)
 
@@ -196,36 +181,21 @@ Existing call sites:
 - The 53 tests over `GetCapabilityAsync`/`ExecuteActionAsync` and the helpers `RunFailingActionAsync`/`RunFailingCapabilityAsync` — the Tester moves them in step 5 to the new members, asserting outcome status and message:
   - tests of the removed behavior (allow-list `remove`, lookup by name, "not found in endpoint" text) become their ID-based counterparts or are deleted;
   - the timeout tests keep 15 seconds for login and lookup.
-- `RuntimeContainerDetailTests.cs`, `RuntimeContainerDetailRenderTests.cs`, `RuntimeContainerDetailPersistentStateTests.cs` register no `IContainerActionService` — the Tester adds a substitute (returning `IsShown` false) in step 5. Their inputs have no Portainer, so no assertion changes.
-- `ServiceCollectionExtensionsTests.cs:114` and `ApplicationInitializationExtensionsTests.cs` — unchanged. Their inputs resolve the client with the registered `TimeProvider`, and startup finds no runs to reconcile.
+- Every existing test rendering `RuntimeContainerDetail` (`RuntimeContainerDetailTests.cs`, `…RenderTests.cs`, `…PersistentStateTests.cs`) — the Tester, step 5: an `IContainerActionService` substitute (`IsShown` false) and an interactive `RendererInfo` (per test or in `Helper/BlazorTestContextFactory.cs`); no assertion changes. Tests that open the dialog render a `MudDialogProvider` beside the page.
+- `ServiceCollectionExtensionsTests.cs` and `ApplicationInitializationExtensionsTests.cs` — existing tests unchanged (no runs to reconcile); one new test each (AC7, AC9).
 
 Files no unit test can cover: none.
 
 ## Areas
 
-- `container-actions.md`: *Capability check* (environment check), *Actions* (three actions by ID, bounds, 304, messages, *unknown*), *Action runs* (when written, status flow, `UI`, checks, in-progress set, reconciliation, no retention, `ErrorMessage` holds every outcome message), *Transport security* (the warning now appears once a page checks Portainer), *Known gaps* entry removed, decisions 0034–0037 linked.
-- `web-ui.md`: route table row, *Actions* rows for Start/Stop/Restart, the "no container actions" sentence narrowed to redeploy and update, error-prefix row `Container action failed` / `ContainerAction`.
+- `container-actions.md`: *Capability check* (environment check, digits-only `EndpointId`), *Actions* (three actions by ID, bounds, 304, messages, *unknown*), *Action runs* (when written, status flow, `UI`, checks, in-progress set, reconciliation, no retention, `ErrorMessage` holds every outcome message), *Transport security* (warning now reached from the page), *Limits and errors* (environment names reach only the page, HTML-encoded, and a run's stored message), *Known gaps* entry removed, 0034–0037 linked.
+- `web-ui.md`: route row, *Actions* rows, "no container actions" narrowed to redeploy and update, error-prefix row `Container action failed` / `ContainerAction`.
 - `hosting.md`: *Startup sequence* step "Reconcile interrupted container actions" after step 4; *Security posture* bullet on Portainer.
-- `scan-engine.md`: action runs are never cleaned up and keep their snapshots.
-- `telemetry.md`: *Traces* table gains `portainer.action` (internal kind, its tags), reserved list and *Known gaps* drop it.
-- `docs/areas/README.md`: Container actions row says start/stop/restart.
+- `scan-engine.md`: action runs are never cleaned up and keep their snapshots. `telemetry.md`: `portainer.action` (internal, its tags) in *Traces*, out of the reserved list and *Known gaps*. `docs/areas/README.md`: start/stop/restart.
 
 ## Documentation updates
 
-All by the Dev, against the code as built:
-
-- The area documents above.
-- `README.md`: Portainer section — what enabling it allows (start, stop, restart from the runtime container page for anyone who reaches the UI) and that `RequestTimeoutSeconds` bounds each request, stop/restart 300 s longer.
-- `docs/ARCHITECTURE.md`:
-  - §3 the startup step;
-  - §5.1 nothing (row stays true);
-  - §6 `PortainerClient` row (capability with environment check, container lookup by ID, start/stop/restart, `ExternalOperationResult`);
-  - §9 `IContainerActionService` beside the view service, and its own scope;
-  - §10 the span;
-  - §11 the no-sign-in bullet names container actions on Portainer-enabled instances and the in-process guard's single-instance assumption.
-- `.squad/project.md` — the Dev reports the exact text; the orchestrator writes it:
-  - *Container actions* line becomes `Portainer/PortainerClient.cs`, `Portainer/ContainerActionService.cs`, `Components/Pages/RuntimeContainerDetail.razor` without "(no page calls it today)";
-  - *Integration surface* needs nothing.
+All by the Dev, against the code as built: the area documents above; `README.md` Portainer section (enabling it lets anyone who reaches the UI start, stop and restart that instance's containers; stop/restart wait 300 s beyond `RequestTimeoutSeconds`); `docs/ARCHITECTURE.md` §3 startup step, §6 `PortainerClient` row (environment check, lookup by ID, start/stop/restart, `ExternalOperationResult`), §9 `IContainerActionService` with its own scope, §10 the span, §11 container actions on Portainer-enabled instances and the in-process guard's single-instance assumption. `.squad/project.md` (the Dev reports the text, the orchestrator writes it): the *Container actions* line names `Portainer/PortainerClient.cs`, `Portainer/ContainerActionService.cs`, `Components/Pages/RuntimeContainerDetail.razor` and drops "(no page calls it today)".
 
 ## Architecture check
 
@@ -238,7 +208,7 @@ All by the Dev, against the code as built:
 
 - [x] Limits: the stored container name is already cut to 200 (`ResourceName` 200); a container ID is accepted only as 64 lowercase hex before it reaches a URL; no other parsed input gets a new limit. No limits on decoded sizes.
 - [x] Exceptions reaching a message: the client maps every error to `FailureReason` texts (`cancelled`, `timed out after <n> seconds`, `connection failed`, `invalid response`, `unexpected error`) or the authentication error. Errors of the service's database or options steps reach the page as `Container action failed: <fixed reason>` (`FailureReason.FromException` without timeout); none shows an exception message.
-- Credentials stay in request headers; runs, messages, logs and spans carry action, container and instance names, endpoint ID and HTTP status. Environment names appear only in the existing ambiguity message, rendered encoded by MudBlazor.
+- Credentials stay in request headers; logs and spans carry action, container and instance names and HTTP status. Environment names appear only in the existing ambiguity message, on the page (encoded) and in a run's stored message (N6).
 - Triggers: only `@onclick` handlers after the dialog; the route and query string start nothing; `ExecuteAsync` rechecks everything server-side.
 
 ## Decision records
@@ -251,101 +221,25 @@ All by the Dev, against the code as built:
 ## Out of scope / follow-ups
 
 - Follow-up issue (orchestrator): "[Container actions] Redeploy Portainer stacks and update Swarm services from the runtime container page", body as in the step-2a result (depends on #291; real stack/service samples; manual test).
-- Verification issue (step 10): Verified facts 14–15 on the first image with the change, by the Product Manager.
+- Verification issue (step 10): Verified facts 6–7 on the first image with the change, by the Product Manager.
+- Follow-up issue (orchestrator): "[Hosting] Protect the UI against DNS rebinding with AllowedHosts and an Origin check" (*Security review*, finding 4).
 - #83 (`portainer.request` spans), #36 (server time zone in the history) stay open.
 
-## Security notes
+## Security review
 
-I'm approving the plan for feature #280 (Start/Stop/Restart through Portainer, option A). I found no blocking defects and four non-blocking ones.
+Security approved with five non-blocking findings and confirmed Verified fact 4 by measurement (a net10.0 probe: one
+`CreateTimer` call with the 315 s bound; firing it cancelled the linked token, not the caller's).
 
-**Files reviewed:** `specs/feature-280-portainer-container-actions/spec.md`, `plan.md` and `tasks.md`, decision records 0034–0037, `docs/areas/container-actions.md`, *Security posture* in `docs/areas/hosting.md`, *Credentials and external data* in `docs/areas/telemetry.md`, `src/DockerUpdateGuard/Portainer/PortainerClient.cs`, `Infrastructure/TransientHttpRetryHandler.cs`, `Infrastructure/FailureReason.cs`, the Portainer section of `Configuration/DockerUpdateGuardOptionsValidator.cs`, `ContainerActionRunConfiguration.cs`, and the snapshot load in `ApplicationViewService.GetRuntimeContainerDetailAsync`.
+1. Insecure Portainer HTTP not listed — adopted: added to *Security areas touched*.
+2. A non-numeric `EndpointId` can sidestep the environment check — adopted: an `EndpointId` not all ASCII digits counts as an unknown environment before any request (*Approach*), with rows `1/../../users`, `1?x=`, ` 1 ` in the AC2 client test. No validator rule: the client guards where the value reaches a URL.
+3. N6 says environment names reach only the page, but a run stores the ambiguity message — adopted: N6 in `spec.md` now names the stored message; *Areas* gives `container-actions.md` the same wording.
+4. DNS rebinding reaches the circuit without `AllowedHosts` — decided: a follow-up issue (*Out of scope*). It is a perimeter gap the actions widen but do not create, and its fix (host filtering, an Origin check on the hub) changes hosting for every page.
+5. Every request needs its own deadline once `HttpClient.Timeout` is infinite — adopted: the AC12 row lists each request kind.
 
-**Tier:** `security` is correct. The plan adds the guards that decide what anyone on the network may do to a container: the allow-list by action type, the 64-hex container ID guard, the server-side recheck at confirmation, and the in-process guard.
+## Challenge
 
-## Measurement (Verified fact 12, the AC12 seam)
+The plan challenge raised three minor objections, all adopted.
 
-A per-request deadline is now the only time bound, because `HttpClient.Timeout` becomes infinite. So I checked that `CancellationTokenSource(TimeSpan, TimeProvider)` creates its timer through the provider and cancels a linked token when that timer fires. I ran this in the scratch project `/tmp/claude-0/-home-user-DockerUpdateGuard/3f282fb3-74f5-58ed-8975-902bfeaa0df0/scratchpad/ctsprobe` (net10.0, the repository's target framework):
-
-`cd …/scratchpad/ctsprobe && dotnet run`
-
-The program builds the token source with 315 s and a recording `TimeProvider` (it records each `CreateTimer` due time and fires the stored callback on demand). It links that token with an outer one and then fires the callback. Output:
-```
-CreateTimer calls: 1; due: 00:05:15; cancelled before fire: False
-after fire: cts=True linked=True outer=False
-```
-Fact 12 holds: one `CreateTimer` call carrying the bound, and firing it cancels the linked request token but not the caller's. The `WaitRecordingTimeProvider` seam is sound. The plan can mark fact 12 confirmed, citing this measurement.
-
-## Checks that pass
-- **Untrusted input in URLs:** the container ID reaches a URL path only as exactly 64 lowercase hex characters (step 2). The list lookup matches `Id` exactly, so Docker's prefix-matching `id` filter and an ignored filter (fact 14, unverified) both fail closed. No container is matched by name any more.
-- **No retry of a processed action:** the stop/restart POST stays under decision 0008. `TransientHttpRetryHandler` retries a non-idempotent request only when it cannot have been processed. Once the per-request linked token is cancelled it stops retrying (`cancellationToken.IsCancellationRequested == false` in its catch filter), and 5xx or a transport error after sending maps to *unknown*.
-- **Fixed failure reasons:** every outcome goes through `FailureReason.FromException` or fixed text. The page error is `Container action failed: <fixed reason>`, and the exception goes only to the log (allowed for user-action error entries by telemetry.md).
-- **Credentials:** they stay in request headers. Logs and spans carry only action, container name (control characters already replaced at scan), instance name and HTTP status, which telemetry.md allows. AC5 and AC11 pin this.
-- **Database:** `ErrorMessage` is `text`, so no truncation or save failure from long messages. The snapshot load is scoped by instance and container ID, and a mismatched pair is caught by the not-current check.
-- **Triggers:** only an interactive `@onclick` after the dialog can start an action. No route or prerender path, and `ExecuteAsync` rechecks everything on the server.
-- **Insecure HTTP warning:** EventId 3311 sits in the shared `CreateAuthenticatedClientAsync`, so both new members inherit it. The type and ID guards run before it, which matches *Transport security* ("no warning when rejected by the allow-list").
-
-## Findings (all non-blocking)
-
-1. **[NON-BLOCKING] "Insecure Portainer HTTP" is touched but not listed.** `plan.md` line 5 omits it. The plan edits `PortainerClient.CreateAuthenticatedClientAsync`, the method that holds both the 3311 warning and the `client.Timeout` line it replaces. It also lists a *Transport security* update in *Areas*. `.squad/project.md` names `Portainer/PortainerClient.cs` for this area.
-   - **Smallest fix:** add `Insecure Portainer HTTP (the 3311 warning, now reached by CheckCapabilityAsync and ExecuteContainerActionAsync)` to *Security areas touched*.
-   - **Recommendation:** fix now.
-
-2. **[NON-BLOCKING] The environment check can be sidestepped by a non-numeric `EndpointId`.** The value is never validated (only `IsNullOrWhiteSpace`, `PortainerClient.cs:257-260`; no rule in the validator). The new `GET /api/endpoints/{id}` puts it into the path unescaped. Forms Portainer would accept differently:
-   - dot segments: `1/../../users` normalizes to `GET /api/users`, which answers 200, so *supported*;
-   - a query or fragment: `1?x=` or `1#` cuts off the rest of the action path;
-   - leading/trailing whitespace or percent-encoded dot segments.
-
-   The action itself still fails closed: the container lookup or POST lands on another path and answers non-success, and only an operator sets the key. But the new check would report *supported* and the dialog would name an environment that does not exist.
-   - **Smallest fix, with no new configuration rule:** in the client, treat an `EndpointId` that is not all ASCII digits like an unknown environment (*unsupported*, `Portainer environment <id> not found; …`) before any request. Add a row to `PortainerClientCheckCapabilityAsyncWithUnknownEndpointIdReportsEnvironmentNotFoundAsync` (`1/../../users`, `1?x=`, ` 1 `).
-   - **Recommendation:** fix now (one guard beside the container ID guard). Alternatively, a linked issue for a validator rule.
-
-3. **[NON-BLOCKING] N6 says environment names reach "only the page", but the plan also stores them.**
-   - **What happens:** at confirmation, step 3 can end with the ambiguity message (after a config reload, or `X-Total-Count` changes since page load). That message holds environment names and goes into the run's `ErrorMessage`, from where the history table shows it. The plan's *Security considerations* bullet admits the message reaches the page but not that it is stored.
-   - **Impact:** harmless in itself (names are already sanitized and cut to 64; MudTable encodes them). But the statement in the spec and in container-actions.md *Limits and errors* would be untrue.
-   - **Smallest fix:** N6 reads `Portainer environment names reach only the page, HTML-encoded, and the run's stored message.` The Dev's container-actions.md text says the same.
-   - **Recommendation:** fix now (wording).
-
-4. **[NON-BLOCKING] Exposure to DNS rebinding grows.** No `AllowedHosts` is configured (nothing in `src/DockerUpdateGuard/appsettings*.json`). A web page an operator visits inside the trusted perimeter can therefore rebind its own host name to the app, read the prerendered circuit descriptors as same-origin, and drive the Blazor circuit. Before this change that reached scans and tag selection; with it, Stop/Restart of every container on Portainer-enabled instances. This is a perimeter-hardening gap, not a defect of this plan.
-   - **Recommendation:** a linked issue: document `AllowedHosts` in the README and *Security posture*, and/or check the hub's Origin. Optionally the README Portainer sentence this plan adds also names `AllowedHosts`.
-
-5. **[NON-BLOCKING] The time bound now rests on every request having its own deadline.** With `HttpClient.Timeout` infinite, any Portainer request that misses its per-request token source waits without limit. The AC12 row "other requests R" should therefore list each kind separately so a missed one fails a test: login (`/api/auth`), `/api/system/status`, `/api/endpoints`, `/api/endpoints/{id}`, the container list, plus start.
-   - **Recommendation:** fix now, in the plan's AC12 row (Tester).
-
-## Not measured
-- Facts 13–15 are not security properties: each fails closed, so there is no gate on approval. Fact 13 (bUnit static renderer) is the Tester's; facts 14–15 are the after-merge real-Portainer check.
-
-## Challenge notes
-
-Devil's Advocate, mode `plan`: feature #280 (specs/feature-280-portainer-container-actions/)
-
-The plan holds up on substance. I checked its claims against the code and found none that fail:
-- No caller exists for `IPortainerClient`.
-- Today's client treats 304 as a failure: it succeeds only on 2xx (`PortainerClient.cs:514`).
-- The container is found by name (`PortainerClient.cs:215-240`).
-- A configured `EndpointId` is used without any check (`:257-260`).
-- `ExternalOperationStatus.Unknown` exists (`Infrastructure/ExternalOperationStatus.cs:41`).
-- `FailureReason.FromException` already tells "cancelled" (the caller's token) from "timed out after <n> seconds".
-- A per-request bound keeps today's documented meaning, "each request including its retries" (`docs/areas/container-actions.md:105`). The retry handler sits inside the `HttpClient` (`ServiceCollectionExtensions.cs` named client `Portainer` + `TransientHttpRetryHandler`), so the linked token still covers the retries. POST is retried only on 429 or failures raised before sending.
-- Snapshots keep the Engine's full `Id` (`DockerInstanceClient.cs:520`). The "current set" definition matches `docs/areas/docker-instances.md:121-123`.
-- The test counts are right: 36 `new PortainerClient(` lines, 90 old-member call sites and 53 test methods in `PortainerClientTests.cs`.
-- `WaitRecordingTimeProvider` records `CreateTimer` due times, which is the seam the AC12 test needs.
-- Event IDs 3320–3324 are free (the highest used is 3313), and `TelemetryActivityNames.PortainerAction` ("portainer.action") already exists.
-
-I found nothing that should be redesigned. Three test gaps remain, all minor:
-
-1. **minor — the existing page tests will break, not stay unchanged.** In bUnit 2.15.2, a component that reads `RendererInfo` without the test calling `SetRendererInfo` throws `Bunit.Rendering.MissingRendererInfoException` (bunit.xml in the package). No test under `src/Tests` calls `SetRendererInfo` today. The plan (line 199) says `RuntimeContainerDetailTests.cs`, `RuntimeContainerDetailRenderTests.cs` and `RuntimeContainerDetailPersistentStateTests.cs` only need an `IContainerActionService` substitute.
-   Instruction for the Tester: in every existing test that renders `RuntimeContainerDetail`, also set an interactive `RendererInfo` on the bUnit context (per test or in `Helper/BlazorTestContextFactory.cs`). The AC2 prerender test sets a non-interactive one. The dialog tests (AC3, and the AC10/AC13 page tests that confirm) must render a `MudDialogProvider` next to the page, because the provider sits only in `MainLayout.razor:5`.
-
-2. **minor — AC7 passes on a wrong build.** The one-action-per-container guard is a set inside the service (0036), so it only works across tabs or circuits if `IContainerActionService` is registered as a singleton. The planned AC7 test builds one service instance directly. If the service were registered as scoped, it would still pass, while two tabs would each get their own set.
-   Instruction for the Tester: add a test with `[TestCategory("AC7")]` to `ServiceCollectionExtensionsTests.cs` that resolves `IContainerActionService` from two scopes of `AddDockerUpdateGuardHost` and asserts both are the same instance. The existing shared-singleton test at `ServiceCollectionExtensionsTests.cs:92-119` shows the pattern.
-
-3. **minor — no test checks that startup actually runs the reconciliation.** AC9 is covered only by a test of the static `ContainerActionRunReconciler.ReconcileInterruptedRunsAsync`. The plan (line 200) keeps `ApplicationInitializationExtensionsTests.cs` unchanged, and the existing startup test already executes `InitializeDockerUpdateGuardAsync`. So if the call were left out of `ApplicationInitializationExtensions.cs` (after the instance sync at line 49-50), every test would still pass and coverage would not notice.
-   Instruction for the Tester: add a test with `[TestCategory("AC9")]` to `ApplicationInitializationExtensionsTests.cs`. It uses the InMemory database of line 33, seeds one *Running* and one *Succeeded* run for a configured instance, calls `InitializeDockerUpdateGuardAsync`, and asserts that the open run became *Failed* with E10's "Interrupted" message and that the terminal run is unchanged.
-
-Files:
-- /home/user/DockerUpdateGuard/specs/feature-280-portainer-container-actions/plan.md
-- /home/user/DockerUpdateGuard/specs/feature-280-portainer-container-actions/tasks.md
-- /home/user/DockerUpdateGuard/src/Tests/DockerUpdateGuard.Tests/ServiceCollectionExtensionsTests.cs
-- /home/user/DockerUpdateGuard/src/Tests/DockerUpdateGuard.Tests/ApplicationInitializationExtensionsTests.cs
-- /home/user/DockerUpdateGuard/src/Tests/DockerUpdateGuard.Tests/Helper/BlazorTestContextFactory.cs
-- /home/user/DockerUpdateGuard/src/DockerUpdateGuard/ApplicationInitializationExtensions.cs
+1. Existing page tests break on `RendererInfo`, and dialog tests need a `MudDialogProvider` — *Test files* now orders both (fact 5 notes the exception).
+2. AC7 passes with a scoped registration — added `ServiceCollectionExtensionsAddDockerUpdateGuardHostSharesContainerActionServiceAcrossScopes`.
+3. No test shows that startup runs the reconciliation — added `ApplicationInitializationExtensionsInitializeDockerUpdateGuardReconcilesInterruptedRunsAsync` (seeds a *Running* and a *Succeeded* run; only the first becomes *Failed* "Interrupted").

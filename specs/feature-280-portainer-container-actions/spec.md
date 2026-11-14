@@ -102,7 +102,7 @@ or `restart`.
   action request is sent at most once ([decision 0008](../../docs/decisions/0008-non-idempotent-requests-retry-only-when-not-processed.md)).
 - N6: Credentials never appear in runs, page messages, logs or telemetry. Logs and a trace activity per action carry
   action, container name, instance name and HTTP status only; Portainer environment names reach only the page,
-  HTML-encoded.
+  HTML-encoded, and a run's stored message.
 - N7: Action runs have no retention in this version: they are audit history, removed only with their instance. No
   schema change is needed for the container actions; no new configuration key.
 - N8: Own container: the target is the app's own container only when `HOSTNAME` is exactly 12 lowercase hexadecimal
