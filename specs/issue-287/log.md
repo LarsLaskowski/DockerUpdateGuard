@@ -23,3 +23,4 @@ are quoted in full.
 | 2026-11-14 20:58 | 8 Verbatim fixes | Orchestrator | Applied verbatim: telemetry.md event ids 1000-1008; project.md Test doubles line for ThrowingExecutionStrategy |
 | 2026-11-14 21:00 | 8 Fix round 1 | Tester | Moved Static methods region above Methods; Format ran; 92 tests pass (sonnet/medium · 1,307 tokens · 2 tool uses · 138 s · 6 in · 867 out · 112,309 cache read · 113,207 cache write · 157,081 weighted · continued) |
 | 2026-11-14 21:03 | 7 Gate stamp | Orchestrator | PASS on 8f35d48e12e473f6fc60d9355820b191cd4e0ac1 (tier standard): Format check pass; Analyzer gate pass; Test with coverage pass; Coverage gate pass; decision-check.py pass; scope-check.py pass · figure-check.py 0 hit(s) |
+| 2026-11-14 21:03 | 8 Review delta | Reviewer | VERDICT: APPROVE on 8f35d48e12e473f6fc60d9355820b191cd4e0ac1 (opus/medium · 3,565 tokens · 3 tool uses · 14 s · 8 in · 1,407 out · 181,318 cache read · 92,055 cache write · 262,355 weighted · continued) |
