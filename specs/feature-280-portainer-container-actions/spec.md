@@ -1,7 +1,7 @@
 # Spec: Trigger Portainer container actions from the runtime container page and record them as action runs
 
 Source: Issue #280
-Status: Draft
+Status: Approved by Lead
 
 ## Problem
 
@@ -70,7 +70,7 @@ or `restart`.
   the app's own container).
 - E12: A paused or restarting container offers Stop and Restart; a dead one offers nothing.
 - E13: A container with a long stop timeout (`stop_grace_period`) → Stop and Restart wait for it within the bound of
-  N4 and end *Succeeded*; a stop timeout beyond 300 seconds counts as 300.
+  N4 and end *Succeeded*; a stop that takes longer than 300 seconds ends as E4.
 - E14: The Docker instance is disabled (`Enabled: false`) → no section; a confirmation → *Failed*, `Docker instance
   '<instance>' is disabled`.
 - E15: The configuration fails validation at confirmation, or the *Requested* run cannot be written → no action is
@@ -91,12 +91,11 @@ or `restart`.
   runtime scan of the instance, no action of this process executing for the container (single application instance,
   [Scan engine](../../docs/areas/scan-engine.md#deployment-assumption)), the container addressed by the snapshot's
   container ID.
-- N4: The run is written as *Requested* before Portainer is contacted, *Running* when the action request is sent,
+- N4: The run is written as *Requested* before Portainer is contacted, *Running* once Portainer is contacted,
   terminal with its completion time; `RequestedBy` is always `UI` (no sign-in; no IP address or header is recorded).
   An action's duration is the sum of its steps: login, environment resolution and the container lookup, each bounded
-  by `RequestTimeoutSeconds`, then the action request, bounded by `RequestTimeoutSeconds` for Start and by the
-  container's stop timeout (its configured value, Docker's 10 seconds when none, at most 300) plus
-  `RequestTimeoutSeconds` for Stop and Restart. Docker's own stop timeout is never overridden. Application shutdown
+  by `RequestTimeoutSeconds`, then the action request, bounded by `RequestTimeoutSeconds` for Start and by 300
+  seconds plus `RequestTimeoutSeconds` for Stop and Restart. Docker's own stop timeout is never overridden. Application shutdown
   ends it earlier (E10); the browser connection does not.
 - N5: The Portainer client answers capability and actions in the shared outcome model with fixed failure reasons
   ([guarantee, decision 0009](../../docs/decisions/0009-integration-results-carry-fixed-failure-reasons.md)); an
@@ -137,8 +136,8 @@ or `restart`.
   the history of S6 (S5, S6).
 - AC11: Each action emits one trace activity and log entries carrying only action, container name, instance name and
   HTTP status (N6).
-- AC12: A Stop or Restart that Docker answers after more than `RequestTimeoutSeconds` but within the container's stop
-  timeout plus `RequestTimeoutSeconds` ends *Succeeded*; one that exceeds that bound ends as E4 (E13, N4).
+- AC12: A Stop or Restart that Docker answers after more than `RequestTimeoutSeconds` but within 300 seconds plus
+  `RequestTimeoutSeconds` ends *Succeeded*; one that exceeds that bound ends as E4 (E13, N4).
 - AC13: An invalid configuration or a failed write of the *Requested* run sends no action and shows the page error of
   E15; a failed terminal write still shows the outcome and leaves the container actionable (E15).
 
@@ -185,8 +184,8 @@ or `restart`.
 ## Challenge
 
 - M1 (Stop/Restart exceed `RequestTimeoutSeconds` and report *Failed*) — accepted. The action request of Stop and
-  Restart is bounded by the container's own stop timeout (read when the container is looked up by ID, Docker's 10 s
-  default when none, capped at 300 s) plus `RequestTimeoutSeconds`; Start keeps `RequestTimeoutSeconds`. No `t` is
+  Restart is bounded by 300 s plus `RequestTimeoutSeconds` (planning: a fixed bound instead of the container's own stop
+  timeout, which would need a new reader of Docker's container inspect); Start keeps `RequestTimeoutSeconds`. No `t` is
   passed (it would cut the operator's `stop_grace_period` short); no new key, so N7 stands. N4 states the sum of the
   steps; E13 and AC12 added.
 - m1 (`<environment>` undefined) — accepted: the dialog names the environment ID the capability check used, never a
@@ -202,4 +201,3 @@ or `restart`.
 - m6 (README, `ARCHITECTURE.md`) — accepted: added to *Area documents*.
 - m7 (stored endpoint may be missing or stale) — accepted: the run links the stored endpoint when one exists (AC4),
   and the decision to act follows the current configuration (N3).
-
