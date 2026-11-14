@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Runtime Containers — flat refresh mockup</title>
+<link rel="stylesheet" href="fonts.css">
+<style>
+body{margin:0}
+a{color:inherit;text-decoration:none}
+a:hover{color:#1d4ed8}
+</style>
+</head>
+<body>
+<div style="min-height: 100vh; background: rgb(246, 247, 249); color: rgb(22, 25, 29); font-family: Inter, &quot;Segoe UI&quot;, Arial, sans-serif; font-size: 14px; line-height: 1.45;">
+<header style="background: #FFFFFF; border-bottom: 1px solid #E3E6EB">
+<div style="max-width: 1280px; margin: 0 auto; padding: 0 32px; display: flex; flex-wrap: wrap; align-items: center; column-gap: 28px; row-gap: 0">
+<a href="#" style="display: flex; align-items: center; gap: 10px; min-height: 60px">
+<svg width="26" height="26" viewBox="0 0 128 128" role="img" aria-label="DockerUpdateGuard logo"><path d="M64 8c20 14 37 18 52 20v34c0 28-18 47-52 58C30 109 12 90 12 62V28c15-2 32-6 52-20Z" fill="#2563EB"></path></svg>
+<span style="font-family: 'Space Grotesk', Inter, sans-serif; font-weight: 700; font-size: 16px; letter-spacing: -0.01em">DockerUpdateGuard</span>
+</a>
+<nav aria-label="Main" style="display: flex; flex-wrap: wrap; column-gap: 4px; flex: 1 1 520px">
+<a href="#" style="min-height: 60px; display: flex; align-items: center; padding: 0 10px; color: #5B6471">Dashboard</a>
+<a href="#" style="min-height: 60px; display: flex; align-items: center; padding: 0 10px; color: #5B6471">My Images</a>
+<a href="#" style="min-height: 60px; display: flex; align-items: center; padding: 0 10px; color: #5B6471">Observed Images</a>
+<a href="#" aria-current="page" style="min-height: 60px; display: flex; align-items: center; padding: 0 10px; font-weight: 600; color: #16191D; box-shadow: inset 0 -2px 0 #2563EB">Runtime Containers</a>
+<a href="#" style="min-height: 60px; display: flex; align-items: center; padding: 0 10px; color: #5B6471">Docker Instances</a>
+<a href="#" style="min-height: 60px; display: flex; align-items: center; padding: 0 10px; color: #5B6471">Base Images</a>
+<a href="#" style="min-height: 60px; display: flex; align-items: center; padding: 0 10px; color: #5B6471">Vulnerabilities</a>
+<a href="#" style="min-height: 60px; display: flex; align-items: center; padding: 0 10px; color: #5B6471">Scan History</a>
+</nav>
+<button type="button" aria-label="Toggle dark mode" style="width: 44px; height: 44px; display: grid; place-items: center; background: transparent; border: 1px solid #E3E6EB; border-radius: 6px; color: #16191D; cursor: pointer">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z"></path></svg>
+</button>
+</div>
+</header>
+<main style="max-width: 1280px; margin: 0 auto; padding: 36px 32px 48px; display: flex; flex-direction: column; gap: 24px">
+<div style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px">
+<div style="display: flex; flex-direction: column; gap: 4px">
+<h1 style="margin: 0; font-family: 'Space Grotesk', Inter, sans-serif; font-size: 28px; font-weight: 600; letter-spacing: -0.02em">Runtime Containers</h1>
+<p style="margin: 0; color: #5B6471">Active containers with their images, update state, vulnerabilities and live resource usage.</p>
+</div>
+<button type="button" style="min-height: 44px; padding: 0 18px; background: #2563EB; color: #FFFFFF; border: 0; border-radius: 6px; font: inherit; font-weight: 600; cursor: pointer">Check image updates</button>
+</div>
+<section style="background: #FFFFFF; border: 1px solid #E3E6EB; border-radius: 8px">
+<div style="padding: 16px 20px; display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 16px">
+<h2 style="margin: 0; font-size: 15px; font-weight: 600">Container inventory</h2>
+<span style="color: #5B6471; font-size: 13px">23 containers on 2 Docker instances</span>
+</div>
+<div style="overflow-x: auto">
+<div style="min-width: 1100px">
+<div style="display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 0.8fr) minmax(0, 0.7fr) minmax(0, 0.8fr) minmax(0, 1.4fr) minmax(0, 1.05fr) minmax(0, 1.5fr); column-gap: 16px; padding: 10px 20px; border-top: 1px solid #E3E6EB; color: #5B6471; font-size: 13px; font-weight: 500">
+<span>Container</span><span>Instance</span><span>CPU</span><span>Memory</span><span>Network</span><span>Update</span><span>Vulnerabilities</span>
+</div>
+<div style="display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 0.8fr) minmax(0, 0.7fr) minmax(0, 0.8fr) minmax(0, 1.4fr) minmax(0, 1.05fr) minmax(0, 1.5fr); column-gap: 16px; padding: 12px 20px; border-top: 1px solid #EEF0F3; align-items: start">
+<div style="display: flex; flex-direction: column; gap: 2px; min-width: 0">
+<a href="#" style="font-weight: 600; color: #1D4ED8">traefik</a>
+<span style="font-size: 13px; color: #5B6471; font-variant-numeric: tabular-nums">v3.1.2</span>
+<span style="font-size: 13px; color: #5B6471"></span>
+</div>
+<span>homelab-01</span>
+<div style="display: flex; flex-direction: column; gap: 6px; font-variant-numeric: tabular-nums">
+<span>1.2 %</span>
+<svg viewBox="0 0 100 26" preserveAspectRatio="none" aria-hidden="true" style="width: 100%; max-width: 96px; height: 22px; overflow: visible"><path d="M0.0,14.6 L9.1,11.4 L18.2,14.6 L27.3,5.1 L36.4,8.3 L45.5,11.4 L54.5,2.0 L63.6,8.3 L72.7,11.4 L81.8,5.1 L90.9,8.3 L100.0,11.4" style="fill: none; stroke: #2563EB; stroke-width: 1.6; vector-effect: non-scaling-stroke"></path></svg>
+</div>
+<div style="display: flex; flex-direction: column; gap: 6px; font-variant-numeric: tabular-nums">
+<span>86 MiB</span>
+<svg viewBox="0 0 100 26" preserveAspectRatio="none" aria-hidden="true" style="width: 100%; max-width: 96px; height: 22px; overflow: visible"><path d="M0.0,4.4 L9.1,4.4 L18.2,4.4 L27.3,2.0 L36.4,2.0 L45.5,2.0 L54.5,2.0 L63.6,2.0 L72.7,2.0 L81.8,2.0 L90.9,2.0 L100.0,2.0" style="fill: none; stroke: #6D4AC4; stroke-width: 1.6; vector-effect: non-scaling-stroke"></path></svg>
+</div>
+<div style="display: flex; flex-direction: column; gap: 6px; font-variant-numeric: tabular-nums">
+<span style="white-space: nowrap">12.4 kB/s ↓ / 8.1 kB/s ↑</span>
+<svg viewBox="0 0 100 26" preserveAspectRatio="none" aria-hidden="true" style="width: 100%; max-width: 96px; height: 22px; overflow: visible"><path d="M0.0,14.2 L9.1,9.3 L18.2,11.8 L27.3,2.0 L36.4,6.9 L45.5,9.3 L54.5,4.4 L63.6,11.8 L72.7,9.3 L81.8,6.9 L90.9,9.3 L100.0,11.8" style="fill: none; stroke: #0F766E; stroke-width: 1.6; vector-effect: non-scaling-stroke"></path><path d="M0.0,13.0 L9.1,9.3 L18.2,13.0 L27.3,2.0 L36.4,5.7 L45.5,9.3 L54.5,5.7 L63.6,9.3 L72.7,9.3 L81.8,5.7 L90.9,9.3 L100.0,13.0" style="fill: none; stroke: #B54708; stroke-width: 1.6; vector-effect: non-scaling-stroke"></path></svg>
+</div>
+<div style="display: flex; flex-direction: column; align-items: flex-start; gap: 4px">
+<span style="font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 4px; background: #FFF1E6; color: #9A3D00">Update available</span>
+<span style="font-size: 13px; color: #16191D; font-weight: 500; font-variant-numeric: tabular-nums">v3.2.0</span>
+</div>
+<div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 8px">
+<div style="display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0">
+<span style="font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 4px; background: #FFF1E6; color: #9A3D00">High</span>
+<span style="font-size: 13px; color: #16191D">3 active · 1 high, 2 medium</span>
+<span style="font-size: 13px; color: #5B6471">Checked 14.11.2026 09:15</span>
+</div>
+<button type="button" aria-label="Rescan vulnerabilities" style="flex: 0 0 auto; width: 44px; height: 44px; display: grid; place-items: center; background: transparent; border: 1px solid #E3E6EB; border-radius: 6px; color: #3D4551; cursor: pointer">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.6-5.9"></path><path d="M20 4v5h-5"></path></svg>
+</button>
+</div>
+</div>
+<div style="display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 0.8fr) minmax(0, 0.7fr) minmax(0, 0.8fr) minmax(0, 1.4fr) minmax(0, 1.05fr) minmax(0, 1.5fr); column-gap: 16px; padding: 12px 20px; border-top: 1px solid #EEF0F3; align-items: start">
+<div style="display: flex; flex-direction: column; gap: 2px; min-width: 0">
+<a href="#" style="font-weight: 600; color: #1D4ED8">postgres</a>
+<span style="font-size: 13px; color: #5B6471; font-variant-numeric: tabular-nums">16 (16.3)</span>
+<span style="font-size: 13px; color: #5B6471"></span>
+</div>
+<span>homelab-01</span>
+<div style="display: flex; flex-direction: column; gap: 6px; font-variant-numeric: tabular-nums">
+<span>3.8 %</span>
+<svg viewBox="0 0 100 26" preserveAspectRatio="none" aria-hidden="true" style="width: 100%; max-width: 96px; height: 22px; overflow: visible"><path d="M0.0,14.8 L9.1,13.0 L18.2,7.5 L27.3,11.2 L36.4,13.0 L45.5,9.3 L54.5,2.0 L63.6,7.5 L72.7,11.2 L81.8,13.0 L90.9,9.3 L100.0,11.2" style="fill: none; stroke: #2563EB; stroke-width: 1.6; vector-effect: non-scaling-stroke"></path></svg>
+</div>
+<div style="display: flex; flex-direction: column; gap: 6px; font-variant-numeric: tabular-nums">
+<span>412 MiB</span>
+<svg viewBox="0 0 100 26" preserveAspectRatio="none" aria-hidden="true" style="width: 100%; max-width: 96px; height: 22px; overflow: visible"><path d="M0.0,5.1 L9.1,4.5 L18.2,4.5 L27.3,3.9 L36.4,3.3 L45.5,3.3 L54.5,2.6 L63.6,2.6 L72.7,2.6 L81.8,2.0 L90.9,2.0 L100.0,2.0" style="fill: none; stroke: #6D4AC4; stroke-width: 1.6; vector-effect: non-scaling-stroke"></path></svg>
+</div>
+<div style="display: flex; flex-direction: column; gap: 6px; font-variant-numeric: tabular-nums">
+<span style="white-space: nowrap">2.1 kB/s ↓ / 3.4 kB/s ↑</span>
+<svg viewBox="0 0 100 26" preserveAspectRatio="none" aria-hidden="true" style="width: 100%; max-width: 96px; height: 22px; overflow: visible"><path d="M0.0,15.2 L9.1,10.8 L18.2,15.2 L27.3,6.4 L36.4,10.8 L45.5,15.2 L54.5,2.0 L63.6,10.8 L72.7,15.2 L81.8,10.8 L90.9,15.2 L100.0,15.2" style="fill: none; stroke: #0F766E; stroke-width: 1.6; vector-effect: non-scaling-stroke"></path><path d="M0.0,13.0 L9.1,9.3 L18.2,13.0 L27.3,5.7 L36.4,9.3 L45.5,13.0 L54.5,2.0 L63.6,9.3 L72.7,13.0 L81.8,9.3 L90.9,13.0 L100.0,13.0" style="fill: none; stroke: #B54708; stroke-width: 1.6; vector-effect: non-scaling-stroke"></path></svg>
+</div>
+<div style="display: flex; flex-direction: column; align-items: flex-start; gap: 4px">
+<span style="font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 4px; background: #FFF1E6; color: #9A3D00">Update available</span>
+<span style="font-size: 13px; color: #16191D; font-weight: 500; font-variant-numeric: tabular-nums">16.4</span>
+</div>
+<div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 8px">
+<div style="display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0">
+<span style="font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 4px; background: #E6F4EC; color: #05603A">No findings</span>
+<span style="font-size: 13px; color: #16191D"></span>
+<span style="font-size: 13px; color: #5B6471">Checked 14.11.2026 08:15</span>
+</div>
+<button type="button" aria-label="Rescan vulnerabilities" style="flex: 0 0 auto; width: 44px; height: 44px; display: grid; place-items: center; background: transparent; border: 1px solid #E3E6EB; border-radius: 6px; color: #3D4551; cursor: pointer">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.6-5.9"></path><path d="M20 4v5h-5"></path></svg>
+</button>
+</div>
+</div>
+<div style="display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 0.8fr) minmax(0, 0.7fr) minmax(0, 0.8fr) minmax(0, 1.4fr) minmax(0, 1.05fr) minmax(0, 1.5fr); column-gap: 16px; padding: 12px 20px; border-top: 1px solid #EEF0F3; align-items: start">
+<div style="display: flex; flex-direction: column; gap: 2px; min-width: 0">
+<a href="#" style="font-weight: 600; color: #1D4ED8">grafana</a>
+<span style="font-size: 13px; color: #5B6471; font-variant-numeric: tabular-nums">11.1.0</span>
+<span style="font-size: 13px; color: #5B6471"></span>
+</div>
+<span>homelab-01</span>
+<div style="display: flex; flex-direction: column; gap: 6px; font-variant-numeric: tabular-nums">
+<span>0.6 %</span>
+<svg viewBox="0 0 100 26" preserveAspectRatio="none" aria-hidden="true" style="width: 100%; max-width: 96px; height: 22px; overflow: visible"><path d="M0.0,13.0 L9.1,13.0 L18.2,7.5 L27.3,13.0 L36.4,13.0 L45.5,2.0 L54.5,13.0 L63.6,13.0 L72.7,7.5 L81.8,13.0 L90.9,13.0 L100.0,13.0" style="fill: none; stroke: #2563EB; stroke-width: 1.6; vector-effect: non-scaling-stroke"></path></svg>
+</div>
+<div style="display: flex; flex-direction: column; gap: 6px; font-variant-numeric: tabular-nums">
+<span>148 MiB</span>
+<svg viewBox="0 0 100 26" preserveAspectRatio="none" aria-hidden="true" style="width: 100%; max-width: 96px; height: 22px; overflow: visible"><path d="M0.0,3.7 L9.1,3.7 L18.2,3.7 L27.3,2.0 L36.4,2.0 L45.5,2.0 L54.5,2.0 L63.6,2.0 L72.7,2.0 L81.8,2.0 L90.9,2.0 L100.0,2.0" style="fill: none; stroke: #6D4AC4; stroke-width: 1.6; vector-effect: non-scaling-stroke"></path></svg>
+</div>
+<div style="display: flex; flex-direction: column; gap: 6px; font-variant-numeric: tabular-nums">
+<span style="white-space: nowrap">0.8 kB/s ↓ / 1.9 kB/s ↑</span>
+<svg viewBox="0 0 100 26" preserveAspectRatio="none" aria-hidden="true" style="width: 100%; max-width: 96px; height: 22px; overflow: visible"><path d="M0.0,16.7 L9.1,16.7 L18.2,9.3 L27.3,16.7 L36.4,16.7 L45.5,2.0 L54.5,16.7 L63.6,16.7 L72.7,9.3 L81.8,16.7 L90.9,16.7 L100.0,16.7" style="fill: none; stroke: #0F766E; stroke-width: 1.6; vector-effect: non-scaling-stroke"></path><path d="M0.0,15.2 L9.1,15.2 L18.2,10.8 L27.3,15.2 L36.4,15.2 L45.5,2.0 L54.5,15.2 L63.6,15.2 L72.7,10.8 L81.8,15.2 L90.9,15.2 L100.0,15.2" style="fill: none; stroke: #B54708; stroke-width: 1.6; vector-effect: non-scaling-stroke"></path></svg>
+</div>
+<div style="display: flex; flex-direction: column; align-items: flex-start; gap: 4px">
+<span style="font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 4px; background: #FFF1E6; color: #9A3D00">Update available</span>
+<span style="font-size: 13px; color: #16191D; font-weight: 500; font-variant-numeric: tabular-nums">11.3.0</span>
+</div>
+<div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 8px">
+<div style="display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0">
+<span style="font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 4px; background: #FDF3D7; color: #7A5200">Medium</span>
+<span style="font-size: 13px; color: #16191D">2 active · 2 medium</span>
+<span style="font-size: 13px; color: #5B6471">Checked 14.11.2026 08:15</span>
+</div>
+<button type="button" aria-label="Rescan vulnerabilities" style="flex: 0 0 auto; width: 44px; height: 44px; display: grid; place-items: center; background: transparent; border: 1px solid #E3E6EB; border-radius: 6px; color: #3D4551; cursor: pointer">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.6-5.9"></path><path d="M20 4v5h-5"></path></svg>
+</button>
+</div>
+</div>
+<div style="display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 0.8fr) minmax(0, 0.7fr) minmax(0, 0.8fr) minmax(0, 1.4fr) minmax(0, 1.05fr) minmax(0, 1.5fr); column-gap: 16px; padding: 12px 20px; border-top: 1px solid #EEF0F3; align-items: start">
+<div style="display: flex; flex-direction: column; gap: 2px; min-width: 0">
+<a href="#" style="font-weight: 600; color: #1D4ED8">nginx</a>
+<span style="font-size: 13px; color: #5B6471; font-variant-numeric: tabular-nums">1.27.0</span>
+<span style="font-size: 13px; color: #5B6471"></span>
+</div>
+<span>homelab-01</span>
+<div style="display: flex; flex-direction: column; gap: 6px; font-variant-numeric: tabular-nums">
+<span>0.3 %</span>
+<svg viewBox="0 0 100 26" preserveAspectRatio="none" aria-hidden="true" style="width: 100%; max-width: 96px; height: 22px; overflow: visible"><path d="M0.0,16.7 L9.1,16.7 L18.2,9.3 L27.3,16.7 L36.4,16.7 L45.5,16.7 L54.5,2.0 L63.6,9.3 L72.7,16.7 L81.8,16.7 L90.9,16.7 L100.0,16.7" style="fill: none; stroke: #2563EB; stroke-width: 1.6; vector-effect: non-scaling-stroke"></path></svg>
+</div>
+<div style="display: flex; flex-direction: column; gap: 6px; font-variant-numeric: tabular-nums">
+<span>24 MiB</span>
+<svg viewBox="0 0 100 26" preserveAspectRatio="none" aria-hidden="true" style="width: 100%; max-width: 96px; height: 22px; overflow: visible"><path d="M0.0,2.0 L9.1,2.0 L18.2,2.0 L27.3,2.0 L36.4,2.0 L45.5,2.0 L54.5,2.0 L63.6,2.0 L72.7,2.0 L81.8,2.0 L90.9,2.0 L100.0,2.0" style="fill: none; stroke: #6D4AC4; stroke-width: 1.6; vector-effect: non-scaling-stroke"></path></svg>
+</div>
+<div style="display: flex; flex-direction: column; gap: 6px; font-variant-numeric: tabular-nums">
+<span style="white-space: nowrap">31.0 kB/s ↓ / 210 kB/s ↑</span>
+<svg viewBox="0 0 100 26" preserveAspectRatio="none" aria-hidden="true" style="width: 100%; max-width: 96px; height: 22px; overflow: visible"><path d="M0.0,13.0 L9.1,11.6 L18.2,4.8 L27.3,10.3 L36.4,11.6 L45.5,13.0 L54.5,2.0 L63.6,7.5 L72.7,11.6 L81.8,13.0 L90.9,11.6 L100.0,13.0" style="fill: none; stroke: #0F766E; stroke-width: 1.6; vector-effect: non-scaling-stroke"></path><path d="M0.0,13.0 L9.1,11.9 L18.2,4.8 L27.3,9.7 L36.4,11.4 L45.5,12.7 L54.5,2.0 L63.6,7.5 L72.7,11.6 L81.8,12.4 L90.9,11.9 L100.0,12.7" style="fill: none; stroke: #B54708; stroke-width: 1.6; vector-effect: non-scaling-stroke"></path></svg>
+</div>
+<div style="display: flex; flex-direction: column; align-items: flex-start; gap: 4px">
+<span style="font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 4px; background: #E6F4EC; color: #05603A">Up to date</span>
+<span style="font-size: 13px; color: #16191D; font-weight: 500; font-variant-numeric: tabular-nums"></span>
+</div>
+<div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 8px">
+<div style="display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0">
+<span style="font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 4px; background: #7A1C12; color: #FFFFFF">Critical</span>
+<span style="font-size: 13px; color: #16191D">3 active · 1 critical, 2 high</span>
+<span style="font-size: 13px; color: #5B6471">Checked 14.11.2026 09:15</span>
+</div>
+<button type="button" aria-label="Rescan vulnerabilities" style="flex: 0 0 auto; width: 44px; height: 44px; display: grid; place-items: center; background: transparent; border: 1px solid #E3E6EB; border-radius: 6px; color: #3D4551; cursor: pointer">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.6-5.9"></path><path d="M20 4v5h-5"></path></svg>
+</button>
+</div>
+</div>
+<div style="display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 0.8fr) minmax(0, 0.7fr) minmax(0, 0.8fr) minmax(0, 1.4fr) minmax(0, 1.05fr) minmax(0, 1.5fr); column-gap: 16px; padding: 12px 20px; border-top: 1px solid #EEF0F3; align-items: start">
+<div style="display: flex; flex-direction: column; gap: 2px; min-width: 0">
+<a href="#" style="font-weight: 600; color: #1D4ED8">billing-api</a>
+<span style="font-size: 13px; color: #5B6471; font-variant-numeric: tabular-nums">2.8.0</span>
+<span style="font-size: 13px; color: #5B6471">Own image · acme/billing-api</span>
+</div>
+<span>nas-02</span>
+<div style="display: flex; flex-direction: column; gap: 6px; font-variant-numeric: tabular-nums">
+<span>5.1 %</span>
+<svg viewBox="0 0 100 26" preserveAspectRatio="none" aria-hidden="true" style="width: 100%; max-width: 96px; height: 22px; overflow: visible"><path d="M0.0,11.4 L9.1,9.9 L18.2,5.1 L27.3,8.3 L36.4,9.9 L45.5,2.0 L54.5,6.7 L63.6,9.9 L72.7,8.3 L81.8,5.1 L90.9,8.3 L100.0,9.9" style="fill: none; stroke: #2563EB; stroke-width: 1.6; vector-effect: non-scaling-stroke"></path></svg>
+</div>
+<div style="display: flex; flex-direction: column; gap: 6px; font-variant-numeric: tabular-nums">
+<span>302 MiB</span>
+<svg viewBox="0 0 100 26" preserveAspectRatio="none" aria-hidden="true" style="width: 100%; max-width: 96px; height: 22px; overflow: visible"><path d="M0.0,5.1 L9.1,4.4 L18.2,4.4 L27.3,3.6 L36.4,3.6 L45.5,2.8 L54.5,2.8 L63.6,2.8 L72.7,2.0 L81.8,2.0 L90.9,2.0 L100.0,2.0" style="fill: none; stroke: #6D4AC4; stroke-width: 1.6; vector-effect: non-scaling-stroke"></path></svg>
+</div>
+<div style="display: flex; flex-direction: column; gap: 6px; font-variant-numeric: tabular-nums">
+<span style="white-space: nowrap">4.2 kB/s ↓ / 6.0 kB/s ↑</span>
+<svg viewBox="0 0 100 26" preserveAspectRatio="none" aria-hidden="true" style="width: 100%; max-width: 96px; height: 22px; overflow: visible"><path d="M0.0,13.0 L9.1,9.3 L18.2,5.7 L27.3,9.3 L36.4,13.0 L45.5,2.0 L54.5,9.3 L63.6,13.0 L72.7,9.3 L81.8,5.7 L90.9,9.3 L100.0,13.0" style="fill: none; stroke: #0F766E; stroke-width: 1.6; vector-effect: non-scaling-stroke"></path><path d="M0.0,11.8 L9.1,9.3 L18.2,6.9 L27.3,9.3 L36.4,11.8 L45.5,2.0 L54.5,9.3 L63.6,11.8 L72.7,9.3 L81.8,6.9 L90.9,9.3 L100.0,11.8" style="fill: none; stroke: #B54708; stroke-width: 1.6; vector-effect: non-scaling-stroke"></path></svg>
+</div>
+<div style="display: flex; flex-direction: column; align-items: flex-start; gap: 4px">
+<span style="font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 4px; background: #FFF1E6; color: #9A3D00">Update available</span>
+<span style="font-size: 13px; color: #16191D; font-weight: 500; font-variant-numeric: tabular-nums">2.9.1</span>
+</div>
+<div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 8px">
+<div style="display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0">
+<span style="font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 4px; background: #FFF1E6; color: #9A3D00">High</span>
+<span style="font-size: 13px; color: #16191D">1 active · 1 high</span>
+<span style="font-size: 13px; color: #5B6471">Checked 14.11.2026 08:30</span>
+</div>
+<button type="button" aria-label="Rescan vulnerabilities" style="flex: 0 0 auto; width: 44px; height: 44px; display: grid; place-items: center; background: transparent; border: 1px solid #E3E6EB; border-radius: 6px; color: #3D4551; cursor: pointer">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.6-5.9"></path><path d="M20 4v5h-5"></path></svg>
+</button>
+</div>
+</div>
+<div style="display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 0.8fr) minmax(0, 0.7fr) minmax(0, 0.8fr) minmax(0, 1.4fr) minmax(0, 1.05fr) minmax(0, 1.5fr); column-gap: 16px; padding: 12px 20px; border-top: 1px solid #EEF0F3; align-items: start">
+<div style="display: flex; flex-direction: column; gap: 2px; min-width: 0">
+<a href="#" style="font-weight: 600; color: #1D4ED8">redis</a>
+<span style="font-size: 13px; color: #5B6471; font-variant-numeric: tabular-nums">7.2.5</span>
+<span style="font-size: 13px; color: #5B6471"></span>
+</div>
+<span>nas-02</span>
+<div style="display: flex; flex-direction: column; gap: 6px; font-variant-numeric: tabular-nums">
+<span>0.9 %</span>
+<svg viewBox="0 0 100 26" preserveAspectRatio="none" aria-hidden="true" style="width: 100%; max-width: 96px; height: 22px; overflow: visible"><path d="M0.0,13.0 L9.1,7.5 L18.2,13.0 L27.3,13.0 L36.4,7.5 L45.5,13.0 L54.5,13.0 L63.6,2.0 L72.7,13.0 L81.8,13.0 L90.9,7.5 L100.0,13.0" style="fill: none; stroke: #2563EB; stroke-width: 1.6; vector-effect: non-scaling-stroke"></path></svg>
+</div>
+<div style="display: flex; flex-direction: column; gap: 6px; font-variant-numeric: tabular-nums">
+<span>38 MiB</span>
+<svg viewBox="0 0 100 26" preserveAspectRatio="none" aria-hidden="true" style="width: 100%; max-width: 96px; height: 22px; overflow: visible"><path d="M0.0,2.0 L9.1,2.0 L18.2,2.0 L27.3,2.0 L36.4,2.0 L45.5,2.0 L54.5,2.0 L63.6,2.0 L72.7,2.0 L81.8,2.0 L90.9,2.0 L100.0,2.0" style="fill: none; stroke: #6D4AC4; stroke-width: 1.6; vector-effect: non-scaling-stroke"></path></svg>
+</div>
+<div style="display: flex; flex-direction: column; gap: 6px; font-variant-numeric: tabular-nums">
+<span style="white-space: nowrap">1.4 kB/s ↓ / 1.1 kB/s ↑</span>
+<svg viewBox="0 0 100 26" preserveAspectRatio="none" aria-hidden="true" style="width: 100%; max-width: 96px; height: 22px; overflow: visible"><path d="M0.0,16.7 L9.1,9.3 L18.2,16.7 L27.3,16.7 L36.4,9.3 L45.5,16.7 L54.5,16.7 L63.6,2.0 L72.7,16.7 L81.8,16.7 L90.9,9.3 L100.0,16.7" style="fill: none; stroke: #0F766E; stroke-width: 1.6; vector-effect: non-scaling-stroke"></path><path d="M0.0,13.0 L9.1,13.0 L18.2,13.0 L27.3,13.0 L36.4,2.0 L45.5,13.0 L54.5,13.0 L63.6,2.0 L72.7,13.0 L81.8,13.0 L90.9,13.0 L100.0,13.0" style="fill: none; stroke: #B54708; stroke-width: 1.6; vector-effect: non-scaling-stroke"></path></svg>
+</div>
+<div style="display: flex; flex-direction: column; align-items: flex-start; gap: 4px">
+<span style="font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 4px; background: #FFF1E6; color: #9A3D00">Update available</span>
+<span style="font-size: 13px; color: #16191D; font-weight: 500; font-variant-numeric: tabular-nums">7.4.1</span>
+</div>
+<div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 8px">
+<div style="display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0">
+<span style="font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 4px; background: #E6F4EC; color: #05603A">No findings</span>
+<span style="font-size: 13px; color: #16191D"></span>
+<span style="font-size: 13px; color: #5B6471">Checked 14.11.2026 09:15</span>
+</div>
+<button type="button" aria-label="Rescan vulnerabilities" style="flex: 0 0 auto; width: 44px; height: 44px; display: grid; place-items: center; background: transparent; border: 1px solid #E3E6EB; border-radius: 6px; color: #3D4551; cursor: pointer">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.6-5.9"></path><path d="M20 4v5h-5"></path></svg>
+</button>
+</div>
+</div>
+<div style="display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 0.8fr) minmax(0, 0.7fr) minmax(0, 0.8fr) minmax(0, 1.4fr) minmax(0, 1.05fr) minmax(0, 1.5fr); column-gap: 16px; padding: 12px 20px; border-top: 1px solid #EEF0F3; align-items: start">
+<div style="display: flex; flex-direction: column; gap: 2px; min-width: 0">
+<a href="#" style="font-weight: 600; color: #1D4ED8">vaultwarden</a>
+<span style="font-size: 13px; color: #5B6471; font-variant-numeric: tabular-nums">1.32.0</span>
+<span style="font-size: 13px; color: #5B6471"></span>
+</div>
+<span>homelab-01</span>
+<div style="display: flex; flex-direction: column; gap: 6px; font-variant-numeric: tabular-nums">
+<span>0.1 %</span>
+<svg viewBox="0 0 100 26" preserveAspectRatio="none" aria-hidden="true" style="width: 100%; max-width: 96px; height: 22px; overflow: visible"><path d="M0.0,13.0 L9.1,13.0 L18.2,13.0 L27.3,13.0 L36.4,2.0 L45.5,13.0 L54.5,13.0 L63.6,13.0 L72.7,13.0 L81.8,13.0 L90.9,13.0 L100.0,13.0" style="fill: none; stroke: #2563EB; stroke-width: 1.6; vector-effect: non-scaling-stroke"></path></svg>
+</div>
+<div style="display: flex; flex-direction: column; gap: 6px; font-variant-numeric: tabular-nums">
+<span>61 MiB</span>
+<svg viewBox="0 0 100 26" preserveAspectRatio="none" aria-hidden="true" style="width: 100%; max-width: 96px; height: 22px; overflow: visible"><path d="M0.0,2.0 L9.1,2.0 L18.2,2.0 L27.3,2.0 L36.4,2.0 L45.5,2.0 L54.5,2.0 L63.6,2.0 L72.7,2.0 L81.8,2.0 L90.9,2.0 L100.0,2.0" style="fill: none; stroke: #6D4AC4; stroke-width: 1.6; vector-effect: non-scaling-stroke"></path></svg>
+</div>
+<div style="display: flex; flex-direction: column; gap: 6px; font-variant-numeric: tabular-nums">
+<span style="white-space: nowrap">0.2 kB/s ↓ / 0.3 kB/s ↑</span>
+<svg viewBox="0 0 100 26" preserveAspectRatio="none" aria-hidden="true" style="width: 100%; max-width: 96px; height: 22px; overflow: visible"><path d="M0.0,13.0 L9.1,13.0 L18.2,13.0 L27.3,13.0 L36.4,2.0 L45.5,13.0 L54.5,13.0 L63.6,13.0 L72.7,13.0 L81.8,13.0 L90.9,13.0 L100.0,13.0" style="fill: none; stroke: #0F766E; stroke-width: 1.6; vector-effect: non-scaling-stroke"></path><path d="M0.0,13.0 L9.1,13.0 L18.2,13.0 L27.3,13.0 L36.4,2.0 L45.5,13.0 L54.5,13.0 L63.6,13.0 L72.7,13.0 L81.8,13.0 L90.9,13.0 L100.0,13.0" style="fill: none; stroke: #B54708; stroke-width: 1.6; vector-effect: non-scaling-stroke"></path></svg>
+</div>
+<div style="display: flex; flex-direction: column; align-items: flex-start; gap: 4px">
+<span style="font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 4px; background: #E6F4EC; color: #05603A">Up to date</span>
+<span style="font-size: 13px; color: #16191D; font-weight: 500; font-variant-numeric: tabular-nums"></span>
+</div>
+<div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 8px">
+<div style="display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0">
+<span style="font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 4px; background: #EEF0F3; color: #3D4551">Not scanned</span>
+<span style="font-size: 13px; color: #16191D"></span>
+<span style="font-size: 13px; color: #5B6471">Never scanned</span>
+</div>
+<button type="button" aria-label="Rescan vulnerabilities" style="flex: 0 0 auto; width: 44px; height: 44px; display: grid; place-items: center; background: transparent; border: 1px solid #E3E6EB; border-radius: 6px; color: #3D4551; cursor: pointer">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.6-5.9"></path><path d="M20 4v5h-5"></path></svg>
+</button>
+</div>
+</div>
+</div>
+</div>
+</section>
+</main>
+</div>
+</body>
+</html>
