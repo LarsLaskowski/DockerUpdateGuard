@@ -534,6 +534,72 @@ public class ContainerActionServiceTests
     }
 
     /// <summary>
+    /// Verify a confirmation rejected by a check logs one warning naming the action, container, instance and the check
+    /// </summary>
+    /// <param name="scenario">Scenario name</param>
+    /// <param name="withNewerScan">Whether a newer runtime scan holds only another container</param>
+    /// <param name="expectedCheck">Name of the check that rejects the action</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC11")]
+    [DataRow("InstanceDisabled", false, "instance disabled")]
+    [DataRow("PortainerDisabled", false, "portainer disabled")]
+    [DataRow("Enabled", true, "not current")]
+    public async Task ContainerActionServiceExecuteAsyncWhenRejectedLogsRejectingCheckAsync(string scenario, bool withNewerScan, string expectedCheck)
+    {
+        var databaseName = Guid.NewGuid().ToString();
+        var seeded = await SeedAsync(databaseName, ContainerRuntimeStatus.Running, true, withNewerScan).ConfigureAwait(false);
+        var requests = new ConcurrentQueue<string>();
+        var logger = new TestLogger<ContainerActionService>();
+        using var provider = CreateServiceProvider(databaseName, new ContainerActionRunWriteFailingInterceptor());
+        using var handler = CreatePortainerHandler(requests, CreateAnswer(HttpStatusCode.NoContent));
+
+        var service = CreateService(provider, handler, CreateRejectingOptions(scenario), null, logger, CancellationToken.None);
+
+        await service.ExecuteAsync(seeded.InstanceId, ContainerId, ContainerActionType.RestartContainer).ConfigureAwait(false);
+
+        var rejection = Assert.ContainsSingle(entry => entry.EventId.Id == 3322, logger.Entries, $"A rejection by the check '{expectedCheck}' must be logged once");
+
+        Assert.AreEqual(LogLevel.Warning, rejection.LogLevel, "A rejected action must be logged as a warning");
+        Assert.AreEqual($"Container action RestartContainer on container {ContainerName} of Docker instance {InstanceName} rejected: {expectedCheck}",
+                        rejection.Message,
+                        "The rejection must name the action, container, instance and the rejecting check only");
+    }
+
+    /// <summary>
+    /// Verify a confirmation for an instance or a container the database does not hold fails with the confirmation text of E6, writes no run and does not contact Portainer
+    /// </summary>
+    /// <param name="unknownInstance">Whether the instance is unknown; otherwise the container is</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC6")]
+    [DataRow(true)]
+    [DataRow(false)]
+    public async Task ContainerActionServiceExecuteAsyncWhenInstanceOrContainerUnknownFailsWithoutRunAsync(bool unknownInstance)
+    {
+        var databaseName = Guid.NewGuid().ToString();
+        var seeded = await SeedAsync(databaseName, ContainerRuntimeStatus.Running, true, false).ConfigureAwait(false);
+        var requests = new ConcurrentQueue<string>();
+        using var provider = CreateServiceProvider(databaseName, new ContainerActionRunWriteFailingInterceptor());
+        using var handler = CreatePortainerHandler(requests, CreateAnswer(HttpStatusCode.NoContent));
+
+        var service = CreateService(provider, handler, CreateOptions(null), null, new TestLogger<ContainerActionService>(), CancellationToken.None);
+        var instanceId = unknownInstance ? Guid.NewGuid() : seeded.InstanceId;
+        var containerId = unknownInstance ? ContainerId : OtherContainerId;
+
+        var result = await service.ExecuteAsync(instanceId, containerId, ContainerActionType.RestartContainer).ConfigureAwait(false);
+
+        var runs = await LoadRunsAsync(databaseName).ConfigureAwait(false);
+
+        Assert.AreEqual(ContainerActionStatus.Failed, result.Status, "A confirmation for an unknown target must fail");
+        Assert.AreEqual("Container is not in the latest runtime scan; run a runtime scan and try again",
+                        result.Message,
+                        "A confirmation for an unknown target must return the confirmation text of E6");
+        Assert.IsEmpty(runs, "Without a known instance and snapshot no run can be written");
+        Assert.IsEmpty(requests, "Portainer must not be contacted for an unknown target");
+    }
+
+    /// <summary>
     /// Verify a confirmation whose configured environment Portainer does not know ends Failed without an action request
     /// </summary>
     /// <returns>Task</returns>

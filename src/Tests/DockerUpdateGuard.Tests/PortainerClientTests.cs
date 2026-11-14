@@ -1097,6 +1097,54 @@ public class PortainerClientTests
     }
 
     /// <summary>
+    /// Verify a non-success answer to the container list fails the action with its HTTP status without sending an action request
+    /// </summary>
+    /// <param name="statusCode">HTTP status of the container list answer</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC6")]
+    [DataRow(403)]
+    [DataRow(500)]
+    public async Task PortainerClientExecuteContainerActionAsyncWhenContainerListFailsFailsWithStatusWithoutActionAsync(int statusCode)
+    {
+        var handler = new SequenceHttpMessageHandler();
+        var logger = new TestLogger<PortainerClient>();
+
+        try
+        {
+            handler.AddResponse(StatusUrl, new HttpResponseMessage(HttpStatusCode.OK));
+            handler.AddJsonResponse(EndpointCheckUrl, EndpointJson);
+            handler.AddResponse(ContainersUrl, new HttpResponseMessage((HttpStatusCode)statusCode));
+
+            var client = new PortainerClient(CreateHttpClientFactory(handler),
+                                             logger,
+                                             new LoginRetryAfterRegistry(TimeProvider.System),
+                                             TimeProvider.System);
+
+            var result = await client.ExecuteContainerActionAsync(CreateFailureInstanceOptions(), CreateRestartRequest(), TestContext.CancellationToken)
+                                     .ConfigureAwait(false);
+
+            Assert.AreEqual(ExternalOperationStatus.Failed, result.Status, $"An HTTP {statusCode} answer to the container list must fail the action");
+            Assert.AreEqual($"Action 'restart' failed: HTTP {statusCode}",
+                            result.Message,
+                            $"An HTTP {statusCode} answer to the container list must carry its status");
+            Assert.DoesNotContain(request => request.Method == "POST",
+                                  handler.Requests,
+                                  "No action request may be sent when the container list fails");
+            Assert.Contains(entry => entry.EventId.Id == 3309
+                                     && entry.LogLevel == LogLevel.Warning
+                                     && entry.Message.Contains(RestartAction, StringComparison.Ordinal)
+                                     && entry.Message.Contains(ContainerName, StringComparison.Ordinal),
+                            logger.Entries,
+                            "A failing container list must log a warning naming the action and container");
+        }
+        finally
+        {
+            handler.Dispose();
+        }
+    }
+
+    /// <summary>
     /// Verify a server error answer to the action request is sent once through the real retry handler and reported as possibly applied
     /// </summary>
     /// <param name="statusCode">HTTP status of the action answer</param>

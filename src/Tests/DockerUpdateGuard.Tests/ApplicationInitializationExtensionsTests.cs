@@ -2,10 +2,13 @@ using DockerUpdateGuard.Configuration;
 using DockerUpdateGuard.Data;
 using DockerUpdateGuard.Data.Entities;
 using DockerUpdateGuard.Images.Interfaces;
+using DockerUpdateGuard.Tests.Data;
 
 using Microsoft.AspNetCore.Builder;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
 using NSubstitute;
@@ -99,6 +102,76 @@ public class ApplicationInitializationExtensionsTests
         Assert.IsNotNull(interrupted.CompletedAtUtc, "A run failed at startup must be completed");
         Assert.AreEqual(ContainerActionStatus.Succeeded, finished.Status, "A terminal run must stay unchanged");
         Assert.AreEqual("done", finished.ErrorMessage, "A terminal run must keep its message");
+    }
+
+    /// <summary>
+    /// Verify the startup initialization logs the number of reconciled runs only when it reconciled any
+    /// </summary>
+    /// <param name="withRuns">Whether a run left Running is seeded</param>
+    /// <param name="expectedCount">Expected number of reconciliation log entries</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC9")]
+    [DataRow(true, 1)]
+    [DataRow(false, 0)]
+    public async Task ApplicationInitializationExtensionsInitializeDockerUpdateGuardLogsReconciledRunCountAsync(bool withRuns, int expectedCount)
+    {
+        var logger = new TestLogger<WebApplication>();
+        var application = CreateApplication(Guid.NewGuid().ToString(), CreateLoggerFactory(logger));
+
+        await using (application.ConfigureAwait(false))
+        {
+            if (withRuns)
+            {
+                await SeedRunsAsync(application).ConfigureAwait(false);
+            }
+
+            await application.InitializeDockerUpdateGuardAsync()
+                             .ConfigureAwait(false);
+        }
+
+        var entries = logger.Entries.Where(entry => entry.EventId.Id == 3324)
+                                    .ToList();
+
+        Assert.HasCount(expectedCount, entries, "The reconciliation must be logged exactly when a run was reconciled");
+        Assert.IsTrue(entries.TrueForAll(entry => entry.LogLevel == LogLevel.Information
+                                                  && entry.Message == "Reconciled 1 container action runs interrupted by an application stop"),
+                      "The reconciliation entry must be informational and carry the number of reconciled runs");
+    }
+
+    /// <summary>
+    /// Create a logger factory that hands the given logger to the startup category and discards every other category
+    /// </summary>
+    /// <param name="logger">Logger of the startup category</param>
+    /// <returns>Logger factory</returns>
+    private static ILoggerFactory CreateLoggerFactory(ILogger logger)
+    {
+        var loggerFactory = Substitute.For<ILoggerFactory>();
+
+        loggerFactory.CreateLogger(Arg.Any<string>()).Returns(NullLogger.Instance);
+        loggerFactory.CreateLogger(typeof(ApplicationInitializationExtensions).FullName!).Returns(logger);
+
+        return loggerFactory;
+    }
+
+    /// <summary>
+    /// Create an application on an in-memory database with the given logger factory
+    /// </summary>
+    /// <param name="databaseName">In-memory database name</param>
+    /// <param name="loggerFactory">Logger factory</param>
+    /// <returns>Application</returns>
+    private static WebApplication CreateApplication(string databaseName, ILoggerFactory loggerFactory)
+    {
+        var builder = WebApplication.CreateBuilder();
+
+        builder.Services.AddDbContext<DockerUpdateGuardDbContext>(options => options.UseInMemoryDatabase(databaseName));
+        builder.Services.AddSingleton(Substitute.For<IInstanceDiscoveryService>());
+        builder.Services.AddSingleton<ApplicationTelemetry>();
+        builder.Services.AddSingleton(TimeProvider.System);
+        builder.Services.AddSingleton(Options.Create(new DockerUpdateGuardOptions()));
+        builder.Services.AddSingleton(loggerFactory);
+
+        return builder.Build();
     }
 
     /// <summary>
