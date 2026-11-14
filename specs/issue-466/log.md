@@ -14,3 +14,4 @@ are quoted in full.
 | 2026-11-14 19:12 | 6 Implement | Dev | Source read once after Resolve() and passed to the four writes; MapSource deleted; providers return constants; docs updated; build clean, 1348+22 tests pass, coverage gate PASS (new lines 100%) (sonnet/medium · 106,003 tokens · 29 tool uses · 208 s · 18 in · 8,086 out · 822,393 cache read · 51,758 cache write · 187,385 weighted) |
 | 2026-11-14 19:13 | 6 Coverage skipped | Orchestrator | skipped — gate passes (new 100%, overall 92.1%), no uncovered lines, no deferred tests |
 | 2026-11-14 19:13 | 6 Documentation | Orchestrator | written in 6 Implement |
+| 2026-11-14 19:15 | 7 Gate stamp | Orchestrator | PASS on fcc6f1d145b847b6d4e855339a22208cfecf12be (tier standard): Format check pass; Analyzer gate pass; Test with coverage pass; Coverage gate pass; decision-check.py pass; scope-check.py pass · figure-check.py 0 hit(s) |
