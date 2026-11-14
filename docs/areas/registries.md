@@ -199,10 +199,14 @@ go through its retry of transient HTTP failures.
   scan ([Scan engine](scan-engine.md)). It does not count requests; a scan may issue several requests per image
   (token, manifests, configuration blobs, tag lookups and listings), manual scans are not limited, and no request is
   refused for budget reasons.
-- `DockerUpdateGuard:DockerHub:MaxParallelRequests` (default 4, range 1–32) caps the requests one Docker Hub client
-  instance has in flight at once, covering web API, login, token and registry requests. Every scan and every UI
-  operation works with its own client instances, so the cap is not global. The value is read when an instance is
-  created, so a configuration reload applies to later operations. Requests to other registries are not capped.
+- `DockerUpdateGuard:DockerHub:MaxParallelRequests` (default 4, range 1–32) caps the Docker Hub requests in flight at
+  once for the whole process, over every Docker Hub client instance and scope (web API, login, token service and
+  registry requests). A slot is held from sending until the response headers arrive, retries and `Retry-After` waits
+  included, the body read not. Waiters are admitted in arrival order, and the wait honors cancellation. A configuration
+  reload applies to the next admission: raised, waiting requests are admitted at once; lowered, requests in flight
+  finish and new ones wait until the count is below the new value
+  ([0030](../decisions/0030-docker-hub-request-parallelism-is-limited-process-wide-and-follows-reloads.md)). Requests
+  to other registries and the Docker Scout provider's requests are not capped.
 - Docker Hub rate limiting (HTTP 429) is handled by the retry of
   [Integration failures](integration-failures.md#retry-of-transient-http-failures); the web API login additionally
   honors a `Retry-After` window ([Integration failures](integration-failures.md#logins-inside-a-retry-after-window)).
@@ -211,12 +215,13 @@ go through its retry of transient HTTP failures.
 
 - `DockerUpdateGuard:DockerHub:RequestTimeoutSeconds` (default 30, range 1–300) is the total time one request may
   take including all retries and waits ([Integration failures](integration-failures.md#retry-of-transient-http-failures)),
-  for Docker Hub, other registries and the release feeds.
+  for Docker Hub, other registries and the release feeds. The wait for a Docker Hub request slot
+  (`MaxParallelRequests`) is not part of it, except for the login ([Authentication](#authentication)).
 
 ### Configuration reload
 
 - Read live: `DockerHub:UserName`, `DockerHub:Pat`, `DockerHub:Registry` (for account discovery)
-  and `DockerHub:MaxParallelRequests` (for new client instances).
+  and `DockerHub:MaxParallelRequests` (for the next admission of a request).
 - Fixed at startup, a change needs a restart: `DockerHub:ApiBaseUrl` and `DockerHub:RequestTimeoutSeconds`. The
   origin of `ApiBaseUrl` (or of an absolute `DockerHub:Registry` that replaces it), fixed at startup like `ApiBaseUrl`, is the only one Docker Hub pagination follows ([Pagination links](#pagination-links)).
 - Validation of these keys at startup (an invalid value fails startup, see [Hosting](hosting.md)): `Registry`
@@ -262,9 +267,6 @@ go through its retry of transient HTTP failures.
 
 ### Known gaps
 
-- `MaxParallelRequests` caps each Docker Hub client instance, not the process: concurrent scans, and the client
-  instances one scan uses, each get the full allowance. Tracked in
-  [#265](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/265).
 - `DockerHub:Registry` does not decide which registries the Docker Hub client serves (that host list is fixed); it
   only gates the account listing and, when set to an absolute URL with a non-Docker-Hub host, replaces the web API
   base address. Tracked in [#268](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/268).
@@ -275,6 +277,8 @@ go through its retry of transient HTTP failures.
 
 ## Related decisions
 
+- [0030](../decisions/0030-docker-hub-request-parallelism-is-limited-process-wide-and-follows-reloads.md): Docker Hub
+  request parallelism is limited process-wide and follows reloads.
 - [0004](../decisions/0004-pagination-follows-only-same-origin-links.md): pagination follows only same-origin links.
 - [0024](../decisions/0024-registry-listings-stop-failed-after-a-page-cap.md): listings stop *failed* at a repeated
   link or after a page cap.

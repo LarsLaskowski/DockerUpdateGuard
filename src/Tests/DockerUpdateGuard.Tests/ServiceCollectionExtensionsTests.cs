@@ -154,6 +154,58 @@ public class ServiceCollectionExtensionsTests
     }
 
     /// <summary>
+    /// Verify the Docker Hub request limiter is one singleton shared by the Docker Hub clients of all scopes and the client holds no semaphore of its own
+    /// </summary>
+    [TestMethod]
+    [TestCategory("AC7")]
+    public void ServiceCollectionExtensionsDockerHubRequestLimiterIsSharedSingleton()
+    {
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+                                                                             {
+                                                                                 ["DockerUpdateGuard:ConnectionString"] = "Host=database;Database=dug;Username=test;Password=test",
+                                                                                 ["Telemetry:EnableLogging"] = "true",
+                                                                                 ["Telemetry:EnableMetrics"] = "false",
+                                                                                 ["Telemetry:EnableTracing"] = "false",
+                                                                             })
+                                                      .Build();
+        var services = new ServiceCollection();
+
+        services.AddDockerUpdateGuardHost(configuration);
+
+        using var serviceProvider = services.BuildServiceProvider();
+        using var firstScope = serviceProvider.CreateScope();
+        using var secondScope = serviceProvider.CreateScope();
+
+        var requestLimiter = serviceProvider.GetRequiredService<DockerHubRequestLimiter>();
+        var firstScopeLimiter = firstScope.ServiceProvider.GetRequiredService<DockerHubRequestLimiter>();
+        var secondScopeLimiter = secondScope.ServiceProvider.GetRequiredService<DockerHubRequestLimiter>();
+        var firstClient = firstScope.ServiceProvider.GetRequiredService<IDockerHubClient>();
+        var secondClient = secondScope.ServiceProvider.GetRequiredService<IDockerHubClient>();
+        var clientFields = typeof(DockerHubClient).GetFields(BindingFlags.Instance | BindingFlags.NonPublic);
+
+        Assert.AreSame(requestLimiter, firstScopeLimiter, "The limiter resolved in the first scope must be the root singleton");
+        Assert.AreSame(requestLimiter, secondScopeLimiter, "The limiter resolved in the second scope must be the root singleton");
+        Assert.AreSame(requestLimiter, GetRequestLimiter(firstClient), "The Docker Hub client of the first scope must use the registered limiter");
+        Assert.AreSame(requestLimiter, GetRequestLimiter(secondClient), "The Docker Hub client of the second scope must use the registered limiter");
+        Assert.DoesNotContain(field => field.FieldType == typeof(SemaphoreSlim), clientFields, "The Docker Hub client must hold no semaphore of its own");
+        Assert.IsFalse(typeof(IDisposable).IsAssignableFrom(typeof(DockerHubClient)), "The Docker Hub client owns nothing to dispose");
+    }
+
+    /// <summary>
+    /// Read the Docker Hub request limiter a service holds, found by field type
+    /// </summary>
+    /// <param name="service">Service instance</param>
+    /// <returns>Request limiter or null when the service holds none</returns>
+    private static DockerHubRequestLimiter? GetRequestLimiter(object service)
+    {
+        var field = service.GetType()
+                           .GetFields(BindingFlags.Instance | BindingFlags.NonPublic)
+                           .FirstOrDefault(candidate => candidate.FieldType == typeof(DockerHubRequestLimiter));
+
+        return field?.GetValue(service) as DockerHubRequestLimiter;
+    }
+
+    /// <summary>
     /// Read the Docker Hub access token cache a service holds, found by field type
     /// </summary>
     /// <param name="service">Service instance</param>

@@ -20,7 +20,7 @@ namespace DockerUpdateGuard.DockerHub;
 /// <summary>
 /// Conservative first iteration Docker Hub adapter
 /// </summary>
-public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient, IDisposable
+public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient
 {
     #region Constants
 
@@ -84,9 +84,9 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
     private readonly DockerHubAccessTokenCache _accessTokenCache;
 
     /// <summary>
-    /// Throttle bounding the number of concurrent outbound Docker Hub and registry requests
+    /// Process-wide limiter of the Docker Hub requests in flight
     /// </summary>
-    private readonly SemaphoreSlim _requestThrottle;
+    private readonly DockerHubRequestLimiter _requestLimiter;
 
     #endregion // Fields
 
@@ -100,20 +100,20 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
     /// <param name="optionsMonitor">Options monitor</param>
     /// <param name="loginRetryAfterRegistry">Registry of the login Retry-After windows</param>
     /// <param name="accessTokenCache">Shared cache of the Docker Hub access token</param>
+    /// <param name="requestLimiter">Process-wide limiter of the Docker Hub requests in flight</param>
     public DockerHubClient(HttpClient httpClient,
                            ILogger<DockerHubClient> logger,
                            IOptionsMonitor<DockerUpdateGuardOptions> optionsMonitor,
                            LoginRetryAfterRegistry loginRetryAfterRegistry,
-                           DockerHubAccessTokenCache accessTokenCache)
+                           DockerHubAccessTokenCache accessTokenCache,
+                           DockerHubRequestLimiter requestLimiter)
     {
         _httpClient = httpClient;
         _logger = logger;
         _optionsMonitor = optionsMonitor;
         _loginRetryAfterRegistry = loginRetryAfterRegistry;
         _accessTokenCache = accessTokenCache;
-
-        var maxParallelRequests = Math.Max(1, optionsMonitor.CurrentValue.DockerHub.MaxParallelRequests);
-        _requestThrottle = new SemaphoreSlim(maxParallelRequests, maxParallelRequests);
+        _requestLimiter = requestLimiter;
     }
 
     #endregion // Constructors
@@ -910,7 +910,7 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
     /// <returns>HTTP response</returns>
     private async Task<HttpResponseMessage> SendThrottledAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
-        await _requestThrottle.WaitAsync(cancellationToken).ConfigureAwait(false);
+        await _requestLimiter.WaitAsync(cancellationToken).ConfigureAwait(false);
 
         try
         {
@@ -921,7 +921,7 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
         }
         finally
         {
-            _requestThrottle.Release();
+            _requestLimiter.Release();
         }
     }
 
@@ -1552,14 +1552,4 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
     }
 
     #endregion // IRegistryMetadataClient
-
-    #region IDisposable
-
-    /// <inheritdoc/>
-    public void Dispose()
-    {
-        _requestThrottle.Dispose();
-    }
-
-    #endregion // IDisposable
 }

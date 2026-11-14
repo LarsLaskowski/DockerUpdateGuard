@@ -90,4 +90,5 @@ once in the [area document](../areas/README.md) of the record's area, and the re
 | [0027](0027-over-long-vulnerability-values-are-cut-to-their-column-length-where-the-refresh-stores-them.md) | Over-long vulnerability values are cut to their column length where the refresh stores them | Accepted | 2026-11-13 |
 | [0028](0028-a-failed-save-of-one-image-version-does-not-stop-the-vulnerability-refresh.md) | A failed save of one image version does not stop the vulnerability refresh | Accepted | 2026-11-13 |
 | [0029](0029-registry-calls-answer-every-error-but-the-callers-cancellation-as-failed.md) | Registry calls answer every error but the caller's cancellation as *failed* | Accepted | 2026-11-14 |
+| [0030](0030-docker-hub-request-parallelism-is-limited-process-wide-and-follows-reloads.md) | Docker Hub request parallelism is limited process-wide and follows reloads | Accepted | 2026-11-14 |
 <!-- project:end index -->

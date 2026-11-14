@@ -1038,6 +1038,139 @@ public partial class DockerHubClientTests
     }
 
     /// <summary>
+    /// Verify two client instances sharing one limiter never have more requests in flight than the limit and reach it
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC1")]
+    public async Task DockerHubClientTwoInstancesShareProcessWideLimitAsync()
+    {
+        using var handler = new ConcurrencyTrackingHttpMessageHandler("""{ "username": "acme" }""");
+        using var firstHttpClient = new HttpClient(handler, false)
+                                    {
+                                        BaseAddress = new Uri("https://hub.docker.com/"),
+                                    };
+        using var secondHttpClient = new HttpClient(handler, false)
+                                     {
+                                         BaseAddress = new Uri("https://hub.docker.com/"),
+                                     };
+        using var limiter = CreateLimiter(2);
+
+        var clients = new[]
+                      {
+                          CreateClient(firstHttpClient, pat: string.Empty, requestLimiter: limiter),
+                          CreateClient(secondHttpClient, pat: string.Empty, requestLimiter: limiter)
+                      };
+        var requests = Enumerable.Range(0, 6)
+                                 .Select(index => clients[index % 2].GetCurrentUserAsync(TestContext.CancellationToken))
+                                 .ToArray();
+
+        try
+        {
+            await handler.WaitForArrivalsAsync(2, TestContext.CancellationToken).ConfigureAwait(false);
+
+            Assert.AreEqual(2,
+                            handler.CurrentConcurrency,
+                            "While the gate is closed exactly the limit of requests must be in flight across both clients");
+        }
+        finally
+        {
+            handler.OpenGate();
+        }
+
+        var results = await Task.WhenAll(requests).ConfigureAwait(false);
+
+        Assert.IsTrue(results.All(result => result.Status == ExternalOperationStatus.Succeeded),
+                      "All requests must succeed once the gate opens");
+        Assert.AreEqual(2,
+                        handler.MaxObservedConcurrency,
+                        "The requests of both clients together must reach the limit and never exceed it");
+    }
+
+    /// <summary>
+    /// Verify a transport failure releases the request slot
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC5")]
+    public async Task DockerHubClientTransportFailureReleasesSlotAsync()
+    {
+        using var handler = new DelegateHttpMessageHandler(_ => throw new HttpRequestException(HttpRequestError.ConnectionError, "Connection refused"));
+        using var httpClient = new HttpClient(handler)
+                               {
+                                   BaseAddress = new Uri("https://hub.docker.com/"),
+                               };
+        using var limiter = CreateLimiter(1);
+
+        var client = CreateClient(httpClient, pat: string.Empty, requestLimiter: limiter);
+
+        var result = await client.GetCurrentUserAsync(TestContext.CancellationToken).ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Failed, result.Status, "A transport failure must fail the call");
+        Assert.IsTrue(limiter.WaitAsync(TestContext.CancellationToken).IsCompleted, "The failed request must have released its slot");
+    }
+
+    /// <summary>
+    /// Verify a non-success response releases the request slot
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC5")]
+    public async Task DockerHubClientNonSuccessResponseReleasesSlotAsync()
+    {
+        using var handler = new DelegateHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.InternalServerError));
+        using var httpClient = new HttpClient(handler)
+                               {
+                                   BaseAddress = new Uri("https://hub.docker.com/"),
+                               };
+        using var limiter = CreateLimiter(1);
+
+        var client = CreateClient(httpClient, pat: string.Empty, requestLimiter: limiter);
+
+        var result = await client.GetCurrentUserAsync(TestContext.CancellationToken).ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Failed, result.Status, "A 500 response must fail the call");
+        Assert.IsTrue(limiter.WaitAsync(TestContext.CancellationToken).IsCompleted, "The request answered with a failure status must have released its slot");
+    }
+
+    /// <summary>
+    /// Verify authenticated requests of two clients with a limit of one complete, the login included
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC6")]
+    [Timeout(20000, CooperativeCancellation = true)]
+    public async Task DockerHubClientAuthenticatedRequestsWithLimitOneCompleteAsync()
+    {
+        using var handler = new DelegateHttpMessageHandler(request => CreateHubResponse(request, () => CreateJsonResponse("""{ "username": "acme" }""")));
+        using var firstHttpClient = new HttpClient(handler, false)
+                                    {
+                                        BaseAddress = new Uri("https://hub.docker.com/"),
+                                    };
+        using var secondHttpClient = new HttpClient(handler, false)
+                                     {
+                                         BaseAddress = new Uri("https://hub.docker.com/"),
+                                     };
+        using var limiter = CreateLimiter(1);
+        using var tokenCache = new DockerHubAccessTokenCache(TimeProvider.System);
+
+        var clients = new[]
+                      {
+                          CreateClient(firstHttpClient, accessTokenCache: tokenCache, requestLimiter: limiter),
+                          CreateClient(secondHttpClient, accessTokenCache: tokenCache, requestLimiter: limiter)
+                      };
+        var requests = Enumerable.Range(0, 4)
+                                 .Select(index => clients[index % 2].GetCurrentUserAsync(TestContext.CancellationToken))
+                                 .ToArray();
+
+        var results = await Task.WhenAll(requests).ConfigureAwait(false);
+
+        Assert.IsTrue(results.All(result => result.Status == ExternalOperationStatus.Succeeded),
+                      "All authenticated requests must complete with a limit of one, the login included");
+        Assert.IsTrue(limiter.WaitAsync(TestContext.CancellationToken).IsCompleted, "Every slot must be released afterwards");
+    }
+
+    /// <summary>
     /// Verify outbound Docker Hub requests honor the configured parallelism limit
     /// </summary>
     /// <returns>Task</returns>
@@ -1066,7 +1199,8 @@ public partial class DockerHubClientTests
                                              new TestLogger<DockerHubClient>(),
                                              new TestOptionsMonitor<DockerUpdateGuardOptions>(options),
                                              new LoginRetryAfterRegistry(TimeProvider.System),
-                                             tokenCache);
+                                             tokenCache,
+                                             new DockerHubRequestLimiter(new TestOptionsMonitor<DockerUpdateGuardOptions>(options)));
             var requests = Enumerable.Range(0, 8)
                                      .Select(_ => client.GetCurrentUserAsync(CancellationToken.None))
                                      .ToArray();
@@ -3099,6 +3233,7 @@ public partial class DockerHubClientTests
     /// <param name="loginRetryAfterRegistry">Registry of the login windows; null creates a new one</param>
     /// <param name="accessTokenCache">Shared cache of the access token; null creates a new one</param>
     /// <param name="pat">Configured personal access token</param>
+    /// <param name="requestLimiter">Shared request limiter; null creates a new one from the options</param>
     /// <returns>Docker Hub client</returns>
     private static DockerHubClient CreateClient(HttpClient httpClient,
                                                 string registry = "docker.io",
@@ -3106,7 +3241,8 @@ public partial class DockerHubClientTests
                                                 TestLogger<DockerHubClient>? logger = null,
                                                 LoginRetryAfterRegistry? loginRetryAfterRegistry = null,
                                                 DockerHubAccessTokenCache? accessTokenCache = null,
-                                                string pat = "test-pat")
+                                                string pat = "test-pat",
+                                                DockerHubRequestLimiter? requestLimiter = null)
     {
         var options = new DockerUpdateGuardOptions
                       {
@@ -3119,11 +3255,30 @@ public partial class DockerHubClientTests
                                       },
                       };
 
+        var optionsMonitor = new TestOptionsMonitor<DockerUpdateGuardOptions>(options);
+
         return new DockerHubClient(httpClient,
                                    logger ?? new TestLogger<DockerHubClient>(),
-                                   new TestOptionsMonitor<DockerUpdateGuardOptions>(options),
+                                   optionsMonitor,
                                    loginRetryAfterRegistry ?? new LoginRetryAfterRegistry(TimeProvider.System),
-                                   accessTokenCache ?? new DockerHubAccessTokenCache(TimeProvider.System));
+                                   accessTokenCache ?? new DockerHubAccessTokenCache(TimeProvider.System),
+                                   requestLimiter ?? new DockerHubRequestLimiter(optionsMonitor));
+    }
+
+    /// <summary>
+    /// Create a request limiter with its own options
+    /// </summary>
+    /// <param name="limit">Value of MaxParallelRequests</param>
+    /// <returns>Limiter</returns>
+    private static DockerHubRequestLimiter CreateLimiter(int limit)
+    {
+        return new DockerHubRequestLimiter(new TestOptionsMonitor<DockerUpdateGuardOptions>(new DockerUpdateGuardOptions
+                                                                                            {
+                                                                                                DockerHub = new DockerHubOptions
+                                                                                                            {
+                                                                                                                MaxParallelRequests = limit,
+                                                                                                            },
+                                                                                            }));
     }
 
     /// <summary>

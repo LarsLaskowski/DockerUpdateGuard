@@ -140,7 +140,7 @@ line here: the double, where it lives and what it stands in for; how it behaves 
 - `TestScheduledBackgroundService`, `TestScanCleanupBackgroundService`, `TestOwnImageBaseRefreshBackgroundService` (`Helper/`) — the background job base, the cleanup job and the observed-image refresh
 - `ClientCertificateTestData` (`Helper/`) — client certificate files, generated per test
 - `TestLogger<T>` with `TestLogEntry` and `NullScope` (`Data/`) — the logger
-- `TestOptionsMonitor<T>` with `NullDisposable` (`Data/`) — the options monitor of a reloadable configuration
+- `TestOptionsMonitor<T>` with `ListenerRegistration` (`Data/`) — the options monitor of a reloadable configuration; `Reload` replaces `CurrentValue` and calls the `OnChange` listeners
 - `TestDevelopmentConfiguration` (`Data/`) — the development configuration files
 - `SaveChangesFailingDbContext` (`Data/`) — a database whose save fails
 - `SqliteTestDatabase` (`Data/` of both test projects) — the PostgreSQL database, as SQLite
