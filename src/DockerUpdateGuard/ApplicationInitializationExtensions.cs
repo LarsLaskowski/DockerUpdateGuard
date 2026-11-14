@@ -1,5 +1,6 @@
 using DockerUpdateGuard.Configuration;
 using DockerUpdateGuard.Images.Interfaces;
+using DockerUpdateGuard.Portainer;
 
 using Microsoft.Extensions.Options;
 
@@ -48,6 +49,15 @@ public static class ApplicationInitializationExtensions
             // blocking the host from serving requests.
             await instanceDiscoveryService.SynchronizeConfiguredInstancesAsync(CancellationToken.None)
                                           .ConfigureAwait(false);
+
+            var reconciledRuns = await ContainerActionRunReconciler.ReconcileInterruptedRunsAsync(dbContext, timeProvider, CancellationToken.None)
+                                                                   .ConfigureAwait(false);
+
+            if (reconciledRuns > 0)
+            {
+                logger.ContainerActionRunsReconciled(reconciledRuns);
+            }
+
             await applicationTelemetry.RefreshInventoryMetricsAsync(dbContext, CancellationToken.None)
                                       .ConfigureAwait(false);
         }

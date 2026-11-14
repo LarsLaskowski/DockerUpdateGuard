@@ -108,6 +108,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ApplicationTelemetry>();
         services.AddSingleton<IDockerInstanceClient, DockerInstanceClient>();
         services.AddSingleton<IPortainerClient, PortainerClient>();
+        services.AddSingleton<IContainerActionService, ContainerActionService>();
 
         services.TryAddSingleton<IProcessRunner, ProcessRunner>();
         services.AddSingleton<DefaultVulnerabilityProvider>();
