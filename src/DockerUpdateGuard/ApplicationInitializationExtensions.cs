@@ -35,7 +35,9 @@ public static class ApplicationInitializationExtensions
             var applicationOptions = scope.ServiceProvider.GetRequiredService<IOptions<DockerUpdateGuardOptions>>().Value;
             var applicationLifetime = scope.ServiceProvider.GetRequiredService<IHostApplicationLifetime>();
 
-            await DatabaseMigrator.MigrateAsync(dbContext, applicationOptions.Database, logger, applicationLifetime.ApplicationStopping)
+            var timeProvider = scope.ServiceProvider.GetRequiredService<TimeProvider>();
+
+            await DatabaseMigrator.MigrateAsync(dbContext, applicationOptions.Database, logger, timeProvider, applicationLifetime.ApplicationStopping)
                                   .ConfigureAwait(false);
             logger.ApplicationDatabaseMigrated();
 

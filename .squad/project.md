@@ -144,3 +144,4 @@ line here: the double, where it lives and what it stands in for; how it behaves 
 - `TestDevelopmentConfiguration` (`Data/`) — the development configuration files
 - `SaveChangesFailingDbContext` (`Data/`) — a database whose save fails
 - `SqliteTestDatabase` (`Data/` of both test projects) — the PostgreSQL database, as SQLite
+- `ThrowingExecutionStrategy` (`Helper/`) — the EF Core execution strategy, which fails every operation after the first ones with a given exception

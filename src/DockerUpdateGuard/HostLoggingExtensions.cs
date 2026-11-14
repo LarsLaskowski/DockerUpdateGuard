@@ -74,6 +74,32 @@ internal static partial class HostLoggingExtensions
     public static partial void ApplicationDatabaseAdvisoryLockReleaseFailed(this ILogger logger, Exception exception);
 
     /// <summary>
+    /// Log that the migration advisory lock is held by another instance and the wait continues
+    /// </summary>
+    /// <param name="logger">Logger</param>
+    /// <param name="attempt">Number of the failed attempt</param>
+    /// <param name="elapsedSeconds">Seconds waited so far</param>
+    /// <param name="delaySeconds">Seconds until the next attempt</param>
+    [LoggerMessage(EventId = 1007,
+                   Level = LogLevel.Information,
+                   Message = "DockerUpdateGuard migration advisory lock is held by another instance; attempt {Attempt} after {ElapsedSeconds} seconds, retrying in {DelaySeconds} seconds")]
+    public static partial void ApplicationDatabaseMigrationLockWaiting(this ILogger logger,
+                                                                       int attempt,
+                                                                       double elapsedSeconds,
+                                                                       double delaySeconds);
+
+    /// <summary>
+    /// Log that the migration advisory lock was not acquired within the configured timeout
+    /// </summary>
+    /// <param name="logger">Logger</param>
+    /// <param name="timeoutSeconds">Configured timeout in seconds</param>
+    /// <param name="attempts">Number of attempts performed</param>
+    [LoggerMessage(EventId = 1008,
+                   Level = LogLevel.Error,
+                   Message = "DockerUpdateGuard did not acquire the migration advisory lock within {TimeoutSeconds} seconds after {Attempts} attempts; raise 'DockerUpdateGuard:Database:MigrationLockTimeoutSeconds' if another instance needs longer to migrate")]
+    public static partial void ApplicationDatabaseMigrationLockTimedOut(this ILogger logger, int timeoutSeconds, int attempts);
+
+    /// <summary>
     /// Log that application initialization has completed
     /// </summary>
     /// <param name="logger">Logger</param>
