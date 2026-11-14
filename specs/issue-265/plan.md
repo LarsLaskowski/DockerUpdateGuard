@@ -92,8 +92,10 @@ New `DockerHub/DockerHubRequestLimiter.cs`, a sealed singleton:
   the cancellation callback removes the waiter under the lock only if it is still queued and cancels it. A granted
   waiter keeps its slot even if its token fires later (its caller's `finally` releases it). The cancellation registration is disposed as soon as the waiter is granted or cancelled, so a long-lived caller token (a background service's stopping token) keeps no callback of a finished wait.
   It is disposed outside the lock, because the callback takes the lock and disposing waits for a running callback:
-  the queued path awaits the waiter's task inside a `using` block around the registration, so the registration is
-  disposed when that await ends, granted or cancelled.
+  `WaitAsync` returns the waiter's own task (a grant is visible on it at once) and keeps each queued waiter's
+  registration beside the queue; whoever takes the waiter out of the queue disposes it after leaving the lock — the
+  granting `Release` or listener, the cancellation callback, or `WaitAsync` itself when the waiter left the queue before
+  its registration was stored.
 - `Release`: count − 1 (a release with count 0 throws `InvalidOperationException`), then admit queued waiters while
   count < limit. The `OnChange` listener sets the limit and admits the same way; a lowered limit admits nobody until
   the count drops below it.

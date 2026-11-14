@@ -1,6 +1,6 @@
 # 0030: Docker Hub request parallelism is limited process-wide and follows reloads
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-14
 - **Area:** Registries
 - **Source:** Issue #265
