@@ -36,8 +36,8 @@ every feature area relies on it for validated configuration and a migrated datab
 - Rules owned by this area:
   - a connection string must resolve to a non-blank value (see *Database connection*);
   - `DockerUpdateGuard:Database:MaxConnectionRetryCount`, `MaxConnectionRetryDelaySeconds`,
-    `MigrationStartupTimeoutSeconds`, `MigrationRetryDelaySeconds` and `MigrationLockTimeoutSeconds` must each be
-    greater than zero.
+    `MigrationStartupTimeoutSeconds`, `MigrationRetryDelaySeconds`, `MigrationLockTimeoutSeconds` and
+    `MigrationCommandTimeoutSeconds` must each be greater than zero.
 - A configured URL must not have an `@` outside its user info. A value has one when it contains `@` and either
   contains more than one `@` or parses with an empty user info; a user info that is present must therefore be the
   one `@`-terminated part of the authority. The rule applies to the URL keys of the `DockerUpdateGuard` section
@@ -95,6 +95,13 @@ succeeded.
    shutdown signal handling is not active during it and a termination signal ends the process. The lock is released
    afterwards; a failed release is logged and does not change the outcome, because the lock also ends with the
    session. A failed migration is logged and fails startup.
+   Each statement of the migration runs under the command timeout
+   `DockerUpdateGuard:Database:MigrationCommandTimeoutSeconds` seconds (default `900`) instead of the database command
+   timeout; it replaces any `Command Timeout` of the connection string for these statements, so an operator who set a
+   longer one there sets this key to match. The previous command timeout of the context is restored afterwards, and
+   the lock queries and the commands after the migration keep the database command timeout. A statement that exceeds
+   the timeout fails like a transient fault, so lock and migration are retried as described above. A migration that
+   runs longer than `MigrationLockTimeoutSeconds` needs that key raised for the instances waiting for the lock.
 4. **Synchronize configured Docker instances** into the database (see [Docker instances](docker-instances.md)).
 5. **Seed the inventory gauges** from the database (see [Telemetry](telemetry.md)).
 
@@ -203,6 +210,7 @@ These properties hold today and must be provided for by the deployment:
 | Non-transient database error while waiting | Startup fails immediately. |
 | Migration fails | Logged; startup fails. |
 | Migration lock not acquired within `MigrationLockTimeoutSeconds` | Logged with the key; startup fails. |
+| A migration statement exceeds `MigrationCommandTimeoutSeconds` | Retried with lock and migration up to `MaxConnectionRetryCount` times, so that statement alone can hold startup for the timeout × (`MaxConnectionRetryCount` + 1), plus the retry back-off and the migration's other statements; then logged and startup fails. |
 | Advisory lock cannot be released | Logged; the migration outcome stands. |
 | Mounted settings file not readable by the container user | Entrypoint exits with code `1` and a fix-it message. |
 | No usable certificate in `/app/certs` (missing directory, no files, nothing that is a PEM certificate block) | A message is printed; only the system CA certificates apply; the container starts. |
@@ -215,9 +223,6 @@ These properties hold today and must be provided for by the deployment:
 - Forwarded headers from a reverse proxy are not supported. Behind a TLS-terminating proxy the application sees
   plain HTTP, so it never sends HSTS and HTTPS redirection cannot determine a port; both are left to the proxy.
   Tracked in [#283](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/283).
-- Each statement of a migration runs under the 30-second database command timeout on the migrating instance, so a
-  statement that takes longer, such as a large index build, fails the migration.
-  Tracked in [#470](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/470).
 - The shipped `appsettings.json` configures one Docker instance with an empty name, which fails configuration
   validation; the application does not start with the shipped settings until that instance is named or removed.
   Tracked in [#288](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/288).
@@ -234,6 +239,8 @@ These properties hold today and must be provided for by the deployment:
   update check and telemetry through the image's environment.
 - [0032](../decisions/0032-the-migration-lock-is-awaited-by-polling-against-its-own-deadline.md): the migration lock
   is polled against its own deadline instead of blocking under the command timeout.
+- [0033](../decisions/0033-migration-statements-run-under-a-command-timeout-of-their-own.md): the migration
+  statements run under a command timeout of their own, set around the migration and restored afterwards.
 
 ## Not here
 

@@ -110,6 +110,7 @@ Rules: [Hosting and configuration](docs/areas/hosting.md).
 | `DockerUpdateGuard:Database:MigrationStartupTimeoutSeconds` | `120` | No | How long startup waits for the database to become reachable |
 | `DockerUpdateGuard:Database:MigrationRetryDelaySeconds` | `5` | No | Delay in seconds between connection attempts while startup waits for the database, and between attempts to take the migration lock |
 | `DockerUpdateGuard:Database:MigrationLockTimeoutSeconds` | `900` | No | Total time in seconds startup waits for another instance to release the migration lock; raise it when a migration takes longer |
+| `DockerUpdateGuard:Database:MigrationCommandTimeoutSeconds` | `900` | No | Command timeout in seconds of each statement of the startup migration; replaces any `Command Timeout` of the connection string for those statements, so raise it for long migrations |
 
 \* At least one of `DockerUpdateGuard:ConnectionString` or `ConnectionStrings:{ConnectionStringName}` must be configured.
 

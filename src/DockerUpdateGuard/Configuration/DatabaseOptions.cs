@@ -32,5 +32,10 @@ public class DatabaseOptions
     /// </summary>
     public int MigrationLockTimeoutSeconds { get; set; } = 900;
 
+    /// <summary>
+    /// Command timeout in seconds of each statement the startup migration runs
+    /// </summary>
+    public int MigrationCommandTimeoutSeconds { get; set; } = 900;
+
     #endregion // Properties
 }

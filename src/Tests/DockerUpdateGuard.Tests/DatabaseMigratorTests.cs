@@ -9,6 +9,7 @@ using DockerUpdateGuard.Tests.Helper;
 
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -23,6 +24,15 @@ namespace DockerUpdateGuard.Tests;
 [TestClass]
 public class DatabaseMigratorTests
 {
+    #region Constants
+
+    /// <summary>
+    /// Distinctive migration command timeout in seconds, different from the provider default of 30
+    /// </summary>
+    private const int MigrationCommandTimeoutSeconds = 777;
+
+    #endregion // Constants
+
     #region Properties
 
     /// <summary>
@@ -168,6 +178,53 @@ public class DatabaseMigratorTests
             Assert.IsNotNull(caught,
                              "The relational migration path must surface a migration failure rather than swallow it");
         }
+    }
+
+    /// <summary>
+    /// Verify every command of the migration runs under the migration command timeout
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC1")]
+    public async Task DatabaseMigratorMigrationCommandsUseMigrationCommandTimeoutAsync()
+    {
+        var interceptor = new CommandTimeoutRecordingInterceptor();
+        var databaseOptions = new DatabaseOptions
+                              {
+                                  MigrationCommandTimeoutSeconds = MigrationCommandTimeoutSeconds
+                              };
+
+        var run = await RunMigrationWithInterceptorAsync(interceptor, databaseOptions, null).ConfigureAwait(false);
+
+        Assert.AreSame(interceptor.Failure, run.Caught, "The migration must fail with the exception of the interceptor");
+        Assert.IsNotEmpty(interceptor.CommandTimeouts, "The migration must execute at least one command");
+        Assert.IsTrue(interceptor.CommandTimeouts.All(timeout => timeout == MigrationCommandTimeoutSeconds),
+                      $"Every migration command must run under {MigrationCommandTimeoutSeconds} seconds but ran under [{string.Join(", ", interceptor.CommandTimeouts)}]");
+    }
+
+    /// <summary>
+    /// Verify the previous command timeout of the context is restored after a failed migration
+    /// </summary>
+    /// <param name="previousTimeout">Command timeout set on the context before the migration, null for none</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC2")]
+    [DataRow(null)]
+    [DataRow(45)]
+    public async Task DatabaseMigratorMigrationRestoresPreviousCommandTimeoutAsync(int? previousTimeout)
+    {
+        var interceptor = new CommandTimeoutRecordingInterceptor();
+        var databaseOptions = new DatabaseOptions
+                              {
+                                  MigrationCommandTimeoutSeconds = MigrationCommandTimeoutSeconds
+                              };
+
+        var run = await RunMigrationWithInterceptorAsync(interceptor, databaseOptions, previousTimeout).ConfigureAwait(false);
+
+        Assert.AreSame(interceptor.Failure, run.Caught, "The migration must fail with the exception of the interceptor");
+        Assert.IsNotEmpty(interceptor.CommandTimeouts, "The migration must execute at least one command");
+        Assert.AreEqual(MigrationCommandTimeoutSeconds, interceptor.CommandTimeouts[0], "The migration command must run under the migration command timeout");
+        Assert.AreEqual(previousTimeout, run.TimeoutAfter, "The command timeout of the context must be the value it had before the migration");
     }
 
     /// <summary>
@@ -488,6 +545,51 @@ public class DatabaseMigratorTests
                        "Database exceptions not flagged as transient must fail fast");
         Assert.IsFalse(DatabaseMigrator.IsTransientConnectionFailure(new InvalidOperationException("permanent")),
                        "Unrelated failures must fail fast");
+    }
+
+    /// <summary>
+    /// Run the migration on SQLite with the interceptor and report the failure and the final command timeout of the context
+    /// </summary>
+    /// <param name="interceptor">Interceptor that fails the first command</param>
+    /// <param name="databaseOptions">Database options</param>
+    /// <param name="previousTimeout">Command timeout set on the context before the migration, null for none</param>
+    /// <returns>Thrown exception and the command timeout of the context after the call</returns>
+    private async Task<(Exception? Caught, int? TimeoutAfter)> RunMigrationWithInterceptorAsync(CommandTimeoutRecordingInterceptor interceptor,
+                                                                                                DatabaseOptions databaseOptions,
+                                                                                                int? previousTimeout)
+    {
+        var connection = new SqliteConnection("Data Source=:memory:");
+
+        await connection.OpenAsync(TestContext.CancellationToken)
+                        .ConfigureAwait(false);
+
+        using (connection)
+        {
+            var options = new DbContextOptionsBuilder<DockerUpdateGuardDbContext>().UseSqlite(connection)
+                                                                                   .ConfigureWarnings(warnings => warnings.Ignore(RelationalEventId.PendingModelChangesWarning))
+                                                                                   .AddInterceptors(interceptor)
+                                                                                   .Options;
+            var dbContext = new DockerUpdateGuardDbContext(options);
+
+            await using (dbContext.ConfigureAwait(false))
+            {
+                Exception? caught = null;
+
+                dbContext.Database.SetCommandTimeout(previousTimeout);
+
+                try
+                {
+                    await DatabaseMigrator.MigrateAsync(dbContext, databaseOptions, NullLogger.Instance, TimeProvider.System, CancellationToken.None)
+                                          .ConfigureAwait(false);
+                }
+                catch (InvalidOperationException exception)
+                {
+                    caught = exception;
+                }
+
+                return (caught, dbContext.Database.GetCommandTimeout());
+            }
+        }
     }
 
     #endregion // Methods

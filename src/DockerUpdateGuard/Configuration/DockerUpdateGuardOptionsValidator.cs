@@ -91,6 +91,11 @@ public class DockerUpdateGuardOptionsValidator : IValidateOptions<DockerUpdateGu
         {
             failures.Add($"'{DockerUpdateGuardOptions.SectionName}:Database:MigrationLockTimeoutSeconds' must be greater than zero");
         }
+
+        if (options.MigrationCommandTimeoutSeconds <= 0)
+        {
+            failures.Add($"'{DockerUpdateGuardOptions.SectionName}:Database:MigrationCommandTimeoutSeconds' must be greater than zero");
+        }
     }
 
     /// <summary>

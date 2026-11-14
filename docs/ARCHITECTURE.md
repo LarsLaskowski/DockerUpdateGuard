@@ -109,6 +109,8 @@ which blocks startup on three steps:
    concurrently starting instances never migrate at the same time. The lock
    is polled until `MigrationLockTimeoutSeconds`
    ([decision 0032](decisions/0032-the-migration-lock-is-awaited-by-polling-against-its-own-deadline.md)).
+   Each migration statement runs under `MigrationCommandTimeoutSeconds`
+   ([decision 0033](decisions/0033-migration-statements-run-under-a-command-timeout-of-their-own.md)).
 2. `IInstanceDiscoveryService.SynchronizeConfiguredInstancesAsync` —
    reconciles the configured Docker instances against the database
    (local, DB-only work).
