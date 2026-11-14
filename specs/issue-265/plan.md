@@ -50,7 +50,7 @@ reload reaches only instances created after it.
 | AC1 | `DockerHubRequestLimiterConcurrentWaitsNeverExceedLimitAsync`, `DockerHubClientTwoInstancesShareProcessWideLimitAsync` | `DockerHubRequestLimiterTests.cs`, `DockerHubClientTests.cs` |
 | AC2 | `DockerHubRequestLimiterLimitRaisedOnReloadAdmitsWaitingRequestsAsync` | `DockerHubRequestLimiterTests.cs` |
 | AC3 | `DockerHubRequestLimiterLimitLoweredOnReloadAdmitsNoNewRequestUntilBelowLimitAsync` | `DockerHubRequestLimiterTests.cs` |
-| AC4 | `DockerHubRequestLimiterCancelledWaitLeaksNoSlotAsync`, `DockerHubRequestLimiterPreCancelledWaitTakesNoFreeSlotAsync` | `DockerHubRequestLimiterTests.cs` |
+| AC4 | `DockerHubRequestLimiterCancelledWaitLeaksNoSlotAsync`, `DockerHubRequestLimiterPreCancelledWaitTakesNoFreeSlotAsync`, `DockerHubRequestLimiterTokenCancelledAfterGrantKeepsSlotAsync`; manual: the Reviewer checks in step 8 that the cancellation registration of a queued wait is disposed once it is granted or cancelled (no unit test can see it) | `DockerHubRequestLimiterTests.cs` |
 | AC5 | `DockerHubClientTransportFailureReleasesSlotAsync`, `DockerHubClientNonSuccessResponseReleasesSlotAsync` | `DockerHubClientTests.cs` |
 | AC6 | `DockerHubClientAuthenticatedRequestsWithLimitOneCompleteAsync` | `DockerHubClientTests.cs` |
 | AC7 | `ServiceCollectionExtensionsDockerHubRequestLimiterIsSharedSingleton` | `ServiceCollectionExtensionsTests.cs` |
@@ -62,17 +62,20 @@ a valid probe):
 
 - AC1 limiter: limit 2, five waits → exactly two tasks complete; one release → exactly three.
 - AC1 client: two clients, one limiter at limit 2, a stub handler that holds each request until the test opens its
-  gate and counts concurrent calls; six requests across both clients → the handler sees exactly 2 while the gate is
-  closed, at most 2 throughout, and all six succeed after it opens.
+  gate and counts concurrent calls; six requests across both clients → once the handler's arrival signal reports the
+  second request (never a delay), the handler sees exactly 2 while the gate is closed, at most 2 throughout, and all
+  six succeed after it opens.
 - AC2: limit 1, one held, two waiting; reload to 3 → both waiting tasks complete with no release.
 - AC3: limit 2, two held, one waiting; reload to 1; first release → still waiting; second release → admitted.
 - AC4: limit 1, one held; a queued wait cancelled → throws; release; a new wait completes at once and the next one
   waits (the cancelled wait took nothing). Free slot and a cancelled token → throws, and a following wait completes
-  at once.
+  at once. A queued wait that is granted and whose token is cancelled afterwards keeps its slot: the slot count does
+  not change (the next wait still waits until it is released).
 - AC5: limit 1; the handler throws `HttpRequestException` (the call answers *failed*) / answers 500; afterwards
   `WaitAsync` on the shared limiter completes at once.
 - AC6: limit 1, PAT and user name set, login answered with a token; four concurrent `GetCurrentUserAsync` over two
-  clients sharing limiter and token cache all succeed (a hang fails the test through MSTest `[Timeout(n, CooperativeCancellation = true)]`, with `TestContext.CancellationToken` passed into the four calls). AC1 (client) waits for the second request on an arrival signal of the handler, never a delay. AC4 also cancels the token after a granted wait and checks that the slot count does not change. The disposal of the cancellation registration is checked by the Reviewer in step 8, because no unit test can see it.
+  clients sharing limiter and token cache all succeed; a hang fails the test through MSTest `[Timeout(n, CooperativeCancellation = true)]` (a plain
+  `[Timeout(n)]` raises MSTEST0045), with `TestContext.CancellationToken` passed into the four calls.
 - AC7: the root and two scopes resolve one limiter, the clients of both scopes hold it (field by type, as the token
   cache test does), and `typeof(DockerHubClient)` declares no `SemaphoreSlim` field and does not implement `IDisposable`.
 
@@ -88,6 +91,9 @@ New `DockerHub/DockerHubRequestLimiter.cs`, a sealed singleton:
   count + 1 and a completed task (synchronous grant). Otherwise enqueue, register the cancellation outside the lock;
   the cancellation callback removes the waiter under the lock only if it is still queued and cancels it. A granted
   waiter keeps its slot even if its token fires later (its caller's `finally` releases it). The cancellation registration is disposed as soon as the waiter is granted or cancelled, so a long-lived caller token (a background service's stopping token) keeps no callback of a finished wait.
+  It is disposed outside the lock, because the callback takes the lock and disposing waits for a running callback:
+  the queued path awaits the waiter's task inside a `using` block around the registration, so the registration is
+  disposed when that await ends, granted or cancelled.
 - `Release`: count − 1 (a release with count 0 throws `InvalidOperationException`), then admit queued waiters while
   count < limit. The `OnChange` listener sets the limit and admits the same way; a lowered limit admits nobody until
   the count drops below it.
@@ -204,45 +210,23 @@ token cache's single login with its time limit (0023).
   `HttpClient`, so it bypasses the process-wide `DockerHubRequestLimiter` of #265. Decide whether that login (and only
   it, not the Scout API) should take a slot."
 
-## Challenge notes
+## Challenge
 
-The plan holds up against the code. I found no major objections and two minor ones.
+The Devil's Advocate raised no major objection and two minor ones.
 
-**What I checked.** All 14 verified facts hold against the code:
-- **Throttle and registration:** `_requestThrottle` is at `src/DockerUpdateGuard/DockerHub/DockerHubClient.cs:89`, sized at `:115-116` and disposed at `:1559-1562`. `ServiceCollectionExtensions.cs:73-79` registers the client with `AddHttpClient<DockerHubClient>`, and `:115-116` adds the scoped factories.
-- **Every Docker Hub request goes through `SendThrottledAsync`:** the call sites are lines 586, 627, 697, 745, 813 and 1036. No other `_httpClient.SendAsync` call exists in the client.
-- **Other registries do not reach Docker Hub:** `OciRegistryClient.cs:1419` excludes Docker Hub registries.
-- **No deadlock with a limit of 1:** authentication runs before the slot is taken (`:806` comes before `:813`), and the slot is released once the response headers arrive (`:911-926`).
-- **The issue comment's correction is right:** no scope holds two client instances.
-- **Constructor call sites:** the four in the plan are the only ones (`DockerHubClientTests.cs:1065` and `:3122`, `DockerScoutVulnerabilityProviderTests.cs:1207`, `RegistryBaseImageResolverTests.cs:112`). No test disposes a `DockerHubClient`.
-- **Docs:** the documentation targets exist as described: `docs/areas/registries.md:202-205`, `:219` and `:265-267`, `README.md:126`, and `docs/ARCHITECTURE.md:251-253`.
-- **Need, scope and tier:** the change is needed, the scope matches the issue and the Product Manager's decision, and tier `standard` fits.
+1. minor — dispose the cancellation registrations, outside the lock. Accepted: *Approach* (`WaitAsync`) now says the
+   registration is disposed once the waiter is granted or cancelled, outside the lock (the awaiting `using` block),
+   and AC4 gains `DockerHubRequestLimiterTokenCancelledAfterGrantKeepsSlotAsync`.
+2. minor — the AC6 hang guard and the AC1 wait. Accepted: AC6 uses `[Timeout(n, CooperativeCancellation = true)]`
+   with `TestContext.CancellationToken` passed into the calls; AC1 (client) waits on the handler's arrival signal,
+   never a delay (*Cases the tests hold*).
 
-**Minor objections**
+## Security review
 
-1. **minor — the limiter must dispose its cancellation registrations (plan *Approach*, `WaitAsync`).** The plan registers a cancellation callback for each queued waiter but never says when that registration is disposed. The limiter is a process-wide singleton. Background jobs pass their long-lived stopping token, so every queued request would leave a registration on that token for the life of the process. Instruction for the Dev: keep the `CancellationTokenRegistration` with the queued waiter. Dispose it when the waiter is admitted (by `Release` or by the `OnChange` listener) and when its cancellation callback runs. Do not dispose it while holding the lock if the callback also takes that lock (`Dispose` waits for a running callback). Instruction for the Tester: in AC4, after a granted wait, cancel the token and check that the slot count does not change.
+Security confirmed the tier, *Security areas touched*, the deadlock analysis, the bounded `Retry-After` hold, the
+reload range and the slot accounting on cancellation.
 
-2. **minor — the AC6 hang guard (plan *Cases the tests hold*, AC6: "a hang fails the test through MSTest `[Timeout]`").** The project uses MSTest 4.5.3 (`Directory.Packages.props:18`), and no test under `src/Tests` uses `[Timeout]` yet. A plain `[Timeout(n)]` triggers analyzer MSTEST0045 ("use cooperative cancellation"). That diagnostic is info-level, but the golden rules forbid diagnostics of any severity, and with cooperative cancellation the test only ends on time if its calls observe the token. Instruction for the Tester: use `[Timeout(n, CooperativeCancellation = true)]` and pass `TestContext.CancellationToken` into the four `GetCurrentUserAsync` calls. For AC1 (client), wait for the second request to reach the gated handler on an arrival signal from the handler, never a delay, before asserting the count of 2.
-
-## Security notes
-
-Security plan review: issue #265, `/home/user/DockerUpdateGuard/specs/issue-265/plan.md` and `/home/user/DockerUpdateGuard/docs/decisions/0030-docker-hub-request-parallelism-is-limited-process-wide-and-follows-reloads.md`
-
-The plan needs one added sentence before it can go ahead. The tier and the listed security areas are right.
-
-**Tier and security areas**
-- **Tier `standard` is correct.** `MaxParallelRequests` limits our own outgoing requests to Docker Hub so it does not answer with 429. It is not a rate limit against abuse, and it does not decide what an attacker can reach (*Tiers*, `security` row). Nothing about authentication, the PAT, bearer tokens, pagination origins or the parsing of remote JSON changes.
-- ***Security areas touched* is complete.** The only area touched is "Registry and Docker Scout calls" (`DockerHub/DockerHubClient.cs`). The new `DockerHub/DockerHubRequestLimiter.cs` is a request-sending helper in that same area. `ServiceCollectionExtensions.cs` only gains a singleton registration. There are no new log calls, so the logging area is not touched. The Docker Scout login that bypasses the limit is correctly proposed as a separate follow-up issue.
-
-**What I checked by reading the code (no probes run)**
-- **No deadlock between the login lock and a slot (fact 8):** `SendGetAsync` (`DockerHubClient.cs:806`) authenticates before `SendThrottledAsync` (`:813`). `SendThrottledAsync` (`:911-926`) releases its slot in `finally` once the response headers arrive. No slot holder waits for `_loginLock`. The login (`:1036`) takes a slot while holding `_loginLock` (`DockerHubAccessTokenCache.cs:148-177`), and that wait is bounded by the login's linked time limit.
-- **A remote server cannot hold a slot for long:** `TransientHttpRetryHandler` caps the backoff (`ClampToMaximum`, `:167-171`), and a request whose `Retry-After` exceeds the maximum is not retried (`:276-281`).
-- **A reloaded value cannot set an extreme limit:** the validator keeps the value in 1–32 (`DockerUpdateGuardOptionsValidator.cs:119-121`), and the plan adds `Math.Max(1, …)`.
-- **Cancellation cannot leak a slot:** a granted waiter keeps its slot, and the caller's `finally` releases it. Waiters are completed with `RunContinuationsAsynchronously`, so no caller's code runs while the lock is held. AC4 covers a wait that is cancelled while queued and one whose token is already cancelled.
-
-## Findings
-
-1. [BLOCKING] `plan.md`, *Approach*, `WaitAsync` bullet: the plan never says that the cancellation registration is disposed. A queued `WaitAsync` registers a callback on the caller's token, but the plan does not say when that registration is disposed. Many callers pass long-lived tokens, such as the `stoppingToken` of the background services that lives for the whole process. If a waiter is admitted and its registration is not disposed, the token's source keeps the callback, the closure and the waiter object until the token is cancelled or disposed. Under contention this grows with every queued request, without bound. That is exactly the kind of contention this change creates, because every scope now shares one queue. The old `SemaphoreSlim.WaitAsync` disposed its own registration, so the new type must not lose that. No behavior test can see the leak.
-   Smallest fix: add this sentence to the `WaitAsync` bullet, verbatim:
-   "The cancellation registration is disposed as soon as the waiter is granted or cancelled, so a long-lived caller token (a background service's stopping token) keeps no callback of a finished wait."
-   Also add a line under *Tests per criterion* (or the manual rows) that the Reviewer checks this disposal in step 8, because no unit test can see it.
+1. BLOCKING — the plan did not say when the cancellation registration of a queued wait is disposed, so a long-lived
+   caller token could collect callbacks without bound. Resolved: Security's sentence stands verbatim in *Approach*
+   (`WaitAsync`), with where the disposal happens, and *Tests per criterion* (AC4) gives the Reviewer the check in
+   step 8, since no unit test can see the leak.
