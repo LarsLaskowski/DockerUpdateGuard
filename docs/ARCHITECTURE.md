@@ -90,7 +90,7 @@ composition root, which in order:
 3. Registers OpenTelemetry via `DockerUpdateGuard.Telemetry`'s
    `AddDockerUpdateGuardTelemetry`.
 4. Registers the typed/named `HttpClient`s (Docker Hub, generic OCI
-   registry, .NET/nginx release metadata, Portainer) with
+   registry, .NET/nginx release metadata, Portainer, Docker Scout) with
    `TransientHttpRetryHandler` as their outbound message handler.
 5. Registers the integration clients, domain/orchestration services, the
    UI facade (`IApplicationViewService`), and all 7 background jobs
