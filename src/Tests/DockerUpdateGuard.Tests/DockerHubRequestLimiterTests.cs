@@ -188,6 +188,41 @@ public class DockerHubRequestLimiterTests
     }
 
     /// <summary>
+    /// Verify a release without a taken slot is rejected and leaves the slot count unchanged
+    /// </summary>
+    [TestMethod]
+    public void DockerHubRequestLimiterReleaseWithoutTakenSlotThrows()
+    {
+        using var limiter = new DockerHubRequestLimiter(CreateMonitor(1));
+
+        Assert.ThrowsExactly<InvalidOperationException>(limiter.Release, "A release with no slot taken must be rejected");
+
+        var first = limiter.WaitAsync(TestContext.CancellationToken);
+        var second = limiter.WaitAsync(TestContext.CancellationToken);
+
+        Assert.IsTrue(first.IsCompleted, "The rejected release must not have created a free slot");
+        Assert.IsFalse(second.IsCompleted, "The rejected release must not have raised the slot count above the limit");
+    }
+
+    /// <summary>
+    /// Verify a disposed limiter no longer follows configuration reloads
+    /// </summary>
+    [TestMethod]
+    public void DockerHubRequestLimiterDisposedLimiterIgnoresReload()
+    {
+        var monitor = CreateMonitor(1);
+        var limiter = new DockerHubRequestLimiter(monitor);
+        var held = limiter.WaitAsync(TestContext.CancellationToken);
+        var waiting = limiter.WaitAsync(TestContext.CancellationToken);
+
+        limiter.Dispose();
+        monitor.Reload(CreateOptions(3));
+
+        Assert.IsTrue(held.IsCompleted, "The first request takes the only slot");
+        Assert.IsFalse(waiting.IsCompleted, "A disposed limiter must not react to a reload");
+    }
+
+    /// <summary>
     /// Create the options for a limit
     /// </summary>
     /// <param name="limit">Value of MaxParallelRequests</param>

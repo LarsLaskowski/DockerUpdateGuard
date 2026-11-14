@@ -1134,6 +1134,43 @@ public partial class DockerHubClientTests
     }
 
     /// <summary>
+    /// Verify authenticated requests of two clients with a limit of one complete, the login included
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC6")]
+    [Timeout(20000, CooperativeCancellation = true)]
+    public async Task DockerHubClientAuthenticatedRequestsWithLimitOneCompleteAsync()
+    {
+        using var handler = new DelegateHttpMessageHandler(request => CreateHubResponse(request, () => CreateJsonResponse("""{ "username": "acme" }""")));
+        using var firstHttpClient = new HttpClient(handler, false)
+                                    {
+                                        BaseAddress = new Uri("https://hub.docker.com/"),
+                                    };
+        using var secondHttpClient = new HttpClient(handler, false)
+                                     {
+                                         BaseAddress = new Uri("https://hub.docker.com/"),
+                                     };
+        using var limiter = CreateLimiter(1);
+        using var tokenCache = new DockerHubAccessTokenCache(TimeProvider.System);
+
+        var clients = new[]
+                      {
+                          CreateClient(firstHttpClient, accessTokenCache: tokenCache, requestLimiter: limiter),
+                          CreateClient(secondHttpClient, accessTokenCache: tokenCache, requestLimiter: limiter)
+                      };
+        var requests = Enumerable.Range(0, 4)
+                                 .Select(index => clients[index % 2].GetCurrentUserAsync(TestContext.CancellationToken))
+                                 .ToArray();
+
+        var results = await Task.WhenAll(requests).ConfigureAwait(false);
+
+        Assert.IsTrue(results.All(result => result.Status == ExternalOperationStatus.Succeeded),
+                      "All authenticated requests must complete with a limit of one, the login included");
+        Assert.IsTrue(limiter.WaitAsync(TestContext.CancellationToken).IsCompleted, "Every slot must be released afterwards");
+    }
+
+    /// <summary>
     /// Verify outbound Docker Hub requests honor the configured parallelism limit
     /// </summary>
     /// <returns>Task</returns>
