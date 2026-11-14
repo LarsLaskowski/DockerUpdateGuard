@@ -32,6 +32,74 @@ public class DatabaseMigratorTests
 
     #endregion // Properties
 
+    #region Static methods
+
+    /// <summary>
+    /// Create a time provider whose current time a test moves forward by hand
+    /// </summary>
+    /// <param name="now">Current time of the returned provider</param>
+    /// <returns>Time provider recording every wait</returns>
+    private static WaitRecordingTimeProvider CreateLockClock(out StrongBox<DateTimeOffset> now)
+    {
+        var clock = new WaitRecordingTimeProvider();
+        var current = new StrongBox<DateTimeOffset>(new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero));
+
+        clock.TimeProvider.GetUtcNow().Returns(_ => current.Value);
+        now = current;
+
+        return clock;
+    }
+
+    /// <summary>
+    /// Start the lock wait with a try-lock that fails a number of times and then succeeds
+    /// </summary>
+    /// <param name="attempts">Counter of the try-lock calls</param>
+    /// <param name="failures">Number of calls that report the lock as held</param>
+    /// <param name="databaseOptions">Database options</param>
+    /// <param name="waitStartedAt">Time the wait started</param>
+    /// <param name="logger">Logger</param>
+    /// <param name="timeProvider">Time provider</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Task of the wait</returns>
+    private static Task StartLockWait(StrongBox<int> attempts,
+                                      int failures,
+                                      DatabaseOptions databaseOptions,
+                                      DateTimeOffset waitStartedAt,
+                                      ILogger logger,
+                                      TimeProvider timeProvider,
+                                      CancellationToken cancellationToken)
+    {
+        return Task.Run(() => DatabaseMigrator.WaitForMigrationLockAsync(_ => Task.FromResult(++attempts.Value > failures),
+                                                                         databaseOptions,
+                                                                         waitStartedAt,
+                                                                         logger,
+                                                                         timeProvider,
+                                                                         cancellationToken),
+                        CancellationToken.None);
+    }
+
+    /// <summary>
+    /// Move the clock by the delay of every started wait and let that wait elapse until the lock wait ends
+    /// </summary>
+    /// <param name="clock">Time provider recording the waits</param>
+    /// <param name="now">Current time of the clock</param>
+    /// <param name="delay">Delay of each wait</param>
+    /// <param name="waitTask">Task of the lock wait</param>
+    /// <returns>Task</returns>
+    private static async Task DriveWaitsAsync(WaitRecordingTimeProvider clock,
+                                              StrongBox<DateTimeOffset> now,
+                                              TimeSpan delay,
+                                              Task waitTask)
+    {
+        while (await clock.WaitForNextWaitAsync(waitTask).ConfigureAwait(false))
+        {
+            now.Value += delay;
+            clock.ElapseLastWait();
+        }
+    }
+
+    #endregion // Static methods
+
     #region Methods
 
     /// <summary>
@@ -423,72 +491,4 @@ public class DatabaseMigratorTests
     }
 
     #endregion // Methods
-
-    #region Static methods
-
-    /// <summary>
-    /// Create a time provider whose current time a test moves forward by hand
-    /// </summary>
-    /// <param name="now">Current time of the returned provider</param>
-    /// <returns>Time provider recording every wait</returns>
-    private static WaitRecordingTimeProvider CreateLockClock(out StrongBox<DateTimeOffset> now)
-    {
-        var clock = new WaitRecordingTimeProvider();
-        var current = new StrongBox<DateTimeOffset>(new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero));
-
-        clock.TimeProvider.GetUtcNow().Returns(_ => current.Value);
-        now = current;
-
-        return clock;
-    }
-
-    /// <summary>
-    /// Start the lock wait with a try-lock that fails a number of times and then succeeds
-    /// </summary>
-    /// <param name="attempts">Counter of the try-lock calls</param>
-    /// <param name="failures">Number of calls that report the lock as held</param>
-    /// <param name="databaseOptions">Database options</param>
-    /// <param name="waitStartedAt">Time the wait started</param>
-    /// <param name="logger">Logger</param>
-    /// <param name="timeProvider">Time provider</param>
-    /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>Task of the wait</returns>
-    private static Task StartLockWait(StrongBox<int> attempts,
-                                      int failures,
-                                      DatabaseOptions databaseOptions,
-                                      DateTimeOffset waitStartedAt,
-                                      ILogger logger,
-                                      TimeProvider timeProvider,
-                                      CancellationToken cancellationToken)
-    {
-        return Task.Run(() => DatabaseMigrator.WaitForMigrationLockAsync(_ => Task.FromResult(++attempts.Value > failures),
-                                                                         databaseOptions,
-                                                                         waitStartedAt,
-                                                                         logger,
-                                                                         timeProvider,
-                                                                         cancellationToken),
-                        CancellationToken.None);
-    }
-
-    /// <summary>
-    /// Move the clock by the delay of every started wait and let that wait elapse until the lock wait ends
-    /// </summary>
-    /// <param name="clock">Time provider recording the waits</param>
-    /// <param name="now">Current time of the clock</param>
-    /// <param name="delay">Delay of each wait</param>
-    /// <param name="waitTask">Task of the lock wait</param>
-    /// <returns>Task</returns>
-    private static async Task DriveWaitsAsync(WaitRecordingTimeProvider clock,
-                                              StrongBox<DateTimeOffset> now,
-                                              TimeSpan delay,
-                                              Task waitTask)
-    {
-        while (await clock.WaitForNextWaitAsync(waitTask).ConfigureAwait(false))
-        {
-            now.Value += delay;
-            clock.ElapseLastWait();
-        }
-    }
-
-    #endregion // Static methods
 }
