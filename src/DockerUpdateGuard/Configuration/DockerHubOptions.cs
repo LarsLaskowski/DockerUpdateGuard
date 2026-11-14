@@ -33,7 +33,7 @@ public class DockerHubOptions
     public int RequestTimeoutSeconds { get; set; } = 30;
 
     /// <summary>
-    /// Maximum logical request parallelism
+    /// Maximum number of Docker Hub requests in flight at once for the whole process
     /// </summary>
     public int MaxParallelRequests { get; set; } = 4;
 
