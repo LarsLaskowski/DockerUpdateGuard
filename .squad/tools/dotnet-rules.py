@@ -30,17 +30,23 @@ The template keeps one rule baseline for its .NET repositories, the stricter set
 - a block below the header of a section that does not apply to every C# file is refused, since its settings would
   reach those files only; so is a paths block before the other blocks.
 
+An `.editorconfig` section never reaches a diagnostic reported without a location (MSTEST0001): the template's global
+analyzer config `.squad/dotnet-rules.globalconfig` sets those rules. A pending entry for one of them is written into
+`.squad/dotnet-rules-pending.globalconfig` at `suggestion`, with a higher `global_level`, so it wins over the managed
+file; `Directory.Build.props` names both in `GlobalAnalyzerConfigFiles` (`dotnet_config.py` checks it). The file is
+written on every run, without rules when nothing of the global config is pending.
+
 The project's own sections of paths (generated code, migrations) go after the blocks; a setting for every C# file
 outside them is the baseline's to make, not the project's.
 
-`adopt-template` runs it on adoption and on every refresh; `--check` reports blocks that no longer match the baseline
-or the pending list.
+`adopt-template` runs it on adoption and on every refresh; `--check` reports blocks or a pending global config that no
+longer match the baseline or the pending list.
 
 Usage, from the repository root:
     python3 .squad/tools/dotnet-rules.py [--check]
 
-Exit code 0 when the blocks were written or are current, 1 when `--check` finds them missing or out of date, or the
-file's layout, the pending list or the baseline is refused, 4 wrong usage.
+Exit code 0 when the blocks and the pending global config were written or are current, 1 when `--check` finds one
+missing or out of date, or the file's layout, the pending list or the baseline is refused, 4 wrong usage.
 """
 import argparse
 import importlib.util
@@ -55,6 +61,18 @@ from analyzer_common import settings  # noqa: E402  (shared helpers next to this
 CURRENT, REFUSED, USAGE = 0, 1, 4
 EDITORCONFIG = ".editorconfig"
 BASELINE = os.path.join(os.path.dirname(HERE), "dotnet-rules.editorconfig")
+GLOBAL_BASELINE = os.path.join(os.path.dirname(HERE), "dotnet-rules.globalconfig")
+PENDING_CONFIG = os.path.join(".squad", "dotnet-rules-pending.globalconfig")
+# Above the managed global config's level (0, the default of a global config not named .globalconfig): a key both
+# files set takes this file's value.
+PENDING_LEVEL = 101
+PENDING_HEADER = f"""\
+# The repository's DOTNET_RULES_PENDING entries for rules of .squad/dotnet-rules.globalconfig (those reported without
+# a location, MSTEST0001), lowered to suggestion; its higher global_level wins over that file. Written by
+# .squad/tools/dotnet-rules.py from .squad/tools/squad_settings.py; never edited by hand (.squad/stack.md, Analyzer gate).
+is_global = true
+global_level = {PENDING_LEVEL}
+"""
 BEGIN = "# squad:dotnet-rules begin"
 END = "# squad:dotnet-rules end"
 PATHS_BEGIN = "# squad:dotnet-rules-paths begin"
@@ -267,6 +285,31 @@ def switched_off(baseline, pending):
             and values.get(setting_key(name).lower()) in ("none", "silent")]
 
 
+def pending_global(global_baseline, pending, newline="\n"):
+    """The text of the pending global config: every pending rule the managed global config raises above
+    PENDING_SEVERITY, lowered to it, with its issue above it; written with `newline` (`line_ending`)."""
+    lines = []
+    for line in global_baseline.splitlines():
+        key, equals, value = line.partition("=")
+        name = rule_of(key) if equals and not line_is_comment(line) else None
+        if name in pending and lowered(value.strip()) != value.strip():
+            lines += ["", f"# pending: {pending[name].strip()} (DOTNET_RULES_PENDING)", f"{key.strip()} = {PENDING_SEVERITY}"]
+    return (PENDING_HEADER + "".join(f"{line}\n" for line in lines)).replace("\n", newline)
+
+
+def line_ending(current, editorconfig):
+    """The line ending of the pending global config: the one its checkout has (a CRLF repository checks it out with
+    CRLF), else `.editorconfig`'s."""
+    text = current or editorconfig
+    return "\r\n" if "\r\n" in text else "\n"
+
+
+def rule_of(key):
+    """The rule id of a `dotnet_diagnostic.<ID>.severity` key, or None."""
+    found = re.fullmatch(r"dotnet_diagnostic\.([A-Za-z]+\d+)\.severity", key.strip())
+    return found.group(1).upper() if found else None
+
+
 def line_is_comment(text):
     return text.lstrip().startswith(("#", ";"))
 
@@ -294,17 +337,34 @@ def main(argv=None):
     for name in sorted(PENDING):
         print(f"Pending: {name} at {PENDING_SEVERITY} until {PENDING[name].strip()}"
               + (" (no such option in the baseline: nothing to lower)" if name in unused else ""))
-    updated = render(text, general, paths)
-    if updated == text:
-        print(f"{EDITORCONFIG}: the dotnet-rules blocks are current")
-        return CURRENT
-    if options.check:
-        print(f"{EDITORCONFIG}: the dotnet-rules blocks are missing or out of date — run python3 .squad/tools/dotnet-rules.py")
+    files = ((EDITORCONFIG, "the dotnet-rules blocks", text, render(text, general, paths)),
+             (PENDING_CONFIG, "the pending global config", read_file(PENDING_CONFIG),
+              pending_global(read_file(GLOBAL_BASELINE), PENDING, line_ending(read_file(PENDING_CONFIG), text))))
+    return update(files, options.check)
+
+
+def update(files, check):
+    """Write each (path, what, current text, wanted text) that is out of date; with `check` only report it."""
+    stale = [(path, what, wanted_text) for path, what, current, wanted_text in files if wanted_text != current]
+    verb = {what: "are" if what.endswith("blocks") else "is" for _, what, _, _ in files}
+    for path, what, current, wanted_text in files:
+        if wanted_text == current:
+            print(f"{path}: {what} {verb[what]} current")
+    if stale and check:
+        for path, what, _ in stale:
+            print(f"{path}: {what} {verb[what]} missing or out of date — run python3 .squad/tools/dotnet-rules.py")
         return REFUSED
-    with open(EDITORCONFIG, "w", encoding="utf-8", newline="") as handle:
-        handle.write(updated)
-    print(f"{EDITORCONFIG}: the dotnet-rules blocks written")
+    for path, what, wanted_text in stale:
+        write_file(path, wanted_text)
+        print(f"{path}: {what} written")
     return CURRENT
+
+
+def write_file(path, text):
+    if os.path.dirname(path):
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8", newline="") as handle:
+        handle.write(text)
 
 
 if __name__ == "__main__":

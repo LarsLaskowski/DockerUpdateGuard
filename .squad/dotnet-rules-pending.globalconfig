@@ -1,0 +1,5 @@
+# The repository's DOTNET_RULES_PENDING entries for rules of .squad/dotnet-rules.globalconfig (those reported without
+# a location, MSTEST0001), lowered to suggestion; its higher global_level wins over that file. Written by
+# .squad/tools/dotnet-rules.py from .squad/tools/squad_settings.py; never edited by hand (.squad/stack.md, Analyzer gate).
+is_global = true
+global_level = 101
