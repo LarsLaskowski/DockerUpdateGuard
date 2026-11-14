@@ -192,6 +192,34 @@ public class ServiceCollectionExtensionsTests
     }
 
     /// <summary>
+    /// Verify the Docker Scout provider uses the registered Docker Hub request limiter singleton
+    /// </summary>
+    [TestMethod]
+    [TestCategory("AC1")]
+    public void ServiceCollectionExtensionsDockerScoutProviderSharesDockerHubRequestLimiter()
+    {
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+                                                                             {
+                                                                                 ["DockerUpdateGuard:ConnectionString"] = "Host=database;Database=dug;Username=test;Password=test",
+                                                                                 ["Telemetry:EnableLogging"] = "true",
+                                                                                 ["Telemetry:EnableMetrics"] = "false",
+                                                                                 ["Telemetry:EnableTracing"] = "false",
+                                                                             })
+                                                      .Build();
+        var services = new ServiceCollection();
+
+        services.AddDockerUpdateGuardHost(configuration);
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        var requestLimiter = serviceProvider.GetRequiredService<DockerHubRequestLimiter>();
+        var scoutProvider = serviceProvider.GetRequiredService<DockerScoutVulnerabilityProvider>();
+
+        Assert.IsNotNull(GetRequestLimiter(scoutProvider), "The Docker Scout provider must hold a request limiter");
+        Assert.AreSame(requestLimiter, GetRequestLimiter(scoutProvider), "The Docker Scout provider must use the registered limiter");
+    }
+
+    /// <summary>
     /// Read the Docker Hub request limiter a service holds, found by field type
     /// </summary>
     /// <param name="service">Service instance</param>
