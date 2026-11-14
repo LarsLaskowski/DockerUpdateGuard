@@ -92,9 +92,9 @@ succeeded.
    (default `900`) after it started: an attempt at or after the deadline that fails is logged with the key name and
    fails startup. Taking the lock and migrating form one unit: if a transient fault forces a retry, both are
    repeated together, but the deadline is not restarted. The wait runs before the host starts, so the host's
-   shutdown signal handling is not active during it and a termination signal ends the process. The lock is released afterwards; a failed release is logged and
-   does not change the outcome, because the lock also ends with the session. A failed migration is logged and fails
-   startup.
+   shutdown signal handling is not active during it and a termination signal ends the process. The lock is released
+   afterwards; a failed release is logged and does not change the outcome, because the lock also ends with the
+   session. A failed migration is logged and fails startup.
 4. **Synchronize configured Docker instances** into the database (see [Docker instances](docker-instances.md)).
 5. **Seed the inventory gauges** from the database (see [Telemetry](telemetry.md)).
 
