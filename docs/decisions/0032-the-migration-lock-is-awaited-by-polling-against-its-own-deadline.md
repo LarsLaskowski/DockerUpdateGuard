@@ -50,6 +50,6 @@ fails. Every exception but a cancellation that fails the migration is logged thr
   deadline.
 - The wait runs before the host starts, when no shutdown signal handling is registered yet, so `ApplicationStopping`
   never cancels it: a termination signal ends the process at once, and a lock it held ends with its session.
-- The statements of the migration itself are still bounded by the command timeout on the migrating instance; that is
-  a separate gap with its own issue.
+- The statements of the migration itself are bounded by a command timeout of their own
+  ([0033](0033-migration-statements-run-under-a-command-timeout-of-their-own.md)).
 - The production try-lock query is not covered by unit tests; it is checked once against a real PostgreSQL by hand.
