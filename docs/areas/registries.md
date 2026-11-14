@@ -252,8 +252,8 @@ go through its retry of transient HTTP failures.
   ([0029](../decisions/0029-registry-calls-answer-every-error-but-the-callers-cancellation-as-failed.md)).
 - The PAT is never written to logs or messages. The user name appears in the log entry and the message of a failed
   Docker Hub login.
-- Registry responses are untrusted: missing or mistyped JSON fields are treated as unknown values, the token expiry fields (`exp`, `expires_in`, `issued_at`) included: an unreadable expiry
-  gives the fallback lifetime. A listing
+- Registry responses are untrusted: missing or mistyped JSON fields are treated as unknown values, the token expiry fields included: an unreadable or out-of-range `exp` or `expires_in`
+  gives the fallback lifetime, and an unreadable or out-of-range `issued_at` counts as the time of the answer. A listing
   (account discovery included) reads at most 1,000 pages, so its number of requests is bounded; no bound on duration,
   memory or response size is claimed. Tag names, digests, the image references of
   base-image labels and the repository names of the account listing leave the clients only when they fit their
