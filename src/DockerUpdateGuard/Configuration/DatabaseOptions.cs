@@ -27,5 +27,10 @@ public class DatabaseOptions
     /// </summary>
     public int MigrationRetryDelaySeconds { get; set; } = 5;
 
+    /// <summary>
+    /// Total time the startup migration waits for the migration advisory lock held by another instance in seconds
+    /// </summary>
+    public int MigrationLockTimeoutSeconds { get; set; } = 900;
+
     #endregion // Properties
 }

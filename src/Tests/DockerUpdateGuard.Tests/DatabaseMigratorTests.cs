@@ -44,7 +44,7 @@ public class DatabaseMigratorTests
 
         await using (dbContext.ConfigureAwait(false))
         {
-            await DatabaseMigrator.MigrateAsync(dbContext, databaseOptions, NullLogger.Instance, CancellationToken.None)
+            await DatabaseMigrator.MigrateAsync(dbContext, databaseOptions, NullLogger.Instance, TimeProvider.System, CancellationToken.None)
                                   .ConfigureAwait(false);
 
             Assert.IsFalse(dbContext.Database.IsRelational(),
@@ -83,7 +83,7 @@ public class DatabaseMigratorTests
             {
                 try
                 {
-                    await DatabaseMigrator.MigrateAsync(dbContext, databaseOptions, NullLogger.Instance, CancellationToken.None)
+                    await DatabaseMigrator.MigrateAsync(dbContext, databaseOptions, NullLogger.Instance, TimeProvider.System, CancellationToken.None)
                                           .ConfigureAwait(false);
                 }
                 catch (InvalidOperationException exception)
@@ -118,7 +118,7 @@ public class DatabaseMigratorTests
         {
             try
             {
-                await DatabaseMigrator.MigrateAsync(dbContext, databaseOptions, NullLogger.Instance, CancellationToken.None)
+                await DatabaseMigrator.MigrateAsync(dbContext, databaseOptions, NullLogger.Instance, TimeProvider.System, CancellationToken.None)
                                       .ConfigureAwait(false);
             }
             catch (InvalidOperationException exception)

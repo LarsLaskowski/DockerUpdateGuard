@@ -35,12 +35,16 @@ public static class DatabaseMigrator
     /// <param name="dbContext">Database context</param>
     /// <param name="options">Database resilience options</param>
     /// <param name="logger">Logger</param>
+    /// <param name="timeProvider">Time provider for all waits</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Task</returns>
+#pragma warning disable S1172 // Skeleton: removed with the implementation
     public static async Task MigrateAsync(DockerUpdateGuardDbContext dbContext,
                                           DatabaseOptions options,
                                           ILogger logger,
+                                          TimeProvider timeProvider,
                                           CancellationToken cancellationToken)
+#pragma warning restore S1172 // Skeleton: removed with the implementation
     {
         ArgumentNullException.ThrowIfNull(dbContext);
         ArgumentNullException.ThrowIfNull(options);
@@ -81,6 +85,28 @@ public static class DatabaseMigrator
 
             throw;
         }
+    }
+
+    /// <summary>
+    /// Poll the migration advisory lock until it is acquired or the configured lock timeout elapses
+    /// </summary>
+    /// <param name="tryAcquireLock">Attempt to take the lock without blocking; true when acquired</param>
+    /// <param name="options">Database resilience options</param>
+    /// <param name="waitStartedAt">Time the wait started, from which the deadline is measured</param>
+    /// <param name="logger">Logger</param>
+    /// <param name="timeProvider">Time provider for all waits</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Task</returns>
+#pragma warning disable S1172 // Skeleton: removed with the implementation
+    internal static Task WaitForMigrationLockAsync(Func<CancellationToken, Task<bool>> tryAcquireLock,
+                                                   DatabaseOptions options,
+                                                   DateTimeOffset waitStartedAt,
+                                                   ILogger logger,
+                                                   TimeProvider timeProvider,
+                                                   CancellationToken cancellationToken)
+#pragma warning restore S1172 // Skeleton: removed with the implementation
+    {
+        throw new InvalidOperationException("Skeleton: not implemented");
     }
 
     /// <summary>
