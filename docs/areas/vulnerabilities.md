@@ -27,7 +27,9 @@ All keys live under `DockerUpdateGuard:Vulnerabilities`:
 
 - A configuration that breaks one of these rules fails startup ([Hosting](hosting.md)).
 - The provider is chosen anew at the start of every refresh from the current configuration, so a reloaded
-  configuration takes effect with the next refresh. When `Enabled` is `false`, a refresh does nothing: no provider is
+  configuration takes effect with the next refresh. The provider chosen at the start of a refresh is used, and named
+  as the source of every finding and assessment it stores, for the whole refresh, also when the configuration is
+  reloaded during it. When `Enabled` is `false`, a refresh does nothing: no provider is
   called, no scan run is recorded and stored assessments and findings stay as they are.
 - Docker Scout uses the Docker Hub credentials `DockerUpdateGuard:DockerHub:UserName` and
   `DockerUpdateGuard:DockerHub:Pat`; they are not required by validation.
@@ -84,8 +86,8 @@ scan run:
 - At the end of a full refresh, every active finding of an image version that is neither live nor scanned in this run
   is deactivated the same way. A manual rescan never does this.
 - At most one active finding exists per image version, advisory id and affected package.
-- Severity is one of *not set*, *low*, *medium*, *high*, *critical*. The source is the configured provider (*Trivy* or
-  *Docker Scout*). Fix status is one of *not set*, *fixed*, *affected*, *will not fix*, *fix deferred*, *end of life*.
+- Severity is one of *not set*, *low*, *medium*, *high*, *critical*. The source is the provider resolved for the refresh
+  (*Trivy* or *Docker Scout*). Fix status is one of *not set*, *fixed*, *affected*, *will not fix*, *fix deferred*, *end of life*.
 
 ### Trivy
 
