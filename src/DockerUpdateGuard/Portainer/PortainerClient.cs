@@ -74,6 +74,13 @@ public partial class PortainerClient : IPortainerClient
     /// </summary>
     private readonly LoginRetryAfterRegistry _loginRetryAfterRegistry;
 
+    /// <summary>
+    /// Time provider
+    /// </summary>
+#pragma warning disable S4487 // Skeleton: removed with the implementation
+    private readonly TimeProvider _timeProvider;
+#pragma warning restore S4487 // Skeleton: removed with the implementation
+
     #endregion // Fields
 
     #region Constructors
@@ -84,13 +91,16 @@ public partial class PortainerClient : IPortainerClient
     /// <param name="httpClientFactory">HTTP client factory</param>
     /// <param name="logger">Logger</param>
     /// <param name="loginRetryAfterRegistry">Registry of the login Retry-After windows</param>
+    /// <param name="timeProvider">Time provider</param>
     public PortainerClient(IHttpClientFactory httpClientFactory,
                            ILogger<PortainerClient> logger,
-                           LoginRetryAfterRegistry loginRetryAfterRegistry)
+                           LoginRetryAfterRegistry loginRetryAfterRegistry,
+                           TimeProvider timeProvider)
     {
         _httpClientFactory = httpClientFactory;
         _logger = logger;
         _loginRetryAfterRegistry = loginRetryAfterRegistry;
+        _timeProvider = timeProvider;
     }
 
     #endregion // Constructors
@@ -540,6 +550,20 @@ public partial class PortainerClient : IPortainerClient
                        Message = $"Action '{actionRequest.ActionName}' failed: {FailureReason.FromException(ex, TimeSpan.FromSeconds(instanceOptions.Portainer.RequestTimeoutSeconds), cancellationToken)}",
                    };
         }
+    }
+
+    /// <inheritdoc/>
+    public Task<ExternalOperationResult<PortainerCapabilityData>> CheckCapabilityAsync(DockerInstanceOptions instanceOptions, CancellationToken cancellationToken = default)
+    {
+        throw new InvalidOperationException("Skeleton: not implemented");
+    }
+
+    /// <inheritdoc/>
+    public Task<ExternalOperationResult<PortainerActionOutcomeData>> ExecuteContainerActionAsync(DockerInstanceOptions instanceOptions,
+                                                                                                 PortainerContainerActionRequest actionRequest,
+                                                                                                 CancellationToken cancellationToken = default)
+    {
+        throw new InvalidOperationException("Skeleton: not implemented");
     }
 
     #endregion // IPortainerClient

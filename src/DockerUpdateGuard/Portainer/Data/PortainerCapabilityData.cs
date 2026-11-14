@@ -22,5 +22,10 @@ public class PortainerCapabilityData
     /// </summary>
     public string Message { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Identifier of the Portainer environment, digits only
+    /// </summary>
+    public string? EndpointId { get; set; }
+
     #endregion // Properties
 }

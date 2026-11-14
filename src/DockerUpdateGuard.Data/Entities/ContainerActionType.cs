@@ -23,5 +23,15 @@ public enum ContainerActionType
     /// <summary>
     /// Update a service
     /// </summary>
-    UpdateService = 3
+    UpdateService = 3,
+
+    /// <summary>
+    /// Start a container
+    /// </summary>
+    StartContainer = 4,
+
+    /// <summary>
+    /// Stop a container
+    /// </summary>
+    StopContainer = 5
 }

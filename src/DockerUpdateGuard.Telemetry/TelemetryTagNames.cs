@@ -42,5 +42,10 @@ public static class TelemetryTagNames
     /// </summary>
     public const string ScanId = "scan.id";
 
+    /// <summary>
+    /// Container name tag
+    /// </summary>
+    public const string ContainerName = "container.name";
+
     #endregion // Const fields
 }
