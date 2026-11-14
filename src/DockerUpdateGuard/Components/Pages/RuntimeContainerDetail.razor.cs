@@ -1,4 +1,5 @@
 using DockerUpdateGuard.Infrastructure;
+using DockerUpdateGuard.Portainer.Interfaces;
 using DockerUpdateGuard.UI;
 
 using Microsoft.AspNetCore.Components;
@@ -81,6 +82,18 @@ public sealed partial class RuntimeContainerDetail : IDisposable
     /// </summary>
     [Inject]
     public PersistentComponentState PersistentState { get; set; } = null!;
+
+    /// <summary>
+    /// Container action service
+    /// </summary>
+    [Inject]
+    public IContainerActionService ContainerActionService { get; set; } = null!;
+
+    /// <summary>
+    /// Dialog service
+    /// </summary>
+    [Inject]
+    public IDialogService DialogService { get; set; } = null!;
 
     /// <summary>
     /// Logger

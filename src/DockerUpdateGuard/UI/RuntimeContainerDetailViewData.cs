@@ -162,5 +162,10 @@ public class RuntimeContainerDetailViewData
     /// </summary>
     public IReadOnlyList<ScanHistoryItemData> ScanHistory { get; set; } = [];
 
+    /// <summary>
+    /// Container action history
+    /// </summary>
+    public IReadOnlyList<ContainerActionRunViewData> ActionHistory { get; set; } = [];
+
     #endregion // Properties
 }
