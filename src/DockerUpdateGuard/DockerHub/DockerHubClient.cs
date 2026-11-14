@@ -88,6 +88,14 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
     /// </summary>
     private readonly SemaphoreSlim _requestThrottle;
 
+    // Skeleton: removed with the implementation
+#pragma warning disable S4487
+    /// <summary>
+    /// Process-wide limiter of the Docker Hub requests in flight
+    /// </summary>
+    private readonly DockerHubRequestLimiter _requestLimiter;
+#pragma warning restore S4487
+
     #endregion // Fields
 
     #region Constructors
@@ -100,12 +108,15 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient,
     /// <param name="optionsMonitor">Options monitor</param>
     /// <param name="loginRetryAfterRegistry">Registry of the login Retry-After windows</param>
     /// <param name="accessTokenCache">Shared cache of the Docker Hub access token</param>
+    /// <param name="requestLimiter">Process-wide limiter of the Docker Hub requests in flight</param>
     public DockerHubClient(HttpClient httpClient,
                            ILogger<DockerHubClient> logger,
                            IOptionsMonitor<DockerUpdateGuardOptions> optionsMonitor,
                            LoginRetryAfterRegistry loginRetryAfterRegistry,
-                           DockerHubAccessTokenCache accessTokenCache)
+                           DockerHubAccessTokenCache accessTokenCache,
+                           DockerHubRequestLimiter requestLimiter)
     {
+        _requestLimiter = requestLimiter;
         _httpClient = httpClient;
         _logger = logger;
         _optionsMonitor = optionsMonitor;

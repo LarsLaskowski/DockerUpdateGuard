@@ -1066,7 +1066,8 @@ public partial class DockerHubClientTests
                                              new TestLogger<DockerHubClient>(),
                                              new TestOptionsMonitor<DockerUpdateGuardOptions>(options),
                                              new LoginRetryAfterRegistry(TimeProvider.System),
-                                             tokenCache);
+                                             tokenCache,
+                                             new DockerHubRequestLimiter(new TestOptionsMonitor<DockerUpdateGuardOptions>(options)));
             var requests = Enumerable.Range(0, 8)
                                      .Select(_ => client.GetCurrentUserAsync(CancellationToken.None))
                                      .ToArray();
@@ -3119,11 +3120,14 @@ public partial class DockerHubClientTests
                                       },
                       };
 
+        var optionsMonitor = new TestOptionsMonitor<DockerUpdateGuardOptions>(options);
+
         return new DockerHubClient(httpClient,
                                    logger ?? new TestLogger<DockerHubClient>(),
-                                   new TestOptionsMonitor<DockerUpdateGuardOptions>(options),
+                                   optionsMonitor,
                                    loginRetryAfterRegistry ?? new LoginRetryAfterRegistry(TimeProvider.System),
-                                   accessTokenCache ?? new DockerHubAccessTokenCache(TimeProvider.System));
+                                   accessTokenCache ?? new DockerHubAccessTokenCache(TimeProvider.System),
+                                   new DockerHubRequestLimiter(optionsMonitor));
     }
 
     /// <summary>

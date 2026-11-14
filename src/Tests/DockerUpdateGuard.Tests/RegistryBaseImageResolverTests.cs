@@ -113,7 +113,8 @@ public class RegistryBaseImageResolverTests
                                                       new TestLogger<DockerHubClient>(),
                                                       dockerHubOptions,
                                                       new LoginRetryAfterRegistry(TimeProvider.System),
-                                                      tokenCache);
+                                                      tokenCache,
+                                                      new DockerHubRequestLimiter(dockerHubOptions));
             var ociRegistryClient = new OciRegistryClient(httpClient, new TestLogger<OciRegistryClient>());
             var registryMetadataService = new RegistryMetadataService([dockerHubClient, ociRegistryClient]);
             var resolver = new RegistryBaseImageResolver(registryMetadataService);
