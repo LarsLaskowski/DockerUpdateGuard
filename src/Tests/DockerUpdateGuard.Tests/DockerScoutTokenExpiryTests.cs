@@ -2,6 +2,7 @@ using System.Reflection;
 using System.Text;
 
 using DockerUpdateGuard.Configuration;
+using DockerUpdateGuard.DockerHub;
 using DockerUpdateGuard.Infrastructure;
 using DockerUpdateGuard.Tests.Data;
 using DockerUpdateGuard.Vulnerabilities;
@@ -155,7 +156,7 @@ public class DockerScoutTokenExpiryTests
         var optionsMonitor = new TestOptionsMonitor<DockerUpdateGuardOptions>(new DockerUpdateGuardOptions());
         var httpClientFactory = Substitute.For<IHttpClientFactory>();
 
-        return new DockerScoutVulnerabilityProvider(httpClientFactory, optionsMonitor, logger, new LoginRetryAfterRegistry(TimeProvider.System));
+        return new DockerScoutVulnerabilityProvider(httpClientFactory, optionsMonitor, logger, new LoginRetryAfterRegistry(TimeProvider.System), new DockerHubRequestLimiter(optionsMonitor));
     }
 
     #endregion // Methods
