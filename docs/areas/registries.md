@@ -63,7 +63,10 @@ go through its retry of transient HTTP failures.
 ### What can be read
 
 - **Tag lookup** — digest and publication time of one tag.
-  - Docker Hub: the web API's tag record (the digest Docker Hub reports and its `last_pushed` time).
+  - Docker Hub: the web API's tag record (the digest Docker Hub reports and its `last_pushed` time). The digests of its
+    platform images (`images[].digest`, entries that are no JSON object skipped) are read as well and validated like
+    the digest; only Docker Scout's digest check uses them ([Vulnerabilities](vulnerabilities.md#docker-scout)), and
+    they are not stored.
   - Other registries: a manifest request for the tag. The digest is the `Docker-Content-Digest` of the first response
     (for a multi-platform index, the index digest). The publication time is known only when the manifest carries a
     top-level `created` timestamp; otherwise it is unknown.
@@ -203,7 +206,7 @@ go through its retry of transient HTTP failures.
   once for the whole process, over every Docker Hub client instance and scope (the Docker Hub client's web API, login,
   token service and registry requests) and the Docker Scout provider's login. A slot of the Docker Hub client is held
   from sending until the response headers arrive, retries and `Retry-After` waits included, the body read not; the
-  slot of the Docker Scout login covers the whole login call, its buffered body read included. Waiters are admitted in arrival order, and the wait honors cancellation. A configuration
+  slot of the Docker Scout login covers the whole login call, its retries and `Retry-After` waits and its buffered body read included. Waiters are admitted in arrival order, and the wait honors cancellation. A configuration
   reload applies to the next admission: raised, waiting requests are admitted at once; lowered, requests in flight
   finish and new ones wait until the count is below the new value
   ([0030](../decisions/0030-docker-hub-request-parallelism-is-limited-process-wide-and-follows-reloads.md)). Requests

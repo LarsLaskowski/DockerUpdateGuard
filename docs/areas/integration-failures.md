@@ -99,9 +99,10 @@ which stay until they are written again.
 ### Retry of transient HTTP failures
 
 - Applies to Docker Hub (web API, login, token service, registry), other registries and their token services, the
-  .NET and nginx release feeds ([Base images](base-images.md)) and Portainer
-  ([Container actions](container-actions.md)). It does not apply to Docker Engine connections
-  ([Docker instances](docker-instances.md)) or to Docker Scout ([Vulnerabilities](vulnerabilities.md)).
+  .NET and nginx release feeds ([Base images](base-images.md)), Portainer
+  ([Container actions](container-actions.md)) and Docker Scout (login and vulnerability pages,
+  [Vulnerabilities](vulnerabilities.md#docker-scout)). It does not apply to Docker Engine connections
+  ([Docker instances](docker-instances.md)).
 - Transient are the responses 408, 429 and every 5xx, and transport errors and timeouts raised while sending. Other
   statuses (including 401, 403 and 404) and cancellation are not retried.
 - A request is retried up to `DockerUpdateGuard:Scanning:RetryCount` times (default 2, range 0–10; 0 disables
@@ -116,7 +117,7 @@ which stay until they are written again.
   failed). A 5xx, a 408, a timeout or a connection that broke after it was established ends the request after one
   attempt: the response is returned or the error raised. A 429 whose `Retry-After` asks for more than 30 seconds is
   returned after one attempt as well, so the request is never resent inside the window the server named. The requests
-  concerned are the Docker Hub login and the Portainer login and actions.
+  concerned are the Docker Hub login, the Docker Scout login and the Portainer login and actions.
 - A non-idempotent request always carries a body, an empty one if it has nothing to send, so the HTTP stack never
   resends it on its own when a reused connection closes after the server read it.
 - A request body is buffered before the first attempt, so a retry resends the identical body and a body of unknown

@@ -61,7 +61,7 @@ scan run:
 | Findings detected | Provider succeeded with advisories | "The vulnerability provider reported N finding(s)", N after deduplication |
 | Not configured | Provider not configured (missing Trivy URL or Docker Hub credentials) | Provider message |
 | Unsupported | Provider cannot scan this image (Docker Scout and a registry other than `docker.io`) | Provider message |
-| Unavailable | Image or tag not found by the provider | Provider message |
+| Unavailable | Image or tag not found by the provider or, for Docker Scout, the tag now points to another digest | Provider message |
 | Failed | Any other provider failure, or the results of the image version could not be saved | Provider message, cut to 2000 characters; or `Vulnerability results for '<reference>' could not be saved: <reason>` |
 
 - A failed assessment leaves the image version's findings untouched.
@@ -129,19 +129,36 @@ scan run:
 
 ### Docker Scout
 
-- Docker Scout scans only `docker.io` images, by tag; the digest is not used. A repository without a namespace is
-  looked up under `library`.
+- Docker Scout scans only `docker.io` images, by tag. A repository without a namespace is looked up under `library`.
+- **Digest check.** Docker Scout looks up tags only, so an image reference with a digest is checked first, after the
+  credentials, registry and path checks (an image reference without a digest skips the check, and a reference those
+  checks answer is not checked). The provider reads the tag from Docker Hub's web API through the registry metadata
+  service, in a service scope of its own that it disposes after the lookup, and continues only when the reference's
+  digest equals the tag record's digest or one of its platform image digests (compared case-insensitively;
+  [Registries](registries.md#what-can-be-read)). Otherwise, also when the tag record has no digest, the lookup
+  sends neither the login nor a Docker Scout request and gives *not found*, `The tag of '<reference>' now points to a
+  different digest; Docker Scout looks up tags only and cannot assess this version.`, shown as *unavailable* with the
+  stored findings untouched. A tag lookup that gives *not found* gives *not found* with the registry's message; any
+  other unsuccessful status gives *failed* with the registry's message, or `Tag digest lookup failed for
+  '<reference>'` when it has none; an unexpected error gives *failed*, `Docker Scout scan failed: <reason>`. The check
+  costs one Docker Hub web API request per lookup of a reference with a digest; it takes a Docker Hub request slot,
+  and its time limit is `DockerHub:RequestTimeoutSeconds`, not `Vulnerabilities:RequestTimeoutSeconds`
+  ([Registries](registries.md#request-timeout)). A tag republished between the check and the Docker Scout request is
+  not detected ([0031](../decisions/0031-docker-scout-assesses-a-digest-only-while-its-tag-still-points-to-it.md)).
 - The provider logs in by posting the Docker Hub user name and token to `DockerScoutLoginUrl` and caches the returned
   token for the whole process until one minute before the expiry stated in the token, or for five minutes when the
   expiry cannot be read. Only one login runs at a time. A failed login gives *failed*, "Docker Hub authentication
-  failed". After a login answered 429 with a positive `Retry-After`, the provider logs in no more before the window
+  failed". The login is a non-idempotent request for the retry handler, so it is retried only on a 429 without a
+  `Retry-After` or one of at most 30 seconds and after an error before any byte was sent, not on a 5xx
+  ([Integration failures](integration-failures.md#retry-of-transient-http-failures)). After a login answered 429 with a positive `Retry-After`, the provider logs in no more before the window
   ends, and neither does it after the Docker Hub client's login to the same URL with the same trimmed user name was
   answered so: the lookup sends nothing and gives *failed* with `Docker Hub authentication token request for '<user>'
   not sent: Docker Hub answered HTTP 429 and asked to wait until <until>`, also on the refresh after a 401
   ([Integration failures](integration-failures.md#logins-inside-a-retry-after-window)).
 - A login takes a Docker Hub request slot (`DockerHub:MaxParallelRequests`,
   [Registries](registries.md#docker-hub-request-budget-and-parallelism)) and waits for one after the `Retry-After`
-  check. Lookups with a cached token and the Docker Scout API requests take no slot.
+  check. The tag lookup of the digest check takes a slot as every Docker Hub web API request does; lookups with a
+  cached token and the Docker Scout API requests take none.
 - Vulnerabilities are read from `<DockerScoutBaseUrl>/v1/repositories/<namespace>/<repository>/tags/<tag>/vulnerabilities`,
   following the `next` link of each page, for at most **50 pages**. Each segment is percent-encoded. A repository or tag
   with a `.` or `..` segment is not requested: the lookup logs nothing, does not log in, and gives *not found* with the
@@ -157,7 +174,10 @@ scan run:
 - HTTP 401 discards the cached token, logs in once more and reads again from the first page; a second 401 gives
   *failed*, "Docker Scout rejected the authentication token". HTTP 404 gives *unavailable*, "Image <reference> not
   found in Docker Scout". Any other unsuccessful status gives *failed*, "Docker Scout request failed with status X".
-- Each HTTP request is limited to `RequestTimeoutSeconds`.
+- Each login and each page request is limited to `RequestTimeoutSeconds`, its retries and waits included; the
+  requests go through the transient-failure retry
+  ([Integration failures](integration-failures.md#retry-of-transient-http-failures)): a page answered 408, 429 or 5xx
+  is read again, a 401 is not retried by it and is handled as above.
 - Mapping: advisory id and title from `id`, severity from `severity` (as for Trivy; an unknown value maps to *not set* and is logged cut to 100 characters, followed by `…` when it was longer, with its control characters replaced), summary from `description`,
   reference URL from the first of `links`; the text values have their control characters replaced by spaces
   ([Integration failures](integration-failures.md#remote-text-fields)). Docker Scout supplies no package, versions, fix status or CVSS score.
@@ -194,14 +214,13 @@ The dashboard shows at most one hint about the vulnerability configuration:
   image versions; the run ends *failed*. The stale-findings pass of a full refresh still runs and keeps the findings of
   that image version. If saving the *Failed* assessment fails as well, the refresh ends as for an unexpected error.
   A cancellation is not turned into such a failure: the run ends *failed* with `Vulnerability refresh failed: cancelled`.
-- Messages are built from the image reference and the provider's error output (Trivy's excerpt) or a fixed reason; no credentials or tokens are put into
-  them.
+- Messages are built from the image reference and the provider's error output (Trivy's excerpt, or for Docker
+  Scout the failure message of Docker Hub's tag lookup with its body excerpt,
+  [Integration failures](integration-failures.md#excerpts-of-remote-text)) or a fixed reason; no tokens or
+  passwords are put into them.
 
 ### Known gaps
 
-- Docker Scout requests do not go through the transient-failure retry the other outbound HTTP calls use, and Docker
-  Scout scans the tag, not the digest, so an image version whose tag was republished is assessed with the advisories
-  of the newer image. Tracked in [#267](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/267).
 - Some values are kept although nothing produces them: validation makes the *Trivy base URL missing* hint and the
   Trivy *not configured* result unreachable (unless an invalid reloaded configuration is still served), and the
   finding sources *registry advisory* and *manual* exist in the data model but are never produced. Tracked in
@@ -221,6 +240,8 @@ The dashboard shows at most one hint about the vulnerability configuration:
   over-long vulnerability values are cut to their column length where the refresh stores them.
 - [0028](../decisions/0028-a-failed-save-of-one-image-version-does-not-stop-the-vulnerability-refresh.md): a failed
   save of one image version does not stop the vulnerability refresh.
+- [0031](../decisions/0031-docker-scout-assesses-a-digest-only-while-its-tag-still-points-to-it.md): Docker Scout
+  assesses a digest only while its tag still points to it.
 
 ## Not here
 
