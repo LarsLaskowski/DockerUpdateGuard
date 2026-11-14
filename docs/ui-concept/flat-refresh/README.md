@@ -41,10 +41,13 @@ changes tokens, layout and a few view models; it adds no page and no action.
 | Text muted | `#5B6471` | Secondary text, column heads, labels |
 | Icon | `#3D4551` | Icon buttons |
 | Accent | `#2563EB` | Active navigation mark, primary button, logo |
-| Link | `#1D4ED8` | Links in tables and panels |
-| Attention | `#B54708` | Counts that need attention (updates, runtime warnings), `Partial` |
-| Danger | `#B42318` | Vulnerability count, `Failed` and its message |
-| Success | `#067647` | `Succeeded` dot, all-clear headline |
+| Link | `#1D4ED8` | Links in tables and panels, panel footer links, breadcrumb |
+| Attention | `#B54708` | Counts that need attention (updates, runtime warnings), the dot of `Partial` |
+| Danger | `#B42318` | Vulnerability count, dot and label of `Failed`, the error message of a failed run on Scan History |
+| Success | `#067647` | The dot of `Succeeded`, all-clear headline |
+
+The label of `Partial` uses the text color of the warning chip (`#9A3D00`, dark `#FFB877`). In a list the message
+of the latest scan stays muted; only the Scan History colors the message of a failed run.
 
 ### Dark theme
 
@@ -62,7 +65,7 @@ changes tokens, layout and a few view models; it adds no page and no action.
 | Success | `#5FD39A` |
 
 The light accent `#2563EB` has too little contrast for link text on the dark surface, which is why the dark theme
-uses a lighter blue.
+uses a lighter blue. The dark Success value is not part of a mockup.
 
 ### Chips
 
