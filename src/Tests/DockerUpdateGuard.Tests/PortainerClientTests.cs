@@ -492,6 +492,56 @@ public class PortainerClientTests
     }
 
     /// <summary>
+    /// Verify an environment check Portainer answers with a non-success status other than 404 reports the check as failed with the status
+    /// </summary>
+    /// <param name="statusCode">Status of the environment check</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC2")]
+    [DataRow(403)]
+    [DataRow(500)]
+    public async Task PortainerClientCheckCapabilityAsyncWhenEnvironmentCheckFailsReportsCheckFailedWithStatusAsync(int statusCode)
+    {
+        var handler = new SequenceHttpMessageHandler();
+        var logger = new TestLogger<PortainerClient>();
+
+        try
+        {
+            handler.AddResponse(StatusUrl, new HttpResponseMessage(HttpStatusCode.OK));
+            handler.AddResponse(EndpointCheckUrl, new HttpResponseMessage((HttpStatusCode)statusCode));
+
+            var client = new PortainerClient(CreateHttpClientFactory(handler),
+                                             logger,
+                                             new LoginRetryAfterRegistry(TimeProvider.System),
+                                             TimeProvider.System);
+            var instanceOptions = CreateInstanceOptions(InstanceName,
+                                                        options =>
+                                                        {
+                                                            options.ApiToken = PatToken;
+                                                            options.EndpointId = "7";
+                                                        });
+
+            var result = await client.CheckCapabilityAsync(instanceOptions, TestContext.CancellationToken)
+                                     .ConfigureAwait(false);
+
+            Assert.AreEqual(ExternalOperationStatus.Unsupported, result.Status, $"An environment check answered with HTTP {statusCode} must not support actions");
+            Assert.AreEqual($"Portainer environment 7 check failed: HTTP {statusCode}",
+                            result.Message,
+                            $"An environment check answered with HTTP {statusCode} must report the failed check with its status");
+            Assert.ContainsSingle(request => request.RequestUri == EndpointCheckUrl,
+                                  handler.Requests,
+                                  "The environment must be checked exactly once");
+            Assert.DoesNotContain(entry => entry.EventId.Id == 3304,
+                                  logger.Entries,
+                                  "An environment whose check failed must never be reported as resolved");
+        }
+        finally
+        {
+            handler.Dispose();
+        }
+    }
+
+    /// <summary>
     /// Verify action execution for disabled Portainer integrations returns a not-configured outcome without contacting Portainer
     /// </summary>
     /// <returns>Task</returns>
