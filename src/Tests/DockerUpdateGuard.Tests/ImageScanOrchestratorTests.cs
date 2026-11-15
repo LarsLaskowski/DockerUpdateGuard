@@ -1,6 +1,3 @@
-using System.Collections;
-using System.Reflection;
-
 using DockerUpdateGuard.Data.Entities;
 using DockerUpdateGuard.Data.Repositories;
 using DockerUpdateGuard.Docker;
@@ -1597,11 +1594,9 @@ public class ImageScanOrchestratorTests
                                              CancellationToken.None)
                                   .ConfigureAwait(false);
 
-                var scanLocksField = typeof(ImageScanOrchestrator).GetField("_observedImageScanLocks", BindingFlags.NonPublic | BindingFlags.Static);
-                var scanLocks = (IDictionary)scanLocksField!.GetValue(null)!;
-                var scanLockKeys = scanLocks.Keys.Cast<Guid>();
-
-                Assert.DoesNotContain(key => key == observedImage.Id, scanLockKeys, "The per-observed-image scan lock must be removed once its scan completes so the registry does not grow unboundedly");
+                Assert.AreEqual(0,
+                                ImageScanOrchestrator.ObservedImageScanLocks.GetReferenceCount(observedImage.Id),
+                                "The per-observed-image scan lock must be removed once its scan completes so the registry does not grow unboundedly");
             }
         }
     }
