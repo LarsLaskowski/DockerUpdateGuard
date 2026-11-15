@@ -239,3 +239,24 @@ I checked for other areas it might touch and found none:
 - This is an availability cost, not a confidentiality or integrity defect, and the enrichment already accepts it. AC2 to AC4 still hold either way.
 - Smallest fix: pass the scan's `cancellationToken` to the recovery save. If that save is cancelled, it ends like any other failed recovery: logged with 2034 or 2043, tracker cleared, run left to the stale-run repair.
 - Recommendation: the Lead decides now in the plan. If the Lead keeps `CancellationToken.None`, add one sentence to the *Consequences* of record 0040 saying that the recovery save is not cancellable and may repeat the connection retries.
+
+## Challenge notes
+
+Devil's Advocate, mode plan: issue #384, /home/user/DockerUpdateGuard/specs/issue-384/plan.md at commit 7475617.
+
+The plan holds up. I found no major objections. I checked these claims against the code and they hold:
+- **Root cause:** the batch handlers never clear the tracker (`ImageScanOrchestrator.cs:604-620`, `RuntimeContainerScanOrchestrator.cs:1252-1286`). Both saves sit outside the inner `try` (`ImageScanOrchestrator.cs:665-668` and `725-726`; `RuntimeContainerScanOrchestrator.cs:505-508` and `573-574`).
+- **Fact 5:** the runtime batch uses `dockerInstance` only for `.Id` and `.Name` (lines 462-740, 1252-1285). The `ScanAllAsync` image batch holds only ids. `ImageCatalogRepository` keeps no entity cache, and its conflict handling (`ImageCatalogRepository.cs:152-154`, `214-216`) detaches only its own new entity.
+- **Sibling paths:** no other service has a per-item catch around a shared-context save. `DockerHubAccountImageDiscoveryService`, `ResourceStatisticsCollector`, `InstanceDiscoveryService`, `ScanCleanupBackgroundService` and `ContainerActionRunReconciler` each save once with no per-item catch.
+- **Event ids:** 2034 and 2043 are free; `ImageHostLoggingExtensions.cs` uses 2030-2033 and 2040-2042.
+- **Concurrency:** there is no concurrency token on `ScanRun`, so marking the run `Modified` in the recovery cannot fail on one.
+- **AC5's `SaveChangesAttemptCount == 1`:** this is correct for both cancellation tests.
+  - Image test (`ImageScanOrchestratorTests.cs:926-975`): its first save throws.
+  - Runtime test (`RuntimeContainerScanOrchestratorTests.cs:2069-2120`): `InstanceDiscoveryService` runs on a separate `discoveryContext`, so its save is not counted.
+- **Adapted AC2 test:** in the runtime `…FailsBeforeScanAsync` test (line 1983), discovery also runs on a separate context, so `FailOnSaveAttempt = 1` hits the first instance's run save, and the recovery save is attempt 2.
+
+Objections:
+
+1. `minor`: Fact 7 is left unverified, and the plan gives no fallback if the runtime AC1 test shows snapshots of the failed run stored. Reading of EF Core, not run: attaching by setting `EntityEntry.State` only records untracked child entities in `InitialFixup` (`RecordReferencedUntrackedEntity`). Its relationship snapshot holds the current collection, so `DetectChanges` should not insert them. Instruction to the Dev: if the runtime AC1 test does find a stored `ContainerSnapshot`, do not attach the original `scanRun` in the recovery. Attach a new `ScanRun` with the same `Id` and copied scalar values (`Type`, `TriggerSource`, `ObservedImageId`/`DockerInstanceId`, `StartedAtUtc`, `Status`, `CompletedAtUtc`, `ErrorMessage`), with the state set the same way. Then record the outcome in 0040.
+
+2. `minor`: The root cause names only the registration page as a long-lived context (`ObservedImages.razor.cs:186`). `RuntimeContainers.razor.cs:385` also calls `ScanAllAsync` on the circuit-scoped context. The new `ChangeTracker.Clear()` therefore detaches every entity the circuit tracks, not just the scan's. I found no page or circuit service that keeps an entity in a field across calls (grep for entity-typed private fields in `src/DockerUpdateGuard`), so this is safe today. Instruction to the Lead/Dev: state in record 0040 that the clear runs on the circuit context of both pages and is safe only because no circuit component holds tracked entities across calls.
