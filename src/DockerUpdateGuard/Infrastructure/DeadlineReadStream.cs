@@ -5,15 +5,6 @@ namespace DockerUpdateGuard.Infrastructure;
 /// </summary>
 internal sealed class DeadlineReadStream : Stream
 {
-    #region Const fields
-
-    /// <summary>
-    /// Message of the skeleton bodies
-    /// </summary>
-    private const string SkeletonMessage = "Skeleton: not implemented";
-
-    #endregion // Const fields
-
     #region Fields
 
     private readonly Stream _innerStream;
@@ -42,64 +33,71 @@ internal sealed class DeadlineReadStream : Stream
     #region Stream
 
     /// <inheritdoc/>
-    public override bool CanRead => throw new InvalidOperationException(SkeletonMessage);
+    public override bool CanRead => true;
 
     /// <inheritdoc/>
-    public override bool CanSeek => throw new InvalidOperationException(SkeletonMessage);
+    public override bool CanSeek => false;
 
     /// <inheritdoc/>
-    public override bool CanWrite => throw new InvalidOperationException(SkeletonMessage);
+    public override bool CanWrite => false;
 
     /// <inheritdoc/>
-    public override long Length => throw new InvalidOperationException(SkeletonMessage);
+    public override long Length => throw new NotSupportedException();
 
     /// <inheritdoc/>
     public override long Position
     {
-        get => throw new InvalidOperationException(SkeletonMessage);
-        set => throw new InvalidOperationException(SkeletonMessage);
+        get => throw new NotSupportedException();
+        set => throw new NotSupportedException();
     }
 
     /// <inheritdoc/>
     public override void Flush()
     {
-        throw new InvalidOperationException(SkeletonMessage);
     }
 
     /// <inheritdoc/>
     public override int Read(byte[] buffer, int offset, int count)
     {
-        throw new InvalidOperationException(SkeletonMessage);
+        throw new NotSupportedException();
     }
 
     /// <inheritdoc/>
     public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
     {
-        throw new InvalidOperationException(SkeletonMessage);
+        return ReadAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
     }
 
     /// <inheritdoc/>
-    public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+    public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
     {
-        throw new InvalidOperationException(SkeletonMessage);
+        if (cancellationToken.CanBeCanceled == false)
+        {
+            return await _innerStream.ReadAsync(buffer, _deadlineSource.Token).ConfigureAwait(false);
+        }
+
+        using (var linkedSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _deadlineSource.Token))
+        {
+            return await _innerStream.ReadAsync(buffer, linkedSource.Token).ConfigureAwait(false);
+        }
     }
 
     /// <inheritdoc/>
     public override long Seek(long offset, SeekOrigin origin)
     {
-        throw new InvalidOperationException(SkeletonMessage);
+        throw new NotSupportedException();
     }
 
     /// <inheritdoc/>
     public override void SetLength(long value)
     {
-        throw new InvalidOperationException(SkeletonMessage);
+        throw new NotSupportedException();
     }
 
     /// <inheritdoc/>
     public override void Write(byte[] buffer, int offset, int count)
     {
-        throw new InvalidOperationException(SkeletonMessage);
+        throw new NotSupportedException();
     }
 
     /// <inheritdoc/>

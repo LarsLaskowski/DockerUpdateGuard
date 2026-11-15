@@ -7,9 +7,7 @@ internal sealed class RequestDeadlineHandler : DelegatingHandler
 {
     #region Fields
 
-#pragma warning disable S4487 // Skeleton: removed with the implementation
     private readonly TimeProvider _timeProvider;
-#pragma warning restore S4487 // Skeleton: removed with the implementation
 
     #endregion // Fields
 
@@ -40,12 +38,39 @@ internal sealed class RequestDeadlineHandler : DelegatingHandler
     #region HttpMessageHandler
 
     /// <inheritdoc/>
-#pragma warning disable S4487 // Skeleton: removed with the implementation
-    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
-        throw new InvalidOperationException("Skeleton: not implemented");
+        var deadlineSource = new CancellationTokenSource(RequestTimeout, _timeProvider);
+        HttpResponseMessage? response = null;
+
+        try
+        {
+            using (var linkedSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadlineSource.Token))
+            {
+                response = await base.SendAsync(request, linkedSource.Token).ConfigureAwait(false);
+
+                var originalContent = response.Content;
+                var innerStream = await originalContent.ReadAsStreamAsync(linkedSource.Token).ConfigureAwait(false);
+                var deadlineContent = new StreamContent(new DeadlineReadStream(innerStream, originalContent, deadlineSource));
+
+                foreach (var header in originalContent.Headers)
+                {
+                    deadlineContent.Headers.TryAddWithoutValidation(header.Key, header.Value);
+                }
+
+                response.Content = deadlineContent;
+            }
+
+            return response;
+        }
+        catch
+        {
+            response?.Dispose();
+            deadlineSource.Dispose();
+
+            throw;
+        }
     }
-#pragma warning restore S4487 // Skeleton: removed with the implementation
 
     #endregion // HttpMessageHandler
 }
