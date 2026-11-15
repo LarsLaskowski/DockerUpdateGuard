@@ -459,6 +459,34 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
                                          ScanTriggerSource triggerSource,
                                          CancellationToken cancellationToken)
     {
+        await DockerInstanceScanLocks.WaitAsync(dockerInstance.Id, cancellationToken).ConfigureAwait(false);
+
+        try
+        {
+            await ScanLockedInstanceAsync(dockerInstance,
+                                          configuredInstance,
+                                          triggerSource,
+                                          cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            DockerInstanceScanLocks.Release(dockerInstance.Id);
+        }
+    }
+
+    /// <summary>
+    /// Scan a single Docker instance while its scan lock is held
+    /// </summary>
+    /// <param name="dockerInstance">Persisted Docker instance</param>
+    /// <param name="configuredInstance">Configured Docker instance options</param>
+    /// <param name="triggerSource">Trigger source</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Task</returns>
+    private async Task ScanLockedInstanceAsync(DockerInstance dockerInstance,
+                                               DockerInstanceOptions configuredInstance,
+                                               ScanTriggerSource triggerSource,
+                                               CancellationToken cancellationToken)
+    {
         var processedContainerCount = 0;
         var scanRun = new ScanRun
                       {

@@ -48,7 +48,8 @@ All keys live under `DockerUpdateGuard:Vulnerabilities`:
 - Every refresh is recorded as one scan run of type *vulnerability* with trigger *scheduled* or *manual*, also when it
   covers no image version.
 - Provider calls run in batches of `MaxParallelScans` image versions at a time; the results of a batch are applied and
-  saved one image version after the other. A failure to save the results of one image version does not stop the
+  saved one image version after the other, each image version while no other refresh applies the same image version
+  ([Scan engine](scan-engine.md#overlapping-scans)). A failure to save the results of one image version does not stop the
   others ([Limits and errors](#limits-and-errors)).
 
 ### Assessment per image version

@@ -7,18 +7,6 @@ namespace DockerUpdateGuard.Images.Helper;
 /// </summary>
 internal sealed class KeyedScanLock
 {
-    #region Const fields
-
-    /// <summary>
-    /// Message of the skeleton bodies
-    /// </summary>
-    private const string SkeletonMessage = "Skeleton: not implemented";
-
-    #endregion // Const fields
-
-    // Skeleton: removed with the implementation
-#pragma warning disable S1144, S2325, CA1822
-
     #region Fields
 
     /// <summary>
@@ -38,7 +26,16 @@ internal sealed class KeyedScanLock
     /// <summary>
     /// Number of keys held or awaited
     /// </summary>
-    public int Count => throw new InvalidOperationException(SkeletonMessage);
+    public int Count
+    {
+        get
+        {
+            lock (_sync)
+            {
+                return _entries.Count;
+            }
+        }
+    }
 
     #endregion // Properties
 
@@ -51,7 +48,10 @@ internal sealed class KeyedScanLock
     /// <returns>Reference count, 0 without an entry</returns>
     public int GetReferenceCount(Guid key)
     {
-        throw new InvalidOperationException(SkeletonMessage);
+        lock (_sync)
+        {
+            return _entries.TryGetValue(key, out var entry) ? entry.ReferenceCount : 0;
+        }
     }
 
     /// <summary>
@@ -60,9 +60,20 @@ internal sealed class KeyedScanLock
     /// <param name="key">Key</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Task</returns>
-    public Task WaitAsync(Guid key, CancellationToken cancellationToken)
+    public async Task WaitAsync(Guid key, CancellationToken cancellationToken)
     {
-        throw new InvalidOperationException(SkeletonMessage);
+        var semaphore = AcquireReference(key);
+
+        try
+        {
+            await semaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            DropReference(key);
+
+            throw;
+        }
     }
 
     /// <summary>
@@ -71,10 +82,70 @@ internal sealed class KeyedScanLock
     /// <param name="key">Key</param>
     public void Release(Guid key)
     {
-        throw new InvalidOperationException(SkeletonMessage);
+        SemaphoreSlim semaphore;
+
+        lock (_sync)
+        {
+            if (_entries.TryGetValue(key, out var entry) == false)
+            {
+                throw new InvalidOperationException("The scan lock key is not held");
+            }
+
+            semaphore = entry.Semaphore;
+        }
+
+        semaphore.Release();
+
+        DropReference(key);
+    }
+
+    /// <summary>
+    /// Take a reference to the entry of a key, creating it on first use
+    /// </summary>
+    /// <param name="key">Key</param>
+    /// <returns>Semaphore of the key</returns>
+    private SemaphoreSlim AcquireReference(Guid key)
+    {
+        lock (_sync)
+        {
+            if (_entries.TryGetValue(key, out var entry) == false)
+            {
+                entry = new KeyedScanLockEntry
+                        {
+                            Semaphore = new SemaphoreSlim(1, 1),
+                        };
+
+                _entries[key] = entry;
+            }
+
+            entry.ReferenceCount++;
+
+            return entry.Semaphore;
+        }
+    }
+
+    /// <summary>
+    /// Drop a reference to the entry of a key, removing and disposing it at zero
+    /// </summary>
+    /// <param name="key">Key</param>
+    private void DropReference(Guid key)
+    {
+        lock (_sync)
+        {
+            if (_entries.TryGetValue(key, out var entry) == false)
+            {
+                return;
+            }
+
+            entry.ReferenceCount--;
+
+            if (entry.ReferenceCount <= 0)
+            {
+                _entries.Remove(key);
+                entry.Semaphore.Dispose();
+            }
+        }
     }
 
     #endregion // Methods
-
-#pragma warning restore S1144, S2325, CA1822
 }
