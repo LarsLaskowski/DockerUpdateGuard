@@ -105,5 +105,48 @@ public class RequestDeadlineHandlerTests
         recorder.GetTimer(0).Received(1).Dispose();
     }
 
+    /// <summary>
+    /// Verify an inner handler that throws before any response exists releases the deadline timer and rethrows
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC5")]
+    public async Task RequestDeadlineHandlerInnerHandlerThrowsReleasesDeadlineTimerAsync()
+    {
+        var recorder = new DeadlineTimerRecorder();
+
+        using var inner = new DelegateHttpMessageHandler(_ => throw new HttpRequestException("connection failed"));
+        using var httpClient = recorder.CreateHttpClient(inner, null);
+
+        await Assert.ThrowsExactlyAsync<HttpRequestException>(() => httpClient.GetAsync(new Uri("https://registry.example/v2/"), HttpCompletionOption.ResponseHeadersRead, CancellationToken.None),
+                                                              "The failure of the inner handler must reach the caller").ConfigureAwait(false);
+
+        Assert.AreEqual(1, recorder.TimerCount, "The handler must have armed its deadline");
+        recorder.GetTimer(0).Received(1).Dispose();
+    }
+
+    /// <summary>
+    /// Verify a body that cannot be opened disposes the response and the deadline timer and rethrows
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC5")]
+    public async Task RequestDeadlineHandlerBodyStreamFailsReleasesDeadlineTimerAsync()
+    {
+        var recorder = new DeadlineTimerRecorder();
+        var gate = Task.FromException(new IOException("body failed"));
+
+        using var inner = new DelegateHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+                                                              {
+                                                                  Content = new GatedHttpContent(gate, "{}"),
+                                                              });
+        using var httpClient = recorder.CreateHttpClient(inner, null);
+
+        await Assert.ThrowsAsync<IOException>(() => httpClient.GetAsync(new Uri("https://registry.example/v2/"), HttpCompletionOption.ResponseHeadersRead, CancellationToken.None),
+                                              "The failure of the body must reach the caller").ConfigureAwait(false);
+
+        recorder.GetTimer(0).Received(1).Dispose();
+    }
+
     #endregion // Methods
 }
