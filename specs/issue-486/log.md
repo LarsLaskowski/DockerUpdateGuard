@@ -11,3 +11,4 @@ are quoted in full.
 | 2026-11-15 19:56 | 5 Tests first | Tester | AC1-AC3 new tests fail on current code (3 failed), adapted AC4 tests pass. Deferred: none (sonnet/medium · 120,987 tokens · 13 tool uses · 167 s · 22 in · 13,066 out · 1,003,188 cache read · 119,578 cache write · 315,143 weighted) |
 | 2026-11-15 19:59 | 6 Implement | Dev | Implemented; suite green, coverage gate pass (new code 100%), docs updated (sonnet/medium · 93,280 tokens · 8 tool uses · 196 s · 16 in · 3,448 out · 654,547 cache read · 41,928 cache write · 135,121 weighted) |
 | 2026-11-15 19:59 | 6 Coverage skipped | Orchestrator | skipped — Dev reports the Coverage gate passed (new code 100%), no deferred tests; gate-stamp in step 7 reruns test with coverage |
+| 2026-11-15 19:59 | 6 Documentation | Orchestrator | written in 6 Implement |
