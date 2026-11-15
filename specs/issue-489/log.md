@@ -12,3 +12,4 @@ are quoted in full.
 | 2026-11-15 21:20 | 6 Implement | Dev | Preload and move of kept findings implemented in RuntimeContainerScanOrchestrator, area docs updated; 4 target tests pass, 1548+23 tests green, new-code coverage 100%, analyzer 0, no deferred (sonnet/medium · 104,198 tokens · 15 tool uses · 225 s · 23 in · 5,483 out · 1,109,172 cache read · 49,373 cache write · 200,071 weighted) |
 | 2026-11-15 21:21 | 6 Coverage skipped | Orchestrator | skipped — gate passes (new code 100%, overall 92.8%), no uncovered lines, no deferred tests |
 | 2026-11-15 21:21 | 6 Documentation | Orchestrator | written in 6 Implement (update-detection.md, base-images.md); Test run green above |
+| 2026-11-15 21:24 | 7 Gate stamp | Orchestrator | PASS on c6be0af4e0253597f7af2d9a67f418cea8fdff75 (tier standard): Format check pass; Analyzer gate pass; Test with coverage pass; Coverage gate pass; decision-check.py pass; scope-check.py pass · figure-check.py 0 hit(s) |
