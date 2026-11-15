@@ -192,9 +192,10 @@ The runtime container page offers actions from the container's latest stored sna
   (EventId 3323) and the outcome is still returned; the run stays open until startup reconciles it.
 - **Checks at confirmation.** The service checks the target again on the server against the current configuration,
   whatever the page showed. A confirmation for an instance or container ID with no snapshot fails with `Container is
-  not in the latest runtime scan; run a runtime scan and try again` and records no run. Otherwise each check below
-  ends a rejected confirmation with one *failed* run (completed at its request time, logged as EventId 3322 with the
-  check's name) and no Portainer request, in this order:
+  not in the latest runtime scan; run a runtime scan and try again` and records no run (logged as EventId 3325, with
+  the action and the instance's identifier only). Otherwise each check below ends a rejected confirmation with one
+  *failed* run (completed at its request time, logged as EventId 3322 with the check's name) and no Portainer
+  request, in this order:
 
   | Check | Run message |
   | --- | --- |

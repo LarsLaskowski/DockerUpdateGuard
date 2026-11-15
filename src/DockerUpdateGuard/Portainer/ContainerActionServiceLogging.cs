@@ -87,5 +87,16 @@ internal static partial class ContainerActionServiceLogging
                    Message = "Reconciled {Count} container action runs interrupted by an application stop")]
     public static partial void ContainerActionRunsReconciled(this ILogger logger, int count);
 
+    /// <summary>
+    /// Log that a container action was rejected because no snapshot of the container is known on the Docker instance
+    /// </summary>
+    /// <param name="logger">Logger</param>
+    /// <param name="actionType">Action type</param>
+    /// <param name="dockerInstanceId">Docker instance identifier</param>
+    [LoggerMessage(EventId = 3325,
+                   Level = LogLevel.Warning,
+                   Message = "Container action {ActionType} rejected: no snapshot of the container on Docker instance {DockerInstanceId}")]
+    public static partial void ContainerActionTargetUnknown(this ILogger logger, ContainerActionType actionType, Guid dockerInstanceId);
+
     #endregion // Methods
 }

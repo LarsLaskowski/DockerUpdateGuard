@@ -455,6 +455,8 @@ public sealed class ContainerActionService : IContainerActionService
 
         if (target.Instance is null || target.Snapshot is null)
         {
+            _logger.ContainerActionTargetUnknown(actionType, dockerInstanceId);
+
             return new ContainerActionRunResultData
                    {
                        Status = ContainerActionStatus.Failed,

@@ -176,13 +176,14 @@ never their values.
   | Select | `Saving the tag selection failed` | `SaveTagSelection` |
   | Clear selection | `Clearing the tag selection failed` | `ClearTagSelection` |
   | Start / Stop / Restart | `Container action failed` | `ContainerAction` |
+  | Register and scan | `Registration failed` | `RegisterObservedImage` |
+  | Refresh vulnerabilities | `Vulnerability refresh failed` | `VulnerabilityRefresh` |
 
   An action that Portainer or a check rejects is not a page error but an outcome: its message is shown in the outcome
   alert and stored in the run ([Container actions](container-actions.md#actions)). `Container action failed` appears
-  only when the action service itself raises an error, for example an invalid configuration or a run that cannot be
-  written, and then no action was sent.
-  | Register and scan | `Registration failed` | `RegisterObservedImage` |
-  | Refresh vulnerabilities | `Vulnerability refresh failed` | `VulnerabilityRefresh` |
+  when the action service itself raises an error, for example an invalid configuration or a run that cannot be
+  written, and then no action was sent; or when the page's reload after an action fails, and then the outcome alert
+  shows what became of the action.
 - Error messages of scan runs are shown as stored ([Scan engine](scan-engine.md)) in the dashboard, the scan history,
   the latest-scan columns and the detail pages.
 - If the connection to the server is lost, the page stops being interactive until the browser reconnects or the page
