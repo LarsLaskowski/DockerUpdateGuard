@@ -3125,5 +3125,127 @@ public class ApplicationViewServiceTests
         }
     }
 
+    /// <summary>
+    /// Verify the detail lists the 20 most recent action runs of the container's snapshots on its instance, newest first, with their fields
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC10")]
+    public async Task ApplicationViewServiceGetRuntimeContainerDetailAsyncLoadsTwentyMostRecentActionRunsOfContainerAsync()
+    {
+        var baseTime = new DateTimeOffset(2026, 11, 14, 8, 0, 0, TimeSpan.Zero);
+        var options = new DbContextOptionsBuilder<DockerUpdateGuardDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString())
+                                                                               .Options;
+
+        var dbContext = new DockerUpdateGuardDbContext(options);
+
+        await using (dbContext.ConfigureAwait(false))
+        {
+            var imageVersion = await new ImageCatalogRepository(dbContext).GetOrCreateImageVersionAsync("docker.io",
+                                                                                                        "company/api",
+                                                                                                        "1.0.0",
+                                                                                                        "sha256:api",
+                                                                                                        cancellationToken: TestContext.CancellationToken)
+                                                                          .ConfigureAwait(false);
+            var dockerInstance = CreateActionHistoryInstance("Production");
+            var otherInstance = CreateActionHistoryInstance("Staging");
+            var olderSnapshot = CreateActionHistorySnapshot(dockerInstance, imageVersion.Id, "container-api", baseTime.AddDays(-1));
+            var currentSnapshot = CreateActionHistorySnapshot(dockerInstance, imageVersion.Id, "container-api", baseTime);
+            var otherContainerSnapshot = CreateActionHistorySnapshot(dockerInstance, imageVersion.Id, "container-db", baseTime);
+            var otherInstanceSnapshot = CreateActionHistorySnapshot(otherInstance, imageVersion.Id, "container-api", baseTime);
+
+            dbContext.DockerInstances.AddRange(dockerInstance, otherInstance);
+            dbContext.ContainerSnapshots.AddRange(olderSnapshot, currentSnapshot, otherContainerSnapshot, otherInstanceSnapshot);
+            dbContext.ContainerActionRuns.AddRange(Enumerable.Range(0, 22)
+                                                             .Select(index => CreateActionHistoryRun(index % 2 == 0 ? currentSnapshot : olderSnapshot, baseTime.AddMinutes(index))));
+            dbContext.ContainerActionRuns.Add(CreateActionHistoryRun(otherContainerSnapshot, baseTime.AddHours(1)));
+            dbContext.ContainerActionRuns.Add(CreateActionHistoryRun(otherInstanceSnapshot, baseTime.AddHours(2)));
+
+            await dbContext.SaveChangesAsync(TestContext.CancellationToken)
+                           .ConfigureAwait(false);
+
+            var service = new ApplicationViewService(dbContext,
+                                                     new ImageReferenceParser(),
+                                                     CreateOptionsMonitor(),
+                                                     new SharedBaseImageQueryService(dbContext));
+
+            var detail = await service.GetRuntimeContainerDetailAsync(dockerInstance.Id, "container-api", TestContext.CancellationToken)
+                                      .ConfigureAwait(false);
+
+            Assert.IsNotNull(detail, "The runtime container detail must be returned");
+            Assert.AreSequenceEqual(Enumerable.Range(2, 20)
+                                              .Reverse()
+                                              .Select(index => baseTime.AddMinutes(index))
+                                              .ToList(),
+                                    detail.ActionHistory.Select(run => run.RequestedAtUtc).ToList(),
+                                    "The history must hold the 20 most recent runs of the container on its instance, newest first, from every snapshot of the container");
+            Assert.AreEqual("Restart", detail.ActionHistory[0].Action, "A run must show the display name of its action");
+            Assert.AreEqual("Succeeded", detail.ActionHistory[0].Status, "A run must show its status");
+            Assert.AreEqual(baseTime.AddMinutes(21).AddSeconds(5), detail.ActionHistory[0].CompletedAtUtc, "A run must show its completion time");
+            Assert.AreEqual("UI", detail.ActionHistory[0].RequestedBy, "A run must show who requested it");
+            Assert.AreEqual("message 21", detail.ActionHistory[0].Message, "A run must show its stored message");
+        }
+    }
+
+    /// <summary>
+    /// Create a Docker instance of the action history test
+    /// </summary>
+    /// <param name="name">Instance name</param>
+    /// <returns>Docker instance</returns>
+    private static DockerInstance CreateActionHistoryInstance(string name)
+    {
+        return new DockerInstance
+               {
+                   Name = name,
+                   EndpointUri = $"https://{name.ToLowerInvariant()}.example.test",
+                   ConnectionKind = DockerConnectionKind.Https,
+               };
+    }
+
+    /// <summary>
+    /// Create a container snapshot of the action history test
+    /// </summary>
+    /// <param name="dockerInstance">Docker instance</param>
+    /// <param name="imageVersionId">Image version identifier</param>
+    /// <param name="containerId">Container identifier</param>
+    /// <param name="recordedAtUtc">Recording time</param>
+    /// <returns>Snapshot</returns>
+    private static ContainerSnapshot CreateActionHistorySnapshot(DockerInstance dockerInstance, Guid imageVersionId, string containerId, DateTimeOffset recordedAtUtc)
+    {
+        return new ContainerSnapshot
+               {
+                   DockerInstance = dockerInstance,
+                   ImageVersionId = imageVersionId,
+                   ContainerId = containerId,
+                   Name = containerId,
+                   Status = ContainerRuntimeStatus.Running,
+                   IsRunning = true,
+                   RecordedAtUtc = recordedAtUtc,
+               };
+    }
+
+    /// <summary>
+    /// Create a succeeded restart run of a snapshot, whose message names its request minute
+    /// </summary>
+    /// <param name="snapshot">Snapshot</param>
+    /// <param name="requestedAtUtc">Request time</param>
+    /// <returns>Run</returns>
+    private static ContainerActionRun CreateActionHistoryRun(ContainerSnapshot snapshot, DateTimeOffset requestedAtUtc)
+    {
+        return new ContainerActionRun
+               {
+                   DockerInstance = snapshot.DockerInstance,
+                   ContainerSnapshot = snapshot,
+                   ActionType = ContainerActionType.RestartContainer,
+                   ResourceType = PortainerResourceType.Container,
+                   ResourceName = snapshot.Name,
+                   Status = ContainerActionStatus.Succeeded,
+                   RequestedBy = "UI",
+                   RequestedAtUtc = requestedAtUtc,
+                   CompletedAtUtc = requestedAtUtc.AddSeconds(5),
+                   ErrorMessage = $"message {requestedAtUtc.Minute}",
+               };
+    }
+
     #endregion // Methods
 }
