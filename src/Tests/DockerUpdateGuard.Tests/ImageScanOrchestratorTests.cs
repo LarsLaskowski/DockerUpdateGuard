@@ -10,6 +10,7 @@ using DockerUpdateGuard.Infrastructure;
 using DockerUpdateGuard.Tests.Data;
 
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
 using NSubstitute;
@@ -755,6 +756,7 @@ public class ImageScanOrchestratorTests
     /// </summary>
     /// <returns>Task</returns>
     [TestMethod]
+    [TestCategory("AC4")]
     public async Task ImageScanOrchestratorScanAllAsyncContinuesAfterItemScanFailureAsync()
     {
         using (var database = new SqliteTestDatabase())
@@ -816,6 +818,11 @@ public class ImageScanOrchestratorTests
 
                     Assert.AreEqual(2, itemFailures, "Every failing observed image scan must be logged so later items are still attempted");
                     Assert.Contains(entry => entry.EventId.Id == 2062, logger.Entries, "The batch must complete even when individual observed image scans fail");
+
+                    var recoveryFailures = logger.Entries.Where(entry => entry.EventId.Id == 2034).ToList();
+
+                    Assert.HasCount(2, recoveryFailures, "Every failed recovery save must be logged per observed image");
+                    Assert.IsTrue(recoveryFailures.All(entry => entry.LogLevel == LogLevel.Error), "A failed recovery save must be logged as an error");
                 }
             }
         }
@@ -826,6 +833,7 @@ public class ImageScanOrchestratorTests
     /// </summary>
     /// <returns>Task</returns>
     [TestMethod]
+    [TestCategory("AC2")]
     public async Task ImageScanOrchestratorScanAllAsyncCompletesRemainingImageAfterEarlierImageFailsBeforeScanAsync()
     {
         using (var database = new SqliteTestDatabase())
@@ -910,6 +918,17 @@ public class ImageScanOrchestratorTests
                     Assert.AreEqual(1, itemFailures, "Exactly the image whose first save failed must be logged as a batch item failure");
                     Assert.AreEqual(1, succeededRuns, "The remaining image must be scanned to completion after the earlier image failed");
 
+                    var allRuns = await failingContext.ScanRuns.Where(entity => entity.Type == ScanRunType.ObservedImage)
+                                                               .ToListAsync(TestContext.CancellationToken)
+                                                               .ConfigureAwait(false);
+                    var failedRuns = allRuns.Where(entity => entity.Status == ScanRunStatus.Failed).ToList();
+
+                    Assert.HasCount(2, allRuns, "The run of the failed first save must be stored besides the later run");
+                    Assert.DoesNotContain(entity => entity.Status == ScanRunStatus.Running, allRuns, "No run of the batch may stay running");
+                    Assert.HasCount(1, failedRuns, "The run of the failed first save must be stored as failed");
+                    Assert.IsNotNull(failedRuns[0].CompletedAtUtc, "The failed run must carry a completion time");
+                    Assert.AreEqual("Observed image scan could not be saved: unexpected error", failedRuns[0].ErrorMessage, "The failed run must carry the save failure line");
+
                     await registryMetadataService.Received(1)
                                                  .GetTagAsync(Arg.Any<ImageReference>(), cancellationToken: Arg.Any<CancellationToken>())
                                                  .ConfigureAwait(false);
@@ -923,6 +942,7 @@ public class ImageScanOrchestratorTests
     /// </summary>
     /// <returns>Task</returns>
     [TestMethod]
+    [TestCategory("AC5")]
     public async Task ImageScanOrchestratorScanAllAsyncRethrowsCancellationFromItemScanAsync()
     {
         using (var database = new SqliteTestDatabase())
@@ -971,6 +991,7 @@ public class ImageScanOrchestratorTests
                                 .ConfigureAwait(false);
 
                     Assert.DoesNotContain(entry => entry.EventId.Id == 2033, logger.Entries, "A cancelled observed image scan must not be reported as an item failure");
+                    Assert.AreEqual(1, failingContext.SaveChangesAttemptCount, "A cancellation must be rethrown without a recovery save");
                 }
             }
         }
@@ -1651,6 +1672,305 @@ public class ImageScanOrchestratorTests
         Assert.AreEqual(500, boundaryReference.Length, "The boundary reference must have exactly the stored length");
         Assert.AreEqual(shortReference, storedShort, "A source reference within the stored length must be stored unchanged");
         Assert.AreEqual(boundaryReference, storedBoundary, "A source reference of exactly 500 characters must be stored unchanged");
+    }
+
+    /// <summary>
+    /// Verify a failed final save of one image discards its changes, ends its run as failed and leaves the next image unaffected
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC1")]
+    [TestCategory("AC3")]
+    public async Task ImageScanOrchestratorScanAllAsyncDiscardsFailedImageChangesBeforeNextImageAsync()
+    {
+        using (var database = new SqliteTestDatabase())
+        {
+            var observedImageIds = await SeedObservedImagesAsync(database, TestContext.CancellationToken).ConfigureAwait(false);
+            var failingContext = database.CreateSaveChangesFailingDbContext();
+
+            await using (failingContext.ConfigureAwait(false))
+            {
+                var logger = new TestLogger<ImageScanOrchestrator>();
+                var orchestrator = CreateFailingContextOrchestrator(failingContext, logger, CreateBaseImageResolver("company/first"));
+
+                failingContext.FailWhen = tracker => tracker.Entries<ImageVersion>()
+                                                            .Any(entry => entry.State == EntityState.Modified && entry.Entity.Digest == "sha256:first");
+
+                await orchestrator.ScanAllAsync(ScanTriggerSource.Scheduled, CancellationToken.None)
+                                  .ConfigureAwait(false);
+
+                var readContext = database.CreateDbContext();
+
+                await using (readContext.ConfigureAwait(false))
+                {
+                    var runs = await readContext.ScanRuns.Where(entity => entity.Type == ScanRunType.ObservedImage)
+                                                         .ToListAsync(TestContext.CancellationToken)
+                                                         .ConfigureAwait(false);
+                    var firstRun = runs.SingleOrDefault(entity => entity.ObservedImageId == observedImageIds[0]);
+                    var secondRun = runs.SingleOrDefault(entity => entity.ObservedImageId == observedImageIds[1]);
+                    var firstVersion = await readContext.ImageVersions.SingleAsync(entity => entity.Digest == "sha256:first", TestContext.CancellationToken)
+                                                                      .ConfigureAwait(false);
+
+                    Assert.IsNotNull(firstRun, "The failed image must have exactly one stored run");
+                    Assert.IsNotNull(secondRun, "The later image must have exactly one stored run");
+                    Assert.AreEqual(ScanRunStatus.Failed, firstRun.Status, "A run whose final save failed must end as failed");
+                    Assert.IsNotNull(firstRun.CompletedAtUtc, "The failed run must carry a completion time");
+                    Assert.AreEqual($"Base image unavailable{Environment.NewLine}Observed image scan could not be saved: unexpected error",
+                                    firstRun.ErrorMessage,
+                                    "The failed run must list the messages gathered so far followed by the save failure line");
+                    Assert.IsNull(firstVersion.MetadataJson, "The registry metadata of the failed image must not be stored by a later save");
+                    Assert.AreEqual(ScanRunStatus.Succeeded, secondRun.Status, "The later image must be scanned to completion");
+                    Assert.DoesNotContain(entity => entity.Status == ScanRunStatus.Running, runs, "No run of the batch may stay running");
+                    Assert.ContainsSingle(entry => entry.EventId.Id == 2033, logger.Entries, "Only the failed image must be logged as a batch item failure");
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Verify a failed first save stores the run once as failed and rethrows the original exception
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC2")]
+    public async Task ImageScanOrchestratorScanAsyncStoresFailedRunWhenFirstSaveFailsAsync()
+    {
+        using (var database = new SqliteTestDatabase())
+        {
+            var observedImageIds = await SeedObservedImagesAsync(database, TestContext.CancellationToken).ConfigureAwait(false);
+            var failingContext = database.CreateSaveChangesFailingDbContext();
+
+            await using (failingContext.ConfigureAwait(false))
+            {
+                var logger = new TestLogger<ImageScanOrchestrator>();
+                var orchestrator = CreateFailingContextOrchestrator(failingContext, logger, CreateBaseImageResolver(null));
+                var saveException = new InvalidOperationException("Simulated first save failure");
+
+                failingContext.SaveChangesException = saveException;
+                failingContext.FailOnSaveAttempt = 1;
+
+                var thrown = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => orchestrator.ScanAsync(observedImageIds[0], ScanTriggerSource.Manual, CancellationToken.None),
+                                                                                        "The original save exception must reach the caller of a direct scan")
+                                         .ConfigureAwait(false);
+
+                Assert.AreSame(saveException, thrown, "The original exception must be rethrown, not the recovery's");
+
+                var readContext = database.CreateDbContext();
+
+                await using (readContext.ConfigureAwait(false))
+                {
+                    var runs = await readContext.ScanRuns.ToListAsync(TestContext.CancellationToken)
+                                                         .ConfigureAwait(false);
+
+                    Assert.HasCount(1, runs, "The run of the failed first save must be stored exactly once");
+                    Assert.AreEqual(ScanRunStatus.Failed, runs[0].Status, "The run must be stored as failed");
+                    Assert.IsNotNull(runs[0].CompletedAtUtc, "The stored run must carry a completion time");
+                    Assert.AreEqual("Observed image scan could not be saved: unexpected error",
+                                    runs[0].ErrorMessage,
+                                    "The stored run must carry the save failure line without the exception text");
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Verify a failing recovery save is logged and leaves nothing tracked, so a later scan on the same context is unaffected
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC4")]
+    public async Task ImageScanOrchestratorScanAsyncLeavesNothingTrackedWhenFailedRunCannotBeSavedAsync()
+    {
+        using (var database = new SqliteTestDatabase())
+        {
+            var observedImageIds = await SeedObservedImagesAsync(database, TestContext.CancellationToken).ConfigureAwait(false);
+            var failingContext = database.CreateSaveChangesFailingDbContext();
+
+            await using (failingContext.ConfigureAwait(false))
+            {
+                var logger = new TestLogger<ImageScanOrchestrator>();
+                var orchestrator = CreateFailingContextOrchestrator(failingContext, logger, CreateBaseImageResolver(null));
+                var saveException = new InvalidOperationException("Simulated persistence failure of every save");
+
+                failingContext.SaveChangesException = saveException;
+                failingContext.FailOnSaveChanges = true;
+
+                var thrown = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => orchestrator.ScanAsync(observedImageIds[0], ScanTriggerSource.Manual, CancellationToken.None),
+                                                                                        "The original exception must be rethrown when the recovery save fails too")
+                                         .ConfigureAwait(false);
+                var recoveryEntries = logger.Entries.Where(entry => entry.EventId.Id == 2034).ToList();
+
+                Assert.AreSame(saveException, thrown, "The original exception must be rethrown");
+                Assert.HasCount(1, recoveryEntries, "The failed recovery save must be logged once");
+                Assert.AreEqual(LogLevel.Error, recoveryEntries[0].LogLevel, "The failed recovery save must be logged as an error");
+                Assert.IsEmpty(failingContext.ChangeTracker.Entries().ToList(), "Nothing of the failed image may stay tracked");
+
+                failingContext.FailOnSaveChanges = false;
+
+                await orchestrator.ScanAsync(observedImageIds[1], ScanTriggerSource.Manual, CancellationToken.None)
+                                  .ConfigureAwait(false);
+
+                var readContext = database.CreateDbContext();
+
+                await using (readContext.ConfigureAwait(false))
+                {
+                    var runs = await readContext.ScanRuns.ToListAsync(TestContext.CancellationToken)
+                                                         .ConfigureAwait(false);
+
+                    Assert.HasCount(1, runs, "Only the run of the later scan may be stored");
+                    Assert.AreEqual(observedImageIds[1], runs[0].ObservedImageId, "No run of the failed image may be stored");
+                    Assert.AreEqual(ScanRunStatus.Succeeded, runs[0].Status, "The later scan on the same context must succeed");
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Verify a recovery save cancelled by the scan's token is logged and the original exception is rethrown
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC4")]
+    public async Task ImageScanOrchestratorScanAsyncLogsCancelledRecoverySaveAndRethrowsOriginalAsync()
+    {
+        using (var database = new SqliteTestDatabase())
+        {
+            var observedImageIds = await SeedObservedImagesAsync(database, TestContext.CancellationToken).ConfigureAwait(false);
+            var failingContext = database.CreateSaveChangesFailingDbContext();
+
+            await using (failingContext.ConfigureAwait(false))
+            {
+                var logger = new TestLogger<ImageScanOrchestrator>();
+                var orchestrator = CreateFailingContextOrchestrator(failingContext, logger, CreateBaseImageResolver(null));
+                var saveException = new InvalidOperationException("Simulated first save failure");
+                var saveCalls = 0;
+
+                using (var cancellationTokenSource = new CancellationTokenSource())
+                {
+                    failingContext.SaveChangesException = saveException;
+                    failingContext.FailWhen = _ =>
+                                              {
+                                                  saveCalls++;
+
+                                                  if (saveCalls == 1)
+                                                  {
+                                                      cancellationTokenSource.Cancel();
+                                                  }
+
+                                                  return saveCalls == 1;
+                                              };
+
+                    var thrown = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => orchestrator.ScanAsync(observedImageIds[0], ScanTriggerSource.Manual, cancellationTokenSource.Token),
+                                                                                            "The original exception must be rethrown when the recovery save is cancelled")
+                                             .ConfigureAwait(false);
+                    var recoveryEntries = logger.Entries.Where(entry => entry.EventId.Id == 2034).ToList();
+
+                    Assert.AreSame(saveException, thrown, "The original exception must be rethrown");
+                    Assert.HasCount(1, recoveryEntries, "The cancelled recovery save must be logged once");
+                    Assert.AreEqual(LogLevel.Error, recoveryEntries[0].LogLevel, "The cancelled recovery save must be logged as an error");
+                    Assert.IsInstanceOfType<OperationCanceledException>(recoveryEntries[0].Exception, "The log entry must carry the cancellation of the recovery save");
+                    Assert.IsEmpty(failingContext.ChangeTracker.Entries().ToList(), "Nothing of the failed image may stay tracked");
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Seed two enabled observed images
+    /// </summary>
+    /// <param name="database">Test database</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Identifiers of the first and the second observed image</returns>
+    private static async Task<IReadOnlyList<Guid>> SeedObservedImagesAsync(SqliteTestDatabase database, CancellationToken cancellationToken)
+    {
+        var seedContext = database.CreateDbContext();
+
+        await using (seedContext.ConfigureAwait(false))
+        {
+            var imageCatalogRepository = new ImageCatalogRepository(seedContext);
+            var firstImageVersion = await imageCatalogRepository.GetOrCreateImageVersionAsync("docker.io",
+                                                                                              "company/first",
+                                                                                              "1.0.0",
+                                                                                              "sha256:first",
+                                                                                              cancellationToken: cancellationToken)
+                                                                .ConfigureAwait(false);
+            var secondImageVersion = await imageCatalogRepository.GetOrCreateImageVersionAsync("docker.io",
+                                                                                               "company/second",
+                                                                                               "2.0.0",
+                                                                                               "sha256:second",
+                                                                                               cancellationToken: cancellationToken)
+                                                                 .ConfigureAwait(false);
+            var firstImage = new ObservedImage
+                             {
+                                 Name = "First",
+                                 CurrentImageVersionId = firstImageVersion.Id,
+                             };
+            var secondImage = new ObservedImage
+                              {
+                                  Name = "Second",
+                                  CurrentImageVersionId = secondImageVersion.Id,
+                              };
+
+            seedContext.ObservedImages.Add(firstImage);
+            seedContext.ObservedImages.Add(secondImage);
+
+            await seedContext.SaveChangesAsync(cancellationToken)
+                             .ConfigureAwait(false);
+
+            return [firstImage.Id, secondImage.Id];
+        }
+    }
+
+    /// <summary>
+    /// Create a base image resolver that succeeds with no base image, except for one repository whose resolution is not found
+    /// </summary>
+    /// <param name="unavailableRepository">Repository whose base image resolution is not found, or null</param>
+    /// <returns>Base image resolver</returns>
+    private static IBaseImageResolver CreateBaseImageResolver(string? unavailableRepository)
+    {
+        var baseImageResolver = Substitute.For<IBaseImageResolver>();
+
+        baseImageResolver.ResolveAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
+                         .Returns(callInfo => callInfo.Arg<ImageReference>().Repository == unavailableRepository
+                                                  ? ExternalOperationResult.NotFound<IReadOnlyList<BaseImageDescriptor>>("Base image unavailable")
+                                                  : ExternalOperationResult.Succeeded<IReadOnlyList<BaseImageDescriptor>>([]));
+
+        return baseImageResolver;
+    }
+
+    /// <summary>
+    /// Create an orchestrator over a fault-injecting context whose registry metadata lookups succeed
+    /// </summary>
+    /// <param name="failingContext">Fault-injecting context</param>
+    /// <param name="logger">Logger capturing the entries</param>
+    /// <param name="baseImageResolver">Base image resolver</param>
+    /// <returns>Orchestrator</returns>
+    private static ImageScanOrchestrator CreateFailingContextOrchestrator(SaveChangesFailingDbContext failingContext,
+                                                                          TestLogger<ImageScanOrchestrator> logger,
+                                                                          IBaseImageResolver baseImageResolver)
+    {
+        var registryMetadataService = Substitute.For<IRegistryMetadataService>();
+
+        registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), cancellationToken: Arg.Any<CancellationToken>())
+                               .Returns(ExternalOperationResult.Succeeded<DockerHubTagData>(new DockerHubTagData
+                                                                                            {
+                                                                                                Tag = "1.0.0",
+                                                                                                Digest = "sha256:app",
+                                                                                                PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
+                                                                                            }));
+        registryMetadataService.GetImageConfigurationAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
+                               .Returns(ExternalOperationResult.NotFound<RegistryImageConfigurationData>("No registry config"));
+
+        return new ImageScanOrchestrator(new ApplicationTelemetry(),
+                                         baseImageResolver,
+                                         failingContext,
+                                         Substitute.For<IDerivedBaseRuntimeDetector>(),
+                                         Substitute.For<IDotNetReleaseMetadataService>(),
+                                         Substitute.For<INginxReleaseMetadataService>(),
+                                         new ImageCatalogRepository(failingContext),
+                                         new ImageReferenceParser(),
+                                         logger,
+                                         registryMetadataService);
     }
 
     /// <summary>

@@ -1920,6 +1920,7 @@ public class RuntimeContainerScanOrchestratorTests
     /// </summary>
     /// <returns>Task</returns>
     [TestMethod]
+    [TestCategory("AC4")]
     public async Task RuntimeContainerScanOrchestratorScanAllAsyncContinuesAfterInstanceScanFailureAsync()
     {
         using (var database = new SqliteTestDatabase())
@@ -1970,6 +1971,11 @@ public class RuntimeContainerScanOrchestratorTests
 
                     Assert.Contains(entry => entry.EventId.Id == 2042, logger.Entries, "A failing Docker instance scan must be logged so later instances are still attempted");
                     Assert.Contains(entry => entry.EventId.Id == 2072, logger.Entries, "The batch must complete even when individual Docker instance scans fail");
+
+                    var recoveryFailures = logger.Entries.Where(entry => entry.EventId.Id == 2043).ToList();
+
+                    Assert.HasCount(1, recoveryFailures, "A failed recovery save must be logged for the instance");
+                    Assert.AreEqual(LogLevel.Error, recoveryFailures[0].LogLevel, "A failed recovery save must be logged as an error");
                 }
             }
         }
@@ -1980,6 +1986,7 @@ public class RuntimeContainerScanOrchestratorTests
     /// </summary>
     /// <returns>Task</returns>
     [TestMethod]
+    [TestCategory("AC2")]
     public async Task RuntimeContainerScanOrchestratorScanAllAsyncScansRemainingInstanceAfterEarlierInstanceFailsBeforeScanAsync()
     {
         using (var database = new SqliteTestDatabase())
@@ -2053,6 +2060,17 @@ public class RuntimeContainerScanOrchestratorTests
                     Assert.AreEqual(1, succeededRuns, "The remaining instance must be scanned to completion after the earlier instance failed");
                     Assert.Contains(entry => entry.EventId.Id == 2072, logger.Entries, "The batch must complete after an instance failed before its scan body");
 
+                    var allRuns = await failingContext.ScanRuns.Where(entity => entity.Type == ScanRunType.RuntimeContainer)
+                                                               .ToListAsync(TestContext.CancellationToken)
+                                                               .ConfigureAwait(false);
+                    var failedRuns = allRuns.Where(entity => entity.Status == ScanRunStatus.Failed).ToList();
+
+                    Assert.HasCount(2, allRuns, "The run of the failed first save must be stored besides the later run");
+                    Assert.DoesNotContain(entity => entity.Status == ScanRunStatus.Running, allRuns, "No run of the batch may stay running");
+                    Assert.HasCount(1, failedRuns, "The run of the failed first save must be stored as failed");
+                    Assert.IsNotNull(failedRuns[0].CompletedAtUtc, "The failed run must carry a completion time");
+                    Assert.AreEqual("Runtime container scan could not be saved: unexpected error", failedRuns[0].ErrorMessage, "The failed run must carry the save failure line");
+
                     await dockerInstanceClient.Received(1)
                                               .DiscoverContainersAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<CancellationToken>())
                                               .ConfigureAwait(false);
@@ -2066,6 +2084,7 @@ public class RuntimeContainerScanOrchestratorTests
     /// </summary>
     /// <returns>Task</returns>
     [TestMethod]
+    [TestCategory("AC5")]
     public async Task RuntimeContainerScanOrchestratorScanAllAsyncRethrowsCancellationFromInstanceScanAsync()
     {
         using (var database = new SqliteTestDatabase())
@@ -2117,6 +2136,7 @@ public class RuntimeContainerScanOrchestratorTests
                                 .ConfigureAwait(false);
 
                     Assert.DoesNotContain(entry => entry.EventId.Id == 2042, logger.Entries, "A cancelled Docker instance scan must not be reported as an item failure");
+                    Assert.AreEqual(1, failingContext.SaveChangesAttemptCount, "A cancellation must be rethrown without a recovery save");
                 }
             }
         }
@@ -2613,6 +2633,127 @@ public class RuntimeContainerScanOrchestratorTests
                         Assert.AreEqual(0,
                                         RuntimeContainerScanOrchestrator.DockerInstanceScanLocks.GetReferenceCount(firstInstanceId),
                                         "No reference of the first instance may remain once its scan has finished");
+                    }
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Verify a failed final save of one instance discards its changes, ends its run as failed and leaves the next instance unaffected
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC1")]
+    [TestCategory("AC3")]
+    public async Task RuntimeContainerScanOrchestratorScanAllAsyncDiscardsFailedInstanceChangesBeforeNextInstanceAsync()
+    {
+        using (var database = new SqliteTestDatabase())
+        {
+            var discoveryContext = database.CreateDbContext();
+
+            await using (discoveryContext.ConfigureAwait(false))
+            {
+                var failingContext = database.CreateSaveChangesFailingDbContext();
+
+                await using (failingContext.ConfigureAwait(false))
+                {
+                    var options = new DockerUpdateGuardOptions
+                                  {
+                                      DockerInstances = [
+                                                            new DockerInstanceOptions
+                                                            {
+                                                                Name = "Production",
+                                                                BaseUrl = "https://docker.example.test",
+                                                                Enabled = true,
+                                                                RequestTimeoutSeconds = 15,
+                                                            },
+                                                            new DockerInstanceOptions
+                                                            {
+                                                                Name = "Staging",
+                                                                BaseUrl = "https://staging.example.test",
+                                                                Enabled = true,
+                                                                RequestTimeoutSeconds = 15,
+                                                            },
+                                                        ],
+                                  };
+                    var optionsMonitor = new TestOptionsMonitor<DockerUpdateGuardOptions>(options);
+                    var logger = new TestLogger<RuntimeContainerScanOrchestrator>();
+                    var dockerInstanceClient = Substitute.For<IDockerInstanceClient>();
+                    var registryMetadataService = Substitute.For<IRegistryMetadataService>();
+                    var instanceDiscoveryService = new InstanceDiscoveryService(discoveryContext,
+                                                                                new TestLogger<InstanceDiscoveryService>(),
+                                                                                optionsMonitor);
+
+                    dockerInstanceClient.DiscoverContainersAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<CancellationToken>())
+                                        .Returns(callInfo => ExternalOperationResult.Succeeded<IReadOnlyList<RuntimeContainerDescriptor>>(callInfo.Arg<DockerInstanceOptions>().Name == "Production"
+                                                                                                                                              ? [
+                                                                                                                                                    new RuntimeContainerDescriptor
+                                                                                                                                                    {
+                                                                                                                                                        ContainerId = "container-1",
+                                                                                                                                                        Name = "web",
+                                                                                                                                                        ImageReference = "docker.io/library/nginx:1.0.0@sha256:runtime-old",
+                                                                                                                                                        RuntimeStatus = ContainerRuntimeStatus.Running,
+                                                                                                                                                        IsRunning = true,
+                                                                                                                                                    },
+                                                                                                                                                ]
+                                                                                                                                              : []));
+                    dockerInstanceClient.InspectImageAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+                                        .Returns(ExternalOperationResult.NotFound<DockerImageInspectData>("The local image inspect payload is not available"));
+                    registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), cancellationToken: Arg.Any<CancellationToken>())
+                                           .Returns(ExternalOperationResult.NotFound<DockerHubTagData>("No tag"));
+                    registryMetadataService.GetTagsAsync(Arg.Any<string>(),
+                                                         Arg.Any<string>(),
+                                                         Arg.Any<string?>(),
+                                                         Arg.Any<string?>(),
+                                                         Arg.Any<RegistryTagQueryOptions?>(),
+                                                         Arg.Any<CancellationToken>())
+                                           .Returns(ExternalOperationResult.NotFound<IReadOnlyList<DockerHubTagData>>("No tags"));
+
+                    var orchestrator = new RuntimeContainerScanOrchestrator(new ApplicationTelemetry(),
+                                                                            failingContext,
+                                                                            dockerInstanceClient,
+                                                                            Substitute.For<IDerivedBaseRuntimeDetector>(),
+                                                                            Substitute.For<IDotNetReleaseMetadataService>(),
+                                                                            Substitute.For<INginxReleaseMetadataService>(),
+                                                                            new ImageCatalogRepository(failingContext),
+                                                                            new ImageReferenceParser(),
+                                                                            instanceDiscoveryService,
+                                                                            logger,
+                                                                            optionsMonitor,
+                                                                            registryMetadataService,
+                                                                            new UpdateDetectionService(optionsMonitor));
+
+                    failingContext.FailWhen = tracker => tracker.Entries<ContainerSnapshot>()
+                                                                .Any(entry => entry.State == EntityState.Added);
+
+                    await orchestrator.ScanAllAsync(ScanTriggerSource.Scheduled, CancellationToken.None)
+                                      .ConfigureAwait(false);
+
+                    var readContext = database.CreateDbContext();
+
+                    await using (readContext.ConfigureAwait(false))
+                    {
+                        var runs = await readContext.ScanRuns.Include(entity => entity.DockerInstance)
+                                                             .Where(entity => entity.Type == ScanRunType.RuntimeContainer)
+                                                             .ToListAsync(TestContext.CancellationToken)
+                                                             .ConfigureAwait(false);
+                        var productionRun = runs.SingleOrDefault(entity => entity.DockerInstance!.Name == "Production");
+                        var stagingRun = runs.SingleOrDefault(entity => entity.DockerInstance!.Name == "Staging");
+                        var snapshotCount = await readContext.ContainerSnapshots.CountAsync(TestContext.CancellationToken)
+                                                                                .ConfigureAwait(false);
+
+                        Assert.IsNotNull(productionRun, "The failed instance must have exactly one stored run");
+                        Assert.IsNotNull(stagingRun, "The later instance must have exactly one stored run");
+                        Assert.AreEqual(ScanRunStatus.Failed, productionRun.Status, "A run whose final save failed must end as failed");
+                        Assert.IsNotNull(productionRun.CompletedAtUtc, "The failed run must carry a completion time");
+                        Assert.EndsWith("Runtime container scan could not be saved: unexpected error",
+                                        productionRun.ErrorMessage ?? string.Empty,
+                                        "The failed run must end with the save failure line");
+                        Assert.AreEqual(0, snapshotCount, "No container snapshot of the failed run may be stored");
+                        Assert.AreEqual(ScanRunStatus.Succeeded, stagingRun.Status, "The later instance must be scanned to completion");
+                        Assert.DoesNotContain(entity => entity.Status == ScanRunStatus.Running, runs, "No run of the batch may stay running");
+                        Assert.ContainsSingle(entry => entry.EventId.Id == 2042, logger.Entries, "Only the failed instance must be logged as a batch item failure");
                     }
                 }
             }

@@ -100,4 +100,5 @@ once in the [area document](../areas/README.md) of the record's area, and the re
 | [0037](0037-stop-and-restart-requests-wait-up-to-300-seconds-beyond-the-request-timeout.md) | Stop and restart requests wait up to 300 seconds beyond the request timeout | Accepted | 2026-11-14 |
 | [0038](0038-runtime-container-scans-and-vulnerability-results-wait-for-a-per-subject-guard-in-the-process.md) | Runtime container scans and vulnerability results wait for a per-subject guard in the process | Accepted | 2026-11-15 |
 | [0039](0039-a-registry-request-and-the-read-of-its-response-body-share-one-deadline.md) | A registry request and the read of its response body share one deadline | Accepted | 2026-11-15 |
+| [0040](0040-a-scan-item-whose-save-fails-is-saved-again-alone-as-failed.md) | A scan item whose save fails is saved again alone as *failed* | Accepted | 2026-11-15 |
 <!-- project:end index -->
