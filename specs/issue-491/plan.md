@@ -185,7 +185,7 @@ I/O: the new query runs in the orchestrator before the evaluation. No change to 
 
 - A container whose image reference is invalid still records no snapshot (docker-instances.md); a valid image version
   cannot exist for it.
-- A container seen for the first time whose catalog call fails records no snapshot (0044, Consequences).
+- A container seen for the first time whose catalog call fails records no snapshot (0044, Consequences).
 
 ## Challenge notes
 

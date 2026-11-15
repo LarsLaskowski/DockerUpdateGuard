@@ -48,4 +48,4 @@ its latest earlier snapshot, and a new snapshot keeps that snapshot's resolved a
   to take the image version from.
 - Every runtime scan reads each container's latest earlier snapshot once more, before the catalog call.
 - *No tag data* and *unsupported* store no versions, as before: they are evaluations, and their findings are
-  deactivated.
+  deactivated.
