@@ -139,6 +139,15 @@ public class ImageScanOrchestrator : IImageScanOrchestrator
 
     #endregion // Constructors
 
+    #region Properties
+
+    /// <summary>
+    /// Scan locks of the observed images
+    /// </summary>
+    internal static KeyedScanLock ObservedImageScanLocks { get; } = new();
+
+    #endregion // Properties
+
     #region Methods
 
     /// <summary>

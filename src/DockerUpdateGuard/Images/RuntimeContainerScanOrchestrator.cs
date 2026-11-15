@@ -149,6 +149,15 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
 
     #endregion // Constructors
 
+    #region Properties
+
+    /// <summary>
+    /// Scan locks of the Docker instances
+    /// </summary>
+    internal static KeyedScanLock DockerInstanceScanLocks { get; } = new();
+
+    #endregion // Properties
+
     #region Static methods
 
     /// <summary>
