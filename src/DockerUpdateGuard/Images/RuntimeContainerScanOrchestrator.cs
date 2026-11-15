@@ -199,6 +199,18 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
     }
 
     /// <summary>
+    /// Move the supplied findings that are still active to the current snapshot of their container
+    /// </summary>
+    /// <param name="findings">Findings loaded before the container was processed</param>
+    /// <param name="snapshot">Current container snapshot</param>
+    private static void KeepActiveFindings(IReadOnlyList<UpdateFinding> findings, ContainerSnapshot snapshot)
+    {
+        KeepFindings(findings.Where(finding => finding.IsActive)
+                             .ToList(),
+                     snapshot);
+    }
+
+    /// <summary>
     /// Map an update evaluation result to the persisted runtime assessment
     /// </summary>
     /// <param name="snapshot">Runtime snapshot</param>
@@ -624,6 +636,7 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
                                                       CancellationToken cancellationToken)
     {
         ContainerSnapshot? snapshot = null;
+        IReadOnlyList<UpdateFinding> previousFindings = [];
         ImageReference parsedReference;
 
         try
@@ -679,6 +692,8 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
 
             _dbContext.ContainerSnapshots.Add(snapshot);
 
+            previousFindings = await LoadActiveFindingsAsync(snapshot, cancellationToken).ConfigureAwait(false);
+
             var currentTagResult = await _registryMetadataService.GetTagAsync(parsedReference,
                                                                               inspectData?.OperatingSystem,
                                                                               inspectData?.Architecture,
@@ -719,6 +734,11 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
                                                            parsedReference.FullReference,
                                                            tagsResult,
                                                            out evaluated);
+
+                if (evaluated == false)
+                {
+                    KeepActiveFindings(previousFindings, snapshot);
+                }
             }
 
             if (evaluated)
@@ -753,6 +773,10 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
             {
                 snapshot.UpdateAssessmentStatus = UpdateAssessmentStatus.Failed;
                 snapshot.UpdateAssessmentMessage = failureMessage;
+
+                // A failure inside DeactivateSupersededRuntimeFindingsAsync can leave the previous and the new update
+                // finding both active here; the next evaluated scan deactivates both (accepted).
+                KeepActiveFindings(previousFindings, snapshot);
             }
 
             _logger.RuntimeContainerProcessingFailed(exception,
@@ -896,6 +920,28 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
                                                                 .ConfigureAwait(false);
 
         DeactivateFindings(supersededFindings);
+    }
+
+    /// <summary>
+    /// Load the active findings of every type of the container of a snapshot
+    /// </summary>
+    /// <param name="snapshot">Current container snapshot</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Active findings</returns>
+    private async Task<IReadOnlyList<UpdateFinding>> LoadActiveFindingsAsync(ContainerSnapshot snapshot,
+                                                                             CancellationToken cancellationToken)
+    {
+        var dockerInstanceId = snapshot.DockerInstanceId;
+        var containerId = snapshot.ContainerId;
+
+        return await _dbContext.UpdateFindings.Include(entity => entity.TagCandidates)
+                                              .Include(entity => entity.ContainerSnapshot)
+                                              .Where(entity => entity.ContainerSnapshot != null
+                                                               && entity.ContainerSnapshot.DockerInstanceId == dockerInstanceId
+                                                               && entity.ContainerSnapshot.ContainerId == containerId
+                                                               && entity.IsActive)
+                                              .ToListAsync(cancellationToken)
+                                              .ConfigureAwait(false);
     }
 
     /// <summary>

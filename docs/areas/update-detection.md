@@ -146,7 +146,7 @@ scan run *partial*, with the message added to the run ([Scan engine](scan-engine
 - Whenever a container was evaluated (including *no tag data* and *unsupported*), all active findings of the same
   container on the same Docker instance, except those of type *derived base runtime update*, are first deactivated: they
   become inactive, get a resolution timestamp and lose their tag candidates. Derived findings are replaced by the
-  runtime check ([Base images](base-images.md#release-feeds-and-runtime-findings)). When the tag lookup failed, the previous findings stay active.
+  runtime check ([Base images](base-images.md#release-feeds-and-runtime-findings)). When the tag lookup failed, or processing the container raised an error after its snapshot was recorded, every finding of the container still active at that point stays active, keeps its tag candidates and moves to the container's new snapshot, which the pages read; findings the failed processing had already deactivated or created stay as they are.
 - After a runtime scan of an instance, the active findings of containers that were no longer discovered are
   deactivated the same way.
 - Findings of type *base image update* exist in the data model but are not produced. Findings of type *derived base
