@@ -44,9 +44,7 @@ snapshot. The rules are in [Update detection](../areas/update-detection.md#updat
 - A finding the failed processing had already deactivated stays inactive on its old snapshot, and one it had
   already created stays on the new snapshot; only what is still active moves.
 - Every runtime scan reads the container's active findings once more, before its registry calls.
-- A container whose processing fails before its snapshot is recorded still drops out of the current containers for
-  one scan; that is a separate defect.
-- A snapshot whose tag lookup failed, or whose processing raised an error before its update evaluation completed,
-  still gets no resolved or available version tag, so the container list works them out from the moved findings' tag
-  candidates; that is a separate defect.
+- A container whose processing fails before its image version is known, and the resolved and available version of a
+  snapshot whose evaluation did not complete, are decided in
+  [0044](0044-a-runtime-container-whose-processing-fails-takes-what-it-could-not-determine-from-its-latest-earlier-snapshot.md).
 - The previous snapshot no longer holds an active finding and falls under the normal snapshot retention.
