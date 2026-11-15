@@ -204,9 +204,10 @@ The dashboard shows at most one hint about the vulnerability configuration:
   ([Integration failures](integration-failures.md#fixed-failure-reasons)); a Trivy process that cannot be started reads `Trivy
   scan failed: the Trivy executable could not be started`. Cancellation is not converted.
 - An unexpected error during a refresh ends the scan run *failed* with `Vulnerability refresh failed: <reason>`; work
-  saved before stays saved. If saving the final run state fails, it is retried once on a fresh state: the retry saves the run alone with the
-  status and message it already has, and the refresh's other pending changes are discarded
-  ([decision 0040](../decisions/0040-a-scan-item-whose-save-fails-is-saved-again-alone-as-failed.md)).
+  saved before stays saved, and the changes of the step that was aborted, by an error or a cancellation, are discarded
+  before the run's final state is saved ([decision 0041](../decisions/0041-an-aborted-vulnerability-refresh-discards-its-unsaved-changes-before-the-runs-final-save.md)).
+  If saving the final run state fails, it is retried once on a fresh state: the retry saves the run alone with the
+  status and message it already has ([decision 0040](../decisions/0040-a-scan-item-whose-save-fails-is-saved-again-alone-as-failed.md)).
 - Stored lengths: advisory id 100 characters, title 300, affected package 200, installed and fixed version 100 each,
   package class and type 50 each, CVSS score 5 digits with 2 decimals, assessment message 2000; summary and reference
   URL are unlimited. A longer advisory id, title, package, version, class or type, and a longer assessment message
@@ -217,8 +218,8 @@ The dashboard shows at most one hint about the vulnerability configuration:
   `Vulnerability results for '<reference>' could not be saved: <reason>` (a fixed reason), leaves its findings as
   they were, adds the message to the scan run, logs a warning with the image reference and continues with the remaining
   image versions; the run ends *failed*. The stale-findings pass of a full refresh still runs and keeps the findings of
-  that image version. If saving the *Failed* assessment fails as well, the refresh ends as for an unexpected error.
-  A cancellation is not turned into such a failure: the run ends *failed* with `Vulnerability refresh failed: cancelled`.
+  that image version. If saving the *Failed* assessment fails as well, the refresh ends as for an unexpected error and the image version keeps the assessment stored before the refresh.
+  A cancellation is not turned into such a failure: the cancelled image version's results are not stored, and the run ends *failed* with `Vulnerability refresh failed: cancelled`.
 - Messages are built from the image reference and the provider's error output (Trivy's excerpt, or for Docker
   Scout the failure message of Docker Hub's tag lookup with its body excerpt,
   [Integration failures](integration-failures.md#excerpts-of-remote-text)) or a fixed reason; no tokens or
