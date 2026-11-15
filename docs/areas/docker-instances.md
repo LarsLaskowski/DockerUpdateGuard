@@ -18,8 +18,8 @@ on the snapshots and samples it produces.
   `false`), `SkipCertificateValidation` (default `false`), `CertificatePath` (optional), `RequestTimeoutSeconds`
   (default `15`) and the optional `Portainer` section (see [Container actions](container-actions.md)).
 - The shipped `appsettings.json` configures one enabled instance at index `0`: `Local Docker` on
-  `unix:///var/run/docker.sock`. Keys `DockerUpdateGuard__DockerInstances__0__…` override it; it is reachable only
-  when the socket is mounted into the container.
+  `unix:///var/run/docker.sock`. Keys `DockerUpdateGuard__DockerInstances__0__…` override it; in a container it is
+  reachable only when the host socket is mounted into it.
 - An instance is identified by its trimmed `Name`, compared case-insensitively. Renaming an instance in configuration
   is the removal of the old instance and the creation of a new one.
 - The configured instances are synchronized into the database at startup, on every

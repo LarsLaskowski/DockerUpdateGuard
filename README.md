@@ -193,7 +193,7 @@ Each entry describes one Docker Engine endpoint. Rules: [Docker instances](docs/
 
 Shipped Linux socket configuration (the instance at index `0` of the shipped `appsettings.json`):
 
-| Key | Example value |
+| Key | Shipped value |
 | --- | --- |
 | `DockerUpdateGuard:DockerInstances:0:Name` | `Local Docker` |
 | `DockerUpdateGuard:DockerInstances:0:BaseUrl` | `unix:///var/run/docker.sock` |
