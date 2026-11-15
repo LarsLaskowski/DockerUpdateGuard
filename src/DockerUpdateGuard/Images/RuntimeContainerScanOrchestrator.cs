@@ -161,6 +161,44 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
     #region Static methods
 
     /// <summary>
+    /// Create the snapshot of a container, starting with the version tags of its latest earlier snapshot when that names the same image version and the running digest is known
+    /// </summary>
+    /// <param name="dockerInstance">Persisted Docker instance</param>
+    /// <param name="scanRun">Owning scan run</param>
+    /// <param name="container">Discovered runtime container</param>
+    /// <param name="imageVersionId">Image version identifier</param>
+    /// <param name="previous">Latest earlier snapshot of the container, or null, with the parsed running digest</param>
+    /// <returns>Container snapshot</returns>
+    private static ContainerSnapshot CreateSnapshot(DockerInstance dockerInstance,
+                                                    ScanRun scanRun,
+                                                    RuntimeContainerDescriptor container,
+                                                    Guid imageVersionId,
+                                                    (ContainerSnapshot? Snapshot, string? RunningDigest) previous)
+    {
+        var carryVersionTags = previous.Snapshot is not null
+                               && previous.Snapshot.ImageVersionId == imageVersionId
+                               && string.IsNullOrWhiteSpace(previous.RunningDigest) == false;
+
+        return new ContainerSnapshot
+               {
+                   DockerInstanceId = dockerInstance.Id,
+                   ImageVersionId = imageVersionId,
+                   ScanRunId = scanRun.Id,
+                   ContainerId = container.ContainerId,
+                   Name = container.Name,
+                   ComposeProject = container.ComposeProject,
+                   StackName = container.StackName,
+                   ServiceName = container.ServiceName,
+                   Status = container.RuntimeStatus,
+                   IsRunning = container.IsRunning,
+                   UpdateAssessmentStatus = UpdateAssessmentStatus.NotEvaluated,
+                   ResolvedVersionTag = carryVersionTags ? previous.Snapshot?.ResolvedVersionTag : null,
+                   AvailableUpdateVersionTag = carryVersionTags ? previous.Snapshot?.AvailableUpdateVersionTag : null,
+                   RecordedAtUtc = DateTimeOffset.UtcNow,
+               };
+    }
+
+    /// <summary>
     /// Create the failure message of a container whose image reference is not valid
     /// </summary>
     /// <param name="container">Discovered runtime container</param>
@@ -636,6 +674,7 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
                                                       CancellationToken cancellationToken)
     {
         ContainerSnapshot? snapshot = null;
+        ContainerSnapshot? previousSnapshot = null;
         IReadOnlyList<UpdateFinding> previousFindings = [];
         ImageReference parsedReference;
 
@@ -661,9 +700,12 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
                 return CreateInvalidImageReferenceMessage(container);
             }
 
-            var inspectData = await GetCurrentImageInspectDataAsync(configuredInstance,
-                                                                    container,
-                                                                    cancellationToken).ConfigureAwait(false);
+            previousFindings = await LoadActiveFindingsAsync(dockerInstance.Id,
+                                                             container.ContainerId,
+                                                             cancellationToken).ConfigureAwait(false);
+            previousSnapshot = await LoadPreviousSnapshotAsync(dockerInstance.Id,
+                                                               container.ContainerId,
+                                                               cancellationToken).ConfigureAwait(false);
 
             var imageVersion = await _imageCatalogRepository.GetOrCreateImageVersionAsync(parsedReference.Registry,
                                                                                           parsedReference.Repository,
@@ -674,26 +716,17 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
 
             imageVersion.Source = ImageVersionSource.RuntimeContainer;
 
-            snapshot = new ContainerSnapshot
-                       {
-                           DockerInstanceId = dockerInstance.Id,
-                           ImageVersionId = imageVersion.Id,
-                           ScanRunId = scanRun.Id,
-                           ContainerId = container.ContainerId,
-                           Name = container.Name,
-                           ComposeProject = container.ComposeProject,
-                           StackName = container.StackName,
-                           ServiceName = container.ServiceName,
-                           Status = container.RuntimeStatus,
-                           IsRunning = container.IsRunning,
-                           UpdateAssessmentStatus = UpdateAssessmentStatus.NotEvaluated,
-                           RecordedAtUtc = DateTimeOffset.UtcNow,
-                       };
+            snapshot = CreateSnapshot(dockerInstance,
+                                      scanRun,
+                                      container,
+                                      imageVersion.Id,
+                                      (previousSnapshot, parsedReference.Digest));
 
             _dbContext.ContainerSnapshots.Add(snapshot);
 
-            previousFindings = await LoadActiveFindingsAsync(snapshot, cancellationToken).ConfigureAwait(false);
-
+            var inspectData = await GetCurrentImageInspectDataAsync(configuredInstance,
+                                                                    container,
+                                                                    cancellationToken).ConfigureAwait(false);
             var currentTagResult = await _registryMetadataService.GetTagAsync(parsedReference,
                                                                               inspectData?.OperatingSystem,
                                                                               inspectData?.Architecture,
@@ -768,6 +801,11 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
         catch (Exception exception)
         {
             var failureMessage = $"Container '{container.Name}' could not be processed: {FailureReason.FromException(exception, null, cancellationToken)}";
+
+            snapshot ??= CreateFallbackSnapshot(dockerInstance,
+                                                scanRun,
+                                                container,
+                                                (previousSnapshot, parsedReference.Digest));
 
             if (snapshot is not null)
             {
@@ -889,6 +927,8 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
                                               ? UpdateAssessmentStatus.NoTagData
                                               : UpdateAssessmentStatus.Unsupported;
         snapshot.UpdateAssessmentMessage = unsupportedMessage;
+        snapshot.ResolvedVersionTag = null;
+        snapshot.AvailableUpdateVersionTag = null;
 
         _logger.RuntimeContainerRegistryEvaluationUnsupported(dockerInstanceName,
                                                               imageReference,
@@ -896,6 +936,35 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
                                                               tagsResult.Message);
 
         return unsupportedMessage;
+    }
+
+    /// <summary>
+    /// Create and add the snapshot of a container whose image version could not be determined, from its latest earlier snapshot
+    /// </summary>
+    /// <param name="dockerInstance">Persisted Docker instance</param>
+    /// <param name="scanRun">Owning scan run</param>
+    /// <param name="container">Discovered runtime container</param>
+    /// <param name="previous">Latest earlier snapshot of the container, or null, with the parsed running digest</param>
+    /// <returns>Container snapshot, or null when the container has no earlier snapshot</returns>
+    private ContainerSnapshot? CreateFallbackSnapshot(DockerInstance dockerInstance,
+                                                      ScanRun scanRun,
+                                                      RuntimeContainerDescriptor container,
+                                                      (ContainerSnapshot? Snapshot, string? RunningDigest) previous)
+    {
+        if (previous.Snapshot is null)
+        {
+            return null;
+        }
+
+        var snapshot = CreateSnapshot(dockerInstance,
+                                      scanRun,
+                                      container,
+                                      previous.Snapshot.ImageVersionId,
+                                      previous);
+
+        _dbContext.ContainerSnapshots.Add(snapshot);
+
+        return snapshot;
     }
 
     /// <summary>
@@ -925,15 +994,14 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
     /// <summary>
     /// Load the active findings of every type of the container of a snapshot
     /// </summary>
-    /// <param name="snapshot">Current container snapshot</param>
+    /// <param name="dockerInstanceId">Docker instance identifier</param>
+    /// <param name="containerId">Container identifier</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Active findings</returns>
-    private async Task<IReadOnlyList<UpdateFinding>> LoadActiveFindingsAsync(ContainerSnapshot snapshot,
+    private async Task<IReadOnlyList<UpdateFinding>> LoadActiveFindingsAsync(Guid dockerInstanceId,
+                                                                             string containerId,
                                                                              CancellationToken cancellationToken)
     {
-        var dockerInstanceId = snapshot.DockerInstanceId;
-        var containerId = snapshot.ContainerId;
-
         return await _dbContext.UpdateFindings.Include(entity => entity.TagCandidates)
                                               .Include(entity => entity.ContainerSnapshot)
                                               .Where(entity => entity.ContainerSnapshot != null
@@ -942,6 +1010,33 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
                                                                && entity.IsActive)
                                               .ToListAsync(cancellationToken)
                                               .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Load the image version and version tags of the latest earlier snapshot of a container
+    /// </summary>
+    /// <param name="dockerInstanceId">Docker instance identifier</param>
+    /// <param name="containerId">Container identifier</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Untracked snapshot with the image version, version tags and recording time, or null</returns>
+    private async Task<ContainerSnapshot?> LoadPreviousSnapshotAsync(Guid dockerInstanceId,
+                                                                     string containerId,
+                                                                     CancellationToken cancellationToken)
+    {
+        var previousSnapshots = await _dbContext.ContainerSnapshots.Where(entity => entity.DockerInstanceId == dockerInstanceId
+                                                                                    && entity.ContainerId == containerId)
+                                                                   .Select(entity => new ContainerSnapshot
+                                                                                     {
+                                                                                         ImageVersionId = entity.ImageVersionId,
+                                                                                         ResolvedVersionTag = entity.ResolvedVersionTag,
+                                                                                         AvailableUpdateVersionTag = entity.AvailableUpdateVersionTag,
+                                                                                         RecordedAtUtc = entity.RecordedAtUtc,
+                                                                                     })
+                                                                   .ToListAsync(cancellationToken)
+                                                                   .ConfigureAwait(false);
+
+        return previousSnapshots.OrderByDescending(entity => entity.RecordedAtUtc)
+                                .FirstOrDefault();
     }
 
     /// <summary>

@@ -52,6 +52,10 @@ inventory metrics rely on the stored assessments and findings.
 - The resolved tag is stored on each container snapshot as the container's *resolved version*. When it cannot be
   resolved in a scan, the resolved version of the most recent earlier snapshot of the same container and the same
   image version is carried over, provided the running digest is known.
+- A new snapshot starts with the resolved and available update version of the container's latest earlier snapshot when
+  that names the same image version, provided the running digest is known. A completed evaluation replaces both; a
+  scan whose tag lookup finds *no tag data* or is *unsupported* stores none; a failed tag lookup or a processing error
+  keeps the carried ones.
 - When an update is available, the snapshot also stores the *available update version*: the recommended tag itself
   when it is a semantic or year-prefixed tag, otherwise the semantic tag the recommended alias resolves to.
 
@@ -146,7 +150,7 @@ scan run *partial*, with the message added to the run ([Scan engine](scan-engine
 - Whenever a container was evaluated (including *no tag data* and *unsupported*), all active findings of the same
   container on the same Docker instance, except those of type *derived base runtime update*, are first deactivated: they
   become inactive, get a resolution timestamp and lose their tag candidates. Derived findings are replaced by the
-  runtime check ([Base images](base-images.md#release-feeds-and-runtime-findings)). When the tag lookup failed, or processing the container raised an error after its snapshot was recorded, every finding of the container still active at that point stays active, keeps its tag candidates and moves to the container's new snapshot, which the pages read; findings the failed processing had already deactivated or created stay as they are.
+  runtime check ([Base images](base-images.md#release-feeds-and-runtime-findings)). When the tag lookup failed, or processing the container raised an error (its snapshot is the fallback one of [Docker instances](docker-instances.md#container-snapshots) when its image version could not be determined), every finding of the container still active at that point stays active, keeps its tag candidates and moves to the container's new snapshot, which the pages read; findings the failed processing had already deactivated or created stay as they are.
 - After a runtime scan of an instance, the active findings of containers that were no longer discovered are
   deactivated the same way.
 - Findings of type *base image update* exist in the data model but are not produced. Findings of type *derived base
@@ -184,7 +188,10 @@ scan run *partial*, with the message added to the run ([Scan engine](scan-engine
 
 ## Related decisions
 
-None yet.
+- [0043](../decisions/0043-runtime-findings-kept-through-a-failed-container-evaluation-move-to-its-new-snapshot.md):
+  runtime findings kept through a failed container evaluation move to its new snapshot.
+- [0044](../decisions/0044-a-runtime-container-whose-processing-fails-takes-what-it-could-not-determine-from-its-latest-earlier-snapshot.md):
+  a runtime container whose processing fails takes what it could not determine from its latest earlier snapshot.
 
 ## Not here
 
