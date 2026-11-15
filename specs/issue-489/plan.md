@@ -174,3 +174,30 @@ findings. No I/O enters update evaluation. Layering unchanged; no guarantee of `
   the others; the pages take the current containers from the latest run's snapshots, so the container and its still
   active findings disappear until the next scan.
 - Running the runtime check after a failed tag lookup (0042 keeps it tied to a completed evaluation).
+
+## Challenge notes
+
+Devil's Advocate, mode `plan`, specs/issue-489 (/home/user/DockerUpdateGuard/specs/issue-489/plan.md, /home/user/DockerUpdateGuard/docs/decisions/0043-runtime-findings-kept-through-a-failed-container-evaluation-move-to-its-new-snapshot.md)
+
+The plan holds up. I found no major objections and two minor ones.
+
+**Claims I checked against the code (all as the plan states):**
+- **Where the snapshot is added and the failure paths:** `RuntimeContainerScanOrchestrator.cs` adds the snapshot at line 680. The `evaluated` guard is at 724. A tag result other than NotFound or Unsupported sets `evaluated = false` at 842-857. The catch at 748-764 only marks the snapshot *failed*.
+- **Existing move and deactivate logic:** `KeepFindings` (193-199) only reassigns `ContainerSnapshot`, so it is safe in the catch. `DeactivateSupersededRuntimeFindingsAsync` (884-899) filters by instance and container, not by snapshot. `CreateRuntimeFindingAsync` adds the new finding (Added, not yet in the database) at line 1013, and the database-side `IsActive` filter of the later deactivate query cannot return it. That supports AC4's "only active update finding".
+- **Fact 13:** the context is shared across scans, the tests use `SqliteTestDatabase` (test file lines 45, 554), and tracking queries resolve to the tracked instances.
+- **Pages:** the container detail reads `ContainerSnapshotId == latestSnapshot.Id` (`ApplicationViewService.cs:1990`). The runtime list reads by latest snapshot ids (785-786). The own and observed image pages read derived findings by latest or linked snapshot ids (1591-1592, 1911-1912). `UpdateFindingConfiguration.cs:45` has an index on (ContainerSnapshotId, IsActive) but no unique constraint, so moving cannot hit a key conflict.
+- **Option 3 (no new snapshot):** rejecting it is right. `GetLatestContainerSnapshotsAsync` (1087-1124) takes the current containers from the latest run's snapshots.
+- **Moving findings across a changed image:** no risk. `ContainerId` is Docker's container `Id` (`DockerInstanceClient.cs:520`), and Docker cannot change a container's image without recreating it, which gives a new id.
+- **Retention:** the sentence in 0043 is true. `docs/areas/scan-engine.md:166` removes old snapshots that have no active update finding.
+
+**Minor objections:**
+
+1. **minor — the claim "the pages show the kept findings as they showed them before the failed scan" is only true for the alerts, not the runtime list's version columns.** A *failed* snapshot never gets `ResolvedVersionTag` or `AvailableUpdateVersionTag`, because `PopulateResolvedVersionTags` (`RuntimeContainerScanOrchestrator.cs:232-268`) runs only in `EvaluateContainerUpdateAsync`. The list then works them out from the moved findings' candidates (`ApplicationViewService.cs:829-837`). Those candidates usually do not include the running digest's version tag, so the resolved version can fall back to the raw tag (for example `latest`). This flicker already exists and the plan does not make it worse; the available update tag actually gets better.
+   - Instruction for the Dev: write the area-document rule about the findings and their tag candidates only, and do not say the container list looks the same as before.
+   - Instruction for the Lead: either name the version columns as a follow-up issue under *Out of scope*, or decide to copy the previous snapshot's two version tags onto the failed snapshot.
+   - Why minor: the alert fix is unchanged; only one plan sentence and one possible follow-up are affected.
+
+2. **minor — one exception path in the catch can leave two active update findings on the new snapshot.** `CreateRuntimeFindingAsync` adds the new finding (line 1013). If `DeactivateSupersededRuntimeFindingsAsync` then throws (a database fault, or `OperationCanceledException`, which `catch (Exception)` at 748 also catches), the old finding is still active in memory and the new step moves it too. Today the old one is hidden on the old snapshot, so only one shows.
+   - Instruction for the Dev: put a comment on the move in the catch saying this case is accepted, because the next evaluated scan deactivates both through the container-scoped query. No test is needed.
+   - Instruction for the Dev, on the area-document wording "findings the failed processing had already ... created stay as they are": it is accurate, so keep it.
+   - Why minor: it needs an infrastructure fault in a narrow window, and the next good scan fixes it on its own.
