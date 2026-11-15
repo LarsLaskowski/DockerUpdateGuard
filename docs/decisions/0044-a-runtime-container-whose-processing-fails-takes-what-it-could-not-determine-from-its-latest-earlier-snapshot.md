@@ -1,6 +1,6 @@
 # 0044: A runtime container whose processing fails takes what it could not determine from its latest earlier snapshot
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-15
 - **Area:** Docker instances
 - **Source:** Issues #491, #492

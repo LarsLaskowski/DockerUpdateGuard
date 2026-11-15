@@ -18,3 +18,4 @@ are quoted in full.
 | 2026-11-15 22:25 | 7 Gate stamp | Orchestrator | PASS on 978afac0b536ce468e6d72765342f8849f30a53c (tier standard, verbatim): Format check pass; decision-check.py pass; scope-check.py pass |
 | 2026-11-15 22:28 | 7 Gate stamp | Orchestrator | PASS on c943f5c9255e31c4dc8f4bbcc56bdc173ceaef94 (tier standard, verbatim): Format check pass; decision-check.py pass; scope-check.py pass |
 | 2026-11-15 22:28 | 8 Review verbatim | Orchestrator | Applied [BLOCKING, verbatim] docker-instances.md, [NON-BLOCKING, verbatim] record 0044 wording, [NON-BLOCKING, verbatim] LF normalization of 0044 and plan.md; rewrapped; git diff --check clean |
+| 2026-11-15 22:29 | 9 PR approval | Lead | RESULT: APPROVED; plan deviation (tuple parameter, CreateFallbackSnapshot helper) accepted, no edit needed (opus/medium · 50,476 tokens · 5 tool uses · 29 s · 8 in · 2,906 out · 98,699 cache read · 48,894 cache write · 161,181 weighted) |
