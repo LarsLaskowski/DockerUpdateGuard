@@ -144,6 +144,8 @@ line here: the double, where it lives and what it stands in for; how it behaves 
 - `TestOptionsMonitor<T>` with `ListenerRegistration` (`Data/`) — the options monitor of a reloadable configuration; `Reload` replaces `CurrentValue` and calls the `OnChange` listeners
 - `TestDevelopmentConfiguration` (`Data/`) — the development configuration files
 - `SaveChangesFailingDbContext` (`Data/`) — a database whose save fails
+- `GatedSaveChangesDbContext` (`Data/`, created by `SqliteTestDatabase.CreateGatedSaveChangesDbContext`) — a database whose first save of an added vulnerability finding signals `SaveEntered` and waits for `ReleaseSave` before touching the database
+- `ScanLockObserver` (`Helper/`) — a scan lock registry observer: `WaitUntilWaitingAsync` yields until a second reference of a key exists or the run's task has completed
 - `SqliteTestDatabase` (`Data/` of both test projects) — the PostgreSQL database, as SQLite
 - `ThrowingExecutionStrategy` (`Helper/`) — the EF Core execution strategy, which fails every operation after the first ones with a given exception
 - `CommandTimeoutRecordingInterceptor` (`Helper/`) — the EF Core command pipeline, which records each executed command's timeout and fails every command with its own exception

@@ -79,7 +79,9 @@ resource statistics, cleanup) leave no scan-run record and report only through l
   image or Docker instance it concerns.
 - Trigger is `Scheduled` for runs started by a background job and `Manual` for runs started from the UI. The stored
   values `Startup` and `Discovery` are reserved and not written today.
-- A run is stored with status `Running` before any work begins and is updated once at the end to one of:
+- A run is stored with status `Running` before any work begins and is updated once at the end to one of (a
+  `RuntimeContainer` run is stored once the wait for its Docker instance has ended, so its start time is when its
+  work starts; a `Vulnerability` run is stored before any wait, and a wait counts towards its duration):
   - `Succeeded` — every step completed;
   - `Partial` — at least one step returned an incomplete result (for example an unsupported registry or one
     container that could not be processed) while the run as a whole went on;
@@ -101,8 +103,19 @@ resource statistics, cleanup) leave no scan-run record and report only through l
   skipped or merged.
 - Scans of different observed images may run at the same time (for example a manual registration during the
   scheduled refresh).
-- Runtime container scans and vulnerability refreshes have no such guard: a manual run and a scheduled run of the
-  same kind may overlap.
+- Runtime container scans of the same Docker instance never run at the same time within one application process.
+  A second scan of an instance that is being scanned waits until the first has finished and then runs in full
+  (its own scan run, its own discovery); scans of different instances may run at the same time.
+- Applying and saving the results of one image version in a vulnerability refresh never runs at the same time as
+  another refresh applying and saving the same image version: the second refresh waits and then applies its own
+  results on top of the first one's, so exactly one active finding remains per advisory and package. The provider
+  calls are not held by this guard, and refreshes of different image versions do not wait for each other. The
+  stale-finding deactivation of a full refresh never runs at the same time as another full refresh's deactivation.
+- A wait ends when the run is cancelled (in practice host shutdown, since no UI action is cancellable): a waiting
+  runtime container scan then creates no scan run and does not contact the instance, and a waiting vulnerability
+  refresh applies nothing for the image version it waited for. A manual action started while the scheduled run holds
+  the same subject waits for it: a runtime container scan until the scheduled scan of that Docker instance has finished, a
+  vulnerability refresh until the scheduled refresh has saved that image version's results.
 - Within the observed-image refresh the images are scanned one after another; within the runtime container refresh
   the instances are scanned one after another. Parallelism of vulnerability provider calls inside one refresh is
   owned by [Vulnerabilities](vulnerabilities.md).
@@ -172,7 +185,7 @@ of image versions that left the fleet.
 
 ### Deployment assumption
 
-The engine assumes a single application instance per database. Its scan guard is local to one process and the jobs
+The engine assumes a single application instance per database. Its scan guards are local to one process and the jobs
 are not coordinated through the database: several instances against one database duplicate the scheduled work and
 may scan the same image at the same time. This is wasteful but does not corrupt the shared image catalog
 ([Image catalog](image-catalog.md)).
@@ -201,14 +214,13 @@ may scan the same image at the same time. This is wasteful but does not corrupt 
 - The 20 most recently completed scan runs are a cap, not a minimum: an unreferenced run completed before the
   `RetainScanRunsDays` cutoff is removed even when it is among the 20 most recent, so the scan history can be
   empty after a long pause. Tracked in [#290](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/290).
-- Runtime container scans and vulnerability refreshes have no per-subject guard: a manual and a scheduled run of the
-  same kind can run at the same time (see *Overlapping scans*).
-  Tracked in [#292](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/292).
 
 ## Related decisions
 
 - [0025](../decisions/0025-a-failing-interval-lookup-keeps-the-jobs-last-known-interval.md): a failing interval
   lookup keeps the job's last known interval.
+- [0038](../decisions/0038-runtime-container-scans-and-vulnerability-results-wait-for-a-per-subject-guard-in-the-process.md):
+  runtime container scans and vulnerability results wait for a per-subject guard in the process.
 
 ## Not here
 

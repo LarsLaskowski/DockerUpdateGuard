@@ -9,6 +9,7 @@ using DockerUpdateGuard.Images.Data;
 using DockerUpdateGuard.Images.Interfaces;
 using DockerUpdateGuard.Infrastructure;
 using DockerUpdateGuard.Tests.Data;
+using DockerUpdateGuard.Tests.Helper;
 
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -2428,6 +2429,268 @@ public class RuntimeContainerScanOrchestratorTests
                                 logger.Entries,
                                 "The unsupported-evaluation log entry must carry the normalized reference");
             }
+        }
+    }
+
+    /// <summary>
+    /// Verify two concurrent scans of the same Docker instance run one after the other, the second creating no scan run before the first has finished
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC1")]
+    public async Task RuntimeContainerScanOrchestratorScanAllAsyncConcurrentScansOfSameInstanceRunSequentiallyAsync()
+    {
+        using (var database = new SqliteTestDatabase())
+        {
+            var firstContext = database.CreateDbContext();
+
+            await using (firstContext.ConfigureAwait(false))
+            {
+                var secondContext = database.CreateDbContext();
+
+                await using (secondContext.ConfigureAwait(false))
+                {
+                    var discoveryStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                    var releaseDiscovery = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                    var dockerInstanceClient = CreateGatedDockerInstanceClient(discoveryStarted, releaseDiscovery.Task);
+                    var registryMetadataService = Substitute.For<IRegistryMetadataService>();
+                    var firstOrchestrator = CreateFailureOrchestrator(firstContext, dockerInstanceClient, registryMetadataService, new TestLogger<RuntimeContainerScanOrchestrator>());
+                    var secondOrchestrator = CreateFailureOrchestrator(secondContext, dockerInstanceClient, registryMetadataService, new TestLogger<RuntimeContainerScanOrchestrator>());
+
+                    var firstRun = firstOrchestrator.ScanAllAsync(ScanTriggerSource.Scheduled, TestContext.CancellationToken);
+
+                    await discoveryStarted.Task.WaitAsync(TestContext.CancellationToken)
+                                               .ConfigureAwait(false);
+
+                    var instanceId = await ReadInstanceIdAsync(database, TestContext.CancellationToken).ConfigureAwait(false);
+                    var secondRun = secondOrchestrator.ScanAllAsync(ScanTriggerSource.Manual, TestContext.CancellationToken);
+
+                    await ScanLockObserver.WaitUntilWaitingAsync(RuntimeContainerScanOrchestrator.DockerInstanceScanLocks, instanceId, secondRun, TestContext.CancellationToken)
+                                          .ConfigureAwait(false);
+
+                    var runCountWhileWaiting = await CountRuntimeScanRunsAsync(database, TestContext.CancellationToken).ConfigureAwait(false);
+
+                    Assert.IsFalse(secondRun.IsCompleted, "The second scan of the instance must wait while the first one runs");
+                    Assert.AreEqual(1, runCountWhileWaiting, "The waiting scan must not have created its scan run");
+                    _ = dockerInstanceClient.Received(1).DiscoverContainersAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<CancellationToken>());
+
+                    releaseDiscovery.TrySetResult();
+
+                    await Task.WhenAll(firstRun, secondRun)
+                              .WaitAsync(TestContext.CancellationToken)
+                              .ConfigureAwait(false);
+
+                    var runCountAfterBoth = await CountRuntimeScanRunsAsync(database, TestContext.CancellationToken).ConfigureAwait(false);
+
+                    Assert.AreEqual(2, runCountAfterBoth, "Once the first scan has finished, the second one must run in full with its own scan run");
+                    _ = dockerInstanceClient.Received(2).DiscoverContainersAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<CancellationToken>());
+                    Assert.AreEqual(0,
+                                    RuntimeContainerScanOrchestrator.DockerInstanceScanLocks.GetReferenceCount(instanceId),
+                                    "No reference of the instance may remain once both scans have finished");
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Verify a waiting scan of a Docker instance that is cancelled does no work and ends with an operation-cancelled exception
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC6")]
+    public async Task RuntimeContainerScanOrchestratorScanAllAsyncWaitingScanCancelledDoesNotRunAsync()
+    {
+        using (var database = new SqliteTestDatabase())
+        {
+            var firstContext = database.CreateDbContext();
+
+            await using (firstContext.ConfigureAwait(false))
+            {
+                var secondContext = database.CreateDbContext();
+
+                await using (secondContext.ConfigureAwait(false))
+                {
+                    var discoveryStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                    var releaseDiscovery = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                    var dockerInstanceClient = CreateGatedDockerInstanceClient(discoveryStarted, releaseDiscovery.Task);
+                    var registryMetadataService = Substitute.For<IRegistryMetadataService>();
+                    var firstOrchestrator = CreateFailureOrchestrator(firstContext, dockerInstanceClient, registryMetadataService, new TestLogger<RuntimeContainerScanOrchestrator>());
+                    var secondOrchestrator = CreateFailureOrchestrator(secondContext, dockerInstanceClient, registryMetadataService, new TestLogger<RuntimeContainerScanOrchestrator>());
+
+                    var firstRun = firstOrchestrator.ScanAllAsync(ScanTriggerSource.Scheduled, TestContext.CancellationToken);
+
+                    await discoveryStarted.Task.WaitAsync(TestContext.CancellationToken)
+                                               .ConfigureAwait(false);
+
+                    var instanceId = await ReadInstanceIdAsync(database, TestContext.CancellationToken).ConfigureAwait(false);
+
+                    using (var waitCancellation = new CancellationTokenSource())
+                    {
+                        var secondRun = secondOrchestrator.ScanAllAsync(ScanTriggerSource.Manual, waitCancellation.Token);
+
+                        await ScanLockObserver.WaitUntilWaitingAsync(RuntimeContainerScanOrchestrator.DockerInstanceScanLocks, instanceId, secondRun, TestContext.CancellationToken)
+                                              .ConfigureAwait(false);
+                        await waitCancellation.CancelAsync()
+                                              .ConfigureAwait(false);
+                        await Assert.ThrowsAsync<OperationCanceledException>(() => secondRun, "A waiting scan that is cancelled must end with an OperationCanceledException");
+                    }
+
+                    var runCountAfterCancel = await CountRuntimeScanRunsAsync(database, TestContext.CancellationToken).ConfigureAwait(false);
+
+                    Assert.AreEqual(1, runCountAfterCancel, "The cancelled waiting scan must not have created a scan run");
+                    _ = dockerInstanceClient.Received(1).DiscoverContainersAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<CancellationToken>());
+                    Assert.AreEqual(1,
+                                    RuntimeContainerScanOrchestrator.DockerInstanceScanLocks.GetReferenceCount(instanceId),
+                                    "Only the running scan may hold a reference after the wait was cancelled");
+
+                    releaseDiscovery.TrySetResult();
+
+                    await firstRun.WaitAsync(TestContext.CancellationToken)
+                                  .ConfigureAwait(false);
+
+                    Assert.AreEqual(0,
+                                    RuntimeContainerScanOrchestrator.DockerInstanceScanLocks.GetReferenceCount(instanceId),
+                                    "No reference of the instance may remain once the running scan has finished");
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Verify scans of different Docker instances may run at the same time
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC2")]
+    public async Task RuntimeContainerScanOrchestratorScanAllAsyncConcurrentScansOfDifferentInstancesMayOverlapAsync()
+    {
+        using (var firstDatabase = new SqliteTestDatabase())
+        {
+            using (var secondDatabase = new SqliteTestDatabase())
+            {
+                var firstContext = firstDatabase.CreateDbContext();
+
+                await using (firstContext.ConfigureAwait(false))
+                {
+                    var secondContext = secondDatabase.CreateDbContext();
+
+                    await using (secondContext.ConfigureAwait(false))
+                    {
+                        var discoveryStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                        var releaseDiscovery = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                        var dockerInstanceClient = CreateGatedDockerInstanceClient(discoveryStarted, releaseDiscovery.Task);
+                        var registryMetadataService = Substitute.For<IRegistryMetadataService>();
+                        var firstOrchestrator = CreateFailureOrchestrator(firstContext, dockerInstanceClient, registryMetadataService, new TestLogger<RuntimeContainerScanOrchestrator>());
+                        var secondOrchestrator = CreateFailureOrchestrator(secondContext, dockerInstanceClient, registryMetadataService, new TestLogger<RuntimeContainerScanOrchestrator>());
+
+                        var firstRun = firstOrchestrator.ScanAllAsync(ScanTriggerSource.Scheduled, TestContext.CancellationToken);
+
+                        await discoveryStarted.Task.WaitAsync(TestContext.CancellationToken)
+                                                   .ConfigureAwait(false);
+
+                        var firstInstanceId = await ReadInstanceIdAsync(firstDatabase, TestContext.CancellationToken).ConfigureAwait(false);
+                        var secondRun = secondOrchestrator.ScanAllAsync(ScanTriggerSource.Manual, TestContext.CancellationToken);
+
+                        await secondRun.WaitAsync(TestContext.CancellationToken)
+                                       .ConfigureAwait(false);
+
+                        var secondInstanceId = await ReadInstanceIdAsync(secondDatabase, TestContext.CancellationToken).ConfigureAwait(false);
+
+                        Assert.AreNotEqual(firstInstanceId, secondInstanceId, "The two runs must scan different Docker instances");
+                        Assert.IsFalse(firstRun.IsCompleted, "The first scan must still run while the scan of the other instance has finished");
+                        Assert.AreEqual(1,
+                                        RuntimeContainerScanOrchestrator.DockerInstanceScanLocks.GetReferenceCount(firstInstanceId),
+                                        "Only the first scan may hold a reference of its instance");
+                        Assert.AreEqual(1,
+                                        await CountRuntimeScanRunsAsync(secondDatabase, TestContext.CancellationToken).ConfigureAwait(false),
+                                        "The scan of the other instance must have run in full while the first one was running");
+
+                        releaseDiscovery.TrySetResult();
+
+                        await firstRun.WaitAsync(TestContext.CancellationToken)
+                                      .ConfigureAwait(false);
+
+                        Assert.AreEqual(0,
+                                        RuntimeContainerScanOrchestrator.DockerInstanceScanLocks.GetReferenceCount(firstInstanceId),
+                                        "No reference of the first instance may remain once its scan has finished");
+                    }
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Create a Docker instance client whose first container discovery signals and waits for a release
+    /// </summary>
+    /// <param name="discoveryStarted">Completed when the first discovery has started</param>
+    /// <param name="releaseDiscovery">Task that lets the first discovery return</param>
+    /// <returns>Docker instance client</returns>
+    private static IDockerInstanceClient CreateGatedDockerInstanceClient(TaskCompletionSource discoveryStarted, Task releaseDiscovery)
+    {
+        var dockerInstanceClient = Substitute.For<IDockerInstanceClient>();
+        var discoveryCalls = 0;
+
+        dockerInstanceClient.DiscoverContainersAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<CancellationToken>())
+                            .Returns(_ => DiscoverGatedAsync(Interlocked.Increment(ref discoveryCalls) == 1, discoveryStarted, releaseDiscovery));
+
+        return dockerInstanceClient;
+    }
+
+    /// <summary>
+    /// Report no containers, the first call signalling its start and waiting for the release
+    /// </summary>
+    /// <param name="isFirstCall">Whether this is the first discovery</param>
+    /// <param name="discoveryStarted">Completed when the first discovery has started</param>
+    /// <param name="releaseDiscovery">Task that lets the first discovery return</param>
+    /// <returns>Discovery result without containers</returns>
+    private static async Task<ExternalOperationResult<IReadOnlyList<RuntimeContainerDescriptor>>> DiscoverGatedAsync(bool isFirstCall,
+                                                                                                                     TaskCompletionSource discoveryStarted,
+                                                                                                                     Task releaseDiscovery)
+    {
+        if (isFirstCall)
+        {
+            discoveryStarted.TrySetResult();
+
+            await releaseDiscovery.ConfigureAwait(false);
+        }
+
+        return ExternalOperationResult.Succeeded<IReadOnlyList<RuntimeContainerDescriptor>>([]);
+    }
+
+    /// <summary>
+    /// Read the identifier of the only Docker instance of the database through a fresh context
+    /// </summary>
+    /// <param name="database">Test database</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Docker instance identifier</returns>
+    private static async Task<Guid> ReadInstanceIdAsync(SqliteTestDatabase database, CancellationToken cancellationToken)
+    {
+        var readContext = database.CreateDbContext();
+
+        await using (readContext.ConfigureAwait(false))
+        {
+            var dockerInstance = await readContext.DockerInstances.AsNoTracking()
+                                                                  .SingleAsync(cancellationToken)
+                                                                  .ConfigureAwait(false);
+
+            return dockerInstance.Id;
+        }
+    }
+
+    /// <summary>
+    /// Count the runtime container scan runs of the database through a fresh context
+    /// </summary>
+    /// <param name="database">Test database</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Number of runtime container scan runs</returns>
+    private static async Task<int> CountRuntimeScanRunsAsync(SqliteTestDatabase database, CancellationToken cancellationToken)
+    {
+        var readContext = database.CreateDbContext();
+
+        await using (readContext.ConfigureAwait(false))
+        {
+            return await readContext.ScanRuns.CountAsync(entity => entity.Type == ScanRunType.RuntimeContainer, cancellationToken)
+                                             .ConfigureAwait(false);
         }
     }
 

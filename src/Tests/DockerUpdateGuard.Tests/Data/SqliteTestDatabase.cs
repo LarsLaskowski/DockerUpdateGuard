@@ -63,6 +63,22 @@ internal sealed class SqliteTestDatabase : IDisposable
         return dbContext;
     }
 
+    /// <summary>
+    /// Create a database context that holds the first persistence of an added vulnerability finding until released
+    /// </summary>
+    /// <returns>Gated database context sharing the same database</returns>
+    public GatedSaveChangesDbContext CreateGatedSaveChangesDbContext()
+    {
+        var options = new DbContextOptionsBuilder<DockerUpdateGuardDbContext>().UseSqlite(_connection)
+                                                                               .EnableSensitiveDataLogging()
+                                                                               .Options;
+        var dbContext = new GatedSaveChangesDbContext(options);
+
+        dbContext.Database.EnsureCreated();
+
+        return dbContext;
+    }
+
     #endregion // Methods
 
     #region IDisposable

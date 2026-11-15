@@ -321,10 +321,14 @@ flowchart TD
   This covers images without a useful base-image label, at the cost of only
   recognizing the two runtimes it has explicit rules for
   ([Base images](areas/base-images.md)).
-- **`ImageScanOrchestrator`** guards against overlapping scans of the same
-  observed image with a static per-image `SemaphoreSlim` registry, not a
-  database lock — a same-process concurrency guard, not a multi-instance
-  one (§11, [Scan engine](areas/scan-engine.md)).
+- **Scan guards.** `ImageScanOrchestrator`,
+  `RuntimeContainerScanOrchestrator` and `VulnerabilityEnrichmentService`
+  guard their subjects (observed image, Docker instance, image version, plus
+  the stale-finding deactivation of a full refresh) with static
+  `KeyedScanLock` registries — per-key `SemaphoreSlim`s retained only while
+  held or awaited, not a database lock: a same-process concurrency guard,
+  not a multi-instance one (§11, [Scan engine](areas/scan-engine.md),
+  [decision 0038](decisions/0038-runtime-container-scans-and-vulnerability-results-wait-for-a-per-subject-guard-in-the-process.md)).
 - Orchestrators write directly to `DbContext` sets (`UpdateFindings`,
   `ImageRelationships`, `ScanRuns`) for their own aggregates, and go
   through `IImageCatalogRepository` only for the shared, dedup-sensitive
@@ -443,7 +447,7 @@ it links:
 - **No health-check or rate-limiting endpoints** are registered.
 - **Single-instance assumption for the scan engine.** The advisory lock
   (§3) serializes *migrations* across concurrently starting instances, but
-  the background jobs and `ImageScanOrchestrator`'s in-memory scan lock
+  the background jobs and the in-memory scan guards
   (§7) are not distributed — running more than one instance against the
   same database duplicates scan work rather than coordinating it; catalog
   writes stay correct via `IImageCatalogRepository`'s race-retry. The

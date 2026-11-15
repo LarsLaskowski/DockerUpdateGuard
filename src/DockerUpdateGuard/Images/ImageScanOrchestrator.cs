@@ -38,16 +38,6 @@ public class ImageScanOrchestrator : IImageScanOrchestrator
     #region Fields
 
     /// <summary>
-    /// Synchronization root guarding per-observed-image scan lock bookkeeping
-    /// </summary>
-    private static readonly Lock _observedImageScanLockRegistrySync = new();
-
-    /// <summary>
-    /// Per-observed-image scan locks shared across orchestrator scopes, retained only while referenced
-    /// </summary>
-    private static readonly Dictionary<Guid, ObservedImageScanLockEntry> _observedImageScanLocks = [];
-
-    /// <summary>
     /// Application telemetry
     /// </summary>
     private readonly ApplicationTelemetry _applicationTelemetry;
@@ -139,6 +129,15 @@ public class ImageScanOrchestrator : IImageScanOrchestrator
 
     #endregion // Constructors
 
+    #region Properties
+
+    /// <summary>
+    /// Scan locks of the observed images
+    /// </summary>
+    internal static KeyedScanLock ObservedImageScanLocks { get; } = new();
+
+    #endregion // Properties
+
     #region Methods
 
     /// <summary>
@@ -162,56 +161,6 @@ public class ImageScanOrchestrator : IImageScanOrchestrator
         return latestVersion.Major == currentVersion.Major
                && latestVersion.Minor == currentVersion.Minor
                && latestVersion > currentVersion;
-    }
-
-    /// <summary>
-    /// Acquire a reference to the shared scan lock for an observed image, creating it on first use
-    /// </summary>
-    /// <param name="observedImageId">Observed image identifier</param>
-    /// <returns>Shared scan lock</returns>
-    private static SemaphoreSlim AcquireObservedImageScanLock(Guid observedImageId)
-    {
-        lock (_observedImageScanLockRegistrySync)
-        {
-            if (_observedImageScanLocks.TryGetValue(observedImageId, out var entry) == false)
-            {
-                entry = new ObservedImageScanLockEntry
-                        {
-                            Semaphore = new SemaphoreSlim(1, 1),
-                        };
-
-                _observedImageScanLocks[observedImageId] = entry;
-            }
-
-            entry.ReferenceCount++;
-
-            return entry.Semaphore;
-        }
-    }
-
-    /// <summary>
-    /// Release a reference to the shared scan lock for an observed image, disposing it once unreferenced
-    /// </summary>
-    /// <param name="observedImageId">Observed image identifier</param>
-    /// <param name="observedImageScanLock">Scan lock previously obtained via <see cref="AcquireObservedImageScanLock"/></param>
-    private static void ReleaseObservedImageScanLockReference(Guid observedImageId, SemaphoreSlim observedImageScanLock)
-    {
-        lock (_observedImageScanLockRegistrySync)
-        {
-            if (_observedImageScanLocks.TryGetValue(observedImageId, out var entry) == false
-                || ReferenceEquals(entry.Semaphore, observedImageScanLock) == false)
-            {
-                return;
-            }
-
-            entry.ReferenceCount--;
-
-            if (entry.ReferenceCount <= 0)
-            {
-                _observedImageScanLocks.Remove(observedImageId);
-                entry.Semaphore.Dispose();
-            }
-        }
     }
 
     /// <summary>
@@ -679,12 +628,11 @@ public class ImageScanOrchestrator : IImageScanOrchestrator
                                 CancellationToken cancellationToken = default)
     {
         var resolvedBaseImageCount = 0;
-        var observedImageScanLock = AcquireObservedImageScanLock(observedImageId);
         var observedImageScanLockAcquired = false;
 
         try
         {
-            await observedImageScanLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+            await ObservedImageScanLocks.WaitAsync(observedImageId, cancellationToken).ConfigureAwait(false);
 
             observedImageScanLockAcquired = true;
 
@@ -794,10 +742,8 @@ public class ImageScanOrchestrator : IImageScanOrchestrator
         {
             if (observedImageScanLockAcquired)
             {
-                observedImageScanLock.Release();
+                ObservedImageScanLocks.Release(observedImageId);
             }
-
-            ReleaseObservedImageScanLockReference(observedImageId, observedImageScanLock);
         }
     }
 
