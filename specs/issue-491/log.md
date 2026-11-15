@@ -21,3 +21,4 @@ are quoted in full.
 | 2026-11-15 22:29 | 9 PR approval | Lead | RESULT: APPROVED; plan deviation (tuple parameter, CreateFallbackSnapshot helper) accepted, no edit needed (opus/medium · 50,476 tokens · 5 tool uses · 29 s · 8 in · 2,906 out · 98,699 cache read · 48,894 cache write · 161,181 weighted) |
 | 2026-11-15 22:31 | 7 Gate stamp | Orchestrator | PASS on cb2cb9fcf036724c768b2426ee091ee5f05f12ce (tier standard, verbatim): Format check pass; decision-check.py pass; scope-check.py pass |
 | 2026-11-15 22:31 | 9 Record status | Orchestrator | 0044 set to Accepted; decision-check pass |
+| 2026-11-15 22:32 | 10 Pull request | Orchestrator | Working record posted on #491 (pointer on #492), specs removed, draft PR opened |
