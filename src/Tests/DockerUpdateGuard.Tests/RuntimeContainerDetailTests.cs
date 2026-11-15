@@ -2,6 +2,7 @@ using System.Globalization;
 
 using Bunit;
 
+using DockerUpdateGuard.Components.Common;
 using DockerUpdateGuard.Components.Pages;
 using DockerUpdateGuard.Data.Entities;
 using DockerUpdateGuard.Portainer.Data;
@@ -247,6 +248,7 @@ public class RuntimeContainerDetailTests
     [DataRow("NotCurrent", "", "This container is not in the latest runtime scan of 'Production'; no actions are available.")]
     [DataRow("Unsupported", "", "Portainer environment 8 not found; check Portainer:EndpointId of Docker instance 'Production'")]
     [DataRow("InProgress", "", "An action is in progress for this container.")]
+    [DataRow("Dead", "", "No actions are available for this container.")]
     public async Task RuntimeContainerDetailRendersOfferedActionsOrAvailabilityMessageAsync(string scenario, string expectedButtons, string expectedMessage)
     {
         var containerActionService = CreateContainerActionService(CreateAvailability(scenario));
@@ -466,6 +468,270 @@ public class RuntimeContainerDetailTests
     }
 
     /// <summary>
+    /// Verify a render that is not interactive (prerender) never runs the capability check and shows no action section
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC2")]
+    public async Task RuntimeContainerDetailWithStaticRendererDoesNotCheckContainerActionsAsync()
+    {
+        var containerActionService = CreateContainerActionService(CreateAvailability("Running"));
+        var testContext = CreateActionContext(containerActionService, CreateViewService(), new TestLogger<RuntimeContainerDetail>());
+
+        testContext.SetRendererInfo(new RendererInfo("Static", false));
+
+        await using (testContext)
+        {
+            var page = RenderActionPage(testContext);
+
+            await page.WaitForAssertionAsync(() => Assert.Contains("ghcr.io/acme/api:1.0.0", page.Markup, "The detail must render"), TimeSpan.FromSeconds(WaitSeconds)).ConfigureAwait(false);
+
+            Assert.IsFalse(HasActionSection(page), "A prerendered page must not show the action section");
+            Assert.IsEmpty(containerActionService.ReceivedCalls(), "A prerendered page must not check the container actions");
+        }
+    }
+
+    /// <summary>
+    /// Verify an availability that is not shown (instance or Portainer disabled) renders no action section
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC2")]
+    public async Task RuntimeContainerDetailWhenActionsNotShownRendersNoActionSectionAsync()
+    {
+        var containerActionService = CreateContainerActionService(new ContainerActionAvailabilityData());
+        var testContext = CreateActionContext(containerActionService, CreateViewService(), new TestLogger<RuntimeContainerDetail>());
+
+        await using (testContext)
+        {
+            var page = RenderActionPage(testContext);
+
+            await WaitForAvailabilityRequestAsync(page, containerActionService).ConfigureAwait(false);
+
+            Assert.Contains("ghcr.io/acme/api:1.0.0", page.Markup, "The detail must render");
+            Assert.IsFalse(HasActionSection(page), "An availability that is not shown must render no action section");
+            Assert.AreSequenceEqual(Array.Empty<string>(), GetActionButtonTexts(page), "An availability that is not shown must offer no action button");
+        }
+    }
+
+    /// <summary>
+    /// Verify a failing availability load keeps the action section hidden and logs the failure
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC13")]
+    public async Task RuntimeContainerDetailFailedAvailabilityLoadHidesActionSectionAndLogsAsync()
+    {
+        var exception = new InvalidOperationException("connection to db.internal.test:5432 refused");
+        var logger = new TestLogger<RuntimeContainerDetail>();
+        var containerActionService = CreateFailingAvailabilityService(exception);
+        var testContext = CreateActionContext(containerActionService, CreateViewService(), logger);
+
+        await using (testContext)
+        {
+            var page = RenderActionPage(testContext);
+
+            await page.WaitForAssertionAsync(() => Assert.IsNotEmpty(logger.Entries, "The failure must be logged"), TimeSpan.FromSeconds(WaitSeconds)).ConfigureAwait(false);
+
+            Assert.IsFalse(HasActionSection(page), "A failed availability load must keep the action section hidden");
+            Assert.DoesNotContain("db.internal.test", page.Markup, "The page must not show the exception text");
+            UserActionFailureAssert.AssertLogged(logger, "LoadContainerActions", exception);
+        }
+    }
+
+    /// <summary>
+    /// Verify an availability load that ends because the page's services are disposed shows and logs nothing
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC13")]
+    public async Task RuntimeContainerDetailDisposedDuringAvailabilityLoadShowsAndLogsNothingAsync()
+    {
+        var logger = new TestLogger<RuntimeContainerDetail>();
+        var containerActionService = CreateFailingAvailabilityService(new ObjectDisposedException("scope"));
+        var testContext = CreateActionContext(containerActionService, CreateViewService(), logger);
+
+        await using (testContext)
+        {
+            var page = RenderActionPage(testContext);
+
+            await WaitForAvailabilityRequestAsync(page, containerActionService).ConfigureAwait(false);
+
+            Assert.IsFalse(HasActionSection(page), "Without an availability the action section must stay hidden");
+            Assert.IsEmpty(page.FindAll(".mud-alert-filled-error, .mud-alert-text-error"), "A disposed page must show no error");
+            Assert.IsEmpty(logger.Entries, "A disposed page is not a failure and must not be logged");
+        }
+    }
+
+    /// <summary>
+    /// Verify a confirmation dialog that cannot be opened shows a fixed reason, logs the exception and executes nothing
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC13")]
+    public async Task RuntimeContainerDetailFailedConfirmationDialogShowsFixedReasonAndLogsAsync()
+    {
+        var exception = new InvalidOperationException("connection to db.internal.test:5432 refused");
+        var logger = new TestLogger<RuntimeContainerDetail>();
+        var containerActionService = CreateContainerActionService(CreateAvailability("Running"));
+        var testContext = CreateActionContext(containerActionService, CreateViewService(), logger, CreateFailingDialogService(exception));
+
+        await using (testContext)
+        {
+            var page = RenderActionPage(testContext);
+
+            await ClickActionAsync(page, "Restart").ConfigureAwait(false);
+
+            await page.WaitForAssertionAsync(() => Assert.Contains("Container action failed", page.Markup, "The page must show the failure"), TimeSpan.FromSeconds(WaitSeconds)).ConfigureAwait(false);
+
+            UserActionFailureAssert.AssertShown(page.Markup, "Container action failed: unexpected error", "db.internal.test", "refused");
+            UserActionFailureAssert.AssertLogged(logger, "ContainerAction", exception);
+            await containerActionService.DidNotReceive()
+                                        .ExecuteAsync(Arg.Any<Guid>(), Arg.Any<string>(), Arg.Any<ContainerActionType>())
+                                        .ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Verify a confirmation dialog that ends because the page's services are disposed shows and logs nothing and executes nothing
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC13")]
+    public async Task RuntimeContainerDetailDisposedDuringConfirmationShowsAndLogsNothingAsync()
+    {
+        var logger = new TestLogger<RuntimeContainerDetail>();
+        var containerActionService = CreateContainerActionService(CreateAvailability("Running"));
+        var dialogService = CreateFailingDialogService(new ObjectDisposedException("circuit"));
+        var testContext = CreateActionContext(containerActionService, CreateViewService(), logger, dialogService);
+
+        await using (testContext)
+        {
+            var page = RenderActionPage(testContext);
+
+            await ClickActionAsync(page, "Restart").ConfigureAwait(false);
+
+            await page.WaitForAssertionAsync(() => Assert.IsNotEmpty(dialogService.ReceivedCalls(), "The dialog must have been requested"), TimeSpan.FromSeconds(WaitSeconds)).ConfigureAwait(false);
+
+            Assert.DoesNotContain("Container action failed", page.Markup, "A disposed page must show no failure");
+            Assert.IsEmpty(logger.Entries, "A disposed page is not a failure and must not be logged");
+            await containerActionService.DidNotReceive()
+                                        .ExecuteAsync(Arg.Any<Guid>(), Arg.Any<string>(), Arg.Any<ContainerActionType>())
+                                        .ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Verify an action that ends because the page's services are disposed shows and logs nothing and releases the buttons
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC13")]
+    public async Task RuntimeContainerDetailDisposedDuringActionShowsAndLogsNothingAsync()
+    {
+        var logger = new TestLogger<RuntimeContainerDetail>();
+        var containerActionService = CreateContainerActionService(CreateAvailability("Running"));
+        var testContext = CreateActionContext(containerActionService, CreateViewService(), logger);
+
+        containerActionService.ExecuteAsync(_actionInstanceId, ActionContainerId, ContainerActionType.RestartContainer)
+                              .Returns(Task.FromException<ContainerActionRunResultData>(new ObjectDisposedException("scope")));
+
+        await using (testContext)
+        {
+            var provider = testContext.Render<MudDialogProvider>();
+            var page = RenderActionPage(testContext);
+
+            await ConfirmAsync(page, provider, "Restart", "Restart").ConfigureAwait(false);
+
+            await page.WaitForAssertionAsync(() => Assert.IsFalse(FindButton(page, "Restart").HasAttribute("disabled"), "The buttons must be released after the action ended"), TimeSpan.FromSeconds(WaitSeconds)).ConfigureAwait(false);
+
+            Assert.DoesNotContain("Container action failed", page.Markup, "A disposed page must show no failure");
+            Assert.IsEmpty(logger.Entries, "A disposed page is not a failure and must not be logged");
+            await containerActionService.Received(1)
+                                        .ExecuteAsync(_actionInstanceId, ActionContainerId, ContainerActionType.RestartContainer)
+                                        .ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Verify a failed action shows its outcome message in the error style
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC10")]
+    public async Task RuntimeContainerDetailAfterFailedActionShowsOutcomeAsErrorAsync()
+    {
+        const string failedMessage = "Action 'restart' failed: HTTP 403";
+        var containerActionService = CreateContainerActionService(CreateAvailability("Running"));
+        var testContext = CreateActionContext(containerActionService, CreateViewService(), new TestLogger<RuntimeContainerDetail>());
+
+        containerActionService.ExecuteAsync(_actionInstanceId, ActionContainerId, ContainerActionType.RestartContainer)
+                              .Returns(new ContainerActionRunResultData
+                                       {
+                                           Status = ContainerActionStatus.Failed,
+                                           Message = failedMessage,
+                                       });
+
+        await using (testContext)
+        {
+            var provider = testContext.Render<MudDialogProvider>();
+            var page = RenderActionPage(testContext);
+
+            await ConfirmAsync(page, provider, "Restart", "Restart").ConfigureAwait(false);
+
+            await page.WaitForAssertionAsync(() => Assert.Contains(failedMessage, FindActionSection(page).TextContent, "The page must show the outcome"), TimeSpan.FromSeconds(WaitSeconds)).ConfigureAwait(false);
+
+            var outcome = FindActionSection(page).QuerySelectorAll(".mud-alert")
+                                                 .Single(alert => alert.TextContent.Contains(failedMessage, StringComparison.Ordinal));
+
+            Assert.Contains("error", outcome.ClassName ?? string.Empty, "A failed outcome must use the error style");
+        }
+    }
+
+    /// <summary>
+    /// Verify the history shows each run status in a chip of its color
+    /// </summary>
+    /// <param name="status">Run status</param>
+    /// <param name="expectedColorClass">Expected chip color class</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC10")]
+    [DataRow("Succeeded", "mud-chip-color-success")]
+    [DataRow("Failed", "mud-chip-color-error")]
+    [DataRow("Running", "mud-chip-color-info")]
+    [DataRow("Requested", "mud-chip-color-warning")]
+    [DataRow("Cancelled", "mud-chip-color-default")]
+    public async Task RuntimeContainerDetailActionHistoryShowsStatusChipInItsColorAsync(string status, string expectedColorClass)
+    {
+        var viewService = Substitute.For<IApplicationViewService>();
+        var containerActionService = CreateContainerActionService(CreateAvailability("Running"));
+        var testContext = CreateActionContext(containerActionService, viewService, new TestLogger<RuntimeContainerDetail>());
+
+        viewService.GetRuntimeContainerDetailAsync(_actionInstanceId, ActionContainerId, Arg.Any<CancellationToken>())
+                   .Returns(CreateActionDetail([
+                                                   new ContainerActionRunViewData
+                                                   {
+                                                       Action = "Restart",
+                                                       Status = status,
+                                                       RequestedAtUtc = _requestedAtUtc,
+                                                       RequestedBy = "UI",
+                                                   }
+                                               ]));
+
+        await using (testContext)
+        {
+            var page = RenderActionPage(testContext);
+
+            await page.WaitForAssertionAsync(() => Assert.HasCount(1, FindActionSection(page).QuerySelectorAll("tbody tr .mud-chip"), "The history must list the run"), TimeSpan.FromSeconds(WaitSeconds)).ConfigureAwait(false);
+
+            var chip = FindActionSection(page).QuerySelector("tbody tr .mud-chip");
+
+            Assert.AreEqual(status, chip?.TextContent.Trim(), "The chip must show the run status");
+            Assert.Contains(expectedColorClass, chip?.ClassName ?? string.Empty, $"Status {status} must be shown in the chip color '{expectedColorClass}'");
+        }
+    }
+
+    /// <summary>
     /// Create a test context whose tag selection service throws the given exception from save and clear
     /// </summary>
     /// <param name="exception">Exception thrown by the tag selection service</param>
@@ -552,6 +818,12 @@ public class RuntimeContainerDetailTests
                 }
                 break;
 
+            case "Dead":
+                {
+                    availability.OfferedActions = [];
+                }
+                break;
+
             default:
                 {
                     availability.OfferedActions = [ContainerActionType.StopContainer, ContainerActionType.RestartContainer];
@@ -576,6 +848,75 @@ public class RuntimeContainerDetailTests
                               .Returns(availability);
 
         return containerActionService;
+    }
+
+    /// <summary>
+    /// Create a container action service substitute whose availability check throws the given exception
+    /// </summary>
+    /// <param name="exception">Exception of the availability check</param>
+    /// <returns>Container action service substitute</returns>
+    private static IContainerActionService CreateFailingAvailabilityService(Exception exception)
+    {
+        var containerActionService = Substitute.For<IContainerActionService>();
+
+        containerActionService.GetAvailabilityAsync(_actionInstanceId, ActionContainerId, Arg.Any<CancellationToken>())
+                              .Returns(Task.FromException<ContainerActionAvailabilityData>(exception));
+
+        return containerActionService;
+    }
+
+    /// <summary>
+    /// Create a dialog service substitute whose dialogs cannot be opened
+    /// </summary>
+    /// <param name="exception">Exception of opening a dialog</param>
+    /// <returns>Dialog service substitute</returns>
+    private static IDialogService CreateFailingDialogService(Exception exception)
+    {
+        var dialogService = Substitute.For<IDialogService>();
+
+        dialogService.ShowAsync<ContainerActionConfirmation>(Arg.Any<string?>(), Arg.Any<DialogParameters>())
+                     .Returns(Task.FromException<IDialogReference>(exception));
+
+        return dialogService;
+    }
+
+    /// <summary>
+    /// Check whether the page renders the Container actions section
+    /// </summary>
+    /// <param name="page">Rendered page</param>
+    /// <returns>True when the section is rendered</returns>
+    private static bool HasActionSection(IRenderedComponent<RuntimeContainerDetail> page)
+    {
+        return page.FindAll(".section-paper h5")
+                   .Any(heading => heading.TextContent.Trim() == "Container actions");
+    }
+
+    /// <summary>
+    /// Wait until the page asked for the availability of the container actions
+    /// </summary>
+    /// <param name="page">Rendered page</param>
+    /// <param name="containerActionService">Container action service substitute</param>
+    /// <returns>Task</returns>
+    private static async Task WaitForAvailabilityRequestAsync(IRenderedComponent<RuntimeContainerDetail> page, IContainerActionService containerActionService)
+    {
+        await page.WaitForAssertionAsync(() => Assert.ContainsSingle(call => call.GetMethodInfo().Name == nameof(IContainerActionService.GetAvailabilityAsync),
+                                                                     containerActionService.ReceivedCalls(),
+                                                                     "The page must ask for the availability once"),
+                                         TimeSpan.FromSeconds(WaitSeconds)).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Click an action button of the page once it is offered
+    /// </summary>
+    /// <param name="page">Rendered page</param>
+    /// <param name="actionText">Text of the page's action button</param>
+    /// <returns>Task</returns>
+    private static async Task ClickActionAsync(IRenderedComponent<RuntimeContainerDetail> page, string actionText)
+    {
+        await page.WaitForAssertionAsync(() => Assert.ContainsSingle(button => button.TextContent.Trim() == actionText, page.FindAll("button"), $"The page must offer {actionText}"),
+                                         TimeSpan.FromSeconds(WaitSeconds)).ConfigureAwait(false);
+
+        await FindButton(page, actionText).ClickAsync().ConfigureAwait(false);
     }
 
     /// <summary>
@@ -618,10 +959,12 @@ public class RuntimeContainerDetailTests
     /// <param name="containerActionService">Container action service substitute</param>
     /// <param name="viewService">View service substitute</param>
     /// <param name="logger">Logger registered for the page</param>
+    /// <param name="dialogService">Dialog service replacing MudBlazor's; null keeps MudBlazor's</param>
     /// <returns>Test context</returns>
     private static Bunit.BunitContext CreateActionContext(IContainerActionService containerActionService,
                                                           IApplicationViewService viewService,
-                                                          TestLogger<RuntimeContainerDetail> logger)
+                                                          TestLogger<RuntimeContainerDetail> logger,
+                                                          IDialogService? dialogService = null)
     {
         var testContext = BlazorTestContextFactory.Create();
 
@@ -629,6 +972,12 @@ public class RuntimeContainerDetailTests
         testContext.Services.AddSingleton(Substitute.For<IRuntimeContainerTagSelectionService>());
         testContext.Services.AddSingleton(containerActionService);
         testContext.Services.AddSingleton<ILogger<RuntimeContainerDetail>>(logger);
+
+        if (dialogService is not null)
+        {
+            testContext.Services.AddSingleton(dialogService);
+        }
+
         testContext.SetRendererInfo(new RendererInfo("Server", true));
 
         return testContext;
