@@ -103,4 +103,5 @@ once in the [area document](../areas/README.md) of the record's area, and the re
 | [0040](0040-a-scan-item-whose-save-fails-is-saved-again-alone-as-failed.md) | A scan item whose save fails is saved again alone as *failed* | Accepted | 2026-11-15 |
 | [0041](0041-an-aborted-vulnerability-refresh-discards-its-unsaved-changes-before-the-runs-final-save.md) | An aborted vulnerability refresh discards its unsaved changes before the run's final save | Accepted | 2026-11-15 |
 | [0042](0042-a-runtime-container-keeps-its-derived-runtime-finding-while-its-runtime-check-cannot-be-completed.md) | A runtime container keeps its derived runtime finding while its runtime check cannot be completed | Accepted | 2026-11-15 |
+| [0043](0043-runtime-findings-kept-through-a-failed-container-evaluation-move-to-its-new-snapshot.md) | Runtime findings kept through a failed container evaluation move to its new snapshot | Proposed | 2026-11-15 |
 <!-- project:end index -->
