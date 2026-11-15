@@ -635,9 +635,62 @@ public class DockerUpdateGuardOptionsValidatorTests
     }
 
     /// <summary>
+    /// Verify the shipped appsettings pass validation once a connection string is supplied
+    /// </summary>
+    [TestMethod]
+    [TestCategory("AC1")]
+    public void DockerUpdateGuardOptionsValidatorShippedAppSettingsWithConnectionStringSucceeds()
+    {
+        var configuration = CreateShippedConfiguration(true);
+        var options = BindShippedOptions(configuration);
+        var validator = new DockerUpdateGuardOptionsValidator(configuration);
+
+        var validationResult = validator.Validate(Options.DefaultName, options);
+        var failures = string.Join("; ", validationResult.Failures ?? []);
+
+        Assert.IsFalse(validationResult.Failed, $"The shipped appsettings must pass validation with a connection string, failures: {failures}");
+    }
+
+    /// <summary>
+    /// Verify the shipped appsettings configure the local Docker socket instance
+    /// </summary>
+    [TestMethod]
+    [TestCategory("AC2")]
+    public void DockerUpdateGuardOptionsValidatorShippedAppSettingsConfigureLocalDockerSocketInstance()
+    {
+        var options = BindShippedOptions(CreateShippedConfiguration(false));
+
+        Assert.HasCount(1, options.DockerInstances, "The shipped appsettings must configure exactly one Docker instance");
+        Assert.AreEqual("Local Docker", options.DockerInstances[0].Name, "The shipped instance must be named Local Docker");
+        Assert.AreEqual("unix:///var/run/docker.sock", options.DockerInstances[0].BaseUrl, "The shipped instance must use the Docker socket");
+        Assert.IsTrue(options.DockerInstances[0].Enabled, "The shipped instance must be enabled");
+    }
+
+    /// <summary>
+    /// Verify the shipped appsettings without a connection string fail only for the connection string
+    /// </summary>
+    [TestMethod]
+    [TestCategory("AC3")]
+    public void DockerUpdateGuardOptionsValidatorShippedAppSettingsWithoutConnectionStringReturnsOnlyConnectionStringFailure()
+    {
+        var configuration = CreateShippedConfiguration(false);
+        var options = BindShippedOptions(configuration);
+        var validator = new DockerUpdateGuardOptionsValidator(configuration);
+
+        var validationResult = validator.Validate(Options.DefaultName, options);
+        var failures = validationResult.Failures?.ToArray() ?? [];
+
+        Assert.IsTrue(validationResult.Failed, "The shipped appsettings without a connection string must fail validation");
+        Assert.AreSequenceEqual(["'DockerUpdateGuard:ConnectionString' or 'ConnectionStrings:DockerUpdateGuard' must be configured"],
+                                failures,
+                                "The connection string must be the only failure of the shipped appsettings");
+    }
+
+    /// <summary>
     /// Verify a Docker instance without a name is reported naming the section
     /// </summary>
     [TestMethod]
+    [TestCategory("AC4")]
     public void DockerUpdateGuardOptionsValidatorDockerInstanceWithoutNameReturnsFailureNamingSection()
     {
         var validator = CreateAtSignValidator();
@@ -1327,6 +1380,42 @@ public class DockerUpdateGuardOptionsValidatorTests
                           Scanning = scanningOptions,
                           DockerInstances = [],
                       };
+
+        return options;
+    }
+
+    /// <summary>
+    /// Load the shipped host appsettings, optionally with an in-memory connection string
+    /// </summary>
+    /// <param name="withConnectionString">Whether to supply a connection string</param>
+    /// <returns>Configuration root</returns>
+    private static IConfiguration CreateShippedConfiguration(bool withConnectionString)
+    {
+        var builder = new ConfigurationBuilder().SetBasePath(HostProjectDirectory.GetPath())
+                                                .AddJsonFile("appsettings.json", optional: false);
+
+        if (withConnectionString)
+        {
+            builder.AddInMemoryCollection(new Dictionary<string, string?>
+                                          {
+                                              ["ConnectionStrings:DockerUpdateGuard"] = "Host=database;Database=dug",
+                                          });
+        }
+
+        return builder.Build();
+    }
+
+    /// <summary>
+    /// Bind the host options from the configuration
+    /// </summary>
+    /// <param name="configuration">Configuration root</param>
+    /// <returns>Bound options</returns>
+    private static DockerUpdateGuardOptions BindShippedOptions(IConfiguration configuration)
+    {
+        var options = new DockerUpdateGuardOptions();
+
+        configuration.GetSection(DockerUpdateGuardOptions.SectionName)
+                     .Bind(options);
 
         return options;
     }

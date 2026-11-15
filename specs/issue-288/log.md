@@ -10,3 +10,4 @@ are quoted in full.
 | 2026-11-15 08:09 | 2 Challenge skipped | Orchestrator | challenge skipped — tier trivial is never challenged |
 | 2026-11-15 08:09 | 3 Plan security | Security | VERDICT: APPROVED, no findings (opus/medium · 33,815 tokens · 5 tool uses · 29 s · 8 in · 2,802 out · 78,461 cache read · 32,306 cache write · 116,647 weighted) |
 | 2026-11-15 08:10 | 6 Implement | Dev | appsettings.json Name set to Local Docker; docs (areas, README, DOCKER.md) updated (sonnet/medium · 89,731 tokens · 22 tool uses · 28 s · 16 in · 4,228 out · 583,742 cache read · 88,817 cache write · 190,551 weighted) |
+| 2026-11-15 08:20 | 6 Coverage | Tester | 3 tests + HostProjectDirectory helper added; gates pass; Deferred: none (sonnet/medium · 111,629 tokens · 28 tool uses · 594 s · 54 in · 8,531 out · 2,542,752 cache read · 60,206 cache write · 372,242 weighted) |
