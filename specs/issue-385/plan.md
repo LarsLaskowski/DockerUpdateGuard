@@ -178,3 +178,29 @@ stays free of I/O, the single-instance assumption and the layering are unchanged
   The test `RuntimeContainerScanOrchestratorScanAllAsyncPreservesFindingsWhenRegistryEvaluationFailsAsync` checks only
   the database. Decide whether kept findings move to the new snapshot (as decision 0042 does for derived runtime
   findings) or the pages read active findings per container. Found while planning #385."
+
+## Challenge notes
+
+Devil's Advocate, mode `plan`: specs/issue-385/plan.md and docs/decisions/0042-a-runtime-container-keeps-its-derived-runtime-finding-while-its-runtime-check-cannot-be-completed.md
+
+The plan holds up. I found one minor objection and no major ones.
+
+**What I checked against the code**
+- **Root cause.** The plan's root cause and its facts 1–3 match the code:
+  - `/home/user/DockerUpdateGuard/src/DockerUpdateGuard/Images/RuntimeContainerScanOrchestrator.cs:711-716` calls `DeactivateSupersededRuntimeFindingsAsync`. Its query at `:875-884` has no type filter, so the derived finding is deactivated too.
+  - Inspect returning null exits at `:999-1002`, and a failed history becomes `[]` at `:1011-1013`.
+  - A failed feed returns without a finding at `:1066-1071` and `:1108-1113`.
+- **Observed images (fact 4).** The plan's description of how observed images behave is right. `ImageScanOrchestrator.cs:300-303` keeps the findings when the configuration cannot be read, and `:315-320` removes them when no runtime is detected. This matches `docs/areas/base-images.md:121-123`.
+- **Moving the kept finding to the new snapshot is needed.** Kept findings have to move, or no page shows them:
+  - `ApplicationViewService.cs:1587-1592` and `:1908-1912` read derived findings only by the latest snapshot ids.
+  - The snapshot's id is assigned client-side before the derived check runs, because the existing code already uses `findingContext.Snapshot.Id`.
+- **The finding stays about the same image.** Moving the finding cannot attach it to a container now running a different image: a Docker container id is tied to one image. The kept `SubjectImageVersionId` therefore stays consistent with the new snapshot.
+- **Scope.** `DeactivateRemovedRuntimeFindingsAsync` (`:893-906`) still covers derived findings of containers that were removed. There are no other runtime writers of `DerivedBaseRuntimeUpdate`: the only other creator is `ImageScanOrchestrator.cs:389/438`, for observed images.
+- **Test deferral.** Deferring AC3–AC5 is correct: today's code already deactivates and re-creates the finding in each of those cases, so those tests cannot fail before the fix.
+- **Existing tests.** The plan says no existing test changes, and that is right. Only the two single-scan tests assert on a derived finding (`RuntimeContainerScanOrchestratorTests.cs:1771`, `:1902`).
+- **Documentation.** The passages the plan points to are where it says: `docs/areas/update-detection.md:146-148` and `docs/areas/base-images.md:118-131`. The decision index already lists 0042 as Proposed.
+
+**Objections**
+
+1. `minor`: The *Test setup* passage says to use "NSubstitute for … `IDerivedBaseRuntimeDetector` … as in `RuntimeContainerScanOrchestratorScanAllAsyncCreatesDerivedBaseRuntimeFindingAsync`". That test actually uses the real detector (`RuntimeContainerScanOrchestratorTests.cs:1681` `new DerivedBaseRuntimeDetector()`, and the nginx test at `:1813`). This is minor because both setups make the AC tests fail before the fix.
+   Instruction for the Tester: base the new tests on that test's real `DerivedBaseRuntimeDetector`, and give the AC2 history test inspect data whose environment alone lets the detector find the runtime. That makes the test prove that a failed history no longer reaches the detector as an empty history. With a stubbed detector that answers `Arg.Any`, the test would only show that the finding stays active.
