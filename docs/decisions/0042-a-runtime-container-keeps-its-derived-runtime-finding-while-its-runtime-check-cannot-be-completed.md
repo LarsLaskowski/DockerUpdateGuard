@@ -1,6 +1,6 @@
 # 0042: A runtime container keeps its derived runtime finding while its runtime check cannot be completed
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-15
 - **Area:** Base images
 - **Source:** Issue #385
