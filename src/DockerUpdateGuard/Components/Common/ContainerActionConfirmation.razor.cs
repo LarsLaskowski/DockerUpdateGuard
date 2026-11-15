@@ -1,4 +1,5 @@
 using DockerUpdateGuard.Data.Entities;
+using DockerUpdateGuard.UI;
 
 using Microsoft.AspNetCore.Components;
 
@@ -49,5 +50,50 @@ public sealed partial class ContainerActionConfirmation
     [Parameter]
     public bool IsOwnContainer { get; set; }
 
+    /// <summary>
+    /// Display name of the action
+    /// </summary>
+    private string DisplayName => ContainerActionDisplayNames.GetDisplayName(ActionType);
+
+    /// <summary>
+    /// Consequence of the action; empty when it has none worth stating
+    /// </summary>
+    private string Consequence => ActionType switch
+                                  {
+                                      ContainerActionType.StopContainer => "The container stops and stays stopped until it is started again.",
+                                      ContainerActionType.RestartContainer => "The container is unavailable while it restarts.",
+                                      _ => string.Empty,
+                                  };
+
+    /// <summary>
+    /// Verb of the own-container warning
+    /// </summary>
+    private string OwnContainerVerb => ActionType == ContainerActionType.RestartContainer ? "restarts" : "stops";
+
+    /// <summary>
+    /// Color of the confirmation button: destructive for stop and restart
+    /// </summary>
+    private Color ConfirmColor => ActionType is ContainerActionType.StopContainer or ContainerActionType.RestartContainer ? Color.Error : Color.Primary;
+
     #endregion // Properties
+
+    #region Methods
+
+    /// <summary>
+    /// Close the dialog without confirming
+    /// </summary>
+    private void Cancel()
+    {
+        MudDialog.Cancel();
+    }
+
+    /// <summary>
+    /// Close the dialog and confirm the action
+    /// </summary>
+    private void Confirm()
+    {
+        MudDialog.Close(DialogResult.Ok(true));
+    }
+
+    #endregion // Methods
 }

@@ -1,4 +1,7 @@
+using DockerUpdateGuard.Components.Common;
+using DockerUpdateGuard.Data.Entities;
 using DockerUpdateGuard.Infrastructure;
+using DockerUpdateGuard.Portainer.Data;
 using DockerUpdateGuard.Portainer.Interfaces;
 using DockerUpdateGuard.UI;
 
@@ -33,6 +36,26 @@ public sealed partial class RuntimeContainerDetail : IDisposable
     /// Runtime-container detail view data
     /// </summary>
     private RuntimeContainerDetailViewData? _detail;
+
+    /// <summary>
+    /// Availability of container actions; null until the interactive render loaded it
+    /// </summary>
+    private ContainerActionAvailabilityData? _availability;
+
+    /// <summary>
+    /// Instance and container whose availability was requested last
+    /// </summary>
+    private string? _availabilityKey;
+
+    /// <summary>
+    /// Action that is executing for the container
+    /// </summary>
+    private ContainerActionType? _runningAction;
+
+    /// <summary>
+    /// Outcome of the last action
+    /// </summary>
+    private ContainerActionRunResultData? _actionOutcome;
 
     /// <summary>
     /// Current error message
@@ -125,6 +148,23 @@ public sealed partial class RuntimeContainerDetail : IDisposable
                    "FAILED" => Color.Error,
                    "UNSUPPORTED" => Color.Default,
                    _ => Color.Info,
+               };
+    }
+
+    /// <summary>
+    /// Resolve the chip color for a container action run status
+    /// </summary>
+    /// <param name="status">Run status</param>
+    /// <returns>Chip color</returns>
+    private static Color GetActionStatusColor(string status)
+    {
+        return status switch
+               {
+                   nameof(ContainerActionStatus.Succeeded) => Color.Success,
+                   nameof(ContainerActionStatus.Failed) => Color.Error,
+                   nameof(ContainerActionStatus.Running) => Color.Info,
+                   nameof(ContainerActionStatus.Requested) => Color.Warning,
+                   _ => Color.Default,
                };
     }
 
@@ -281,6 +321,153 @@ public sealed partial class RuntimeContainerDetail : IDisposable
         }
     }
 
+    /// <summary>
+    /// Load the availability of container actions
+    /// </summary>
+    /// <returns>Task</returns>
+    private async Task LoadAvailabilityAsync()
+    {
+        try
+        {
+            var availability = await ContainerActionService.GetAvailabilityAsync(DockerInstanceId, ContainerId)
+                                                           .ConfigureAwait(false);
+
+            await InvokeAsync(() =>
+                              {
+                                  _availability = availability;
+                                  StateHasChanged();
+                              }).ConfigureAwait(false);
+        }
+        catch (ObjectDisposedException)
+        {
+            // The page is gone, nothing to show
+        }
+        catch (Exception exception)
+        {
+            Logger.UserActionFailed("LoadContainerActions", exception);
+
+            await InvokeAsync(() =>
+                              {
+                                  _availability = null;
+                                  StateHasChanged();
+                              }).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Start the confirmation of a container action; the click handler returns once the dialog is open, so the page stays responsive while the dialog waits for the user
+    /// </summary>
+    /// <param name="actionType">Action type</param>
+    private void StartAction(ContainerActionType actionType)
+    {
+        _ = ConfirmAndExecuteAsync(actionType);
+    }
+
+    /// <summary>
+    /// Ask for confirmation of a container action and execute it when confirmed
+    /// </summary>
+    /// <param name="actionType">Action type</param>
+    /// <returns>Task</returns>
+    private async Task ConfirmAndExecuteAsync(ContainerActionType actionType)
+    {
+        if (_detail is null || _availability is null || _runningAction is not null)
+        {
+            return;
+        }
+
+        try
+        {
+            await ShowConfirmationAndExecuteAsync(actionType, _detail, _availability).ConfigureAwait(false);
+        }
+        catch (ObjectDisposedException)
+        {
+            // The page is gone while the dialog was open
+        }
+        catch (Exception exception)
+        {
+            Logger.UserActionFailed("ContainerAction", exception);
+
+            await InvokeAsync(() =>
+                              {
+                                  _errorMessage = $"Container action failed: {FailureReason.FromException(exception, null, CancellationToken.None)}";
+                                  StateHasChanged();
+                              }).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Show the confirmation dialog and execute the action when it is confirmed
+    /// </summary>
+    /// <param name="actionType">Action type</param>
+    /// <param name="detail">Detail the dialog names</param>
+    /// <param name="availability">Availability the dialog names</param>
+    /// <returns>Task</returns>
+    private async Task ShowConfirmationAndExecuteAsync(ContainerActionType actionType, RuntimeContainerDetailViewData detail, ContainerActionAvailabilityData availability)
+    {
+        var parameters = new DialogParameters<ContainerActionConfirmation>
+                         {
+                             { dialog => dialog.ActionType, actionType },
+                             { dialog => dialog.ContainerName, detail.ContainerName },
+                             { dialog => dialog.DockerInstanceName, detail.DockerInstanceName },
+                             { dialog => dialog.EndpointId, availability.EndpointId ?? string.Empty },
+                             { dialog => dialog.IsOwnContainer, availability.IsOwnContainer }
+                         };
+        var dialogReference = await DialogService.ShowAsync<ContainerActionConfirmation>(null, parameters)
+                                                 .ConfigureAwait(false);
+        var result = await dialogReference.Result.ConfigureAwait(false);
+
+        if (result is null || result.Canceled)
+        {
+            return;
+        }
+
+        await ExecuteActionAsync(actionType).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Execute a confirmed container action and show its outcome
+    /// </summary>
+    /// <param name="actionType">Action type</param>
+    /// <returns>Task</returns>
+    private async Task ExecuteActionAsync(ContainerActionType actionType)
+    {
+        await InvokeAsync(() =>
+                          {
+                              _runningAction = actionType;
+                              _actionOutcome = null;
+                              _errorMessage = null;
+                              StateHasChanged();
+                          }).ConfigureAwait(false);
+
+        try
+        {
+            var outcome = await ContainerActionService.ExecuteAsync(DockerInstanceId, ContainerId, actionType)
+                                                      .ConfigureAwait(false);
+
+            await InvokeAsync(() => _actionOutcome = outcome).ConfigureAwait(false);
+            await LoadAsync().ConfigureAwait(false);
+            await LoadAvailabilityAsync().ConfigureAwait(false);
+        }
+        catch (ObjectDisposedException)
+        {
+            // The page is gone, the action's run is recorded by the service
+        }
+        catch (Exception exception)
+        {
+            Logger.UserActionFailed("ContainerAction", exception);
+
+            await InvokeAsync(() => _errorMessage = $"Container action failed: {FailureReason.FromException(exception, null, CancellationToken.None)}").ConfigureAwait(false);
+        }
+        finally
+        {
+            await InvokeAsync(() =>
+                              {
+                                  _runningAction = null;
+                                  StateHasChanged();
+                              }).ConfigureAwait(false);
+        }
+    }
+
     #endregion // Methods
 
     #region ComponentBase
@@ -309,6 +496,21 @@ public sealed partial class RuntimeContainerDetail : IDisposable
         }
 
         await LoadAsync().ConfigureAwait(false);
+    }
+
+    /// <inheritdoc/>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // The capability check contacts Portainer, so it runs on the interactive render only, never during prerender
+        var key = $"{DockerInstanceId}/{ContainerId}";
+
+        if (RendererInfo.IsInteractive && _availabilityKey != key)
+        {
+            _availabilityKey = key;
+            _availability = null;
+
+            await LoadAvailabilityAsync().ConfigureAwait(false);
+        }
     }
 
     #endregion // ComponentBase

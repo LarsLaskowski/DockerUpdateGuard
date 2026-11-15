@@ -30,6 +30,11 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
     private const int RuntimeListResourceHistoryCount = 12;
 
     /// <summary>
+    /// Maximum number of container action runs listed in the history of a runtime container
+    /// </summary>
+    private const int ContainerActionHistoryLimit = 20;
+
+    /// <summary>
     /// Resource-history window
     /// </summary>
     private static readonly TimeSpan _resourceHistoryWindow = TimeSpan.FromHours(24);
@@ -1509,6 +1514,36 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
     }
 
     /// <summary>
+    /// Load the most recent container action runs of a container on a Docker instance
+    /// </summary>
+    /// <param name="dockerInstanceId">ID of the Docker instance</param>
+    /// <param name="containerId">Container identifier</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Runs, newest first</returns>
+    private async Task<IReadOnlyList<ContainerActionRunViewData>> GetContainerActionHistoryAsync(Guid dockerInstanceId, string containerId, CancellationToken cancellationToken)
+    {
+        var runs = await _dbContext.ContainerActionRuns.AsNoTracking()
+                                                       .Where(entity => entity.DockerInstanceId == dockerInstanceId
+                                                                        && entity.ContainerSnapshot != null
+                                                                        && entity.ContainerSnapshot.ContainerId == containerId)
+                                                       .OrderByDescending(entity => entity.RequestedAtUtc)
+                                                       .Take(ContainerActionHistoryLimit)
+                                                       .ToListAsync(cancellationToken)
+                                                       .ConfigureAwait(false);
+
+        return runs.Select(entity => new ContainerActionRunViewData
+                                     {
+                                         Action = ContainerActionDisplayNames.GetDisplayName(entity.ActionType),
+                                         Status = entity.Status.ToString(),
+                                         RequestedAtUtc = entity.RequestedAtUtc,
+                                         CompletedAtUtc = entity.CompletedAtUtc,
+                                         RequestedBy = entity.RequestedBy,
+                                         Message = entity.ErrorMessage,
+                                     })
+                   .ToList();
+    }
+
+    /// <summary>
     /// Read the latest runtime scan status for a Docker instance
     /// </summary>
     /// <param name="dockerInstanceId">ID of the Docker instance</param>
@@ -2059,6 +2094,7 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                                                            CurrentResourceUsage = GetCurrentResourceUsage(resourceUsageHistory),
                                                            ResourceUsageHistory = resourceUsageHistory,
                                                            ScanHistory = await GetRuntimeContainerScanHistoryAsync(dockerInstanceId, containerId, cancellationToken).ConfigureAwait(false),
+                                                           ActionHistory = await GetContainerActionHistoryAsync(dockerInstanceId, containerId, cancellationToken).ConfigureAwait(false),
                                                        };
                                             },
                                             cancellationToken).ConfigureAwait(false);

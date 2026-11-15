@@ -16,7 +16,15 @@ public static class ContainerActionDisplayNames
     /// <returns>Display name</returns>
     public static string GetDisplayName(ContainerActionType actionType)
     {
-        throw new InvalidOperationException("Skeleton: not implemented");
+        return actionType switch
+               {
+                   ContainerActionType.StartContainer => "Start",
+                   ContainerActionType.StopContainer => "Stop",
+                   ContainerActionType.RestartContainer => "Restart",
+                   ContainerActionType.RedeployStack => "Redeploy stack",
+                   ContainerActionType.UpdateService => "Update service",
+                   _ => actionType.ToString(),
+               };
     }
 
     #endregion // Static methods

@@ -1,2 +1,22 @@
 <MudDialog>
-</MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">@($"{DisplayName} container?")</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudStack Spacing="2">
+            <MudText>@($"{DisplayName} container '{ContainerName}' on Docker instance '{DockerInstanceName}' through Portainer environment {EndpointId}.")</MudText>
+            @if (string.IsNullOrEmpty(Consequence) == false)
+            {
+                <MudText>@Consequence</MudText>
+            }
+            @if (IsOwnContainer)
+            {
+                <MudAlert Severity="Severity.Warning" Dense="true">@($"This is DockerUpdateGuard's own container: the application {OwnContainerVerb} and this page loses its connection.")</MudAlert>
+            }
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="@ConfirmColor" Variant="Variant.Filled" OnClick="Confirm">@DisplayName</MudButton>
+    </DialogActions>
+</MudDialog>

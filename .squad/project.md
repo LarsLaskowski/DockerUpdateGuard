@@ -30,8 +30,9 @@ limits, patterns or sequences. Paths below are under `src/DockerUpdateGuard/` un
   [Container actions](../docs/areas/container-actions.md#transport-security)
 - **Docker Engine access:** the mounted socket is root-equivalent on the host — `Docker/DockerInstanceClient.cs` —
   [Docker instances](../docs/areas/docker-instances.md#transports)
-- **Container actions:** the container actions executed through Portainer — `Portainer/PortainerClient.cs` (no page
-  calls it today) — [Container actions](../docs/areas/container-actions.md#actions)
+- **Container actions:** the start, stop and restart of containers executed through Portainer and recorded as action runs —
+  `Portainer/PortainerClient.cs`, `Portainer/ContainerActionService.cs`, `Components/Pages/RuntimeContainerDetail.razor` —
+  [Container actions](../docs/areas/container-actions.md#actions)
 - **External process execution:** Trivy's arguments, environment, the untrusted image reference and its JSON output —
   `Vulnerabilities/TrivyVulnerabilityProvider.cs`, `Infrastructure/ProcessRunner.cs` —
   [Vulnerabilities](../docs/areas/vulnerabilities.md#trivy)
