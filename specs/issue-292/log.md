@@ -16,3 +16,4 @@ are quoted in full.
 | 2026-11-15 09:20 | 6 Documentation | Orchestrator | written in 6 Implement |
 | 2026-11-15 09:23 | 7 Gate stamp | Orchestrator | PASS on f015828f2ad3a3bebe684e1c946761a06282f60a (tier standard): Format check pass; Analyzer gate pass; Test with coverage pass; Coverage gate pass; decision-check.py pass; scope-check.py pass · figure-check.py 0 hit(s) |
 | 2026-11-15 09:25 | 8 Review | Reviewer | VERDICT: BLOCKING 2 \| NON-BLOCKING 0 on f015828f2ad3a3bebe684e1c946761a06282f60a; both verbatim doc fixes (scan-engine.md manual-wait sentence, decision 0038 consequence) — AC9 otherwise met (opus/medium · 80,868 tokens · 15 tool uses · 90 s · 28 in · 8,863 out · 737,872 cache read · 73,260 cache write · 345,623 weighted) |
+| 2026-11-15 09:25 | 8 Verbatim | Orchestrator | verbatim: [BLOCKING, verbatim] docs/areas/scan-engine.md:116-117 and docs/decisions/0038-*.md:48-49 |
