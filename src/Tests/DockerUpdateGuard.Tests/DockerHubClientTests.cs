@@ -3228,10 +3228,14 @@ public partial class DockerHubClientTests
     /// <summary>
     /// Verify a Docker Hub error body that stops arriving ends the call as failed with the timed-out reason once the deadline elapses
     /// </summary>
+    /// <param name="operation">Name of the call: Tags or Tag</param>
+    /// <param name="expectedMessage">Expected failure message</param>
     /// <returns>Task</returns>
     [TestMethod]
     [TestCategory("AC1")]
-    public async Task DockerHubClientErrorBodyStalledReturnsTimedOutAsync()
+    [DataRow("Tags", "Tag lookup failed for 'library/nginx': timed out after 30 seconds")]
+    [DataRow("Tag", "Tag metadata lookup failed for 'docker.io/library/nginx:latest': timed out after 30 seconds")]
+    public async Task DockerHubClientErrorBodyStalledReturnsTimedOutAsync(string operation, string expectedMessage)
     {
         var imageReference = new ImageReference
                              {
@@ -3240,12 +3244,9 @@ public partial class DockerHubClientTests
                                  Tag = "latest",
                              };
 
-        await AssertStalledBodyTimesOutAsync(HttpStatusCode.BadRequest,
-                                             client => RunStalledCallAsync(client, "Tag", imageReference),
-                                             $"Tag metadata lookup failed for '{imageReference.FullReference}': timed out after 30 seconds").ConfigureAwait(false);
-        await AssertStalledBodyTimesOutAsync(HttpStatusCode.BadRequest,
-                                             client => RunStalledCallAsync(client, "Tags", imageReference),
-                                             "Tag lookup failed for 'library/nginx': timed out after 30 seconds").ConfigureAwait(false);
+        Assert.AreEqual("docker.io/library/nginx:latest", imageReference.FullReference, "The test input must match the expected message");
+
+        await AssertStalledBodyTimesOutAsync(HttpStatusCode.BadRequest, client => RunStalledCallAsync(client, operation, imageReference), expectedMessage).ConfigureAwait(false);
     }
 
     /// <summary>

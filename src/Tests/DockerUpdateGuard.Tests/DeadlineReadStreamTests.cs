@@ -8,6 +8,29 @@ namespace DockerUpdateGuard.Tests;
 [TestClass]
 public class DeadlineReadStreamTests
 {
+    #region Properties
+
+    /// <summary>
+    /// Test context
+    /// </summary>
+    public TestContext TestContext { get; set; } = null!;
+
+    #endregion // Properties
+
+    #region Static methods
+
+    /// <summary>
+    /// Create a stream over a text body
+    /// </summary>
+    /// <param name="text">Body text</param>
+    /// <returns>Stream</returns>
+    private static DeadlineReadStream CreateStream(string text)
+    {
+        return new DeadlineReadStream(new MemoryStream(System.Text.Encoding.UTF8.GetBytes(text)), new StringContent(text), new CancellationTokenSource());
+    }
+
+    #endregion // Static methods
+
     #region Methods
 
     /// <summary>
@@ -113,24 +136,5 @@ public class DeadlineReadStreamTests
         Assert.ThrowsExactly<ObjectDisposedException>(() => _ = deadline.Token.WaitHandle, "The deadline source must be disposed");
     }
 
-    /// <summary>
-    /// Create a stream over a text body
-    /// </summary>
-    /// <param name="text">Body text</param>
-    /// <returns>Stream</returns>
-    private static DeadlineReadStream CreateStream(string text)
-    {
-        return new DeadlineReadStream(new MemoryStream(System.Text.Encoding.UTF8.GetBytes(text)), new StringContent(text), new CancellationTokenSource());
-    }
-
     #endregion // Methods
-
-    #region Properties
-
-    /// <summary>
-    /// Test context
-    /// </summary>
-    public TestContext TestContext { get; set; } = null!;
-
-    #endregion // Properties
 }
