@@ -53,7 +53,8 @@ operator's logs rely on it; each integration area states only what it adds.
 - The cut is decided on the text as received, before the replacement, so `…` follows exactly when the received text
   was longer than the limit.
 - The message length is bounded everywhere; the read itself is bounded (about 8 KiB) only for the streamed OCI and
-  Docker Hub responses, while Docker Engine and feed responses are read whole first.
+  Docker Hub responses, which are also bounded in time by the request timeout (a stalled read ends *failed* with
+  `timed out after <n> seconds`), while Docker Engine and feed responses are read whole first.
 - After a failed OCI or Docker Hub token exchange the excerpt is of the token failure message, which names the token
   request URI (OCI) or the Docker Hub user name before the token endpoint's own body excerpt, so that body may be cut
   away.
@@ -125,7 +126,7 @@ which stay until they are written again.
 - When the retries are used up the last response is returned to the caller, or the last error is raised.
 - A request's timeout, set by its integration ([Registries](registries.md#request-timeout),
   [Container actions](container-actions.md)), covers all its retries and waits; a request that runs out of time is not
-  retried.
+  retried. For the Docker Hub and OCI registry clients the timeout also covers reading the response body.
 - Each retry is logged as a warning with the method, the URL without its user info and query, the status or error, the
   attempt number and the wait. A transient outcome that is not retried because the method is not idempotent is logged
   as a debug entry (3502) with the method, the masked URL and the status or error name. A 429 that is not retried

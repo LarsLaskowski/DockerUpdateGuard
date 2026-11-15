@@ -1,6 +1,6 @@
 # 0039: A registry request and the read of its response body share one deadline
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-15
 - **Area:** Registries
 - **Source:** Issue #346

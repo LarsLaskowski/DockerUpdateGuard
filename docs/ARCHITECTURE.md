@@ -91,7 +91,8 @@ composition root, which in order:
    `AddDockerUpdateGuardTelemetry`.
 4. Registers the typed/named `HttpClient`s (Docker Hub, generic OCI
    registry, .NET/nginx release metadata, Portainer, Docker Scout) with
-   `TransientHttpRetryHandler` as their outbound message handler.
+   `TransientHttpRetryHandler` as their outbound message handler; the Docker Hub and OCI registry clients also
+   send through `RequestDeadlineHandler`, outside the retry handler.
 5. Registers the integration clients, domain/orchestration services, the
    UI facade (`IApplicationViewService`), and all 7 background jobs
    (`AddHostedService<T>()`) — see §6 to §8.
@@ -253,6 +254,10 @@ typed/named `HttpClient`s registered in the composition root (§3). The
 Docker Engine client creates its `HttpClient`s without
 it. The retry policy is specified in
 [Integration failures](areas/integration-failures.md#retry-of-transient-http-failures).
+`RequestDeadlineHandler` (`Infrastructure\`) wraps the Docker Hub and OCI registry clients outside it and bounds a
+request together with the read of its response body by `RequestTimeoutSeconds`
+([0039](decisions/0039-a-registry-request-and-the-read-of-its-response-body-share-one-deadline.md),
+[Registries](areas/registries.md#request-timeout)).
 The singleton `LoginRetryAfterRegistry` (`Infrastructure\`) remembers, per login URL and user name, the window a 429's
 `Retry-After` named, so the Docker Hub client, the Docker Scout provider and the Portainer client send no login inside
 it ([Integration failures](areas/integration-failures.md#logins-inside-a-retry-after-window),
