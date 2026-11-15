@@ -2557,6 +2557,69 @@ public class RuntimeContainerScanOrchestratorTests
     }
 
     /// <summary>
+    /// Verify scans of different Docker instances may run at the same time
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC2")]
+    public async Task RuntimeContainerScanOrchestratorScanAllAsyncConcurrentScansOfDifferentInstancesMayOverlapAsync()
+    {
+        using (var firstDatabase = new SqliteTestDatabase())
+        {
+            using (var secondDatabase = new SqliteTestDatabase())
+            {
+                var firstContext = firstDatabase.CreateDbContext();
+
+                await using (firstContext.ConfigureAwait(false))
+                {
+                    var secondContext = secondDatabase.CreateDbContext();
+
+                    await using (secondContext.ConfigureAwait(false))
+                    {
+                        var discoveryStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                        var releaseDiscovery = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                        var dockerInstanceClient = CreateGatedDockerInstanceClient(discoveryStarted, releaseDiscovery.Task);
+                        var registryMetadataService = Substitute.For<IRegistryMetadataService>();
+                        var firstOrchestrator = CreateFailureOrchestrator(firstContext, dockerInstanceClient, registryMetadataService, new TestLogger<RuntimeContainerScanOrchestrator>());
+                        var secondOrchestrator = CreateFailureOrchestrator(secondContext, dockerInstanceClient, registryMetadataService, new TestLogger<RuntimeContainerScanOrchestrator>());
+
+                        var firstRun = firstOrchestrator.ScanAllAsync(ScanTriggerSource.Scheduled, TestContext.CancellationToken);
+
+                        await discoveryStarted.Task.WaitAsync(TestContext.CancellationToken)
+                                                   .ConfigureAwait(false);
+
+                        var firstInstanceId = await ReadInstanceIdAsync(firstDatabase, TestContext.CancellationToken).ConfigureAwait(false);
+                        var secondRun = secondOrchestrator.ScanAllAsync(ScanTriggerSource.Manual, TestContext.CancellationToken);
+
+                        await secondRun.WaitAsync(TestContext.CancellationToken)
+                                       .ConfigureAwait(false);
+
+                        var secondInstanceId = await ReadInstanceIdAsync(secondDatabase, TestContext.CancellationToken).ConfigureAwait(false);
+
+                        Assert.AreNotEqual(firstInstanceId, secondInstanceId, "The two runs must scan different Docker instances");
+                        Assert.IsFalse(firstRun.IsCompleted, "The first scan must still run while the scan of the other instance has finished");
+                        Assert.AreEqual(1,
+                                        RuntimeContainerScanOrchestrator.DockerInstanceScanLocks.GetReferenceCount(firstInstanceId),
+                                        "Only the first scan may hold a reference of its instance");
+                        Assert.AreEqual(1,
+                                        await CountRuntimeScanRunsAsync(secondDatabase, TestContext.CancellationToken).ConfigureAwait(false),
+                                        "The scan of the other instance must have run in full while the first one was running");
+
+                        releaseDiscovery.TrySetResult();
+
+                        await firstRun.WaitAsync(TestContext.CancellationToken)
+                                      .ConfigureAwait(false);
+
+                        Assert.AreEqual(0,
+                                        RuntimeContainerScanOrchestrator.DockerInstanceScanLocks.GetReferenceCount(firstInstanceId),
+                                        "No reference of the first instance may remain once its scan has finished");
+                    }
+                }
+            }
+        }
+    }
+
+    /// <summary>
     /// Create a Docker instance client whose first container discovery signals and waits for a release
     /// </summary>
     /// <param name="discoveryStarted">Completed when the first discovery has started</param>

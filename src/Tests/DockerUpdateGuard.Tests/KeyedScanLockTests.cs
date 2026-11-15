@@ -134,5 +134,18 @@ public class KeyedScanLockTests
         Assert.AreEqual(0, scanLock.Count, "No entry may remain once both keys are released");
     }
 
+    /// <summary>
+    /// Verify releasing a key without an entry is rejected
+    /// </summary>
+    [TestMethod]
+    [TestCategory("AC7")]
+    public void KeyedScanLockReleaseWithoutEntryThrowsInvalidOperationException()
+    {
+        var scanLock = new KeyedScanLock();
+
+        Assert.ThrowsExactly<InvalidOperationException>(() => scanLock.Release(Guid.NewGuid()), "Releasing a key that is neither held nor awaited must be rejected");
+        Assert.AreEqual(0, scanLock.Count, "A rejected release must not create an entry");
+    }
+
     #endregion // Methods
 }
