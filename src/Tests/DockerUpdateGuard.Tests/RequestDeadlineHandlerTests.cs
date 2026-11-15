@@ -52,14 +52,14 @@ public class RequestDeadlineHandlerTests
     [TestCategory("AC3")]
     public async Task RequestDeadlineHandlerResponseKeepsBodyAndContentHeadersAsync()
     {
-        const string Body = """{ "name": "acme/api", "tags": [ "1.0" ] }""";
+        const string body = """{ "name": "acme/api", "tags": [ "1.0" ] }""";
 
         var recorder = new DeadlineTimerRecorder();
-        var bodyBytes = Encoding.UTF8.GetBytes(Body);
+        var bodyBytes = Encoding.UTF8.GetBytes(body);
 
         using var inner = new DelegateHttpMessageHandler(_ =>
                                                          {
-                                                             var content = new StringContent(Body, Encoding.UTF8, "application/json");
+                                                             var content = new StringContent(body, Encoding.UTF8, "application/json");
 
                                                              content.Headers.ContentLanguage.Add("de");
 
@@ -73,10 +73,10 @@ public class RequestDeadlineHandlerTests
 
         var bytes = await response.Content.ReadAsByteArrayAsync(CancellationToken.None).ConfigureAwait(false);
 
-        CollectionAssert.AreEqual(bodyBytes, bytes, "A body read that ends in time must return the bytes of the original body");
+        Assert.AreSequenceEqual(bodyBytes, bytes, "A body read that ends in time must return the bytes of the original body");
         Assert.AreEqual("application/json; charset=utf-8", response.Content.Headers.ContentType?.ToString(), "The content type must keep its parameters");
         Assert.AreEqual(bodyBytes.Length, response.Content.Headers.ContentLength, "The content length must stay the one of the original content");
-        CollectionAssert.AreEqual(new[] { "de" }, response.Content.Headers.ContentLanguage.ToArray(), "Every other content header must be copied too");
+        Assert.AreEqual("de", Assert.ContainsSingle(response.Content.Headers.ContentLanguage, "Every other content header must be copied too"), "The content language must be copied unchanged");
     }
 
     /// <summary>
