@@ -260,6 +260,51 @@ public class ServiceCollectionExtensionsTests
     }
 
     /// <summary>
+    /// Verify the Docker Hub and OCI clients send through the request deadline handler with the configured timeout, outside the retry handler
+    /// </summary>
+    /// <param name="clientName">Name of the typed client</param>
+    [TestMethod]
+    [TestCategory("AC6")]
+    [DataRow(nameof(DockerHubClient))]
+    [DataRow(nameof(OciRegistryClient))]
+    public void ServiceCollectionExtensionsRegistryClientsSendThroughRequestDeadlineHandler(string clientName)
+    {
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+                                                                             {
+                                                                                 ["DockerUpdateGuard:ConnectionString"] = "Host=database;Database=dug;Username=test;Password=test",
+                                                                                 ["DockerUpdateGuard:DockerHub:RequestTimeoutSeconds"] = "42",
+                                                                                 ["Telemetry:EnableLogging"] = "true",
+                                                                                 ["Telemetry:EnableMetrics"] = "false",
+                                                                                 ["Telemetry:EnableTracing"] = "false",
+                                                                             })
+                                                      .Build();
+        var services = new ServiceCollection();
+
+        services.AddDockerUpdateGuardHost(configuration);
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        var clientOptions = serviceProvider.GetRequiredService<IOptionsMonitor<HttpClientFactoryOptions>>()
+                                           .Get(clientName);
+        var builder = serviceProvider.GetRequiredService<HttpMessageHandlerBuilder>();
+
+        foreach (var action in clientOptions.HttpMessageHandlerBuilderActions)
+        {
+            action(builder);
+        }
+
+        var deadlineIndex = builder.AdditionalHandlers.ToList().FindIndex(handler => handler is RequestDeadlineHandler);
+        var retryIndex = builder.AdditionalHandlers.ToList().FindIndex(handler => handler is TransientHttpRetryHandler);
+
+        Assert.IsGreaterThanOrEqualTo(0, deadlineIndex, $"The {clientName} client must send through the request deadline handler");
+        Assert.IsGreaterThanOrEqualTo(0, retryIndex, $"The {clientName} client must keep the transient HTTP retry handler");
+        Assert.IsLessThan(retryIndex, deadlineIndex, "The request deadline handler must sit before (outside) the retry handler");
+        Assert.AreEqual(TimeSpan.FromSeconds(42),
+                        ((RequestDeadlineHandler)builder.AdditionalHandlers[deadlineIndex]).RequestTimeout,
+                        "The deadline must be the configured DockerHub request timeout");
+    }
+
+    /// <summary>
     /// Verify the container action service is one singleton shared by all scopes, so its in-progress guard spans every circuit
     /// </summary>
     [TestMethod]

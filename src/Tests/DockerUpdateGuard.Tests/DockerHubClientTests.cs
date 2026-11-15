@@ -3202,6 +3202,115 @@ public partial class DockerHubClientTests
     }
 
     /// <summary>
+    /// Verify a Docker Hub JSON body that stops arriving ends the call as failed with the timed-out reason once the deadline elapses
+    /// </summary>
+    /// <param name="operation">Name of the call: Tags or Tag</param>
+    /// <param name="expectedMessage">Expected failure message</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC1")]
+    [DataRow("Tags", "Tag lookup failed for 'library/nginx': timed out after 30 seconds")]
+    [DataRow("Tag", "Tag metadata lookup failed for 'docker.io/library/nginx:latest': timed out after 30 seconds")]
+    public async Task DockerHubClientTagListingBodyStalledReturnsTimedOutAsync(string operation, string expectedMessage)
+    {
+        var imageReference = new ImageReference
+                             {
+                                 Registry = "docker.io",
+                                 Repository = "library/nginx",
+                                 Tag = "latest",
+                             };
+
+        Assert.AreEqual("docker.io/library/nginx:latest", imageReference.FullReference, "The test input must match the expected message");
+
+        await AssertStalledBodyTimesOutAsync(HttpStatusCode.OK, client => RunStalledCallAsync(client, operation, imageReference), expectedMessage).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Verify a Docker Hub error body that stops arriving ends the call as failed with the timed-out reason once the deadline elapses
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC1")]
+    public async Task DockerHubClientErrorBodyStalledReturnsTimedOutAsync()
+    {
+        var imageReference = new ImageReference
+                             {
+                                 Registry = "docker.io",
+                                 Repository = "library/nginx",
+                                 Tag = "latest",
+                             };
+
+        await AssertStalledBodyTimesOutAsync(HttpStatusCode.BadRequest,
+                                             client => RunStalledCallAsync(client, "Tag", imageReference),
+                                             $"Tag metadata lookup failed for '{imageReference.FullReference}': timed out after 30 seconds").ConfigureAwait(false);
+        await AssertStalledBodyTimesOutAsync(HttpStatusCode.BadRequest,
+                                             client => RunStalledCallAsync(client, "Tags", imageReference),
+                                             "Tag lookup failed for 'library/nginx': timed out after 30 seconds").ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Run one Docker Hub call by name
+    /// </summary>
+    /// <param name="client">Client under test</param>
+    /// <param name="operation">Name of the call: Tags or Tag</param>
+    /// <param name="imageReference">Image the call is about</param>
+    /// <returns>Status and message of the result</returns>
+    private static async Task<(ExternalOperationStatus Status, string? Message)> RunStalledCallAsync(DockerHubClient client, string operation, ImageReference imageReference)
+    {
+        if (operation == "Tags")
+        {
+            var tags = await client.GetTagsAsync(imageReference.Registry, imageReference.Repository, cancellationToken: CancellationToken.None).ConfigureAwait(false);
+
+            return (tags.Status, tags.Message);
+        }
+
+        var tag = await client.GetTagAsync(imageReference, "linux", "amd64", CancellationToken.None).ConfigureAwait(false);
+
+        return (tag.Status, tag.Message);
+    }
+
+    /// <summary>
+    /// Assert a call whose non-login response body stalls is answered as failed with the timed-out reason after the deadline of that request fires
+    /// </summary>
+    /// <param name="stalledStatus">Status of the response with the stalled body</param>
+    /// <param name="call">Call under test</param>
+    /// <param name="expectedMessage">Expected failure message</param>
+    /// <returns>Task</returns>
+    private static async Task AssertStalledBodyTimesOutAsync(HttpStatusCode stalledStatus,
+                                                             Func<DockerHubClient, Task<(ExternalOperationStatus Status, string? Message)>> call,
+                                                             string expectedMessage)
+    {
+        var recorder = new DeadlineTimerRecorder();
+        var stalledSent = false;
+
+        using var handler = new DelegateHttpMessageHandler(request =>
+                                                           {
+                                                               if (request.RequestUri!.AbsolutePath.EndsWith("/users/login", StringComparison.Ordinal))
+                                                               {
+                                                                   return CreateJsonResponse(LoginResponseJson);
+                                                               }
+
+                                                               stalledSent = true;
+
+                                                               return DeadlineTimerRecorder.CreateStalledResponse(stalledStatus);
+                                                           });
+        using var httpClient = recorder.CreateHttpClient(handler, new Uri("https://hub.docker.com/"));
+        var client = CreateClient(httpClient);
+        var stalled = call(client);
+
+        Assert.IsTrue(stalledSent, "The call must have sent the request whose body stalls");
+        Assert.IsFalse(stalled.IsCompleted, "The call must still be waiting for the stalled body");
+        Assert.IsGreaterThan(0, recorder.TimerCount, "The request must arm a deadline");
+
+        recorder.FireLast();
+
+        var result = await stalled.ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Failed, result.Status, "A body stopped by the deadline must be answered as failed");
+        Assert.AreEqual(expectedMessage, result.Message, "A body stopped by the deadline must report the fixed timed-out reason with the request timeout");
+    }
+
+    /// <summary>
     /// Verify every Docker Hub call answers a transport error as failed with the connection-failed reason and logs it once
     /// </summary>
     /// <param name="operation">Name of the call</param>
