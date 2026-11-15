@@ -545,10 +545,11 @@ public class RuntimeContainerScanOrchestratorTests
     }
 
     /// <summary>
-    /// Verify a transient registry evaluation failure does not deactivate existing runtime findings
+    /// Verify a transient registry evaluation failure keeps existing runtime findings active on the snapshot of the failed scan
     /// </summary>
     /// <returns>Task</returns>
     [TestMethod]
+    [TestCategory("AC1")]
     public async Task RuntimeContainerScanOrchestratorScanAllAsyncPreservesFindingsWhenRegistryEvaluationFailsAsync()
     {
         using (var database = new SqliteTestDatabase())
@@ -640,24 +641,56 @@ public class RuntimeContainerScanOrchestratorTests
 
                 await orchestrator.ScanAllAsync(ScanTriggerSource.Scheduled, CancellationToken.None)
                                   .ConfigureAwait(false);
+
+                dbContext.ChangeTracker.Clear();
+
+                var firstSnapshot = await dbContext.ContainerSnapshots.SingleAsync(TestContext.CancellationToken)
+                                                                      .ConfigureAwait(false);
+                var firstFindings = await dbContext.UpdateFindings.ToListAsync(TestContext.CancellationToken)
+                                                                  .ConfigureAwait(false);
+                var firstCandidateCount = await dbContext.TagCandidates.CountAsync(TestContext.CancellationToken)
+                                                                       .ConfigureAwait(false);
+
+                dbContext.ChangeTracker.Clear();
+
                 await orchestrator.ScanAllAsync(ScanTriggerSource.Scheduled, CancellationToken.None)
                                   .ConfigureAwait(false);
 
                 dbContext.ChangeTracker.Clear();
 
+                var secondSnapshot = await dbContext.ContainerSnapshots.SingleAsync(entity => entity.Id != firstSnapshot.Id, TestContext.CancellationToken)
+                                                                       .ConfigureAwait(false);
                 var findings = await dbContext.UpdateFindings.ToListAsync(TestContext.CancellationToken)
                                                              .ConfigureAwait(false);
+                var secondCandidateCount = await dbContext.TagCandidates.CountAsync(TestContext.CancellationToken)
+                                                                        .ConfigureAwait(false);
 
+                Assert.HasCount(1,
+                                firstFindings,
+                                "The first scan must create the runtime finding");
+                Assert.IsGreaterThan(0,
+                                     firstCandidateCount,
+                                     "The first scan must create tag candidates for the runtime finding");
                 Assert.HasCount(1,
                                 findings,
                                 "A transient registry evaluation failure must not create or remove runtime findings");
+                Assert.AreEqual(firstFindings[0].Id,
+                                findings[0].Id,
+                                "A transient registry evaluation failure must keep the previous finding");
                 Assert.IsTrue(findings[0].IsActive,
                               "A transient registry evaluation failure must keep the existing runtime finding active instead of flickering it away");
+                Assert.IsNull(findings[0].ResolvedAtUtc,
+                              "A transient registry evaluation failure must leave the kept finding without a resolution time");
+                Assert.AreEqual(secondSnapshot.Id,
+                                findings[0].ContainerSnapshotId,
+                                "The kept finding must move to the snapshot recorded by the failed scan");
+                Assert.AreEqual(firstCandidateCount,
+                                secondCandidateCount,
+                                "The kept finding must keep its tag candidates");
             }
         }
     }
 
-    /// <summary>
     /// Verify unsupported registry evaluations are logged and produce a partial runtime scan
     /// </summary>
     /// <returns>Task</returns>
@@ -2943,6 +2976,105 @@ public class RuntimeContainerScanOrchestratorTests
     }
 
     /// <summary>
+    /// Verify a failed tag lookup in a later scan moves the previous derived finding to the new snapshot
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC2")]
+    public async Task RuntimeContainerScanOrchestratorScanAllAsyncMovesDerivedFindingWhenTagLookupFailedAsync()
+    {
+        var outcome = await RunTwoScansAsync("DOTNET_VERSION=9.0.13",
+                                             CreateInspectResult("DOTNET_VERSION=9.0.13"),
+                                             _ => Task.FromResult(CreateHistoryResult()),
+                                             CreateDotNetFeedResult(),
+                                             CreateNginxFeedResult(),
+                                             CreateTagsWithNewerVersion(),
+                                             _ => Task.FromResult(ExternalOperationResult.Failed<IReadOnlyList<DockerHubTagData>>("The registry is temporarily unavailable"))).ConfigureAwait(false);
+
+        AssertDerivedFindingKept((outcome.FirstDerivedFindingId, outcome.SecondSnapshotId, outcome.Findings), "a failed tag lookup");
+    }
+
+    /// <summary>
+    /// Verify a processing error after the snapshot was recorded moves every previous finding to the failed snapshot
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC3")]
+    public async Task RuntimeContainerScanOrchestratorScanAllAsyncMovesFindingsWhenContainerProcessingThrowsAsync()
+    {
+        var outcome = await RunTwoScansAsync("DOTNET_VERSION=9.0.13",
+                                             CreateInspectResult("DOTNET_VERSION=9.0.13"),
+                                             _ => Task.FromResult(CreateHistoryResult()),
+                                             CreateDotNetFeedResult(),
+                                             CreateNginxFeedResult(),
+                                             CreateTagsWithNewerVersion(),
+                                             _ => Task.FromException<ExternalOperationResult<IReadOnlyList<DockerHubTagData>>>(new InvalidOperationException("Tag lookup exploded"))).ConfigureAwait(false);
+
+        Assert.IsGreaterThan(1,
+                             outcome.FirstFindings.Count,
+                             "The first scan must create update findings and the derived finding");
+        Assert.HasCount(outcome.FirstFindings.Count,
+                        outcome.Findings,
+                        "A processing error must neither create nor remove findings");
+        Assert.AreEqual(UpdateAssessmentStatus.Failed,
+                        outcome.SecondAssessmentStatus,
+                        "The snapshot of the failed scan must be assessed as failed");
+
+        foreach (var previous in outcome.FirstFindings)
+        {
+            var finding = outcome.Findings.Single(entity => entity.Id == previous.Id);
+
+            Assert.IsTrue(finding.IsActive, $"The previous {previous.Type} finding must stay active after a processing error");
+            Assert.IsNull(finding.ResolvedAtUtc, $"The previous {previous.Type} finding must have no resolution time after a processing error");
+            Assert.AreEqual(outcome.SecondSnapshotId,
+                            finding.ContainerSnapshotId,
+                            $"The previous {previous.Type} finding must move to the failed snapshot after a processing error");
+            Assert.AreEqual(outcome.FirstCandidateCounts.GetValueOrDefault(previous.Id),
+                            outcome.CandidateCounts.GetValueOrDefault(previous.Id),
+                            $"The previous {previous.Type} finding must keep its tag candidates after a processing error");
+        }
+    }
+
+    /// <summary>
+    /// Verify a processing error in the runtime check moves only the findings still active to the new snapshot
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC4")]
+    public async Task RuntimeContainerScanOrchestratorScanAllAsyncMovesOnlyActiveFindingsWhenRuntimeCheckThrowsAsync()
+    {
+        var outcome = await RunTwoScansAsync("DOTNET_VERSION=9.0.13",
+                                             CreateInspectResult("DOTNET_VERSION=9.0.13"),
+                                             _ => Task.FromException<ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>>(new InvalidOperationException("History exploded")),
+                                             CreateDotNetFeedResult(),
+                                             CreateNginxFeedResult(),
+                                             CreateTagsWithNewerVersion(),
+                                             null).ConfigureAwait(false);
+        var previousUpdate = outcome.FirstFindings.Single(entity => entity.Type == UpdateFindingType.RuntimeImageUpdate);
+        var updateFindings = outcome.Findings.Where(entity => entity.Type != UpdateFindingType.DerivedBaseRuntimeUpdate)
+                                             .ToList();
+        var activeUpdates = updateFindings.Where(entity => entity.IsActive)
+                                          .ToList();
+        var resolvedUpdate = updateFindings.Single(entity => entity.Id == previousUpdate.Id);
+
+        Assert.AreEqual(UpdateAssessmentStatus.Failed,
+                        outcome.SecondAssessmentStatus,
+                        "The snapshot of the scan whose runtime check failed must be assessed as failed");
+        Assert.IsFalse(resolvedUpdate.IsActive, "The previous update finding must be inactive after the second evaluation replaced it");
+        Assert.IsNotNull(resolvedUpdate.ResolvedAtUtc, "The previous update finding must have a resolution time");
+        Assert.AreEqual(outcome.FirstSnapshotId,
+                        resolvedUpdate.ContainerSnapshotId,
+                        "A finding the failed processing deactivated must stay on the first snapshot");
+        Assert.HasCount(1,
+                        activeUpdates,
+                        "The update finding of the second evaluation must be the only active update finding");
+        Assert.AreEqual(outcome.SecondSnapshotId,
+                        activeUpdates[0].ContainerSnapshotId,
+                        "The update finding of the second evaluation must reference the second snapshot");
+        AssertDerivedFindingKept((outcome.FirstDerivedFindingId, outcome.SecondSnapshotId, outcome.Findings), "a failed runtime check");
+    }
+
+    /// <summary>
     /// Create a Docker instance client whose first container discovery signals and waits for a release
     /// </summary>
     /// <param name="discoveryStarted">Completed when the first discovery has started</param>
@@ -3061,6 +3193,28 @@ public class RuntimeContainerScanOrchestratorTests
     }
 
     /// <summary>
+    /// Create registry tags with the current tag and a newer one, so a scan creates a runtime image update
+    /// </summary>
+    /// <returns>Tags</returns>
+    private static IReadOnlyList<DockerHubTagData> CreateTagsWithNewerVersion()
+    {
+        return [
+                   new DockerHubTagData
+                   {
+                       Tag = "1.1.0",
+                       Digest = "sha256:newer",
+                       PublishedAtUtc = new DateTimeOffset(2025, 06, 02, 12, 00, 00, TimeSpan.Zero),
+                   },
+                   new DockerHubTagData
+                   {
+                       Tag = "1.0.0",
+                       Digest = "sha256:current",
+                       PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
+                   },
+               ];
+    }
+
+    /// <summary>
     /// Create a successful image inspect answer with one environment variable
     /// </summary>
     /// <param name="environmentVariable">Environment variable the detector reads the runtime from</param>
@@ -3174,6 +3328,37 @@ public class RuntimeContainerScanOrchestratorTests
                                                                                                                                     ExternalOperationResult<NginxChannelReleaseData> secondNginx,
                                                                                                                                     IReadOnlyList<DockerHubTagData>? registryTags = null)
     {
+        var outcome = await RunTwoScansAsync(environmentVariable,
+                                             secondInspect,
+                                             _ => Task.FromResult(secondHistory),
+                                             secondDotNet,
+                                             secondNginx,
+                                             registryTags,
+                                             null).ConfigureAwait(false);
+
+        return (outcome.FirstDerivedFindingId, outcome.SecondSnapshotId, outcome.Findings);
+    }
+
+    /// <summary>
+    /// Scan one container twice with the real derived runtime detector: the first scan reads every input and
+    /// finds an outdated runtime, the second scan answers with the given inputs
+    /// </summary>
+    /// <param name="environmentVariable">Environment variable the detector reads the runtime from</param>
+    /// <param name="secondInspect">Image inspect answer of the second scan</param>
+    /// <param name="secondHistory">Image history call of the second scan</param>
+    /// <param name="secondDotNet">.NET release feed answer of the second scan</param>
+    /// <param name="secondNginx">Nginx release feed answer of the second scan</param>
+    /// <param name="registryTags">Registry tags both scans read; the current tag only when omitted</param>
+    /// <param name="secondTags">Tag lookup call of the second scan; the same tags as the first scan when omitted</param>
+    /// <returns>State of the first scan and the outcome of the second</returns>
+    private async Task<TwoScanOutcome> RunTwoScansAsync(string environmentVariable,
+                                                        ExternalOperationResult<DockerImageInspectData> secondInspect,
+                                                        Func<NSubstitute.Core.CallInfo, Task<ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>>> secondHistory,
+                                                        ExternalOperationResult<DotNetChannelReleaseData> secondDotNet,
+                                                        ExternalOperationResult<NginxChannelReleaseData> secondNginx,
+                                                        IReadOnlyList<DockerHubTagData>? registryTags,
+                                                        Func<NSubstitute.Core.CallInfo, Task<ExternalOperationResult<IReadOnlyList<DockerHubTagData>>>>? secondTags)
+    {
         using (var database = new SqliteTestDatabase())
         {
             var dbContext = database.CreateDbContext();
@@ -3221,7 +3406,7 @@ public class RuntimeContainerScanOrchestratorTests
                 dockerInstanceClient.InspectImageAsync(Arg.Any<DockerInstanceOptions>(), "sha256:local-image", Arg.Any<CancellationToken>())
                                     .Returns(CreateInspectResult(environmentVariable), secondInspect);
                 dockerInstanceClient.GetImageHistoryAsync(Arg.Any<DockerInstanceOptions>(), "sha256:local-image", Arg.Any<CancellationToken>())
-                                    .Returns(CreateHistoryResult(), secondHistory);
+                                    .Returns(_ => Task.FromResult(CreateHistoryResult()), secondHistory);
                 dotNetReleaseMetadataService.GetChannelReleaseAsync("9.0", Arg.Any<CancellationToken>())
                                             .Returns(CreateDotNetFeedResult(), secondDotNet);
                 nginxReleaseMetadataService.GetChannelReleaseAsync("1.29", Arg.Any<CancellationToken>())
@@ -3232,7 +3417,8 @@ public class RuntimeContainerScanOrchestratorTests
                                                      Arg.Any<string?>(),
                                                      Arg.Any<RegistryTagQueryOptions?>(),
                                                      Arg.Any<CancellationToken>())
-                                       .Returns(ExternalOperationResult.Succeeded<IReadOnlyList<DockerHubTagData>>(registryTags ?? [currentTag]));
+                                       .Returns(_ => Task.FromResult(ExternalOperationResult.Succeeded<IReadOnlyList<DockerHubTagData>>(registryTags ?? [currentTag])),
+                                                secondTags ?? (_ => Task.FromResult(ExternalOperationResult.Succeeded<IReadOnlyList<DockerHubTagData>>(registryTags ?? [currentTag]))));
                 registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), cancellationToken: Arg.Any<CancellationToken>())
                                        .Returns(ExternalOperationResult.Succeeded<DockerHubTagData>(currentTag));
 
@@ -3253,10 +3439,17 @@ public class RuntimeContainerScanOrchestratorTests
                 await orchestrator.ScanAllAsync(ScanTriggerSource.Scheduled, CancellationToken.None)
                                   .ConfigureAwait(false);
 
-                var firstFinding = await dbContext.UpdateFindings.SingleAsync(entity => entity.Type == UpdateFindingType.DerivedBaseRuntimeUpdate, TestContext.CancellationToken)
-                                                                 .ConfigureAwait(false);
+                dbContext.ChangeTracker.Clear();
+
                 var firstSnapshot = await dbContext.ContainerSnapshots.SingleAsync(TestContext.CancellationToken)
                                                                       .ConfigureAwait(false);
+                var firstFindings = await dbContext.UpdateFindings.ToListAsync(TestContext.CancellationToken)
+                                                                  .ConfigureAwait(false);
+                var firstCandidateCounts = await dbContext.TagCandidates.GroupBy(entity => entity.UpdateFindingId)
+                                                                        .ToDictionaryAsync(group => group.Key, group => group.Count(), TestContext.CancellationToken)
+                                                                        .ConfigureAwait(false);
+
+                dbContext.ChangeTracker.Clear();
 
                 await orchestrator.ScanAllAsync(ScanTriggerSource.Scheduled, CancellationToken.None)
                                   .ConfigureAwait(false);
@@ -3267,11 +3460,77 @@ public class RuntimeContainerScanOrchestratorTests
                                                                        .ConfigureAwait(false);
                 var findings = await dbContext.UpdateFindings.ToListAsync(TestContext.CancellationToken)
                                                              .ConfigureAwait(false);
+                var candidateCounts = await dbContext.TagCandidates.GroupBy(entity => entity.UpdateFindingId)
+                                                                   .ToDictionaryAsync(group => group.Key, group => group.Count(), TestContext.CancellationToken)
+                                                                   .ConfigureAwait(false);
 
-                return (firstFinding.Id, secondSnapshot.Id, findings);
+                return new TwoScanOutcome
+                       {
+                           FirstSnapshotId = firstSnapshot.Id,
+                           SecondSnapshotId = secondSnapshot.Id,
+                           SecondAssessmentStatus = secondSnapshot.UpdateAssessmentStatus,
+                           FirstFindings = firstFindings,
+                           FirstCandidateCounts = firstCandidateCounts,
+                           Findings = findings,
+                           CandidateCounts = candidateCounts,
+                       };
             }
         }
     }
 
     #endregion // Methods
+
+    #region Nested types
+
+    /// <summary>
+    /// State of one container after two scans
+    /// </summary>
+    private sealed class TwoScanOutcome
+    {
+        #region Properties
+
+        /// <summary>
+        /// Id of the first scan's snapshot
+        /// </summary>
+        public Guid FirstSnapshotId { get; init; }
+
+        /// <summary>
+        /// Id of the second scan's snapshot
+        /// </summary>
+        public Guid SecondSnapshotId { get; init; }
+
+        /// <summary>
+        /// Update assessment of the second scan's snapshot
+        /// </summary>
+        public UpdateAssessmentStatus SecondAssessmentStatus { get; init; }
+
+        /// <summary>
+        /// Findings after the first scan
+        /// </summary>
+        public IReadOnlyList<UpdateFinding> FirstFindings { get; init; } = [];
+
+        /// <summary>
+        /// Tag candidate counts per finding after the first scan
+        /// </summary>
+        public IReadOnlyDictionary<Guid, int> FirstCandidateCounts { get; init; } = new Dictionary<Guid, int>();
+
+        /// <summary>
+        /// Findings after the second scan
+        /// </summary>
+        public IReadOnlyList<UpdateFinding> Findings { get; init; } = [];
+
+        /// <summary>
+        /// Tag candidate counts per finding after the second scan
+        /// </summary>
+        public IReadOnlyDictionary<Guid, int> CandidateCounts { get; init; } = new Dictionary<Guid, int>();
+
+        /// <summary>
+        /// Id of the derived finding of the first scan
+        /// </summary>
+        public Guid FirstDerivedFindingId => FirstFindings.Single(entity => entity.Type == UpdateFindingType.DerivedBaseRuntimeUpdate).Id;
+
+        #endregion // Properties
+    }
+
+    #endregion // Nested types
 }
