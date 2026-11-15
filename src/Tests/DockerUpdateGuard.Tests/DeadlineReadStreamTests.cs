@@ -66,7 +66,9 @@ public class DeadlineReadStreamTests
         var arrayBuffer = new byte[4];
 
         var first = await stream.ReadAsync(memoryBuffer.AsMemory(), CancellationToken.None).ConfigureAwait(false);
-        var second = await stream.ReadAsync(arrayBuffer, 1, 2, TestContext.CancellationToken).ConfigureAwait(false);
+        Func<byte[], int, int, CancellationToken, Task<int>> arrayRead = stream.ReadAsync;
+
+        var second = await arrayRead(arrayBuffer, 1, 2, TestContext.CancellationToken).ConfigureAwait(false);
 
         Assert.AreEqual(2, first, "The read must return the requested bytes");
         Assert.AreSequenceEqual("ab"u8.ToArray(), memoryBuffer, "The first read must return the first bytes");

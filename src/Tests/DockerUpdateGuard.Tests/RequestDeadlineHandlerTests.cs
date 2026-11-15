@@ -142,8 +142,8 @@ public class RequestDeadlineHandlerTests
                                                               });
         using var httpClient = recorder.CreateHttpClient(inner, null);
 
-        await Assert.ThrowsAsync<IOException>(() => httpClient.GetAsync(new Uri("https://registry.example/v2/"), HttpCompletionOption.ResponseHeadersRead, CancellationToken.None),
-                                              "The failure of the body must reach the caller").ConfigureAwait(false);
+        await Assert.ThrowsAsync<HttpRequestException>(() => httpClient.GetAsync(new Uri("https://registry.example/v2/"), HttpCompletionOption.ResponseHeadersRead, CancellationToken.None),
+                                                       "The failure of the body must reach the caller").ConfigureAwait(false);
 
         recorder.GetTimer(0).Received(1).Dispose();
     }
