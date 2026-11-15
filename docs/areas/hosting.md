@@ -103,7 +103,10 @@ succeeded.
    the timeout fails like a transient fault, so lock and migration are retried as described above. A migration that
    runs longer than `MigrationLockTimeoutSeconds` needs that key raised for the instances waiting for the lock.
 4. **Synchronize configured Docker instances** into the database (see [Docker instances](docker-instances.md)).
-5. **Seed the inventory gauges** from the database (see [Telemetry](telemetry.md)).
+5. **Reconcile interrupted container actions.** Every container action run still *requested* or *running* from the
+   previous process becomes *failed* with an interruption message (see [Container actions](container-actions.md#action-runs));
+   the number of reconciled runs is logged when it is above zero.
+6. **Seed the inventory gauges** from the database (see [Telemetry](telemetry.md)).
 
 Only local database work runs on this path. Work that needs the network, such as Docker Hub account image
 discovery, runs in the background jobs after startup (see [Scan engine](scan-engine.md)), so an unreachable
@@ -191,6 +194,11 @@ These properties hold today and must be provided for by the deployment:
 - **No authentication or authorization.** Every page and every action (manual scans, tag selection, container
   actions) is available to anyone who can reach port `8080`. The application must run behind a trusted perimeter: a
   private network, a VPN or a reverse proxy that authenticates users.
+- **Enabling Portainer for a Docker instance lets anyone who reaches the UI start, stop and restart that instance's
+  containers** through the configured Portainer credentials, with a confirmation and a recorded run (requester `UI`)
+  but no identity ([Container actions](container-actions.md)). The application sets no `AllowedHosts`, so it does not
+  restrict the `Host` header; protection against DNS rebinding is tracked in
+  [#473](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/473).
 - **No health-check endpoint and no rate limiting.**
 - **Docker socket access is root-equivalent on the host.** Mounting the host's Docker socket gives the application,
   and anyone who controls it, the power of root on that host. This is inherent to the feature.
