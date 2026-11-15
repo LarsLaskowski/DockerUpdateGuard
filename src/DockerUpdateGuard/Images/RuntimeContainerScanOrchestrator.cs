@@ -186,6 +186,19 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
     }
 
     /// <summary>
+    /// Keep the supplied findings active and move them to the current snapshot of their container
+    /// </summary>
+    /// <param name="findings">Findings to keep</param>
+    /// <param name="snapshot">Current container snapshot</param>
+    private static void KeepFindings(IReadOnlyList<UpdateFinding> findings, ContainerSnapshot snapshot)
+    {
+        foreach (var finding in findings)
+        {
+            finding.ContainerSnapshot = snapshot;
+        }
+    }
+
+    /// <summary>
     /// Map an update evaluation result to the persisted runtime assessment
     /// </summary>
     /// <param name="snapshot">Runtime snapshot</param>
@@ -877,11 +890,35 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
                                                                 .Where(entity => entity.ContainerSnapshot != null
                                                                                  && entity.ContainerSnapshot.DockerInstanceId == dockerInstanceId
                                                                                  && entity.ContainerSnapshot.ContainerId == containerId
-                                                                                 && entity.IsActive)
+                                                                                 && entity.IsActive
+                                                                                 && entity.Type != UpdateFindingType.DerivedBaseRuntimeUpdate)
                                                                 .ToListAsync(cancellationToken)
                                                                 .ConfigureAwait(false);
 
         DeactivateFindings(supersededFindings);
+    }
+
+    /// <summary>
+    /// Load the active derived base-runtime findings of the container of a snapshot
+    /// </summary>
+    /// <param name="snapshot">Current container snapshot</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Active derived findings</returns>
+    private async Task<IReadOnlyList<UpdateFinding>> LoadActiveDerivedFindingsAsync(ContainerSnapshot snapshot,
+                                                                                    CancellationToken cancellationToken)
+    {
+        var dockerInstanceId = snapshot.DockerInstanceId;
+        var containerId = snapshot.ContainerId;
+
+        return await _dbContext.UpdateFindings.Include(entity => entity.TagCandidates)
+                                              .Include(entity => entity.ContainerSnapshot)
+                                              .Where(entity => entity.ContainerSnapshot != null
+                                                               && entity.ContainerSnapshot.DockerInstanceId == dockerInstanceId
+                                                               && entity.ContainerSnapshot.ContainerId == containerId
+                                                               && entity.IsActive
+                                                               && entity.Type == UpdateFindingType.DerivedBaseRuntimeUpdate)
+                                              .ToListAsync(cancellationToken)
+                                              .ConfigureAwait(false);
     }
 
     /// <summary>
@@ -996,8 +1033,12 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
     {
         await EnsureRegistryRepositoryLoadedAsync(findingContext.SubjectImageVersion, cancellationToken).ConfigureAwait(false);
 
+        var previousFindings = await LoadActiveDerivedFindingsAsync(findingContext.Snapshot, cancellationToken).ConfigureAwait(false);
+
         if (inspectData is null)
         {
+            KeepFindings(previousFindings, findingContext.Snapshot);
+
             return;
         }
 
@@ -1008,14 +1049,21 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
                                                                              imageReferenceOrId,
                                                                              cancellationToken)
                                                        .ConfigureAwait(false);
-        var historyEntries = historyResult.Status == ExternalOperationStatus.Succeeded && historyResult.Data is not null
-                                 ? historyResult.Data
-                                 : [];
-        var runtimeDescriptor = _derivedBaseRuntimeDetector.Detect(inspectData, historyEntries);
+
+        if (historyResult.Status != ExternalOperationStatus.Succeeded || historyResult.Data is null)
+        {
+            KeepFindings(previousFindings, findingContext.Snapshot);
+
+            return;
+        }
+
+        var runtimeDescriptor = _derivedBaseRuntimeDetector.Detect(inspectData, historyResult.Data);
 
         if (runtimeDescriptor?.RuntimeVersion is null
             || string.IsNullOrWhiteSpace(runtimeDescriptor.ChannelVersion))
         {
+            DeactivateFindings(previousFindings);
+
             return;
         }
 
@@ -1029,6 +1077,7 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
                                                           runtimeDescriptor,
                                                           runtimeDescriptor.RuntimeVersion,
                                                           runtimeDescriptor.ChannelVersion,
+                                                          previousFindings,
                                                           cancellationToken).ConfigureAwait(false);
                 }
                 break;
@@ -1039,6 +1088,7 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
                                                          runtimeDescriptor,
                                                          runtimeDescriptor.RuntimeVersion,
                                                          runtimeDescriptor.ChannelVersion,
+                                                         previousFindings,
                                                          cancellationToken).ConfigureAwait(false);
                 }
                 break;
@@ -1052,20 +1102,29 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
     /// <param name="runtimeDescriptor">Detected runtime descriptor</param>
     /// <param name="runtimeVersion">Detected runtime version</param>
     /// <param name="channelVersion">Detected runtime channel version</param>
+    /// <param name="previousFindings">Active derived findings of the container from earlier scans</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Task</returns>
     private async Task CreateDotNetRuntimeFindingAsync(RuntimeFindingContext findingContext,
                                                        DerivedBaseRuntimeDescriptor runtimeDescriptor,
                                                        Version runtimeVersion,
                                                        string channelVersion,
+                                                       IReadOnlyList<UpdateFinding> previousFindings,
                                                        CancellationToken cancellationToken)
     {
         var releaseResult = await _dotNetReleaseMetadataService.GetChannelReleaseAsync(channelVersion, cancellationToken)
                                                                .ConfigureAwait(false);
 
-        if (releaseResult.Status != ExternalOperationStatus.Succeeded
-            || releaseResult.Data is null
-            || IsPatchBehind(runtimeVersion, releaseResult.Data.LatestRuntimeVersion) == false)
+        if (releaseResult.Status != ExternalOperationStatus.Succeeded || releaseResult.Data is null)
+        {
+            KeepFindings(previousFindings, findingContext.Snapshot);
+
+            return;
+        }
+
+        DeactivateFindings(previousFindings);
+
+        if (IsPatchBehind(runtimeVersion, releaseResult.Data.LatestRuntimeVersion) == false)
         {
             return;
         }
@@ -1094,20 +1153,29 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
     /// <param name="runtimeDescriptor">Detected runtime descriptor</param>
     /// <param name="runtimeVersion">Detected runtime version</param>
     /// <param name="channelVersion">Detected runtime channel version</param>
+    /// <param name="previousFindings">Active derived findings of the container from earlier scans</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Task</returns>
     private async Task CreateNginxRuntimeFindingAsync(RuntimeFindingContext findingContext,
                                                       DerivedBaseRuntimeDescriptor runtimeDescriptor,
                                                       Version runtimeVersion,
                                                       string channelVersion,
+                                                      IReadOnlyList<UpdateFinding> previousFindings,
                                                       CancellationToken cancellationToken)
     {
         var releaseResult = await _nginxReleaseMetadataService.GetChannelReleaseAsync(channelVersion, cancellationToken)
                                                               .ConfigureAwait(false);
 
-        if (releaseResult.Status != ExternalOperationStatus.Succeeded
-            || releaseResult.Data is null
-            || IsPatchBehind(runtimeVersion, releaseResult.Data.LatestVersion) == false)
+        if (releaseResult.Status != ExternalOperationStatus.Succeeded || releaseResult.Data is null)
+        {
+            KeepFindings(previousFindings, findingContext.Snapshot);
+
+            return;
+        }
+
+        DeactivateFindings(previousFindings);
+
+        if (IsPatchBehind(runtimeVersion, releaseResult.Data.LatestVersion) == false)
         {
             return;
         }

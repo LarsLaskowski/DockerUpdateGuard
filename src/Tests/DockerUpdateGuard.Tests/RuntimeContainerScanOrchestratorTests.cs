@@ -1916,6 +1916,188 @@ public class RuntimeContainerScanOrchestratorTests
     }
 
     /// <summary>
+    /// Verify a runtime container keeps its derived finding when the .NET release feed fails in a later scan
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC1")]
+    public async Task RuntimeContainerScanOrchestratorScanAllAsyncKeepsDerivedFindingWhenDotNetReleaseFeedFailsAsync()
+    {
+        var outcome = await RunTwoDerivedScansAsync("DOTNET_VERSION=9.0.13",
+                                                    CreateInspectResult("DOTNET_VERSION=9.0.13"),
+                                                    CreateHistoryResult(),
+                                                    ExternalOperationResult.Failed<DotNetChannelReleaseData>("The release feed is temporarily unavailable"),
+                                                    CreateNginxFeedResult()).ConfigureAwait(false);
+
+        AssertDerivedFindingKept(outcome, "a failed .NET release feed");
+    }
+
+    /// <summary>
+    /// Verify a runtime container keeps its derived finding when the nginx release feed fails in a later scan
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC1")]
+    public async Task RuntimeContainerScanOrchestratorScanAllAsyncKeepsDerivedFindingWhenNginxReleaseFeedFailsAsync()
+    {
+        var outcome = await RunTwoDerivedScansAsync("NGINX_VERSION=1.29.1",
+                                                    CreateInspectResult("NGINX_VERSION=1.29.1"),
+                                                    CreateHistoryResult(),
+                                                    CreateDotNetFeedResult(),
+                                                    ExternalOperationResult.NotFound<NginxChannelReleaseData>("The channel is missing from the feed")).ConfigureAwait(false);
+
+        AssertDerivedFindingKept(outcome, "an nginx release feed that does not answer");
+    }
+
+    /// <summary>
+    /// Verify a runtime container keeps its derived finding when the image inspect fails in a later scan
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC2")]
+    public async Task RuntimeContainerScanOrchestratorScanAllAsyncKeepsDerivedFindingWhenImageInspectFailsAsync()
+    {
+        var outcome = await RunTwoDerivedScansAsync("DOTNET_VERSION=9.0.13",
+                                                    ExternalOperationResult.Failed<DockerImageInspectData>("The Docker Engine is temporarily unavailable"),
+                                                    CreateHistoryResult(),
+                                                    CreateDotNetFeedResult(),
+                                                    CreateNginxFeedResult()).ConfigureAwait(false);
+
+        AssertDerivedFindingKept(outcome, "a failed image inspect");
+    }
+
+    /// <summary>
+    /// Verify a runtime container keeps its derived finding when the image history fails in a later scan
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC2")]
+    public async Task RuntimeContainerScanOrchestratorScanAllAsyncKeepsDerivedFindingWhenImageHistoryFailsAsync()
+    {
+        var outcome = await RunTwoDerivedScansAsync("DOTNET_VERSION=9.0.13",
+                                                    CreateInspectResult("DOTNET_VERSION=9.0.13"),
+                                                    ExternalOperationResult.Failed<IReadOnlyList<DockerImageHistoryEntryData>>("The Docker Engine is temporarily unavailable"),
+                                                    CreateDotNetFeedResult(),
+                                                    CreateNginxFeedResult()).ConfigureAwait(false);
+
+        AssertDerivedFindingKept(outcome, "a failed image history");
+    }
+
+    /// <summary>
+    /// Verify a runtime container resolves its derived finding when the runtime is current in a later scan
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC3")]
+    public async Task RuntimeContainerScanOrchestratorScanAllAsyncResolvesDerivedFindingWhenRuntimeIsCurrentAsync()
+    {
+        var outcome = await RunTwoDerivedScansAsync("DOTNET_VERSION=9.0.13",
+                                                    CreateInspectResult("DOTNET_VERSION=9.0.13"),
+                                                    CreateHistoryResult(),
+                                                    ExternalOperationResult.Succeeded<DotNetChannelReleaseData>(new DotNetChannelReleaseData
+                                                                                                                {
+                                                                                                                    ChannelVersion = "9.0",
+                                                                                                                    LatestRuntimeVersion = new Version(9, 0, 13),
+                                                                                                                }),
+                                                    CreateNginxFeedResult()).ConfigureAwait(false);
+
+        AssertDerivedFindingResolved(outcome, "a runtime that is no longer behind the feed");
+    }
+
+    /// <summary>
+    /// Verify a runtime container resolves its derived finding when no runtime is detected in a later scan
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC3")]
+    public async Task RuntimeContainerScanOrchestratorScanAllAsyncResolvesDerivedFindingWhenNoRuntimeIsDetectedAsync()
+    {
+        var outcome = await RunTwoDerivedScansAsync("DOTNET_VERSION=9.0.13",
+                                                    CreateInspectResult("UNRELATED_SETTING=value"),
+                                                    CreateHistoryResult(),
+                                                    CreateDotNetFeedResult(),
+                                                    CreateNginxFeedResult()).ConfigureAwait(false);
+
+        AssertDerivedFindingResolved(outcome, "an image without a detected runtime");
+    }
+
+    /// <summary>
+    /// Verify a runtime container replaces its derived finding when the runtime is still outdated in a later scan
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC4")]
+    public async Task RuntimeContainerScanOrchestratorScanAllAsyncReplacesDerivedFindingWhenRuntimeIsStillOutdatedAsync()
+    {
+        var outcome = await RunTwoDerivedScansAsync("DOTNET_VERSION=9.0.13",
+                                                    CreateInspectResult("DOTNET_VERSION=9.0.13"),
+                                                    CreateHistoryResult(),
+                                                    CreateDotNetFeedResult(),
+                                                    CreateNginxFeedResult()).ConfigureAwait(false);
+        var derivedFindings = outcome.Findings.Where(entity => entity.Type == UpdateFindingType.DerivedBaseRuntimeUpdate)
+                                              .ToList();
+        var activeFindings = derivedFindings.Where(entity => entity.IsActive)
+                                            .ToList();
+        var previousFinding = derivedFindings.Single(entity => entity.Id == outcome.FirstFindingId);
+
+        Assert.HasCount(1,
+                        activeFindings,
+                        "The container must have exactly one active derived finding after a runtime that is still outdated");
+        Assert.AreNotEqual(outcome.FirstFindingId,
+                           activeFindings[0].Id,
+                           "The active derived finding must be a new one");
+        Assert.AreEqual(outcome.SecondSnapshotId,
+                        activeFindings[0].ContainerSnapshotId,
+                        "The new derived finding must reference the snapshot of the second scan");
+        Assert.IsFalse(previousFinding.IsActive, "The previous derived finding must be inactive after it was replaced");
+        Assert.IsNotNull(previousFinding.ResolvedAtUtc, "The previous derived finding must have a resolution time after it was replaced");
+    }
+
+    /// <summary>
+    /// Verify a failing release feed still deactivates the previous runtime image update finding
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC5")]
+    public async Task RuntimeContainerScanOrchestratorScanAllAsyncDeactivatesRuntimeImageUpdateFindingWhenReleaseFeedFailsAsync()
+    {
+        var outcome = await RunTwoDerivedScansAsync("DOTNET_VERSION=9.0.13",
+                                                    CreateInspectResult("DOTNET_VERSION=9.0.13"),
+                                                    CreateHistoryResult(),
+                                                    ExternalOperationResult.Failed<DotNetChannelReleaseData>("The release feed is temporarily unavailable"),
+                                                    CreateNginxFeedResult(),
+                                                    [
+                                                        new DockerHubTagData
+                                                        {
+                                                            Tag = "1.1.0",
+                                                            Digest = "sha256:newer",
+                                                            PublishedAtUtc = new DateTimeOffset(2025, 06, 02, 12, 00, 00, TimeSpan.Zero),
+                                                        },
+                                                        new DockerHubTagData
+                                                        {
+                                                            Tag = "1.0.0",
+                                                            Digest = "sha256:current",
+                                                            PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
+                                                        },
+                                                    ]).ConfigureAwait(false);
+        var runtimeFindings = outcome.Findings.Where(entity => entity.Type == UpdateFindingType.RuntimeImageUpdate)
+                                              .ToList();
+        var inactiveFindings = runtimeFindings.Where(entity => entity.IsActive == false)
+                                              .ToList();
+
+        Assert.HasCount(2,
+                        runtimeFindings,
+                        "Each scan must create a runtime image update finding");
+        Assert.HasCount(1,
+                        inactiveFindings,
+                        "The previous runtime image update finding must be deactivated after a failed release feed");
+        Assert.IsNotNull(inactiveFindings[0].ResolvedAtUtc, "The deactivated runtime image update finding must have a resolution time");
+        Assert.AreNotEqual(outcome.SecondSnapshotId,
+                           inactiveFindings[0].ContainerSnapshotId,
+                           "The deactivated runtime image update finding must stay on the first snapshot");
+    }
+
+    /// <summary>
     /// Verify a failing Docker instance scan does not abort the remaining batch items
     /// </summary>
     /// <returns>Task</returns>
@@ -2876,6 +3058,219 @@ public class RuntimeContainerScanOrchestratorTests
                                                     optionsMonitor,
                                                     registryMetadataService,
                                                     new UpdateDetectionService(optionsMonitor));
+    }
+
+    /// <summary>
+    /// Create a successful image inspect answer with one environment variable
+    /// </summary>
+    /// <param name="environmentVariable">Environment variable the detector reads the runtime from</param>
+    /// <returns>Inspect answer</returns>
+    private static ExternalOperationResult<DockerImageInspectData> CreateInspectResult(string environmentVariable)
+    {
+        return ExternalOperationResult.Succeeded<DockerImageInspectData>(new DockerImageInspectData
+                                                                         {
+                                                                             Id = "sha256:local-image",
+                                                                             EnvironmentVariables = [environmentVariable],
+                                                                         });
+    }
+
+    /// <summary>
+    /// Create a successful empty image history answer
+    /// </summary>
+    /// <returns>History answer</returns>
+    private static ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>> CreateHistoryResult()
+    {
+        return ExternalOperationResult.Succeeded<IReadOnlyList<DockerImageHistoryEntryData>>([]);
+    }
+
+    /// <summary>
+    /// Create a successful .NET release feed answer that is ahead of the detected runtime
+    /// </summary>
+    /// <returns>Feed answer</returns>
+    private static ExternalOperationResult<DotNetChannelReleaseData> CreateDotNetFeedResult()
+    {
+        return ExternalOperationResult.Succeeded<DotNetChannelReleaseData>(new DotNetChannelReleaseData
+                                                                           {
+                                                                               ChannelVersion = "9.0",
+                                                                               LatestRuntimeVersion = new Version(9, 0, 15),
+                                                                               IsSecurityRelease = true,
+                                                                           });
+    }
+
+    /// <summary>
+    /// Create a successful nginx release feed answer that is ahead of the detected runtime
+    /// </summary>
+    /// <returns>Feed answer</returns>
+    private static ExternalOperationResult<NginxChannelReleaseData> CreateNginxFeedResult()
+    {
+        return ExternalOperationResult.Succeeded<NginxChannelReleaseData>(new NginxChannelReleaseData
+                                                                          {
+                                                                              ChannelVersion = "1.29",
+                                                                              LatestVersion = new Version(1, 29, 8),
+                                                                          });
+    }
+
+    /// <summary>
+    /// Assert the derived finding of the first scan stayed active on the snapshot of the second scan
+    /// </summary>
+    /// <param name="outcome">Result of both scans</param>
+    /// <param name="reason">Why the runtime check could not be completed</param>
+    private static void AssertDerivedFindingKept((Guid FirstFindingId, Guid SecondSnapshotId, IReadOnlyList<UpdateFinding> Findings) outcome, string reason)
+    {
+        var derivedFindings = outcome.Findings.Where(entity => entity.Type == UpdateFindingType.DerivedBaseRuntimeUpdate)
+                                              .ToList();
+
+        Assert.HasCount(1,
+                        derivedFindings,
+                        $"The container must have only its previous derived finding after {reason}");
+
+        var finding = derivedFindings[0];
+
+        Assert.AreEqual(outcome.FirstFindingId,
+                        finding.Id,
+                        $"The previous derived finding must be kept after {reason}");
+        Assert.IsTrue(finding.IsActive,
+                      $"The previous derived finding must stay active after {reason}");
+        Assert.IsNull(finding.ResolvedAtUtc,
+                      $"The previous derived finding must have no resolution time after {reason}");
+        Assert.AreEqual(outcome.SecondSnapshotId,
+                        finding.ContainerSnapshotId,
+                        $"The kept derived finding must move to the snapshot of the second scan after {reason}");
+    }
+
+    /// <summary>
+    /// Assert the derived finding of the first scan was resolved and no derived finding is active
+    /// </summary>
+    /// <param name="outcome">Result of both scans</param>
+    /// <param name="reason">Why the finding must be resolved</param>
+    private static void AssertDerivedFindingResolved((Guid FirstFindingId, Guid SecondSnapshotId, IReadOnlyList<UpdateFinding> Findings) outcome, string reason)
+    {
+        var derivedFindings = outcome.Findings.Where(entity => entity.Type == UpdateFindingType.DerivedBaseRuntimeUpdate)
+                                              .ToList();
+        var previousFinding = derivedFindings.Single(entity => entity.Id == outcome.FirstFindingId);
+
+        Assert.IsFalse(previousFinding.IsActive, $"The previous derived finding must be inactive after {reason}");
+        Assert.IsNotNull(previousFinding.ResolvedAtUtc, $"The previous derived finding must have a resolution time after {reason}");
+        Assert.DoesNotContain(entity => entity.IsActive,
+                              derivedFindings,
+                              $"The container must have no active derived finding after {reason}");
+    }
+
+    /// <summary>
+    /// Scan one container twice with the real derived runtime detector: the first scan reads every input and
+    /// finds an outdated runtime, the second scan answers with the given inputs
+    /// </summary>
+    /// <param name="environmentVariable">Environment variable the detector reads the runtime from</param>
+    /// <param name="secondInspect">Image inspect answer of the second scan</param>
+    /// <param name="secondHistory">Image history answer of the second scan</param>
+    /// <param name="secondDotNet">.NET release feed answer of the second scan</param>
+    /// <param name="secondNginx">Nginx release feed answer of the second scan</param>
+    /// <param name="registryTags">Registry tags both scans read; the current tag only when omitted</param>
+    /// <returns>Id of the first scan's derived finding, id of the second scan's snapshot and all findings</returns>
+    private async Task<(Guid FirstFindingId, Guid SecondSnapshotId, IReadOnlyList<UpdateFinding> Findings)> RunTwoDerivedScansAsync(string environmentVariable,
+                                                                                                                                    ExternalOperationResult<DockerImageInspectData> secondInspect,
+                                                                                                                                    ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>> secondHistory,
+                                                                                                                                    ExternalOperationResult<DotNetChannelReleaseData> secondDotNet,
+                                                                                                                                    ExternalOperationResult<NginxChannelReleaseData> secondNginx,
+                                                                                                                                    IReadOnlyList<DockerHubTagData>? registryTags = null)
+    {
+        using (var database = new SqliteTestDatabase())
+        {
+            var dbContext = database.CreateDbContext();
+
+            await using (dbContext.ConfigureAwait(false))
+            {
+                var optionsMonitor = new TestOptionsMonitor<DockerUpdateGuardOptions>(new DockerUpdateGuardOptions
+                                                                                      {
+                                                                                          DockerInstances = [
+                                                                                                                new DockerInstanceOptions
+                                                                                                                {
+                                                                                                                    Name = "Production",
+                                                                                                                    BaseUrl = "https://docker.example.test",
+                                                                                                                    Enabled = true,
+                                                                                                                },
+                                                                                                            ],
+                                                                                      });
+                var imageCatalogRepository = new ImageCatalogRepository(dbContext);
+                var dockerInstanceClient = Substitute.For<IDockerInstanceClient>();
+                var dotNetReleaseMetadataService = Substitute.For<IDotNetReleaseMetadataService>();
+                var nginxReleaseMetadataService = Substitute.For<INginxReleaseMetadataService>();
+                var registryMetadataService = Substitute.For<IRegistryMetadataService>();
+                var instanceDiscoveryService = new InstanceDiscoveryService(dbContext,
+                                                                            new TestLogger<InstanceDiscoveryService>(),
+                                                                            optionsMonitor);
+                var currentTag = new DockerHubTagData
+                                 {
+                                     Tag = "1.0.0",
+                                     Digest = "sha256:current",
+                                     PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
+                                 };
+
+                dockerInstanceClient.DiscoverContainersAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<CancellationToken>())
+                                    .Returns(ExternalOperationResult.Succeeded<IReadOnlyList<RuntimeContainerDescriptor>>([
+                                                                                                                              new RuntimeContainerDescriptor
+                                                                                                                              {
+                                                                                                                                  ContainerId = "container-1",
+                                                                                                                                  Name = "api",
+                                                                                                                                  ImageReference = "docker.io/company/api:1.0.0",
+                                                                                                                                  LocalImageId = "sha256:local-image",
+                                                                                                                                  RuntimeStatus = ContainerRuntimeStatus.Running,
+                                                                                                                                  IsRunning = true,
+                                                                                                                              },
+                                                                                                                          ]));
+                dockerInstanceClient.InspectImageAsync(Arg.Any<DockerInstanceOptions>(), "sha256:local-image", Arg.Any<CancellationToken>())
+                                    .Returns(CreateInspectResult(environmentVariable), secondInspect);
+                dockerInstanceClient.GetImageHistoryAsync(Arg.Any<DockerInstanceOptions>(), "sha256:local-image", Arg.Any<CancellationToken>())
+                                    .Returns(CreateHistoryResult(), secondHistory);
+                dotNetReleaseMetadataService.GetChannelReleaseAsync("9.0", Arg.Any<CancellationToken>())
+                                            .Returns(CreateDotNetFeedResult(), secondDotNet);
+                nginxReleaseMetadataService.GetChannelReleaseAsync("1.29", Arg.Any<CancellationToken>())
+                                           .Returns(CreateNginxFeedResult(), secondNginx);
+                registryMetadataService.GetTagsAsync("docker.io",
+                                                     "company/api",
+                                                     Arg.Any<string?>(),
+                                                     Arg.Any<string?>(),
+                                                     Arg.Any<RegistryTagQueryOptions?>(),
+                                                     Arg.Any<CancellationToken>())
+                                       .Returns(ExternalOperationResult.Succeeded<IReadOnlyList<DockerHubTagData>>(registryTags ?? [currentTag]));
+                registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), cancellationToken: Arg.Any<CancellationToken>())
+                                       .Returns(ExternalOperationResult.Succeeded<DockerHubTagData>(currentTag));
+
+                var orchestrator = new RuntimeContainerScanOrchestrator(new ApplicationTelemetry(),
+                                                                        dbContext,
+                                                                        dockerInstanceClient,
+                                                                        new DerivedBaseRuntimeDetector(),
+                                                                        dotNetReleaseMetadataService,
+                                                                        nginxReleaseMetadataService,
+                                                                        imageCatalogRepository,
+                                                                        new ImageReferenceParser(),
+                                                                        instanceDiscoveryService,
+                                                                        new TestLogger<RuntimeContainerScanOrchestrator>(),
+                                                                        optionsMonitor,
+                                                                        registryMetadataService,
+                                                                        new UpdateDetectionService(optionsMonitor));
+
+                await orchestrator.ScanAllAsync(ScanTriggerSource.Scheduled, CancellationToken.None)
+                                  .ConfigureAwait(false);
+
+                var firstFinding = await dbContext.UpdateFindings.SingleAsync(entity => entity.Type == UpdateFindingType.DerivedBaseRuntimeUpdate, TestContext.CancellationToken)
+                                                                 .ConfigureAwait(false);
+                var firstSnapshot = await dbContext.ContainerSnapshots.SingleAsync(TestContext.CancellationToken)
+                                                                      .ConfigureAwait(false);
+
+                await orchestrator.ScanAllAsync(ScanTriggerSource.Scheduled, CancellationToken.None)
+                                  .ConfigureAwait(false);
+
+                dbContext.ChangeTracker.Clear();
+
+                var secondSnapshot = await dbContext.ContainerSnapshots.SingleAsync(entity => entity.Id != firstSnapshot.Id, TestContext.CancellationToken)
+                                                                       .ConfigureAwait(false);
+                var findings = await dbContext.UpdateFindings.ToListAsync(TestContext.CancellationToken)
+                                                             .ConfigureAwait(false);
+
+                return (firstFinding.Id, secondSnapshot.Id, findings);
+            }
+        }
     }
 
     #endregion // Methods
