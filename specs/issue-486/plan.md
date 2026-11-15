@@ -169,3 +169,37 @@ per-image guard (0038) is strengthened, as no result is written outside it any m
 - `RunRefreshAsync` refreshes the inventory metrics with the cancelled token after the final save (line 660), which is
   what makes a cancelled refresh throw; telemetry and the completion log are skipped then. Existing behavior the tests
   rely on; not changed here.
+
+## Challenge notes
+
+I found no major objections and three minor ones. The plan's root cause is correct and the approach is sound.
+
+**What I checked against the code** (`/home/user/DockerUpdateGuard/src/DockerUpdateGuard/Images/VulnerabilityEnrichmentService.cs`):
+- **The defect:** the filter at :443 lets a cancellation through, and `DiscardPendingChanges` at :452 is only reached after a non-cancellation error. The run's handler at :625–632 discards nothing, and the final save at :640 runs with `CancellationToken.None`. The image version's guard is released at :586–589, before that save. Facts 1, 2 and 4 hold.
+- **The two related paths:** the stale-findings changes made at :497–502 are still pending when the save at :613 is cancelled, and the save of the *failed* assessment at :462 has no handler. Facts 5 and 6 hold.
+- **The run is unchanged in the handler:** it was saved at :537 and the loop never modifies it. A finding added to its collection does not mark it modified, so step 2 can discard first without resetting the run.
+- **No sibling with the same defect:** no other file in `src/DockerUpdateGuard` saves with `CancellationToken.None`. `ScanRunSaver.cs:38–66` passes the scan's token and does not catch a cancellation, so a cancelled observed-image or runtime scan never reaches a final save.
+- **The tests can be built as planned:** `SaveChangesFailingDbContext.cs:63–75` throws before calling `base`. The two #485 tests (`VulnerabilityEnrichmentServiceTests.cs:3083–3094` and `:3149–3163`) reach the retry only because entries are still pending, so the AC4 adaptation is needed and works. The AC1–AC3 tests would fail on the unfixed code as the plan says.
+- **Existing tests are not affected:** I read `:523` (the terminal save failure test, still retried), `:1128`, `:2588`, `:2664` (their recovery save succeeds) and `:2692` (no pending entity).
+- **Other claims:** event 2053 is `VulnerabilitySaveFailed` (`ImageHostLoggingExtensions.cs:307`). The cancelled refresh throws from the real `ApplicationTelemetry.RefreshInventoryMetricsAsync` at :660, as AC1 assumes. The flow is the same for `RefreshImageVersionAsync`, since it goes through `RunRefreshAsync` (:717).
+- **Need and alternatives:** a change is warranted. Discarding fits decision 0028 ("cancellation stays a cancellation") and the per-image guard of 0038. 0041 weighs the alternatives fairly.
+
+**Minor objections:**
+
+1. **Decision 0041's wording about the failed assessment is wrong.** The second Consequences bullet says the image version's failure "is visible only in the run's message". In the AC3 case the run's message is only the generic `Vulnerability refresh failed: <reason>` (:629). The per-image message is never added to the run, because :465 is not reached. The image reference appears only in the per-image warning (event 2055), which is logged at :460 before the failing save. The Lead should reword the bullet: the run's message reports a generic failure, and the warning names the image version.
+   - Why minor: wording in the record; the behavior is unchanged.
+
+2. **The retry sentence in the area document will mislead.** In `docs/areas/vulnerabilities.md` (lines 207–209), "the refresh's other pending changes are discarded" would wrongly suggest that the retry is what drops an aborted step's changes. After the fix, the error handler has already discarded them and the retry only re-saves the run. The Dev should reword it to say the retry saves the run alone with the status and message it already has, and keep the link to decision 0040.
+   - Why minor: a documentation sentence the Dev can fix without a plan change.
+
+3. **The two adapted #485 tests change meaning.** Once AC4 adapts them, nothing is pending when the retry runs. Their assertions that the finding and assessment are unchanged are then guaranteed by the new discard, not by the retry. The Tester should:
+   - update their XML summaries to say they check that the retry stores the run alone after a failed first attempt of the final save;
+   - add `[TestCategory("AC4")]` next to their existing #485 ids (`docs/UNIT_TESTS.md`, *Criterion ids*).
+   - Why minor: the tests still pass and still exercise the retry; only their description and tags are out of date.
+
+**Files:**
+- /home/user/DockerUpdateGuard/specs/issue-486/plan.md
+- /home/user/DockerUpdateGuard/docs/decisions/0041-an-aborted-vulnerability-refresh-discards-its-unsaved-changes-before-the-runs-final-save.md
+- /home/user/DockerUpdateGuard/src/DockerUpdateGuard/Images/VulnerabilityEnrichmentService.cs
+- /home/user/DockerUpdateGuard/src/Tests/DockerUpdateGuard.Tests/VulnerabilityEnrichmentServiceTests.cs
+- /home/user/DockerUpdateGuard/docs/areas/vulnerabilities.md
