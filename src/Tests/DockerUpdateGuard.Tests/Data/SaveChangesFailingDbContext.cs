@@ -1,6 +1,7 @@
 using DockerUpdateGuard.Data;
 
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 
 namespace DockerUpdateGuard.Tests.Data;
 
@@ -40,6 +41,11 @@ internal sealed class SaveChangesFailingDbContext : DockerUpdateGuardDbContext
     public int? FailOnSaveAttempt { get; set; }
 
     /// <summary>
+    /// Condition on the change tracker under which every persistence attempt throws
+    /// </summary>
+    public Func<ChangeTracker, bool>? FailWhen { get; set; }
+
+    /// <summary>
     /// Exception thrown when persistence is forced to fail
     /// </summary>
     public Exception? SaveChangesException { get; set; }
@@ -60,7 +66,8 @@ internal sealed class SaveChangesFailingDbContext : DockerUpdateGuardDbContext
 
         if (FailOnSaveChanges
             || (FailAfterSaveCount.HasValue && SaveChangesAttemptCount > FailAfterSaveCount.Value)
-            || (FailOnSaveAttempt.HasValue && SaveChangesAttemptCount == FailOnSaveAttempt.Value))
+            || (FailOnSaveAttempt.HasValue && SaveChangesAttemptCount == FailOnSaveAttempt.Value)
+            || (FailWhen is not null && FailWhen(ChangeTracker)))
         {
             throw SaveChangesException ?? new InvalidOperationException("Simulated persistence failure");
         }
