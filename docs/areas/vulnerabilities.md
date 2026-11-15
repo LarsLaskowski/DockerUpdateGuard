@@ -204,7 +204,9 @@ The dashboard shows at most one hint about the vulnerability configuration:
   ([Integration failures](integration-failures.md#fixed-failure-reasons)); a Trivy process that cannot be started reads `Trivy
   scan failed: the Trivy executable could not be started`. Cancellation is not converted.
 - An unexpected error during a refresh ends the scan run *failed* with `Vulnerability refresh failed: <reason>`; work
-  saved before stays saved. If saving the final run state fails, it is retried once.
+  saved before stays saved. If saving the final run state fails, it is retried once on a fresh state: the retry saves the run alone with the
+  status and message it already has, and the refresh's other pending changes are discarded
+  ([decision 0040](../decisions/0040-a-scan-item-whose-save-fails-is-saved-again-alone-as-failed.md)).
 - Stored lengths: advisory id 100 characters, title 300, affected package 200, installed and fixed version 100 each,
   package class and type 50 each, CVSS score 5 digits with 2 decimals, assessment message 2000; summary and reference
   URL are unlimited. A longer advisory id, title, package, version, class or type, and a longer assessment message
