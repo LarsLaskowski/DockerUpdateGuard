@@ -57,4 +57,4 @@ Option 1, in both orchestrators. The run's message and the rules of the recovery
   needs its own context or must reload after a scan.
 - Whether attaching the original run by its entry state keeps its child rows out of the recovery save is confirmed by
   the runtime test that no container snapshot of a failed run is stored; if it is not, the recovery attaches a new run
-  with the same identifier and copied values instead. Outcome: to be recorded once the test has run.
+  with the same identifier and copied values instead. Outcome: the first form sufficed (the run's entry state set on the original run); no container snapshot of a failed run was stored.

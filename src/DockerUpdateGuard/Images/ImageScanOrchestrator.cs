@@ -580,6 +580,55 @@ public class ImageScanOrchestrator : IImageScanOrchestrator
         return failureMessage;
     }
 
+    /// <summary>
+    /// Save the pending changes of the scan; when the save fails, discard everything the context tracks and save the
+    /// scan run alone as failed, then rethrow the original exception
+    /// </summary>
+    /// <param name="scanRun">Scan run</param>
+    /// <param name="isRunStored">Is the run already stored?</param>
+    /// <param name="statusMessages">Status messages gathered so far</param>
+    /// <param name="subjectName">Name of the scanned observed image for the log</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Task</returns>
+    private async Task SaveScanRunAsync(ScanRun scanRun,
+                                        bool isRunStored,
+                                        List<string> statusMessages,
+                                        string subjectName,
+                                        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _dbContext.SaveChangesAsync(cancellationToken)
+                            .ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            _dbContext.ChangeTracker.Clear();
+
+            statusMessages.Add($"Observed image scan could not be saved: {FailureReason.FromException(exception, null, cancellationToken)}");
+
+            scanRun.Status = ScanRunStatus.Failed;
+            scanRun.CompletedAtUtc = DateTimeOffset.UtcNow;
+            scanRun.ErrorMessage = string.Join(Environment.NewLine, statusMessages.Distinct());
+
+            try
+            {
+                _dbContext.Entry(scanRun).State = isRunStored ? EntityState.Modified : EntityState.Added;
+
+                await _dbContext.SaveChangesAsync(cancellationToken)
+                                .ConfigureAwait(false);
+            }
+            catch (Exception recoveryException)
+            {
+                _logger.ObservedImageScanRunSaveFailed(recoveryException, subjectName);
+
+                _dbContext.ChangeTracker.Clear();
+            }
+
+            throw;
+        }
+    }
+
     #endregion // Methods
 
     #region IImageScanOrchestrator
@@ -615,6 +664,8 @@ public class ImageScanOrchestrator : IImageScanOrchestrator
             }
             catch (Exception exception)
             {
+                _dbContext.ChangeTracker.Clear();
+
                 _logger.ObservedImageScanBatchItemFailed(exception, observedImageId);
             }
         }
@@ -664,8 +715,11 @@ public class ImageScanOrchestrator : IImageScanOrchestrator
 
             _dbContext.ScanRuns.Add(scanRun);
 
-            await _dbContext.SaveChangesAsync(cancellationToken)
-                            .ConfigureAwait(false);
+            await SaveScanRunAsync(scanRun,
+                                   false,
+                                   statusMessages,
+                                   observedImage.Name,
+                                   cancellationToken).ConfigureAwait(false);
 
             try
             {
@@ -722,8 +776,11 @@ public class ImageScanOrchestrator : IImageScanOrchestrator
             scanRun.CompletedAtUtc = DateTimeOffset.UtcNow;
             scanRun.ErrorMessage = statusMessages.Count == 0 ? null : string.Join(Environment.NewLine, statusMessages.Distinct());
 
-            await _dbContext.SaveChangesAsync(cancellationToken)
-                            .ConfigureAwait(false);
+            await SaveScanRunAsync(scanRun,
+                                   true,
+                                   statusMessages,
+                                   observedImage.Name,
+                                   cancellationToken).ConfigureAwait(false);
 
             await _applicationTelemetry.RefreshInventoryMetricsAsync(_dbContext, cancellationToken)
                                        .ConfigureAwait(false);

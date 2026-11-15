@@ -79,7 +79,8 @@ resource statistics, cleanup) leave no scan-run record and report only through l
   image or Docker instance it concerns.
 - Trigger is `Scheduled` for runs started by a background job and `Manual` for runs started from the UI. The stored
   values `Startup` and `Discovery` are reserved and not written today.
-- A run is stored with status `Running` before any work begins and is updated once at the end to one of (a
+- A run is stored with status `Running` before any work begins (an observed-image or runtime run whose first save
+  fails is stored `Failed` instead, see *Limits and errors*) and is updated once at the end to one of (a
   `RuntimeContainer` run is stored once the wait for its Docker instance has ended, so its start time is when its
   work starts; a `Vulnerability` run is stored before any wait, and a wait counts towards its duration):
   - `Succeeded` — every step completed;
@@ -94,7 +95,7 @@ resource statistics, cleanup) leave no scan-run record and report only through l
 - A runtime container refresh first synchronizes the configured Docker instances; instances that are enabled in the
   database but missing from or disabled in configuration are skipped without a run.
 - After every recorded run the inventory gauges are refreshed and the run's duration and status are recorded as
-  metrics ([Telemetry](telemetry.md)).
+  metrics ([Telemetry](telemetry.md)), except for a run saved only by the recovery after a failed save.
 
 ### Overlapping scans
 
@@ -127,7 +128,7 @@ resource statistics, cleanup) leave no scan-run record and report only through l
 - A failing interval read stops neither the job, the other jobs nor the host (see *Background jobs*); the runs
   during an invalid configuration fail and are logged like any other failed run.
 - Inside a batch, an error while scanning one observed image or one Docker instance is logged and the batch goes on
-  with the next one.
+  with the next one; the changes the item left unsaved are discarded first, so none of them is saved with a later item.
 - A failed run is not retried before the next scheduled run. `DockerUpdateGuard:Scanning:RetryCount` applies to
   individual outbound HTTP requests, not to runs ([Integration failures](integration-failures.md#retry-of-transient-http-failures)).
 - Host shutdown cancels the run in progress; it is logged neither as completed nor as failed.
@@ -201,11 +202,15 @@ may scan the same image at the same time. This is wasteful but does not corrupt 
   the step's message as returned by the integration, or, for an unexpected error, `<scan> failed: <reason>` (`Runtime container scan failed`, `Observed image scan
   failed`, `Vulnerability refresh failed`) or, for one container of a runtime scan, `Container '<name>' could not be
   processed: <reason>` or, for one image version of a vulnerability refresh, `Vulnerability results for '<reference>'
-  could not be saved: <reason>`, with a fixed reason ([Integration failures](integration-failures.md#fixed-failure-reasons)). Integrations
+  could not be saved: <reason>` or, for an observed-image or runtime run whose own save failed, `Observed image scan could
+  not be saved: <reason>` or `Runtime container scan could not be saved: <reason>`, with a fixed reason ([Integration failures](integration-failures.md#fixed-failure-reasons)). Integrations
   report expected failures as results, not errors ([Integration failures](integration-failures.md#outcomes)).
-- A run that cannot be saved at its end (for example because the database became unreachable) stays `Running` until
-  the stale-run repair marks it `Failed`. A vulnerability refresh retries this final save once on a fresh state
-  before giving up.
+- An observed-image or runtime run whose first or final save fails (for example because a change of the item is
+  rejected) is saved once more on its own as `Failed` with a completion time, the item's other changes are discarded,
+  and the original error is rethrown ([decision 0040](../decisions/0040-a-scan-item-whose-save-fails-is-saved-again-alone-as-failed.md)).
+  Only if that save fails as well, or the scan is cancelled, does a stored run stay `Running` until the stale-run
+  repair marks it `Failed` (a run whose first save failed is then not stored). A vulnerability refresh retries its
+  final save once on a fresh state before giving up.
 - If the database cannot be reached during a cleanup pass, the whole pass fails, nothing is removed, and the next
   pass starts after one interval.
 
