@@ -1,6 +1,6 @@
 # 0035: Action runs are an audit history written before Portainer is contacted
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-14
 - **Area:** Container actions
 - **Source:** Issue #280

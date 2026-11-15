@@ -1,6 +1,6 @@
 # 0037: Stop and restart requests wait up to 300 seconds beyond the request timeout
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-14
 - **Area:** Container actions
 - **Source:** Issue #280

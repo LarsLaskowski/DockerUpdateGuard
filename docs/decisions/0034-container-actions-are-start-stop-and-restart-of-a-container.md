@@ -1,6 +1,6 @@
 # 0034: Container actions are start, stop and restart of a container
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-14
 - **Area:** Container actions
 - **Source:** Issue #280

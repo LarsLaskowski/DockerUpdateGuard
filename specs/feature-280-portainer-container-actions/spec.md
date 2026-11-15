@@ -91,8 +91,8 @@ or `restart`.
   runtime scan of the instance, no action of this process executing for the container (single application instance,
   [Scan engine](../../docs/areas/scan-engine.md#deployment-assumption)), the container addressed by the snapshot's
   container ID.
-- N4: The run is written as *Requested* before Portainer is contacted, *Running* once Portainer is contacted,
-  terminal with its completion time; `RequestedBy` is always `UI` (no sign-in; no IP address or header is recorded).
+- N4: The run is written as *Requested* before Portainer is contacted, *Running* right after it, as the call to
+  Portainer starts, terminal with its completion time; `RequestedBy` is always `UI` (no sign-in; no IP address or header is recorded).
   An action's duration is the sum of its steps: login, environment resolution and the container lookup, each bounded
   by `RequestTimeoutSeconds`, then the action request, bounded by `RequestTimeoutSeconds` for Start and by 300
   seconds plus `RequestTimeoutSeconds` for Stop and Restart. Docker's own stop timeout is never overridden. Application shutdown

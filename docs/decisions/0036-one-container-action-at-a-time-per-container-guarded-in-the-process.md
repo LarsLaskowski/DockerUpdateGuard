@@ -1,6 +1,6 @@
 # 0036: One container action at a time per container, guarded in the process
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-14
 - **Area:** Container actions
 - **Source:** Issue #280
