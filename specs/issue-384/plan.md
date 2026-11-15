@@ -15,7 +15,8 @@ saves, so a save error leaves the item through the batch handler (`ImageScanOrch
 added run and every other pending change stay tracked, and the next item's first `SaveChangesAsync` sends them again:
 a run that never got past its first save is committed as `Running` by another item, and a change the database rejects
 fails every later item too. The same holds for `ScanAsync` called from the registration page
-(`Components/Pages/ObservedImages.razor.cs:186`), whose context lives as long as the circuit.
+(`Components/Pages/ObservedImages.razor.cs:186`) and of `ScanAllAsync` called from the runtime containers page
+(`Components/Pages/RuntimeContainers.razor.cs:385`), whose contexts live as long as the circuit.
 
 ## Verified facts
 
@@ -27,7 +28,7 @@ fails every later item too. The same holds for `ScanAsync` called from the regis
 | 4 | A failed final save leaves the run `Modified` and the item's other changes pending; a rejected change repeats on every later item | final saves at the lines above sit outside the inner `try`; one context per scope (`DockerUpdateGuard.Data/ServiceCollectionExtensions.cs:27`, `AddDbContext`); intermediate catalog saves (`ImageCatalogRepository.cs:147,209,235`) send all pending entries too | confirmed |
 | 5 | Nothing the batches use later is tracked state: the image batch holds identifiers, the runtime batch reads only `Id`/`Name` of its `DockerInstance` entities | `ImageScanOrchestrator.cs:590-593`; grep of `dockerInstance` in `RuntimeContainerScanOrchestrator.cs` (only `.Id`, `.Name`); no entity caches in the orchestrators or `ImageCatalogRepository` | confirmed |
 | 6 | `ScanRun.Id` is generated on the client, so `Update` of a never-stored run issues an `UPDATE` of a missing row | `DockerUpdateGuard.Data/Entities/ScanRun.cs:13` (`Guid.NewGuid()`) | confirmed |
-| 7 | The run's child collections (`ContainerSnapshots`, `UpdateFindings`, `ImageRelationships`, `VulnerabilityFindings`) are filled by fix-up while tracked (`ScanRun = scanRun` at `RuntimeContainerScanOrchestrator.cs:713`, `ScanRunId = scanRun.Id` at `:649`, `:936`, `ImageScanOrchestrator.cs:386,435,574`); `Add`/`Update` walk them, setting `EntityEntry.State` attaches only the run | to verify: the Tester's runtime AC1 test (no container snapshot of the failed run is stored), steps 5/6 | unverified |
+| 7 | The run's child collections (`ContainerSnapshots`, `UpdateFindings`, `ImageRelationships`, `VulnerabilityFindings`) are filled by fix-up while tracked (`ScanRun = scanRun` at `RuntimeContainerScanOrchestrator.cs:713`, `ScanRunId = scanRun.Id` at `:649`, `:936`, `ImageScanOrchestrator.cs:386,435,574`); `Add`/`Update` walk them, setting `EntityEntry.State` attaches only the run | to verify: the Tester's runtime AC1 test (no container snapshot of the failed run is stored), steps 5/6; fallback in *Approach*, step 4 | unverified |
 | 8 | `FailureReason.FromException` maps a `DbUpdateException` or `InvalidOperationException` to `unexpected error`, never the exception's text | `Infrastructure/FailureReason.cs:49-85` | confirmed |
 | 9 | `ScanRun.ErrorMessage` is an unbounded `text` column | `ScanRunConfiguration.cs:36-37` | confirmed |
 | 10 | `ApplicationTelemetry.RefreshInventoryMetricsAsync` only reads | `ApplicationTelemetry.cs` holds no `SaveChanges` | confirmed |
@@ -45,7 +46,7 @@ fails every later item too. The same holds for `ScanAsync` called from the regis
   `ImageScanOrchestrator.ScanAsync` throws the original exception.
 - AC3: When an item's final save fails, its run (stored as `Running`) ends `Failed` with a completion time and the
   error message made of the distinct messages gathered so far, each on its own line, followed by the line of AC2.
-- AC4: When the recovery save fails too, it is logged with event 2034 (observed image) or 2043 (Docker instance) at
+- AC4: When the recovery save fails too (an error, or a cancellation of the scan's token), it is logged with event 2034 (observed image) or 2043 (Docker instance) at
   level `Error`, the original exception is rethrown, and nothing of the item stays tracked: a later scan on the same
   context stores no run or change of the failed item.
 - AC5: An `OperationCanceledException` from a save is rethrown without a recovery save (one save attempt).
@@ -98,9 +99,14 @@ cancellation token (at most six with the exception, if the Dev splits the recove
    (runtime: `Runtime container scan could not be saved: …`); `scanRun.Status = ScanRunStatus.Failed`,
    `CompletedAtUtc = DateTimeOffset.UtcNow`, `ErrorMessage = string.Join(Environment.NewLine, statusMessages.Distinct())`;
 4. `_dbContext.Entry(scanRun).State = stored ? EntityState.Modified : EntityState.Added` — never `Update`, `Add` or
-   `Attach`, which walk the run's child collections (fact 7);
-5. `SaveChangesAsync(CancellationToken.None)` as the enrichment does; on any exception log it with the new event
-   (2034 / 2043) and clear the tracker again;
+   `Attach`, which walk the run's child collections (fact 7). Fallback, if the runtime AC1 test still finds a stored
+   `ContainerSnapshot` of the failed run: set the state of a new `ScanRun` instead, with the run's `Id` and its scalar
+   values copied (`Type`, `TriggerSource`, `ObservedImageId` / `DockerInstanceId`, `StartedAtUtc`, `Status`,
+   `CompletedAtUtc`, `ErrorMessage`); the Dev reports which form was needed, and the Lead records it in 0040;
+5. `SaveChangesAsync(cancellationToken)` — the scan's token, not `CancellationToken.None` as in the enrichment, so a
+   recovery against an unreachable database, which repeats the whole `EnableRetryOnFailure` sequence, ends with the
+   scan's cancellation or host shutdown; on any exception, an `OperationCanceledException` included, log it with the
+   new event (2034 / 2043) and clear the tracker again;
 6. `throw;` the original exception.
 
 The batch handlers (`catch (Exception exception)` of both `ScanAllAsync`) also call `_dbContext.ChangeTracker.Clear()`
@@ -208,7 +214,7 @@ reasons stay fixed (fact 8). No `docs/ARCHITECTURE.md` change.
 - Changes an item's inner error handler lets through to its final save (partial work before a caught error) are kept as
   today.
 
-## Security notes
+## Security review
 
 Security review, mode plan: specs/issue-384/plan.md at 7475617, plus record docs/decisions/0040-a-scan-item-whose-save-fails-is-saved-again-alone-as-failed.md
 
@@ -240,7 +246,12 @@ I checked for other areas it might touch and found none:
 - Smallest fix: pass the scan's `cancellationToken` to the recovery save. If that save is cancelled, it ends like any other failed recovery: logged with 2034 or 2043, tracker cleared, run left to the stale-run repair.
 - Recommendation: the Lead decides now in the plan. If the Lead keeps `CancellationToken.None`, add one sentence to the *Consequences* of record 0040 saying that the recovery save is not cancellable and may repeat the connection retries.
 
-## Challenge notes
+Answer (Lead, decide): accepted, fixed — the recovery save takes the scan's `cancellationToken` (*Approach*, step 5); a
+cancelled recovery ends like a failed one (2034 / 2043 logged, tracker cleared, original exception rethrown, the run left
+to the stale-run repair). AC4 names the cancellation; its tests stand, since the cancellation takes the same `catch`
+branch as an error. Record 0040 states the choice under *Consequences*.
+
+## Challenge
 
 Devil's Advocate, mode plan: issue #384, /home/user/DockerUpdateGuard/specs/issue-384/plan.md at commit 7475617.
 
@@ -259,4 +270,10 @@ Objections:
 
 1. `minor`: Fact 7 is left unverified, and the plan gives no fallback if the runtime AC1 test shows snapshots of the failed run stored. Reading of EF Core, not run: attaching by setting `EntityEntry.State` only records untracked child entities in `InitialFixup` (`RecordReferencedUntrackedEntity`). Its relationship snapshot holds the current collection, so `DetectChanges` should not insert them. Instruction to the Dev: if the runtime AC1 test does find a stored `ContainerSnapshot`, do not attach the original `scanRun` in the recovery. Attach a new `ScanRun` with the same `Id` and copied scalar values (`Type`, `TriggerSource`, `ObservedImageId`/`DockerInstanceId`, `StartedAtUtc`, `Status`, `CompletedAtUtc`, `ErrorMessage`), with the state set the same way. Then record the outcome in 0040.
 
+   Answer: accepted — the fallback is *Approach*, step 4, and fact 7 points to it; the Dev reports which form was
+   needed, and the Lead records the outcome in 0040 (its *Consequences* already reserve the line).
+
 2. `minor`: The root cause names only the registration page as a long-lived context (`ObservedImages.razor.cs:186`). `RuntimeContainers.razor.cs:385` also calls `ScanAllAsync` on the circuit-scoped context. The new `ChangeTracker.Clear()` therefore detaches every entity the circuit tracks, not just the scan's. I found no page or circuit service that keeps an entity in a field across calls (grep for entity-typed private fields in `src/DockerUpdateGuard`), so this is safe today. Instruction to the Lead/Dev: state in record 0040 that the clear runs on the circuit context of both pages and is safe only because no circuit component holds tracked entities across calls.
+
+   Answer: accepted — record 0040, *Consequences*, states it for both pages; the root cause in this plan names
+   `RuntimeContainers.razor.cs:385` beside the registration page.
