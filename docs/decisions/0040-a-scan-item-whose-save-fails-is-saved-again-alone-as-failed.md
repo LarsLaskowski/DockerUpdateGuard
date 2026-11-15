@@ -51,6 +51,9 @@ Option 1, in both orchestrators. The run's message and the rules of the recovery
 - The recovery save takes the scan's cancellation token, unlike the vulnerability refresh's retry: against an
   unreachable database it repeats the whole connection-retry sequence, which cancellation and host shutdown must be
   able to end. A cancelled recovery ends like a failed one, and the run is left to the stale-run repair.
+- The vulnerability refresh's retry of its final save attaches its run the same way, by its entry state, so the
+  findings fix-up put into the run's collection are not written again or updated without ever being inserted (#485);
+  it keeps the run's status and message.
 - The clear also runs on the circuit-scoped context of the registration page (a direct scan of one observed image) and
   of the runtime containers page (a runtime batch), and detaches everything that context tracks, not only the scan's
   entities. It is safe only because no page or circuit service holds a tracked entity across calls; one that does

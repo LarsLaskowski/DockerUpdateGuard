@@ -210,7 +210,7 @@ may scan the same image at the same time. This is wasteful but does not corrupt 
   and the original error is rethrown ([decision 0040](../decisions/0040-a-scan-item-whose-save-fails-is-saved-again-alone-as-failed.md)).
   Only if that save fails as well, or the scan is cancelled, does a stored run stay `Running` until the stale-run
   repair marks it `Failed` (a run whose first save failed is then not stored). A vulnerability refresh retries its
-  final save once on a fresh state before giving up.
+  final save once on a fresh state, saving the run alone, before giving up.
 - If the database cannot be reached during a cleanup pass, the whole pass fails, nothing is removed, and the next
   pass starts after one interval.
 
