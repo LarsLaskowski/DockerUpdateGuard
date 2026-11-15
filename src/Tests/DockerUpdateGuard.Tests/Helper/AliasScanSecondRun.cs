@@ -11,6 +11,16 @@ internal sealed class AliasScanSecondRun
     #region Properties
 
     /// <summary>
+    /// Image reference the container has in the second scan; the reference of the first scan when omitted
+    /// </summary>
+    public string? ImageReference { get; init; }
+
+    /// <summary>
+    /// Container identifier in the second scan; the container of the first scan when omitted
+    /// </summary>
+    public string? ContainerId { get; init; }
+
+    /// <summary>
     /// Exception the image inspect of the second scan throws, if any
     /// </summary>
     public Exception? InspectException { get; init; }

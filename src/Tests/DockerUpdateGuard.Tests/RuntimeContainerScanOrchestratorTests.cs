@@ -3186,6 +3186,87 @@ public class RuntimeContainerScanOrchestratorTests
     }
 
     /// <summary>
+    /// Verify a repository that is not found clears the version tags of the previous snapshot
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC5")]
+    public async Task RuntimeContainerScanOrchestratorScanAllAsyncStoresNoVersionTagsWhenRepositoryIsNotFoundAsync()
+    {
+        var outcome = await RunAliasScansAsync(new AliasScanSecondRun
+                                               {
+                                                   Tags = () => Task.FromResult(ExternalOperationResult.NotFound<IReadOnlyList<DockerHubTagData>>("The repository does not exist")),
+                                               }).ConfigureAwait(false);
+
+        AssertFirstSnapshotHasVersions(outcome);
+        Assert.HasCount(1, outcome.SecondSnapshots, "The second run must record one snapshot");
+        Assert.IsNull(outcome.SecondSnapshots[0].ResolvedVersionTag, "A repository that is not found must leave no resolved version");
+        Assert.IsNull(outcome.SecondSnapshots[0].AvailableUpdateVersionTag, "A repository that is not found must leave no available update version");
+    }
+
+    /// <summary>
+    /// Verify a failed tag lookup does not carry the version tags of a snapshot of another image version
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC6")]
+    public async Task RuntimeContainerScanOrchestratorScanAllAsyncKeepsNoVersionTagsOfAnotherImageVersionAsync()
+    {
+        var outcome = await RunAliasScansAsync(new AliasScanSecondRun
+                                               {
+                                                   ImageReference = "docker.io/library/phpmyadmin:latest@sha256:other",
+                                                   Tags = () => Task.FromResult(ExternalOperationResult.Failed<IReadOnlyList<DockerHubTagData>>("The registry is temporarily unavailable")),
+                                               }).ConfigureAwait(false);
+
+        AssertFirstSnapshotHasVersions(outcome);
+        Assert.HasCount(1, outcome.SecondSnapshots, "The second run must record one snapshot");
+        Assert.AreNotEqual(outcome.FirstSnapshot.ImageVersionId,
+                           outcome.SecondSnapshots[0].ImageVersionId,
+                           "The running digest changed, so the second snapshot must name another image version");
+        Assert.IsNull(outcome.SecondSnapshots[0].ResolvedVersionTag, "The resolved version of another image version must not be carried");
+        Assert.IsNull(outcome.SecondSnapshots[0].AvailableUpdateVersionTag, "The available update version of another image version must not be carried");
+    }
+
+    /// <summary>
+    /// Verify the failed snapshot of a container without a running digest takes the image version but no version tags
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task RuntimeContainerScanOrchestratorScanAllAsyncCarriesNoVersionTagsWithoutRunningDigestWhenImageCatalogThrowsAsync()
+    {
+        var outcome = await RunAliasScansAsync(new AliasScanSecondRun
+                                               {
+                                                   ImageReference = "docker.io/library/phpmyadmin:latest",
+                                                   CatalogException = new InvalidOperationException("Catalog exploded"),
+                                               }).ConfigureAwait(false);
+
+        AssertFirstSnapshotHasVersions(outcome);
+        Assert.HasCount(1, outcome.SecondSnapshots, "The second run must record a snapshot although the catalog call threw");
+        Assert.AreEqual(outcome.FirstSnapshot.ImageVersionId,
+                        outcome.SecondSnapshots[0].ImageVersionId,
+                        "The snapshot must take the image version of the previous snapshot");
+        Assert.IsNull(outcome.SecondSnapshots[0].ResolvedVersionTag, "Without a running digest the resolved version must not be carried");
+        Assert.IsNull(outcome.SecondSnapshots[0].AvailableUpdateVersionTag, "Without a running digest the available update version must not be carried");
+    }
+
+    /// <summary>
+    /// Verify a container without an earlier snapshot gets no snapshot when its processing fails before the snapshot
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task RuntimeContainerScanOrchestratorScanAllAsyncRecordsNoSnapshotWhenNewContainerImageCatalogThrowsAsync()
+    {
+        var outcome = await RunAliasScansAsync(new AliasScanSecondRun
+                                               {
+                                                   ContainerId = "container-2",
+                                                   CatalogException = new InvalidOperationException("Catalog exploded"),
+                                               }).ConfigureAwait(false);
+
+        Assert.IsEmpty(outcome.SecondSnapshots, "A container without an earlier snapshot must get no snapshot when its processing fails before the snapshot");
+        Assert.AreEqual(ScanRunStatus.Partial, outcome.SecondRunStatus, "A container that could not be processed must make the run partial");
+    }
+
+    /// <summary>
     /// Create a Docker instance client whose first container discovery signals and waits for a release
     /// </summary>
     /// <param name="discoveryStarted">Completed when the first discovery has started</param>
@@ -3570,16 +3651,16 @@ public class RuntimeContainerScanOrchestratorTests
                 var tags = CreateAliasTags();
 
                 dockerInstanceClient.DiscoverContainersAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<CancellationToken>())
-                                    .Returns(ExternalOperationResult.Succeeded<IReadOnlyList<RuntimeContainerDescriptor>>([
-                                                                                                                              new RuntimeContainerDescriptor
-                                                                                                                              {
-                                                                                                                                  ContainerId = "container-1",
-                                                                                                                                  Name = "phpmyadmin",
-                                                                                                                                  ImageReference = "docker.io/library/phpmyadmin:latest@sha256:old",
-                                                                                                                                  RuntimeStatus = ContainerRuntimeStatus.Running,
-                                                                                                                                  IsRunning = true,
-                                                                                                                              },
-                                                                                                                          ]));
+                                    .Returns(_ => ExternalOperationResult.Succeeded<IReadOnlyList<RuntimeContainerDescriptor>>([
+                                                                                                                                   new RuntimeContainerDescriptor
+                                                                                                                                   {
+                                                                                                                                       ContainerId = isSecondScan ? second.ContainerId ?? "container-1" : "container-1",
+                                                                                                                                       Name = "phpmyadmin",
+                                                                                                                                       ImageReference = isSecondScan ? second.ImageReference ?? "docker.io/library/phpmyadmin:latest@sha256:old" : "docker.io/library/phpmyadmin:latest@sha256:old",
+                                                                                                                                       RuntimeStatus = ContainerRuntimeStatus.Running,
+                                                                                                                                       IsRunning = true,
+                                                                                                                                   },
+                                                                                                                               ]));
                 dockerInstanceClient.InspectImageAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
                                     .Returns(_ => isSecondScan && second.InspectException is not null
                                                       ? Task.FromException<ExternalOperationResult<DockerImageInspectData>>(second.InspectException)
