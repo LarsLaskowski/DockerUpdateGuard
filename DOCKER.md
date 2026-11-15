@@ -36,7 +36,7 @@ If the image should inspect the Docker Engine of the Linux host it runs on, bind
 --mount type=bind,source=/var/run/docker.sock,target=/var/run/docker.sock
 ```
 
-and configure the matching Docker instance URL in appsettings.json, for example:
+The shipped appsettings.json already contains this instance. To configure it yourself or add further instances, use the matching Docker instance URL in appsettings.json, for example:
 
 ```json
 {
