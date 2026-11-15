@@ -186,3 +186,57 @@ I/O: the new query runs in the orchestrator before the evaluation. No change to 
 - A container whose image reference is invalid still records no snapshot (docker-instances.md); a valid image version
   cannot exist for it.
 - A container seen for the first time whose catalog call fails records no snapshot (0044, Consequences).
+
+## Challenge notes
+
+Devil's Advocate, mode `plan`: challenge of /home/user/DockerUpdateGuard/specs/issue-491/plan.md (issues #491 and #492)
+
+I found one minor objection and no major ones. I checked these claims in the code and they hold:
+- **Root cause of #491.** The inspect and catalog calls run before the snapshot exists, and the error handler only records anything when `snapshot is not null` (`src/DockerUpdateGuard/Images/RuntimeContainerScanOrchestrator.cs` 664-693 and 772).
+- **Root cause of #492.** The two version tags are set only by `PopulateResolvedVersionTags` (244-275), which is called from 834.
+- **Partial run.** A returned failure message turns the run *partial* (565-577).
+- **AC2 test seam.** The orchestrator takes `IImageCatalogRepository` through its constructor (121-133), and every existing test builds its clients and the registry service with `Substitute.For` (`src/Tests/DockerUpdateGuard.Tests/RuntimeContainerScanOrchestratorTests.cs` 65-121), so a forwarding-then-throwing double is possible.
+- **New-snapshot query pattern.** The plan reuses the materialize-then-order pattern of `GetPreviousResolvedVersionTagAsync` (1279-1305).
+- **Need and scope.** The reorder and the fallback are the least invasive fix. The rejected options in the plan match record `docs/decisions/0044-...md`.
+
+## Objections
+
+1. **minor: the version carry in `CreateSnapshot` drops the documented "running digest is known" condition.**
+   - **Plan passages:** Approach 3 copies the previous snapshot's two version tags "only when its `ImageVersionId` equals the given one". The *Documentation updates* bullet for *Alias resolution* restates the rule as "when it names the same image version".
+   - **What the code and docs say:** `docs/areas/update-detection.md` 52-54 says the resolved version of an earlier snapshot is carried over "provided the running digest is known". The code enforces this: `GetPreviousResolvedVersionTagAsync` returns `null` when `currentDigest` is empty (`RuntimeContainerScanOrchestrator.cs` 1285-1288).
+   - **Why it matters:** an image version without a digest is keyed by tag with a null digest (`src/DockerUpdateGuard.Data/Repositories/ImageCatalogRepository.cs` 103-111). For such a container the resolved version came from the registry digest of the alias tag (update-detection.md 45-46), not from what is running. With the plan as written, a failed tag lookup would carry a version the documented rule forbids carrying, while a completed evaluation would not carry it. The two paths would disagree, and the docs edit would quietly loosen a stated guarantee.
+   - **Instruction for the Dev:** in `CreateSnapshot`, copy `ResolvedVersionTag` only when the image version ids match and the parsed running digest (`parsedReference.Digest`) is non-empty. Phrase the update-detection.md edit so it keeps "provided the running digest is known".
+   - **Instruction for the Tester:** the six planned tests all use a container with a known digest, so add no exact-value assertion for the digestless case unless you build a fixture for it.
+   - **Why minor:** it is one extra condition and one wording fix the Dev and Tester can apply without changing the plan.
+
+## Security notes
+
+Security plan review: specs/issue-491/plan.md (mode plan, round 1). Area touched: Container actions.
+
+No blocking findings.
+
+What I read:
+- /home/user/DockerUpdateGuard/specs/issue-491/plan.md
+- .squad/project.md, *Security areas*
+- docs/areas/container-actions.md, *Container availability*
+- src/DockerUpdateGuard/Images/RuntimeContainerScanOrchestrator.cs 640-790, the failure path the plan changes
+- src/DockerUpdateGuard/Portainer/ContainerActionService.cs `LoadTargetAsync` (160-201) and `CheckTargetAsync` (330-360)
+
+**Tier.** `standard` is correct. The action gate decides a container is current in two places:
+- `ContainerActionService.LoadTargetAsync`: the container's latest snapshot by `RecordedAtUtc` must belong to the instance's latest runtime scan run that has any snapshot.
+- `CheckTargetAsync`: `isCurrent == false` rejects the action.
+
+The plan changes neither, and no security control is created, changed or removed. The only effect is that a container this scan discovered but could not process now counts as current. That matches the documented definition in container-actions.md ("A container is in that scan when its latest snapshot belongs to the instance's latest runtime scan run that recorded any snapshot"). Today such a container is wrongly reported as missing.
+
+**Container actions.** Approach 3 and 5 build the fallback snapshot from the container discovered in this scan. Its `ContainerId`, `Status` and `IsRunning` therefore come from the current Docker answer, so the offered actions (the runtime-status table) follow the container's real state. Only `ImageVersionId` and the two version tags come from the earlier snapshot, and the gate reads none of those three. A container with no earlier snapshot still gets no snapshot, so no target is created that the gate did not have before. The `container-actions.md` sweep (no edit) is correct.
+
+**Failure messages.** No new text and no new log calls. Exceptions from the catalog call and the two new loads reach the assessment message and the run message only through the existing `Container '<name>' could not be processed: ` + `FailureReason.FromException` path, which the plan's fact 9 covers. The existing `RuntimeContainerProcessingFailed` log call is unchanged. No *Logger arguments* concern.
+
+**Database.** `LoadPreviousSnapshotAsync` filters by the instance id and the container id from discovery. It is a LINQ query, so it is parameterized and builds no query from user input. Its result is bounded by snapshot retention, as the plan says. No other area is touched that the plan does not list: no parsing, outbound calls, secrets, CI, Docker/build files or dependencies.
+
+[NON-BLOCKING] Approach 3, the fallback's `RecordedAtUtc`:
+- **Risk:** `LoadPreviousSnapshotAsync` also projects the earlier snapshot's `RecordedAtUtc`, but only for ordering. If `CreateSnapshot` copied it into the fallback, the fallback would tie with the old snapshot in `LoadTargetAsync`'s `OrderByDescending(RecordedAtUtc)`. The gate could then pick the old, non-current snapshot. That fails closed (no actions), so it is not a bypass, but AC2's user-visible fix would not reach the actions panel.
+- **Smallest fix:** state in Approach 3 that `CreateSnapshot` always sets `RecordedAtUtc = DateTimeOffset.UtcNow`, as 677-691 do, and never takes it from the previous snapshot.
+- **Recommendation:** fix now in the plan text, one clause.
+
+No measurement was needed: the plan makes no security claim that rests on measured or library behavior.
