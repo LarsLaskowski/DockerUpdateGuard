@@ -176,8 +176,9 @@ findings. No I/O enters update evaluation. Layering unchanged; no guarantee of `
 - Running the runtime check after a failed tag lookup (0042 keeps it tied to a completed evaluation).
 - Version columns of a failed snapshot, proposed follow-up issue: "The runtime container list can show the raw tag as
   the resolved version after a failed container evaluation" — `PopulateResolvedVersionTags`
-  (`RuntimeContainerScanOrchestrator.cs:232-268`) runs only in `EvaluateContainerUpdateAsync`, so a *failed* snapshot
-  has no `ResolvedVersionTag` or `AvailableUpdateVersionTag`, and the list works them out from the findings' tag
+  (`RuntimeContainerScanOrchestrator.cs:232-268`) runs only in `EvaluateContainerUpdateAsync`, so a snapshot whose
+  tag lookup failed, or whose processing raised an error before its update evaluation completed, has no
+  `ResolvedVersionTag` or `AvailableUpdateVersionTag`, and the list works them out from the findings' tag
   candidates (`ApplicationViewService.cs:829-837`). Behaviour before this change, not made worse by it; copying the
   previous snapshot's two tags onto the failed snapshot is a separate rule for what a failed snapshot shows.
 
