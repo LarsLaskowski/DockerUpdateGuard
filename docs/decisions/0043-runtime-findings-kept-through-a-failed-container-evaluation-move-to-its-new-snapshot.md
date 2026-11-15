@@ -1,6 +1,6 @@
 # 0043: Runtime findings kept through a failed container evaluation move to its new snapshot
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-15
 - **Area:** Update detection
 - **Source:** Issue #489
