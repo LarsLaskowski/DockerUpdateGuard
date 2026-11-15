@@ -567,12 +567,13 @@ public class ContainerActionServiceTests
     }
 
     /// <summary>
-    /// Verify a confirmation for an instance or a container the database does not hold fails with the confirmation text of E6, writes no run and does not contact Portainer
+    /// Verify a confirmation for an instance or a container the database does not hold fails with the confirmation text of E6, writes no run, does not contact Portainer and logs one warning without the container identifier
     /// </summary>
     /// <param name="unknownInstance">Whether the instance is unknown; otherwise the container is</param>
     /// <returns>Task</returns>
     [TestMethod]
     [TestCategory("AC6")]
+    [TestCategory("AC11")]
     [DataRow(true)]
     [DataRow(false)]
     public async Task ContainerActionServiceExecuteAsyncWhenInstanceOrContainerUnknownFailsWithoutRunAsync(bool unknownInstance)
@@ -583,7 +584,8 @@ public class ContainerActionServiceTests
         using var provider = CreateServiceProvider(databaseName, new ContainerActionRunWriteFailingInterceptor());
         using var handler = CreatePortainerHandler(requests, CreateAnswer(HttpStatusCode.NoContent));
 
-        var service = CreateService(provider, handler, CreateOptions(null), null, new TestLogger<ContainerActionService>(), CancellationToken.None);
+        var logger = new TestLogger<ContainerActionService>();
+        var service = CreateService(provider, handler, CreateOptions(null), null, logger, CancellationToken.None);
         var instanceId = unknownInstance ? Guid.NewGuid() : seeded.InstanceId;
         var containerId = unknownInstance ? ContainerId : OtherContainerId;
 
@@ -597,6 +599,16 @@ public class ContainerActionServiceTests
                         "A confirmation for an unknown target must return the confirmation text of E6");
         Assert.IsEmpty(runs, "Without a known instance and snapshot no run can be written");
         Assert.IsEmpty(requests, "Portainer must not be contacted for an unknown target");
+
+        var rejection = Assert.ContainsSingle(entry => entry.EventId.Id == 3325, logger.Entries, "An unknown target must be logged once");
+
+        Assert.AreEqual(LogLevel.Warning, rejection.LogLevel, "An unknown target must be logged as a warning");
+        Assert.AreEqual($"Container action RestartContainer rejected: no snapshot of the container on Docker instance {instanceId}",
+                        rejection.Message,
+                        "The entry must name only the action type and the instance identifier");
+        Assert.DoesNotContain(entry => entry.Message.Contains(containerId, StringComparison.Ordinal),
+                              logger.Entries,
+                              "No log entry may carry the container identifier of the request");
     }
 
     /// <summary>
