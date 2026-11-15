@@ -1,6 +1,6 @@
 # 0040: A scan item whose save fails is saved again alone as *failed*
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-15
 - **Area:** Scan engine
 - **Source:** Issue #384
