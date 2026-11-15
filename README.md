@@ -191,9 +191,9 @@ Each entry describes one Docker Engine endpoint. Rules: [Docker instances](docs/
 | `CertificatePath` | none | No | Client certificate for TLS-secured engine access, a password-less PKCS#12 bundle (`.pfx` or `.p12`) ([TLS options](docs/areas/docker-instances.md#tls-options)). Convert PEM files with `openssl pkcs12 -export -in cert.pem -inkey key.pem -out client.pfx -passout pass:`. |
 | `RequestTimeoutSeconds` | `15` | No | Timeout for Docker Engine requests |
 
-Recommended Linux socket configuration:
+Shipped Linux socket configuration (the instance at index `0` of the shipped `appsettings.json`):
 
-| Key | Example value |
+| Key | Shipped value |
 | --- | --- |
 | `DockerUpdateGuard:DockerInstances:0:Name` | `Local Docker` |
 | `DockerUpdateGuard:DockerInstances:0:BaseUrl` | `unix:///var/run/docker.sock` |

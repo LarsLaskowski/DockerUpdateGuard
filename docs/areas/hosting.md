@@ -31,6 +31,8 @@ every feature area relies on it for validated configuration and a migrated datab
 - Validation reads the configured client-certificate file (`CertificatePath`) of each enabled Docker instance, at
   startup and on every reload (none when it is blank or its extension is not `.pfx`/`.p12`); it reads no other file.
   The rules are in [Docker instances](docker-instances.md), *TLS options* and *Limits and errors*.
+- The shipped `appsettings.json` passes validation once a connection string is supplied; its connection string is
+  deliberately empty.
 - Any violation fails startup: the process exits before the database is contacted and before any request is served.
 - The `Telemetry` section is validated even earlier, while services are registered; see [Telemetry](telemetry.md).
 - Rules owned by this area:
@@ -231,9 +233,6 @@ These properties hold today and must be provided for by the deployment:
 - Forwarded headers from a reverse proxy are not supported. Behind a TLS-terminating proxy the application sees
   plain HTTP, so it never sends HSTS and HTTPS redirection cannot determine a port; both are left to the proxy.
   Tracked in [#283](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/283).
-- The shipped `appsettings.json` configures one Docker instance with an empty name, which fails configuration
-  validation; the application does not start with the shipped settings until that instance is named or removed.
-  Tracked in [#288](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/288).
 
 ## Related decisions
 

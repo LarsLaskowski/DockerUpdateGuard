@@ -1,5 +1,6 @@
 using DockerUpdateGuard.Telemetry;
 using DockerUpdateGuard.Tests.Data;
+using DockerUpdateGuard.Tests.Helper;
 
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -135,7 +136,7 @@ public partial class TelemetryServiceCollectionExtensionsTests
     [TestMethod]
     public void TelemetryServiceCollectionExtensionsConfigurationSamplesUseCurrentTelemetrySchema()
     {
-        var hostProjectPath = GetHostProjectPath();
+        var hostProjectPath = HostProjectDirectory.GetPath();
         var baseConfiguration = new ConfigurationBuilder().SetBasePath(hostProjectPath)
                                                           .AddJsonFile("appsettings.json", optional: false)
                                                           .Build();
@@ -173,25 +174,6 @@ public partial class TelemetryServiceCollectionExtensionsTests
             Assert.IsFalse(developmentTelemetryKeys.Contains(removedOptionKey, StringComparer.Ordinal),
                            $"The development telemetry sample must not expose the removed '{removedOptionKey}' option");
         }
-    }
-
-    /// <summary>
-    /// Resolve the host project directory from the current test output
-    /// </summary>
-    /// <returns>Host project directory path</returns>
-    private static string GetHostProjectPath()
-    {
-        var hostProjectPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
-                                                            "..",
-                                                            "..",
-                                                            "..",
-                                                            "..",
-                                                            "..",
-                                                            "DockerUpdateGuard"));
-
-        Assert.IsTrue(Directory.Exists(hostProjectPath), $"The host project directory '{hostProjectPath}' must exist for configuration verification");
-
-        return hostProjectPath;
     }
 
     /// <summary>

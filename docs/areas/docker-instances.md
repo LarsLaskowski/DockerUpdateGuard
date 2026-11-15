@@ -17,6 +17,9 @@ on the snapshots and samples it produces.
 - Per instance the keys are `Name` (required), `BaseUrl` (required), `Enabled` (default `true`), `UseTls` (default
   `false`), `SkipCertificateValidation` (default `false`), `CertificatePath` (optional), `RequestTimeoutSeconds`
   (default `15`) and the optional `Portainer` section (see [Container actions](container-actions.md)).
+- The shipped `appsettings.json` configures one enabled instance at index `0`: `Local Docker` on
+  `unix:///var/run/docker.sock`. Keys `DockerUpdateGuard__DockerInstances__0__…` override it; in a container it is
+  reachable only when the host socket is mounted into it.
 - An instance is identified by its trimmed `Name`, compared case-insensitively. Renaming an instance in configuration
   is the removal of the old instance and the creation of a new one.
 - The configured instances are synchronized into the database at startup, on every
@@ -171,8 +174,7 @@ on the snapshots and samples it produces.
 - Invalid instance configuration fails startup ([Hosting](hosting.md)): a missing `Name`, a duplicate name (after
   trimming, case-insensitive), a missing `BaseUrl`, a `BaseUrl` that is not an absolute URI with scheme `http`,
   `https`, `tcp`, `unix` or `npipe`, a `BaseUrl` with an `@` outside its user info ([Hosting](hosting.md), *Validation*), or a
-  `RequestTimeoutSeconds` outside 1–300. The shipped `appsettings.json`
-  contains one instance with an empty `Name`, so an operator must set a name before the application starts.
+  `RequestTimeoutSeconds` outside 1–300.
 - An unusable `CertificatePath` of an enabled instance fails startup with
   `'CertificatePath' of Docker instance '<Name>' names an unusable client certificate '<path>': <reason>`,
   where the reason is one of:
