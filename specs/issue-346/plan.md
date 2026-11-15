@@ -2,7 +2,7 @@
 
 Source: Issue #346
 Tier: standard — the change bounds how long a registry response body may be read, a resource bound like the excerpt's size bound (input handling), and creates, changes or removes no guard on what an attacker may reach.
-Security areas touched: Registry and Docker Scout calls (`DockerHub/DockerHubClient.cs`, `Images/OciRegistryClient.cs` and their `HttpClient` pipelines in `ServiceCollectionExtensions.cs`)
+Security areas touched: Registry and Docker Scout calls (`DockerHub/DockerHubClient.cs`, `Images/OciRegistryClient.cs` and their `HttpClient` pipelines in `ServiceCollectionExtensions.cs`); Failure messages and remote text (the bounded read of `ResponseBodyExcerpt` and its `timed out` reason, `docs/areas/integration-failures.md`)
 
 ## Problem / root cause
 
@@ -210,3 +210,68 @@ retry handler, request slot and pagination guard are unchanged. `docs/ARCHITECTU
 
 - The total duration of a listing (per-request bound only, 0029 and 0024 unchanged).
 - Release feeds, Docker Scout, Docker Engine and Portainer: bounded already (facts 5 and 8; 0037).
+
+## Challenge notes
+
+Plan challenge for issue #346 (mode plan), /home/user/DockerUpdateGuard/specs/issue-346/plan.md
+
+The plan holds up. I checked its claims in the code:
+- Only three places send with `ResponseHeadersRead`: `DockerHub/DockerHubClient.cs:952`, `Images/OciRegistryClient.cs:1104` and `:1118`. No `GetStreamAsync` or other streaming read exists anywhere else in `src/DockerUpdateGuard`.
+- The Docker Hub request slot is released in the `finally` of `SendThrottledAsync` (`DockerHubClient.cs:946-960`), before any body read. So the handler does not change the slot semantics, and the slot wait stays outside the deadline, as `docs/areas/registries.md:220-223` says.
+- `ExecuteAsync` (`OciRegistryClient.cs:1215-1227`, `DockerHubClient.cs:1118-1130`) and `FailureReason.FromException` (`Infrastructure/FailureReason.cs:58-65`) turn an `OperationCanceledException` raised while the caller's token is not cancelled into `timed out after <n> seconds`, using `_httpClient.Timeout`. Neither client has a `catch` that would swallow the deadline's exception before it reaches `ExecuteAsync`. The only other `catch` is at `OciRegistryClient.cs:564`, and it catches `ArgumentOutOfRangeException`.
+- `TransientHttpRetryHandler` does not retry once its token is cancelled (`Infrastructure/TransientHttpRetryHandler.cs:159`, `:360-361`), and its backoff `Task.Delay` observes the token. With the deadline handler outside it, the deadline therefore covers retries and waits, as the plan says.
+- Every body read goes through an async read: `ResponseBodyExcerpt` uses `StreamReader.ReadBlockAsync(Memory, ct)` (`Infrastructure/ResponseBodyExcerpt.cs:56-63`), and `RemoteJsonDocument.ParseAsync` is async. The `NotSupportedException` thrown by a synchronous `Read` is never hit in production.
+- Portainer and Docker Engine are already covered by 0037. The release feeds and Docker Scout use `ResponseContentRead`, so `HttpClient.Timeout` covers them. The out-of-scope list is correct.
+
+Objections:
+
+1. minor: the OCI token-body test can fire the wrong timer. The template test `DockerHubClientLoginBodyStalledReleasesTokenCacheAfterTimeoutAsync` keeps only the first timer `CreateTimer` creates (`timerCallback ??= ...`, `src/Tests/DockerUpdateGuard.Tests/DockerHubClientTests.cs:3145-3152`). With `RequestDeadlineHandler` in the test's `HttpClient`, every request arms its own timer. Any test whose stalled body is not on the first request will fire the deadline of an earlier, already disposed response, and the stalled read never ends. That covers `OciRegistryClientTokenBodyStalledReturnsTimedOutAsync`, where the token request follows the registry request that answered with the challenge, and any test that sends a token or login request first. Tester: in these AC1 and AC2 tests, keep the timer callback of the request whose body stalls (for example the last timer created, or the one created while the stalled request is being sent), not the first, and fire that one.
+
+## Security notes
+
+## Security plan review: issue #346 (specs/issue-346/plan.md)
+
+I approve the plan, with one non-blocking finding about how it lists security areas.
+
+**Tier.** `standard` is correct. A time bound on reading a response body is a resource bound, which counts as input handling. It does not create, change or remove a guard that decides what an attacker may reach. Auth, bearer-token handling, `PaginationLinkGuard`, redirect behaviour and URL handling are untouched. The deadline creates no new message text: a stalled read maps to the existing `timed out after <n> seconds` reason.
+
+**What I read against the plan**
+- `TransientHttpRetryHandler.SendAsync`. A `TaskCanceledException` from the deadline is not caught as transient, because `IsTransientException` only matches `HttpRequestException` and `TimeoutException`. So the deadline does not trigger retries. Retry-After waits use the linked token, so they stay inside the deadline, as the plan says.
+- `FailureReason.FromException`, lines 58–66. An `OperationCanceledException` while the caller's token is not cancelled becomes `timed out after <n> seconds`, so fact 7 holds.
+- Every body read in the two clients and in `DockerHubAccessTokenCache` is asynchronous:
+  - `ResponseBodyExcerpt.ReadAsync` uses `StreamReader.ReadBlockAsync`.
+  - `RemoteJsonDocument.ParseAsync` uses `JsonDocument.ParseAsync`.
+  - Lines `DockerHubClient.cs:670` and `OciRegistryClient.cs:915` read only content headers.
+  - So the synchronous `Read` that throws `NotSupportedException` fails closed and breaks no existing reader.
+- Response disposal. Every response is disposed by a `using var response` or an explicit `Dispose`, including the 401 → token → retry path in `OciRegistryClient.SendRegistryRequestAsync` (lines 1047–1076). Each request there gets its own deadline, and the deadline goes with the response. A response that were never disposed would still let go of its timer within one `RequestTimeoutSeconds`, so the bound holds.
+- The excerpt's size bound (`MaxBodyLength`) and the JSON validation are unchanged.
+
+**Measurement (run before approving).** Facts 2, 3 and 6 and the whole design depend on library behaviour, so I checked them myself.
+- I built a scratch console app (net10.0) at `/tmp/claude-0/-home-user-DockerUpdateGuard/108fb879-950f-5379-ad51-d799bf96a1bc/scratchpad/dlprobe/Program.cs`. It contains:
+  - a loopback HTTP/1.1 server that sends headers (`Content-Length: 100000`, `Content-Type: application/json; charset=utf-8`) and then 2 bytes every 300 ms;
+  - a prototype `DeadlineHandler` and `DeadlineStream` written as plan steps 1–2 describe;
+  - a recording `TimeProvider`.
+- Command: `cd /tmp/claude-0/-home-user-DockerUpdateGuard/108fb879-950f-5379-ad51-d799bf96a1bc/scratchpad/dlprobe && timeout 300 dotnet run -c Release`
+- Output:
+  ```
+  timers created=1 due=00:00:30 period=-00:00:00.0010000
+  after Fire IsCancellationRequested=True
+  after Dispose timer disposed=True
+  json: headers CT=application/json; charset=utf-8 CL=100000
+  json: TaskCanceledException after 2.02s
+  excerpt: headers CT=application/json; charset=utf-8 CL=100000
+  excerpt: TaskCanceledException after 2.00s
+  ```
+- What this confirms:
+  - A `CancellationTokenSource(TimeSpan, TimeProvider)` creates one timer through `CreateTimer` with the configured due time. Firing that timer cancels the source, and disposing the source disposes the timer. This supports the test double the plan's tests use (a captured callback that the test fires) and AC5.
+  - With a 2 s deadline and the caller's token not cancellable, both the `JsonDocument.ParseAsync` path and the excerpt path (`StreamReader.ReadBlockAsync` with a cancellable caller token, which goes through the per-read linked source) end in `TaskCanceledException` at the deadline.
+  - Content headers survive the swap to `StreamContent`, including the `charset` parameter (AC3).
+- `DeadlineStream.Dispose` ran 3–4 times per response: the `ReadOnlyStream` wrapper of `StreamContent`, the `StreamReader`, `await using`, and the response all dispose it. Disposing again did no harm, because `CancellationTokenSource` and `HttpContent` both tolerate it. The Dev should keep `Dispose(bool)` idempotent; no change to the plan is needed for this.
+
+**Findings**
+
+1. [NON-BLOCKING] *Security areas touched* leaves out **Failure messages and remote text** (`.squad/project.md`, the line listing `ResponseBodyExcerpt.cs`, `FailureReason.cs`, `TransientHttpRetryHandler.cs` → Integration failures). The plan changes what a stalled excerpt read produces: it is now a `timed out` reason instead of waiting until the caller's token fires (AC1/AC2 error-body cases, plan *Security considerations*, second bullet). It also edits that area's document, `docs/areas/integration-failures.md` (*Excerpts of remote text*, *Retry of transient HTTP failures*). The tier and the reviews stay the same. Smallest fix, verbatim, replacing the plan's *Security areas touched* line:
+   `Security areas touched: Registry and Docker Scout calls (`DockerHub/DockerHubClient.cs`, `Images/OciRegistryClient.cs` and their `HttpClient` pipelines in `ServiceCollectionExtensions.cs`); Failure messages and remote text (the bounded read of `ResponseBodyExcerpt` and its `timed out` reason, `docs/areas/integration-failures.md`)`
+   Recommendation: fix it now, in the Lead's revision or as a plan edit before step 4.
+
+No blocking findings.
