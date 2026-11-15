@@ -211,3 +211,41 @@ background job, interval or registration changes.
   asks for deactivation against deactivation only). The deactivation touches only image versions outside the live set,
   so the worst interleaving deactivates a just-rescanned finding of a non-live image version, which the next full
   refresh would deactivate anyway; no follow-up proposed.
+
+## Challenge notes
+
+The plan holds up on substance. I checked its claims against the code at f7ee074 and they are accurate:
+- **Runtime scans have no guard:** the scan run is created and saved first, at `src/DockerUpdateGuard/Images/RuntimeContainerScanOrchestrator.cs:448-471`.
+- **Cancellation is rethrown:** `ScanAllAsync` rethrows `OperationCanceledException` at `:1235-1248`.
+- **The duplicate-insert race is real:** `src/DockerUpdateGuard/Images/VulnerabilityEnrichmentService.cs:236-274` loads, inserts and saves with nothing guarding it.
+- **Database work stays on one flow:** in `RunRefreshAsync`, only the provider calls run in parallel (`:540-566`).
+- **A cancelled wait goes through the generic catch:** the catch is at `:589-596`, and `RefreshInventoryMetricsAsync` with the cancelled token comes at `:623`.
+- **Other callers and writers:** the only other callers are the three UI actions and two scheduled jobs. Nothing else writes `VulnerabilityFindings` or runtime update findings, so no sibling path is missed.
+- **No deadlock:** nothing inside a guarded section calls another guarded service.
+- **Out-of-scope rescan vs. deactivation:** deactivation never inserts, so that interleaving cannot create duplicates.
+- **Documentation sweep:** no other document needs a change. `docs/areas/base-images.md:23-24` only links to the scan engine document.
+
+The objections below are all minor. Each is written as an instruction for the Tester or Dev.
+
+## Minor objections
+
+1. **AC3, AC4 and AC6 (vulnerability): gate the apply step's save, not the first save** (minor: the test design does not say which save, and the wrong one hides the defect).
+   - `RunRefreshAsync` saves the new scan run first, at `VulnerabilityEnrichmentService.cs:522`, before any provider call or apply.
+   - A gate that blocks on the first `SaveChangesAsync` holds run A before it has loaded any findings. On today's code, run B then inserts and saves, A loads B's row afterwards and updates it, and no duplicate appears. AC3 would pass on unfixed code.
+   - Instruction: block only the save inside `ApplyAndSaveImageVulnerabilitiesAsync` (`:423`). Either block on the first save after the scan-run save, or on the first save whose change tracker holds an added `VulnerabilityFinding`.
+   - Confirm the test fails on unfixed code with a duplicate active finding for one advisory and package.
+
+2. **AC2 (runtime, different instances): use one `SqliteTestDatabase` per run** (minor: test setup the Tester can follow without a plan change).
+   - `ScanAllAsync` scans every enabled instance in the database (`RuntimeContainerScanOrchestrator.cs:1200-1203`). It synchronizes them from options first (`InstanceDiscoveryService.cs:112`, which sets `IsEnabled` from configuration).
+   - Two runs on one database therefore hit the same first instance and serialize, and a second options set would rewrite the other run's instances.
+   - Instruction: give each run its own database, one configured instance each. This also keeps the two flows off one shared, non-thread-safe `SqliteConnection` (fact 11).
+
+3. **AC6 (runtime): accept subclasses of `OperationCanceledException`** (minor: an assertion detail).
+   - A cancelled `SemaphoreSlim.WaitAsync` surfaces as `TaskCanceledException`, a subclass.
+   - `ScanAllAsync` rethrows it unchanged (`:1241-1244`).
+   - Instruction: assert with `Assert.ThrowsAsync<OperationCanceledException>`, which accepts subclasses, not `ThrowsExactlyAsync`.
+   - Cancel the token only after the second run is seen waiting (`GetReferenceCount(id) == 2`). A token cancelled earlier makes `SynchronizeConfiguredInstancesAsync` throw before the guard, and the test passes on unfixed code.
+
+4. **AC5: release the fixed-key lock in a `finally`** (minor: test hygiene that protects every other test).
+   - `StaleFindingDeactivationLock` is static and always keyed `Guid.Empty`. Every existing `RefreshAsync` test with a live image set waits on it.
+   - Instruction: the AC5 test releases its own `WaitAsync(Guid.Empty, …)` in a `finally`. Otherwise one failed assertion leaves the lock held and every later full-refresh test in the process hangs, not fails.
