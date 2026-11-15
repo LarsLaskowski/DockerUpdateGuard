@@ -254,7 +254,7 @@ typed/named `HttpClient`s registered in the composition root (§3). The
 Docker Engine client creates its `HttpClient`s without
 it. The retry policy is specified in
 [Integration failures](areas/integration-failures.md#retry-of-transient-http-failures).
-`RequestDeadlineHandler` (`Infrastructure\`) wraps the Docker Hub and OCI registry clients outside it and bounds a
+In the Docker Hub and OCI registry clients, `RequestDeadlineHandler` (`Infrastructure\`) sits outside `TransientHttpRetryHandler` and bounds a
 request together with the read of its response body by `RequestTimeoutSeconds`
 ([0039](decisions/0039-a-registry-request-and-the-read-of-its-response-body-share-one-deadline.md),
 [Registries](areas/registries.md#request-timeout)).
