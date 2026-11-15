@@ -1230,8 +1230,7 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
     }
 
     /// <summary>
-    /// Save the pending changes of the scan; when the save fails, discard everything the context tracks and save the
-    /// scan run alone as failed, then rethrow the original exception
+    /// Save the pending changes of the scan and, when that fails, the scan run alone as failed
     /// </summary>
     /// <param name="scanRun">Scan run</param>
     /// <param name="isRunStored">Is the run already stored?</param>
@@ -1239,43 +1238,19 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
     /// <param name="subjectName">Name of the scanned Docker instance for the log</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Task</returns>
-    private async Task SaveScanRunAsync(ScanRun scanRun,
-                                        bool isRunStored,
-                                        List<string> statusMessages,
-                                        string subjectName,
-                                        CancellationToken cancellationToken)
+    private Task SaveScanRunAsync(ScanRun scanRun,
+                                  bool isRunStored,
+                                  List<string> statusMessages,
+                                  string subjectName,
+                                  CancellationToken cancellationToken)
     {
-        try
-        {
-            await _dbContext.SaveChangesAsync(cancellationToken)
-                            .ConfigureAwait(false);
-        }
-        catch (Exception exception) when (exception is not OperationCanceledException)
-        {
-            _dbContext.ChangeTracker.Clear();
-
-            statusMessages.Add($"Runtime container scan could not be saved: {FailureReason.FromException(exception, null, cancellationToken)}");
-
-            scanRun.Status = ScanRunStatus.Failed;
-            scanRun.CompletedAtUtc = DateTimeOffset.UtcNow;
-            scanRun.ErrorMessage = string.Join(Environment.NewLine, statusMessages.Distinct());
-
-            try
-            {
-                _dbContext.Entry(scanRun).State = isRunStored ? EntityState.Modified : EntityState.Added;
-
-                await _dbContext.SaveChangesAsync(cancellationToken)
-                                .ConfigureAwait(false);
-            }
-            catch (Exception recoveryException)
-            {
-                _logger.RuntimeContainerScanRunSaveFailed(recoveryException, subjectName);
-
-                _dbContext.ChangeTracker.Clear();
-            }
-
-            throw;
-        }
+        return ScanRunSaver.SaveAsync(_dbContext,
+                                      scanRun,
+                                      isRunStored,
+                                      statusMessages,
+                                      "Runtime container scan could not be saved",
+                                      exception => _logger.RuntimeContainerScanRunSaveFailed(exception, subjectName),
+                                      cancellationToken);
     }
 
     #endregion // Methods
