@@ -219,7 +219,12 @@ go through its retry of transient HTTP failures.
 
 - `DockerUpdateGuard:DockerHub:RequestTimeoutSeconds` (default 30, range 1–300) is the total time one request may
   take including all retries and waits ([Integration failures](integration-failures.md#retry-of-transient-http-failures)),
-  for Docker Hub, other registries and the release feeds. The wait for a Docker Hub request slot
+  for Docker Hub, other registries and the release feeds. For the Docker Hub and OCI registry clients it runs from
+  sending the request until its response body is read, retries and waits included (`RequestDeadlineHandler`, outside
+  the retry handler): a body still arriving when it elapses ends the call *failed* with `timed out after <n> seconds`,
+  also when the caller's token is not cancelled; a cancellation of the caller's token still ends the call with an
+  `OperationCanceledException`
+  ([0039](../decisions/0039-a-registry-request-and-the-read-of-its-response-body-share-one-deadline.md)). The wait for a Docker Hub request slot
   (`MaxParallelRequests`) is not part of it, except for the Docker Hub client's login ([Authentication](#authentication)).
   The wait for a slot before the Docker Scout login lies outside `Vulnerabilities:RequestTimeoutSeconds`.
 
@@ -241,6 +246,8 @@ go through its retry of transient HTTP failures.
 
 ## Limits and errors
 
+- Each Docker Hub and OCI request, its body included, is bounded by `RequestTimeoutSeconds`; the duration of a whole
+  listing is not ([Request timeout](#request-timeout)).
 - *Unsupported*: an empty registry; the account listing when `DockerHub:Registry` is not a Docker Hub host.
 - *Not found*: HTTP 404 for an account, repository, tag, manifest or configuration blob; an image whose manifest names
   no configuration blob; a request path with a `.` or `..` segment, or an OCI registry that is not a valid host with an
@@ -282,6 +289,8 @@ go through its retry of transient HTTP failures.
 
 ## Related decisions
 
+- [0039](../decisions/0039-a-registry-request-and-the-read-of-its-response-body-share-one-deadline.md): a registry
+  request and the read of its response body share one deadline.
 - [0030](../decisions/0030-docker-hub-request-parallelism-is-limited-process-wide-and-follows-reloads.md): Docker Hub
   request parallelism is limited process-wide and follows reloads.
 - [0004](../decisions/0004-pagination-follows-only-same-origin-links.md): pagination follows only same-origin links.

@@ -124,7 +124,7 @@ Rules: [Registries](docs/areas/registries.md).
 | `ApiBaseUrl` | `https://hub.docker.com/` | No | Docker Hub web API base address; a mirror or proxy must keep next-page links on its own origin ([Pagination links](docs/areas/registries.md#pagination-links)) |
 | `UserName` | none | No | Docker Hub user name (Docker ID) for authenticated requests |
 | `Pat` | none | No | Docker Hub personal access token |
-| `RequestTimeoutSeconds` | `30` | No | Timeout of one Docker Hub, OCI registry or release-feed request, retries included |
+| `RequestTimeoutSeconds` | `30` | No | Timeout of one Docker Hub, OCI registry or release-feed request, retries included; for Docker Hub and OCI registries it also covers reading the response |
 | `MaxParallelRequests` | `4` | No | Maximum number of Docker Hub requests in flight at once for the whole process, the Docker Scout login included (1–32); applied on configuration reload |
 
 ### `DockerUpdateGuard:ReleaseMetadata`

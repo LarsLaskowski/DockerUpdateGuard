@@ -76,12 +76,16 @@ public static class ServiceCollectionExtensions
                                                     client.Timeout = TimeSpan.FromSeconds(applicationOptions.DockerHub.RequestTimeoutSeconds);
                                                     client.DefaultRequestHeaders.UserAgent.ParseAdd(OutboundUserAgent);
                                                 })
+                .AddHttpMessageHandler(serviceProvider => new RequestDeadlineHandler(serviceProvider.GetRequiredService<TimeProvider>(),
+                                                                                     TimeSpan.FromSeconds(applicationOptions.DockerHub.RequestTimeoutSeconds)))
                 .AddHttpMessageHandler<TransientHttpRetryHandler>();
         services.AddHttpClient<OciRegistryClient>(client =>
                                                   {
                                                       client.Timeout = TimeSpan.FromSeconds(applicationOptions.DockerHub.RequestTimeoutSeconds);
                                                       client.DefaultRequestHeaders.UserAgent.ParseAdd(OutboundUserAgent);
                                                   })
+                .AddHttpMessageHandler(serviceProvider => new RequestDeadlineHandler(serviceProvider.GetRequiredService<TimeProvider>(),
+                                                                                     TimeSpan.FromSeconds(applicationOptions.DockerHub.RequestTimeoutSeconds)))
                 .AddHttpMessageHandler<TransientHttpRetryHandler>();
         services.AddHttpClient<DotNetReleaseMetadataService>(client =>
                                                              {

@@ -2338,6 +2338,155 @@ public partial class OciRegistryClientTests
     }
 
     /// <summary>
+    /// Verify a tag listing body that stops arriving ends the call as failed with the timed-out reason once the deadline elapses
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC2")]
+    public async Task OciRegistryClientTagListingBodyStalledReturnsTimedOutAsync()
+    {
+        var recorder = new DeadlineTimerRecorder();
+        var stalledSent = false;
+
+        using var handler = new DelegateHttpMessageHandler(_ =>
+                                                           {
+                                                               stalledSent = true;
+
+                                                               return DeadlineTimerRecorder.CreateStalledResponse(HttpStatusCode.OK);
+                                                           });
+        using var httpClient = recorder.CreateHttpClient(handler, null);
+
+        var client = new OciRegistryClient(httpClient, new TestLogger<OciRegistryClient>());
+        var stalled = client.GetTagsAsync("ghcr.io", "acme/api", cancellationToken: CancellationToken.None);
+
+        Assert.IsTrue(stalledSent, "The call must have sent the request whose body stalls");
+        Assert.IsFalse(stalled.IsCompleted, "The call must still be waiting for the stalled body");
+        Assert.IsGreaterThan(0, recorder.TimerCount, "The request must arm a deadline");
+
+        recorder.FireLast();
+
+        var result = await stalled.ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Failed, result.Status, "A tag listing body stopped by the deadline must be answered as failed");
+        Assert.AreEqual("Tag lookup failed for 'ghcr.io/acme/api': timed out after 30 seconds",
+                        result.Message,
+                        "A tag listing body stopped by the deadline must report the fixed timed-out reason with the request timeout");
+    }
+
+    /// <summary>
+    /// Verify a non-success manifest body that stops arriving ends the call as failed with the timed-out reason once the deadline elapses
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC2")]
+    public async Task OciRegistryClientErrorBodyStalledReturnsTimedOutAsync()
+    {
+        var recorder = new DeadlineTimerRecorder();
+        var stalledSent = false;
+
+        using var handler = new DelegateHttpMessageHandler(_ =>
+                                                           {
+                                                               stalledSent = true;
+
+                                                               return DeadlineTimerRecorder.CreateStalledResponse(HttpStatusCode.BadRequest);
+                                                           });
+        using var httpClient = recorder.CreateHttpClient(handler, null);
+
+        var client = new OciRegistryClient(httpClient, new TestLogger<OciRegistryClient>());
+        var imageReference = CreateGhcrReference();
+        var stalled = client.GetTagAsync(imageReference, "linux", "amd64", CancellationToken.None);
+
+        Assert.IsTrue(stalledSent, "The call must have sent the request whose body stalls");
+        Assert.IsFalse(stalled.IsCompleted, "The call must still be waiting for the stalled error body");
+        Assert.IsGreaterThan(0, recorder.TimerCount, "The request must arm a deadline");
+
+        recorder.FireLast();
+
+        var result = await stalled.ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Failed, result.Status, "An error body stopped by the deadline must be answered as failed");
+        Assert.AreEqual($"Registry tag lookup failed for '{imageReference.FullReference}': timed out after 30 seconds",
+                        result.Message,
+                        "An error body stopped by the deadline must report the fixed timed-out reason with the request timeout");
+    }
+
+    /// <summary>
+    /// Verify a bearer token body that stops arriving ends the call as failed with the timed-out reason once the deadline of the token request elapses
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC2")]
+    public async Task OciRegistryClientTokenBodyStalledReturnsTimedOutAsync()
+    {
+        var recorder = new DeadlineTimerRecorder();
+        var tokenRequestSent = false;
+
+        using var handler = new DelegateHttpMessageHandler(request =>
+                                                           {
+                                                               if (request.RequestUri!.AbsolutePath.StartsWith("/v2/", StringComparison.Ordinal))
+                                                               {
+                                                                   return CreateUnauthorizedResponse("https://ghcr.io/token", "ghcr.io", "repository:acme/api:pull");
+                                                               }
+
+                                                               tokenRequestSent = true;
+
+                                                               return DeadlineTimerRecorder.CreateStalledResponse(HttpStatusCode.OK);
+                                                           });
+        using var httpClient = recorder.CreateHttpClient(handler, null);
+
+        var client = new OciRegistryClient(httpClient, new TestLogger<OciRegistryClient>());
+        var imageReference = CreateGhcrReference();
+        var stalled = client.GetTagAsync(imageReference, "linux", "amd64", CancellationToken.None);
+
+        Assert.IsTrue(tokenRequestSent, "The call must have sent the token request whose body stalls");
+        Assert.IsFalse(stalled.IsCompleted, "The call must still be waiting for the stalled token body");
+        Assert.AreEqual(2, recorder.TimerCount, "The challenged request and the token request must each arm their own deadline");
+
+        recorder.FireLast();
+
+        var result = await stalled.ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Failed, result.Status, "A token body stopped by the deadline must be answered as failed");
+        Assert.AreEqual($"Registry tag lookup failed for '{imageReference.FullReference}': timed out after 30 seconds",
+                        result.Message,
+                        "A token body stopped by the deadline must report the fixed timed-out reason with the request timeout");
+    }
+
+    /// <summary>
+    /// Verify a cancellation of the caller's token during a body read ends the call with the cancellation, not with a failed result
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC4")]
+    public async Task OciRegistryClientCallerCancelledDuringBodyReadThrowsAsync()
+    {
+        var recorder = new DeadlineTimerRecorder();
+        var logger = new TestLogger<OciRegistryClient>();
+        var stalledSent = false;
+
+        using var callerCancellation = new CancellationTokenSource();
+        using var handler = new DelegateHttpMessageHandler(_ =>
+                                                           {
+                                                               stalledSent = true;
+
+                                                               return DeadlineTimerRecorder.CreateStalledResponse(HttpStatusCode.OK);
+                                                           });
+        using var httpClient = recorder.CreateHttpClient(handler, null);
+
+        var client = new OciRegistryClient(httpClient, logger);
+        var stalled = client.GetTagsAsync("ghcr.io", "acme/api", cancellationToken: callerCancellation.Token);
+
+        Assert.IsTrue(stalledSent, "The call must have sent the request whose body stalls");
+        Assert.IsFalse(stalled.IsCompleted, "The call must still be waiting for the stalled body");
+
+        await callerCancellation.CancelAsync().ConfigureAwait(false);
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() => stalled, "The caller's cancellation during the body read must propagate").ConfigureAwait(false);
+
+        Assert.DoesNotContain(entry => entry.EventId.Id == 2100, logger.Entries, "A cancellation by the caller must not be logged as a failed call");
+    }
+
+    /// <summary>
     /// Verify a missing image reference is refused with an argument null exception for the tag lookup
     /// </summary>
     /// <returns>Task</returns>
@@ -2708,6 +2857,20 @@ public partial class OciRegistryClientTests
         Assert.IsNotNull(warning.Exception, "The warning must carry the exception");
         Assert.StartsWith("Registry ", warning.Message, "The warning must name the registry");
         Assert.EndsWith($" request for {targetName} failed", warning.Message, "The warning must name the target of the call");
+    }
+
+    /// <summary>
+    /// Create the reference of an image on the GitHub registry
+    /// </summary>
+    /// <returns>Image reference</returns>
+    private static ImageReference CreateGhcrReference()
+    {
+        return new ImageReference
+               {
+                   Registry = "ghcr.io",
+                   Repository = "acme/api",
+                   Tag = "1.0",
+               };
     }
 
     /// <summary>
