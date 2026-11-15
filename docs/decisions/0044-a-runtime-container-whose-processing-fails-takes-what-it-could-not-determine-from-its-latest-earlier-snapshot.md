@@ -35,8 +35,7 @@ earlier snapshots name the image it still runs.
 ## Decision
 
 Option 1: a container whose processing fails before its image version is known is recorded with the image version of
-its latest earlier snapshot, and a new snapshot keeps that snapshot's resolved and available update version, for the
-same image version, unless an evaluation of the registry's answer replaces them. The rules are in
+its latest earlier snapshot, and a new snapshot keeps that snapshot's resolved and available update version, for the same image version and provided the running digest is known, unless an evaluation of the registry's answer replaces them. The rules are in
 [Docker instances](../areas/docker-instances.md#container-snapshots) and
 [Update detection](../areas/update-detection.md#alias-resolution).
 
