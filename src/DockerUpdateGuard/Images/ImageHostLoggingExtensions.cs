@@ -161,6 +161,19 @@ internal static partial class ImageHostLoggingExtensions
     public static partial void ObservedImageScanSkippedMissing(this ILogger logger, Guid observedImageId);
 
     /// <summary>
+    /// Log a failed save of the failed scan run of an observed image
+    /// </summary>
+    /// <param name="logger">Logger</param>
+    /// <param name="exception">Exception</param>
+    /// <param name="observedImage">Observed image name</param>
+    [LoggerMessage(EventId = 2034,
+                   Level = LogLevel.Error,
+                   Message = "Could not save the failed scan run of observed image {ObservedImage}")]
+    public static partial void ObservedImageScanRunSaveFailed(this ILogger logger,
+                                                              Exception exception,
+                                                              string observedImage);
+
+    /// <summary>
     /// Log that a single observed image scan failed but the batch continues
     /// </summary>
     /// <param name="logger">Logger</param>
@@ -217,6 +230,19 @@ internal static partial class ImageHostLoggingExtensions
     public static partial void RuntimeContainerScanBatchItemFailed(this ILogger logger,
                                                                    Exception exception,
                                                                    string dockerInstance);
+
+    /// <summary>
+    /// Log a failed save of the failed scan run of a Docker instance
+    /// </summary>
+    /// <param name="logger">Logger</param>
+    /// <param name="exception">Exception</param>
+    /// <param name="dockerInstance">Docker instance name</param>
+    [LoggerMessage(EventId = 2043,
+                   Level = LogLevel.Error,
+                   Message = "Could not save the failed scan run of Docker instance {DockerInstance}")]
+    public static partial void RuntimeContainerScanRunSaveFailed(this ILogger logger,
+                                                                 Exception exception,
+                                                                 string dockerInstance);
 
     /// <summary>
     /// Log a runtime container scan summary
