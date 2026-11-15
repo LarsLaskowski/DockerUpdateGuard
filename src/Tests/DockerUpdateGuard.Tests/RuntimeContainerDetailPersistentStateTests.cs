@@ -129,6 +129,7 @@ public class RuntimeContainerDetailPersistentStateTests
     {
         testContext.Services.AddSingleton(viewService);
         testContext.Services.AddSingleton(Substitute.For<IRuntimeContainerTagSelectionService>());
+        testContext.AddHiddenContainerActions();
     }
 
     #endregion // Methods

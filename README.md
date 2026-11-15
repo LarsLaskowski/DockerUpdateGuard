@@ -204,6 +204,13 @@ Recommended Linux socket configuration:
 Portainer settings are optional and are only needed when Portainer-backed actions should be available.
 Rules: [Container actions](docs/areas/container-actions.md#configuration-and-mapping).
 
+Enabling Portainer for a Docker instance lets the runtime container detail page start, stop and restart that
+instance's containers through Portainer. The application has no sign-in, so **anyone who can reach the UI can do this**;
+each action asks for confirmation and is recorded as an action run (requester `UI`, no identity), so run the
+application behind a trusted perimeter ([Security posture](docs/areas/hosting.md#security-posture)). Portainer answers a
+stop or restart only once the container has stopped, so these requests wait up to 300 seconds beyond
+`RequestTimeoutSeconds`. Redeploying stacks and updating services are not available.
+
 | Key | Default | Required | Description |
 | --- | --- | --- | --- |
 | `Enabled` | `false` | No | Enables Portainer integration for the Docker instance |
@@ -212,8 +219,8 @@ Rules: [Container actions](docs/areas/container-actions.md#configuration-and-map
 | `Username` | none | Conditional | Username for Portainer login |
 | `Password` | none | Conditional | Password for Portainer login |
 | `ApiToken` | none | Conditional | Portainer API token; takes precedence over username/password |
-| `EndpointId` | none | No | Portainer environment ID; needed when Portainer manages more than one environment |
-| `RequestTimeoutSeconds` | `15` | No | Timeout for Portainer requests |
+| `EndpointId` | none | No | Portainer environment ID, digits only; must be set when Portainer manages more than one environment, and an ID that Portainer does not know disables the actions |
+| `RequestTimeoutSeconds` | `15` | No | Timeout for each Portainer request; the stop and restart of a container wait 300 seconds longer ([Actions](docs/areas/container-actions.md#actions)) |
 
 When Portainer is enabled, either:
 

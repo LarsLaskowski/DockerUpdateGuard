@@ -94,4 +94,8 @@ once in the [area document](../areas/README.md) of the record's area, and the re
 | [0031](0031-docker-scout-assesses-a-digest-only-while-its-tag-still-points-to-it.md) | Docker Scout assesses a digest only while its tag still points to it | Accepted | 2026-11-14 |
 | [0032](0032-the-migration-lock-is-awaited-by-polling-against-its-own-deadline.md) | The migration lock is awaited by polling against its own deadline | Accepted | 2026-11-14 |
 | [0033](0033-migration-statements-run-under-a-command-timeout-of-their-own.md) | Migration statements run under a command timeout of their own | Accepted | 2026-11-14 |
+| [0034](0034-container-actions-are-start-stop-and-restart-of-a-container.md) | Container actions are start, stop and restart of a container | Accepted | 2026-11-14 |
+| [0035](0035-action-runs-are-an-audit-history-written-before-portainer-is-contacted.md) | Action runs are an audit history written before Portainer is contacted | Accepted | 2026-11-14 |
+| [0036](0036-one-container-action-at-a-time-per-container-guarded-in-the-process.md) | One container action at a time per container, guarded in the process | Accepted | 2026-11-14 |
+| [0037](0037-stop-and-restart-requests-wait-up-to-300-seconds-beyond-the-request-timeout.md) | Stop and restart requests wait up to 300 seconds beyond the request timeout | Accepted | 2026-11-14 |
 <!-- project:end index -->

@@ -102,7 +102,7 @@ Auto render mode anywhere in the app.
 
 After `WebApplication.Build()` and before `RunAsync()`, the host calls
 `ApplicationInitializationExtensions.InitializeDockerUpdateGuardAsync`,
-which blocks startup on three steps:
+which blocks startup on four steps:
 
 1. `DatabaseMigrator.MigrateAsync` — waits for the database, then applies
    EF Core migrations under a PostgreSQL session-scoped advisory lock, so
@@ -114,7 +114,11 @@ which blocks startup on three steps:
 2. `IInstanceDiscoveryService.SynchronizeConfiguredInstancesAsync` —
    reconciles the configured Docker instances against the database
    (local, DB-only work).
-3. `ApplicationTelemetry.RefreshInventoryMetricsAsync` — seeds the
+3. `ContainerActionRunReconciler.ReconcileInterruptedRunsAsync` — turns the
+   container action runs the previous process left *requested* or *running*
+   into *failed* "Interrupted" runs (local, DB-only work; §9,
+   [decision 0035](decisions/0035-action-runs-are-an-audit-history-written-before-portainer-is-contacted.md)).
+4. `ApplicationTelemetry.RefreshInventoryMetricsAsync` — seeds the
    inventory gauges (§10).
 
 Network-bound work (Docker Hub account discovery, scans) is deliberately
@@ -180,7 +184,7 @@ auto-discovered via `ApplyConfigurationsFromAssembly`.
 | `UpdateFinding` | A detected update (subject `ImageVersion` → optional recommended `ImageVersion`), linked to an `ObservedImage` and/or `ContainerSnapshot`. | [Update detection](areas/update-detection.md) |
 | `TagCandidate` | One ranked candidate tag belonging to an `UpdateFinding`. | [Update detection](areas/update-detection.md) |
 | `VulnerabilityFinding` | A CVE/advisory against an `ImageVersion` (severity, fix status, CVSS). | [Vulnerabilities](areas/vulnerabilities.md) |
-| `ContainerActionRun` | A record of a Portainer action against a container, service, or stack. | [Container actions](areas/container-actions.md) |
+| `ContainerActionRun` | The audit record of an action executed through Portainer: start, stop or restart of a container (a stack redeploy and a service update are stored types only). | [Container actions](areas/container-actions.md) |
 | `RuntimeContainerTagSelection` | A user's tag/digest selection for a specific runtime container. | [Update detection](areas/update-detection.md) |
 | `DockerInstanceResourceSample` / `RuntimeContainerResourceSample` | Instance-level and per-container CPU/memory/network time series. | [Docker instances](areas/docker-instances.md) |
 
@@ -232,7 +236,7 @@ in [Integration failures](areas/integration-failures.md).
 | `DockerInstanceClient` (`Docker\`) | Docker Engine HTTP API over `http(s)://`, `tcp://`, `unix://` and `npipe://`, one hand-built `HttpClient` pooled per connection config. | [Docker instances](areas/docker-instances.md) |
 | `DockerHubClient` (`DockerHub\`) | Docker Hub REST API **and** the OCI Distribution v2 API (`registry-1.docker.io`); implements both `IDockerHubClient` and the generic `IRegistryMetadataClient`, because Docker Hub is both a metadata API and an OCI registry. | [Registries](areas/registries.md) |
 | `OciRegistryClient` (`Images\`) | Any other OCI Distribution v2 registry. | [Registries](areas/registries.md) |
-| `PortainerClient` (`Portainer\`) | Portainer REST API (API key or JWT login), endpoint and container listing, container actions. | [Container actions](areas/container-actions.md) |
+| `PortainerClient` (`Portainer\`) | Portainer REST API (API key or JWT login): the capability check with the verified environment, the container lookup by ID and the start, stop and restart of a container, all answered as `ExternalOperationResult`; each request runs under its own deadline on the injected `TimeProvider`, a stop or restart under 300 seconds plus the request timeout ([0037](decisions/0037-stop-and-restart-requests-wait-up-to-300-seconds-beyond-the-request-timeout.md)). | [Container actions](areas/container-actions.md) |
 | `TrivyVulnerabilityProvider` (`Vulnerabilities\`) | Trivy CLI (external process via `IProcessRunner`), client mode against a Trivy server. | [Vulnerabilities](areas/vulnerabilities.md) |
 | `DockerScoutVulnerabilityProvider` (`Vulnerabilities\`) | Docker Scout / Docker Hub HTTP API through the named client `DockerScout`; checks the digest of an image reference against the tag through `IRegistryMetadataService` in a scope of its own ([0031](decisions/0031-docker-scout-assesses-a-digest-only-while-its-tag-still-points-to-it.md)). | [Vulnerabilities](areas/vulnerabilities.md) |
 | `DefaultVulnerabilityProvider` (`Vulnerabilities\`) | — (no-op fallback selected by `IVulnerabilityProviderResolver` when scanning is disabled). | [Vulnerabilities](areas/vulnerabilities.md) |
@@ -379,7 +383,19 @@ Pages, routes and what each page shows or triggers are specified in
   fairly wide surface (one method per page/section).
 - **`Components\Common`** holds cross-page building blocks: loading
   skeletons and the vulnerability widgets shared between the
-  Vulnerabilities page and image/container detail pages.
+  Vulnerabilities page and image/container detail pages, and the
+  `ContainerActionConfirmation` dialog.
+- **`IContainerActionService` (`Portainer\ContainerActionService`)** backs
+  the *Container actions* section of `RuntimeContainerDetail`. It is a
+  singleton that opens its own `IServiceScopeFactory` scope for every
+  database step, never the circuit's `DbContext` or the page's lifetime, so an
+  action outlives the browser connection that started it; it holds the
+  process-wide set of containers with an action in progress
+  ([decision 0036](decisions/0036-one-container-action-at-a-time-per-container-guarded-in-the-process.md)),
+  writes the action run before Portainer is contacted and finalizes it
+  afterwards ([Container actions](areas/container-actions.md#action-runs)).
+  The page asks it for the availability on the interactive render only and
+  opens the confirmation dialog through MudBlazor's `IDialogService`.
 - **`DashboardRefreshState`** is a small singleton pub/sub class that
   manual-scan actions in the UI use to signal open Dashboards to refresh
   without a full page reload.
@@ -400,7 +416,9 @@ and the components share `HostLoggingExtensions.cs`,
 `Components/ComponentLoggingExtensions.cs`. The CA1848 analyzer rule
 rejects ad-hoc `_logger.LogInformation(...)` calls. Switches, export conditions,
 the emitted span and instrument names, and when the inventory gauges
-refresh are specified in [Telemetry](areas/telemetry.md).
+refresh are specified in [Telemetry](areas/telemetry.md). The container
+action service emits one internal `portainer.action` span per action and
+its own log events (`ContainerActionServiceLogging.cs`).
 
 ## 11. Security posture and operating assumptions
 
@@ -413,13 +431,26 @@ it links:
   VPN, or a reverse proxy that terminates auth) — a deployment
   responsibility, not something the app enforces. See
   [SECURITY.md](../SECURITY.md) for the vulnerability-reporting process.
+- **Enabling Portainer on a Docker instance lets anyone who reaches the UI
+  start, stop and restart that instance's containers**, because there is no
+  sign-in. Every action asks for confirmation, is checked again on the
+  server (instance enabled, Portainer enabled, the container in the latest
+  runtime scan, no other action in progress, the container addressed by its
+  snapshot's ID) and is recorded as a run with the requester `UI`; the
+  perimeter above is what restricts who can do it
+  ([Container actions](areas/container-actions.md),
+  [Hosting and configuration](areas/hosting.md#security-posture)).
 - **No health-check or rate-limiting endpoints** are registered.
 - **Single-instance assumption for the scan engine.** The advisory lock
   (§3) serializes *migrations* across concurrently starting instances, but
   the background jobs and `ImageScanOrchestrator`'s in-memory scan lock
   (§7) are not distributed — running more than one instance against the
   same database duplicates scan work rather than coordinating it; catalog
-  writes stay correct via `IImageCatalogRepository`'s race-retry.
+  writes stay correct via `IImageCatalogRepository`'s race-retry. The
+  container action service's in-process guard (§9) and the startup
+  reconciliation of interrupted action runs (§3) rest on the same
+  assumption: a second instance would neither see the first one's actions in
+  progress nor spare its open runs from being reconciled.
 - **Container runs as a non-root user** (UID 64000, GID 0) so a
   group-owned, root:root Docker socket bind-mount stays readable without
   running the process as root; see

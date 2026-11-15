@@ -150,12 +150,13 @@ Each cleanup pass computes a cutoff of now minus `DockerUpdateGuard:Scanning:Ret
 - **Vulnerability findings:** inactive findings of image versions that are no longer live, regardless of age, and
   inactive findings of live image versions resolved before the cutoff.
 - **Container snapshots:** snapshots recorded before the cutoff that have no active update finding and no recorded
-  container action.
+  container action run, so a snapshot that an action run references stays.
 - **Resource samples:** container and Docker instance samples recorded before the cutoff.
 
 After the removal the cleanup pass refreshes the inventory gauges ([Telemetry](telemetry.md)) and logs how many
 tag candidates, update findings, vulnerability findings, snapshots and scan runs it removed. Nothing else (images,
-observed images, Docker instances, relationships, tag selections) is removed by cleanup.
+observed images, Docker instances, relationships, tag selections) is removed by cleanup; container action runs are
+never cleaned up ([Container actions](container-actions.md#action-runs)).
 
 ### Live images
 

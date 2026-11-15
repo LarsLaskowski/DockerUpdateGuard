@@ -1,9 +1,11 @@
 using System.Collections.Concurrent;
 using System.Globalization;
+using System.Net;
 using System.Net.Http.Headers;
 using System.Text.Json;
 
 using DockerUpdateGuard.Configuration;
+using DockerUpdateGuard.Data.Entities;
 using DockerUpdateGuard.Infrastructure;
 using DockerUpdateGuard.Portainer.Data;
 using DockerUpdateGuard.Portainer.Interfaces;
@@ -38,17 +40,24 @@ public partial class PortainerClient : IPortainerClient
     private const string TotalCountHeaderName = "X-Total-Count";
 
     /// <summary>
-    /// Supported container actions
+    /// Additional wait in seconds a stop or restart request is granted for the container's own stop timeout
     /// </summary>
-    private static readonly HashSet<string> _allowedContainerActions = new(StringComparer.OrdinalIgnoreCase)
-                                                                       {
-                                                                           "start",
-                                                                           "stop",
-                                                                           "restart",
-                                                                           "kill",
-                                                                           "pause",
-                                                                           "unpause"
-                                                                       };
+    private const int StopWaitSeconds = 300;
+
+    /// <summary>
+    /// Message of a container the Docker Engine does not know by the snapshot's identifier
+    /// </summary>
+    private const string ContainerChangedMessage = "Container changed since the last scan; run a runtime scan and try again";
+
+    /// <summary>
+    /// Suffix of an outcome whose action request may have reached the Docker Engine
+    /// </summary>
+    private const string MayHaveBeenAppliedSuffix = "; the action may have been applied, check the container before repeating it";
+
+    /// <summary>
+    /// Length of a full Docker container identifier
+    /// </summary>
+    private const int ContainerIdLength = 64;
 
     #endregion // Constants
 
@@ -74,6 +83,11 @@ public partial class PortainerClient : IPortainerClient
     /// </summary>
     private readonly LoginRetryAfterRegistry _loginRetryAfterRegistry;
 
+    /// <summary>
+    /// Time provider
+    /// </summary>
+    private readonly TimeProvider _timeProvider;
+
     #endregion // Fields
 
     #region Constructors
@@ -84,13 +98,16 @@ public partial class PortainerClient : IPortainerClient
     /// <param name="httpClientFactory">HTTP client factory</param>
     /// <param name="logger">Logger</param>
     /// <param name="loginRetryAfterRegistry">Registry of the login Retry-After windows</param>
+    /// <param name="timeProvider">Time provider</param>
     public PortainerClient(IHttpClientFactory httpClientFactory,
                            ILogger<PortainerClient> logger,
-                           LoginRetryAfterRegistry loginRetryAfterRegistry)
+                           LoginRetryAfterRegistry loginRetryAfterRegistry,
+                           TimeProvider timeProvider)
     {
         _httpClientFactory = httpClientFactory;
         _logger = logger;
         _loginRetryAfterRegistry = loginRetryAfterRegistry;
+        _timeProvider = timeProvider;
     }
 
     #endregion // Constructors
@@ -205,21 +222,59 @@ public partial class PortainerClient : IPortainerClient
     }
 
     /// <summary>
-    /// Find a container identifier by container name within an endpoint
+    /// Get the Docker action of an action type
+    /// </summary>
+    /// <param name="actionType">Action type</param>
+    /// <returns>Docker action name; null when the type is not executable</returns>
+    private static string? GetActionName(ContainerActionType actionType)
+    {
+        return actionType switch
+               {
+                   ContainerActionType.StartContainer => "start",
+                   ContainerActionType.StopContainer => "stop",
+                   ContainerActionType.RestartContainer => "restart",
+                   _ => null,
+               };
+    }
+
+    /// <summary>
+    /// Check that a value is a full Docker container identifier, so that it is safe within a URL path
+    /// </summary>
+    /// <param name="containerId">Container identifier</param>
+    /// <returns>True when the value is exactly 64 lowercase hexadecimal characters</returns>
+    private static bool IsContainerId(string? containerId)
+    {
+        return containerId is not null
+               && containerId.Length == ContainerIdLength
+               && containerId.All(c => (c is >= '0' and <= '9') || (c is >= 'a' and <= 'f'));
+    }
+
+    /// <summary>
+    /// Check that a value consists of ASCII digits only, so that it is safe within a URL path
+    /// </summary>
+    /// <param name="value">Value to check</param>
+    /// <returns>True when the value is not empty and holds ASCII digits only</returns>
+    private static bool IsDigitsOnly(string value)
+    {
+        return value.Length > 0 && value.All(char.IsAsciiDigit);
+    }
+
+    /// <summary>
+    /// Find the container with the given identifier within an environment
     /// </summary>
     /// <param name="client">Authenticated HTTP client</param>
-    /// <param name="endpointId">Portainer endpoint identifier</param>
-    /// <param name="containerName">Container name to search for</param>
-    /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>Container identifier or null</returns>
-    private static async Task<string?> FindContainerIdAsync(HttpClient client,
-                                                            string endpointId,
-                                                            string containerName,
-                                                            CancellationToken cancellationToken)
+    /// <param name="endpointId">Portainer environment identifier, digits only</param>
+    /// <param name="containerId">Full container identifier</param>
+    /// <param name="cancellationToken">Cancellation token with the bound of the request</param>
+    /// <returns>HTTP status code of the list request and whether the list holds a container with exactly that identifier</returns>
+    private static async Task<(int StatusCode, bool Found)> FindContainerAsync(HttpClient client,
+                                                                               string endpointId,
+                                                                               string containerId,
+                                                                               CancellationToken cancellationToken)
     {
         var filter = new Dictionary<string, string[]>(StringComparer.Ordinal)
                      {
-                         ["name"] = [containerName],
+                         ["id"] = [containerId],
                      };
 
         var filters = Uri.EscapeDataString(JsonSerializer.Serialize(filter));
@@ -229,14 +284,77 @@ public partial class PortainerClient : IPortainerClient
 
         if (response.IsSuccessStatusCode == false)
         {
-            return null;
+            return ((int)response.StatusCode, false);
         }
 
         var containers = await response.Content.ReadFromJsonAsync<DockerContainerItem[]>(cancellationToken: cancellationToken).ConfigureAwait(false);
 
-        return containers?.FirstOrDefault(c => c.Names?.Any(n => string.Equals(n, $"/{containerName}", StringComparison.OrdinalIgnoreCase)
-                                                                 || string.Equals(n, containerName, StringComparison.OrdinalIgnoreCase)) == true)
-                         ?.Id;
+        return ((int)response.StatusCode, containers?.Any(c => string.Equals(c.Id, containerId, StringComparison.Ordinal)) == true);
+    }
+
+    /// <summary>
+    /// Send the action request with an empty body and read its status
+    /// </summary>
+    /// <param name="client">Authenticated HTTP client</param>
+    /// <param name="actionUrl">Action path</param>
+    /// <param name="cancellationToken">Cancellation token with the bound of the request</param>
+    /// <returns>HTTP status code</returns>
+    private static async Task<HttpStatusCode> SendActionAsync(HttpClient client, string actionUrl, CancellationToken cancellationToken)
+    {
+        // An empty body keeps SocketsHttpHandler from resending a body-less POST on a reused connection
+        using var actionContent = new ByteArrayContent([]);
+        using var actionResponse = await client.PostAsync(actionUrl, actionContent, cancellationToken).ConfigureAwait(false);
+
+        return actionResponse.StatusCode;
+    }
+
+    /// <summary>
+    /// Check that Portainer knows an environment
+    /// </summary>
+    /// <param name="client">Authenticated HTTP client</param>
+    /// <param name="instanceOptions">Docker instance options</param>
+    /// <param name="endpointId">Environment identifier to check</param>
+    /// <param name="bounds">Bounds of the requests of the operation</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Failure message; null when the environment exists</returns>
+    private static async Task<string?> CheckEnvironmentAsync(HttpClient client,
+                                                             DockerInstanceOptions instanceOptions,
+                                                             string endpointId,
+                                                             PortainerRequestBounds bounds,
+                                                             CancellationToken cancellationToken)
+    {
+        var notFoundMessage = $"Portainer environment {endpointId} not found; check Portainer:EndpointId of Docker instance '{instanceOptions.Name}'";
+
+        // Only digits reach the URL path, so a configured value cannot address another Portainer resource
+        if (IsDigitsOnly(endpointId) == false)
+        {
+            return notFoundMessage;
+        }
+
+        var statusCode = await bounds.RunAsync(bounds.RequestTimeout, token => GetStatusCodeAsync(client, $"/api/endpoints/{endpointId}", token), cancellationToken).ConfigureAwait(false);
+
+        if (statusCode == HttpStatusCode.NotFound)
+        {
+            return notFoundMessage;
+        }
+
+        return statusCode is >= HttpStatusCode.OK and < HttpStatusCode.Ambiguous
+                   ? null
+                   : $"Portainer environment {endpointId} check failed: HTTP {(int)statusCode}";
+    }
+
+    /// <summary>
+    /// Send a GET request and read its status only
+    /// </summary>
+    /// <param name="client">Authenticated HTTP client</param>
+    /// <param name="url">Request path</param>
+    /// <param name="cancellationToken">Cancellation token with the bound of the request</param>
+    /// <returns>HTTP status code</returns>
+    private static async Task<HttpStatusCode> GetStatusCodeAsync(HttpClient client, string url, CancellationToken cancellationToken)
+    {
+        using var response = await client.GetAsync(url, cancellationToken).ConfigureAwait(false);
+
+        return response.StatusCode;
     }
 
     #endregion // Static methods
@@ -244,21 +362,46 @@ public partial class PortainerClient : IPortainerClient
     #region Methods
 
     /// <summary>
-    /// Resolve the Portainer environment to use for a Docker instance
+    /// Create the bounds of the requests of an operation on a Docker instance
+    /// </summary>
+    /// <param name="instanceOptions">Docker instance options</param>
+    /// <returns>Request bounds</returns>
+    private PortainerRequestBounds CreateBounds(DockerInstanceOptions instanceOptions)
+    {
+        return new PortainerRequestBounds(_timeProvider, TimeSpan.FromSeconds(instanceOptions.Portainer.RequestTimeoutSeconds));
+    }
+
+    /// <summary>
+    /// Get the message that explains why Portainer cannot be used for a Docker instance at all
+    /// </summary>
+    /// <param name="instanceOptions">Docker instance options</param>
+    /// <returns>Not configured message; null when Portainer is enabled and has a base URL</returns>
+    private string? GetNotConfiguredMessage(DockerInstanceOptions instanceOptions)
+    {
+        if (instanceOptions.Portainer.Enabled == false)
+        {
+            _logger.PortainerCapabilityNotConfigured(instanceOptions.Name);
+
+            return "Portainer is not configured for this Docker instance";
+        }
+
+        if (string.IsNullOrWhiteSpace(instanceOptions.Portainer.BaseUrl))
+        {
+            return "Portainer base URL is not configured";
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// List the environments of Portainer and pick the only one
     /// </summary>
     /// <param name="client">Authenticated HTTP client</param>
     /// <param name="instanceOptions">Docker instance options</param>
-    /// <param name="cancellationToken">Cancellation token</param>
+    /// <param name="cancellationToken">Cancellation token with the bound of the request</param>
     /// <returns>Resolution carrying either the environment identifier or a failure message</returns>
-    private async Task<PortainerEndpointResolution> ResolveEndpointAsync(HttpClient client, DockerInstanceOptions instanceOptions, CancellationToken cancellationToken)
+    private async Task<PortainerEndpointResolution> ResolveListedEndpointAsync(HttpClient client, DockerInstanceOptions instanceOptions, CancellationToken cancellationToken)
     {
-        var configuredEndpointId = instanceOptions.Portainer.EndpointId;
-
-        if (string.IsNullOrWhiteSpace(configuredEndpointId) == false)
-        {
-            return new PortainerEndpointResolution(configuredEndpointId, null);
-        }
-
         using var response = await client.GetAsync("/api/endpoints", cancellationToken).ConfigureAwait(false);
 
         if (response.IsSuccessStatusCode == false)
@@ -288,13 +431,218 @@ public partial class PortainerClient : IPortainerClient
     }
 
     /// <summary>
+    /// Resolve the Portainer environment to use for a Docker instance
+    /// </summary>
+    /// <param name="client">Authenticated HTTP client</param>
+    /// <param name="instanceOptions">Docker instance options</param>
+    /// <param name="bounds">Bounds of the requests of the operation</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Resolution carrying either the environment identifier or a failure message</returns>
+    private async Task<PortainerEndpointResolution> ResolveEndpointAsync(HttpClient client,
+                                                                         DockerInstanceOptions instanceOptions,
+                                                                         PortainerRequestBounds bounds,
+                                                                         CancellationToken cancellationToken)
+    {
+        var configuredEndpointId = instanceOptions.Portainer.EndpointId;
+
+        if (string.IsNullOrWhiteSpace(configuredEndpointId) == false)
+        {
+            return new PortainerEndpointResolution(configuredEndpointId, null);
+        }
+
+        return await bounds.RunAsync(bounds.RequestTimeout, token => ResolveListedEndpointAsync(client, instanceOptions, token), cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Check the connection to Portainer and the environment of a Docker instance
+    /// </summary>
+    /// <param name="client">Authenticated HTTP client</param>
+    /// <param name="instanceOptions">Docker instance options</param>
+    /// <param name="bounds">Bounds of the requests of the operation</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Succeeded with the environment identifier, or unsupported with the reason</returns>
+    private async Task<ExternalOperationResult<PortainerCapabilityData>> ProbeEnvironmentAsync(HttpClient client,
+                                                                                               DockerInstanceOptions instanceOptions,
+                                                                                               PortainerRequestBounds bounds,
+                                                                                               CancellationToken cancellationToken)
+    {
+        var statusCode = await bounds.RunAsync(bounds.RequestTimeout, token => GetStatusCodeAsync(client, "/api/system/status", token), cancellationToken).ConfigureAwait(false);
+
+        if (statusCode is < HttpStatusCode.OK or >= HttpStatusCode.Ambiguous)
+        {
+            _logger.PortainerCapabilityConnectFailed(instanceOptions.Name, (int)statusCode);
+
+            return ExternalOperationResult.Unsupported<PortainerCapabilityData>($"Portainer connection failed: HTTP {(int)statusCode}");
+        }
+
+        var resolution = await ResolveEndpointAsync(client, instanceOptions, bounds, cancellationToken).ConfigureAwait(false);
+        var endpointId = resolution.EndpointId;
+
+        if (string.IsNullOrWhiteSpace(endpointId))
+        {
+            return ExternalOperationResult.Unsupported<PortainerCapabilityData>(resolution.FailureMessage ?? "No Portainer endpoint found");
+        }
+
+        var environmentFailure = await CheckEnvironmentAsync(client, instanceOptions, endpointId, bounds, cancellationToken).ConfigureAwait(false);
+
+        if (environmentFailure is not null)
+        {
+            return ExternalOperationResult.Unsupported<PortainerCapabilityData>(environmentFailure);
+        }
+
+        _logger.PortainerCapabilityResolved(instanceOptions.Name, endpointId);
+
+        return ExternalOperationResult.Succeeded(new PortainerCapabilityData
+                                                 {
+                                                     IsConfigured = true,
+                                                     SupportsActions = true,
+                                                     Message = $"Portainer connected, endpoint {endpointId}",
+                                                     EndpointId = endpointId,
+                                                 });
+    }
+
+    /// <summary>
+    /// Look up the container of an action request by its full identifier within an environment
+    /// </summary>
+    /// <param name="client">Authenticated HTTP client</param>
+    /// <param name="instanceOptions">Docker instance options</param>
+    /// <param name="actionRequest">Action request</param>
+    /// <param name="actionName">Docker action of the request</param>
+    /// <param name="endpointId">Environment identifier, digits only</param>
+    /// <param name="bounds">Bounds of the requests of the operation</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Failed or not found result when the action must not be sent; null when the container exists</returns>
+    private async Task<ExternalOperationResult<PortainerActionOutcomeData>?> LookUpContainerAsync(HttpClient client,
+                                                                                                  DockerInstanceOptions instanceOptions,
+                                                                                                  PortainerContainerActionRequest actionRequest,
+                                                                                                  string actionName,
+                                                                                                  string endpointId,
+                                                                                                  PortainerRequestBounds bounds,
+                                                                                                  CancellationToken cancellationToken)
+    {
+        var (statusCode, found) = await bounds.RunAsync(bounds.RequestTimeout,
+                                                        token => FindContainerAsync(client, endpointId, actionRequest.ContainerId, token),
+                                                        cancellationToken)
+                                              .ConfigureAwait(false);
+
+        if (statusCode is < (int)HttpStatusCode.OK or >= (int)HttpStatusCode.Ambiguous)
+        {
+            _logger.PortainerActionFailed(actionName, actionRequest.ContainerName, instanceOptions.Name, statusCode);
+
+            return ExternalOperationResult.Failed<PortainerActionOutcomeData>($"Action '{actionName}' failed: HTTP {statusCode}");
+        }
+
+        if (found == false)
+        {
+            _logger.PortainerContainerNotFound(actionRequest.ContainerName, instanceOptions.Name);
+
+            return ExternalOperationResult.NotFound<PortainerActionOutcomeData>(ContainerChangedMessage);
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Send the action request and map its answer; from here on every failure may have happened after the Docker Engine applied the action
+    /// </summary>
+    /// <param name="client">Authenticated HTTP client</param>
+    /// <param name="instanceOptions">Docker instance options</param>
+    /// <param name="actionRequest">Action request</param>
+    /// <param name="actionName">Docker action of the request</param>
+    /// <param name="endpointId">Environment identifier, digits only</param>
+    /// <param name="bounds">Bounds of the requests of the operation</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Action outcome</returns>
+    private async Task<ExternalOperationResult<PortainerActionOutcomeData>> SendContainerActionAsync(HttpClient client,
+                                                                                                     DockerInstanceOptions instanceOptions,
+                                                                                                     PortainerContainerActionRequest actionRequest,
+                                                                                                     string actionName,
+                                                                                                     string endpointId,
+                                                                                                     PortainerRequestBounds bounds,
+                                                                                                     CancellationToken cancellationToken)
+    {
+        var actionUrl = $"/api/endpoints/{endpointId}/docker/containers/{actionRequest.ContainerId}/{actionName}";
+        var waitsForStop = actionRequest.ActionType is ContainerActionType.StopContainer or ContainerActionType.RestartContainer;
+        var bound = waitsForStop ? bounds.RequestTimeout + TimeSpan.FromSeconds(StopWaitSeconds) : bounds.RequestTimeout;
+
+        try
+        {
+            var statusCode = await bounds.RunAsync(bound, token => SendActionAsync(client, actionUrl, token), cancellationToken).ConfigureAwait(false);
+            var status = (int)statusCode;
+
+            if (statusCode is >= HttpStatusCode.OK and < HttpStatusCode.Ambiguous)
+            {
+                _logger.PortainerActionExecuted(actionName, actionRequest.ContainerName, instanceOptions.Name);
+
+                return ExternalOperationResult.Succeeded(new PortainerActionOutcomeData
+                                                         {
+                                                             Message = $"Action '{actionName}' on '{actionRequest.ContainerName}' executed successfully",
+                                                         });
+            }
+
+            if (statusCode == HttpStatusCode.NotModified)
+            {
+                _logger.PortainerActionExecuted(actionName, actionRequest.ContainerName, instanceOptions.Name);
+
+                return ExternalOperationResult.Succeeded(new PortainerActionOutcomeData
+                                                         {
+                                                             AlreadyInRequestedState = true,
+                                                             Message = $"Action '{actionName}' on '{actionRequest.ContainerName}' had no effect: the container was already in the requested state",
+                                                         });
+            }
+
+            _logger.PortainerActionFailed(actionName, actionRequest.ContainerName, instanceOptions.Name, status);
+
+            var failure = $"Action '{actionName}' failed: HTTP {status}";
+
+            return status >= (int)HttpStatusCode.InternalServerError
+                       ? ExternalOperationResult.Unknown<PortainerActionOutcomeData>(failure + MayHaveBeenAppliedSuffix)
+                       : ExternalOperationResult.Failed<PortainerActionOutcomeData>(failure);
+        }
+        catch (Exception ex)
+        {
+            _logger.PortainerActionException(actionName, actionRequest.ContainerName, instanceOptions.Name, ex);
+
+            return ExternalOperationResult.Unknown<PortainerActionOutcomeData>($"Action '{actionName}' failed: {FailureReason.FromException(ex, bounds.Latest, cancellationToken)}{MayHaveBeenAppliedSuffix}");
+        }
+    }
+
+    /// <summary>
+    /// Log in to Portainer with the user name and password of the options
+    /// </summary>
+    /// <param name="client">HTTP client with the base address of Portainer</param>
+    /// <param name="loginBody">Login request body</param>
+    /// <param name="loginUri">Address of the login request, used to track Retry-After windows</param>
+    /// <param name="maskedBaseUrl">Portainer base URL without user info</param>
+    /// <param name="cancellationToken">Cancellation token with the bound of the request</param>
+    /// <returns>JWT token; null when the answer carries none</returns>
+    private async Task<string?> LoginAsync(HttpClient client, PortainerLoginRequest loginBody, Uri loginUri, string maskedBaseUrl, CancellationToken cancellationToken)
+    {
+        using var loginResponse = await client.PostAsJsonAsync("/api/auth", loginBody, cancellationToken).ConfigureAwait(false);
+
+        _loginRetryAfterRegistry.RecordLoginResponse(loginUri, loginBody.Username, loginResponse);
+
+        if (loginResponse.IsSuccessStatusCode == false)
+        {
+            _logger.PortainerAuthFailed(maskedBaseUrl);
+
+            throw new PortainerAuthenticationException($"Portainer authentication failed with HTTP {(int)loginResponse.StatusCode} for '{maskedBaseUrl}'");
+        }
+
+        var authResponse = await loginResponse.Content.ReadFromJsonAsync<PortainerAuthResponse>(cancellationToken: cancellationToken).ConfigureAwait(false);
+
+        return authResponse?.Jwt;
+    }
+
+    /// <summary>
     /// Create an authenticated HTTP client for the Portainer options of the given Docker instance.
     /// PAT takes precedence; falls back to username/password JWT login
     /// </summary>
     /// <param name="instanceOptions">Docker instance options</param>
+    /// <param name="bounds">Bounds of the requests of the operation</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Authenticated HTTP client</returns>
-    private async Task<HttpClient> CreateAuthenticatedClientAsync(DockerInstanceOptions instanceOptions, CancellationToken cancellationToken)
+    private async Task<HttpClient> CreateAuthenticatedClientAsync(DockerInstanceOptions instanceOptions, PortainerRequestBounds bounds, CancellationToken cancellationToken)
     {
         var options = instanceOptions.Portainer;
         var client = _httpClientFactory.CreateClient(HttpClientName);
@@ -309,7 +657,8 @@ public partial class PortainerClient : IPortainerClient
                 _logger.PortainerInsecureHttpInUse(instanceOptions.Name);
             }
 
-            client.Timeout = TimeSpan.FromSeconds(options.RequestTimeoutSeconds);
+            // Every request runs under its own bound, see PortainerRequestBounds
+            client.Timeout = Timeout.InfiniteTimeSpan;
 
             if (string.IsNullOrWhiteSpace(options.ApiToken) == false)
             {
@@ -330,31 +679,16 @@ public partial class PortainerClient : IPortainerClient
                     throw new PortainerAuthenticationException($"Portainer authentication for '{maskedBaseUrl}' not sent: Portainer answered HTTP 429 and asked to wait until {LoginRetryAfterRegistry.FormatRetryAt(retryAt)}");
                 }
 
-                using var loginResponse = await client.PostAsJsonAsync("/api/auth", loginBody, cancellationToken).ConfigureAwait(false);
+                var jwt = await bounds.RunAsync(bounds.RequestTimeout, token => LoginAsync(client, loginBody, loginUri, maskedBaseUrl, token), cancellationToken).ConfigureAwait(false);
 
-                _loginRetryAfterRegistry.RecordLoginResponse(loginUri, options.Username, loginResponse);
-
-                if (loginResponse.IsSuccessStatusCode)
-                {
-                    var authResponse = await loginResponse.Content.ReadFromJsonAsync<PortainerAuthResponse>(cancellationToken: cancellationToken).ConfigureAwait(false);
-
-                    if (authResponse?.Jwt is not null)
-                    {
-                        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", authResponse.Jwt);
-                    }
-                    else
-                    {
-                        _logger.PortainerAuthFailed(maskedBaseUrl);
-
-                        throw new PortainerAuthenticationException($"Portainer authentication succeeded but returned no JWT token for '{maskedBaseUrl}'");
-                    }
-                }
-                else
+                if (jwt is null)
                 {
                     _logger.PortainerAuthFailed(maskedBaseUrl);
 
-                    throw new PortainerAuthenticationException($"Portainer authentication failed with HTTP {(int)loginResponse.StatusCode} for '{maskedBaseUrl}'");
+                    throw new PortainerAuthenticationException($"Portainer authentication succeeded but returned no JWT token for '{maskedBaseUrl}'");
                 }
+
+                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", jwt);
             }
 
             return client;
@@ -372,173 +706,88 @@ public partial class PortainerClient : IPortainerClient
     #region IPortainerClient
 
     /// <inheritdoc/>
-    public async Task<PortainerCapabilityData> GetCapabilityAsync(DockerInstanceOptions instanceOptions, CancellationToken cancellationToken = default)
+    public async Task<ExternalOperationResult<PortainerCapabilityData>> CheckCapabilityAsync(DockerInstanceOptions instanceOptions, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(instanceOptions);
 
-        if (instanceOptions.Portainer.Enabled == false)
-        {
-            _logger.PortainerCapabilityNotConfigured(instanceOptions.Name);
+        var notConfiguredMessage = GetNotConfiguredMessage(instanceOptions);
 
-            return new PortainerCapabilityData
-                   {
-                       IsConfigured = false,
-                       SupportsActions = false,
-                       Message = "Portainer is not configured for this Docker instance",
-                   };
+        if (notConfiguredMessage is not null)
+        {
+            return ExternalOperationResult.NotConfigured<PortainerCapabilityData>(notConfiguredMessage);
         }
 
-        if (string.IsNullOrWhiteSpace(instanceOptions.Portainer.BaseUrl))
-        {
-            return new PortainerCapabilityData
-                   {
-                       IsConfigured = false,
-                       SupportsActions = false,
-                       Message = "Portainer base URL is not configured",
-                   };
-        }
+        var bounds = CreateBounds(instanceOptions);
 
         try
         {
-            using var client = await CreateAuthenticatedClientAsync(instanceOptions, cancellationToken).ConfigureAwait(false);
-            using var statusResponse = await client.GetAsync("/api/system/status", cancellationToken).ConfigureAwait(false);
+            using var client = await CreateAuthenticatedClientAsync(instanceOptions, bounds, cancellationToken).ConfigureAwait(false);
 
-            if (statusResponse.IsSuccessStatusCode == false)
-            {
-                _logger.PortainerCapabilityConnectFailed(instanceOptions.Name, (int)statusResponse.StatusCode);
-
-                return new PortainerCapabilityData
-                       {
-                           IsConfigured = true,
-                           SupportsActions = false,
-                           Message = $"Portainer connection failed: HTTP {(int)statusResponse.StatusCode}",
-                       };
-            }
-
-            var resolution = await ResolveEndpointAsync(client, instanceOptions, cancellationToken).ConfigureAwait(false);
-            var endpointId = resolution.EndpointId;
-
-            if (string.IsNullOrWhiteSpace(endpointId))
-            {
-                return new PortainerCapabilityData
-                       {
-                           IsConfigured = true,
-                           SupportsActions = false,
-                           Message = resolution.FailureMessage ?? "No Portainer endpoint found",
-                       };
-            }
-
-            _logger.PortainerCapabilityResolved(instanceOptions.Name, endpointId);
-
-            return new PortainerCapabilityData
-                   {
-                       IsConfigured = true,
-                       SupportsActions = true,
-                       Message = $"Portainer connected, endpoint {endpointId}",
-                   };
+            return await ProbeEnvironmentAsync(client, instanceOptions, bounds, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
             _logger.PortainerCapabilityException(instanceOptions.Name, ex);
 
-            return new PortainerCapabilityData
-                   {
-                       IsConfigured = true,
-                       SupportsActions = false,
-                       Message = $"Portainer connection error: {FailureReason.FromException(ex, TimeSpan.FromSeconds(instanceOptions.Portainer.RequestTimeoutSeconds), cancellationToken)}",
-                   };
+            return ExternalOperationResult.Failed<PortainerCapabilityData>($"Portainer connection error: {FailureReason.FromException(ex, bounds.Latest, cancellationToken)}");
         }
     }
 
     /// <inheritdoc/>
-    public async Task<PortainerActionResult> ExecuteActionAsync(DockerInstanceOptions instanceOptions,
-                                                                PortainerActionRequest actionRequest,
-                                                                CancellationToken cancellationToken = default)
+    public async Task<ExternalOperationResult<PortainerActionOutcomeData>> ExecuteContainerActionAsync(DockerInstanceOptions instanceOptions,
+                                                                                                       PortainerContainerActionRequest actionRequest,
+                                                                                                       CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(instanceOptions);
         ArgumentNullException.ThrowIfNull(actionRequest);
 
-        if (instanceOptions.Portainer.Enabled == false || string.IsNullOrWhiteSpace(instanceOptions.Portainer.BaseUrl))
+        var actionName = GetActionName(actionRequest.ActionType);
+
+        if (actionName is null)
         {
-            return new PortainerActionResult
-                   {
-                       Succeeded = false,
-                       Message = "Portainer is not configured",
-                   };
+            return ExternalOperationResult.Unsupported<PortainerActionOutcomeData>($"Action '{actionRequest.ActionType}' is not supported; allowed: start, stop, restart");
         }
 
-        if (_allowedContainerActions.Contains(actionRequest.ActionName) == false)
+        if (IsContainerId(actionRequest.ContainerId) == false)
         {
-            return new PortainerActionResult
-                   {
-                       Succeeded = false,
-                       Message = $"Action '{actionRequest.ActionName}' is not supported — allowed: {string.Join(", ", _allowedContainerActions)}",
-                   };
+            return ExternalOperationResult.NotFound<PortainerActionOutcomeData>(ContainerChangedMessage);
         }
+
+        var notConfiguredMessage = GetNotConfiguredMessage(instanceOptions);
+
+        if (notConfiguredMessage is not null)
+        {
+            return ExternalOperationResult.NotConfigured<PortainerActionOutcomeData>(notConfiguredMessage);
+        }
+
+        var bounds = CreateBounds(instanceOptions);
 
         try
         {
-            using var client = await CreateAuthenticatedClientAsync(instanceOptions, cancellationToken).ConfigureAwait(false);
+            using var client = await CreateAuthenticatedClientAsync(instanceOptions, bounds, cancellationToken).ConfigureAwait(false);
 
-            var resolution = await ResolveEndpointAsync(client, instanceOptions, cancellationToken).ConfigureAwait(false);
-            var endpointId = resolution.EndpointId;
+            var capability = await ProbeEnvironmentAsync(client, instanceOptions, bounds, cancellationToken).ConfigureAwait(false);
 
-            if (string.IsNullOrWhiteSpace(endpointId))
+            if (capability.Status != ExternalOperationStatus.Succeeded || capability.Data?.EndpointId is null)
             {
-                return new PortainerActionResult
-                       {
-                           Succeeded = false,
-                           Message = resolution.FailureMessage ?? "No Portainer endpoint found",
-                       };
+                return capability.PropagateFailure<PortainerActionOutcomeData>("No Portainer endpoint found");
             }
 
-            var containerId = await FindContainerIdAsync(client, endpointId, actionRequest.ResourceName, cancellationToken).ConfigureAwait(false);
+            var endpointId = capability.Data.EndpointId;
+            var lookupFailure = await LookUpContainerAsync(client, instanceOptions, actionRequest, actionName, endpointId, bounds, cancellationToken).ConfigureAwait(false);
 
-            if (string.IsNullOrWhiteSpace(containerId))
+            if (lookupFailure is not null)
             {
-                _logger.PortainerContainerNotFound(actionRequest.ResourceName, instanceOptions.Name);
-
-                return new PortainerActionResult
-                       {
-                           Succeeded = false,
-                           Message = $"Container '{actionRequest.ResourceName}' not found in endpoint {endpointId}",
-                       };
+                return lookupFailure;
             }
 
-            var actionUrl = $"/api/endpoints/{endpointId}/docker/containers/{containerId}/{actionRequest.ActionName}";
-
-            // An empty body keeps SocketsHttpHandler from resending a body-less POST on a reused connection
-            using var actionContent = new ByteArrayContent([]);
-            using var actionResponse = await client.PostAsync(actionUrl, actionContent, cancellationToken).ConfigureAwait(false);
-
-            if (actionResponse.IsSuccessStatusCode)
-            {
-                _logger.PortainerActionExecuted(actionRequest.ActionName, actionRequest.ResourceName, instanceOptions.Name);
-
-                return new PortainerActionResult
-                       {
-                           Succeeded = true,
-                           Message = $"Action '{actionRequest.ActionName}' on '{actionRequest.ResourceName}' executed successfully",
-                       };
-            }
-
-            _logger.PortainerActionFailed(actionRequest.ActionName, actionRequest.ResourceName, instanceOptions.Name, (int)actionResponse.StatusCode);
-
-            return new PortainerActionResult
-                   {
-                       Succeeded = false,
-                       Message = $"Action '{actionRequest.ActionName}' failed: HTTP {(int)actionResponse.StatusCode}",
-                   };
+            return await SendContainerActionAsync(client, instanceOptions, actionRequest, actionName, endpointId, bounds, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
-            _logger.PortainerActionException(actionRequest.ActionName, actionRequest.ResourceName, instanceOptions.Name, ex);
+            _logger.PortainerActionException(actionName, actionRequest.ContainerName, instanceOptions.Name, ex);
 
-            return new PortainerActionResult
-                   {
-                       Succeeded = false,
-                       Message = $"Action '{actionRequest.ActionName}' failed: {FailureReason.FromException(ex, TimeSpan.FromSeconds(instanceOptions.Portainer.RequestTimeoutSeconds), cancellationToken)}",
-                   };
+            return ExternalOperationResult.Failed<PortainerActionOutcomeData>($"Action '{actionName}' failed: {FailureReason.FromException(ex, bounds.Latest, cancellationToken)}");
         }
     }
 

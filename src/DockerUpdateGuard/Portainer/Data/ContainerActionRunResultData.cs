@@ -1,16 +1,18 @@
+using DockerUpdateGuard.Data.Entities;
+
 namespace DockerUpdateGuard.Portainer.Data;
 
 /// <summary>
-/// Portainer action result
+/// Result of a container action run
 /// </summary>
-public class PortainerActionResult
+public class ContainerActionRunResultData
 {
     #region Properties
 
     /// <summary>
-    /// Indicates whether the action succeeded
+    /// Run status
     /// </summary>
-    public bool Succeeded { get; set; }
+    public ContainerActionStatus Status { get; set; }
 
     /// <summary>
     /// Result message

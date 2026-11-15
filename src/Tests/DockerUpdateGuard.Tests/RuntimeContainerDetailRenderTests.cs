@@ -61,6 +61,7 @@ public class RuntimeContainerDetailRenderTests
 
             testContext.Services.AddSingleton(viewService);
             testContext.Services.AddSingleton(tagSelectionService);
+            testContext.AddHiddenContainerActions();
 
             var component = testContext.Render<RuntimeContainerDetailPage>(parameters => parameters.Add(page => page.DockerInstanceId, instanceId)
                                                                                                    .Add(page => page.ContainerId, "abc123"));

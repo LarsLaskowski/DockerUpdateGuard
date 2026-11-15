@@ -1,5 +1,7 @@
 @page "/runtime-containers/{DockerInstanceId:guid}/{ContainerId}"
 
+@using DockerUpdateGuard.Data.Entities
+
 <PageTitle>Runtime Container Detail</PageTitle>
 
 <MudStack Spacing="3" Class="page-shell">
@@ -116,6 +118,83 @@
                 }
             </MudGrid>
         </MudPaper>
+
+        @if (_availability is { IsShown: true })
+        {
+            <MudPaper Class="section-paper" Elevation="0">
+                <div class="section-header">
+                    <MudText Typo="Typo.h5">Container actions</MudText>
+                    <MudText Class="section-description">Start, stop or restart this container through Portainer. Every action asks for confirmation and is recorded.</MudText>
+                </div>
+
+                <span class="table-secondary">@($"Runtime status as of the last runtime scan ({_detail.RecordedAtUtc.ToLocalTime().ToString("g")}); an action does not update it. Run \"Check image updates\" on Runtime Containers to refresh it.")</span>
+
+                @if (_availability.IsCurrent == false || _availability.IsSupported == false || _availability.IsInProgress)
+                {
+                    <MudAlert Severity="@(_availability.IsCurrent == false || _availability.IsInProgress ? Severity.Info : Severity.Warning)" Dense="true">@_availability.Message</MudAlert>
+                }
+                else if (_availability.OfferedActions.Count == 0)
+                {
+                    <MudAlert Severity="Severity.Info" Dense="true">No actions are available for this container.</MudAlert>
+                }
+                else
+                {
+                    <MudStack Row="true" Spacing="2">
+                        @foreach (var actionType in _availability.OfferedActions)
+                        {
+                            var offeredAction = actionType;
+
+                            <MudButton Variant="@(offeredAction == ContainerActionType.StartContainer ? Variant.Filled : Variant.Outlined)"
+                                       Color="@(offeredAction == ContainerActionType.StartContainer ? Color.Primary : Color.Error)"
+                                       Disabled="@(_runningAction is not null)"
+                                       OnClick="@(() => StartAction(offeredAction))">
+                                @if (_runningAction == offeredAction)
+                                {
+                                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                                }
+                                @ContainerActionDisplayNames.GetDisplayName(offeredAction)
+                            </MudButton>
+                        }
+                    </MudStack>
+                }
+
+                @if (_actionOutcome is not null)
+                {
+                    <MudAlert Severity="@(_actionOutcome.Status == ContainerActionStatus.Succeeded ? Severity.Success : Severity.Error)" Dense="true">@_actionOutcome.Message</MudAlert>
+                }
+
+                <MudText Typo="Typo.h6">Action history</MudText>
+                @if (_detail.ActionHistory.Count == 0)
+                {
+                    <MudPaper Class="empty-state-panel" Elevation="0">
+                        <MudText>No container actions yet.</MudText>
+                    </MudPaper>
+                }
+                else
+                {
+                    <MudTable Items="_detail.ActionHistory" Hover="true" Dense="true" Breakpoint="Breakpoint.Md" Class="section-table">
+                        <HeaderContent>
+                            <MudTh>Action</MudTh>
+                            <MudTh>Status</MudTh>
+                            <MudTh>Requested</MudTh>
+                            <MudTh>Completed</MudTh>
+                            <MudTh>Requested by</MudTh>
+                            <MudTh>Message</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd DataLabel="Action">@context.Action</MudTd>
+                            <MudTd DataLabel="Status">
+                                <MudChip T="string" Size="Size.Small" Color="@GetActionStatusColor(context.Status)">@context.Status</MudChip>
+                            </MudTd>
+                            <MudTd DataLabel="Requested">@context.RequestedAtUtc.ToLocalTime().ToString("g")</MudTd>
+                            <MudTd DataLabel="Completed">@(context.CompletedAtUtc is DateTimeOffset completedAtUtc ? completedAtUtc.ToLocalTime().ToString("g") : "—")</MudTd>
+                            <MudTd DataLabel="Requested by">@context.RequestedBy</MudTd>
+                            <MudTd DataLabel="Message">@context.Message</MudTd>
+                        </RowTemplate>
+                    </MudTable>
+                }
+            </MudPaper>
+        }
 
         <MudPaper Class="section-paper" Elevation="0">
             <div class="section-header">

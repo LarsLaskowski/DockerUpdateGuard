@@ -4,6 +4,7 @@ using DockerUpdateGuard.DockerHub;
 using DockerUpdateGuard.Images;
 using DockerUpdateGuard.Images.Interfaces;
 using DockerUpdateGuard.Infrastructure;
+using DockerUpdateGuard.Portainer;
 using DockerUpdateGuard.Portainer.Interfaces;
 using DockerUpdateGuard.Vulnerabilities;
 using DockerUpdateGuard.Vulnerabilities.Interfaces;
@@ -14,6 +15,8 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Http;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+
+using NSubstitute;
 
 namespace DockerUpdateGuard.Tests;
 
@@ -254,6 +257,38 @@ public class ServiceCollectionExtensionsTests
         Assert.Contains(handler => handler is TransientHttpRetryHandler,
                         builder.AdditionalHandlers,
                         "The Docker Scout client must send through the transient HTTP retry handler");
+    }
+
+    /// <summary>
+    /// Verify the container action service is one singleton shared by all scopes, so its in-progress guard spans every circuit
+    /// </summary>
+    [TestMethod]
+    [TestCategory("AC7")]
+    public void ServiceCollectionExtensionsAddDockerUpdateGuardHostSharesContainerActionServiceAcrossScopes()
+    {
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+                                                                             {
+                                                                                 ["DockerUpdateGuard:ConnectionString"] = "Host=database;Database=dug;Username=test;Password=test",
+                                                                                 ["Telemetry:EnableLogging"] = "true",
+                                                                                 ["Telemetry:EnableMetrics"] = "false",
+                                                                                 ["Telemetry:EnableTracing"] = "false",
+                                                                             })
+                                                      .Build();
+        var services = new ServiceCollection();
+
+        services.AddDockerUpdateGuardHost(configuration);
+        services.AddSingleton<IConfiguration>(configuration);
+        services.AddSingleton(Substitute.For<IHostApplicationLifetime>());
+
+        using var serviceProvider = services.BuildServiceProvider();
+        using var firstScope = serviceProvider.CreateScope();
+        using var secondScope = serviceProvider.CreateScope();
+
+        var first = firstScope.ServiceProvider.GetRequiredService<IContainerActionService>();
+        var second = secondScope.ServiceProvider.GetRequiredService<IContainerActionService>();
+
+        Assert.IsInstanceOfType<ContainerActionService>(first, "The container action service must be the Portainer-backed implementation");
+        Assert.AreSame(first, second, "Two scopes (two circuits) must share one container action service");
     }
 
     /// <summary>

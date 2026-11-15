@@ -45,15 +45,20 @@ Every exported signal carries the same resource:
 
 - Traces contain a span for every incoming HTTP request and every outgoing HTTP call, plus the application's own
   spans from the source `DockerUpdateGuard`.
-- Application spans emitted today, all of kind client:
+- Application spans emitted today:
 
-  | Span name | Wraps | Attribute |
-  | --- | --- | --- |
-  | `dockerhub.request` | A Docker Hub repository lookup or tag lookup | `docker.image.reference` (the full image reference) |
-  | `dockerengine.request` | Container discovery on one Docker instance | `docker.instance.name` (the configured instance name) |
+  | Span name | Kind | Wraps | Attributes |
+  | --- | --- | --- | --- |
+  | `dockerhub.request` | client | A Docker Hub repository lookup or tag lookup | `docker.image.reference` (the full image reference) |
+  | `dockerengine.request` | client | Container discovery on one Docker instance | `docker.instance.name` (the configured instance name) |
+  | `portainer.action` | internal | One container action executed from the runtime container page, from the checks to the final status | `docker.instance.name`, `action.type` (`StartContainer`, `StopContainer` or `RestartContainer`), `container.name` (the container's name), `result.status` (the run's status: `Succeeded`, `Failed`, `Cancelled` or `Running`) |
 
-- The span names `scan.run`, `cve.request`, `portainer.request`, `portainer.action` and `persistence.operation` are
-  reserved for the application's source but not emitted (see *Known gaps*).
+  The `portainer.action` span of a confirmation that finds no snapshot carries no `docker.instance.name`,
+  `action.type` or `container.name`; no span carries a credential or a message
+  ([Container actions](container-actions.md#action-runs)).
+
+- The span names `scan.run`, `cve.request`, `portainer.request` and `persistence.operation` are reserved for the
+  application's source but not emitted (see *Known gaps*).
 
 ### Logs
 
@@ -132,9 +137,8 @@ Every exported signal carries the same resource:
 
 ### Known gaps
 
-- Scans, vulnerability provider calls, Portainer calls and persistence have no application span; the reserved span
-  names `scan.run`, `cve.request`, `portainer.request`, `portainer.action` and `persistence.operation` are never
-  emitted. Tracked in [#83](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/83).
+- Scans, vulnerability provider calls, Portainer requests and persistence have no application span; the reserved span
+  names `scan.run`, `cve.request`, `portainer.request` and `persistence.operation` are never emitted. Tracked in [#83](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/83).
 - `dockerupdateguard.runtime_containers` counts every container that still has a stored snapshot, including
   containers that have since stopped or been removed, until cleanup deletes their snapshots; it does not count only
   the currently known containers. Tracked in [#294](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/294).

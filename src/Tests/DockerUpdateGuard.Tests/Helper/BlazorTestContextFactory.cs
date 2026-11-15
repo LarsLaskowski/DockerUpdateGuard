@@ -3,11 +3,17 @@ using System.Globalization;
 using Bunit;
 using Bunit.TestDoubles;
 
+using DockerUpdateGuard.Portainer.Data;
+using DockerUpdateGuard.Portainer.Interfaces;
+
+using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.DependencyInjection;
 
 using MudBlazor.Services;
+
+using NSubstitute;
 
 namespace DockerUpdateGuard.Tests.Helper;
 
@@ -39,6 +45,25 @@ internal static class BlazorTestContextFactory
         testContext.Services.AddScoped<ProtectedLocalStorage>();
 
         return testContext;
+    }
+
+    /// <summary>
+    /// Register a container action service that shows no container actions and render interactively, as a page that
+    /// reads its renderer and injects the container action service needs
+    /// </summary>
+    /// <param name="testContext">Test context</param>
+    /// <returns>Container action service substitute</returns>
+    public static IContainerActionService AddHiddenContainerActions(this Bunit.BunitContext testContext)
+    {
+        var containerActionService = Substitute.For<IContainerActionService>();
+
+        containerActionService.GetAvailabilityAsync(Arg.Any<Guid>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+                              .Returns(new ContainerActionAvailabilityData());
+
+        testContext.Services.AddSingleton(containerActionService);
+        testContext.SetRendererInfo(new RendererInfo("Server", true));
+
+        return containerActionService;
     }
 
     /// <summary>
