@@ -113,8 +113,9 @@ resource statistics, cleanup) leave no scan-run record and report only through l
   stale-finding deactivation of a full refresh never runs at the same time as another full refresh's deactivation.
 - A wait ends when the run is cancelled (in practice host shutdown, since no UI action is cancellable): a waiting
   runtime container scan then creates no scan run and does not contact the instance, and a waiting vulnerability
-  refresh applies nothing for the image version it waited for. A manual action started during the scheduled run of
-  the same subject waits for that run to finish.
+  refresh applies nothing for the image version it waited for. A manual action started while the scheduled run holds
+  the same subject waits for it: a runtime container scan until the scheduled scan of that Docker instance has finished, a
+  vulnerability refresh until the scheduled refresh has saved that image version's results.
 - Within the observed-image refresh the images are scanned one after another; within the runtime container refresh
   the instances are scanned one after another. Parallelism of vulnerability provider calls inside one refresh is
   owned by [Vulnerabilities](vulnerabilities.md).
