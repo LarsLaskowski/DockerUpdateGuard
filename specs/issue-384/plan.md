@@ -207,3 +207,35 @@ reasons stay fixed (fact 8). No `docs/ARCHITECTURE.md` change.
   the run's findings" — body: the line, the mechanism, and the fix of this plan (set the run's entry state only).
 - Changes an item's inner error handler lets through to its final save (partial work before a caught error) are kept as
   today.
+
+## Security notes
+
+Security review, mode plan: specs/issue-384/plan.md at 7475617, plus record docs/decisions/0040-a-scan-item-whose-save-fails-is-saved-again-alone-as-failed.md
+
+**Tier and security areas.** `standard` is the right tier. The plan creates, changes and removes no security control. It uses the existing control `FailureReason.FromException` unchanged, and it adds no limit, guard, credential path or URL output. The two areas it lists are the right ones:
+- *Failure messages and remote text*
+- *Logging and telemetry of external data*
+
+I checked for other areas it might touch and found none:
+- *Database and migrations*: the plan builds no query from user input, and its only Data-side change is the Tester's test double under `src/Tests`.
+- It adds no outbound call and no new dependency.
+- It touches no CI, Docker or build configuration.
+
+**What I read and checked**
+
+- **Scan-run message (fact 8).** I read `src/DockerUpdateGuard/Infrastructure/FailureReason.cs:49-85`. A save error is a `DbUpdateException`, an `InvalidOperationException` or EF's `RetryLimitExceededException`, and all of these map to the fixed `unexpected error`. Only a `ReportableException` passes its own message through. Nothing in the save path can throw one: a grep of `src` (tests excluded) finds no `Interceptor`, `EnableSensitiveDataLogging` or `Include Error Detail`. So the new line `… could not be saved: <reason>` carries no exception text.
+- **Message length.** The joined message still comes from the existing `statusMessages` plus one fixed-length line, so the unbounded `text` column (fact 9) does not grow in a new way.
+- **New log events 2034 and 2043.** Their arguments are:
+  - `observedImage.Name` or `dockerInstance.Name`, the same values that 2030, 2033 and 2042 log today;
+  - the exception, on the error entry of a failed scan step. `docs/areas/telemetry.md`, *Credentials and external data*, allows both.
+  - Parameter names `observedImage` and `dockerInstance` match no sensitive name.
+  - EF's messages for a failed `UPDATE` or `INSERT` carry no parameter values, because sensitive data logging is off (grep above).
+- **Integrity.** The plan attaches only the run, by setting its entry state, and rejects `Update`, `Add` and `Attach` (option 4, fact 7). This prevents the recovery from saving the failed item's container snapshots, findings and relationships, which come from remote data. Fact 7 is EF fix-up behaviour, not a security property. It is still unverified, and the Tester's runtime AC1 test (no `ContainerSnapshot` stored) pins it, so I need no measurement before approving.
+- **Clearing the tracker.** Clearing it in `ScanAsync` on the registration page's circuit-lifetime context drops no security-relevant state. `ObservedImages.razor.cs:174-205` does not use the context directly; it calls `ImageRegistrationService.RegisterAsync`, which has already saved, then `ScanAsync`. The scan locks (`ObservedImageScanLocks`, `DockerInstanceScanLocks`) are in-memory `KeyedScanLock`s, not tracked rows, so a clear cannot release or lose them.
+
+**Findings**
+
+[NON-BLOCKING] Plan step 5, *Approach*: "`SaveChangesAsync(CancellationToken.None)` as the enrichment does". The context is registered with `EnableRetryOnFailure(MaxConnectionRetryCount, MaxConnectionRetryDelaySeconds)` (`src/DockerUpdateGuard/ServiceCollectionExtensions.cs:66-68`; defaults 8 and 30 s, `Configuration/DatabaseOptions.cs:13,18`). When the database is unreachable, the original save fails with the retry limit exceeded, which is not a cancellation, so the recovery runs. The recovery save then repeats the whole retry sequence, up to minutes per item, and neither cancellation nor host shutdown can interrupt it.
+- This is an availability cost, not a confidentiality or integrity defect, and the enrichment already accepts it. AC2 to AC4 still hold either way.
+- Smallest fix: pass the scan's `cancellationToken` to the recovery save. If that save is cancelled, it ends like any other failed recovery: logged with 2034 or 2043, tracker cleared, run left to the stale-run repair.
+- Recommendation: the Lead decides now in the plan. If the Lead keeps `CancellationToken.None`, add one sentence to the *Consequences* of record 0040 saying that the recovery save is not cancellable and may repeat the connection retries.
