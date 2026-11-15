@@ -6,17 +6,10 @@ Security areas touched: none
 
 ## Problem / root cause
 
-Only observed-image scans are serialized: `Images/ImageScanOrchestrator.cs:38-48` (static `Lock` and
-`Dictionary<Guid, ObservedImageScanLockEntry>`), `:172-215` (acquire/release a reference) and `ScanAsync` `:677-801`.
-
-- `Images/RuntimeContainerScanOrchestrator.cs:448` `ScanInstanceAsync` creates its scan run and then deactivates and
-  recreates the instance's update findings (`DeactivateSupersededRuntimeFindingsAsync` `:828`,
-  `DeactivateRemovedRuntimeFindingsAsync` `:851`, `CreateRuntimeFindingAsync` `:876`) with no guard; `ScanAllAsync`
-  (`:1194`, call at `:1237`) is started by the scheduled job and by *Check image updates*, each in its own context.
-- `Images/VulnerabilityEnrichmentService.cs:501` `RunRefreshAsync` calls `ApplyAndSaveImageVulnerabilitiesAsync`
-  (`:556`) per image version, whose `UpsertVulnerabilityFindingsAsync` (`:230`) loads the image version's findings,
-  inserts the advisories it does not find and saves — with no guard, so two runs that load before either saves both
-  insert the same advisory. `DeactivateStaleFindingsAsync` (`:461`, called after the batches) is unguarded too.
+Only observed-image scans are serialized (fact 1). `RuntimeContainerScanOrchestrator.ScanInstanceAsync` (`:448`) and
+`VulnerabilityEnrichmentService.ApplyAndSaveImageVulnerabilitiesAsync` (`:405`, its read-modify-write in
+`UpsertVulnerabilityFindingsAsync` `:230`) and `DeactivateStaleFindingsAsync` (`:461`) run unguarded, so two runs of one
+subject in two contexts both write from the same prior state (facts 2-4).
 
 ## Verified facts
 
@@ -159,9 +152,7 @@ Files no unit test can cover: none.
 
 ## Areas
 
-- Scan engine — *Overlapping scans* rewritten, *Scan runs* timing, *Deployment assumption* plural guards, *Known gaps*
-  entry for #292 removed, *Related decisions* gains 0038.
-- Vulnerabilities — the batch bullet gains the per-image-version wait.
+Scan engine and Vulnerabilities, as *Documentation updates* lists.
 
 ## Documentation updates
 
@@ -184,14 +175,12 @@ All by the Dev, against the code as built:
   same-process guard; link decision 0038. §11 *Single-instance assumption*: "`ImageScanOrchestrator`'s in-memory scan
   lock" → "the in-memory scan guards".
 - `.squad/project.md` *Test doubles*: the Tester's line for the gated-save context (the orchestrator writes it).
-- Sweep result: no other document enumerates the guards (`grep -i "overlap\|same time"` over `docs/`, `README.md`);
-  `web-ui.md` and `docker-instances.md` need no change.
+- Sweep: no other document enumerates the guards.
 
 ## Architecture check
 
-The single-instance assumption and "duplicate scans are wasteful, never incorrect" (`.squad/project.md`) stay; the
-guards remove an in-process race and add no cross-instance claim. Layering unchanged (all in the host project). No
-background job, interval or registration changes.
+The single-instance assumption and "duplicate scans are wasteful, never incorrect" stay; the guards remove an
+in-process race only. Layering, jobs and registrations unchanged.
 
 ## Security considerations
 
@@ -207,10 +196,8 @@ background job, interval or registration changes.
 
 - A unique index on vulnerability findings across instances: #14.
 - The circuit-scoped context of the UI pages: #21.
-- A per-image rescan and a full refresh's stale-finding deactivation are not serialized against each other (the issue
-  asks for deactivation against deactivation only). The deactivation touches only image versions outside the live set,
-  so the worst interleaving deactivates a just-rescanned finding of a non-live image version, which the next full
-  refresh would deactivate anyway; no follow-up proposed.
+- A per-image rescan is not serialized against a full refresh's stale-finding deactivation (the issue asks for
+  deactivation against deactivation only; deactivation never inserts, so no duplicate can arise).
 
 ## Challenge notes
 
