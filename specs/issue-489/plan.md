@@ -88,7 +88,7 @@ All in `RuntimeContainerScanOrchestrator.ProcessContainerAsync`; no page, view q
 
 Cost: one more query per container and scan. Findings the failed processing created (added, not yet in the database)
 are not in the list and already reference the new snapshot. No user-visible output is new: the pages show the kept
-findings as they showed them before the failed scan.
+findings' alerts as they showed them before the failed scan.
 
 ## Options considered
 
@@ -173,7 +173,13 @@ findings. No I/O enters update evaluation. Layering unchanged; no guarantee of `
   (`RuntimeContainerScanOrchestrator.cs:651-660`), no snapshot is recorded for the container, while the run records
   the others; the pages take the current containers from the latest run's snapshots, so the container and its still
   active findings disappear until the next scan.
-- Running the runtime check after a failed tag lookup (0042 keeps it tied to a completed evaluation).
+- Running the runtime check after a failed tag lookup (0042 keeps it tied to a completed evaluation).
+- Version columns of a failed snapshot, proposed follow-up issue: "The runtime container list can show the raw tag as
+  the resolved version after a failed container evaluation" — `PopulateResolvedVersionTags`
+  (`RuntimeContainerScanOrchestrator.cs:232-268`) runs only in `EvaluateContainerUpdateAsync`, so a *failed* snapshot
+  has no `ResolvedVersionTag` or `AvailableUpdateVersionTag`, and the list works them out from the findings' tag
+  candidates (`ApplicationViewService.cs:829-837`). Behaviour before this change, not made worse by it; copying the
+  previous snapshot's two tags onto the failed snapshot is a separate rule for what a failed snapshot shows.
 
 ## Challenge notes
 

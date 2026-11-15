@@ -116,8 +116,9 @@ a base-image update or vulnerability reaches; vulnerability refreshes and the da
     latest version, add for .NET that the latest release includes security fixes when it does, and advise to rebuild
     and republish (own image) or that the upstream publisher must rebuild (manual image);
   - on a running container: the same check, made only when the container's update evaluation completed
-    ([Update detection](update-detection.md)); when it did not complete, the previous derived findings stay active
-    and move to the container's new snapshot ([Update detection](update-detection.md#update-findings-and-tag-candidates));
+    ([Update detection](update-detection.md)); when the tag lookup failed, or processing the container raised an error after
+    its new snapshot was recorded, the previous derived findings stay active and move to that snapshot
+    ([Update detection](update-detection.md#update-findings-and-tag-candidates));
     the summary says "Own image …" when the container runs a discovered
     image's repository, otherwise "A linked image uses an outdated … base runtime".
 - On an observed image the previous findings are replaced: with no runtime detected they are removed; with a runtime
