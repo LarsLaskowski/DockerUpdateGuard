@@ -121,6 +121,11 @@ a base-image update or vulnerability reaches; vulnerability refreshes and the da
 - On an observed image the previous findings are replaced: with no runtime detected they are removed; with a runtime
   detected and the feed available they are removed and a new one is added if still outdated; when the configuration
   or the feed cannot be read they stay as they are.
+- On a running container the previous derived findings are replaced by the runtime check, not by the container's
+  update evaluation: when the image inspect, the image history and the feed were read they are deactivated and a new
+  one is added if still outdated; with no runtime detected they are deactivated; when the image inspect, the image
+  history or the feed cannot be read (a channel missing from the feed included) they stay active and move to the
+  container's new snapshot, which the pages read, so the alert survives a transient failure.
 
 ## Limits and errors
 
@@ -128,7 +133,8 @@ a base-image update or vulnerability reaches; vulnerability refreshes and the da
 - Registry outcomes other than *succeeded* never abort the scan; they set *partial* or *failed* and add the registry's
   message (status code and an excerpt of the response body, see [Integration failures](integration-failures.md#excerpts-of-remote-text)).
 - Feed failures (non-success status, missing `releases-index` array, unreadable content) only suppress the runtime
-  finding; they do not change the scan status. Unreadable content is logged as a warning.
+  finding and keep the previous one (observed image and running container); they do not change the scan status.
+  Unreadable content is logged as a warning.
 
 ### Known gaps
 
@@ -139,7 +145,7 @@ a base-image update or vulnerability reaches; vulnerability refreshes and the da
 
 ## Related decisions
 
-None yet.
+- [0042: A runtime container keeps its derived runtime finding while its runtime check cannot be completed](../decisions/0042-a-runtime-container-keeps-its-derived-runtime-finding-while-its-runtime-check-cannot-be-completed.md)
 
 ## Not here
 
