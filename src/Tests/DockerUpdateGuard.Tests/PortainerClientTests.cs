@@ -2653,7 +2653,7 @@ public class PortainerClientTests
             var result = await client.CheckCapabilityAsync(CreateLoginInstanceOptionsWithBaseUrl("Gamma", "https://portainer.example.test/a"), CancellationToken.None)
                                      .ConfigureAwait(false);
 
-            Assert.AreEqual($"Portainer connection error: {DeferredMessage("2026-03-10T12:02:00Z")}",
+            Assert.AreEqual($"Portainer connection error: {DeferredMessage("https://portainer.example.test/a", "2026-03-10T12:02:00Z")}",
                             result.Message,
                             "The login of the path /a without trailing slash must be deferred by the window of /a/");
             Assert.HasCount(requestCount, handler.Requests, "A login inside the window must send no request");
@@ -2813,7 +2813,18 @@ public class PortainerClientTests
     /// <returns>Error text</returns>
     private static string DeferredMessage(string until)
     {
-        return $"Portainer authentication for '{BaseUrl}' not sent: Portainer answered HTTP 429 and asked to wait until {until}";
+        return DeferredMessage(BaseUrl, until);
+    }
+
+    /// <summary>
+    /// Create the text of an authentication error for a deferred login of the given base URL
+    /// </summary>
+    /// <param name="baseUrl">Base URL as formatted in the message</param>
+    /// <param name="until">End of the window as formatted in the message</param>
+    /// <returns>Error text</returns>
+    private static string DeferredMessage(string baseUrl, string until)
+    {
+        return $"Portainer authentication for '{baseUrl}' not sent: Portainer answered HTTP 429 and asked to wait until {until}";
     }
 
     /// <summary>
