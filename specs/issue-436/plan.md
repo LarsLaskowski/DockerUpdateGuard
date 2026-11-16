@@ -163,3 +163,49 @@ guarantee of `.squad/project.md` is weakened; the change removes a path where a 
 ## Out of scope / follow-ups
 
 - Bounding the duration of a listing (0024, *Consequences*): unchanged.
+
+## Challenge notes
+
+The plan holds up. I checked its claims against the code and found nothing to object to.
+
+- **Root cause:** confirmed. The cap check breaks and the loop returns `Succeeded` (`/home/user/DockerUpdateGuard/src/DockerUpdateGuard/Vulnerabilities/DockerScoutVulnerabilityProvider.cs`, the cap check before `ResolveNextLink` in `FetchVulnerabilitiesAsync`). Stale findings are then resolved (`/home/user/DockerUpdateGuard/src/DockerUpdateGuard/Images/VulnerabilityEnrichmentService.cs` lines 292–297).
+- **Failure path:** a failed result returns before any finding is updated (same file, line 335). That makes the fix effective.
+- **Approach:** it mirrors `DockerHubClient.AdvanceListing` (`/home/user/DockerUpdateGuard/src/DockerUpdateGuard/DockerHub/DockerHubClient.cs` lines 884–918).
+- **AC2 fragment case:** `PaginationLinkGuard.CreateRequestKey` uses `UriComponents.HttpRequestUrl`, so a link that differs only in its fragment produces the same key. The AC2 case with a fragment works as written.
+- **Messages and counts:** AC1 and AC2 match `CreatePageCapMessage` and `CreateRepeatedLinkMessage`, and `MaxListingPages` is 1000. Seeding the first page into the set and checking `Count >= MaxListingPages` before adding means exactly 1,000 requests are sent, as the Docker Hub cap test asserts.
+- **Event ids:** 3407 is free. A search for `EventId = 340x` in `src/` finds only 3400, 3408 and 3409.
+- **Existing test:** `StopsAtPageCapAndWarnsAsync` with `ScoutVulnerabilitiesLoopUrl` is correctly named for deletion.
+- **Documentation:** the sweep catches every remaining reference to the 50-page cap (only `docs/areas/vulnerabilities.md:166`; released 0024 is amended by 0047, not edited).
+
+## Security notes
+
+## Security plan review: specs/issue-436 (issue #436), round 1
+
+Files I read: `/home/user/DockerUpdateGuard/specs/issue-436/plan.md`, `/home/user/DockerUpdateGuard/docs/decisions/0047-the-docker-scout-listing-stops-failed-at-a-repeated-link-or-after-the-shared-page-cap.md`, `FetchVulnerabilitiesAsync` in `/home/user/DockerUpdateGuard/src/DockerUpdateGuard/Vulnerabilities/DockerScoutVulnerabilityProvider.cs` (lines 430–511) and the 401 restart in that file (lines 590–612), `/home/user/DockerUpdateGuard/src/DockerUpdateGuard/Vulnerabilities/DockerScoutVulnerabilityProviderLogging.cs`, `PaginationLinkGuard`, `DockerHubClient.AdvanceListing` (lines 884–918), decision 0024, `docs/areas/vulnerabilities.md` *Docker Scout*, the `.squad/routing.md` *Tiers* table, and `.squad/project.md` *Security areas*. All of it was read at 4d80aff.
+
+### Tier
+`standard` is correct. Two parts of the listing stay as they are: the origin check, which is the guard that keeps the bearer token on the Scout origin, and the token handling. The plan keeps the origin check first (Approach step 2, matching `AdvanceListing`). The repeated-link check and the page cap only bound how many requests a remote listing can cause. The `security` row counts that kind of bound as input handling ("a size bound … is input handling: `standard`"). This matches 0024, which made the same change for the Docker Hub and OCI listings. Changing a partial success into *failed* stops a remote side from resolving findings. It does not create a new control.
+
+### Security areas touched
+Both affected areas are listed: Registry and Docker Scout calls, and Logging and telemetry of external data. I found nothing missing. `PaginationLinkGuard.cs` is used but not changed.
+
+### Checks
+- **Order of checks:** origin, then repeated link, then cap. This is the same order as `AdvanceListing`. A link to another origin is still rejected before any other check, with message and event 3409 unchanged, so the token cannot be sent to another origin by this change.
+- **Repeated-link key:** `CreateRequestKey` uses `UriComponents.HttpRequestUrl`. That removes the user info and the fragment and normalises host case, default port and dot segments. Forms the key does not treat as equal (query parameter order, an ignored extra parameter, a different percent-encoding of the same character) give a new key. That is acceptable because the check only saves requests: the cap of 1,000 still ends the listing, which 0024 *Consequences* already records. AC2's fragment case pins the fragment removal in a test.
+- **Logging:** event 3407 and the changed 3419 log only the image reference (and the cap), never the link. The image reference is already in today's log 3409 and in the origin message. The parameter names `imageReference` and `pageCap` are not sensitive.
+- **Messages:** fixed texts plus `ImageReference.FullReference`. No exception text and no remote text appear in them.
+- **Event id 3407 is free:** `grep "EventId = 340[0-9]"` over `src/` finds only 3400, 3408 and 3409.
+- **Request budget:** Scout page requests use no Docker Hub slot (`vulnerabilities.md` line 164). The plan's claim is correct.
+- **Measurement:** none needed. The plan's safety argument relies on nothing measured from a library or a server, and Fact 10 (the real last page has no link to itself) concerns whether listings work, not security. It is marked unverified with a check after the merge.
+
+### Findings
+
+1. [NON-BLOCKING] The worst case for duration and memory grows 20-fold, and 0047 does not say so. The plan's Security considerations say "the bound is a page count". 0024 *Consequences* records that a listing bounded in pages is bounded neither in time (page cap × request timeout) nor in memory beyond the entries read, but its *Decision* covers only "the three listings", not Docker Scout. With this change, a slow Scout origin, or one that keeps sending new links, can hold one image's vulnerability fetch for up to 1,000 × `RequestTimeoutSeconds` instead of 50 ×, twice after a 401. It also keeps up to 1,000 pages of advisories in `advisories` instead of 50. The origin is the operator-configured `DockerScoutBaseUrl` and a single page has no byte bound either, so the order of magnitude of the risk does not change. That is why this is not blocking, but the record should say it. Smallest fix, recommended now: in the Lead's revision, add a bullet to 0047 *Consequences* after the "An endless sequence…" bullet, verbatim:
+
+   ```
+   - As in 0024, the cap bounds requests, not duration or memory: a slow Docker Scout origin can hold one fetch for up
+     to 1,000 times `RequestTimeoutSeconds` (twice after a 401), and the advisories of every page read are kept until
+     the listing ends.
+   ```
+
+No blocking findings.
