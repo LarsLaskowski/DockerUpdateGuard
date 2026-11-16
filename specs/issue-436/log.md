@@ -13,3 +13,4 @@ are quoted in full.
 | 2026-11-16 19:20 | 5 Tests first | Tester | RESULT: DONE — AC1, AC2 (3 rows), AC3 tests added, old cap test removed; I confirmed 5 of 20 AC tests fail on current code. Deferred: none (sonnet/medium · 115,090 tokens · 14 tool uses · 451 s · 18 in · 8,738 out · 855,749 cache read · 61,822 cache write · 206,560 weighted) |
 | 2026-11-16 19:25 | 6 Implement | Dev | RESULT: DONE — AdvanceListing in Scout provider, 3419 reworded, docs updated; target tests and full suite green, coverage gate PASS (100% new lines) (sonnet/medium · 106,015 tokens · 9 tool uses · 300 s · 18 in · 6,744 out · 790,858 cache read · 49,824 cache write · 175,104 weighted) |
 | 2026-11-16 19:26 | 6 Coverage skipped | Orchestrator | skipped — coverage gate passed (100% of 31 new lines, 8/8 conditions; overall 92.9%), no deferred tests, plan docs written |
+| 2026-11-16 19:26 | 6 Documentation | Orchestrator | written in 6 Implement |
