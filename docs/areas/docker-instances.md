@@ -115,7 +115,7 @@ on the snapshots and samples it produces.
 ### Container snapshots
 
 - Each runtime container scan of an enabled instance records one scan run for the instance and one container snapshot
-  per discovered container, linked to that scan run. Snapshots are append-only history: every scan adds new rows,
+  per discovered container, linked to that scan run, except for the two cases below (an invalid image reference, and a failure before the image version is known for a container without an earlier snapshot or whose earlier snapshot could not be loaded). Snapshots are append-only history: every scan adds new rows,
   earlier ones stay until retention removes them ([Scan engine](scan-engine.md)).
 - A snapshot holds the instance, container ID, name, compose project, stack name, service name, runtime status,
   running flag, the catalogued image version (registry, repository, tag and the discovered digest, see
@@ -124,6 +124,10 @@ on the snapshots and samples it produces.
 - The **current** containers of an instance are the snapshots of its most recent runtime scan run that recorded
   snapshots. A later run that recorded none (for example because the Engine was unreachable) does not empty the
   current set; the previous set stays current.
+- A container whose image catalog call raises an error is still recorded: its snapshot takes the image version of the container's latest earlier snapshot, with
+  update assessment *failed* and the message `Container '<name>' could not be processed: <reason>`, and the container's
+  active findings stay active and move to it. Its resolved and available update version are those of that earlier
+  snapshot, provided the running digest is known. A container without an earlier snapshot, or whose active findings or earlier snapshot could not be loaded, records no snapshot; the scan run ends *partial* with that message either way.
 - A container whose image reference cannot be parsed, or whose registry, repository or tag is outside the reference
   grammar ([Image catalog](image-catalog.md#image-references)), produces no snapshot, no catalog entry and no log
   entry; the scan run then ends *partial* with the message `Container '<name>' could not be processed: invalid image
@@ -223,6 +227,8 @@ on the snapshots and samples it produces.
   that does not decode is an invalid response.
 - [0026](../decisions/0026-a-failed-stats-request-drops-only-its-container-from-a-resource-round.md): a failed stats
   request drops only its container from a resource round.
+- [0044](../decisions/0044-a-runtime-container-whose-processing-fails-takes-what-it-could-not-determine-from-its-latest-earlier-snapshot.md):
+  a runtime container whose processing fails takes what it could not determine from its latest earlier snapshot.
 
 ## Not here
 
