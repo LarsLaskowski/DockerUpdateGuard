@@ -1,6 +1,6 @@
 # 0045: JSON parse failures of external data carry a fixed message with their position
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-16
 - **Area:** Telemetry
 - **Source:** Issue #393
