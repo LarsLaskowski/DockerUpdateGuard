@@ -171,6 +171,37 @@ public partial class DotNetReleaseMetadataServiceTests
     }
 
     /// <summary>
+    /// Verify a malformed release index is logged with the fixed JSON message and none of the index's text
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC3")]
+    public async Task DotNetReleaseMetadataServiceGetChannelReleaseAsyncWhenIndexIsMalformedLogsFixedJsonMessageAsync()
+    {
+        var body = JsonParseFailureAssert.CreateForgedLineBody();
+
+        JsonParseFailureAssert.CarriesForgedLine(body);
+
+        var logger = new TestLogger<DotNetReleaseMetadataService>();
+
+        using var handler = new StaticHttpJsonMessageHandler(body);
+        using var httpClient = new HttpClient(handler)
+                               {
+                                   BaseAddress = new Uri("https://dotnet.example.test/"),
+                               };
+
+        var service = new DotNetReleaseMetadataService(httpClient, logger);
+
+        await service.GetChannelReleaseAsync("9.0", TestContext.CancellationToken).ConfigureAwait(false);
+
+        var loadFailure = Assert.ContainsSingle(entry => entry.EventId.Id == 2101,
+                                                logger.Entries,
+                                                "A malformed release index must be logged once as load failure 2101");
+
+        JsonParseFailureAssert.IsForgedLineRewritten(loadFailure.Exception, "Load failure 2101");
+    }
+
+    /// <summary>
     /// Verify a cancelled caller token is reported as cancelled without throwing
     /// </summary>
     /// <returns>Task</returns>

@@ -5,6 +5,7 @@ using DockerUpdateGuard.Configuration;
 using DockerUpdateGuard.DockerHub;
 using DockerUpdateGuard.Infrastructure;
 using DockerUpdateGuard.Tests.Data;
+using DockerUpdateGuard.Tests.Helper;
 using DockerUpdateGuard.Vulnerabilities;
 
 using Microsoft.Extensions.DependencyInjection;
@@ -95,6 +96,28 @@ public class DockerScoutTokenExpiryTests
         Assert.Contains(entry => entry.EventId.Id == 3418,
                         logger.Entries,
                         "An unparseable token payload must be logged");
+    }
+
+    /// <summary>
+    /// Verify a token payload that is not JSON is logged with the fixed JSON message and none of the payload's text
+    /// </summary>
+    [TestMethod]
+    [TestCategory("AC3")]
+    public void DockerScoutTokenExpiryMalformedPayloadLogsFixedJsonMessage()
+    {
+        var payload = JsonParseFailureAssert.CreateForgedLineBody();
+
+        JsonParseFailureAssert.CarriesForgedLine(payload);
+
+        var logger = new TestLogger<DockerScoutVulnerabilityProvider>();
+
+        _ = InvokeResolveTokenExpiryUtc(CreateProvider(logger), CreateJwt(payload));
+
+        var unreadable = Assert.ContainsSingle(entry => entry.EventId.Id == 3418,
+                                               logger.Entries,
+                                               "A token payload that is not JSON must be logged once as unreadable expiry 3418");
+
+        JsonParseFailureAssert.IsForgedLineRewritten(unreadable.Exception, "Unreadable expiry 3418");
     }
 
     /// <summary>

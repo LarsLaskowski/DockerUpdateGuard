@@ -3,6 +3,7 @@ using System.Text;
 
 using DockerUpdateGuard.DockerHub;
 using DockerUpdateGuard.Infrastructure;
+using DockerUpdateGuard.Tests.Helper;
 
 using NSubstitute;
 
@@ -265,6 +266,29 @@ public class DockerHubAccessTokenCacheTests
 
         Assert.AreEqual(secondToken, renewed.Data, "A token with an unreadable expiry must be replaced one minute before the fallback five minutes");
         Assert.HasCount(2, calls, "A token with an unreadable expiry must log in again once its fallback lifetime is within one minute of its end");
+    }
+
+    /// <summary>
+    /// Verify a token whose payload is not JSON makes the call throw the fixed JSON message without the payload's text
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC3")]
+    public async Task DockerHubAccessTokenCacheGetOrRequestAsyncWhenPayloadIsMalformedThrowsFixedJsonMessageAsync()
+    {
+        var payload = JsonParseFailureAssert.CreateForgedLineBody();
+
+        JsonParseFailureAssert.CarriesForgedLine(payload);
+
+        var request = CreateRequest([], CreateToken(payload));
+
+        using var cache = new DockerHubAccessTokenCache(CreateClock());
+
+        var exception = await Assert.ThrowsAsync<Exception>(() => GetAsync(cache, request, TestContext.CancellationToken),
+                                                            "A token payload that is not JSON must make the call throw")
+                                    .ConfigureAwait(false);
+
+        JsonParseFailureAssert.IsForgedLineRewritten(exception, "The exception of the call");
     }
 
     /// <summary>

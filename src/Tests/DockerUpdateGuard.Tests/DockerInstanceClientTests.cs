@@ -69,6 +69,37 @@ public partial class DockerInstanceClientTests
     }
 
     /// <summary>
+    /// Verify a malformed container list is logged with the fixed JSON message and none of the body's text
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC3")]
+    public async Task DockerInstanceClientDiscoverContainersAsyncWhenBodyIsMalformedLogsFixedJsonMessageAsync()
+    {
+        var body = JsonParseFailureAssert.CreateForgedLineBody();
+
+        JsonParseFailureAssert.CarriesForgedLine(body);
+
+        var logger = new TestLogger<DockerInstanceClient>();
+
+        using var handler = new DelegateHttpMessageHandler(_ => CreateJsonResponse(body));
+        using var httpClient = new HttpClient(handler)
+                               {
+                                   BaseAddress = new Uri("https://docker.example.test/"),
+                               };
+
+        var client = new DockerInstanceClient(logger, (_, _) => httpClient);
+
+        await client.DiscoverContainersAsync(CreateInstanceOptions(), TestContext.CancellationToken).ConfigureAwait(false);
+
+        var failure = Assert.ContainsSingle(entry => entry.EventId.Id == 3104,
+                                            logger.Entries,
+                                            "A malformed container list must be logged once as discovery failure 3104");
+
+        JsonParseFailureAssert.IsForgedLineRewritten(failure.Exception, "Discovery failure 3104");
+    }
+
+    /// <summary>
     /// Verify resource sampling reports a container list with a string that does not decode as an invalid response
     /// </summary>
     /// <returns>Task</returns>

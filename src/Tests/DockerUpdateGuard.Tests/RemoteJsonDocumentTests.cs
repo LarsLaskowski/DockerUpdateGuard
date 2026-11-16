@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json;
 
 using DockerUpdateGuard.Infrastructure;
+using DockerUpdateGuard.Tests.Helper;
 
 namespace DockerUpdateGuard.Tests;
 
@@ -96,6 +97,37 @@ public class RemoteJsonDocumentTests
         await Assert.ThrowsAsync<JsonException>(() => RemoteJsonDocument.ParseAsync(stream, TestContext.CancellationToken),
                                                 $"Malformed JSON '{json}' must be refused as a JSON exception")
                     .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Verify malformed JSON is refused with the fixed message and the parser's position only
+    /// </summary>
+    /// <param name="label">Name of the case</param>
+    /// <param name="json">Malformed JSON</param>
+    /// <param name="remoteText">Remote text the input must carry</param>
+    /// <param name="expectedMessage">Expected message</param>
+    /// <param name="expectedLineNumber">Expected line</param>
+    /// <param name="expectedBytePosition">Expected byte position</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC1")]
+    [DynamicData(nameof(ExternalJsonTests.GetMalformedDocuments), typeof(ExternalJsonTests), DynamicDataDisplayName = nameof(ExternalJsonTests.GetRowDisplayName), DynamicDataDisplayNameDeclaringType = typeof(ExternalJsonTests))]
+    public async Task RemoteJsonDocumentParseAsyncWhenJsonIsMalformedThrowsFixedMessageAsync(string label,
+                                                                                             string json,
+                                                                                             string remoteText,
+                                                                                             string expectedMessage,
+                                                                                             long expectedLineNumber,
+                                                                                             long expectedBytePosition)
+    {
+        Assert.Contains(remoteText, json, $"The input of case '{label}' must still carry its remote text");
+
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(json));
+
+        var exception = await Assert.ThrowsAsync<Exception>(() => RemoteJsonDocument.ParseAsync(stream, TestContext.CancellationToken),
+                                                            $"Case '{label}' must be refused")
+                                    .ConfigureAwait(false);
+
+        JsonParseFailureAssert.IsRewritten(exception, expectedMessage, expectedLineNumber, expectedBytePosition, $"The refusal of case '{label}'");
     }
 
     #endregion // Methods

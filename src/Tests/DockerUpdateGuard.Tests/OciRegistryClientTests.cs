@@ -234,6 +234,35 @@ public partial class OciRegistryClientTests
     }
 
     /// <summary>
+    /// Verify a malformed tag list is logged with the fixed JSON message and none of the body's text
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC3")]
+    public async Task OciRegistryClientGetTagsAsyncWhenBodyIsMalformedLogsFixedJsonMessageAsync()
+    {
+        var body = JsonParseFailureAssert.CreateForgedLineBody();
+
+        JsonParseFailureAssert.CarriesForgedLine(body);
+
+        using var handler = new SequenceHttpMessageHandler();
+        using var httpClient = new HttpClient(handler);
+
+        handler.AddJsonResponse("https://mcr.microsoft.com/v2/mssql/server/tags/list?n=100", body);
+
+        var logger = new TestLogger<OciRegistryClient>();
+        var client = new OciRegistryClient(httpClient, logger);
+
+        await client.GetTagsAsync("mcr.microsoft.com", "mssql/server", cancellationToken: TestContext.CancellationToken).ConfigureAwait(false);
+
+        var warning = Assert.ContainsSingle(entry => entry.EventId.Id == 2100 && entry.LogLevel == LogLevel.Warning,
+                                            logger.Entries,
+                                            "A malformed body must be logged once as warning 2100");
+
+        JsonParseFailureAssert.IsForgedLineRewritten(warning.Exception, "Warning 2100");
+    }
+
+    /// <summary>
     /// Verify a tag listing in which only one manifest has a string that does not decode succeeds and lists that tag by name only
     /// </summary>
     /// <returns>Task</returns>
