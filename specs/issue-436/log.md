@@ -14,3 +14,4 @@ are quoted in full.
 | 2026-11-16 19:25 | 6 Implement | Dev | RESULT: DONE — AdvanceListing in Scout provider, 3419 reworded, docs updated; target tests and full suite green, coverage gate PASS (100% new lines) (sonnet/medium · 106,015 tokens · 9 tool uses · 300 s · 18 in · 6,744 out · 790,858 cache read · 49,824 cache write · 175,104 weighted) |
 | 2026-11-16 19:26 | 6 Coverage skipped | Orchestrator | skipped — coverage gate passed (100% of 31 new lines, 8/8 conditions; overall 92.9%), no deferred tests, plan docs written |
 | 2026-11-16 19:26 | 6 Documentation | Orchestrator | written in 6 Implement |
+| 2026-11-16 19:30 | 7 Gate stamp | Orchestrator | PASS on 8f91fb6fe9679e417bac3dea4cb4077dc50cb4c8 (tier standard): Format check pass; Analyzer gate pass; Test with coverage pass; Coverage gate pass; decision-check.py pass; scope-check.py pass · figure-check.py 15 hit(s) |
