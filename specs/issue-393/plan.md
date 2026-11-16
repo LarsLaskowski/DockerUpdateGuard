@@ -190,3 +190,69 @@ loses only remote text. Layering unchanged (the helper is in the host's `Infrast
 ## Out of scope / follow-ups
 
 - None.
+
+## Challenge notes
+
+Devil's Advocate, plan mode, issue #393 (`/home/user/DockerUpdateGuard/specs/issue-393/plan.md`)
+
+I checked the plan's main claims and they hold:
+- **Parse sites:** a grep for `JsonDocument.Parse`, `Deserialize`, `ReadFromJson` and `Utf8JsonReader` over `src/DockerUpdateGuard*` finds exactly the plan's sites. `RemoteJsonDocument.cs:29` covers the DockerHub, OCI and DockerInstance calls, and the other ten sites are the ones the plan lists.
+- **Mapping:** `FailureReason.cs:78` maps any `JsonException` to `invalid response` (fact 11).
+- **Token cache:** `DockerHubAccessTokenCache.GetOrRequestAsync` (`:132`–`:177`) has no catch around `ResolveTokenExpiry`, so the AC3 "throws" wording is right.
+- **Tests:** the AC3 test names match real public methods, and the existing test files exist.
+- **Throwing parses (fact 15, part one):** a grep for throwing `X.Parse` and `new Uri` calls on remote values finds only config values and the regex-matched `int.Parse` (`VersionTagResolutionHelper.cs:343`).
+- **Approach:** rewriting at the parse site is the least invasive option, and the scope matches the issue.
+
+One objection.
+
+1. **major** — Fact 15, and the "non-JSON exceptions are not covered by design" line under *Security considerations*, are refuted for the helper this plan builds. `ExternalJson.ReadFromJsonAsync` (`HttpContent.ReadFromJsonAsync`, used at `PortainerClient.cs:290`, `:414`, `:632` and `DockerScoutVulnerabilityProvider.cs:355`, `:474`) reads the response's `Content-Type` charset before parsing. When the charset is unknown it throws `InvalidOperationException("The character set provided in ContentType is invalid.")`, and the inner `ArgumentException` quotes the remote header value raw.
+   - **What I ran:** a scratch console on SDK 10.0.404, `net10.0`, with `CharSet = "evil" + ESC + "[31mX"`. The inner message was `'evil<ESC>[31mX' is not a supported encoding name. … (Parameter 'name')`, with the ESC byte kept.
+   - **Where it is logged:** the Portainer and Docker Scout handlers (`PortainerClient.cs:604`, `DockerScoutVulnerabilityProvider.cs:621`, among others) log this exception with its inner exception.
+   - **Limits:** I set the header on the client side only, not through a real HTTP response. I assume the response header parser rejects CR, LF and NUL (not tested), so this probably cannot forge a log line. The header size limit should bound the length, but an ESC sequence would still reach the log.
+   - **Why major:** it is a sibling path that writes remote text into the log through the very helper the plan adds, and the plan's security reasoning rests on the refuted fact. The Lead must choose one of these:
+     - Also catch, in `ExternalJson.ReadFromJsonAsync`, an `InvalidOperationException` whose inner exception is an `ArgumentException` (the charset refusal). Rethrow it with a fixed message and no inner exception, and add an AC with a test whose body has a `Content-Type` charset containing ESC.
+     - Or name this path explicitly as out of scope and open a linked issue now, and correct fact 15 and the *Security considerations* line.
+
+## Security notes
+
+Security review of the plan for issue #393 (mode `plan`). I read `specs/issue-393/plan.md` and `docs/decisions/0045-json-parse-failures-of-external-data-carry-a-fixed-message-with-their-position.md` in /home/user/DockerUpdateGuard.
+
+**Verdict: changes required.** The approach is sound, but one bypass class I measured is missed.
+
+**What holds**
+- **Tier and areas:** `security` is the right tier for a guard on remote text that reaches the logs. The listed *Security areas touched* match the parse sites.
+- **Parse sites are complete (fact 7):** I grepped `src/` (tests excluded) for `JsonDocument.Parse`, `JsonSerializer.*`, `ReadFromJson`, `DeserializeAsync`, `GetFromJson`, `JsonNode.Parse`, `Utf8JsonReader` and `JsonConverter`. The only parses of external JSON are the ten sites the plan lists, and every other `RemoteJsonDocument.ParseAsync` caller goes through the helper.
+- **The rewrite removes the message, `Path` and inner exception whatever form the input takes.** That covers facts 1–4. I checked the library behavior the design rests on (fact 9) in a scratch `net10.0` console project on SDK 10.0.404, run with `dotnet run`:
+  - `new JsonException("Remote JSON is not valid at line 0, byte 3 (counted from 0)", null, 0, 3)` printed `Rewritten: Remote JSON is not valid at line 0, byte 3 (counted from 0) | Path=null`.
+  - `JsonSerializer.Deserialize<Dictionary<string,int>>` on a wrong-typed value printed `Type: System.Text.Json.JsonException line 0`.
+- **No limit is claimed**, so no resource-bound test is needed.
+
+**[BLOCKING] `ExternalJson.ReadFromJsonAsync` still writes remote text into the log through the Content-Type charset**
+
+Where the plan says it: fact 15, and *Security considerations* ("Not covered by design: … non-JSON exceptions (fact 15)").
+
+Fact 15 is incomplete. `HttpContent.ReadFromJsonAsync<T>` looks up the response's `Content-Type` charset before it parses anything. An unknown charset throws `InvalidOperationException` ("The character set provided in ContentType is invalid."). Its inner `ArgumentException` quotes the remote charset verbatim. The helper only catches `JsonException`, so this exception passes through unchanged. The handlers catch every exception and log it with its inner exception: `Portainer/PortainerClient.cs:602`, `:728`, `:786` and `Vulnerabilities/DockerScoutVulnerabilityProvider.cs:619`.
+
+Measurement, same scratch project:
+- A `TcpListener` answered `HTTP/1.1 200 OK` with header `Content-Type: application/json; charset="x<ESC>[31mFORGED " + 2000 × 'A'` and body `{"a":1}`.
+- `new HttpClient().GetAsync(...)`, then `r.Content.ReadFromJsonAsync<Dictionary<string,int>>(CancellationToken.None)`.
+- Output (CR/LF/ESC shown as `<CR>`/`<LF>`/`<ESC>`):
+  `ContentType parsed: yes`
+  `2310 chars: System.InvalidOperationException: The character set provided in ContentType is invalid.<LF> ---> System.ArgumentException: 'x<ESC>[31mFORGED AAAAAAAA…`
+
+So a real HTTP response gets a raw ESC and about 2 KB of remote text into the log entries of Portainer and Docker Scout through the exact call the helper wraps. (Through a real response, an unquoted charset holding ESC was dropped by header parsing; the quoted form gets through.)
+
+Required change:
+1. In `ExternalJson.ReadFromJsonAsync`, also catch `InvalidOperationException exception when (exception.InnerException is ArgumentException)` and throw `new InvalidOperationException(exception.Message)` with no inner exception (the message is the framework's fixed text). This keeps today's failure reason (`unexpected error`). If the Lead would rather map it to `invalid response`, throw `new JsonException("Remote JSON is not valid")` instead and record that choice in 0045.
+2. Add a criterion (e.g. AC6) and an `ExternalJsonTests` test: content whose charset is a quoted string holding ESC, built at run time, gives an exception with no inner exception and no ESC in `ToString()`.
+3. Correct fact 15 and the guard-forms bullet of *Security considerations* to name this class.
+4. Add a line to 0045's *Consequences* saying the charset refusal also carries no remote text.
+
+**Other bypass forms I checked (no finding)**
+- `JsonElement` accessors (`GetString`, `GetInt32`, `GetProperty`, `GetDateTimeOffset`) throw fixed texts.
+- `Convert.FromBase64String` (Docker Scout `:299`, token cache) throws a fixed `FormatException`.
+- Converter exceptions inside the serializer arrive wrapped as `JsonException` and are dropped by the rewrite.
+- The undecodable-string refusal has fixed text (fact 13).
+- The release index and `RemoteJsonDocument` read the stream directly, so no charset is involved there.
+
+Measurement scratch project: /tmp/claude-0/-home-user-DockerUpdateGuard/8940b4d8-2df4-5275-bade-ddc711775f06/scratchpad/m393/Program.cs (it now holds the HTTP-server version).
