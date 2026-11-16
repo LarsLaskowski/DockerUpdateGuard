@@ -29,20 +29,14 @@ jobs:
         with:
           global-json-file: global.json  # the SDK and the one .NET major of the solution (.squad/stack.md)
 
-      - name: Install .NET 11 runtime
-        uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
-        with:
-          dotnet-version: 11.0.x  # Reihitsu.Cli targets net11.0; the solution still builds with the SDK of global.json
-
       - name: Restore
         run: dotnet restore DockerUpdateGuard.slnx
 
-      - name: Install Reihitsu.Cli
-        run: dotnet tool install -g Reihitsu.Cli
-        working-directory: ${{ runner.temp }}  # outside the repository: its global.json would select the .NET 10 SDK, which cannot install a net11.0 tool
+      - name: Restore tools
+        run: dotnet tool restore  # the formatter at the version of .config/dotnet-tools.json (.squad/stack.md)
 
       - name: Check formatting
-        run: reihitsu-format --check .
+        run: dotnet tool run reihitsu-format --check .
 
       - name: Build
         run: dotnet build DockerUpdateGuard.slnx -c Release --no-restore
