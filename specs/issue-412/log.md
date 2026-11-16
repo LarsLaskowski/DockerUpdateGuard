@@ -17,3 +17,4 @@ are quoted in full.
 | 2026-11-16 17:57 | 6 Documentation | Orchestrator | written in 6 Implement |
 | 2026-11-16 17:58 | 6 Coverage gate | Orchestrator | Full suite 1634 passed; coverage gate PASS (new code 100%, overall 92.9%) |
 | 2026-11-16 18:02 | 7 Gate stamp | Orchestrator | PASS on 91dddb6b5cce70df0abd9d22765d64b79aab5116 (tier standard): Format check pass; Analyzer gate pass; Test with coverage pass; Coverage gate pass; decision-check.py pass; scope-check.py pass · figure-check.py 2 hit(s) |
+| 2026-11-16 18:02 | 7 Figure check | Orchestrator | 2 figure hits in decision 0046 Context quote the old root-relative paths as the defect; sentences still hold |
