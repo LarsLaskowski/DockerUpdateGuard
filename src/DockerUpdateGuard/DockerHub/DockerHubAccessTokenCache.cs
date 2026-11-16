@@ -223,7 +223,7 @@ public sealed class DockerHubAccessTokenCache : IDisposable
 
             if (payloadBytes.Length > 0)
             {
-                using var jsonDocument = JsonDocument.Parse(payloadBytes);
+                using var jsonDocument = ExternalJson.Parse(payloadBytes);
 
                 if (jsonDocument.RootElement.ValueKind == JsonValueKind.Object
                     && jsonDocument.RootElement.TryGetProperty("exp", out var expirationElement)

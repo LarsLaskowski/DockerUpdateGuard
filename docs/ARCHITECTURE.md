@@ -492,7 +492,9 @@ it links:
   carries (body excerpts, reason phrase, rejected origin, Trivy's last error line, Docker Scout's unknown severity) passes one helper,
   `Infrastructure\ResponseBodyExcerpt`, which bounds it and replaces its control characters; the text fields the
   clients read from remote answers get the same replacement, without a cut, where they are read
-  ([record 0009](decisions/0009-integration-results-carry-fixed-failure-reasons.md)).
+  ([record 0009](decisions/0009-integration-results-carry-fixed-failure-reasons.md)). External JSON is parsed through
+  `Infrastructure\ExternalJson` (beneath `RemoteJsonDocument`), whose parse failures carry a fixed message with the
+  position only ([record 0045](decisions/0045-json-parse-failures-of-external-data-carry-a-fixed-message-with-their-position.md)).
   Names and image references read from remote sides are held to their grammars and stored lengths where they are read,
   or cut where they are display names; the registry request builders refuse `.` and `..` path segments of any
   reference or digest, and the OCI request builder a registry that is not a host with an optional port

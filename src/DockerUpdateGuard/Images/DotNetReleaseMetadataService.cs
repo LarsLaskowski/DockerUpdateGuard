@@ -163,7 +163,7 @@ public partial class DotNetReleaseMetadataService : IDotNetReleaseMetadataServic
 
             await using (responseStream.ConfigureAwait(false))
             {
-                using var jsonDocument = await JsonDocument.ParseAsync(responseStream, cancellationToken: cancellationToken)
+                using var jsonDocument = await ExternalJson.ParseAsync(responseStream, cancellationToken)
                                                            .ConfigureAwait(false);
 
                 if (jsonDocument.RootElement.TryGetProperty("releases-index", out var releasesIndexElement) == false

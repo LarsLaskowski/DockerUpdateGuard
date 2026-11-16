@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 
 namespace DockerUpdateGuard.Infrastructure;
@@ -10,9 +11,14 @@ internal static class ExternalJson
     #region Constants
 
     /// <summary>
-    /// Message of the skeleton bodies
+    /// Message of a parse failure whose position is unknown
     /// </summary>
-    private const string SkeletonMessage = "Skeleton: not implemented";
+    private const string ParseFailureMessage = "Remote JSON is not valid";
+
+    /// <summary>
+    /// Message of the refusal of an unusable content character set
+    /// </summary>
+    private const string InvalidCharsetMessage = "The character set of the remote response is not valid";
 
     #endregion // Constants
 
@@ -24,10 +30,16 @@ internal static class ExternalJson
     /// <param name="stream">Stream to parse</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Parsed document</returns>
-#pragma warning disable S1172 // Skeleton: removed with the implementation
-    public static Task<JsonDocument> ParseAsync(Stream stream, CancellationToken cancellationToken)
+    public static async Task<JsonDocument> ParseAsync(Stream stream, CancellationToken cancellationToken)
     {
-        throw new InvalidOperationException(SkeletonMessage);
+        try
+        {
+            return await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken).ConfigureAwait(false);
+        }
+        catch (JsonException exception)
+        {
+            throw CreateParseFailure(exception);
+        }
     }
 
     /// <summary>
@@ -37,7 +49,14 @@ internal static class ExternalJson
     /// <returns>Parsed document</returns>
     public static JsonDocument Parse(byte[] utf8Json)
     {
-        throw new InvalidOperationException(SkeletonMessage);
+        try
+        {
+            return JsonDocument.Parse(utf8Json);
+        }
+        catch (JsonException exception)
+        {
+            throw CreateParseFailure(exception);
+        }
     }
 
     /// <summary>
@@ -47,9 +66,20 @@ internal static class ExternalJson
     /// <param name="content">Content to read</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Value read</returns>
-    public static Task<T?> ReadFromJsonAsync<T>(HttpContent content, CancellationToken cancellationToken)
+    public static async Task<T?> ReadFromJsonAsync<T>(HttpContent content, CancellationToken cancellationToken)
     {
-        throw new InvalidOperationException(SkeletonMessage);
+        try
+        {
+            return await content.ReadFromJsonAsync<T>(cancellationToken).ConfigureAwait(false);
+        }
+        catch (JsonException exception)
+        {
+            throw CreateParseFailure(exception);
+        }
+        catch (InvalidOperationException exception) when (exception.InnerException is ArgumentException)
+        {
+            throw new InvalidOperationException(InvalidCharsetMessage);
+        }
     }
 
     /// <summary>
@@ -60,7 +90,14 @@ internal static class ExternalJson
     /// <returns>Value read</returns>
     public static T? Deserialize<T>(string json)
     {
-        throw new InvalidOperationException(SkeletonMessage);
+        try
+        {
+            return JsonSerializer.Deserialize<T>(json);
+        }
+        catch (JsonException exception)
+        {
+            throw CreateParseFailure(exception);
+        }
     }
 
     /// <summary>
@@ -70,9 +107,18 @@ internal static class ExternalJson
     /// <returns>Exception with a fixed message</returns>
     public static JsonException CreateParseFailure(JsonException exception)
     {
-        throw new InvalidOperationException(SkeletonMessage);
+        var line = exception.LineNumber;
+        var position = exception.BytePositionInLine;
+
+        if (line is null || position is null)
+        {
+            return new JsonException(ParseFailureMessage, null, line, position);
+        }
+
+        var message = string.Create(CultureInfo.InvariantCulture, $"{ParseFailureMessage} at line {line.Value}, byte {position.Value} (counted from 0)");
+
+        return new JsonException(message, null, line, position);
     }
-#pragma warning restore S1172 // Skeleton: removed with the implementation
 
     #endregion // Static methods
 }
