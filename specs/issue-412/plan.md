@@ -2,7 +2,7 @@
 
 Source: Issue #412
 Tier: standard — the request addresses of the Portainer client change (behavior), and no security control is created, changed or removed: no guard, allow-list or credential handling changes, only the path the existing requests resolve to.
-Security areas touched: Configured URLs and their user info (where the Portainer `BaseUrl` sends the password and API key), Container actions (`Portainer/PortainerClient.cs`)
+Security areas touched: Configured URLs and their user info (where the Portainer `BaseUrl` sends the password and API key), Container actions (`Portainer/PortainerClient.cs`), Insecure Portainer HTTP (the warning's scheme check reads the new base address)
 
 ## Problem / root cause
 
@@ -136,3 +136,63 @@ unchanged, no I/O moves. `docs/ARCHITECTURE.md` needs no update (no flow or guar
 
 - Validation that a `BaseUrl` path ends in `/api` (likely a mistake after this change): not proposed; the README row
   states the expected value.
+
+## Security notes
+
+Security plan review: issue #412, mode `plan`, round 1
+
+Files reviewed:
+- /home/user/DockerUpdateGuard/specs/issue-412/plan.md
+- /home/user/DockerUpdateGuard/docs/decisions/0046-portainer-requests-keep-the-path-of-the-base-url.md
+- /home/user/DockerUpdateGuard/src/DockerUpdateGuard/Portainer/PortainerClient.cs
+- /home/user/DockerUpdateGuard/src/DockerUpdateGuard/Configuration/DockerUpdateGuardOptionsValidator.cs
+- /home/user/DockerUpdateGuard/src/DockerUpdateGuard/Infrastructure/LoginRetryAfterRegistry.cs
+- /home/user/DockerUpdateGuard/src/DockerUpdateGuard/ServiceCollectionExtensions.cs
+- /home/user/DockerUpdateGuard/docs/areas/container-actions.md and /home/user/DockerUpdateGuard/docs/areas/integration-failures.md
+
+**Tier**
+`standard` is correct. The change adds no guard and does not change or remove one. Validation, the digits-only `EndpointId` check (`PortainerClient.cs:328-332`, `IsDigitsOnly` at `:259`), the container-ID hex check (`:245-249`) and credential handling all stay the same. Only the path that existing requests resolve to changes, and the password and API key now go below the path the operator configured instead of the host root, so where credentials are sent gets narrower. I see no reason to raise the tier.
+
+**Measurement (library behavior the plan relies on)**
+The plan's approach depends on how `Uri.GetLeftPart(UriPartial.Path)`, the trailing slash and relative-reference resolution in `HttpClient` behave, so I measured them. I wrote `/tmp/claude-0/-home-user-DockerUpdateGuard/207e5d44-75b0-549c-bfb5-8c2e007ec025/scratchpad/m412/probe.cs`. It builds the base address the way the plan describes, sends `GetAsync("api/auth")` through a handler that records the request URI, and computes the registry key the way `LoginRetryAfterRegistry.cs:59` does (`SchemeAndServer | Path`). Command: `dotnet run probe.cs` (SDK 10.0.404). Output, shortened to base → request URI:
+- `https://portainer.example.test/portainer` → `https://portainer.example.test/portainer/api/auth`
+- `…/portainer/#!/home` and `…/portainer/?x=1` → `…/portainer/api/auth` (query and fragment dropped)
+- `…/my%20portainer/` → `…/my%20portainer/api/auth`
+- `https://portainer.example.test` → `https://portainer.example.test/api/auth` (AC5 unchanged)
+- `https://user:p%40ss@portainer.example.test:9443/portainer` → `https://user:p%40ss@portainer.example.test:9443/portainer/api/auth`, registry key `https://portainer.example.test:9443/portainer/api/auth` (user info is kept as today and left out of the key)
+- `…/a/../b` → `…/b/api/auth`; `…/a%2Fb/` → `…/a%2Fb/api/auth`; `…/a%2e%2e/` → `…/a../api/auth`; `…/%41bc` → `…/Abc/api/auth`
+- `api/endpoints/7/docker/containers/json?all=true&filters=%7B…%7D` against base `https://h/p` → `https://h/p/api/endpoints/7/docker/containers/json?all=true&filters=%7B%22id%22%3A%5B%22ab%22%5D%7D` (the escaped filter is kept)
+
+This confirms the plan's claims: AC1–AC5, and AC4's registry behavior (`/a` and `/a/` share a window, `/a/` and `/b/` do not). No relative request path can climb above the prefix. The only variable segments are the digits-only `EndpointId` (checked before the first request that uses it, `:328`; the listed one comes from an `int`, `:426`), the 64-character hex container ID and the fixed action names. Dot segments in `BaseUrl` itself are resolved by `Uri` exactly as they are today, and `BaseUrl` is operator-trusted configuration.
+
+**Findings**
+
+1. [NON-BLOCKING] *Security areas touched* leaves out **Insecure Portainer HTTP** (`.squad/project.md`: the `AllowInsecureHttp` opt-in and its warning, `Portainer/PortainerClient.cs`). The plan changes how `client.BaseAddress` is built (`PortainerClient.cs:652`), and the warning's scheme check at `:654` reads that value. *Approach* already covers this ("The plaintext-HTTP warning keeps reading `client.BaseAddress.Scheme`"), and the measurement above shows `GetLeftPart(UriPartial.Path)` keeps the scheme, so nothing changes in behavior. Smallest fix: add "Insecure Portainer HTTP (the warning's scheme check reads the new base address)" to *Security areas touched*. Recommendation: fix now.
+
+2. [NON-BLOCKING] *Approach* says the helper keeps "escapes as they are", and AC3 says "the escape kept as it is". The measurement shows this is true for `%20` and `%2F`, but `Uri` unescapes unreserved characters (`%41` → `A`, `%2e%2e` → `..`, shown as a literal segment, not resolved). There is no security effect: the result stays below the configured host, and today's code canonicalizes the same way. The risk is that the area document repeats the broader claim. Smallest fix: in *Documentation updates* for `docs/areas/container-actions.md`, do not state that every escape of `BaseUrl` is sent unchanged; keep only "query and fragment are not sent". Recommendation: fix now (a wording change to the plan).
+
+**Other checks, no finding**
+- Credentials: the login body and `X-API-Key` now go to `BaseUrl` path + `api/auth` / `api/…`. That is the address the operator configured, and decision 0046's *Context* names the old behavior as the defect.
+- Messages and logging: no message text or log call changes, and `maskedBaseUrl` still comes from the configured `BaseUrl` through `UrlRedaction.RedactUserInfo`, so no *Logger arguments* concern.
+- Decision 0046: it agrees with the plan, it is indexed (`docs/decisions/README.md:109`), and its *Consequences* state the Retry-After key change and the upgrade break for a `BaseUrl` ending in `/api`.
+- No dependency, CI, Docker or build change.
+
+## Challenge notes
+
+I found nothing wrong in /home/user/DockerUpdateGuard/specs/issue-412/plan.md. I checked its claims against the code and ran the proposed address building with dotnet, and every claim holds.
+
+- **Request paths (rows 1 and 7):** the only root-relative request paths are at `src/DockerUpdateGuard/Portainer/PortainerClient.cs` lines 281, 334, 405, 469, 564, 621 and 675, and the base address is set at :652. Nothing else in the app builds a Portainer request address. `InstanceDiscoveryService.cs:157` only stores a masked copy of `BaseUrl`.
+- **Validation (row 3):** `DockerUpdateGuardOptionsValidator.cs:356-375` accepts a `BaseUrl` with a path, as the plan says.
+- **Login wait window (row 4):** the key at `Infrastructure/LoginRetryAfterRegistry.cs:59` uses scheme, host, port and path, so the window follows the prefixed login address. AC4 is correct.
+- **Safe variable parts:** the action checks the container ID with `IsContainerId` before Portainer is contacted (:751). The endpoint ID is checked as digits only in `CheckEnvironmentAsync` (:329) before the lookup and the action use it. So no added path segment can climb above the prefix.
+- **AC1 request order:** the order is right with `EndpointId` set. `ResolveEndpointAsync` returns the configured ID (:448-451), then `/endpoints/7` is checked, then the container lookup runs, then the action is sent.
+- **Test URI comparison:** `SequenceHttpMessageHandler` compares `AbsoluteUri` (`Helper/SequenceHttpMessageHandler.cs:54, 102, 112`), which keeps the escapes. AC3's `my%20portainer` row can therefore be asserted exactly as the plan writes it.
+- **The proposed base address, run on .NET:** taking the address up to the path and adding a missing trailing slash gives these results:
+  - `/portainer`, `/portainer/#!/home`, `/portainer/?x=1` and `/portainer?x=1#f` all send the login to `/portainer/api/auth`.
+  - `/my%20portainer/` keeps `%20`.
+  - A `BaseUrl` with no path, or `https://h/#!/2/docker/containers`, stays `https://h/api/auth` (AC5).
+  - The address with user info (`https://a:S3cret@h:9443`) still carries the user info, so the existing tests at `PortainerClientTests.cs:1424/1480` still pass.
+  - The escaped container-list query is kept unchanged.
+  - The wait-window key for `/a` and `/a/` is the same.
+- **Documentation:** the sections the plan lists exist: `docs/areas/container-actions.md` lines 49, 61, 90, 136 and 140, `docs/areas/integration-failures.md:136-139`, and the `README.md:217` row. No other document names the `/api/…` paths.
+- **Known upgrade break:** a `BaseUrl` ending in `/api` becomes `/api/api/auth` after this change. Decision 0046 (*Consequences*) and the README row already cover it, and the plan lists a validation check for it as out of scope on purpose.
