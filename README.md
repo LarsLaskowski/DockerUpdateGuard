@@ -214,7 +214,7 @@ stop or restart only once the container has stopped, so these requests wait up t
 | Key | Default | Required | Description |
 | --- | --- | --- | --- |
 | `Enabled` | `false` | No | Enables Portainer integration for the Docker instance |
-| `BaseUrl` | none | Required when enabled | Absolute Portainer URL; `https` unless `AllowInsecureHttp` is set |
+| `BaseUrl` | none | Required when enabled | Absolute Portainer URL, the address its UI is reached at (a reverse-proxy path prefix included, without `/api`); `https` unless `AllowInsecureHttp` is set |
 | `AllowInsecureHttp` | `false` | No | Allow plaintext `http` for `BaseUrl`; credentials travel unencrypted, so use it only on localhost or trusted private networks ([Transport security](docs/areas/container-actions.md#transport-security)) |
 | `Username` | none | Conditional | Username for Portainer login |
 | `Password` | none | Conditional | Password for Portainer login |

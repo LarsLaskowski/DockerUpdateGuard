@@ -136,7 +136,8 @@ which stay until they are written again.
 ### Logins inside a Retry-After window
 
 - Covers the three logins that send a secret: the Docker Hub web API login (`v2/users/login`), the Portainer login
-  (`/api/auth`, only for an instance with user name and password) and the Docker Scout login
+  (`api/auth` below the Portainer `BaseUrl`, so the window follows its path; only for an instance with user name and
+  password) and the Docker Scout login
   (`DockerScoutLoginUrl`). Logins to the Docker Hub registry token service are not covered; they are idempotent and keep
   the wait of [Retry of transient HTTP failures](#retry-of-transient-http-failures).
 - A window is kept per login URL (scheme, host, port and path; user info, query and fragment are ignored) and user name

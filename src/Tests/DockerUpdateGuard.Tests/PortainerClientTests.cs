@@ -45,6 +45,11 @@ public class PortainerClientTests
     private const string EndpointCheckUrl = "https://portainer.example.test/api/endpoints/7";
 
     /// <summary>
+    /// Portainer base URL with a reverse-proxy path prefix, without trailing slash
+    /// </summary>
+    private const string PrefixedBaseUrl = "https://portainer.example.test/portainer";
+
+    /// <summary>
     /// Portainer authentication endpoint
     /// </summary>
     private const string AuthUrl = "https://portainer.example.test/api/auth";
@@ -2474,6 +2479,192 @@ public class PortainerClientTests
     }
 
     /// <summary>
+    /// Verify every request of an action goes below the path of the base URL, in order
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC1")]
+    public async Task PortainerClientExecuteContainerActionAsyncWithBaseUrlPathSendsEveryRequestBelowThePathAsync()
+    {
+        var handler = new SequenceHttpMessageHandler();
+
+        try
+        {
+            handler.AddJsonResponse($"{PrefixedBaseUrl}/api/auth", """{"jwt":"jwt-token-xyz"}""");
+            handler.AddResponse($"{PrefixedBaseUrl}/api/system/status", new HttpResponseMessage(HttpStatusCode.OK));
+            handler.AddJsonResponse($"{PrefixedBaseUrl}/api/endpoints/7", EndpointJson);
+            handler.AddJsonResponse($"{PrefixedBaseUrl}{ContainerListPath}?all=true&filters=%7B%22id%22%3A%5B%22{ContainerId}%22%5D%7D", ContainerFoundJson);
+            handler.AddResponse($"{PrefixedBaseUrl}{ActionPathPrefix}restart", new HttpResponseMessage(HttpStatusCode.NoContent));
+
+            var client = new PortainerClient(CreateHttpClientFactory(handler),
+                                             new TestLogger<PortainerClient>(),
+                                             new LoginRetryAfterRegistry(TimeProvider.System),
+                                             TimeProvider.System);
+            var instanceOptions = CreateInstanceOptions(InstanceName,
+                                                        options =>
+                                                        {
+                                                            options.BaseUrl = $"{PrefixedBaseUrl}/";
+                                                            options.Username = AdminUsername;
+                                                            options.Password = "correct-password";
+                                                            options.EndpointId = EndpointId;
+                                                        });
+
+            var result = await client.ExecuteContainerActionAsync(instanceOptions, CreateRestartRequest(), CancellationToken.None)
+                                     .ConfigureAwait(false);
+
+            Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "An action against a Portainer behind a path prefix must succeed");
+            Assert.AreSequenceEqual(new[]
+                                    {$"POST {PrefixedBaseUrl}/api/auth",
+                                        $"GET {PrefixedBaseUrl}/api/system/status",
+                                        $"GET {PrefixedBaseUrl}/api/endpoints/7",
+                                        $"GET {PrefixedBaseUrl}{ContainerListPath}?all=true&filters=%7B%22id%22%3A%5B%22{ContainerId}%22%5D%7D",
+                                        $"POST {PrefixedBaseUrl}{ActionPathPrefix}restart"
+                                    },
+                                    handler.Requests.Select(request => $"{request.Method} {request.RequestUri}").ToList(),
+                                    "Every request must go below the path of the base URL, in the order login, status, environment, container list, action");
+        }
+        finally
+        {
+            handler.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Verify the capability check without an endpoint identifier lists the environments below the path of the base URL
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC2")]
+    public async Task PortainerClientCheckCapabilityAsyncWithBaseUrlPathListsEnvironmentsBelowThePathAsync()
+    {
+        var handler = new SequenceHttpMessageHandler();
+
+        try
+        {
+            handler.AddResponse($"{PrefixedBaseUrl}/api/system/status", new HttpResponseMessage(HttpStatusCode.OK));
+            handler.AddResponse($"{PrefixedBaseUrl}/api/endpoints", CreateEnvironmentListResponse("""[{"Id":7,"Name":"local"}]"""));
+            handler.AddJsonResponse($"{PrefixedBaseUrl}/api/endpoints/7", EndpointJson);
+
+            var client = new PortainerClient(CreateHttpClientFactory(handler),
+                                             new TestLogger<PortainerClient>(),
+                                             new LoginRetryAfterRegistry(TimeProvider.System),
+                                             TimeProvider.System);
+            var instanceOptions = CreateInstanceOptions(InstanceName,
+                                                        options =>
+                                                        {
+                                                            options.BaseUrl = $"{PrefixedBaseUrl}/";
+                                                            options.ApiToken = PatToken;
+                                                        });
+
+            var result = await client.CheckCapabilityAsync(instanceOptions, CancellationToken.None)
+                                     .ConfigureAwait(false);
+
+            Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "A capability check against a Portainer behind a path prefix must succeed");
+            Assert.AreSequenceEqual(new[]
+                                    {$"GET {PrefixedBaseUrl}/api/system/status",
+                                        $"GET {PrefixedBaseUrl}/api/endpoints",
+                                        $"GET {PrefixedBaseUrl}/api/endpoints/7"
+                                    },
+                                    handler.Requests.Select(request => $"{request.Method} {request.RequestUri}").ToList(),
+                                    "The status request, the environment list and the environment check must go below the path of the base URL");
+        }
+        finally
+        {
+            handler.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Verify base URL variants of a path prefix send the login below the path, with the path treated as a directory
+    /// </summary>
+    /// <param name="configuredBaseUrl">Configured base URL</param>
+    /// <param name="expectedLoginUrl">Expected address of the login request</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC3")]
+    [DataRow("https://portainer.example.test/portainer", "https://portainer.example.test/portainer/api/auth")]
+    [DataRow("https://portainer.example.test/portainer/#!/home", "https://portainer.example.test/portainer/api/auth")]
+    [DataRow("https://portainer.example.test/portainer/?x=1", "https://portainer.example.test/portainer/api/auth")]
+    [DataRow("https://portainer.example.test/my%20portainer/", "https://portainer.example.test/my%20portainer/api/auth")]
+    public async Task PortainerClientCheckCapabilityAsyncWithBaseUrlPathVariantLogsInBelowThePathAsync(string configuredBaseUrl, string expectedLoginUrl)
+    {
+        var handler = new SequenceHttpMessageHandler();
+
+        try
+        {
+            handler.AddJsonResponse(expectedLoginUrl, """{"jwt":"jwt-token-xyz"}""");
+
+            var client = new PortainerClient(CreateHttpClientFactory(handler),
+                                             new TestLogger<PortainerClient>(),
+                                             new LoginRetryAfterRegistry(TimeProvider.System),
+                                             TimeProvider.System);
+            var instanceOptions = CreateInstanceOptions(InstanceName,
+                                                        options =>
+                                                        {
+                                                            options.BaseUrl = configuredBaseUrl;
+                                                            options.Username = AdminUsername;
+                                                            options.Password = "correct-password";
+                                                            options.EndpointId = EndpointId;
+                                                        });
+
+            await client.CheckCapabilityAsync(instanceOptions, CancellationToken.None).ConfigureAwait(false);
+
+            Assert.IsNotEmpty(handler.Requests, "The capability check must send the login");
+            Assert.AreEqual($"POST {expectedLoginUrl}",
+                            $"{handler.Requests[0].Method} {handler.Requests[0].RequestUri}",
+                            "The login must go to api/auth below the path of the base URL, without query and fragment and with escapes kept");
+        }
+        finally
+        {
+            handler.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Verify a login window of one base URL path defers only the login of the same path, with or without the trailing slash
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC4")]
+    public async Task PortainerClientLoginRetryAfterWindowAppliesOnlyToTheSameBaseUrlPathAsync()
+    {
+        var now = new DateTimeOffset(2026, 3, 10, 12, 0, 0, TimeSpan.Zero);
+        var handler = new SequenceHttpMessageHandler();
+
+        try
+        {
+            handler.AddResponse("https://portainer.example.test/a/api/auth", CreateTooManyRequests(120));
+            handler.AddJsonResponse("https://portainer.example.test/b/api/auth", """{"jwt":"jwt-token-xyz"}""");
+
+            var client = new PortainerClient(CreateHttpClientFactory(handler),
+                                             new TestLogger<PortainerClient>(),
+                                             new LoginRetryAfterRegistry(CreateClock(() => now)),
+                                             TimeProvider.System);
+
+            await client.CheckCapabilityAsync(CreateLoginInstanceOptionsWithBaseUrl("Alpha", "https://portainer.example.test/a/"), CancellationToken.None).ConfigureAwait(false);
+            await client.CheckCapabilityAsync(CreateLoginInstanceOptionsWithBaseUrl("Beta", "https://portainer.example.test/b/"), CancellationToken.None).ConfigureAwait(false);
+
+            Assert.ContainsSingle(request => request.RequestUri == "https://portainer.example.test/b/api/auth",
+                                  handler.Requests,
+                                  "A window of the path /a/ must not defer the login of the path /b/");
+
+            var requestCount = handler.Requests.Count;
+
+            var result = await client.CheckCapabilityAsync(CreateLoginInstanceOptionsWithBaseUrl("Gamma", "https://portainer.example.test/a"), CancellationToken.None)
+                                     .ConfigureAwait(false);
+
+            Assert.AreEqual($"Portainer connection error: {DeferredMessage("https://portainer.example.test/a", "2026-03-10T12:02:00Z")}",
+                            result.Message,
+                            "The login of the path /a without trailing slash must be deferred by the window of /a/");
+            Assert.HasCount(requestCount, handler.Requests, "A login inside the window must send no request");
+        }
+        finally
+        {
+            handler.Dispose();
+        }
+    }
+
+    /// <summary>
     /// Create a successful environment list response
     /// </summary>
     /// <param name="json">Response body</param>
@@ -2622,7 +2813,18 @@ public class PortainerClientTests
     /// <returns>Error text</returns>
     private static string DeferredMessage(string until)
     {
-        return $"Portainer authentication for '{BaseUrl}' not sent: Portainer answered HTTP 429 and asked to wait until {until}";
+        return DeferredMessage(BaseUrl, until);
+    }
+
+    /// <summary>
+    /// Create the text of an authentication error for a deferred login of the given base URL
+    /// </summary>
+    /// <param name="baseUrl">Base URL as formatted in the message</param>
+    /// <param name="until">End of the window as formatted in the message</param>
+    /// <returns>Error text</returns>
+    private static string DeferredMessage(string baseUrl, string until)
+    {
+        return $"Portainer authentication for '{baseUrl}' not sent: Portainer answered HTTP 429 and asked to wait until {until}";
     }
 
     /// <summary>
@@ -2663,6 +2865,24 @@ public class PortainerClientTests
         return CreateInstanceOptions(name,
                                      options =>
                                      {
+                                         options.Username = AdminUsername;
+                                         options.Password = "correct-password";
+                                         options.EndpointId = EndpointId;
+                                     });
+    }
+
+    /// <summary>
+    /// Create Docker instance options that log in to Portainer at the given base URL with the same user name and password
+    /// </summary>
+    /// <param name="name">Docker instance display name</param>
+    /// <param name="baseUrl">Portainer base URL</param>
+    /// <returns>Docker instance options</returns>
+    private static DockerInstanceOptions CreateLoginInstanceOptionsWithBaseUrl(string name, string baseUrl)
+    {
+        return CreateInstanceOptions(name,
+                                     options =>
+                                     {
+                                         options.BaseUrl = baseUrl;
                                          options.Username = AdminUsername;
                                          options.Password = "correct-password";
                                          options.EndpointId = EndpointId;
