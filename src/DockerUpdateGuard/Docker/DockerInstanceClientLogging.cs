@@ -163,5 +163,22 @@ internal static partial class DockerInstanceClientLogging
                                                                    string containerId,
                                                                    string reason);
 
+    /// <summary>
+    /// Log that a Docker image could not be inspected during container discovery
+    /// </summary>
+    /// <param name="logger">Logger</param>
+    /// <param name="exception">Failure exception, if any</param>
+    /// <param name="dockerInstanceName">Docker instance name</param>
+    /// <param name="imageId">Local image identifier</param>
+    /// <param name="reason">Reason the inspect failed</param>
+    [LoggerMessage(EventId = 3112,
+                   Level = LogLevel.Warning,
+                   Message = "Docker image {ImageId} of {DockerInstanceName} could not be inspected; its containers are discovered without a digest: {Reason}")]
+    public static partial void DockerInstanceImageDigestSkipped(this ILogger logger,
+                                                                Exception? exception,
+                                                                string dockerInstanceName,
+                                                                string imageId,
+                                                                string reason);
+
     #endregion // Methods
 }

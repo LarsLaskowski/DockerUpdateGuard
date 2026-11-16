@@ -43,6 +43,23 @@ public partial class DockerInstanceClientTests
     /// </summary>
     private const string LoneSurrogateEscape = """\ud800""";
 
+    /// <summary>
+    /// Container list of two containers on two local images, the failing image listed first
+    /// </summary>
+    private const string DiscoveryContainersJson = """
+                                                   [
+                                                     { "Id": "c-bad", "Names": ["/bad"], "Image": "docker.io/bad/repo:latest", "ImageID": "sha256:bad", "State": "running", "Labels": {} },
+                                                     { "Id": "c-good", "Names": ["/good"], "Image": "docker.io/good/repo:latest", "ImageID": "sha256:good", "State": "running", "Labels": {} }
+                                                   ]
+                                                   """;
+
+    /// <summary>
+    /// Image inspect payload of the image that is inspected successfully
+    /// </summary>
+    private const string GoodImageInspectJson = """
+                                                { "RepoDigests": ["good/repo@sha256:7777777777777777777777777777777777777777777777777777777777777777"] }
+                                                """;
+
     #endregion // Constants
 
     #region Properties
@@ -2051,6 +2068,169 @@ public partial class DockerInstanceClientTests
     }
 
     /// <summary>
+    /// Verify discovery succeeds without the digest of an image whose inspect throws, and still resolves the digest of the next image
+    /// </summary>
+    /// <param name="failureKind">Kind of the failing inspect: Transport, InvalidJson, UndecodableString, NumberInRepoDigests or RootNotObject</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC1")]
+    [DataRow("Transport")]
+    [DataRow("InvalidJson")]
+    [DataRow("UndecodableString")]
+    [DataRow("NumberInRepoDigests")]
+    [DataRow("RootNotObject")]
+    public async Task DockerInstanceClientDiscoverContainersAsyncWhenImageInspectThrowsSucceedsWithoutThatImagesDigestAsync(string failureKind)
+    {
+        var (result, logger) = await DiscoverWithFailingInspectAsync(failureKind, 30).ConfigureAwait(false);
+
+        AssertDiscoveryWithoutFailedImageDigest(result);
+        Assert.DoesNotContain(entry => entry.EventId.Id == 3104,
+                              logger.Entries,
+                              "A failed image inspect must not be reported as a failed discovery");
+    }
+
+    /// <summary>
+    /// Verify an image inspect that throws during discovery is logged once as a warning with its exception and reason
+    /// </summary>
+    /// <param name="failureKind">Kind of the failing inspect: Transport, InvalidJson, UndecodableString, NumberInRepoDigests or RootNotObject</param>
+    /// <param name="expectedReason">Expected reason of the log entry</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC2")]
+    [DataRow("Transport", "connection failed")]
+    [DataRow("InvalidJson", "invalid response")]
+    [DataRow("UndecodableString", "invalid response")]
+    [DataRow("NumberInRepoDigests", "unexpected error")]
+    [DataRow("RootNotObject", "unexpected error")]
+    public async Task DockerInstanceClientDiscoverContainersAsyncWhenImageInspectThrowsLogsSkippedImageAsync(string failureKind, string expectedReason)
+    {
+        var (_, logger) = await DiscoverWithFailingInspectAsync(failureKind, 30).ConfigureAwait(false);
+
+        var entry = Assert.ContainsSingle(logger.Entries.Where(item => item.EventId.Id == 3112).ToList(),
+                                          "Each failed image inspect must be logged once");
+
+        Assert.AreEqual(LogLevel.Warning, entry.LogLevel, "A skipped image digest must be logged as a warning");
+        Assert.AreEqual($"Docker image sha256:bad of Production could not be inspected; its containers are discovered without a digest: {expectedReason}",
+                        entry.Message,
+                        "The warning must name the image, the instance and the fixed reason");
+        Assert.IsNotNull(entry.Exception, "A thrown inspect error must be logged with its exception");
+        Assert.DoesNotContain(item => item.EventId.Id == 3104,
+                              logger.Entries,
+                              "A failed image inspect must not be reported as a failed discovery");
+    }
+
+    /// <summary>
+    /// Verify an image inspect that answers not found, an error or times out is logged once as a warning without an exception and leaves discovery succeeded
+    /// </summary>
+    /// <param name="failureKind">Kind of the failing inspect: NotFound, ServerError or Timeout</param>
+    /// <param name="expectedReason">Expected reason of the log entry</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC3")]
+    [DataRow("NotFound", "Docker image 'sha256:bad' was not found")]
+    [DataRow("ServerError", "Docker image inspect for 'sha256:bad' returned 500: boom")]
+    [DataRow("Timeout", "Docker image inspect for 'sha256:bad' timed out after 1 seconds")]
+    public async Task DockerInstanceClientDiscoverContainersAsyncWhenImageInspectFailsLogsSkippedImageAsync(string failureKind, string expectedReason)
+    {
+        var (result, logger) = await DiscoverWithFailingInspectAsync(failureKind, 1).ConfigureAwait(false);
+
+        AssertDiscoveryWithoutFailedImageDigest(result);
+
+        var entry = Assert.ContainsSingle(logger.Entries.Where(item => item.EventId.Id == 3112).ToList(),
+                                          "Each failed image inspect must be logged once");
+
+        Assert.AreEqual(LogLevel.Warning, entry.LogLevel, "A skipped image digest must be logged as a warning");
+        Assert.AreEqual($"Docker image sha256:bad of Production could not be inspected; its containers are discovered without a digest: {expectedReason}",
+                        entry.Message,
+                        "The warning must carry the failure message of the inspect");
+        Assert.IsNull(entry.Exception, "An answered or timed-out inspect carries no exception");
+    }
+
+    /// <summary>
+    /// Verify a cancellation of the caller while an image inspect is pending propagates and is not logged as a skipped image
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC4")]
+    public async Task DockerInstanceClientDiscoverContainersAsyncWhenCancelledDuringImageInspectThrowsAsync()
+    {
+        var logger = new TestLogger<DockerInstanceClient>();
+        using var cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(TestContext.CancellationToken);
+
+        using var handler = new DelegateHttpMessageHandler(async (request, cancellationToken) =>
+                                                           {
+                                                               if (request.RequestUri?.AbsolutePath.EndsWith("/containers/json", StringComparison.Ordinal) == true)
+                                                               {
+                                                                   return CreateJsonResponse(DiscoveryContainersJson);
+                                                               }
+
+                                                               await cancellationTokenSource.CancelAsync().ConfigureAwait(false);
+                                                               await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken).ConfigureAwait(false);
+
+                                                               return CreateJsonResponse("{}");
+                                                           });
+        using var httpClient = CreateHttpClient(handler);
+        var client = new DockerInstanceClient(logger, (_, _) => httpClient);
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() => client.DiscoverContainersAsync(CreateInstanceOptions(), cancellationTokenSource.Token)).ConfigureAwait(false);
+
+        Assert.DoesNotContain(entry => entry.EventId.Id == 3112,
+                              logger.Entries,
+                              "A cancellation must not be logged as a skipped image");
+    }
+
+    /// <summary>
+    /// Create the answer of the failing image inspect
+    /// </summary>
+    /// <param name="failureKind">Kind of the failing inspect</param>
+    /// <param name="cancellationToken">Cancellation token of the request</param>
+    /// <returns>Response</returns>
+    private static async Task<HttpResponseMessage> CreateFailingInspectResponseAsync(string failureKind, CancellationToken cancellationToken)
+    {
+        if (failureKind == "Timeout")
+        {
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken).ConfigureAwait(false);
+        }
+
+        var undecodable = """{ "RepoDigests": ["x\ud800"] }""";
+
+        Assert.Contains("\\ud800", undecodable, "The test input must carry the escaped lone surrogate");
+
+        return failureKind switch
+               {
+                   "Transport" => throw new HttpRequestException("connection refused"),
+                   "InvalidJson" => CreateJsonResponse("""{ "RepoDigests": """),
+                   "UndecodableString" => CreateJsonResponse(undecodable),
+                   "NumberInRepoDigests" => CreateJsonResponse("""{ "RepoDigests": [1] }"""),
+                   "RootNotObject" => CreateJsonResponse("[]"),
+                   "NotFound" => new HttpResponseMessage(HttpStatusCode.NotFound),
+                   _ => new HttpResponseMessage(HttpStatusCode.InternalServerError)
+                        {
+                            Content = new StringContent("boom"),
+                        },
+               };
+    }
+
+    /// <summary>
+    /// Assert both containers were discovered, the one on the failed image without a digest and the other with its digest
+    /// </summary>
+    /// <param name="result">Discovery result</param>
+    private static void AssertDiscoveryWithoutFailedImageDigest(ExternalOperationResult<IReadOnlyList<RuntimeContainerDescriptor>> result)
+    {
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "A failed image inspect must not fail discovery");
+        Assert.IsNotNull(result.Data, "Discovery must return the listed containers");
+        Assert.HasCount(2, result.Data, "Every listed container must be returned");
+
+        var failed = result.Data.Single(container => container.ContainerId == "c-bad");
+        var good = result.Data.Single(container => container.ContainerId == "c-good");
+
+        Assert.IsNull(failed.ImageDigest, "The containers of the failed image must have no digest");
+        Assert.AreEqual("sha256:" + new string('7', 64),
+                        good.ImageDigest,
+                        "The image inspected after the failing one must still resolve its digest");
+    }
+
+    /// <summary>
     /// Create an HTTP client for the Docker Engine test double
     /// </summary>
     /// <param name="handler">Message handler</param>
@@ -2159,6 +2339,44 @@ public partial class DockerInstanceClientTests
                {
                    Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json"),
                };
+    }
+
+    /// <summary>
+    /// Run discovery over two containers on two local images whose first image inspect fails
+    /// </summary>
+    /// <param name="failureKind">Kind of the failing inspect</param>
+    /// <param name="requestTimeoutSeconds">Request timeout of the instance</param>
+    /// <returns>Discovery result and the logger</returns>
+    private async Task<(ExternalOperationResult<IReadOnlyList<RuntimeContainerDescriptor>> Result, TestLogger<DockerInstanceClient> Logger)> DiscoverWithFailingInspectAsync(string failureKind, int requestTimeoutSeconds)
+    {
+        var logger = new TestLogger<DockerInstanceClient>();
+
+        using var handler = new DelegateHttpMessageHandler(async (request, cancellationToken) =>
+                                                           {
+                                                               var path = request.RequestUri?.AbsolutePath ?? string.Empty;
+
+                                                               if (path.EndsWith("/containers/json", StringComparison.Ordinal))
+                                                               {
+                                                                   return CreateJsonResponse(DiscoveryContainersJson);
+                                                               }
+
+                                                               if (path.Contains("sha256:good", StringComparison.Ordinal)
+                                                                   || path.Contains("sha256%3Agood", StringComparison.Ordinal))
+                                                               {
+                                                                   return CreateJsonResponse(GoodImageInspectJson);
+                                                               }
+
+                                                               return await CreateFailingInspectResponseAsync(failureKind, cancellationToken).ConfigureAwait(false);
+                                                           });
+        using var httpClient = CreateHttpClient(handler);
+        var client = new DockerInstanceClient(logger, (_, _) => httpClient);
+        var instanceOptions = CreateInstanceOptions();
+
+        instanceOptions.RequestTimeoutSeconds = requestTimeoutSeconds;
+
+        var result = await client.DiscoverContainersAsync(instanceOptions, TestContext.CancellationToken).ConfigureAwait(false);
+
+        return (result, logger);
     }
 
     /// <summary>

@@ -97,72 +97,6 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
     #region Static methods
 
     /// <summary>
-    /// Populate runtime containers with repository digests resolved from Docker image inspect
-    /// </summary>
-    /// <param name="httpClient">Docker engine client</param>
-    /// <param name="containers">Discovered containers</param>
-    /// <param name="requestTimeoutSeconds">Configured request timeout in seconds</param>
-    /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>Task</returns>
-    private static async Task PopulateRepositoryDigestsAsync(HttpClient httpClient,
-                                                             IReadOnlyList<RuntimeContainerDescriptor> containers,
-                                                             int requestTimeoutSeconds,
-                                                             CancellationToken cancellationToken)
-    {
-        var digestsByImageId = new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase);
-        var imageIds = containers.Where(entity => string.IsNullOrWhiteSpace(entity.ImageDigest)
-                                                  && string.IsNullOrWhiteSpace(entity.LocalImageId) == false)
-                                 .Select(entity => entity.LocalImageId!)
-                                 .Distinct(StringComparer.OrdinalIgnoreCase)
-                                 .ToArray();
-
-        foreach (var imageId in imageIds)
-        {
-            digestsByImageId[imageId] = await GetRepositoryDigestsAsync(httpClient,
-                                                                        imageId,
-                                                                        requestTimeoutSeconds,
-                                                                        cancellationToken).ConfigureAwait(false);
-        }
-
-        foreach (var container in containers)
-        {
-            if (string.IsNullOrWhiteSpace(container.LocalImageId)
-                || digestsByImageId.TryGetValue(container.LocalImageId, out var repoDigests) == false)
-            {
-                continue;
-            }
-
-            container.ImageDigest = ResolveRepositoryDigest(container.ImageReference, repoDigests);
-        }
-    }
-
-    /// <summary>
-    /// Read repository digests for a local Docker image
-    /// </summary>
-    /// <param name="httpClient">Docker engine client</param>
-    /// <param name="imageId">Local image identifier</param>
-    /// <param name="requestTimeoutSeconds">Configured request timeout in seconds</param>
-    /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>Repository digests</returns>
-    private static async Task<IReadOnlyList<string>> GetRepositoryDigestsAsync(HttpClient httpClient,
-                                                                               string imageId,
-                                                                               int requestTimeoutSeconds,
-                                                                               CancellationToken cancellationToken)
-    {
-        var inspectResult = await ReadImageInspectAsync(httpClient,
-                                                        imageId,
-                                                        requestTimeoutSeconds,
-                                                        cancellationToken).ConfigureAwait(false);
-
-        if (inspectResult.Status != ExternalOperationStatus.Succeeded || inspectResult.Data is null)
-        {
-            return [];
-        }
-
-        return inspectResult.Data.RepoDigests;
-    }
-
-    /// <summary>
     /// Resolve the repository digest that belongs to the reported image reference
     /// </summary>
     /// <param name="imageReference">Reported image reference</param>
@@ -1002,6 +936,93 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
     #region Methods
 
     /// <summary>
+    /// Populate runtime containers with repository digests resolved from Docker image inspect
+    /// </summary>
+    /// <param name="httpClient">Docker engine client</param>
+    /// <param name="instanceOptions">Docker instance options</param>
+    /// <param name="containers">Discovered containers</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Task</returns>
+    private async Task PopulateRepositoryDigestsAsync(HttpClient httpClient,
+                                                      DockerInstanceOptions instanceOptions,
+                                                      IReadOnlyList<RuntimeContainerDescriptor> containers,
+                                                      CancellationToken cancellationToken)
+    {
+        var digestsByImageId = new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase);
+        var imageIds = containers.Where(entity => string.IsNullOrWhiteSpace(entity.ImageDigest)
+                                                  && string.IsNullOrWhiteSpace(entity.LocalImageId) == false)
+                                 .Select(entity => entity.LocalImageId!)
+                                 .Distinct(StringComparer.OrdinalIgnoreCase)
+                                 .ToArray();
+
+        foreach (var imageId in imageIds)
+        {
+            digestsByImageId[imageId] = await GetRepositoryDigestsAsync(httpClient,
+                                                                        instanceOptions,
+                                                                        imageId,
+                                                                        cancellationToken).ConfigureAwait(false);
+        }
+
+        foreach (var container in containers)
+        {
+            if (string.IsNullOrWhiteSpace(container.LocalImageId)
+                || digestsByImageId.TryGetValue(container.LocalImageId, out var repoDigests) == false)
+            {
+                continue;
+            }
+
+            container.ImageDigest = ResolveRepositoryDigest(container.ImageReference, repoDigests);
+        }
+    }
+
+    /// <summary>
+    /// Read repository digests for a local Docker image; a failed inspect is logged and leaves only this image without digests
+    /// </summary>
+    /// <param name="httpClient">Docker engine client</param>
+    /// <param name="instanceOptions">Docker instance options</param>
+    /// <param name="imageId">Local image identifier</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Repository digests, empty when the inspect failed</returns>
+    private async Task<IReadOnlyList<string>> GetRepositoryDigestsAsync(HttpClient httpClient,
+                                                                        DockerInstanceOptions instanceOptions,
+                                                                        string imageId,
+                                                                        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var inspectResult = await ReadImageInspectAsync(httpClient,
+                                                            imageId,
+                                                            instanceOptions.RequestTimeoutSeconds,
+                                                            cancellationToken).ConfigureAwait(false);
+
+            if (inspectResult.Status != ExternalOperationStatus.Succeeded || inspectResult.Data is null)
+            {
+                _logger.DockerInstanceImageDigestSkipped(null,
+                                                         instanceOptions.Name,
+                                                         imageId,
+                                                         inspectResult.Message ?? inspectResult.Status.ToString());
+
+                return [];
+            }
+
+            return inspectResult.Data.RepoDigests;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            _logger.DockerInstanceImageDigestSkipped(exception,
+                                                     instanceOptions.Name,
+                                                     imageId,
+                                                     FailureReason.FromException(exception, TimeSpan.FromSeconds(instanceOptions.RequestTimeoutSeconds), cancellationToken));
+
+            return [];
+        }
+    }
+
+    /// <summary>
     /// Read the resource sample of one container; a failure leaves only this container out
     /// </summary>
     /// <param name="httpClient">HTTP client of the instance</param>
@@ -1123,8 +1144,8 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
                 }
 
                 await PopulateRepositoryDigestsAsync(httpClient,
+                                                     instanceOptions,
                                                      containers,
-                                                     instanceOptions.RequestTimeoutSeconds,
                                                      cancellationToken).ConfigureAwait(false);
 
                 _logger.DockerInstanceDiscoverySucceeded(instanceOptions.Name, containers.Count);
