@@ -1,6 +1,6 @@
 # 0046: Portainer requests keep the path of the base URL
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-16
 - **Area:** Container actions
 - **Source:** Issue #412

@@ -106,5 +106,5 @@ once in the [area document](../areas/README.md) of the record's area, and the re
 | [0043](0043-runtime-findings-kept-through-a-failed-container-evaluation-move-to-its-new-snapshot.md) | Runtime findings kept through a failed container evaluation move to its new snapshot | Accepted | 2026-11-15 |
 | [0044](0044-a-runtime-container-whose-processing-fails-takes-what-it-could-not-determine-from-its-latest-earlier-snapshot.md) | A runtime container whose processing fails takes what it could not determine from its latest earlier snapshot | Accepted | 2026-11-15 |
 | [0045](0045-json-parse-failures-of-external-data-carry-a-fixed-message-with-their-position.md) | JSON parse failures of external data carry a fixed message with their position | Accepted | 2026-11-16 |
-| [0046](0046-portainer-requests-keep-the-path-of-the-base-url.md) | Portainer requests keep the path of the base URL | Proposed | 2026-11-16 |
+| [0046](0046-portainer-requests-keep-the-path-of-the-base-url.md) | Portainer requests keep the path of the base URL | Accepted | 2026-11-16 |
 <!-- project:end index -->
