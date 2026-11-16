@@ -52,5 +52,8 @@ position, with no path and no inner exception. The message is stated in
   found by its position.
 - The refusal of a string that does not decode ([0019](0019-remote-json-with-undecodable-strings-is-an-invalid-response.md))
   keeps its own fixed message and its decoding error, which carries no remote text.
+- The helper's HTTP content read also refuses a `Content-Type` charset it cannot use with a fixed message and no inner
+  exception, since the framework's refusal quotes the remote charset; it stays an unexpected error, not an invalid
+  response, so no outcome changes, and this refusal too carries no remote text.
 - A new parse of external JSON must use the helper; the Reviewer checks it ([`.squad/project.md`](../../.squad/project.md),
   *Integration surface*).
