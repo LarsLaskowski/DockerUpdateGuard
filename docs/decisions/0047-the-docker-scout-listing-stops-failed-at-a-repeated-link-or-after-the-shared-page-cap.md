@@ -1,6 +1,6 @@
 # 0047: The Docker Scout listing stops *failed* at a repeated link or after the shared page cap
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-16
 - **Area:** Vulnerabilities
 - **Source:** Issue #436
@@ -49,6 +49,9 @@ with its partial success is removed. The behavior is in
   shows the assessment *failed*.
 - An endless sequence of distinct links costs up to 1,000 Docker Scout requests per fetch instead of 50 (twice after a
   401 that restarts the fetch). These requests take no Docker Hub request slot.
+- As in 0024, the cap bounds requests, not duration or memory: a slow Docker Scout origin can hold one fetch for up
+  to 1,000 times `RequestTimeoutSeconds` (twice after a 401), and the advisories of every page read are kept until
+  the listing ends.
 - Residual risk: should Docker Scout's real last page carry a `next` link to itself, every listing would now end
   *failed* (event 3407) instead of reading 50 copies of that page; the link form is still unobserved.
 - Revisit together with 0024 when a real listing needs more pages than the cap.
