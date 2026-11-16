@@ -29,7 +29,7 @@ operator's logs rely on it; each integration area states only what it adds.
 - An outcome caused by an error rather than by an answer carries a fixed reason, never the error's own text:
   `cancelled`, `timed out after <n> seconds` (or `timed out` when the call has no timeout of its own), `connection
   failed` (transport failures and responses that break off), `invalid response` or `unexpected error`. The error
-  itself is logged with the failure.
+  itself is logged with the failure (a JSON parse failure with a fixed message, [Telemetry](telemetry.md#credentials-and-external-data)).
 - `invalid response` covers malformed JSON and a JSON string that does not decode as Unicode text, such as a lone
   surrogate escape like `\ud800` or bytes that are not UTF-8, and a Docker Hub access token whose payload segment is not
   base64url. The Docker Hub, OCI and Docker Engine clients refuse the

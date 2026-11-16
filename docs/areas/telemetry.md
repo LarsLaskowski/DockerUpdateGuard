@@ -119,6 +119,13 @@ Every exported signal carries the same resource:
   can name the database host or hold the configuration validation failures (key names, configured instance names, a
   client certificate path). Retry log
   lines carry the request URL without its user info and query string.
+- A JSON parse failure of a remote answer, a token payload, the .NET release index or Trivy's report is logged with a
+  fixed message, never the parser's: `Remote JSON is not valid at line <l>, byte <b> (counted from 0)`, with the
+  parser's line and byte position in invariant digits, or `Remote JSON is not valid` when the position is unknown. The
+  exception has no path and no inner exception, so it carries no remote text; the refusal of a string that does not decode ([Integration failures](integration-failures.md#fixed-failure-reasons)) keeps its own fixed message and its decoding error, which carries no remote text either. Every parse of external JSON goes through
+  `Infrastructure\ExternalJson`. A `Content-Type` charset that cannot be used is refused with the fixed message `The
+  character set of the remote response is not valid` and no inner exception. Decision:
+  [0045](../decisions/0045-json-parse-failures-of-external-data-carry-a-fixed-message-with-their-position.md).
 - HTTP client spans (`url.full`) and the HTTP client log lines carry scheme, host, port and path only, with query
   values as `*`, unless the platform's URI redaction is switched off
   (`DOTNET_SYSTEM_NET_HTTP_DISABLEURIREDACTION`). Decision: [0005](../decisions/0005-urls-are-output-with-user-info-masked.md).
@@ -146,6 +153,7 @@ Every exported signal carries the same resource:
 ## Related decisions
 
 - [0005](../decisions/0005-urls-are-output-with-user-info-masked.md) — URLs are output with their user info masked.
+- [0045](../decisions/0045-json-parse-failures-of-external-data-carry-a-fixed-message-with-their-position.md) — JSON parse failures of external data carry a fixed message with their position.
 
 ## Not here
 

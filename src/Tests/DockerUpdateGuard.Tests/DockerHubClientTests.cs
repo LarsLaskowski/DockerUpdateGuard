@@ -578,6 +578,40 @@ public partial class DockerHubClientTests
     }
 
     /// <summary>
+    /// Verify a malformed tag answer is logged with the fixed JSON message and none of the body's text
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC3")]
+    public async Task DockerHubClientGetTagAsyncWhenBodyIsMalformedLogsFixedJsonMessageAsync()
+    {
+        var body = JsonParseFailureAssert.CreateForgedLineBody();
+
+        JsonParseFailureAssert.CarriesForgedLine(body);
+
+        using var handler = new DelegateHttpMessageHandler(request => CreateHubResponse(request, () => CreateJsonResponse(body)));
+        using var httpClient = new HttpClient(handler)
+                               {
+                                   BaseAddress = new Uri("https://hub.docker.com/"),
+                               };
+
+        var logger = new TestLogger<DockerHubClient>();
+        var client = CreateClient(httpClient, logger: logger);
+        var imageReference = new ImageReference
+                             {
+                                 Registry = "docker.io",
+                                 Repository = "acme/api",
+                                 Tag = "latest",
+                             };
+
+        await client.GetTagAsync(imageReference, "linux", "amd64", TestContext.CancellationToken).ConfigureAwait(false);
+
+        var warning = AssertSingleFailureWarning(logger);
+
+        JsonParseFailureAssert.IsForgedLineRewritten(warning.Exception, "Warning 3213");
+    }
+
+    /// <summary>
     /// Verify a tag lookup whose login answer has a string that does not decode is answered as an invalid response
     /// </summary>
     /// <returns>Task</returns>

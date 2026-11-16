@@ -42,7 +42,7 @@ limits, patterns or sequences. Paths below are under `src/DockerUpdateGuard/` un
   [Vulnerabilities](../docs/areas/vulnerabilities.md#docker-scout)
 - **Failure messages and remote text:** what a result, a scan run or a page may carry of an error or a remote answer —
   `Infrastructure/FailureReason.cs`, `Infrastructure/ResponseBodyExcerpt.cs`, `Infrastructure/ReportableException.cs`,
-  `Infrastructure/TransientHttpRetryHandler.cs` — [Integration failures](../docs/areas/integration-failures.md)
+  `Infrastructure/ExternalJson.cs`, `Infrastructure/TransientHttpRetryHandler.cs` — [Integration failures](../docs/areas/integration-failures.md)
 - **Database and migrations:** queries built from user input, the lock around migrations — `src/DockerUpdateGuard.Data/`,
   `DatabaseMigrator.cs` — [Hosting](../docs/areas/hosting.md#startup-sequence)
 - **Container image and runtime user:** the non-root user and the CA import — `Dockerfile`, `entrypoint.sh` —
@@ -100,7 +100,7 @@ change with it. The area document of the feature (`docs/areas/README.md`) change
 - messages built only from fixed text, configuration names and masked URLs (`ReportableException`); one that
   interpolates an error's message, a response body or an unmasked URL is blocking
   ([fixed reasons](../docs/areas/integration-failures.md#fixed-failure-reasons))
-- remote text through `ResponseBodyExcerpt` and next-page links through `PaginationLinkGuard`
+- remote text through `ResponseBodyExcerpt` and next-page links through `PaginationLinkGuard` and remote JSON through `ExternalJson` (`RemoteJsonDocument` where strings must decode)
 - `RegistryMetadataService` dispatch (`CanHandle`) for a new registry type — [Registries](../docs/areas/registries.md)
 - the fake/stub in the tests (*Test doubles*)
 - the client table in `docs/ARCHITECTURE.md`, *Integration clients*

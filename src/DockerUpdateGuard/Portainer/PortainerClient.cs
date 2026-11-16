@@ -287,7 +287,7 @@ public partial class PortainerClient : IPortainerClient
             return ((int)response.StatusCode, false);
         }
 
-        var containers = await response.Content.ReadFromJsonAsync<DockerContainerItem[]>(cancellationToken: cancellationToken).ConfigureAwait(false);
+        var containers = await ExternalJson.ReadFromJsonAsync<DockerContainerItem[]>(response.Content, cancellationToken).ConfigureAwait(false);
 
         return ((int)response.StatusCode, containers?.Any(c => string.Equals(c.Id, containerId, StringComparison.Ordinal)) == true);
     }
@@ -411,7 +411,7 @@ public partial class PortainerClient : IPortainerClient
             return new PortainerEndpointResolution(null, $"Portainer environment list failed: HTTP {(int)response.StatusCode}");
         }
 
-        var endpoints = await response.Content.ReadFromJsonAsync<PortainerEndpointItem[]>(cancellationToken: cancellationToken).ConfigureAwait(false) ?? [];
+        var endpoints = await ExternalJson.ReadFromJsonAsync<PortainerEndpointItem[]>(response.Content, cancellationToken).ConfigureAwait(false) ?? [];
         var headerIsValid = TryReadTotalCount(response, out var totalCount);
         int? environmentCount = headerIsValid ? Math.Max(endpoints.Length, totalCount ?? endpoints.Length) : null;
 
@@ -629,7 +629,7 @@ public partial class PortainerClient : IPortainerClient
             throw new PortainerAuthenticationException($"Portainer authentication failed with HTTP {(int)loginResponse.StatusCode} for '{maskedBaseUrl}'");
         }
 
-        var authResponse = await loginResponse.Content.ReadFromJsonAsync<PortainerAuthResponse>(cancellationToken: cancellationToken).ConfigureAwait(false);
+        var authResponse = await ExternalJson.ReadFromJsonAsync<PortainerAuthResponse>(loginResponse.Content, cancellationToken).ConfigureAwait(false);
 
         return authResponse?.Jwt;
     }

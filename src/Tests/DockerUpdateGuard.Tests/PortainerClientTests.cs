@@ -1370,6 +1370,45 @@ public class PortainerClientTests
     }
 
     /// <summary>
+    /// Verify a malformed login answer during the capability check is logged with the fixed JSON message and none of the body's text
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC3")]
+    public async Task PortainerClientCheckCapabilityAsyncWhenLoginBodyIsMalformedLogsFixedJsonMessageAsync()
+    {
+        var body = JsonParseFailureAssert.CreateForgedLineBody();
+
+        JsonParseFailureAssert.CarriesForgedLine(body);
+
+        using var handler = new SequenceHttpMessageHandler();
+        using var httpClient = new HttpClient(handler);
+
+        handler.AddJsonResponse(AuthUrl, body);
+
+        var logger = new TestLogger<PortainerClient>();
+        var client = new PortainerClient(CreateHttpClientFactory(httpClient),
+                                         logger,
+                                         new LoginRetryAfterRegistry(TimeProvider.System),
+                                         TimeProvider.System);
+        var instanceOptions = CreateInstanceOptions(InstanceName,
+                                                    options =>
+                                                    {
+                                                        options.Username = AdminUsername;
+                                                        options.Password = "admin-password";
+                                                        options.EndpointId = EndpointId;
+                                                    });
+
+        await client.CheckCapabilityAsync(instanceOptions, TestContext.CancellationToken).ConfigureAwait(false);
+
+        var exceptionEntry = Assert.ContainsSingle(entry => entry.EventId.Id == 3306,
+                                                   logger.Entries,
+                                                   "A malformed login answer must be logged once as capability failure 3306");
+
+        JsonParseFailureAssert.IsForgedLineRewritten(exceptionEntry.Exception, "Capability failure 3306");
+    }
+
+    /// <summary>
     /// Verify a failed login masks the user info of the base URL in the capability message and the logs
     /// </summary>
     /// <returns>Task</returns>

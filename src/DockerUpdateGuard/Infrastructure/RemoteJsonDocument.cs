@@ -3,7 +3,7 @@ using System.Text.Json;
 namespace DockerUpdateGuard.Infrastructure;
 
 /// <summary>
-/// Parses a remote JSON response and refuses a body whose strings do not decode as Unicode text
+/// Parses a remote JSON response and refuses a body whose strings do not decode as Unicode text; a parse failure carries no remote text
 /// </summary>
 internal static class RemoteJsonDocument
 {
@@ -26,7 +26,7 @@ internal static class RemoteJsonDocument
     /// <returns>Parsed document</returns>
     public static async Task<JsonDocument> ParseAsync(Stream stream, CancellationToken cancellationToken)
     {
-        var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken).ConfigureAwait(false);
+        var document = await ExternalJson.ParseAsync(stream, cancellationToken).ConfigureAwait(false);
 
         try
         {
