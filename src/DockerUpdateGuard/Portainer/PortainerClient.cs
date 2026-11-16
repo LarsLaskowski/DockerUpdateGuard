@@ -278,7 +278,7 @@ public partial class PortainerClient : IPortainerClient
                      };
 
         var filters = Uri.EscapeDataString(JsonSerializer.Serialize(filter));
-        var url = $"/api/endpoints/{endpointId}/docker/containers/json?all=true&filters={filters}";
+        var url = $"api/endpoints/{endpointId}/docker/containers/json?all=true&filters={filters}";
 
         using var response = await client.GetAsync(url, cancellationToken).ConfigureAwait(false);
 
@@ -331,7 +331,7 @@ public partial class PortainerClient : IPortainerClient
             return notFoundMessage;
         }
 
-        var statusCode = await bounds.RunAsync(bounds.RequestTimeout, token => GetStatusCodeAsync(client, $"/api/endpoints/{endpointId}", token), cancellationToken).ConfigureAwait(false);
+        var statusCode = await bounds.RunAsync(bounds.RequestTimeout, token => GetStatusCodeAsync(client, $"api/endpoints/{endpointId}", token), cancellationToken).ConfigureAwait(false);
 
         if (statusCode == HttpStatusCode.NotFound)
         {
@@ -355,6 +355,23 @@ public partial class PortainerClient : IPortainerClient
         using var response = await client.GetAsync(url, cancellationToken).ConfigureAwait(false);
 
         return response.StatusCode;
+    }
+
+    /// <summary>
+    /// Create the base address of the Portainer requests: the configured address up to its path, without query and fragment, with the path closed by a slash so that relative request paths resolve below it
+    /// </summary>
+    /// <param name="baseUrl">Configured Portainer base URL</param>
+    /// <returns>Base address</returns>
+    private static Uri CreateBaseAddress(string baseUrl)
+    {
+        var address = new Uri(baseUrl).GetLeftPart(UriPartial.Path);
+
+        if (address.EndsWith('/') == false)
+        {
+            address += "/";
+        }
+
+        return new Uri(address);
     }
 
     #endregion // Static methods
@@ -402,7 +419,7 @@ public partial class PortainerClient : IPortainerClient
     /// <returns>Resolution carrying either the environment identifier or a failure message</returns>
     private async Task<PortainerEndpointResolution> ResolveListedEndpointAsync(HttpClient client, DockerInstanceOptions instanceOptions, CancellationToken cancellationToken)
     {
-        using var response = await client.GetAsync("/api/endpoints", cancellationToken).ConfigureAwait(false);
+        using var response = await client.GetAsync("api/endpoints", cancellationToken).ConfigureAwait(false);
 
         if (response.IsSuccessStatusCode == false)
         {
@@ -466,7 +483,7 @@ public partial class PortainerClient : IPortainerClient
                                                                                                PortainerRequestBounds bounds,
                                                                                                CancellationToken cancellationToken)
     {
-        var statusCode = await bounds.RunAsync(bounds.RequestTimeout, token => GetStatusCodeAsync(client, "/api/system/status", token), cancellationToken).ConfigureAwait(false);
+        var statusCode = await bounds.RunAsync(bounds.RequestTimeout, token => GetStatusCodeAsync(client, "api/system/status", token), cancellationToken).ConfigureAwait(false);
 
         if (statusCode is < HttpStatusCode.OK or >= HttpStatusCode.Ambiguous)
         {
@@ -561,7 +578,7 @@ public partial class PortainerClient : IPortainerClient
                                                                                                      PortainerRequestBounds bounds,
                                                                                                      CancellationToken cancellationToken)
     {
-        var actionUrl = $"/api/endpoints/{endpointId}/docker/containers/{actionRequest.ContainerId}/{actionName}";
+        var actionUrl = $"api/endpoints/{endpointId}/docker/containers/{actionRequest.ContainerId}/{actionName}";
         var waitsForStop = actionRequest.ActionType is ContainerActionType.StopContainer or ContainerActionType.RestartContainer;
         var bound = waitsForStop ? bounds.RequestTimeout + TimeSpan.FromSeconds(StopWaitSeconds) : bounds.RequestTimeout;
 
@@ -618,7 +635,7 @@ public partial class PortainerClient : IPortainerClient
     /// <returns>JWT token; null when the answer carries none</returns>
     private async Task<string?> LoginAsync(HttpClient client, PortainerLoginRequest loginBody, Uri loginUri, string maskedBaseUrl, CancellationToken cancellationToken)
     {
-        using var loginResponse = await client.PostAsJsonAsync("/api/auth", loginBody, cancellationToken).ConfigureAwait(false);
+        using var loginResponse = await client.PostAsJsonAsync("api/auth", loginBody, cancellationToken).ConfigureAwait(false);
 
         _loginRetryAfterRegistry.RecordLoginResponse(loginUri, loginBody.Username, loginResponse);
 
@@ -649,7 +666,7 @@ public partial class PortainerClient : IPortainerClient
 
         try
         {
-            client.BaseAddress = new Uri(options.BaseUrl!);
+            client.BaseAddress = CreateBaseAddress(options.BaseUrl!);
 
             if (client.BaseAddress.Scheme == Uri.UriSchemeHttp
                 && _insecureHttpWarningInstances.TryAdd(instanceOptions.Name, 0))
@@ -672,7 +689,7 @@ public partial class PortainerClient : IPortainerClient
             {
                 var maskedBaseUrl = UrlRedaction.RedactUserInfo(options.BaseUrl);
                 var loginBody = new PortainerLoginRequest(options.Username, options.Password);
-                var loginUri = new Uri(client.BaseAddress, "/api/auth");
+                var loginUri = new Uri(client.BaseAddress, "api/auth");
 
                 if (_loginRetryAfterRegistry.IsLoginDeferred(loginUri, options.Username, out var retryAt))
                 {

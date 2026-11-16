@@ -50,6 +50,11 @@ posture*).
 
 - `BaseUrl` must be an absolute `https` URL. A plaintext `http` URL is accepted only with `AllowInsecureHttp: true`;
   without it, startup fails with a message that names the key to set ([Hosting](hosting.md)).
+- Every request goes below the path of `BaseUrl`, which counts as a directory: a missing trailing slash is added, and
+  query and fragment are not sent. A Portainer behind a reverse-proxy prefix is therefore configured with that prefix
+  (`https://host/portainer`, without `/api`); the request paths named in this document (`GET /api/endpoints/<id>`,
+  the action steps) are relative to it. Reasoning:
+  [0046](../decisions/0046-portainer-requests-keep-the-path-of-the-base-url.md).
 - `AllowInsecureHttp` is opt-in only. While a Docker instance's `BaseUrl` is `http`, the first request to Portainer
   for that instance logs a warning (EventId 3311) that names the instance only, never the URL or a credential. It is
   logged once per instance name for the lifetime of the process, before the request is sent, whatever its outcome.
@@ -62,7 +67,7 @@ posture*).
 
 - When `ApiToken` is set, it is sent as an API key header on every request and takes precedence over username and
   password.
-- Otherwise `Username` and `Password` are posted to Portainer's authentication endpoint and the returned JWT is used as
+- Otherwise `Username` and `Password` are posted to Portainer's authentication endpoint (`api/auth` below `BaseUrl`) and the returned JWT is used as
   a bearer token. The login is repeated for every operation; tokens are not cached. After a login answered 429 with a
   positive `Retry-After`, no instance whose login goes to the same URL with the same user name sends a login before the
   window ends: the capability check or action sends no request and fails with the authentication error `Portainer
