@@ -13,3 +13,4 @@ are quoted in full.
 | 2026-11-16 11:55 | 6 Implement | Dev | Implemented per-image handler + warning 3112 + docs; full suite green, coverage 96.2% new lines (sonnet/medium · 96,418 tokens · 10 tool uses · 297 s · 18 in · 5,545 out · 744,342 cache read · 44,978 cache write · 158,400 weighted) |
 | 2026-11-16 11:56 | 6 Coverage | Tester | AC4 mutation-checked, all criteria covered, no changes. Deferred: none (sonnet/medium · 91,178 tokens · 6 tool uses · 57 s · 10 in · 2,060 out · 385,885 cache read · 40,123 cache write · 99,052 weighted) |
 | 2026-11-16 11:56 | 6 Documentation | Orchestrator | written in 6 Implement |
+| 2026-11-16 12:00 | 7 Gate stamp | Orchestrator | PASS on 59ea3bd5a29a9638ad9e7a2a528f691e8ddea4a1 (tier standard): Format check pass; Analyzer gate pass; Test with coverage pass; Coverage gate pass; decision-check.py pass; scope-check.py pass · figure-check.py 0 hit(s) |
