@@ -81,7 +81,8 @@ on the snapshots and samples it produces.
 - `RequestTimeoutSeconds` (1–300, default 15) bounds each single Engine request (container list, each image inspect,
   each image history, each stats call, host info) separately; it is not a budget for a whole scan.
 - A request that exceeds it ends as *failed* with a message naming the instance and the timeout; a stats call that
-  exceeds it only leaves its container out of the round (see [Resource statistics](#resource-statistics)). Cancellation of the
+  exceeds it only leaves its container out of the round (see [Resource statistics](#resource-statistics)), and an
+  image inspect of discovery that exceeds it only leaves the digest of that image's containers empty. Cancellation of the
   calling job (for example at shutdown) is not reported as a failure; it stops the operation.
 
 ### Container discovery
@@ -99,8 +100,13 @@ on the snapshots and samples it produces.
 - The image digest of each container is taken from the repository digests of its local image (one image inspect per
   distinct local image): the digest whose registry and repository match the container's image reference; if none
   matches, the only digest when there is exactly one; otherwise none. When the image reference cannot be parsed, the
-  first repository digest is used. Digests are stored lower-case. A failed inspect leaves the digest empty and does
-  not fail discovery.
+  first repository digest is used. Digests are stored lower-case. A failed inspect (a non-success answer, an image that
+  is not found, a timeout, a transport error, or a body that is not valid JSON, does not decode or holds a value of an
+  unexpected kind) leaves the digest empty only for the containers of that image and does not fail discovery; the
+  other images are still inspected. Each failed inspect is logged once per discovery as warning 3112 with the
+  instance name, the image ID and the reason: the inspect's own failure message for an answer or a timeout,
+  otherwise `connection failed`, `invalid response` or `unexpected error`, with the error. Cancellation of the
+  calling job still stops discovery.
 - Discovery emits one `dockerengine.request` trace activity per instance (see [Telemetry](telemetry.md)).
 
 ### Image inspection and history
