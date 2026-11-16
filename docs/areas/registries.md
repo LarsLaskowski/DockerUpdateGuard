@@ -138,14 +138,15 @@ go through its retry of transient HTTP failures.
   *failed* with `<listing> stopped: the listing did not end within 1000 pages`. A page counts once its response was
   read, the first included, so a listing of exactly 1,000 pages whose last page has no next link succeeds. Both stops
   discard the entries read, send no further request and log a warning (Docker Hub tag and repository listings: event
-  3215 and 3214; OCI tag listing: 2105 and 2104). They apply to the Docker Hub tag and repository listings and the OCI
-  tag listing, not to Docker Scout. The cap bounds the number of requests of a listing, not its duration, memory or
+  3215 and 3214; OCI tag listing: 2105 and 2104; Docker Scout vulnerability listing: 3407 and 3419). They apply to the Docker Hub
+  tag and repository listings, the OCI tag listing and the Docker Scout vulnerability listing. The cap bounds the number of requests of a listing, not its duration, memory or
   the size of a response.
 - The guard applies only where a listing would follow the link: a listing that stops on its own condition (a Docker
   Hub bound, the maximum tag count) does not look at it, and an empty link ends the listing as before.
 - Not covered: the token service a `WWW-Authenticate` challenge names, and HTTP redirects.
 - Decisions: [0004](../decisions/0004-pagination-follows-only-same-origin-links.md),
-  [0024](../decisions/0024-registry-listings-stop-failed-after-a-page-cap.md).
+  [0024](../decisions/0024-registry-listings-stop-failed-after-a-page-cap.md),
+  [0047](../decisions/0047-the-docker-scout-listing-stops-failed-at-a-repeated-link-or-after-the-shared-page-cap.md).
 
 ### Authentication
 
@@ -296,6 +297,8 @@ go through its retry of transient HTTP failures.
 - [0004](../decisions/0004-pagination-follows-only-same-origin-links.md): pagination follows only same-origin links.
 - [0024](../decisions/0024-registry-listings-stop-failed-after-a-page-cap.md): listings stop *failed* at a repeated
   link or after a page cap.
+- [0047](../decisions/0047-the-docker-scout-listing-stops-failed-at-a-repeated-link-or-after-the-shared-page-cap.md): the Docker Scout listing
+  stops *failed* at a repeated link or after the shared page cap.
 - [0019](../decisions/0019-remote-json-with-undecodable-strings-is-an-invalid-response.md): remote JSON with a string
   that does not decode is an invalid response.
 - [0029](../decisions/0029-registry-calls-answer-every-error-but-the-callers-cancellation-as-failed.md): registry calls

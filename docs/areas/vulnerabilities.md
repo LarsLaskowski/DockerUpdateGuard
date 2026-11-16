@@ -163,17 +163,23 @@ scan run:
   check. The tag lookup of the digest check takes a slot as every Docker Hub web API request does; lookups with a
   cached token and the Docker Scout API requests take none.
 - Vulnerabilities are read from `<DockerScoutBaseUrl>/v1/repositories/<namespace>/<repository>/tags/<tag>/vulnerabilities`,
-  following the `next` link of each page, for at most **50 pages**. Each segment is percent-encoded. A repository or tag
+  following the `next` link of each page. Each segment is percent-encoded. A repository or tag
   with a `.` or `..` segment is not requested: the lookup logs nothing, does not log in, and gives *not found* with the
   message `Registry request path would contain a '.' or '..' segment`, shown as *unavailable* on the vulnerability pages
-  ([Registries](registries.md#request-paths)). When the cap is reached, the advisories read so
-  far are returned as a successful result.
+  ([Registries](registries.md#request-paths)).
 - The `next` link is followed only on the origin of `DockerScoutBaseUrl` (same scheme, host and port); a root-relative
   link is resolved against the current request. A link to another origin is not requested, so the bearer token never
   leaves that origin: the provider answers *failed*, "Docker Scout vulnerability listing for '<reference>' stopped: the
   next-page link pointed to a different origin (<origin>)", with only scheme, host and non-default port of the link (cut to 300 characters followed by `…`, as in [Registries](registries.md#pagination-links)) in
   the message and the log; the stored findings stay untouched. A proxy in front of Docker Scout must rewrite next-page
   links to its own origin ([Registries](registries.md#pagination-links)).
+- After the origin check, a `next` link whose request the fetch already sent (the first page, a page itself, or a link
+  that differs only in its fragment) makes the listing *failed*, "Docker Scout vulnerability listing for '<reference>'
+  stopped: the next-page link repeated a page already read", with warning 3407. A listing whose 1,000th page
+  (`PaginationLinkGuard.MaxListingPages`) still links to a next page is *failed*, "Docker Scout vulnerability listing
+  for '<reference>' stopped: the listing did not end within 1000 pages", with warning 3419. Both stops return no
+  advisories, send no further request and leave the stored findings untouched; a listing of exactly 1,000 pages whose
+  last page has no link succeeds. The rule is in [Registries](registries.md#pagination-links).
 - HTTP 401 discards the cached token, logs in once more and reads again from the first page; a second 401 gives
   *failed*, "Docker Scout rejected the authentication token". HTTP 404 gives *unavailable*, "Image <reference> not
   found in Docker Scout". Any other unsuccessful status gives *failed*, "Docker Scout request failed with status X".
@@ -235,6 +241,10 @@ The dashboard shows at most one hint about the vulnerability configuration:
 ## Related decisions
 
 - [0004](../decisions/0004-pagination-follows-only-same-origin-links.md): pagination follows only same-origin links.
+- [0024](../decisions/0024-registry-listings-stop-failed-after-a-page-cap.md): listings stop *failed* at a repeated
+  link or after a page cap.
+- [0047](../decisions/0047-the-docker-scout-listing-stops-failed-at-a-repeated-link-or-after-the-shared-page-cap.md): the Docker Scout listing stops *failed* at a repeated link or after the
+  shared page cap.
 - [0005](../decisions/0005-urls-are-output-with-user-info-masked.md): URLs are output with their user info masked;
   Trivy's error output is withheld for a `TrivyBaseUrl` with an `@`; the Trivy server address is passed in the
   environment.
