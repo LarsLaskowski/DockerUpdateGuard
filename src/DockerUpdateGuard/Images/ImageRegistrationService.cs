@@ -58,9 +58,7 @@ public class ImageRegistrationService : IImageRegistrationService
     /// <summary>
     /// Time provider
     /// </summary>
-#pragma warning disable S4487 // Skeleton: removed with the implementation
     private readonly TimeProvider _timeProvider;
-#pragma warning restore S4487 // Skeleton: removed with the implementation
 
     #endregion // Fields
 
@@ -95,6 +93,18 @@ public class ImageRegistrationService : IImageRegistrationService
 
         ArgumentException.ThrowIfNullOrWhiteSpace(request.ImageReference);
 
+        if (string.IsNullOrWhiteSpace(request.Name))
+        {
+            throw new ReportableException(EmptyNameMessage);
+        }
+
+        var name = request.Name.Trim();
+
+        if (name.Length > MaxNameLength)
+        {
+            throw new ReportableException(NameTooLongMessage);
+        }
+
         ImageReference parsedReference;
 
         try
@@ -112,35 +122,54 @@ public class ImageRegistrationService : IImageRegistrationService
                                                                                       parsedReference.Digest,
                                                                                       cancellationToken: cancellationToken)
                                                         .ConfigureAwait(false);
+
+        var candidates = await _dbContext.ObservedImages.Where(entity => entity.CurrentImageVersionId == imageVersion.Id)
+                                                        .ToListAsync(cancellationToken)
+                                                        .ConfigureAwait(false);
+
+        candidates = candidates.OrderBy(entity => entity.CreatedAtUtc)
+                               .ThenBy(entity => entity.Id)
+                               .ToList();
+
+        var ownImage = candidates.FirstOrDefault(entity => entity.Source == RegistrationSource.Discovery && entity.IsEnabled);
+
+        if (ownImage is not null)
+        {
+            throw new OwnImageAlreadyTrackedException($"This image is already tracked as own image '{ResponseBodyExcerpt.ReplaceControlCharacters(ownImage.Name)}'.", ownImage.Id);
+        }
+
         imageVersion.Source = ImageVersionSource.ObservedImage;
 
-        var existingImage = await _dbContext.ObservedImages.SingleOrDefaultAsync(entity => entity.Name == request.Name, cancellationToken)
-                                                           .ConfigureAwait(false);
+        var description = string.IsNullOrWhiteSpace(request.Description) ? null : request.Description.Trim();
+        var now = _timeProvider.GetUtcNow();
+        var observedImage = candidates.FirstOrDefault(entity => entity.Source == RegistrationSource.Manual);
 
-        if (existingImage is null)
+        if (observedImage is null)
         {
-            existingImage = new ObservedImage
+            observedImage = new ObservedImage
                             {
-                                Name = request.Name.Trim(),
-                                Description = string.IsNullOrWhiteSpace(request.Description) ? null : request.Description.Trim(),
+                                Name = name,
+                                Description = description,
                                 CurrentImageVersionId = imageVersion.Id,
                                 Source = RegistrationSource.Manual,
+                                CreatedAtUtc = now,
+                                UpdatedAtUtc = now,
                             };
 
-            _dbContext.ObservedImages.Add(existingImage);
+            _dbContext.ObservedImages.Add(observedImage);
         }
         else
         {
-            existingImage.Description = string.IsNullOrWhiteSpace(request.Description) ? null : request.Description.Trim();
-            existingImage.CurrentImageVersionId = imageVersion.Id;
-            existingImage.UpdatedAtUtc = DateTimeOffset.UtcNow;
-            existingImage.IsEnabled = true;
+            observedImage.Name = name;
+            observedImage.Description = description;
+            observedImage.IsEnabled = true;
+            observedImage.UpdatedAtUtc = now;
         }
 
         await _dbContext.SaveChangesAsync(cancellationToken)
                         .ConfigureAwait(false);
 
-        return existingImage;
+        return observedImage;
     }
 
     #endregion // IImageRegistrationService
