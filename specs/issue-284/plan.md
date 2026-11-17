@@ -188,3 +188,54 @@ discovery writes discovered images, registration now only manual ones. No schema
 - Merging existing duplicates; disable and delete (#282); further Docker Hub spellings (#275).
 - A manual reference of an own repository without the discovered digest is a separate image (fact 11); one identity
   across sources would need a repository-level rule, not proposed here.
+
+## Challenge notes
+
+Devil's Advocate, plan mode, issue #284 (`/home/user/DockerUpdateGuard/specs/issue-284/plan.md`, record `/home/user/DockerUpdateGuard/docs/decisions/0048-manual-registration-identifies-an-observed-image-by-its-image-version.md`).
+
+The plan holds up. I found no major objections: no refuted claim, no missed sibling path, no wrong tier. Two minor objections are about test fixtures.
+
+What I checked and found correct:
+- **Root cause.** The service looks images up by the raw name at `ImageRegistrationService.cs:92` and stores the trimmed name at `:99`. No other code looks an observed image up by `Name`: the only `.Name ==` match on observed images in `src/DockerUpdateGuard` is `:92`.
+- **Sources.** Observed images are only ever created as `Manual` or `Discovery`. `ConfigurationFile` is used only by `DockerInstance` and `InstanceDiscoveryService.cs:102`, so "candidates of other sources are ignored" is safe.
+- **Rejection message reaches the form.** `FailureReason.cs:53-56` passes `ReportableException` messages through, and it uses `is`, so the subclass `OwnImageAlreadyTrackedException` gets the same treatment. AC9 as written works.
+- **Link target.** The route `/my-images/{ObservedImageId:guid}` exists (`MyImageDetail.razor:1`).
+- **Catalog writes on rejection.** `GetOrCreateImageVersionAsync` saves only when it creates a new version (`ImageCatalogRepository.cs:184-187`, `:205-210`). On the rejection path (AC3) the version already exists, so "nothing saved" holds. Validating the name before parsing makes AC6's "no catalog entry" hold.
+- **Spelling variants.** The parser trims and canonicalises `nginx:1.27` to `docker.io` / `library/nginx` (`ImageReferenceParser.cs:106`, `:130-134`), so AC7 does not depend on #275. Fact 9 is confirmed.
+- **Digest gap.** Discovered images carry the tag's digest (`DockerHubAccountImageDiscoveryService.cs:208-211`), and versions are matched exactly on digest (`ImageCatalogRepository.cs:108-111`). So the rejection only fires for a reference that includes that digest. The plan already says this in fact 11, record 0048's Consequences and the *Limits and errors* doc update, so it is a known limit, not an objection.
+
+Minor objections (for the plan's *Challenge notes*, to the Tester):
+
+1. **minor — AC2 and AC4 cannot be tested with `TestImageCatalogRepository`.** Its `GetOrCreateImageVersionAsync` returns the same version for every reference (`src/Tests/DockerUpdateGuard.Tests/Helper/TestImageCatalogRepository.cs`). Two different references would both resolve to one version and register as one image. Instruction: in the AC2 and AC4 tests, use the real `ImageCatalogRepository` (as AC6 and AC7 do) or seed two distinct versions, so each reference resolves to its own `ImageVersion`.
+2. **minor — AC3's "image version's `Source` unchanged" check would pass on a wrong build.** Discovery already sets a discovered image's version to `ImageVersionSource.ObservedImage` (`DockerHubAccountImageDiscoveryService.cs:217`). A fixture seeded that way would not notice if the code set `Source` before the rejection check. Instruction: seed the discovered image's version with a different `Source` (for example `ImageVersionSource.RuntimeContainer`) and assert it still has that value after the rejection.
+
+## Security notes
+
+Security plan review: specs/issue-284/plan.md and docs/decisions/0048-manual-registration-identifies-an-observed-image-by-its-image-version.md (mode plan, round 1)
+
+I found no blocking findings. The plan is approved, with two non-blocking findings for the Lead.
+
+**Tier.** `standard` is right. The new name checks (blank, more than 200 characters) only keep bad input from breaking the program. `.squad/routing.md` (`security` row, line 89) calls that input handling, not a guard. The rule "registration never writes a discovered image" decides which entity the single user's action changes. It does not decide what an attacker may reach. Nothing in authentication, secrets, allow-lists, URL or path confinement, output escaping or network exposure changes.
+
+**Security areas touched.** The three listed areas are complete. I checked for others: the new `MudLink` targets an existing route (`MyImageDetail.razor:1`, `@page "/my-images/{ObservedImageId:guid}"`) and interpolates only a `Guid`. There is no new dependency, no CI, Docker or build change, and no schema or migration change.
+
+**What I checked:**
+- **Database.** Today `ImageRegistrationService.cs:92` filters on the user's name string. The new query filters on `CurrentImageVersionId == imageVersion.Id`, a `Guid` that EF Core parameterizes, so user text no longer reaches a query predicate. The version is still created through the single write path, `GetOrCreateImageVersionAsync`. Moving `imageVersion.Source` after the rejection is correct: AC3 then leaves the version's `Source` unchanged.
+- **Name limit.** The 200 limit matches `ObservedImageConfiguration` (`HasMaxLength(200)`). The name is checked before parsing, so a rejected name creates no catalog row (AC6 counts `ImageVersions`).
+- **Failure message.** `FailureReason.FromException` passes a `ReportableException`'s message through unchanged (`FailureReason.cs:53-55`), so the new message reaches the page as composed. The page renders `_errorMessage` with Razor, which HTML-encodes it (`ObservedImages.razor:21`).
+- **Fact 12 (discovered names are checked repository paths).** Confirmed in the current code:
+  - `DockerHubClient.cs:330-340` replaces control characters, lowercases, and blanks any name that fails `RegistryReferenceValidator.IsValidRepository`.
+  - `DockerHubAccountImageDiscoveryService.cs:240` rewrites the name of every listed image on each run.
+  - Discovery is the only place that sets `Name` on a discovery-sourced row; today's registration update branch does not set it.
+- **Logging.** `UserActionFailed` (`ComponentLoggingExtensions.cs:19`) already logs the exception with its message. `docs/areas/telemetry.md` (*Credentials and external data*) allows repository names from remote answers in logs, with control characters replaced. No logger arguments change.
+- **No measurement needed.** The plan claims no security property that rests on measured or library behavior. Fact 13 (SQLite cannot order by `DateTimeOffset`) is a test-fixture fact, not a security claim. I ran no probes.
+
+**Findings:**
+
+1. [NON-BLOCKING] Plan, *Security considerations*, second bullet, and *Options considered* ("the name is a grammar-checked repository path (fact 12)"). That guarantee only covers names written since the control-character replacement and the validation were added: 1437e01 (#359) and 2bee289 (#362). An installation upgraded from an older release can hold an enabled discovered row whose name was stored before then. If discovery no longer runs there (PAT or user name removed), the row stays enabled and is never rewritten. Its name would then appear unescaped in the composed exception message, and through `UserActionFailed` in the log. The page itself is safe because Razor encodes the output. The risk is low: it needs an old, malicious Docker Hub answer for the user's own account.
+   - Smallest fix: compose the message from `ResponseBodyExcerpt.ReplaceControlCharacters(ownImage.Name)`. That is one call, and AC3's expected text stays the same for valid names.
+   - Recommendation: fix now in this change, and word the plan's claim as "a stored name with its control characters replaced".
+
+2. [NON-BLOCKING] Plan, *Security considerations*, first bullet: "UTF-16 code units, the column's own unit" is inaccurate for PostgreSQL. `varchar(200)` counts characters (code points), not UTF-16 code units. The check is still safe: a string with at most 200 UTF-16 units never has more than 200 code points. Its only side effect is that a name of supplementary-plane characters is rejected below 200 visible characters.
+   - Smallest fix: reword it to "the limit counts UTF-16 code units of the trimmed .NET string, which is never more than the column's character count". The Dev should not carry the original wording into `docs/areas/image-catalog.md`, *Limits and errors*.
+   - Recommendation: fix now; it is a wording change only.
