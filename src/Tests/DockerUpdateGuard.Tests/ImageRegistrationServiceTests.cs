@@ -49,7 +49,8 @@ public partial class ImageRegistrationServiceTests
 
                 var service = new ImageRegistrationService(dbContext,
                                                            new TestImageCatalogRepository(imageVersion),
-                                                           new ImageReferenceParser());
+                                                           new ImageReferenceParser(),
+                                                           TimeProvider.System);
                 var request = new ObservedImageRegistrationRequest
                               {
                                   Name = "Company API",
@@ -106,7 +107,8 @@ public partial class ImageRegistrationServiceTests
                                    };
                 var service = new ImageRegistrationService(dbContext,
                                                            new TestImageCatalogRepository(imageVersion),
-                                                           new ImageReferenceParser());
+                                                           new ImageReferenceParser(),
+                                                           TimeProvider.System);
                 var request = new ObservedImageRegistrationRequest
                               {
                                   Name = "Company API",

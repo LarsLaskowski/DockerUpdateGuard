@@ -21,6 +21,21 @@ public class ImageRegistrationService : IImageRegistrationService
     /// </summary>
     internal const string ReferenceWithoutRepositoryMessage = "The image reference does not contain a repository name";
 
+    /// <summary>
+    /// Maximum length of an image name
+    /// </summary>
+    internal const int MaxNameLength = 200;
+
+    /// <summary>
+    /// Message of the error raised when the image name is empty
+    /// </summary>
+    internal const string EmptyNameMessage = "The name must not be empty";
+
+    /// <summary>
+    /// Message of the error raised when the image name is too long
+    /// </summary>
+    internal const string NameTooLongMessage = "The name must not be longer than 200 characters";
+
     #endregion // Constants
 
     #region Fields
@@ -40,6 +55,11 @@ public class ImageRegistrationService : IImageRegistrationService
     /// </summary>
     private readonly IImageReferenceParser _imageReferenceParser;
 
+    /// <summary>
+    /// Time provider
+    /// </summary>
+    private readonly TimeProvider _timeProvider;
+
     #endregion // Fields
 
     #region Constructors
@@ -50,13 +70,16 @@ public class ImageRegistrationService : IImageRegistrationService
     /// <param name="dbContext">Database context</param>
     /// <param name="imageCatalogRepository">Image catalog repository</param>
     /// <param name="imageReferenceParser">Image reference parser</param>
+    /// <param name="timeProvider">Time provider</param>
     public ImageRegistrationService(DockerUpdateGuardDbContext dbContext,
                                     IImageCatalogRepository imageCatalogRepository,
-                                    IImageReferenceParser imageReferenceParser)
+                                    IImageReferenceParser imageReferenceParser,
+                                    TimeProvider timeProvider)
     {
         _dbContext = dbContext;
         _imageCatalogRepository = imageCatalogRepository;
         _imageReferenceParser = imageReferenceParser;
+        _timeProvider = timeProvider;
     }
 
     #endregion // Constructors
