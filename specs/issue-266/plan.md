@@ -2,7 +2,7 @@
 
 Source: Issue #266
 Tier: standard — a behavior change (which configured instance a scan, a collection and a container action finds) that creates, changes or removes no security control.
-Security areas touched: Container actions (`Portainer/ContainerActionService.cs` finds the configuration of an instance with surrounding whitespace in its name for the first time, so its actions become available; the code of the service and its checks stay unchanged); TLS relaxation of Docker instances (`Docker/DockerInstanceClient.cs` keys its once-per-instance `SkipCertificateValidation` warning by the now trimmed name; no code change there)
+Security areas touched: Container actions (`Portainer/ContainerActionService.cs` finds the configuration of an instance with surrounding whitespace in its name for the first time, so its actions become available; the code of the service and its checks stay unchanged); TLS relaxation of Docker instances (`Docker/DockerInstanceClient.cs` keys its once-per-instance `SkipCertificateValidation` warning by the now trimmed name; no code change there); Insecure Portainer HTTP (`Portainer/PortainerClient.cs` keys its once-per-instance `AllowInsecureHttp` warning by the now trimmed name; no code change there)
 
 ## Problem / root cause
 
@@ -164,3 +164,39 @@ unchanged and now apply to the instance they were meant for.
 ## Out of scope / follow-ups
 
 - #4: the same untrimmed-search pattern in `ImageRegistrationService` — its own issue.
+
+## Security notes
+
+Security plan review: issue 266 (mode `plan`, round 1)
+
+I read `/home/user/DockerUpdateGuard/specs/issue-266/plan.md` and `/home/user/DockerUpdateGuard/docs/decisions/0049-docker-instance-names-are-trimmed-once-where-the-options-are-built.md`, and checked them against the code on the branch (diff vs origin/main: plan, log, record 0049 and the decisions index only).
+
+**Tier:** `standard` is correct. The change adds input normalization of operator-owned configuration in one post-configure step. It creates, changes and removes no security control:
+- **Container-action checks.** `CheckTargetAsync` (`Portainer/ContainerActionService.cs:341-359`) still rejects a disabled instance, a disabled Portainer and a stale snapshot. The availability gate (`:521-525`) is also unchanged. The code of those checks stays the same; they now read the configuration entry they were meant to read.
+- **No attacker input.** Today an instance whose configured name has surrounding whitespace fails closed (no actions). After the change it gets the actions its own `Enabled`/`Portainer.Enabled` grant. The name comes only from the operator's configuration.
+- **No wrong-instance matches.** The validator already drops names that are empty after trimming and rejects names that are equal after trimming, ignoring case (`Configuration/DockerUpdateGuardOptionsValidator.cs:461-470`). So the trimmed lookup in `FindInstanceOptions` (`:156`) and the two `ToDictionary` calls can neither match a second instance nor throw on a duplicate key.
+- **Legacy names fail closed.** A stored instance that still carries an untrimmed name finds no options after the change and stays without actions.
+
+**TLS relaxation:** not affected beyond the warning label.
+- `BuildHttpClientCacheKey` (`Docker/DockerInstanceClient.cs:202-211`) keys the pooled client on BaseUrl, engine URI, UseTls, SkipCertificateValidation and CertificatePath as well as the name. Trimming the name cannot make a relaxed-TLS client be reused for a verifying configuration.
+- The once-per-instance warning (`:240-244`) only changes which spelling it is keyed and logged under. Two names that differ only in whitespace cannot both exist.
+
+**Coverage of every consumer:** confirmed (plan claim 9).
+- `IOptions<DockerUpdateGuardOptions>` (Dashboard, MyImages, NavMenu, ApplicationInitializationExtensions) and `IOptionsMonitor` both resolve through `OptionsFactory`, so they all get the post-configure.
+- The early eager `Bind` into `applicationOptions` (`ServiceCollectionExtensions.cs:49-100`) reads only Database, DockerHub and ReleaseMetadata, never `DockerInstances`.
+
+**Measurement:** I ran none, and none is required. No security property in this plan rests on the library's ordering (plan claim 10: PostConfigure before Validate, rebuilt on reload).
+- The duplicate and empty-name checks trim on their own, so they hold whichever runs first.
+- The container-action checks fail closed if the post-configure did not run.
+- The ordering only matters for the functional criteria, and the plan's AC4/AC5 tests through `AddDockerUpdateGuardHost` (including the `Reload()` case) pin it.
+
+## Findings
+
+1. **[NON-BLOCKING] Unlisted security area: Insecure Portainer HTTP.**
+   - *Security areas touched* lists "TLS relaxation of Docker instances" because `DockerInstanceClient` keys its once-per-instance `SkipCertificateValidation` warning by the now trimmed name.
+   - `Portainer/PortainerClient.cs:672-674` does the same for the `AllowInsecureHttp` warning: `_insecureHttpWarningInstances.TryAdd(instanceOptions.Name, 0)` and `_logger.PortainerInsecureHttpInUse(instanceOptions.Name)`. That is the *Insecure Portainer HTTP* area of `.squad/project.md` (`:29-30`), and it is not listed.
+   - The effect is the same harmless one (key and logged name become the trimmed spelling, no code change), so the tier does not change.
+   - Smallest fix, which I recommend making now: append this to the *Security areas touched* line in `plan.md`, verbatim:
+     `; Insecure Portainer HTTP (`Portainer/PortainerClient.cs` keys its once-per-instance `AllowInsecureHttp` warning by the now trimmed name; no code change there)`
+
+No blocking findings. Log calls that carry the instance name now get the trimmed spelling of an operator-configured value, not external data, so the logging area is not affected.
