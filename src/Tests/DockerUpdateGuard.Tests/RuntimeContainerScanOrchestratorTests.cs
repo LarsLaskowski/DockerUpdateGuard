@@ -194,6 +194,76 @@ public class RuntimeContainerScanOrchestratorTests
     }
 
     /// <summary>
+    /// Verify an instance configured with surrounding whitespace in its name is scanned and not skipped
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC1")]
+    public async Task RuntimeContainerScanOrchestratorScanAllAsyncWithUntrimmedConfiguredNameScansInstanceAsync()
+    {
+        using (var database = new SqliteTestDatabase())
+        {
+            var dbContext = database.CreateDbContext();
+
+            await using (dbContext.ConfigureAwait(false))
+            {
+                var options = new DockerUpdateGuardOptions
+                              {
+                                  DockerInstances = [
+                                                        new DockerInstanceOptions
+                                                        {
+                                                            Name = " Production ",
+                                                            BaseUrl = "https://docker.example.test",
+                                                            Enabled = true,
+                                                            RequestTimeoutSeconds = 15,
+                                                        },
+                                                    ],
+                              };
+                var optionsMonitor = PostConfiguredOptions.CreateMonitor(options);
+                var dockerInstanceClient = Substitute.For<IDockerInstanceClient>();
+                var registryMetadataService = Substitute.For<IRegistryMetadataService>();
+                var logger = new TestLogger<RuntimeContainerScanOrchestrator>();
+                var instanceDiscoveryService = new InstanceDiscoveryService(dbContext,
+                                                                            new TestLogger<InstanceDiscoveryService>(),
+                                                                            optionsMonitor);
+
+                dockerInstanceClient.DiscoverContainersAsync(Arg.Any<DockerInstanceOptions>(), Arg.Any<CancellationToken>())
+                                    .Returns(ExternalOperationResult.Succeeded<IReadOnlyList<RuntimeContainerDescriptor>>([]));
+
+                var orchestrator = new RuntimeContainerScanOrchestrator(new ApplicationTelemetry(),
+                                                                        dbContext,
+                                                                        dockerInstanceClient,
+                                                                        Substitute.For<IDerivedBaseRuntimeDetector>(),
+                                                                        Substitute.For<IDotNetReleaseMetadataService>(),
+                                                                        Substitute.For<INginxReleaseMetadataService>(),
+                                                                        new ImageCatalogRepository(dbContext),
+                                                                        new ImageReferenceParser(),
+                                                                        instanceDiscoveryService,
+                                                                        logger,
+                                                                        optionsMonitor,
+                                                                        registryMetadataService,
+                                                                        new UpdateDetectionService(optionsMonitor));
+
+                await orchestrator.ScanAllAsync(ScanTriggerSource.Scheduled, CancellationToken.None)
+                                  .ConfigureAwait(false);
+
+                var dockerInstance = await dbContext.DockerInstances.SingleAsync(TestContext.CancellationToken)
+                                                                    .ConfigureAwait(false);
+                var scanRun = await dbContext.ScanRuns.SingleAsync(TestContext.CancellationToken).ConfigureAwait(false);
+
+                Assert.AreEqual("Production", dockerInstance.Name, "The stored instance must carry the trimmed name");
+                Assert.AreEqual(ScanRunType.RuntimeContainer, scanRun.Type, "The instance must get a runtime container scan run");
+                Assert.DoesNotContain(entry => entry.EventId.Id == 2074,
+                                      logger.Entries,
+                                      "The instance must not be skipped for a missing configuration entry");
+                await dockerInstanceClient.Received(1)
+                                          .DiscoverContainersAsync(Arg.Is<DockerInstanceOptions>(instance => instance.Name == "Production"), Arg.Any<CancellationToken>())
+                                          .ConfigureAwait(false);
+            }
+        }
+    }
+
+    /// <summary>
     /// Verify runtime scans persist update candidates even when the registry omits candidate digests
     /// </summary>
     /// <returns>Task</returns>

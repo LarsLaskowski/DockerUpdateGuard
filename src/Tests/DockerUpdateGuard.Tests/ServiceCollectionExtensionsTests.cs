@@ -1,5 +1,6 @@
 using System.Reflection;
 
+using DockerUpdateGuard.Configuration;
 using DockerUpdateGuard.DockerHub;
 using DockerUpdateGuard.Images;
 using DockerUpdateGuard.Images.Interfaces;
@@ -334,6 +335,125 @@ public class ServiceCollectionExtensionsTests
 
         Assert.IsInstanceOfType<ContainerActionService>(first, "The container action service must be the Portainer-backed implementation");
         Assert.AreSame(first, second, "Two scopes (two circuits) must share one container action service");
+    }
+
+    /// <summary>
+    /// Verify the resolved options carry the Docker instance names trimmed of surrounding whitespace
+    /// </summary>
+    [TestMethod]
+    [TestCategory("AC4")]
+    public void ServiceCollectionExtensionsAddDockerUpdateGuardHostTrimsDockerInstanceNames()
+    {
+        var configuration = CreateInstanceConfiguration(" Production ", "\tStaging Host ");
+        var services = new ServiceCollection();
+
+        services.AddSingleton<IConfiguration>(configuration);
+        services.AddDockerUpdateGuardHost(configuration);
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        var names = serviceProvider.GetRequiredService<IOptionsMonitor<DockerUpdateGuardOptions>>()
+                                   .CurrentValue
+                                   .DockerInstances
+                                   .Select(instance => instance.Name)
+                                   .ToArray();
+
+        Assert.AreSequenceEqual(["Production", "Staging Host"], names, "The resolved options must carry trimmed names with inner spaces kept");
+    }
+
+    /// <summary>
+    /// Verify the resolved options carry trimmed names after a reload of the configuration
+    /// </summary>
+    [TestMethod]
+    [TestCategory("AC4")]
+    public void ServiceCollectionExtensionsAddDockerUpdateGuardHostTrimsDockerInstanceNamesAfterReload()
+    {
+        var configuration = CreateInstanceConfiguration(" Production ");
+        var services = new ServiceCollection();
+
+        services.AddSingleton<IConfiguration>(configuration);
+        services.AddDockerUpdateGuardHost(configuration);
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        var monitor = serviceProvider.GetRequiredService<IOptionsMonitor<DockerUpdateGuardOptions>>();
+
+        _ = monitor.CurrentValue;
+        configuration["DockerUpdateGuard:DockerInstances:0:Name"] = " Staging ";
+        configuration.Reload();
+
+        Assert.AreEqual("Staging", monitor.CurrentValue.DockerInstances[0].Name, "A reload of the configuration must produce trimmed names again");
+    }
+
+    /// <summary>
+    /// Verify a whitespace-only name still fails validation with the message for a missing name
+    /// </summary>
+    [TestMethod]
+    [TestCategory("AC5")]
+    public void ServiceCollectionExtensionsAddDockerUpdateGuardHostRejectsWhitespaceOnlyInstanceName()
+    {
+        var configuration = CreateInstanceConfiguration("   ");
+        var services = new ServiceCollection();
+
+        services.AddSingleton<IConfiguration>(configuration);
+        services.AddDockerUpdateGuardHost(configuration);
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        var monitor = serviceProvider.GetRequiredService<IOptionsMonitor<DockerUpdateGuardOptions>>();
+        var exception = Assert.Throws<OptionsValidationException>(() => _ = monitor.CurrentValue, "A whitespace-only name must fail validation");
+
+        Assert.Contains("'Name' must be configured for every entry of 'DockerUpdateGuard:DockerInstances'",
+                        exception.Failures.ToArray(),
+                        "The failure must name the missing Name");
+    }
+
+    /// <summary>
+    /// Verify names differing only in surrounding whitespace are reported as duplicates of the trimmed name
+    /// </summary>
+    [TestMethod]
+    [TestCategory("AC5")]
+    public void ServiceCollectionExtensionsAddDockerUpdateGuardHostRejectsInstanceNamesDifferingOnlyInWhitespace()
+    {
+        var configuration = CreateInstanceConfiguration("Production", "Production ");
+        var services = new ServiceCollection();
+
+        services.AddSingleton<IConfiguration>(configuration);
+        services.AddDockerUpdateGuardHost(configuration);
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        var monitor = serviceProvider.GetRequiredService<IOptionsMonitor<DockerUpdateGuardOptions>>();
+        var exception = Assert.Throws<OptionsValidationException>(() => _ = monitor.CurrentValue, "Names differing only in whitespace must fail validation");
+
+        Assert.Contains("'DockerUpdateGuard:DockerInstances' contains duplicate instance name 'Production'",
+                        exception.Failures.ToArray(),
+                        "The failure must name the trimmed duplicate");
+    }
+
+    /// <summary>
+    /// Create a configuration with enabled Docker instances of the given names
+    /// </summary>
+    /// <param name="names">Configured names</param>
+    /// <returns>Configuration root</returns>
+    private static ConfigurationRoot CreateInstanceConfiguration(params string[] names)
+    {
+        var values = new Dictionary<string, string?>
+                     {
+                         ["DockerUpdateGuard:ConnectionString"] = "Host=database;Database=dug;Username=test;Password=test",
+                         ["Telemetry:EnableLogging"] = "false",
+                         ["Telemetry:EnableMetrics"] = "false",
+                         ["Telemetry:EnableTracing"] = "false",
+                     };
+
+        for (var index = 0; index < names.Length; index++)
+        {
+            values[$"DockerUpdateGuard:DockerInstances:{index}:Name"] = names[index];
+            values[$"DockerUpdateGuard:DockerInstances:{index}:BaseUrl"] = "https://docker.example.test";
+            values[$"DockerUpdateGuard:DockerInstances:{index}:Enabled"] = "true";
+        }
+
+        return (ConfigurationRoot)new ConfigurationBuilder().AddInMemoryCollection(values).Build();
     }
 
     /// <summary>
