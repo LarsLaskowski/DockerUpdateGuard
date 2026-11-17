@@ -28,6 +28,8 @@ every feature area relies on it for validated configuration and a migrated datab
   together, each naming the offending key (for example `'DockerUpdateGuard:Database:MigrationRetryDelaySeconds' must be
   greater than zero`). Messages name keys and, at most, configured instance names and a configured client-certificate
   path; they never echo connection strings, passwords, tokens or file contents.
+- Docker instance names are trimmed before validation, so messages name the trimmed name (see
+  [Docker instances](docker-instances.md), *Configured instances*).
 - Validation reads the configured client-certificate file (`CertificatePath`) of each enabled Docker instance, at
   startup and on every reload (none when it is blank or its extension is not `.pfx`/`.p12`); it reads no other file.
   The rules are in [Docker instances](docker-instances.md), *TLS options* and *Limits and errors*.

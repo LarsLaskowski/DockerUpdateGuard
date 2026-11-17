@@ -292,6 +292,47 @@ public class ResourceStatisticsCollectorTests
     }
 
     /// <summary>
+    /// A configured name with surrounding whitespace is matched with the stored instance, so samples are recorded
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC2")]
+    public async Task ResourceStatisticsCollectorCollectAsyncWithUntrimmedConfiguredNameRecordsSamplesAsync()
+    {
+        await using var dbContext = await CreateDbContextAsync().ConfigureAwait(false);
+
+        using var handler = new DelegateHttpMessageHandler(request => CreateRoundResponse(request, 1));
+        using var httpClient = CreateHttpClient(handler);
+
+        var options = new DockerUpdateGuardOptions
+                      {
+                          DockerInstances = [
+                                                new DockerInstanceOptions
+                                                {
+                                                    Name = " Production ",
+                                                    BaseUrl = "https://docker.example.test",
+                                                    Enabled = true,
+                                                },
+                                            ],
+                      };
+        var collector = new ResourceStatisticsCollector(dbContext,
+                                                        new DockerInstanceClient(new TestLogger<DockerInstanceClient>(), (_, _) => httpClient),
+                                                        Substitute.For<IInstanceDiscoveryService>(),
+                                                        new TestLogger<ResourceStatisticsCollector>(),
+                                                        PostConfiguredOptions.CreateMonitor(options));
+
+        await collector.CollectAsync(TestContext.CancellationToken).ConfigureAwait(false);
+
+        var storedInstance = await dbContext.DockerInstances.SingleAsync(TestContext.CancellationToken).ConfigureAwait(false);
+        var containerSampleCount = await dbContext.RuntimeContainerResourceSamples.CountAsync(TestContext.CancellationToken).ConfigureAwait(false);
+        var instanceSamples = await dbContext.DockerInstanceResourceSamples.ToListAsync(TestContext.CancellationToken).ConfigureAwait(false);
+        var instanceSample = Assert.ContainsSingle(instanceSamples, "One instance sample must be recorded for the stored instance");
+
+        Assert.AreEqual(3, containerSampleCount, "A container sample must be recorded for every running container");
+        Assert.AreEqual(storedInstance.Id, instanceSample.DockerInstanceId, "The instance sample must belong to the stored instance Production");
+    }
+
+    /// <summary>
     /// Create a database holding the enabled Docker instance Production
     /// </summary>
     /// <returns>Database context</returns>

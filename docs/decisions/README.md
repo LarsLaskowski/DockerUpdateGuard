@@ -109,4 +109,5 @@ once in the [area document](../areas/README.md) of the record's area, and the re
 | [0046](0046-portainer-requests-keep-the-path-of-the-base-url.md) | Portainer requests keep the path of the base URL | Accepted | 2026-11-16 |
 | [0047](0047-the-docker-scout-listing-stops-failed-at-a-repeated-link-or-after-the-shared-page-cap.md) | The Docker Scout listing stops *failed* at a repeated link or after the shared page cap | Accepted | 2026-11-16 |
 | [0048](0048-manual-registration-identifies-an-observed-image-by-its-image-version.md) | Manual registration identifies an observed image by its image version | Accepted | 2026-11-17 |
+| [0049](0049-docker-instance-names-are-trimmed-once-where-the-options-are-built.md) | Docker instance names are trimmed once where the options are built | Accepted | 2026-11-17 |
 <!-- project:end index -->

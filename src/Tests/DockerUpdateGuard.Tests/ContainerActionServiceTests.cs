@@ -158,6 +158,32 @@ public class ContainerActionServiceTests
     }
 
     /// <summary>
+    /// Verify an instance configured with surrounding whitespace in its name shows its actions
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC3")]
+    public async Task ContainerActionServiceGetAvailabilityAsyncWithUntrimmedConfiguredNameShowsActionsAsync()
+    {
+        var databaseName = Guid.NewGuid().ToString();
+        var seeded = await SeedAsync(databaseName, ContainerRuntimeStatus.Running, true, false).ConfigureAwait(false);
+        var requests = new ConcurrentQueue<string>();
+        var options = PostConfiguredOptions.CreateMonitor(CreateOptions(instance => instance.Name = " " + InstanceName + " ")).CurrentValue;
+        using var provider = CreateServiceProvider(databaseName, new ContainerActionRunWriteFailingInterceptor());
+        using var handler = CreatePortainerHandler(requests, CreateAnswer(HttpStatusCode.NoContent));
+
+        var service = CreateService(provider, handler, options, null, new TestLogger<ContainerActionService>(), CancellationToken.None);
+
+        var availability = await service.GetAvailabilityAsync(seeded.InstanceId, ContainerId, TestContext.CancellationToken).ConfigureAwait(false);
+
+        Assert.IsTrue(availability.IsShown, "The configuration of the instance must be found although its configured name has surrounding whitespace");
+        Assert.AreSequenceEqual(ParseActions("StopContainer,RestartContainer"),
+                                availability.OfferedActions.ToList(),
+                                SequenceOrder.InAnyOrder,
+                                "A running container of that instance must be offered its actions");
+    }
+
+    /// <summary>
     /// Verify the section is not shown for an unknown instance, an instance missing from or disabled in the configuration, or one with Portainer disabled
     /// </summary>
     /// <param name="scenario">Scenario name</param>
