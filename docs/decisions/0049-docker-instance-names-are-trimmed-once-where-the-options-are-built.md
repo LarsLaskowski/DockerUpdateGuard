@@ -1,6 +1,6 @@
 # 0049: Docker instance names are trimmed once where the options are built
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-17
 - **Area:** Docker instances
 - **Source:** Issue #266
