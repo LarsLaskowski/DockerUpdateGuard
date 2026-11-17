@@ -74,15 +74,18 @@ refer to the same image the same way.
 - **Manual registration** takes a name and an image reference (both required) and an optional description, then:
   1. parses the reference and gets or creates its image version exactly as written — tag and, if given, digest — with
      no registry call;
-  2. looks for an observed image whose stored name equals the entered name exactly (case-sensitive, untrimmed);
-  3. creates a new observed image (name trimmed, description trimmed or none, source *manual*, enabled), or updates
-     the found one: description replaced, current version replaced, enabled again; name and source stay;
+  2. validates the trimmed name first (not blank, at most 200 characters), before anything reaches the catalog;
+  3. looks for the observed images whose current version is that image version, oldest first (by creation time, then
+     id). If one of them is an enabled discovered image, the registration is rejected and nothing is changed. Otherwise
+     the oldest manual one is updated (name and description replaced, enabled again, version unchanged, update time set
+     from the injected clock), or a new manual image is created (name trimmed, description trimmed or none, enabled).
+     Disabled discovered images and images of other sources are ignored, and a discovered image is never written;
   4. starts a manual scan of that image ([Base images](base-images.md)) and opens its detail page.
 - The current version of a manual image never moves on its own: scans refresh its metadata but keep its tag and
   digest. A discovered image's current version is moved by each discovery run to the repository's most recently
   pushed tag.
 - **Enabled state:** only discovery disables an observed image (when its repository disappears from the account) and
-  it enables again every image it lists. Manual registration of an existing name enables it again. There is no way to
+  it enables again every image it lists. Manual registration of an existing reference enables it again. There is no way to
   disable or delete an observed image from the UI. Disabled images are skipped by the scheduled observed-image scan
   ([Scan engine](scan-engine.md)) and keep their history.
 - **Own images and running containers:** a running container is linked to an own image when its image's registry and
@@ -95,8 +98,16 @@ refer to the same image the same way.
   registration fail and the form shows `Registration failed: The image reference does not contain a repository name`;
   a value longer than the stored limits makes it fail with `Registration failed: unexpected error`. In both cases the
   observed image is not saved (an image version created before the failure remains in the catalog).
-- A name entered with leading or trailing whitespace does not match the stored, trimmed name and creates a further
-  observed image.
+- A name that is blank after trimming fails with `Registration failed: The name must not be empty`; a trimmed name
+  longer than 200 characters with `Registration failed: The name must not be longer than 200 characters`. The limit
+  counts UTF-16 code units of the trimmed .NET string, never more than the column's character count; a name of 200
+  characters with surrounding whitespace is accepted. Nothing is saved and no catalog entry is created.
+- A reference that is the current version of an enabled discovered image fails with `Registration failed: This image
+  is already tracked as own image '<name>'.` (the name with control characters replaced); the form links to the own
+  image. A reference that differs from an own image's version in digest or tag registers as a manual image.
+- Two registrations under one name with different references create two manual images. Earlier duplicates stay
+  (deletable once [#282](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/282) lands), and simultaneous
+  registrations of one reference can create two manual images.
 - The catalog rejects a blank registry, repository or tag.
 - Nothing in this area handles credentials.
 
@@ -105,10 +116,6 @@ refer to the same image the same way.
 - Docker Hub references are not normalized to one form (`docker.io/nginx` vs `nginx`, `index.docker.io` vs
   `docker.io`), so one image can have several catalog entries and is then not recognized as shared. Tracked in
   [#275](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/275).
-- Manual registration identifies an existing observed image by its untrimmed, case-sensitive name, and names are not
-  unique: near-identical names create separate entries, and registering a manual image under a discovered image's name
-  updates the discovered one, which the next discovery run overwrites.
-  Tracked in [#284](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/284).
 - Observed images cannot be disabled or deleted by the user, and discovery enables every listed repository again on
   each run. Tracked in [#282](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/282).
 - The recorded kind of the component that last registered an image version is last-writer-wins and carries no
@@ -117,7 +124,8 @@ refer to the same image the same way.
 
 ## Related decisions
 
-None yet.
+- [0048](../decisions/0048-manual-registration-identifies-an-observed-image-by-its-image-version.md): manual registration
+  identifies an observed image by its image version.
 
 ## Not here
 

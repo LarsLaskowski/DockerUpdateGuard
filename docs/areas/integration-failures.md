@@ -36,7 +36,8 @@ operator's logs rely on it; each integration area states only what it adds.
   whole body for one in any string value or property name; the Portainer client and the vulnerability providers for one
   in a field they read; the release feeds report it as `unexpected error`.
 - A message the application composed itself from fixed text, configuration names and masked URLs
-  ([Telemetry](telemetry.md#credentials-and-external-data)) is passed on as it is; it never contains an error's own
+  ([Telemetry](telemetry.md#credentials-and-external-data)), and for a rejected registration the stored name of an own
+  image with its control characters replaced, is passed on as it is; it never contains an error's own
   message, a response body or an unmasked URL.
 
 ### Excerpts of remote text

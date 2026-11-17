@@ -64,7 +64,7 @@ to read the state the other areas compute and to start manual scans; it computes
 
 | Action | Where | Effect |
 | --- | --- | --- |
-| Register and scan | Observed Images | Registers an image from name, image reference and optional description ([Image catalog](image-catalog.md)), scans it immediately as a manual observed-image scan and opens its detail page |
+| Register and scan | Observed Images | Registers an image from name (trimmed), image reference and optional description ([Image catalog](image-catalog.md)), scans it immediately as a manual observed-image scan and opens its detail page; a reference already tracked as an enabled own image is rejected with an `Open own image` link to that image and starts no scan |
 | Check image updates | Runtime Containers | Runs a manual runtime container scan of all enabled Docker instances |
 | Refresh vulnerabilities | Scan History, shown only when vulnerability scanning is enabled | Runs a manual vulnerability refresh of all live images; the page also shows when the next scheduled refresh is expected |
 | Rescan (per image) | Observed Images, My Images, Runtime Containers | Runs a manual vulnerability refresh of that one image version; next to it the time of the last check or "Never scanned" |
@@ -77,7 +77,9 @@ to read the state the other areas compute and to start manual scans; it computes
 - The per-image rescan is offered even when vulnerability scanning is disabled; it then completes without doing
   anything and records no run.
 - Name and image reference are required for a registration; the form reports a missing value before anything is
-  sent.
+  sent. A registration rejected because the reference is already tracked as an own image shows
+  `Registration failed: This image is already tracked as own image '<name>'.` with an `Open own image` link to
+  `/my-images/{id}`; no other failure shows that link.
 - The expected time of the next scheduled vulnerability refresh is an estimate: the start of the most recent
   vulnerability run of any trigger plus `VulnerabilityRefreshIntervalMinutes`, or "shortly (no run recorded yet)".
 - The UI offers no redeploy of stacks or update of services
@@ -164,7 +166,7 @@ never their values.
   to its button); the page stays usable and the action can be started again. The message names the action and a
   fixed reason (`Vulnerability rescan failed: connection failed`), never the error's own text. The reasons are those
   of [Integration failures](integration-failures.md#fixed-failure-reasons); an application-composed message (the rejected image
-  reference of [Image catalog](image-catalog.md)) is passed on. The prefix names the user action, not the step that
+  reference, name or already tracked own image of [Image catalog](image-catalog.md)) is passed on. The prefix names the user action, not the step that
   failed: a later step of the same action (the scan after a registration, the reload after a save) can fail after the
   earlier step succeeded. The error is logged as an error with event ID 4000 (`User action <action> failed`) and the
   exception.
