@@ -96,7 +96,7 @@ refer to the same image the same way.
 
 - A blank name or reference is rejected by the registration form. A reference without a repository name makes the
   registration fail and the form shows `Registration failed: The image reference does not contain a repository name`;
-  a value longer than the stored limits makes it fail with `Registration failed: unexpected error`. In both cases the
+  a reference part longer than the stored limits makes it fail with `Registration failed: unexpected error`. In both cases the
   observed image is not saved (an image version created before the failure remains in the catalog).
 - A name that is blank after trimming fails with `Registration failed: The name must not be empty`; a trimmed name
   longer than 200 characters with `Registration failed: The name must not be longer than 200 characters`. The limit
