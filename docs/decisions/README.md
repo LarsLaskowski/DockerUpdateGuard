@@ -108,5 +108,5 @@ once in the [area document](../areas/README.md) of the record's area, and the re
 | [0045](0045-json-parse-failures-of-external-data-carry-a-fixed-message-with-their-position.md) | JSON parse failures of external data carry a fixed message with their position | Accepted | 2026-11-16 |
 | [0046](0046-portainer-requests-keep-the-path-of-the-base-url.md) | Portainer requests keep the path of the base URL | Accepted | 2026-11-16 |
 | [0047](0047-the-docker-scout-listing-stops-failed-at-a-repeated-link-or-after-the-shared-page-cap.md) | The Docker Scout listing stops *failed* at a repeated link or after the shared page cap | Accepted | 2026-11-16 |
-| [0048](0048-manual-registration-identifies-an-observed-image-by-its-image-version.md) | Manual registration identifies an observed image by its image version | Proposed | 2026-11-17 |
+| [0048](0048-manual-registration-identifies-an-observed-image-by-its-image-version.md) | Manual registration identifies an observed image by its image version | Accepted | 2026-11-17 |
 <!-- project:end index -->

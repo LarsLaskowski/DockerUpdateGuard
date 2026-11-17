@@ -1,6 +1,6 @@
 # 0048: Manual registration identifies an observed image by its image version
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-17
 - **Area:** Image catalog
 - **Source:** Issue #284
