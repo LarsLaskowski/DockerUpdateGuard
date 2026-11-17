@@ -18,7 +18,14 @@
 
         @if (string.IsNullOrWhiteSpace(_errorMessage) == false)
         {
-            <MudAlert Severity="Severity.Error" Dense="true" Class="mb-3">@_errorMessage</MudAlert>
+            <MudAlert Severity="Severity.Error" Dense="true" Class="mb-3">
+                @_errorMessage
+                @if (_ownImageId.HasValue)
+                {
+                    <text> </text>
+                    <MudLink Href="@($"/my-images/{_ownImageId}")">Open own image</MudLink>
+                }
+            </MudAlert>
         }
 
         <EditForm Model="_request" OnValidSubmit="RegisterAsync">

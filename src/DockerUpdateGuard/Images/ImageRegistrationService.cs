@@ -21,6 +21,21 @@ public class ImageRegistrationService : IImageRegistrationService
     /// </summary>
     internal const string ReferenceWithoutRepositoryMessage = "The image reference does not contain a repository name";
 
+    /// <summary>
+    /// Maximum length of an image name
+    /// </summary>
+    internal const int MaxNameLength = 200;
+
+    /// <summary>
+    /// Message of the error raised when the image name is empty
+    /// </summary>
+    internal const string EmptyNameMessage = "The name must not be empty";
+
+    /// <summary>
+    /// Message of the error raised when the image name is too long
+    /// </summary>
+    internal const string NameTooLongMessage = "The name must not be longer than 200 characters";
+
     #endregion // Constants
 
     #region Fields
@@ -40,6 +55,11 @@ public class ImageRegistrationService : IImageRegistrationService
     /// </summary>
     private readonly IImageReferenceParser _imageReferenceParser;
 
+    /// <summary>
+    /// Time provider
+    /// </summary>
+    private readonly TimeProvider _timeProvider;
+
     #endregion // Fields
 
     #region Constructors
@@ -50,13 +70,16 @@ public class ImageRegistrationService : IImageRegistrationService
     /// <param name="dbContext">Database context</param>
     /// <param name="imageCatalogRepository">Image catalog repository</param>
     /// <param name="imageReferenceParser">Image reference parser</param>
+    /// <param name="timeProvider">Time provider</param>
     public ImageRegistrationService(DockerUpdateGuardDbContext dbContext,
                                     IImageCatalogRepository imageCatalogRepository,
-                                    IImageReferenceParser imageReferenceParser)
+                                    IImageReferenceParser imageReferenceParser,
+                                    TimeProvider timeProvider)
     {
         _dbContext = dbContext;
         _imageCatalogRepository = imageCatalogRepository;
         _imageReferenceParser = imageReferenceParser;
+        _timeProvider = timeProvider;
     }
 
     #endregion // Constructors
@@ -69,6 +92,18 @@ public class ImageRegistrationService : IImageRegistrationService
         ArgumentNullException.ThrowIfNull(request);
 
         ArgumentException.ThrowIfNullOrWhiteSpace(request.ImageReference);
+
+        if (string.IsNullOrWhiteSpace(request.Name))
+        {
+            throw new ReportableException(EmptyNameMessage);
+        }
+
+        var name = request.Name.Trim();
+
+        if (name.Length > MaxNameLength)
+        {
+            throw new ReportableException(NameTooLongMessage);
+        }
 
         ImageReference parsedReference;
 
@@ -87,35 +122,54 @@ public class ImageRegistrationService : IImageRegistrationService
                                                                                       parsedReference.Digest,
                                                                                       cancellationToken: cancellationToken)
                                                         .ConfigureAwait(false);
+
+        var candidates = await _dbContext.ObservedImages.Where(entity => entity.CurrentImageVersionId == imageVersion.Id)
+                                                        .ToListAsync(cancellationToken)
+                                                        .ConfigureAwait(false);
+
+        candidates = candidates.OrderBy(entity => entity.CreatedAtUtc)
+                               .ThenBy(entity => entity.Id)
+                               .ToList();
+
+        var ownImage = candidates.FirstOrDefault(entity => entity.Source == RegistrationSource.Discovery && entity.IsEnabled);
+
+        if (ownImage is not null)
+        {
+            throw new OwnImageAlreadyTrackedException($"This image is already tracked as own image '{ResponseBodyExcerpt.ReplaceControlCharacters(ownImage.Name)}'.", ownImage.Id);
+        }
+
         imageVersion.Source = ImageVersionSource.ObservedImage;
 
-        var existingImage = await _dbContext.ObservedImages.SingleOrDefaultAsync(entity => entity.Name == request.Name, cancellationToken)
-                                                           .ConfigureAwait(false);
+        var description = string.IsNullOrWhiteSpace(request.Description) ? null : request.Description.Trim();
+        var now = _timeProvider.GetUtcNow();
+        var observedImage = candidates.FirstOrDefault(entity => entity.Source == RegistrationSource.Manual);
 
-        if (existingImage is null)
+        if (observedImage is null)
         {
-            existingImage = new ObservedImage
+            observedImage = new ObservedImage
                             {
-                                Name = request.Name.Trim(),
-                                Description = string.IsNullOrWhiteSpace(request.Description) ? null : request.Description.Trim(),
+                                Name = name,
+                                Description = description,
                                 CurrentImageVersionId = imageVersion.Id,
                                 Source = RegistrationSource.Manual,
+                                CreatedAtUtc = now,
+                                UpdatedAtUtc = now,
                             };
 
-            _dbContext.ObservedImages.Add(existingImage);
+            _dbContext.ObservedImages.Add(observedImage);
         }
         else
         {
-            existingImage.Description = string.IsNullOrWhiteSpace(request.Description) ? null : request.Description.Trim();
-            existingImage.CurrentImageVersionId = imageVersion.Id;
-            existingImage.UpdatedAtUtc = DateTimeOffset.UtcNow;
-            existingImage.IsEnabled = true;
+            observedImage.Name = name;
+            observedImage.Description = description;
+            observedImage.IsEnabled = true;
+            observedImage.UpdatedAtUtc = now;
         }
 
         await _dbContext.SaveChangesAsync(cancellationToken)
                         .ConfigureAwait(false);
 
-        return existingImage;
+        return observedImage;
     }
 
     #endregion // IImageRegistrationService

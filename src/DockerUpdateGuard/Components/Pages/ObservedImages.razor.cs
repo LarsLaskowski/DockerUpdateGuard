@@ -1,4 +1,5 @@
 using DockerUpdateGuard.Data.Entities;
+using DockerUpdateGuard.Images;
 using DockerUpdateGuard.Images.Data;
 using DockerUpdateGuard.Images.Interfaces;
 using DockerUpdateGuard.Infrastructure;
@@ -40,6 +41,11 @@ public sealed partial class ObservedImages : IDisposable
     /// Current error message
     /// </summary>
     private string? _errorMessage;
+
+    /// <summary>
+    /// Identifier of the own image the rejected registration is already tracked as
+    /// </summary>
+    private Guid? _ownImageId;
 
     /// <summary>
     /// Busy-state flag
@@ -177,6 +183,7 @@ public sealed partial class ObservedImages : IDisposable
     {
         _isBusy = true;
         _errorMessage = null;
+        _ownImageId = null;
 
         try
         {
@@ -194,7 +201,11 @@ public sealed partial class ObservedImages : IDisposable
         {
             Logger.UserActionFailed("RegisterObservedImage", exception);
 
-            await InvokeAsync(() => _errorMessage = $"Registration failed: {FailureReason.FromException(exception, null, CancellationToken.None)}").ConfigureAwait(false);
+            await InvokeAsync(() =>
+                              {
+                                  _errorMessage = $"Registration failed: {FailureReason.FromException(exception, null, CancellationToken.None)}";
+                                  _ownImageId = (exception as OwnImageAlreadyTrackedException)?.ObservedImageId;
+                              }).ConfigureAwait(false);
 
             await LoadAsync().ConfigureAwait(false);
         }
