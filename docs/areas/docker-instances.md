@@ -22,6 +22,10 @@ on the snapshots and samples it produces.
   reachable only when the host socket is mounted into it.
 - An instance is identified by its trimmed `Name`, compared case-insensitively. Renaming an instance in configuration
   is the removal of the old instance and the creation of a new one.
+- The configured `Name` is trimmed of leading and trailing whitespace (inner spaces and case are kept) when the
+  configuration is read, on startup and on every reload, before validation. The synchronization, runtime container
+  scans, resource collection, container actions, the Engine and Portainer clients, and their messages and log entries
+  all use the trimmed name; a whitespace-only name becomes empty and fails validation as a missing name.
 - The configured instances are synchronized into the database at startup, on every
   `DockerUpdateGuard:Scanning:DiscoveryIntervalMinutes` tick, and at the start of every runtime container scan and
   every resource-statistics collection (schedules: [Scan engine](scan-engine.md)). A synchronization:
@@ -218,13 +222,6 @@ on the snapshots and samples it produces.
 - `SkipCertificateValidation` and a mounted Docker socket are trust relaxations the operator chooses; the socket is
   root-equivalent on the host ([Hosting](hosting.md)).
 
-### Known gaps
-
-- Instance lookups during a runtime scan or a resource collection compare the configured `Name` untrimmed with the
-  trimmed stored name, so an instance whose configured name has leading or trailing spaces is stored but always
-  skipped as missing from configuration. Tracked in
-  [#266](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/266).
-
 ## Related decisions
 
 - [0007](../decisions/0007-client-certificates-are-validated-as-pkcs12-at-startup.md): client certificates are
@@ -235,6 +232,8 @@ on the snapshots and samples it produces.
   request drops only its container from a resource round.
 - [0044](../decisions/0044-a-runtime-container-whose-processing-fails-takes-what-it-could-not-determine-from-its-latest-earlier-snapshot.md):
   a runtime container whose processing fails takes what it could not determine from its latest earlier snapshot.
+- [0049](../decisions/0049-docker-instance-names-are-trimmed-once-where-the-options-are-built.md): Docker instance
+  names are trimmed once where the options are built.
 
 ## Not here
 
