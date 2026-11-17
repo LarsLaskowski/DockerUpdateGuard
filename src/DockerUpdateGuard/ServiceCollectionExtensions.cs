@@ -50,6 +50,7 @@ public static class ServiceCollectionExtensions
 
         optionsSection.Bind(applicationOptions);
 
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IPostConfigureOptions<DockerUpdateGuardOptions>, DockerUpdateGuardOptionsPostConfigure>());
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<DockerUpdateGuardOptions>, DockerUpdateGuardOptionsValidator>());
         services.AddOptions<DockerUpdateGuardOptions>()
                 .Bind(optionsSection)
