@@ -14,12 +14,9 @@ public sealed class DockerUpdateGuardOptionsPostConfigure : IPostConfigureOption
     {
         ArgumentNullException.ThrowIfNull(options);
 
-        foreach (var instance in options.DockerInstances)
+        foreach (var instance in options.DockerInstances.Where(entry => string.IsNullOrEmpty(entry.Name) == false))
         {
-            if (string.IsNullOrEmpty(instance.Name) == false)
-            {
-                instance.Name = instance.Name.Trim();
-            }
+            instance.Name = instance.Name.Trim();
         }
     }
 
