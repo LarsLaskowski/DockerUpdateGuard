@@ -58,7 +58,9 @@ public class ImageRegistrationService : IImageRegistrationService
     /// <summary>
     /// Time provider
     /// </summary>
+#pragma warning disable S4487 // Skeleton: removed with the implementation
     private readonly TimeProvider _timeProvider;
+#pragma warning restore S4487 // Skeleton: removed with the implementation
 
     #endregion // Fields
 
