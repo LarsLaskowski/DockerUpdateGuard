@@ -20,3 +20,4 @@ are quoted in full.
 | 2026-11-18 16:08 | 8 Review delta | Reviewer | VERDICT: APPROVE on 0bdce02c0f57bf71d85eaaf07ea27db4af807898; all three fixes hold, no new defects; dry run AC2/AC3 still open (opus/medium · 37,089 tokens · 5 tool uses · 44 s · 10 in · 3,366 out · 128,222 cache read · 30,895 cache write · 123,740 weighted) |
 | 2026-11-18 16:10 | 7 Gate stamp | Orchestrator | PASS on 9e6be48957906728ca82deca02f21e37a1bc340c (tier standard, verbatim): Format check pass; decision-check.py pass; scope-check.py pass |
 | 2026-11-18 16:10 | 9 PR approval | Orchestrator | approved by checklist; record 0050 Accepted; AC2/AC3 manual dry run still pending with the Product Manager |
+| 2026-11-18 16:11 | 7 Manual test | Product Manager | Skipped by the Product Manager's decision: AC2 (upgrade procedure dry run) and AC3 (fresh install per compose file) are not verified on real Docker; the PR states it |
