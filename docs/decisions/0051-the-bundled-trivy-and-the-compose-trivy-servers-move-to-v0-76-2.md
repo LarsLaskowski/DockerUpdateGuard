@@ -40,5 +40,13 @@ bundled version is stated in [Hosting](../areas/hosting.md#container-image).
 
 - Where 0005, 0015 and 0016 name v0.76.1 as the bundled version, v0.76.2 applies; what they say was measured with
   v0.58.1 stays a statement about that version.
+- Measured on v0.76.2 before it was bundled ([CONTRIBUTING](../CONTRIBUTING.md#updating-the-bundled-trivy), linux/amd64
+  binary from the index above, sha256 `6a972c69606c7b3ea4c6bdcc6fc9332ea9ad38381624310c1e85cc77345909f3`): the index,
+  the amd64 manifest, its config and its four layers match their digests and sizes; the binary reports
+  `Version: 0.76.2`, is statically linked, and `trivy server` still offers `--listen`. Without `--`,
+  `--config=x.y/z:latest` is read as the configuration file; after `--`, `--config=…`, `--input=…` and `-a/b` are
+  image names, each run exits 1 and opens no file they name, and `library/alpine:3.20` fails on the unreachable
+  `TRIVY_SERVER`. With both settings `true` the scan connects only to the registry, the Docker socket and the server;
+  without them it also connects to `check.trivy.dev`. The properties 0005, 0015 and 0016 rest on hold for v0.76.2.
 - The next Trivy update is measured again with the same procedure; once this record is released, it names the new
   version through a record of its own that amends this one.
