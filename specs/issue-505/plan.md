@@ -184,3 +184,29 @@ deployment tiers of `docs/ARCHITECTURE.md` keep their services. No `ARCHITECTURE
   that ignores `aquasec/trivy` (moves with the Dockerfile) and PostgreSQL majors (need a migration like #505's);
   confirm after merge that Dependabot reads `docker-compose.<tier>.yml`; update CONTRIBUTING's "Dependabot is not
   configured for Docker images" and `.squad/stack.md` accordingly; split from #505.
+
+## Security notes
+
+I approve the plan for issue #505 with one non-blocking finding and no blocking ones. I read `specs/issue-505/plan.md` and the decision record. Then I checked the plan against the three compose files and `INSTALL.md` on origin/main, the *Security areas* and *Tiers* rules, and the data entities.
+
+**Tier and the areas it lists**
+- **The tier is right.** `standard` fits: the change adds, changes or removes no security control. There is no auth, no secret handling, no network exposure (no new published port, and PostgreSQL's port stays unpublished) and no CI or build trust.
+- **The listed area is complete.** *Security areas touched* names Docker configuration, which covers everything the plan changes. The procedure never reads, sets or prints the database password, so *Secrets in configuration* is not touched.
+
+**Things I checked that hold**
+- **Image pins:** `grafana/otel-lgtm` moves from `latest` to `0.41.0`, which is tighter. `postgres:18-alpine` floats on its major tag, as `16-alpine` did, so the policy is unchanged. Trivy stays at `0.76.1`, matching the bundled CLI digest (`src/DockerUpdateGuard/Dockerfile:4-5`). Splitting the 0.76.2 move into issue A keeps the measurement rule of CONTRIBUTING *Updating the bundled Trivy* intact.
+- **No host-side injection:** `$POSTGRES_USER` and `$POSTGRES_DB` are single-quoted inside `sh -c`, so they expand in the container from its own environment. The chain takes no host variable or operator input.
+- **No secret exposed:** the procedure prints no secret and adds none to `.env`. If local-socket trust were missing (row 13, still unverified), `pg_dump` would fail rather than prompt or leak a password, because `exec -T` gives it no terminal. Nothing security-relevant rests on that row, so I ran no measurement. No Docker daemon was available in the session anyway (row 9).
+- **The dump is trusted input:** `pg_restore` runs as the image's superuser, but on the operator's own dump. `--no-owner` makes `$POSTGRES_USER` own everything, which is the application's login role.
+- **What the dump holds:** the database stores no credentials. Persisted endpoint URLs are stored with their user info removed (`src/DockerUpdateGuard/Images/InstanceDiscoveryService.cs:110,136,157`, via `UrlRedaction.RedactUserInfo`). The entities in `src/DockerUpdateGuard.Data/Entities/` have no password or token column. So the dump holds a host inventory and vulnerability findings, but no secrets.
+- **Volume layout:** the mount at `/var/lib/postgresql` matches the 18 image's `VOLUME`, so no anonymous volume appears beside it. The 16 volume is never written to and is removed only by the separate final step.
+
+**Findings**
+
+[NON-BLOCKING] Plan, *Approach* 2.3: the dump file is created with the host's umask, usually 022, so other local users can read it. It holds the full inventory of containers, images and their vulnerability findings: a map of what is exploitable on the host, which other local users should not be able to read. The plan only says the file is removed after the move. Smallest fix: wrap step 3 in a subshell with a restrictive umask, as one link of the `&&` chain:
+`(umask 077 && docker compose exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" --format=custom' > dockerupdateguard-pg16.dump)`.
+Then the `INSTALL.md` sentence about the dump can say it is created readable only by its owner. Recommendation: fix now, since it is one line of the procedure being written.
+
+**Not security, passed on for the Lead or Devil's Advocate**
+- **Re-running the chain after step 5:** `docker-compose.yml` then already names 18. Step 3 would overwrite the good dump with a dump of the empty 18 database. Step 5's `mv` would overwrite `docker-compose.pg16.yml`, which the rollback note needs.
+- **Similar volume names:** the old and new names differ only by `ql` (`postgres-data` / `postgresql-data`). In the final removal step, a typo could remove the new volume instead of the old one.
