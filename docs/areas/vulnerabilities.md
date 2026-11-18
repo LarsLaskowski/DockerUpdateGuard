@@ -252,6 +252,8 @@ The dashboard shows at most one hint about the vulnerability configuration:
   an end-of-options marker (`--`).
 - [0016](../decisions/0016-the-bundled-trivy-skips-its-update-check-and-telemetry.md): the bundled Trivy skips its
   update check and telemetry through the image's environment.
+- [0051](../decisions/0051-the-bundled-trivy-and-the-compose-trivy-servers-move-to-v0-76-2.md): the bundled Trivy and
+  the compose Trivy servers move to v0.76.2, measured again.
 - [0027](../decisions/0027-over-long-vulnerability-values-are-cut-to-their-column-length-where-the-refresh-stores-them.md):
   over-long vulnerability values are cut to their column length where the refresh stores them.
 - [0028](../decisions/0028-a-failed-save-of-one-image-version-does-not-stop-the-vulnerability-refresh.md): a failed

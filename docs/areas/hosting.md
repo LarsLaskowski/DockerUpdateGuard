@@ -161,7 +161,7 @@ registry never delays or prevents startup.
 - The process runs as UID `64000` in the root group (GID `0`), never as UID `0`. `/app` is owned by `64000:0` with
   group permissions equal to owner permissions, so the application also works when started with another UID in
   group `0`. Membership in group `0` keeps a `root:root` Docker socket readable where the socket grants group access.
-- The Trivy CLI is bundled at `/usr/local/bin/trivy` (taken from the digest-pinned `aquasec/trivy` image of v0.76.1,
+- The Trivy CLI is bundled at `/usr/local/bin/trivy` (taken from the digest-pinned `aquasec/trivy` image of v0.76.2,
   by default) with its cache in `/tmp/trivy`, so Trivy client mode works without extra installation (see
   [Vulnerabilities](vulnerabilities.md)). The deployment tiers of the documented compose files run the Trivy server
   of the same version.
@@ -249,6 +249,8 @@ These properties hold today and must be provided for by the deployment:
   configured URLs are rejected when an `@` is not their user-info separator.
 - [0016](../decisions/0016-the-bundled-trivy-skips-its-update-check-and-telemetry.md): the bundled Trivy skips its
   update check and telemetry through the image's environment.
+- [0051](../decisions/0051-the-bundled-trivy-and-the-compose-trivy-servers-move-to-v0-76-2.md): the bundled Trivy and
+  the compose Trivy servers move to v0.76.2, measured again.
 - [0032](../decisions/0032-the-migration-lock-is-awaited-by-polling-against-its-own-deadline.md): the migration lock
   is polled against its own deadline instead of blocking under the command timeout.
 - [0033](../decisions/0033-migration-statements-run-under-a-command-timeout-of-their-own.md): the migration

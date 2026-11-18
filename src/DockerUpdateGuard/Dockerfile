@@ -1,8 +1,8 @@
 ARG BASE_SDK="mcr.microsoft.com/dotnet/sdk:10.0-alpine"
 ARG BASE_RUNTIME="mcr.microsoft.com/dotnet/aspnet:10.0-alpine"
 ARG BASE_RUNTIME_DIGEST
-# Trivy v0.76.1 (digest of the multi-arch image index)
-ARG TRIVY_IMAGE="aquasec/trivy@sha256:790fd66d1697395d8693d1acaa1ea702406a20f109b6fc7bac8db623eca6c06c"
+# Trivy v0.76.2 (digest of the multi-arch image index)
+ARG TRIVY_IMAGE="aquasec/trivy@sha256:8f6bb947dbc528902e11f2f5be52f7b519f6a39d5d148f41166f2040499768fb"
 ARG APP_VERSION=1.0.0
 
 # ---------------------------
