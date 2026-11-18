@@ -1,6 +1,6 @@
 # 0051: The bundled Trivy and the compose Trivy servers move to v0.76.2
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-18
 - **Area:** Hosting and configuration
 - **Source:** Issue #506
