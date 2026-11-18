@@ -73,6 +73,9 @@ every feature area relies on it for validated configuration and a migrated datab
 - During normal operation, a database command that fails transiently is retried up to
   `DockerUpdateGuard:Database:MaxConnectionRetryCount` times (default `8`) with a back-off of at most
   `DockerUpdateGuard:Database:MaxConnectionRetryDelaySeconds` seconds (default `30`) between attempts.
+- The documented compose files run PostgreSQL 18 with its data in the volume `dockerupdateguard-postgresql-data` at
+  `/var/lib/postgresql`, where the image keeps a major-specific subdirectory. An installation of PostgreSQL 16 is moved
+  by dump and restore as described in [`INSTALL.md`](../../INSTALL.md#upgrading-from-postgresql-16).
 
 ### Startup sequence
 
@@ -250,6 +253,9 @@ These properties hold today and must be provided for by the deployment:
   is polled against its own deadline instead of blocking under the command timeout.
 - [0033](../decisions/0033-migration-statements-run-under-a-command-timeout-of-their-own.md): the migration
   statements run under a command timeout of their own, set around the migration and restored afterwards.
+- [0050](../decisions/0050-the-compose-files-move-postgresql-to-a-new-volume-carried-over-by-dump-and-restore.md):
+  the compose files run PostgreSQL 18 in a new volume, and an existing 16 installation is carried over by dump and
+  restore.
 
 ## Not here
 

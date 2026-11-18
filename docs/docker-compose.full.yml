@@ -11,7 +11,7 @@
 
 services:
   postgres:
-    image: postgres:16-alpine
+    image: postgres:18-alpine
     container_name: dockerupdateguard-postgres
     restart: unless-stopped
     environment:
@@ -19,7 +19,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-dockerupdateguard}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
     volumes:
-      - dockerupdateguard-postgres-data:/var/lib/postgresql/data
+      - dockerupdateguard-postgresql-data:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-dockerupdateguard} -d ${POSTGRES_DB:-dockerupdateguard}"]
       interval: 10s
@@ -35,7 +35,7 @@ services:
       - dockerupdateguard-trivy-cache:/root/.cache
 
   otel-lgtm:
-    image: grafana/otel-lgtm:latest
+    image: grafana/otel-lgtm:0.41.0
     container_name: dockerupdateguard-otel-lgtm
     restart: unless-stopped
     ports:
@@ -78,6 +78,6 @@ services:
       Telemetry__EnableTracing: "true"
 
 volumes:
-  dockerupdateguard-postgres-data:
+  dockerupdateguard-postgresql-data:
   dockerupdateguard-trivy-cache:
   dockerupdateguard-otel-lgtm-data:
