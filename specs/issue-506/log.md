@@ -19,3 +19,4 @@ are quoted in full.
 | 2026-11-18 17:13 | 8 Review | Reviewer | VERDICT: APPROVE on 829f173c6acfa90601b98da7224caf561a01d58b — no defects; unopened link: GitHub release/advisory pages of aquasecurity/trivy (403) (opus/medium · 50,696 tokens · 6 tool uses · 54 s · 12 in · 3,803 out · 198,588 cache read · 49,183 cache write · 180,870 weighted) |
 | 2026-11-18 17:15 | 8 Unopened links | Product Manager | Release page v0.76.2 and security advisories of aquasecurity/trivy checked by the Product Manager: no retraction, no advisory |
 | 2026-11-18 17:15 | 9 PR approval | Orchestrator | approved by checklist; record 0051 set to Accepted |
+| 2026-11-18 17:18 | 7 Gate stamp | Orchestrator | PASS on d7dc23c512f7b75fd026115570b6ea791d90593c (tier standard, verbatim): Format check pass; decision-check.py pass; scope-check.py pass |
