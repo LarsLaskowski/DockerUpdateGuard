@@ -12,3 +12,4 @@ are quoted in full.
 | 2026-11-18 15:47 | 4-5 Skipped | Orchestrator | no production or test code: see *Verification without tests* |
 | 2026-11-18 15:48 | 6 Implement | Dev | RESULT: done; compose files, INSTALL.md upgrade section, hosting.md; compose config -q passes; upgrade chain not run (no Docker daemon) (sonnet/medium · 99,637 tokens · 9 tool uses · 52 s · 16 in · 6,886 out · 636,230 cache read · 98,220 cache write · 220,844 weighted) |
 | 2026-11-18 15:52 | 7 Gate stamp | Orchestrator | PASS on 83900bafcd2b36dc0331ad1af9d48cd7a959994b (tier standard): Format check pass; Analyzer gate pass; Test with coverage pass; decision-check.py pass; scope-check.py pass · figure-check.py 0 hit(s) |
+| 2026-11-18 15:52 | 7 Early draft PR | Orchestrator | https://github.com/LarsLaskowski/DockerUpdateGuard/pull/508 (draft); follow-up issues #506, #507 |
