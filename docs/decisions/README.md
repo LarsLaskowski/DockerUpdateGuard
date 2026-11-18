@@ -110,5 +110,5 @@ once in the [area document](../areas/README.md) of the record's area, and the re
 | [0047](0047-the-docker-scout-listing-stops-failed-at-a-repeated-link-or-after-the-shared-page-cap.md) | The Docker Scout listing stops *failed* at a repeated link or after the shared page cap | Accepted | 2026-11-16 |
 | [0048](0048-manual-registration-identifies-an-observed-image-by-its-image-version.md) | Manual registration identifies an observed image by its image version | Accepted | 2026-11-17 |
 | [0049](0049-docker-instance-names-are-trimmed-once-where-the-options-are-built.md) | Docker instance names are trimmed once where the options are built | Accepted | 2026-11-17 |
-| [0050](0050-the-compose-files-move-postgresql-to-a-new-volume-carried-over-by-dump-and-restore.md) | The compose files move PostgreSQL to a new volume, carried over by dump and restore | Proposed | 2026-11-18 |
+| [0050](0050-the-compose-files-move-postgresql-to-a-new-volume-carried-over-by-dump-and-restore.md) | The compose files move PostgreSQL to a new volume, carried over by dump and restore | Accepted | 2026-11-18 |
 <!-- project:end index -->

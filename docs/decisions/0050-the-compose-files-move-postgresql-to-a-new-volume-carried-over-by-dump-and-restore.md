@@ -1,6 +1,6 @@
 # 0050: The compose files move PostgreSQL to a new volume, carried over by dump and restore
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-18
 - **Area:** Hosting and configuration
 - **Source:** Issue #505
