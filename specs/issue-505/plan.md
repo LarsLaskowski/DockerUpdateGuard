@@ -94,10 +94,12 @@ No production or test code: steps 4, 5 and the *Coverage gate* are not applicabl
 
    Then, as its own block once the data shows in the UI: `docker volume ls` to find `<project>_dockerupdateguard-postgres-data`
    and `docker volume rm` it, and the dump and `docker-compose.pg16.yml` may go. A rollback note: until that step,
-   `docker compose down`, moving `docker-compose.pg16.yml` back and `up -d` restores the 16 installation. A note for
-   an installation that already started on 18 with an empty database: stop the app and recreate the database
-   (`dropdb --force` / `createdb` as `$POSTGRES_USER` inside the container) before step 7, since the restore needs an
-   empty database. The *Updating* section gets one sentence: a compose file that still names `postgres:16-alpine` is
+   `docker compose down`, moving `docker-compose.pg16.yml` back and `up -d` restores the 16 installation; a retry from
+   there deletes the dump and runs the block again. A note for an installation that already started on 18 with an
+   empty database: `down`, put the 16 settings back in `docker-compose.yml`, `up -d` (so `exec postgres` reaches the 16
+   container, not the running 18 one), run the block; where the restore fails on the non-empty 18 database, stop the
+   app, recreate the database (`dropdb --force` / `createdb` as `$POSTGRES_USER` inside the container) and run the
+   lines from step 7 on. The *Updating* section gets one sentence: a compose file that still names `postgres:16-alpine` is
    moved with that section, not by `pull`. Link the image's documentation only as `https://hub.docker.com/_/postgres`
    (opened from the session).
 
