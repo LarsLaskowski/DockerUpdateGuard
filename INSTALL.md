@@ -113,8 +113,9 @@ docker compose pull
 docker compose up -d
 ```
 
-If your `docker-compose.yml` still names `postgres:16-alpine`, do not update it
-with `pull` or by replacing the file: follow
+If your `docker-compose.yml` still names `postgres:16-alpine`, `pull` and
+`up -d` keep it on PostgreSQL 16; do not replace it with a newly downloaded
+compose file: follow
 [Upgrading from PostgreSQL 16](#upgrading-from-postgresql-16) instead, or the
 new stack starts with an empty database.
 
@@ -166,15 +167,26 @@ If a command fails, nothing after it runs and the 16 volume is untouched:
   delete the incomplete `dockerupdateguard-pg16.dump` and
   `docker-compose.pg18.yml`, run `docker compose up -d` to restart the old
   stack, and start the block again.
-- Failure after it (the restore, the start): the old setup comes back with
-  `docker compose down`, `mv docker-compose.pg16.yml docker-compose.yml` and
-  `docker compose up -d`. Once the cause is fixed, run the remaining lines of
-  the block from the failed one on; the restore is a single transaction and
-  leaves the 18 database as it was when it fails.
+- Failure after it (the restore, the start): either fix the cause and run the
+  remaining lines of the block from the failed one on (the restore is a single
+  transaction and leaves the 18 database as it was when it fails), or go back to
+  the old setup with `docker compose down`,
+  `mv docker-compose.pg16.yml docker-compose.yml` and `docker compose up -d`. To try again from the old
+  setup, delete `dockerupdateguard-pg16.dump` and start the block again; if its
+  restore line then fails because the 18 database is not empty, recreate the
+  database as described below and run the remaining lines from the restore line
+  on.
 
-If an 18 stack was already started with an empty database before the restore
-(for example after replacing the compose file without this procedure), stop the
-application and recreate the database before the restore line:
+If an 18 stack was already started with an empty database (for example after
+replacing the compose file without this procedure), first go back to the old
+stack: run `docker compose down`, put the old settings back in
+`docker-compose.yml` (the image `postgres:16-alpine`, the mount
+`dockerupdateguard-postgres-data:/var/lib/postgresql/data` and the entry
+`dockerupdateguard-postgres-data:` under `volumes:`), run `docker compose up -d`
+and check in the UI that your earlier data is there. Then run the block above.
+Its restore line fails because the 18 database is not empty; stop the
+application and recreate the database, then run the remaining lines of the
+block from the restore line on:
 
 ```bash
 docker compose stop dockerupdateguard
