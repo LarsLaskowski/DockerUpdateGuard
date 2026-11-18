@@ -164,20 +164,35 @@ version, so every new version is measured again before it is bundled, and the re
 
 1. Take the digest of the new version's multi-arch image index (`docker buildx imagetools inspect
    aquasec/trivy:<version>`, line `Digest:`) and check that `docker pull aquasec/trivy@<digest>` succeeds.
-2. Extract `/usr/local/bin/trivy` from that image (`docker create`, `docker cp`) and check that `trivy --version`
+2. Check that Aqua Security published that index: a digest proves which bytes were fetched, not who published them.
+   With cosign v3 or later, which reads the signature that Trivy's release attaches to the index as an OCI referrer,
+   run
+
+   ```shell
+   cosign verify aquasec/trivy@<digest> \
+     --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+     --certificate-identity https://github.com/aquasecurity/trivy/.github/workflows/reusable-release.yaml@refs/tags/v<version>
+   ```
+
+   and check that it reports the signature as verified. The identity names Trivy's release workflow at the new
+   version's tag, not the pattern on
+   [Trivy's signature verification page](https://github.com/aquasecurity/trivy/blob/main/docs/getting-started/signature-verification.md),
+   which accepts any workflow of the repository. Put the command and its output in the pull request; if the
+   verification fails, stop the update.
+3. Extract `/usr/local/bin/trivy` from that image (`docker create`, `docker cp`) and check that `trivy --version`
    names the new version and that `file` reports the binary as statically linked, since the runtime image is
    Alpine-based.
-3. With `TRIVY_SERVER` pointing at an unreachable server (for example `http://127.0.0.1:9`), re-run the cases of
+4. With `TRIVY_SERVER` pointing at an unreachable server (for example `http://127.0.0.1:9`), re-run the cases of
    #367 with the provider's argument list ([Vulnerabilities](areas/vulnerabilities.md#trivy)): without `--`, the
    target `--config=x.y/z:latest` is read as an option; after `--`, the targets `--config=…`, `--input=…` and `-a/b`
    are taken as image names, the run exits non-zero and opens no file they name (for example checked with
    `strace -f -e trace=open,openat`); `-- library/alpine:3.20` takes the normal scan path and fails on the
    unreachable server, which shows that `TRIVY_SERVER` is read.
-4. Run one scan with `TRIVY_SKIP_VERSION_CHECK=true` and `TRIVY_DISABLE_TELEMETRY=true` and a control run without
+5. Run one scan with `TRIVY_SKIP_VERSION_CHECK=true` and `TRIVY_DISABLE_TELEMETRY=true` and a control run without
    them, watching the process's DNS lookups and connections: the first reaches no destination other than those
    [Hosting](areas/hosting.md#container-image) lists, and never `check.trivy.dev`; the control run shows the request
    to `check.trivy.dev`, so the observation is known to see it.
-5. Change together: the `TRIVY_IMAGE` default and the version in its comment in the Dockerfile, the
+6. Change together: the `TRIVY_IMAGE` default and the version in its comment in the Dockerfile, the
    `aquasec/trivy:<version>` image of both Trivy servers in `docs/docker-compose.trivy.yml` and
    `docs/docker-compose.full.yml` (client and server stay on one version), and the bundled version named in
    [Hosting](areas/hosting.md#container-image) and in records 0005, 0015 and 0016: in place while a record is
