@@ -153,7 +153,7 @@ registry never delays or prevents startup.
 ### Container image
 
 - The runtime image is based on the Alpine variant of the ASP.NET Core runtime (`mcr.microsoft.com/dotnet/aspnet`,
-  `10.0-alpine` by default). The base image name and digest are recorded as the OCI labels
+  `11.0-alpine` by default). The base image name and digest are recorded as the OCI labels
   `org.opencontainers.image.base.name` and `org.opencontainers.image.base.digest`; a release build fills both from the
   same image, the Dockerfile's `BASE_RUNTIME` default, and writes the digest in its bare form (`sha256:` followed by
   64 hex digits) as the OCI annotation defines it; a release whose base digest has another form fails.

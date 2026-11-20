@@ -804,7 +804,7 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient
                          && configElement.TryGetProperty("Labels", out var labelsElement)
                          && labelsElement.ValueKind == JsonValueKind.Object
                              ? ImageConfigurationLabelReader.ReadLabels(labelsElement)
-                             : new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                             : [with(StringComparer.OrdinalIgnoreCase)];
 
             return new RegistryImageConfigurationData
                    {

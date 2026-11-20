@@ -293,7 +293,7 @@ public static class DatabaseMigrator
 
         try
         {
-            await dbContext.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_unlock({MigrationAdvisoryLockKey})", CancellationToken.None)
+            await dbContext.Database.ExecuteSqlAsync($"SELECT pg_advisory_unlock({MigrationAdvisoryLockKey})", CancellationToken.None)
                                     .ConfigureAwait(false);
         }
         catch (DbException exception)

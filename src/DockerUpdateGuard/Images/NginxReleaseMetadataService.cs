@@ -16,7 +16,7 @@ public partial class NginxReleaseMetadataService : INginxReleaseMetadataService
     /// <summary>
     /// Cached channel data
     /// </summary>
-    private readonly Dictionary<string, NginxChannelReleaseData> _channelCache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, NginxChannelReleaseData> _channelCache = [with(StringComparer.OrdinalIgnoreCase)];
 
     /// <summary>
     /// HTTP client

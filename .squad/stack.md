@@ -6,14 +6,14 @@ profile and owned by this repository: keep it true when the build changes.
 
 ## Toolchain
 
-- .NET SDK of `global.json` (seeded as the newest SDK of the major, `10.0.404`; `rollForward` `latestFeature`: the
-  newest installed feature band of that major, never the next major), target framework `net10.0` (set once in
+- .NET SDK of `global.json` (seeded as the newest SDK of the major, `11.0.100`; `rollForward` `latestFeature`: the
+  newest installed feature band of that major, never the next major), target framework `net11.0` (set once in
   `Directory.Build.props`), solution `DockerUpdateGuard.slnx`. Several majors may be installed side by side (a machine, CI); the repository is built for
   one: every project's target framework, `global.json` and every .NET image (the defaults of the `BASE_SDK` and
   `BASE_RUNTIME` build arguments of `src/DockerUpdateGuard/Dockerfile`) name the same major, which `dotnet_major.py`
   checks in the *Analyzer gate*, and a new project gets it from the SDK `global.json` selects. Dependabot keeps the
   SDK and the packages current within that major. The Dockerfile names every image through a build argument (`FROM
-  ${BASE_SDK}`), which Dependabot does not read, so it has no `docker` entry: the floating `10.0-alpine` tags of the
+  ${BASE_SDK}`), which Dependabot does not read, so it has no `docker` entry: the floating `11.0-alpine` tags of the
   two .NET images resolve to the newest image of that major whenever the image is built, and the digest of the
   `TRIVY_IMAGE` default is refreshed by hand; the move to the next one (target frameworks, `global.json`, the Microsoft.Extensions, ASP.NET Core and EF
   Core packages, the image tags) is one change of its own.

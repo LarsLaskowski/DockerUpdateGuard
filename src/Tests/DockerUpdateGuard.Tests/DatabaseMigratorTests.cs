@@ -145,14 +145,21 @@ public class DatabaseMigratorTests
     [TestMethod]
     public async Task DatabaseMigratorRelationalProviderSurfacesMigrationFailureAsync()
     {
-        // The migrations are generated for Npgsql, so Entity Framework Core builds a divergent
-        // model for SQLite and MigrateAsync reports pending model changes. That deterministic
+        // A table the first migration creates already exists, so the migration fails deterministically. That
         // failure exercises the relational orchestration end to end: the connection wait, the
         // execution-strategy wrapped migration run and the diagnostic catch path
         var connection = new SqliteConnection("Data Source=:memory:");
 
         await connection.OpenAsync(TestContext.CancellationToken)
                         .ConfigureAwait(false);
+
+        await using (var command = connection.CreateCommand())
+        {
+            command.CommandText = "CREATE TABLE \"DockerInstances\" (\"Id\" INTEGER)";
+
+            await command.ExecuteNonQueryAsync(TestContext.CancellationToken)
+                         .ConfigureAwait(false);
+        }
 
         using (connection)
         {
@@ -169,7 +176,7 @@ public class DatabaseMigratorTests
                     await DatabaseMigrator.MigrateAsync(dbContext, databaseOptions, NullLogger.Instance, TimeProvider.System, CancellationToken.None)
                                           .ConfigureAwait(false);
                 }
-                catch (InvalidOperationException exception)
+                catch (DbException exception)
                 {
                     caught = exception;
                 }
@@ -256,7 +263,7 @@ public class DatabaseMigratorTests
                 await DatabaseMigrator.MigrateAsync(dbContext, databaseOptions, NullLogger.Instance, timeProvider, CancellationToken.None)
                                       .ConfigureAwait(false);
             }
-            catch (InvalidOperationException exception)
+            catch (Exception exception) when (exception is InvalidOperationException or DbException)
             {
                 caught = exception;
             }
@@ -499,7 +506,7 @@ public class DatabaseMigratorTests
                 await DatabaseMigrator.MigrateAsync(dbContext, databaseOptions, logger, timeProvider, CancellationToken.None)
                                       .ConfigureAwait(false);
             }
-            catch (InvalidOperationException exception)
+            catch (Exception exception) when (exception is InvalidOperationException or DbException)
             {
                 caught = exception;
             }

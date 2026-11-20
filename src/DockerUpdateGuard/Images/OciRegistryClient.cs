@@ -614,7 +614,7 @@ public partial class OciRegistryClient : IRegistryMetadataClient
             || configElement.TryGetProperty("Labels", out var labelsElement) == false
             || labelsElement.ValueKind != JsonValueKind.Object)
         {
-            return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            return [with(StringComparer.OrdinalIgnoreCase)];
         }
 
         return ImageConfigurationLabelReader.ReadLabels(labelsElement);

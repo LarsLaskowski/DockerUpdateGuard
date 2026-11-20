@@ -13,7 +13,7 @@ internal sealed class StubHttpMessageHandler : HttpMessageHandler
     #region Fields
 
     private readonly List<ObservedRequest> _requests = [];
-    private readonly Dictionary<string, HttpResponseMessage> _responses = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, HttpResponseMessage> _responses = [with(StringComparer.Ordinal)];
 
     #endregion // Fields
 

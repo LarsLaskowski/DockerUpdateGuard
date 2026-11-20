@@ -24,7 +24,7 @@ jobs:
         id: version
         run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
-      - name: Install .NET 10 SDK
+      - name: Install .NET 11 SDK
         uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
           global-json-file: global.json  # the SDK and the one .NET major of the solution (.squad/stack.md)
