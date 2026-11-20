@@ -247,6 +247,8 @@ RH2003 (`NotImplementedException`, which the body above avoids). Wrap exactly th
 `#pragma warning disable <the ids the build reports>` / `#pragma warning restore <the same ids>` with the comment
 `// Skeleton: removed with the implementation` — no other id; the Dev lists each pragma in its report and removes it in
 mode `implement`, and the Reviewer blocks one that is still there.
+A member that must not throw (`Dispose`, a finalizer: CA1065 rejects the throw) has an empty body as its skeleton; the Dev
+reports it as a deviation and the new tests for it must still fail on the empty body.
 
 ## Dependencies
 
