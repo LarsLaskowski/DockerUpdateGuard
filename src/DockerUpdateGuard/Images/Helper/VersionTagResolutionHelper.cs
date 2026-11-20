@@ -20,8 +20,8 @@ public static partial class VersionTagResolutionHelper
     /// <summary>
     /// Known pre-release identifiers that order below their general-availability release
     /// </summary>
-    private static readonly HashSet<string> _preReleaseIdentifiers = new(StringComparer.OrdinalIgnoreCase)
-                                                                     {
+    private static readonly HashSet<string> _preReleaseIdentifiers = [
+                                                                         with(StringComparer.OrdinalIgnoreCase),
                                                                          "alpha",
                                                                          "beta",
                                                                          "rc",
@@ -33,7 +33,7 @@ public static partial class VersionTagResolutionHelper
                                                                          "canary",
                                                                          "milestone",
                                                                          "ea"
-                                                                     };
+                                                                     ];
 
     #endregion // Const fields
 

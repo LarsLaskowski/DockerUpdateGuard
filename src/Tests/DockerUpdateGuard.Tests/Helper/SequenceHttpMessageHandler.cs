@@ -12,7 +12,7 @@ internal sealed class SequenceHttpMessageHandler : HttpMessageHandler
 {
     #region Fields
 
-    private readonly Dictionary<string, Queue<HttpResponseMessage>> _responses = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, Queue<HttpResponseMessage>> _responses = [with(StringComparer.Ordinal)];
     private readonly List<ObservedRequest> _requests = [];
 
     #endregion // Fields

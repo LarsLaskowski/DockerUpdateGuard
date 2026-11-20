@@ -119,7 +119,7 @@ All commands, with what each one checks, are listed in [`.squad/stack.md`](/.squ
 - **Solution format** is `.slnx` (XML-based) at the repository root.
 <!-- stack:end configuration -->
 <!-- project:begin configuration -->
-- **Target framework** `net10.0` for every project, set once in `Directory.Build.props`; one solution,
+- **Target framework** `net11.0` for every project, set once in `Directory.Build.props`; one solution,
   `DockerUpdateGuard.slnx`, at the repository root.
 - Every project disables generated assembly info and links `SharedAssemblyInfo.cs` from the repository root, whose
   wildcard `AssemblyVersion` is why `Directory.Build.props` sets `Deterministic` `false` for every project.

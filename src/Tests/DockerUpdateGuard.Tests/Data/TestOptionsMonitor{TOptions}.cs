@@ -31,15 +31,6 @@ internal sealed partial class TestOptionsMonitor<TOptions> : IOptionsMonitor<TOp
 
     #endregion // Constructors
 
-    #region IOptionsMonitor
-
-    #region Properties
-
-    /// <inheritdoc/>
-    public TOptions CurrentValue { get; private set; }
-
-    #endregion // Properties
-
     #region Methods
 
     /// <summary>
@@ -61,6 +52,13 @@ internal sealed partial class TestOptionsMonitor<TOptions> : IOptionsMonitor<TOp
             listener(currentValue, null);
         }
     }
+
+    #endregion // Methods
+
+    #region IOptionsMonitor
+
+    /// <inheritdoc/>
+    public TOptions CurrentValue { get; private set; }
 
     /// <inheritdoc/>
     public TOptions Get(string? name)
@@ -86,8 +84,6 @@ internal sealed partial class TestOptionsMonitor<TOptions> : IOptionsMonitor<TOp
                                             }
                                         });
     }
-
-    #endregion // Methods
 
     #endregion // IOptionsMonitor
 }

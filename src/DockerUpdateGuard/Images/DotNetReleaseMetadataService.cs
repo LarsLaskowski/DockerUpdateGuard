@@ -18,7 +18,7 @@ public partial class DotNetReleaseMetadataService : IDotNetReleaseMetadataServic
     /// <summary>
     /// Cached channel data
     /// </summary>
-    private readonly Dictionary<string, DotNetChannelReleaseData> _channelCache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, DotNetChannelReleaseData> _channelCache = [with(StringComparer.OrdinalIgnoreCase)];
 
     /// <summary>
     /// HTTP client

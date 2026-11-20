@@ -40,7 +40,7 @@ public sealed partial class Vulnerabilities : IDisposable
     /// <summary>
     /// Advisory identifiers whose affected-images row is currently expanded
     /// </summary>
-    private readonly HashSet<string> _expandedAdvisoryIds = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _expandedAdvisoryIds = [with(StringComparer.OrdinalIgnoreCase)];
 
     /// <summary>
     /// Persisting-state subscription used to hand the prerendered data to the interactive render

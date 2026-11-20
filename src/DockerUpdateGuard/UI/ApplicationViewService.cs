@@ -1276,7 +1276,7 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
 
         if (snapshots.Count == 0)
         {
-            return new Dictionary<string, IReadOnlyList<ResourceUsagePointViewData>>(StringComparer.OrdinalIgnoreCase);
+            return [with(StringComparer.OrdinalIgnoreCase)];
         }
 
         var cutoff = DateTimeOffset.UtcNow.Subtract(_resourceHistoryWindow);
