@@ -75,12 +75,12 @@ else
             @if (_dashboard.BaseImageCount > 0)
             {
                 <MudItem xs="6" sm="6" lg="4">
-                    <MudLink Href='@GetMetricNavigationTarget("Base Images")' Underline="Underline.None" Class="metric-card-link">
+                    <MudLink Href='@GetMetricNavigationTarget("Shared Base Images")' Underline="Underline.None" Class="metric-card-link">
                         <MudPaper Class="metric-card" Elevation="0">
                             <div class="metric-card__icon">
                                 <MudIcon Icon="@Icons.Material.Filled.AccountTree" />
                             </div>
-                            <span class="metric-label">Base Images</span>
+                            <span class="metric-label">Shared Base Images</span>
                             <span class="metric-value">@_dashboard.BaseImageCount</span>
                         </MudPaper>
                     </MudLink>
@@ -199,7 +199,7 @@ else
                         {
                             <MudItem xs="12" sm="6">
                                 <MudPaper Class="summary-card" Elevation="0">
-                                    <span class="summary-label">Base images</span>
+                                    <span class="summary-label">Shared base images</span>
                                     <span class="summary-value">@_dashboard.BaseImageCount</span>
                                 </MudPaper>
                             </MudItem>

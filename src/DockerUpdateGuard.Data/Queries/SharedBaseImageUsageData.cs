@@ -43,9 +43,14 @@ public class SharedBaseImageUsageData
     public IReadOnlyList<string> SourceReferences { get; set; } = [];
 
     /// <summary>
-    /// Number of observed images using the base image
+    /// Number of enabled observed images using the base image
     /// </summary>
     public int ObservedImageCount { get; set; }
+
+    /// <summary>
+    /// Distinct current image version identifiers of the entry's consuming (enabled) observed images
+    /// </summary>
+    public IReadOnlyList<Guid> ConsumingImageVersionIds { get; set; } = [];
 
     #endregion // Properties
 }

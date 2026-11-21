@@ -33,7 +33,7 @@ public class DashboardTests
     [DataRow("Observed Images", "/observed-images")]
     [DataRow("Docker Instances", "/docker-instances")]
     [DataRow("Runtime Containers", "/runtime-containers")]
-    [DataRow("Base Images", "/base-images")]
+    [DataRow("Shared Base Images", "/base-images")]
     public void DashboardGetMetricNavigationTargetKnownMetricReturnsExpectedRoute(string metricLabel, string expectedRoute)
     {
         var route = _getMetricNavigationTargetMethod.Invoke(null, [metricLabel]) as string;

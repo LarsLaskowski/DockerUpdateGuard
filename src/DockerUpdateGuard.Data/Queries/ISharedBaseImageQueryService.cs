@@ -8,7 +8,7 @@ public interface ISharedBaseImageQueryService
     #region Methods
 
     /// <summary>
-    /// Get all resolved base images for the overview page
+    /// Get the resolved base images used by enabled observed images, with their consuming image versions; no minimum usage is applied
     /// </summary>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Base images</returns>

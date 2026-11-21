@@ -64,6 +64,7 @@ public class SharedBaseImageQueryService : ISharedBaseImageQueryService
     public async Task<IReadOnlyList<SharedBaseImageUsageData>> GetBaseImagesAsync(CancellationToken cancellationToken = default)
     {
         var flatResults = await _dbContext.ObservedImages.AsNoTracking()
+                                                         .Where(observedImage => observedImage.IsEnabled)
                                                          .Join(_dbContext.ImageRelationships.AsNoTracking(),
                                                                observedImage => observedImage.CurrentImageVersionId,
                                                                imageRelationship => imageRelationship.ChildImageVersionId,
@@ -101,6 +102,7 @@ public class SharedBaseImageQueryService : ISharedBaseImageQueryService
                                                                           x.baseImageVersion.Digest,
                                                                           x.imageRelationship.SourceReference,
                                                                           ObservedImageId = x.observedImage.Id,
+                                                                          x.observedImage.CurrentImageVersionId,
                                                                       })
                                                          .ToListAsync(cancellationToken)
                                                          .ConfigureAwait(false);
@@ -137,6 +139,9 @@ public class SharedBaseImageQueryService : ISharedBaseImageQueryService
                                                  ObservedImageCount = group.Select(entity => entity.ObservedImageId)
                                                                            .Distinct()
                                                                            .Count(),
+                                                 ConsumingImageVersionIds = group.Select(entity => entity.CurrentImageVersionId)
+                                                                                 .Distinct()
+                                                                                 .ToList(),
                                              };
                                   })
                           .OrderByDescending(entity => entity.ObservedImageCount)

@@ -66,10 +66,44 @@ public class DashboardRenderTests
             var markup = component.Markup;
 
             Assert.Contains("My Images", markup, "The My Images tile must render when a Docker Hub account is configured");
-            Assert.Contains("Base Images", markup, "The Base Images tile must render when base images exist");
+            Assert.Contains("Shared Base Images", markup, "The Shared Base Images tile must render when shared base images exist");
             Assert.Contains("Observed Images", markup, "The Observed Images metric tile must render");
             Assert.Contains("metric-value", markup, "The number metric tiles must render their values");
             Assert.Contains("metric-card__icon", markup, "The metric tiles must render an icon badge");
+        }
+    }
+
+    /// <summary>
+    /// Verify the dashboard names the shared base images tile and summary card and links the tile to the page
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC7")]
+    public async Task DashboardWithSharedBaseImagesRendersSharedBaseImagesLabelsAsync()
+    {
+        var testContext = BlazorTestContextFactory.Create();
+
+        await using (testContext)
+        {
+            var viewService = Substitute.For<IApplicationViewService>();
+
+            viewService.GetDashboardAsync(Arg.Any<CancellationToken>())
+                       .Returns(Task.FromResult(new DashboardViewData
+                                                {
+                                                    BaseImageCount = 2,
+                                                }));
+
+            testContext.Services.AddSingleton(viewService);
+            testContext.Services.AddSingleton(new DashboardRefreshState());
+            testContext.Services.AddSingleton<IOptions<DockerUpdateGuardOptions>>(Options.Create(new DockerUpdateGuardOptions()));
+            testContext.AddBunitPersistentComponentState();
+
+            var component = testContext.Render<DashboardPage>();
+            var tileLink = component.FindAll("a").SingleOrDefault(link => link.GetAttribute("href") == "/base-images");
+
+            Assert.IsNotNull(tileLink, "The shared base images tile must link to the base images page");
+            Assert.Contains("Shared Base Images", tileLink.TextContent, "The metric tile must read Shared Base Images");
+            Assert.Contains("Shared base images", component.Markup, "The summary card must read Shared base images");
         }
     }
 

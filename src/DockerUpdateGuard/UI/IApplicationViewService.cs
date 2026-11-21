@@ -82,17 +82,17 @@ public interface IApplicationViewService
     Task<DockerInstanceDetailViewData?> GetDockerInstanceDetailAsync(Guid dockerInstanceId, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Determine whether any base images are available for UI navigation
+    /// Determine whether any shared base image (used by two or more enabled observed images or current containers) exists for UI navigation
     /// </summary>
     /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>True when at least one base image is available</returns>
+    /// <returns>True when at least one shared base image exists</returns>
     Task<bool> HasBaseImagesAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Read base images for the overview page
+    /// Read the shared base images for the overview page
     /// </summary>
     /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>Base image list items</returns>
+    /// <returns>Shared base image list items</returns>
     Task<IReadOnlyList<SharedBaseImageListItemData>> GetBaseImagesAsync(CancellationToken cancellationToken = default);
 
     /// <summary>

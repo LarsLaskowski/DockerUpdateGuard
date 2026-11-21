@@ -67,15 +67,19 @@ a base-image update or vulnerability reaches; vulnerability refreshes and the da
 
 ### Shared base images
 
-- `/base-images` lists every base image recorded for the current version of any observed image (enabled or not), at
-  every depth. An entry used by a single observed image is listed too.
+- A base image's users are its consuming observed images — enabled observed images whose current image version has the
+  base in its chain, at every depth — and the current containers (the latest runtime scan per Docker instance) that
+  run one of those current versions, stopped containers included. The usage count is the number of consuming observed
+  images plus those containers. `/base-images` lists a base as shared when its usage count is at least 2; a disabled
+  observed image and a non-current version of an observed image contribute nothing.
 - Entries are grouped case-insensitively: a base with a digest by `registry/repository@digest` (tags that resolve to
   the same digest merge); a base without a digest by `registry/repository:tag` together with its source reference.
-- Each entry shows the number of distinct observed images using it, the references of the images that name it, the
-  running containers whose latest snapshot is exactly one of those image versions, and a vulnerability summary of the
-  base ([Vulnerabilities](vulnerabilities.md)).
-- Entries are ordered by number of running containers, then number of observed images (both descending), then by
-  reference.
+- Each entry shows the number of distinct consuming observed images, the references of their current versions, the
+  current containers running one of those versions, and a vulnerability summary of the base
+  ([Vulnerabilities](vulnerabilities.md)); every figure is computed from the consumers only.
+- Entries are ordered by number of containers, then number of observed images (both descending), then by reference.
+- The detail pages' base image chain and the deduplicated-base gauge ([Telemetry](telemetry.md)) still cover every
+  recorded base, shared or not.
 
 ### Derived runtime detection
 
@@ -143,11 +147,10 @@ a base-image update or vulnerability reaches; vulnerability refreshes and the da
 
 - The relationship type for build stages is defined in storage but never produced. Tracked in
   [#293](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/293).
-- The shared base images view also lists bases used by a single observed image and counts disabled observed images.
-  Tracked in [#286](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/286).
 
 ## Related decisions
 
+- [0054: A base image is shared from two users among enabled observed images and their containers](../decisions/0054-a-base-image-is-shared-from-two-users-among-enabled-observed-images-and-their-containers.md)
 - [0042: A runtime container keeps its derived runtime finding while its runtime check cannot be completed](../decisions/0042-a-runtime-container-keeps-its-derived-runtime-finding-while-its-runtime-check-cannot-be-completed.md)
 
 ## Not here

@@ -28,7 +28,7 @@ public class DashboardViewData
     public int RuntimeContainerCount { get; set; }
 
     /// <summary>
-    /// Base image count
+    /// Shared base image count
     /// </summary>
     public int BaseImageCount { get; set; }
 

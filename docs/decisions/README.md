@@ -114,4 +114,5 @@ once in the [area document](../areas/README.md) of the record's area, and the re
 | [0051](0051-the-bundled-trivy-and-the-compose-trivy-servers-move-to-v0-76-2.md) | The bundled Trivy and the compose Trivy servers move to v0.76.2 | Accepted | 2026-11-18 |
 | [0052](0052-the-docker-hub-registry-key-only-names-the-account-discovery-host.md) | The Docker Hub registry key only names the host of account discovery | Accepted | 2026-11-21 |
 | [0053](0053-tracked-state-moves-to-the-canonical-catalog-entries-at-startup.md) | Tracked state moves to the canonical catalog entries at startup | Accepted | 2026-11-21 |
+| [0054](0054-a-base-image-is-shared-from-two-users-among-enabled-observed-images-and-their-containers.md) | A base image is shared from two users among enabled observed images and their containers | Accepted | 2026-11-21 |
 <!-- project:end index -->

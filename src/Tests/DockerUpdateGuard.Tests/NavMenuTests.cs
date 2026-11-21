@@ -141,5 +141,77 @@ public class NavMenuTests
         }
     }
 
+    /// <summary>
+    /// Verify the Shared Base Images navigation entry is rendered when shared base images exist
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC7")]
+    public async Task NavMenuWithSharedBaseImagesRendersSharedBaseImagesEntryAsync()
+    {
+        var testContext = BlazorTestContextFactory.Create();
+
+        await using (testContext)
+        {
+            var component = RenderNavMenu(testContext, true);
+
+            await component.WaitForAssertionAsync(() => Assert.IsNotNull(FindSharedBaseImagesLink(component), "The Shared Base Images entry must be rendered when shared base images exist"));
+
+            Assert.AreEqual("base-images",
+                            FindSharedBaseImagesLink(component)!.GetAttribute("href"),
+                            "The Shared Base Images entry must link to the base images page");
+        }
+    }
+
+    /// <summary>
+    /// Verify the Shared Base Images navigation entry is hidden without shared base images
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC7")]
+    public async Task NavMenuWithoutSharedBaseImagesHidesSharedBaseImagesEntryAsync()
+    {
+        var testContext = BlazorTestContextFactory.Create();
+
+        await using (testContext)
+        {
+            var component = RenderNavMenu(testContext, false);
+
+            await component.WaitForAssertionAsync(() => Assert.IsNotNull(component.Find("a"), "The navigation menu must have finished rendering"));
+
+            Assert.IsNull(FindSharedBaseImagesLink(component), "The Shared Base Images entry must not be rendered without shared base images");
+        }
+    }
+
+    /// <summary>
+    /// Render the navigation menu for a base images flag
+    /// </summary>
+    /// <param name="testContext">bUnit test context</param>
+    /// <param name="hasBaseImages">Whether the view service reports shared base images</param>
+    /// <returns>Rendered component</returns>
+    private static IRenderedComponent<NavMenu> RenderNavMenu(BunitContext testContext, bool hasBaseImages)
+    {
+        var viewService = Substitute.For<IApplicationViewService>();
+
+        viewService.HasBaseImagesAsync(Arg.Any<CancellationToken>())
+                   .Returns(hasBaseImages);
+
+        testContext.Services.AddSingleton(viewService);
+        testContext.Services.AddSingleton<IConfiguration>(new ConfigurationBuilder().Build());
+        testContext.Services.AddSingleton<IOptions<DockerUpdateGuardOptions>>(Options.Create(new DockerUpdateGuardOptions()));
+
+        return testContext.Render<NavMenu>();
+    }
+
+    /// <summary>
+    /// Find the Shared Base Images navigation link
+    /// </summary>
+    /// <param name="component">Rendered navigation menu</param>
+    /// <returns>Link element, or null when it is not rendered</returns>
+    private static AngleSharp.Dom.IElement? FindSharedBaseImagesLink(IRenderedComponent<NavMenu> component)
+    {
+        return component.FindAll("a").SingleOrDefault(link => link.TextContent.Trim() == "Shared Base Images");
+    }
+
     #endregion // Methods
 }
