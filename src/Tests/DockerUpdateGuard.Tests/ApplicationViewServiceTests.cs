@@ -158,6 +158,124 @@ public class ApplicationViewServiceTests
         }
     }
 
+    /// <summary>
+    /// Create an in-memory database context for the shared base image tests
+    /// </summary>
+    /// <returns>Database context</returns>
+    private static DockerUpdateGuardDbContext CreateSharedBaseDbContext()
+    {
+        var options = new DbContextOptionsBuilder<DockerUpdateGuardDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString())
+                                                                               .Options;
+
+        return new DockerUpdateGuardDbContext(options);
+    }
+
+    /// <summary>
+    /// Create the application view service with the real shared base image query service
+    /// </summary>
+    /// <param name="dbContext">Database context</param>
+    /// <returns>Application view service</returns>
+    private static ApplicationViewService CreateSharedBaseService(DockerUpdateGuardDbContext dbContext)
+    {
+        return new ApplicationViewService(dbContext,
+                                          new ImageReferenceParser(),
+                                          CreateOptionsMonitor(),
+                                          new SharedBaseImageQueryService(dbContext));
+    }
+
+    /// <summary>
+    /// Create an image version of a docker.io repository whose digest names the tag
+    /// </summary>
+    /// <param name="dbContext">Database context</param>
+    /// <param name="repository">Repository path</param>
+    /// <param name="tag">Tag</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Image version</returns>
+    private static async Task<ImageVersion> CreateSharedBaseVersionAsync(DockerUpdateGuardDbContext dbContext, string repository, string tag, CancellationToken cancellationToken)
+    {
+        var imageCatalogRepository = new ImageCatalogRepository(dbContext);
+
+        return await imageCatalogRepository.GetOrCreateImageVersionAsync("docker.io",
+                                                                         repository,
+                                                                         tag,
+                                                                         $"sha256:{repository}-{tag}",
+                                                                         cancellationToken: cancellationToken)
+                                           .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Add an observed image and the base image relationship of its current version
+    /// </summary>
+    /// <param name="dbContext">Database context</param>
+    /// <param name="name">Observed image name</param>
+    /// <param name="currentVersionId">Current image version identifier</param>
+    /// <param name="isEnabled">Whether the observed image is enabled</param>
+    private static void AddObservedImage(DockerUpdateGuardDbContext dbContext, string name, Guid currentVersionId, bool isEnabled = true)
+    {
+        dbContext.ObservedImages.Add(new ObservedImage
+                                     {
+                                         Name = name,
+                                         CurrentImageVersionId = currentVersionId,
+                                         IsEnabled = isEnabled,
+                                     });
+    }
+
+    /// <summary>
+    /// Add a base image relationship
+    /// </summary>
+    /// <param name="dbContext">Database context</param>
+    /// <param name="childVersionId">Child image version identifier</param>
+    /// <param name="baseVersionId">Base image version identifier</param>
+    private static void AddBaseRelationship(DockerUpdateGuardDbContext dbContext, Guid childVersionId, Guid baseVersionId)
+    {
+        dbContext.ImageRelationships.Add(new ImageRelationship
+                                         {
+                                             ChildImageVersionId = childVersionId,
+                                             BaseImageVersionId = baseVersionId,
+                                             RelationshipType = ImageRelationshipType.BaseImage,
+                                             Depth = 1,
+                                         });
+    }
+
+    /// <summary>
+    /// Add a Docker instance whose latest runtime scan lists the named containers of one image version
+    /// </summary>
+    /// <param name="dbContext">Database context</param>
+    /// <param name="imageVersionId">Image version identifier of the containers</param>
+    /// <param name="containerNames">Container names</param>
+    private static void AddCurrentContainers(DockerUpdateGuardDbContext dbContext, Guid imageVersionId, params string[] containerNames)
+    {
+        var dockerInstance = new DockerInstance
+                             {
+                                 Name = $"Engine {Guid.NewGuid()}",
+                                 EndpointUri = "https://docker.example.test",
+                                 ConnectionKind = DockerConnectionKind.Https,
+                             };
+        var runtimeScanRun = new ScanRun
+                             {
+                                 Type = ScanRunType.RuntimeContainer,
+                                 Status = ScanRunStatus.Succeeded,
+                                 TriggerSource = ScanTriggerSource.Scheduled,
+                             };
+
+        dbContext.DockerInstances.Add(dockerInstance);
+        dbContext.ScanRuns.Add(runtimeScanRun);
+
+        foreach (var containerName in containerNames)
+        {
+            dbContext.ContainerSnapshots.Add(new ContainerSnapshot
+                                             {
+                                                 DockerInstance = dockerInstance,
+                                                 ImageVersionId = imageVersionId,
+                                                 ScanRun = runtimeScanRun,
+                                                 ContainerId = $"id-{containerName}",
+                                                 Name = containerName,
+                                                 Status = ContainerRuntimeStatus.Running,
+                                                 IsRunning = true,
+                                             });
+        }
+    }
+
     #endregion // Static methods
 
     #region Methods
@@ -3188,6 +3306,254 @@ public class ApplicationViewServiceTests
     }
 
     /// <summary>
+    /// Verify a base used by one enabled observed image and no container is not listed
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC1")]
+    public async Task ApplicationViewServiceGetBaseImagesSingleObservedImageIsExcludedAsync()
+    {
+        var dbContext = CreateSharedBaseDbContext();
+
+        await using (dbContext.ConfigureAwait(false))
+        {
+            var baseVersion = await CreateSharedBaseVersionAsync(dbContext, "library/debian", "12", TestContext.CancellationToken).ConfigureAwait(false);
+            var appVersion = await CreateSharedBaseVersionAsync(dbContext, "company/app-a", "1.0.0", TestContext.CancellationToken).ConfigureAwait(false);
+
+            AddObservedImage(dbContext, "App A", appVersion.Id);
+            AddBaseRelationship(dbContext, appVersion.Id, baseVersion.Id);
+
+            await dbContext.SaveChangesAsync(TestContext.CancellationToken).ConfigureAwait(false);
+
+            var baseImages = await CreateSharedBaseService(dbContext).GetBaseImagesAsync(TestContext.CancellationToken).ConfigureAwait(false);
+
+            Assert.IsEmpty(baseImages, "A base used by a single enabled observed image and no container must not be listed as shared");
+        }
+    }
+
+    /// <summary>
+    /// Verify the navigation flag is false when the only base is unshared
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC1")]
+    public async Task ApplicationViewServiceHasBaseImagesOnlyUnsharedBaseReturnsFalseAsync()
+    {
+        var dbContext = CreateSharedBaseDbContext();
+
+        await using (dbContext.ConfigureAwait(false))
+        {
+            var baseVersion = await CreateSharedBaseVersionAsync(dbContext, "library/debian", "12", TestContext.CancellationToken).ConfigureAwait(false);
+            var appVersion = await CreateSharedBaseVersionAsync(dbContext, "company/app-a", "1.0.0", TestContext.CancellationToken).ConfigureAwait(false);
+
+            AddObservedImage(dbContext, "App A", appVersion.Id);
+            AddBaseRelationship(dbContext, appVersion.Id, baseVersion.Id);
+
+            await dbContext.SaveChangesAsync(TestContext.CancellationToken).ConfigureAwait(false);
+
+            var hasBaseImages = await CreateSharedBaseService(dbContext).HasBaseImagesAsync(TestContext.CancellationToken).ConfigureAwait(false);
+
+            Assert.IsFalse(hasBaseImages, "The navigation flag must be false while the only base is used by a single enabled image and no container");
+        }
+    }
+
+    /// <summary>
+    /// Verify the dashboard base image count includes only shared bases
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC1")]
+    public async Task ApplicationViewServiceDashboardCountsOnlySharedBaseImagesAsync()
+    {
+        var dbContext = CreateSharedBaseDbContext();
+
+        await using (dbContext.ConfigureAwait(false))
+        {
+            var sharedBase = await CreateSharedBaseVersionAsync(dbContext, "library/debian", "12", TestContext.CancellationToken).ConfigureAwait(false);
+            var unsharedBase = await CreateSharedBaseVersionAsync(dbContext, "library/alpine", "3", TestContext.CancellationToken).ConfigureAwait(false);
+            var appA = await CreateSharedBaseVersionAsync(dbContext, "company/app-a", "1.0.0", TestContext.CancellationToken).ConfigureAwait(false);
+            var appB = await CreateSharedBaseVersionAsync(dbContext, "company/app-b", "1.0.0", TestContext.CancellationToken).ConfigureAwait(false);
+            var appC = await CreateSharedBaseVersionAsync(dbContext, "company/app-c", "1.0.0", TestContext.CancellationToken).ConfigureAwait(false);
+
+            AddObservedImage(dbContext, "App A", appA.Id);
+            AddObservedImage(dbContext, "App B", appB.Id);
+            AddObservedImage(dbContext, "App C", appC.Id);
+            AddBaseRelationship(dbContext, appA.Id, sharedBase.Id);
+            AddBaseRelationship(dbContext, appB.Id, sharedBase.Id);
+            AddBaseRelationship(dbContext, appC.Id, unsharedBase.Id);
+
+            await dbContext.SaveChangesAsync(TestContext.CancellationToken).ConfigureAwait(false);
+
+            var dashboard = await CreateSharedBaseService(dbContext).GetDashboardAsync(TestContext.CancellationToken).ConfigureAwait(false);
+
+            Assert.AreEqual(1, dashboard.BaseImageCount, "The dashboard must count only the base used by two enabled images");
+        }
+    }
+
+    /// <summary>
+    /// Verify a base used by one enabled and one disabled image is not shared
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC4")]
+    public async Task ApplicationViewServiceGetBaseImagesEnabledAndDisabledImageIsNotSharedAsync()
+    {
+        var dbContext = CreateSharedBaseDbContext();
+
+        await using (dbContext.ConfigureAwait(false))
+        {
+            var baseVersion = await CreateSharedBaseVersionAsync(dbContext, "library/debian", "12", TestContext.CancellationToken).ConfigureAwait(false);
+            var appA = await CreateSharedBaseVersionAsync(dbContext, "company/app-a", "1.0.0", TestContext.CancellationToken).ConfigureAwait(false);
+            var appB = await CreateSharedBaseVersionAsync(dbContext, "company/app-b", "1.0.0", TestContext.CancellationToken).ConfigureAwait(false);
+
+            AddObservedImage(dbContext, "App A", appA.Id);
+            AddObservedImage(dbContext, "App B", appB.Id, false);
+            AddBaseRelationship(dbContext, appA.Id, baseVersion.Id);
+            AddBaseRelationship(dbContext, appB.Id, baseVersion.Id);
+
+            await dbContext.SaveChangesAsync(TestContext.CancellationToken).ConfigureAwait(false);
+
+            var baseImages = await CreateSharedBaseService(dbContext).GetBaseImagesAsync(TestContext.CancellationToken).ConfigureAwait(false);
+
+            Assert.IsEmpty(baseImages, "A disabled image must not count as the second user of a base");
+        }
+    }
+
+    /// <summary>
+    /// Verify a disabled image is neither counted nor listed as a parent of a shared base
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC4")]
+    public async Task ApplicationViewServiceGetBaseImagesDisabledImageIsNotListedAsParentAsync()
+    {
+        var dbContext = CreateSharedBaseDbContext();
+
+        await using (dbContext.ConfigureAwait(false))
+        {
+            var baseVersion = await CreateSharedBaseVersionAsync(dbContext, "library/debian", "12", TestContext.CancellationToken).ConfigureAwait(false);
+            var appA = await CreateSharedBaseVersionAsync(dbContext, "company/app-a", "1.0.0", TestContext.CancellationToken).ConfigureAwait(false);
+            var appB = await CreateSharedBaseVersionAsync(dbContext, "company/app-b", "1.0.0", TestContext.CancellationToken).ConfigureAwait(false);
+            var appC = await CreateSharedBaseVersionAsync(dbContext, "company/app-c", "1.0.0", TestContext.CancellationToken).ConfigureAwait(false);
+
+            AddObservedImage(dbContext, "App A", appA.Id);
+            AddObservedImage(dbContext, "App B", appB.Id);
+            AddObservedImage(dbContext, "App C", appC.Id, false);
+            AddBaseRelationship(dbContext, appA.Id, baseVersion.Id);
+            AddBaseRelationship(dbContext, appB.Id, baseVersion.Id);
+            AddBaseRelationship(dbContext, appC.Id, baseVersion.Id);
+
+            await dbContext.SaveChangesAsync(TestContext.CancellationToken).ConfigureAwait(false);
+
+            var baseImages = await CreateSharedBaseService(dbContext).GetBaseImagesAsync(TestContext.CancellationToken).ConfigureAwait(false);
+
+            Assert.HasCount(1, baseImages, "The base used by two enabled images must be listed");
+            Assert.AreEqual(2, baseImages[0].ObservedImageCount, "The disabled image must not be counted");
+            Assert.AreSequenceEqual(["docker.io/company/app-a:1.0.0@sha256:company/app-a-1.0.0", "docker.io/company/app-b:1.0.0@sha256:company/app-b-1.0.0"],
+                                    baseImages[0].ParentImageReferences.ToArray(),
+                                    SequenceOrder.InAnyOrder,
+                                    "Only the enabled images must be listed as parents");
+        }
+    }
+
+    /// <summary>
+    /// Verify a container running only the version of a disabled image does not make a base shared
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC4")]
+    public async Task ApplicationViewServiceGetBaseImagesContainerOfDisabledImageIsNotCountedAsync()
+    {
+        var dbContext = CreateSharedBaseDbContext();
+
+        await using (dbContext.ConfigureAwait(false))
+        {
+            var baseVersion = await CreateSharedBaseVersionAsync(dbContext, "library/debian", "12", TestContext.CancellationToken).ConfigureAwait(false);
+            var appA = await CreateSharedBaseVersionAsync(dbContext, "company/app-a", "1.0.0", TestContext.CancellationToken).ConfigureAwait(false);
+            var appB = await CreateSharedBaseVersionAsync(dbContext, "company/app-b", "1.0.0", TestContext.CancellationToken).ConfigureAwait(false);
+
+            AddObservedImage(dbContext, "App A", appA.Id);
+            AddObservedImage(dbContext, "App B", appB.Id, false);
+            AddBaseRelationship(dbContext, appA.Id, baseVersion.Id);
+            AddBaseRelationship(dbContext, appB.Id, baseVersion.Id);
+            AddCurrentContainers(dbContext, appB.Id, "worker");
+
+            await dbContext.SaveChangesAsync(TestContext.CancellationToken).ConfigureAwait(false);
+
+            var baseImages = await CreateSharedBaseService(dbContext).GetBaseImagesAsync(TestContext.CancellationToken).ConfigureAwait(false);
+
+            Assert.IsEmpty(baseImages, "A container of a disabled image must not count as a user of the base");
+        }
+    }
+
+    /// <summary>
+    /// Verify relationships of a non-current image version contribute no parent, no container and no usage
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC5")]
+    public async Task ApplicationViewServiceGetBaseImagesIgnoresNonCurrentChildVersionsAsync()
+    {
+        var dbContext = CreateSharedBaseDbContext();
+
+        await using (dbContext.ConfigureAwait(false))
+        {
+            var baseVersion = await CreateSharedBaseVersionAsync(dbContext, "library/debian", "12", TestContext.CancellationToken).ConfigureAwait(false);
+            var appA1 = await CreateSharedBaseVersionAsync(dbContext, "company/app-a", "1.0.0", TestContext.CancellationToken).ConfigureAwait(false);
+            var appA2 = await CreateSharedBaseVersionAsync(dbContext, "company/app-a", "2.0.0", TestContext.CancellationToken).ConfigureAwait(false);
+            var appB = await CreateSharedBaseVersionAsync(dbContext, "company/app-b", "1.0.0", TestContext.CancellationToken).ConfigureAwait(false);
+
+            AddObservedImage(dbContext, "App A", appA2.Id);
+            AddObservedImage(dbContext, "App B", appB.Id);
+            AddBaseRelationship(dbContext, appA1.Id, baseVersion.Id);
+            AddBaseRelationship(dbContext, appA2.Id, baseVersion.Id);
+            AddBaseRelationship(dbContext, appB.Id, baseVersion.Id);
+            AddCurrentContainers(dbContext, appA1.Id, "legacy");
+
+            await dbContext.SaveChangesAsync(TestContext.CancellationToken).ConfigureAwait(false);
+
+            var baseImages = await CreateSharedBaseService(dbContext).GetBaseImagesAsync(TestContext.CancellationToken).ConfigureAwait(false);
+
+            Assert.HasCount(1, baseImages, "The base used by two current versions must be listed");
+            Assert.AreEqual(2, baseImages[0].ObservedImageCount, "The entry must count the two observed images");
+            Assert.AreSequenceEqual(["docker.io/company/app-a:2.0.0@sha256:company/app-a-2.0.0", "docker.io/company/app-b:1.0.0@sha256:company/app-b-1.0.0"],
+                                    baseImages[0].ParentImageReferences.ToArray(),
+                                    SequenceOrder.InAnyOrder,
+                                    "Only the current versions must be listed as parents");
+            Assert.IsEmpty(baseImages[0].RuntimeContainers, "A container of a non-current version must not be listed");
+        }
+    }
+
+    /// <summary>
+    /// Verify a container of a non-current image version does not make a base shared
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC5")]
+    public async Task ApplicationViewServiceGetBaseImagesNonCurrentVersionContainerDoesNotShareAsync()
+    {
+        var dbContext = CreateSharedBaseDbContext();
+
+        await using (dbContext.ConfigureAwait(false))
+        {
+            var baseVersion = await CreateSharedBaseVersionAsync(dbContext, "library/debian", "12", TestContext.CancellationToken).ConfigureAwait(false);
+            var appA1 = await CreateSharedBaseVersionAsync(dbContext, "company/app-a", "1.0.0", TestContext.CancellationToken).ConfigureAwait(false);
+            var appA2 = await CreateSharedBaseVersionAsync(dbContext, "company/app-a", "2.0.0", TestContext.CancellationToken).ConfigureAwait(false);
+
+            AddObservedImage(dbContext, "App A", appA2.Id);
+            AddBaseRelationship(dbContext, appA1.Id, baseVersion.Id);
+            AddBaseRelationship(dbContext, appA2.Id, baseVersion.Id);
+            AddCurrentContainers(dbContext, appA1.Id, "legacy");
+
+            await dbContext.SaveChangesAsync(TestContext.CancellationToken).ConfigureAwait(false);
+
+            var baseImages = await CreateSharedBaseService(dbContext).GetBaseImagesAsync(TestContext.CancellationToken).ConfigureAwait(false);
+
+            Assert.IsEmpty(baseImages, "A container of a non-current version must not count as a user of the base");
+        }
+    }
+
+    /// <summary>
     /// Create a Docker instance of the action history test
     /// </summary>
     /// <param name="name">Instance name</param>
@@ -3246,441 +3612,6 @@ public class ApplicationViewServiceTests
                    ErrorMessage = $"message {requestedAtUtc.Minute}",
                };
     }
-
-    #region Shared base image tests
-
-    /// <summary>
-    /// Create an in-memory database context for the shared base image tests
-    /// </summary>
-    /// <returns>Database context</returns>
-    private static DockerUpdateGuardDbContext CreateSharedBaseDbContext()
-    {
-        var options = new DbContextOptionsBuilder<DockerUpdateGuardDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString())
-                                                                               .Options;
-
-        return new DockerUpdateGuardDbContext(options);
-    }
-
-    /// <summary>
-    /// Create the application view service with the real shared base image query service
-    /// </summary>
-    /// <param name="dbContext">Database context</param>
-    /// <returns>Application view service</returns>
-    private static ApplicationViewService CreateSharedBaseService(DockerUpdateGuardDbContext dbContext)
-    {
-        return new ApplicationViewService(dbContext,
-                                          new ImageReferenceParser(),
-                                          CreateOptionsMonitor(),
-                                          new SharedBaseImageQueryService(dbContext));
-    }
-
-    /// <summary>
-    /// Create an image version of a docker.io repository whose digest names the tag
-    /// </summary>
-    /// <param name="dbContext">Database context</param>
-    /// <param name="repository">Repository path</param>
-    /// <param name="tag">Tag</param>
-    /// <returns>Image version</returns>
-    private async Task<ImageVersion> CreateSharedBaseVersionAsync(DockerUpdateGuardDbContext dbContext, string repository, string tag)
-    {
-        var imageCatalogRepository = new ImageCatalogRepository(dbContext);
-
-        return await imageCatalogRepository.GetOrCreateImageVersionAsync("docker.io",
-                                                                         repository,
-                                                                         tag,
-                                                                         $"sha256:{repository}-{tag}",
-                                                                         cancellationToken: TestContext.CancellationToken)
-                                           .ConfigureAwait(false);
-    }
-
-    /// <summary>
-    /// Add an observed image and the base image relationship of its current version
-    /// </summary>
-    /// <param name="dbContext">Database context</param>
-    /// <param name="name">Observed image name</param>
-    /// <param name="currentVersionId">Current image version identifier</param>
-    /// <param name="isEnabled">Whether the observed image is enabled</param>
-    private static void AddObservedImage(DockerUpdateGuardDbContext dbContext, string name, Guid currentVersionId, bool isEnabled = true)
-    {
-        dbContext.ObservedImages.Add(new ObservedImage
-                                     {
-                                         Name = name,
-                                         CurrentImageVersionId = currentVersionId,
-                                         IsEnabled = isEnabled,
-                                     });
-    }
-
-    /// <summary>
-    /// Add a base image relationship
-    /// </summary>
-    /// <param name="dbContext">Database context</param>
-    /// <param name="childVersionId">Child image version identifier</param>
-    /// <param name="baseVersionId">Base image version identifier</param>
-    private static void AddBaseRelationship(DockerUpdateGuardDbContext dbContext, Guid childVersionId, Guid baseVersionId)
-    {
-        dbContext.ImageRelationships.Add(new ImageRelationship
-                                         {
-                                             ChildImageVersionId = childVersionId,
-                                             BaseImageVersionId = baseVersionId,
-                                             RelationshipType = ImageRelationshipType.BaseImage,
-                                             Depth = 1,
-                                         });
-    }
-
-    /// <summary>
-    /// Add a Docker instance whose latest runtime scan lists the named containers of one image version
-    /// </summary>
-    /// <param name="dbContext">Database context</param>
-    /// <param name="imageVersionId">Image version identifier of the containers</param>
-    /// <param name="containerNames">Container names</param>
-    private static void AddCurrentContainers(DockerUpdateGuardDbContext dbContext, Guid imageVersionId, params string[] containerNames)
-    {
-        var dockerInstance = new DockerInstance
-                             {
-                                 Name = $"Engine {Guid.NewGuid()}",
-                                 EndpointUri = "https://docker.example.test",
-                                 ConnectionKind = DockerConnectionKind.Https,
-                             };
-        var runtimeScanRun = new ScanRun
-                             {
-                                 Type = ScanRunType.RuntimeContainer,
-                                 Status = ScanRunStatus.Succeeded,
-                                 TriggerSource = ScanTriggerSource.Scheduled,
-                             };
-
-        dbContext.DockerInstances.Add(dockerInstance);
-        dbContext.ScanRuns.Add(runtimeScanRun);
-
-        foreach (var containerName in containerNames)
-        {
-            dbContext.ContainerSnapshots.Add(new ContainerSnapshot
-                                             {
-                                                 DockerInstance = dockerInstance,
-                                                 ImageVersionId = imageVersionId,
-                                                 ScanRun = runtimeScanRun,
-                                                 ContainerId = $"id-{containerName}",
-                                                 Name = containerName,
-                                                 Status = ContainerRuntimeStatus.Running,
-                                                 IsRunning = true,
-                                             });
-        }
-    }
-
-    /// <summary>
-    /// Verify a base used by one enabled observed image and no container is not listed
-    /// </summary>
-    /// <returns>Task</returns>
-    [TestMethod]
-    [TestCategory("AC1")]
-    public async Task ApplicationViewServiceGetBaseImagesSingleObservedImageIsExcludedAsync()
-    {
-        var dbContext = CreateSharedBaseDbContext();
-
-        await using (dbContext.ConfigureAwait(false))
-        {
-            var baseVersion = await CreateSharedBaseVersionAsync(dbContext, "library/debian", "12").ConfigureAwait(false);
-            var appVersion = await CreateSharedBaseVersionAsync(dbContext, "company/app-a", "1.0.0").ConfigureAwait(false);
-
-            AddObservedImage(dbContext, "App A", appVersion.Id);
-            AddBaseRelationship(dbContext, appVersion.Id, baseVersion.Id);
-
-            await dbContext.SaveChangesAsync(TestContext.CancellationToken).ConfigureAwait(false);
-
-            var baseImages = await CreateSharedBaseService(dbContext).GetBaseImagesAsync(TestContext.CancellationToken).ConfigureAwait(false);
-
-            Assert.IsEmpty(baseImages, "A base used by a single enabled observed image and no container must not be listed as shared");
-        }
-    }
-
-    /// <summary>
-    /// Verify the navigation flag is false when the only base is unshared
-    /// </summary>
-    /// <returns>Task</returns>
-    [TestMethod]
-    [TestCategory("AC1")]
-    public async Task ApplicationViewServiceHasBaseImagesOnlyUnsharedBaseReturnsFalseAsync()
-    {
-        var dbContext = CreateSharedBaseDbContext();
-
-        await using (dbContext.ConfigureAwait(false))
-        {
-            var baseVersion = await CreateSharedBaseVersionAsync(dbContext, "library/debian", "12").ConfigureAwait(false);
-            var appVersion = await CreateSharedBaseVersionAsync(dbContext, "company/app-a", "1.0.0").ConfigureAwait(false);
-
-            AddObservedImage(dbContext, "App A", appVersion.Id);
-            AddBaseRelationship(dbContext, appVersion.Id, baseVersion.Id);
-
-            await dbContext.SaveChangesAsync(TestContext.CancellationToken).ConfigureAwait(false);
-
-            var hasBaseImages = await CreateSharedBaseService(dbContext).HasBaseImagesAsync(TestContext.CancellationToken).ConfigureAwait(false);
-
-            Assert.IsFalse(hasBaseImages, "The navigation flag must be false while the only base is used by a single enabled image and no container");
-        }
-    }
-
-    /// <summary>
-    /// Verify the dashboard base image count includes only shared bases
-    /// </summary>
-    /// <returns>Task</returns>
-    [TestMethod]
-    [TestCategory("AC1")]
-    public async Task ApplicationViewServiceDashboardCountsOnlySharedBaseImagesAsync()
-    {
-        var dbContext = CreateSharedBaseDbContext();
-
-        await using (dbContext.ConfigureAwait(false))
-        {
-            var sharedBase = await CreateSharedBaseVersionAsync(dbContext, "library/debian", "12").ConfigureAwait(false);
-            var unsharedBase = await CreateSharedBaseVersionAsync(dbContext, "library/alpine", "3").ConfigureAwait(false);
-            var appA = await CreateSharedBaseVersionAsync(dbContext, "company/app-a", "1.0.0").ConfigureAwait(false);
-            var appB = await CreateSharedBaseVersionAsync(dbContext, "company/app-b", "1.0.0").ConfigureAwait(false);
-            var appC = await CreateSharedBaseVersionAsync(dbContext, "company/app-c", "1.0.0").ConfigureAwait(false);
-
-            AddObservedImage(dbContext, "App A", appA.Id);
-            AddObservedImage(dbContext, "App B", appB.Id);
-            AddObservedImage(dbContext, "App C", appC.Id);
-            AddBaseRelationship(dbContext, appA.Id, sharedBase.Id);
-            AddBaseRelationship(dbContext, appB.Id, sharedBase.Id);
-            AddBaseRelationship(dbContext, appC.Id, unsharedBase.Id);
-
-            await dbContext.SaveChangesAsync(TestContext.CancellationToken).ConfigureAwait(false);
-
-            var dashboard = await CreateSharedBaseService(dbContext).GetDashboardAsync(TestContext.CancellationToken).ConfigureAwait(false);
-
-            Assert.AreEqual(1, dashboard.BaseImageCount, "The dashboard must count only the base used by two enabled images");
-        }
-    }
-
-    /// <summary>
-    /// Verify a base used by two enabled observed images is shared
-    /// </summary>
-    /// <returns>Task</returns>
-    [TestMethod]
-    [TestCategory("AC2")]
-    public async Task ApplicationViewServiceGetBaseImagesTwoEnabledImagesAreSharedAsync()
-    {
-        var dbContext = CreateSharedBaseDbContext();
-
-        await using (dbContext.ConfigureAwait(false))
-        {
-            var baseVersion = await CreateSharedBaseVersionAsync(dbContext, "library/debian", "12").ConfigureAwait(false);
-            var appA = await CreateSharedBaseVersionAsync(dbContext, "company/app-a", "1.0.0").ConfigureAwait(false);
-            var appB = await CreateSharedBaseVersionAsync(dbContext, "company/app-b", "1.0.0").ConfigureAwait(false);
-
-            AddObservedImage(dbContext, "App A", appA.Id);
-            AddObservedImage(dbContext, "App B", appB.Id);
-            AddBaseRelationship(dbContext, appA.Id, baseVersion.Id);
-            AddBaseRelationship(dbContext, appB.Id, baseVersion.Id);
-
-            await dbContext.SaveChangesAsync(TestContext.CancellationToken).ConfigureAwait(false);
-
-            var baseImages = await CreateSharedBaseService(dbContext).GetBaseImagesAsync(TestContext.CancellationToken).ConfigureAwait(false);
-
-            Assert.HasCount(1, baseImages, "A base used by two enabled images must be listed");
-            Assert.AreEqual(2, baseImages[0].ObservedImageCount, "The entry must count both enabled images");
-        }
-    }
-
-    /// <summary>
-    /// Verify a base used by one enabled image whose version runs in current containers is shared
-    /// </summary>
-    /// <param name="containerCount">Number of current containers</param>
-    /// <returns>Task</returns>
-    [TestMethod]
-    [TestCategory("AC3")]
-    [DataRow(1)]
-    [DataRow(2)]
-    public async Task ApplicationViewServiceGetBaseImagesOneImageWithContainerIsSharedAsync(int containerCount)
-    {
-        var dbContext = CreateSharedBaseDbContext();
-
-        await using (dbContext.ConfigureAwait(false))
-        {
-            var baseVersion = await CreateSharedBaseVersionAsync(dbContext, "library/debian", "12").ConfigureAwait(false);
-            var appVersion = await CreateSharedBaseVersionAsync(dbContext, "company/app-a", "1.0.0").ConfigureAwait(false);
-            var containerNames = Enumerable.Range(1, containerCount).Select(index => $"web-{index}").ToArray();
-
-            AddObservedImage(dbContext, "App A", appVersion.Id);
-            AddBaseRelationship(dbContext, appVersion.Id, baseVersion.Id);
-            AddCurrentContainers(dbContext, appVersion.Id, containerNames);
-
-            await dbContext.SaveChangesAsync(TestContext.CancellationToken).ConfigureAwait(false);
-
-            var baseImages = await CreateSharedBaseService(dbContext).GetBaseImagesAsync(TestContext.CancellationToken).ConfigureAwait(false);
-
-            Assert.HasCount(1, baseImages, "A base used by one enabled image running in a container must be listed");
-            Assert.AreEqual(1, baseImages[0].ObservedImageCount, "The entry must count the single enabled image");
-            Assert.AreSequenceEqual(containerNames,
-                                    baseImages[0].RuntimeContainers.Select(container => container.ContainerName).ToArray(),
-                                    SequenceOrder.InAnyOrder,
-                                    "The entry must list exactly the current containers of the image");
-        }
-    }
-
-    /// <summary>
-    /// Verify a base used by one enabled and one disabled image is not shared
-    /// </summary>
-    /// <returns>Task</returns>
-    [TestMethod]
-    [TestCategory("AC4")]
-    public async Task ApplicationViewServiceGetBaseImagesEnabledAndDisabledImageIsNotSharedAsync()
-    {
-        var dbContext = CreateSharedBaseDbContext();
-
-        await using (dbContext.ConfigureAwait(false))
-        {
-            var baseVersion = await CreateSharedBaseVersionAsync(dbContext, "library/debian", "12").ConfigureAwait(false);
-            var appA = await CreateSharedBaseVersionAsync(dbContext, "company/app-a", "1.0.0").ConfigureAwait(false);
-            var appB = await CreateSharedBaseVersionAsync(dbContext, "company/app-b", "1.0.0").ConfigureAwait(false);
-
-            AddObservedImage(dbContext, "App A", appA.Id);
-            AddObservedImage(dbContext, "App B", appB.Id, false);
-            AddBaseRelationship(dbContext, appA.Id, baseVersion.Id);
-            AddBaseRelationship(dbContext, appB.Id, baseVersion.Id);
-
-            await dbContext.SaveChangesAsync(TestContext.CancellationToken).ConfigureAwait(false);
-
-            var baseImages = await CreateSharedBaseService(dbContext).GetBaseImagesAsync(TestContext.CancellationToken).ConfigureAwait(false);
-
-            Assert.IsEmpty(baseImages, "A disabled image must not count as the second user of a base");
-        }
-    }
-
-    /// <summary>
-    /// Verify a disabled image is neither counted nor listed as a parent of a shared base
-    /// </summary>
-    /// <returns>Task</returns>
-    [TestMethod]
-    [TestCategory("AC4")]
-    public async Task ApplicationViewServiceGetBaseImagesDisabledImageIsNotListedAsParentAsync()
-    {
-        var dbContext = CreateSharedBaseDbContext();
-
-        await using (dbContext.ConfigureAwait(false))
-        {
-            var baseVersion = await CreateSharedBaseVersionAsync(dbContext, "library/debian", "12").ConfigureAwait(false);
-            var appA = await CreateSharedBaseVersionAsync(dbContext, "company/app-a", "1.0.0").ConfigureAwait(false);
-            var appB = await CreateSharedBaseVersionAsync(dbContext, "company/app-b", "1.0.0").ConfigureAwait(false);
-            var appC = await CreateSharedBaseVersionAsync(dbContext, "company/app-c", "1.0.0").ConfigureAwait(false);
-
-            AddObservedImage(dbContext, "App A", appA.Id);
-            AddObservedImage(dbContext, "App B", appB.Id);
-            AddObservedImage(dbContext, "App C", appC.Id, false);
-            AddBaseRelationship(dbContext, appA.Id, baseVersion.Id);
-            AddBaseRelationship(dbContext, appB.Id, baseVersion.Id);
-            AddBaseRelationship(dbContext, appC.Id, baseVersion.Id);
-
-            await dbContext.SaveChangesAsync(TestContext.CancellationToken).ConfigureAwait(false);
-
-            var baseImages = await CreateSharedBaseService(dbContext).GetBaseImagesAsync(TestContext.CancellationToken).ConfigureAwait(false);
-
-            Assert.HasCount(1, baseImages, "The base used by two enabled images must be listed");
-            Assert.AreEqual(2, baseImages[0].ObservedImageCount, "The disabled image must not be counted");
-            Assert.AreSequenceEqual(["docker.io/company/app-a:1.0.0@sha256:company/app-a-1.0.0", "docker.io/company/app-b:1.0.0@sha256:company/app-b-1.0.0"],
-                                    baseImages[0].ParentImageReferences.ToArray(),
-                                    SequenceOrder.InAnyOrder,
-                                    "Only the enabled images must be listed as parents");
-        }
-    }
-
-    /// <summary>
-    /// Verify a container running only the version of a disabled image does not make a base shared
-    /// </summary>
-    /// <returns>Task</returns>
-    [TestMethod]
-    [TestCategory("AC4")]
-    public async Task ApplicationViewServiceGetBaseImagesContainerOfDisabledImageIsNotCountedAsync()
-    {
-        var dbContext = CreateSharedBaseDbContext();
-
-        await using (dbContext.ConfigureAwait(false))
-        {
-            var baseVersion = await CreateSharedBaseVersionAsync(dbContext, "library/debian", "12").ConfigureAwait(false);
-            var appA = await CreateSharedBaseVersionAsync(dbContext, "company/app-a", "1.0.0").ConfigureAwait(false);
-            var appB = await CreateSharedBaseVersionAsync(dbContext, "company/app-b", "1.0.0").ConfigureAwait(false);
-
-            AddObservedImage(dbContext, "App A", appA.Id);
-            AddObservedImage(dbContext, "App B", appB.Id, false);
-            AddBaseRelationship(dbContext, appA.Id, baseVersion.Id);
-            AddBaseRelationship(dbContext, appB.Id, baseVersion.Id);
-            AddCurrentContainers(dbContext, appB.Id, "worker");
-
-            await dbContext.SaveChangesAsync(TestContext.CancellationToken).ConfigureAwait(false);
-
-            var baseImages = await CreateSharedBaseService(dbContext).GetBaseImagesAsync(TestContext.CancellationToken).ConfigureAwait(false);
-
-            Assert.IsEmpty(baseImages, "A container of a disabled image must not count as a user of the base");
-        }
-    }
-
-    /// <summary>
-    /// Verify relationships of a non-current image version contribute no parent, no container and no usage
-    /// </summary>
-    /// <returns>Task</returns>
-    [TestMethod]
-    [TestCategory("AC5")]
-    public async Task ApplicationViewServiceGetBaseImagesIgnoresNonCurrentChildVersionsAsync()
-    {
-        var dbContext = CreateSharedBaseDbContext();
-
-        await using (dbContext.ConfigureAwait(false))
-        {
-            var baseVersion = await CreateSharedBaseVersionAsync(dbContext, "library/debian", "12").ConfigureAwait(false);
-            var appA1 = await CreateSharedBaseVersionAsync(dbContext, "company/app-a", "1.0.0").ConfigureAwait(false);
-            var appA2 = await CreateSharedBaseVersionAsync(dbContext, "company/app-a", "2.0.0").ConfigureAwait(false);
-            var appB = await CreateSharedBaseVersionAsync(dbContext, "company/app-b", "1.0.0").ConfigureAwait(false);
-
-            AddObservedImage(dbContext, "App A", appA2.Id);
-            AddObservedImage(dbContext, "App B", appB.Id);
-            AddBaseRelationship(dbContext, appA1.Id, baseVersion.Id);
-            AddBaseRelationship(dbContext, appA2.Id, baseVersion.Id);
-            AddBaseRelationship(dbContext, appB.Id, baseVersion.Id);
-            AddCurrentContainers(dbContext, appA1.Id, "legacy");
-
-            await dbContext.SaveChangesAsync(TestContext.CancellationToken).ConfigureAwait(false);
-
-            var baseImages = await CreateSharedBaseService(dbContext).GetBaseImagesAsync(TestContext.CancellationToken).ConfigureAwait(false);
-
-            Assert.HasCount(1, baseImages, "The base used by two current versions must be listed");
-            Assert.AreEqual(2, baseImages[0].ObservedImageCount, "The entry must count the two observed images");
-            Assert.AreSequenceEqual(["docker.io/company/app-a:2.0.0@sha256:company/app-a-2.0.0", "docker.io/company/app-b:1.0.0@sha256:company/app-b-1.0.0"],
-                                    baseImages[0].ParentImageReferences.ToArray(),
-                                    SequenceOrder.InAnyOrder,
-                                    "Only the current versions must be listed as parents");
-            Assert.IsEmpty(baseImages[0].RuntimeContainers, "A container of a non-current version must not be listed");
-        }
-    }
-
-    /// <summary>
-    /// Verify a container of a non-current image version does not make a base shared
-    /// </summary>
-    /// <returns>Task</returns>
-    [TestMethod]
-    [TestCategory("AC5")]
-    public async Task ApplicationViewServiceGetBaseImagesNonCurrentVersionContainerDoesNotShareAsync()
-    {
-        var dbContext = CreateSharedBaseDbContext();
-
-        await using (dbContext.ConfigureAwait(false))
-        {
-            var baseVersion = await CreateSharedBaseVersionAsync(dbContext, "library/debian", "12").ConfigureAwait(false);
-            var appA1 = await CreateSharedBaseVersionAsync(dbContext, "company/app-a", "1.0.0").ConfigureAwait(false);
-            var appA2 = await CreateSharedBaseVersionAsync(dbContext, "company/app-a", "2.0.0").ConfigureAwait(false);
-
-            AddObservedImage(dbContext, "App A", appA2.Id);
-            AddBaseRelationship(dbContext, appA1.Id, baseVersion.Id);
-            AddBaseRelationship(dbContext, appA2.Id, baseVersion.Id);
-            AddCurrentContainers(dbContext, appA1.Id, "legacy");
-
-            await dbContext.SaveChangesAsync(TestContext.CancellationToken).ConfigureAwait(false);
-
-            var baseImages = await CreateSharedBaseService(dbContext).GetBaseImagesAsync(TestContext.CancellationToken).ConfigureAwait(false);
-
-            Assert.IsEmpty(baseImages, "A container of a non-current version must not count as a user of the base");
-        }
-    }
-
-    #endregion // Shared base image tests
 
     #endregion // Methods
 }

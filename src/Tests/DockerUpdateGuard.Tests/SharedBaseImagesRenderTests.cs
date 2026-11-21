@@ -39,7 +39,7 @@ public class SharedBaseImagesRenderTests
                                            }
                                        ]);
 
-            component.WaitForAssertion(() => Assert.Contains("Base image overview", component.Markup, "The page must render the overview once loaded"));
+            await component.WaitForAssertionAsync(() => Assert.Contains("Base image overview", component.Markup, "The page must render the overview once loaded"));
 
             Assert.AreEqual("Shared Base Images",
                             component.Find("h3").TextContent.Trim(),
@@ -64,9 +64,9 @@ public class SharedBaseImagesRenderTests
         {
             var component = RenderPage(testContext, []);
 
-            component.WaitForAssertion(() => Assert.Contains("No base image is used by two or more enabled images or containers yet.",
-                                                             component.Markup,
-                                                             "The empty state must state the sharing rule"));
+            await component.WaitForAssertionAsync(() => Assert.Contains("No base image is used by two or more enabled images or containers yet.",
+                                                                        component.Markup,
+                                                                        "The empty state must state the sharing rule"));
         }
     }
 
@@ -89,4 +89,4 @@ public class SharedBaseImagesRenderTests
     }
 
     #endregion // Methods
-}
+}

@@ -230,26 +230,6 @@ public class SharedBaseImageQueryServiceTests
     }
 
     /// <summary>
-    /// Create an image version of a docker.io repository
-    /// </summary>
-    /// <param name="repository">Repository path</param>
-    /// <param name="tag">Tag</param>
-    /// <returns>Image version</returns>
-    private static ImageVersion CreateImageVersion(string repository, string tag)
-    {
-        return new ImageVersion
-               {
-                   RegistryRepository = new RegistryRepository
-                                        {
-                                            Registry = "docker.io",
-                                            Repository = repository
-                                        },
-                   Tag = tag,
-                   Digest = $"sha256:{repository}-{tag}"
-               };
-    }
-
-    /// <summary>
     /// Verify the query reports the current image versions of the consuming observed images
     /// </summary>
     /// <returns>Task</returns>
@@ -362,6 +342,26 @@ public class SharedBaseImageQueryServiceTests
                                         "Only the enabled image's version must be a consumer");
             }
         }
+    }
+
+    /// <summary>
+    /// Create an image version of a docker.io repository
+    /// </summary>
+    /// <param name="repository">Repository path</param>
+    /// <param name="tag">Tag</param>
+    /// <returns>Image version</returns>
+    private static ImageVersion CreateImageVersion(string repository, string tag)
+    {
+        return new ImageVersion
+               {
+                   RegistryRepository = new RegistryRepository
+                                        {
+                                            Registry = "docker.io",
+                                            Repository = repository
+                                        },
+                   Tag = tag,
+                   Digest = $"sha256:{repository}-{tag}"
+               };
     }
 
     #endregion // Methods
