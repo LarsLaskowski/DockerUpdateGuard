@@ -29,8 +29,7 @@ public static class ImageCatalogCanonicalizer
                                                                  .ToList();
         var moved = 0;
 
-        var observedImages = await dbContext.ObservedImages.Include(entity => entity.CurrentImageVersion)
-                                                           .ThenInclude(entity => entity.RegistryRepository)
+        var observedImages = await dbContext.ObservedImages.Include(entity => entity.CurrentImageVersion.RegistryRepository)
                                                            .Where(entity => aliases.Contains(entity.CurrentImageVersion.RegistryRepository.Registry)
                                                                             || (entity.CurrentImageVersion.RegistryRepository.Registry == ImageReferenceParser.DockerHubRegistry
                                                                                 && entity.CurrentImageVersion.RegistryRepository.Repository.Contains('/') == false))
