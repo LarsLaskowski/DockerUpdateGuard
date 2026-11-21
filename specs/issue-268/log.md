@@ -21,3 +21,4 @@ are quoted in full.
 | 2026-11-21 07:26 | 8 Verbatim fix | Orchestrator | Applied [BLOCKING, verbatim] docs/ARCHITECTURE.md:86 and :152-154 and [NON-BLOCKING, verbatim] docs/areas/registries.md:114 exactly as proposed, rewrapped; git diff --word-diff shows only the proposed text; commit 4dc7ada |
 | 2026-11-21 07:27 | 9 PR approval | Lead | RESULT: APPROVED; ARCHITECTURE.md edit and AC1 second test approved, record 0052 Accepted (opus/medium · 52,781 tokens · 5 tool uses · 37 s · 10 in · 3,157 out · 155,490 cache read · 51,781 cache write · 176,592 weighted) |
 | 2026-11-21 07:28 | 7 Gate stamp | Orchestrator | PASS on f449735e63b9233bf112dfaf73c67a7f41192832 (tier security, verbatim): Format check pass; decision-check.py pass; scope-check.py pass |
+| 2026-11-21 07:28 | 10 Pull request | Orchestrator | AC7 recorded (Reviewer round 1, doc findings fixed verbatim); working record posted to the issue; PR opened as draft |
