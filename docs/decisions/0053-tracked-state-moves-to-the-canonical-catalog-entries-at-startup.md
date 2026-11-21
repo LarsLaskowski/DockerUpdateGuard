@@ -1,6 +1,6 @@
 # 0053: Tracked state moves to the canonical catalog entries at startup
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-21
 - **Area:** Image catalog
 - **Source:** Issue #275
