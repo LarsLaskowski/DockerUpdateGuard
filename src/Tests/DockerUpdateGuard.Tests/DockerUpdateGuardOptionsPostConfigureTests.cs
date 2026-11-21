@@ -124,6 +124,27 @@ public class DockerUpdateGuardOptionsPostConfigureTests
     }
 
     /// <summary>
+    /// Verify the Docker Hub registry is trimmed of leading and trailing whitespace
+    /// </summary>
+    [TestMethod]
+    [TestCategory("AC4")]
+    public void DockerUpdateGuardOptionsPostConfigurePostConfigureTrimsDockerHubRegistry()
+    {
+        var options = new DockerUpdateGuardOptions
+                      {
+                          DockerHub = new DockerHubOptions
+                                      {
+                                          Registry = " Docker.IO ",
+                                      },
+                      };
+        var postConfigure = new DockerUpdateGuardOptionsPostConfigure();
+
+        postConfigure.PostConfigure(null, options);
+
+        Assert.AreEqual("Docker.IO", options.DockerHub.Registry, "Only the surrounding whitespace of the Docker Hub registry may be removed, not its case");
+    }
+
+    /// <summary>
     /// Verify missing options are rejected
     /// </summary>
     [TestMethod]

@@ -498,7 +498,7 @@ public class DockerUpdateGuardOptionsValidatorTests
         Assert.IsTrue(string.IsNullOrWhiteSpace(namedConnectionString) == false || string.IsNullOrWhiteSpace(inlineConnectionString) == false, "The development configuration sample must expose at least one configured database connection path");
 
         var dockerHubRegistry = applicationSection["DockerHub:Registry"];
-        var supportedDockerHubRegistries = new[] { "docker.io", "https://hub.docker.com" };
+        var supportedDockerHubRegistries = new[] { "docker.io" };
 
         Assert.IsFalse(string.IsNullOrWhiteSpace(dockerHubRegistry), "The development configuration sample must include the Docker Hub registry");
         Assert.Contains(dockerHubRegistry, supportedDockerHubRegistries, "The development configuration sample must include a supported Docker Hub registry value");
@@ -1162,7 +1162,6 @@ public class DockerUpdateGuardOptionsValidatorTests
         var options = CreateValidOptions();
 
         options.DockerHub.ApiBaseUrl = "https://admin#secret@hub.example";
-        options.DockerHub.Registry = "https://admin#secret@registry.example";
         options.ReleaseMetadata.DotNetBaseUrl = "https://admin#secret@dotnet.example";
         options.ReleaseMetadata.NginxBaseUrl = "https://admin#secret@nginx.example";
         options.Vulnerabilities.Enabled = true;
@@ -1178,9 +1177,6 @@ public class DockerUpdateGuardOptionsValidatorTests
         Assert.Contains(CreateAtSignFailure("DockerUpdateGuard:DockerHub:ApiBaseUrl"),
                         failures,
                         "The Docker Hub API base URL must be rejected with the fixed text");
-        Assert.Contains(CreateAtSignFailure("DockerUpdateGuard:DockerHub:Registry"),
-                        failures,
-                        "An absolute Docker Hub registry must be rejected with the fixed text");
         Assert.Contains(CreateAtSignFailure("DockerUpdateGuard:ReleaseMetadata:DotNetBaseUrl"),
                         failures,
                         "The .NET release feed URL must be rejected with the fixed text");
@@ -1265,6 +1261,110 @@ public class DockerUpdateGuardOptionsValidatorTests
 
         Assert.IsTrue(validationResult.Succeeded, $"A Docker instance base URL without a misplaced at sign must pass validation: {string.Join("; ", failures)}");
         Assert.IsEmpty(failures, "The Docker instance base URL and the docker.io registry name must produce no failure");
+    }
+
+    /// <summary>
+    /// Verify a Docker Hub registry naming a host other than Docker Hub fails with the fixed host failure only
+    /// </summary>
+    /// <param name="registry">Configured Docker Hub registry</param>
+    [TestMethod]
+    [TestCategory("AC2")]
+    [DataRow("ghcr.io")]
+    [DataRow("registry.example.internal")]
+    [DataRow("localhost")]
+    public void DockerUpdateGuardOptionsValidatorDockerHubRegistryNonDockerHubHostFailsValidation(string registry)
+    {
+        var failures = ValidateDockerHubRegistry(registry);
+
+        Assert.AreSequenceEqual([CreateRegistryHostFailure()],
+                                GetDockerHubRegistryFailures(failures),
+                                "A foreign registry host must produce exactly the fixed Docker Hub host failure for the registry key");
+        Assert.DoesNotContain(message => message.Contains(registry, StringComparison.Ordinal),
+                              failures,
+                              "No failure may repeat the configured registry value");
+    }
+
+    /// <summary>
+    /// Verify a Docker Hub registry given as an absolute URL fails with the fixed host failure only, also for a Docker Hub host
+    /// </summary>
+    /// <param name="registry">Configured Docker Hub registry</param>
+    [TestMethod]
+    [TestCategory("AC2")]
+    [DataRow("https://registry.example.internal")]
+    [DataRow("https://docker.io")]
+    [DataRow("https://admin#secret@registry.example")]
+    public void DockerUpdateGuardOptionsValidatorDockerHubRegistryAbsoluteUrlFailsValidation(string registry)
+    {
+        var failures = ValidateDockerHubRegistry(registry);
+
+        Assert.AreSequenceEqual([CreateRegistryHostFailure()],
+                                GetDockerHubRegistryFailures(failures),
+                                "An absolute registry URL must produce exactly the fixed Docker Hub host failure for the registry key");
+        Assert.DoesNotContain(message => message.Contains("secret", StringComparison.Ordinal),
+                              failures,
+                              "No failure may repeat any part of the configured registry value");
+        Assert.DoesNotContain(message => message.Contains("https://", StringComparison.Ordinal),
+                              failures,
+                              "No failure may repeat the configured registry URL");
+    }
+
+    /// <summary>
+    /// Verify a Docker Hub host with a port, a path, user info or a trailing dot fails with the fixed host failure only
+    /// </summary>
+    /// <param name="registry">Configured Docker Hub registry</param>
+    [TestMethod]
+    [TestCategory("AC2")]
+    [DataRow("docker.io:443")]
+    [DataRow("docker.io/library")]
+    [DataRow("user@docker.io")]
+    [DataRow("docker.io.")]
+    public void DockerUpdateGuardOptionsValidatorDockerHubRegistryHostWithPortPathOrUserInfoFailsValidation(string registry)
+    {
+        var failures = ValidateDockerHubRegistry(registry);
+
+        Assert.AreSequenceEqual([CreateRegistryHostFailure()],
+                                GetDockerHubRegistryFailures(failures),
+                                "A Docker Hub host with a port, a path, user info or a trailing dot must produce exactly the fixed Docker Hub host failure");
+        Assert.DoesNotContain(message => message.Contains(registry, StringComparison.Ordinal),
+                              failures,
+                              "No failure may repeat the configured registry value");
+    }
+
+    /// <summary>
+    /// Validate otherwise valid options with the given Docker Hub registry
+    /// </summary>
+    /// <param name="registry">Configured Docker Hub registry</param>
+    /// <returns>Every validation failure</returns>
+    private static string[] ValidateDockerHubRegistry(string registry)
+    {
+        var validator = CreateAtSignValidator();
+        var options = CreateValidOptions();
+
+        options.DockerHub.Registry = registry;
+
+        var validationResult = validator.Validate(Options.DefaultName, options);
+
+        return validationResult.Failures?.ToArray() ?? [];
+    }
+
+    /// <summary>
+    /// Select the failures naming the Docker Hub registry key
+    /// </summary>
+    /// <param name="failures">Every validation failure</param>
+    /// <returns>Failures naming the Docker Hub registry key</returns>
+    private static string[] GetDockerHubRegistryFailures(string[] failures)
+    {
+        return failures.Where(message => message.Contains("'DockerUpdateGuard:DockerHub:Registry'", StringComparison.Ordinal))
+                       .ToArray();
+    }
+
+    /// <summary>
+    /// Create the failure text the plan fixes for a Docker Hub registry that is not a Docker Hub host
+    /// </summary>
+    /// <returns>Failure text</returns>
+    private static string CreateRegistryHostFailure()
+    {
+        return "'DockerUpdateGuard:DockerHub:Registry' must be a Docker Hub registry host (docker.io, index.docker.io, registry-1.docker.io, hub.docker.com, docker.com, www.docker.com)";
     }
 
     /// <summary>
