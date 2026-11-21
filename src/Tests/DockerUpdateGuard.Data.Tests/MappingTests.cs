@@ -1,3 +1,5 @@
+using System.Globalization;
+
 using DockerUpdateGuard.Data.Entities;
 using DockerUpdateGuard.Data.Tests.Data;
 
@@ -20,6 +22,46 @@ public class MappingTests
     public TestContext TestContext { get; set; }
 
     #endregion // Properties
+
+    #region Static methods
+
+    /// <summary>
+    /// Describe every member of an enumeration with its stored number, ordered by number
+    /// </summary>
+    /// <typeparam name="TEnum">Enumeration type</typeparam>
+    /// <returns>Members and numbers, for example <c>NotSet=0, Trivy=1</c></returns>
+    private static string DescribeStoredNumbers<TEnum>()
+        where TEnum : struct, Enum
+    {
+        var members = Enum.GetValues<TEnum>()
+                          .OrderBy(value => Convert.ToInt32(value, CultureInfo.InvariantCulture))
+                          .Select(value => $"{value}={Convert.ToInt32(value, CultureInfo.InvariantCulture)}");
+
+        return string.Join(", ", members);
+    }
+
+    /// <summary>
+    /// Create a vulnerability finding with a given stored source
+    /// </summary>
+    /// <param name="imageVersion">Image version of the finding</param>
+    /// <param name="advisoryId">Advisory identifier</param>
+    /// <param name="source">Stored source</param>
+    /// <returns>Vulnerability finding</returns>
+    private static VulnerabilityFinding CreateVulnerabilityFinding(ImageVersion imageVersion, string advisoryId, VulnerabilitySource source)
+    {
+        return new VulnerabilityFinding
+               {
+                   AdvisoryId = advisoryId,
+                   DetectedAtUtc = DateTimeOffset.UtcNow,
+                   ImageVersion = imageVersion,
+                   IsActive = true,
+                   Severity = VulnerabilitySeverity.High,
+                   Source = source,
+                   Title = "Retired source finding",
+               };
+    }
+
+    #endregion // Static methods
 
     #region Methods
 
@@ -150,6 +192,118 @@ public class MappingTests
     }
 
     /// <summary>
+    /// Verify the stored enumerations keep exactly the members and numbers the database holds
+    /// </summary>
+    [TestMethod]
+    [TestCategory("AC1")]
+    public void DockerUpdateGuardDbContextEnumColumnsKeepStoredNumbers()
+    {
+        Assert.AreEqual("NotSet=0, ObservedImage=1, RuntimeContainer=2, BaseImageResolution=3",
+                        DescribeStoredNumbers<ImageVersionSource>(),
+                        "Image version sources must not list the retired registry metadata number 4");
+        Assert.AreEqual("NotSet=0, BaseImage=1",
+                        DescribeStoredNumbers<ImageRelationshipType>(),
+                        "Relationship types must not list the retired build stage number 2");
+        Assert.AreEqual("NotSet=0, RuntimeImageUpdate=2, TagRecommendation=3, DerivedBaseRuntimeUpdate=4",
+                        DescribeStoredNumbers<UpdateFindingType>(),
+                        "Update finding types must not list the retired base image update number 1");
+        Assert.AreEqual("NotSet=0, Trivy=1, DockerScout=2",
+                        DescribeStoredNumbers<VulnerabilitySource>(),
+                        "Vulnerability sources must not list the retired registry advisory and manual numbers 3 and 4");
+    }
+
+    /// <summary>
+    /// Verify rows holding retired enumeration numbers still load with those numbers
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC2")]
+    public async Task DockerUpdateGuardDbContextRetiredEnumNumbersLoadAsync()
+    {
+        using (var database = new SqliteTestDatabase())
+        {
+            var dbContext = database.CreateDbContext();
+
+            await using (dbContext.ConfigureAwait(false))
+            {
+                var baseImageVersion = new ImageVersion
+                                       {
+                                           Digest = "sha256:base",
+                                           RegistryRepository = new RegistryRepository
+                                                                {
+                                                                    Registry = "docker.io",
+                                                                    Repository = "library/debian"
+                                                                },
+                                           Tag = "12-slim",
+                                           Source = (ImageVersionSource)4,
+                                           VulnerabilityAssessmentSource = (VulnerabilitySource)3,
+                                       };
+                var currentImageVersion = new ImageVersion
+                                          {
+                                              Digest = "sha256:app",
+                                              RegistryRepository = new RegistryRepository
+                                                                   {
+                                                                       Registry = "docker.io",
+                                                                       Repository = "company/example-app"
+                                                                   },
+                                              Tag = "1.0.0",
+                                          };
+                var observedImage = new ObservedImage
+                                    {
+                                        CurrentImageVersion = currentImageVersion,
+                                        Name = "Example App"
+                                    };
+                var scanRun = new ScanRun
+                              {
+                                  ObservedImage = observedImage,
+                                  Status = ScanRunStatus.Succeeded,
+                                  Type = ScanRunType.ObservedImage,
+                              };
+
+                dbContext.AddRange(baseImageVersion,
+                                   currentImageVersion,
+                                   observedImage,
+                                   scanRun,
+                                   new ImageRelationship
+                                   {
+                                       BaseImageVersion = baseImageVersion,
+                                       ChildImageVersion = currentImageVersion,
+                                       Depth = 1,
+                                       RelationshipType = (ImageRelationshipType)2,
+                                       ScanRun = scanRun,
+                                   },
+                                   new UpdateFinding
+                                   {
+                                       ObservedImage = observedImage,
+                                       ScanRun = scanRun,
+                                       SubjectImageVersion = baseImageVersion,
+                                       Summary = "Retired finding type",
+                                       Type = (UpdateFindingType)1,
+                                   },
+                                   CreateVulnerabilityFinding(baseImageVersion, "CVE-2026-0003", (VulnerabilitySource)3),
+                                   CreateVulnerabilityFinding(baseImageVersion, "CVE-2026-0004", (VulnerabilitySource)4));
+
+                await dbContext.SaveChangesAsync(TestContext.CancellationToken).ConfigureAwait(false);
+                dbContext.ChangeTracker.Clear();
+
+                var storedVersion = await dbContext.ImageVersions.SingleAsync(entity => entity.Digest == "sha256:base", TestContext.CancellationToken).ConfigureAwait(false);
+                var storedRelationship = await dbContext.ImageRelationships.SingleAsync(TestContext.CancellationToken).ConfigureAwait(false);
+                var storedUpdateFinding = await dbContext.UpdateFindings.SingleAsync(TestContext.CancellationToken).ConfigureAwait(false);
+                var storedSources = await dbContext.VulnerabilityFindings.OrderBy(entity => entity.AdvisoryId)
+                                                                         .Select(entity => (int)entity.Source)
+                                                                         .ToListAsync(TestContext.CancellationToken)
+                                                                         .ConfigureAwait(false);
+
+                Assert.AreEqual(4, (int)storedVersion.Source, "A retired image version source must load with its stored number");
+                Assert.AreEqual(3, (int)storedVersion.VulnerabilityAssessmentSource, "A retired assessment source must load with its stored number");
+                Assert.AreEqual(2, (int)storedRelationship.RelationshipType, "A retired relationship type must load with its stored number");
+                Assert.AreEqual(1, (int)storedUpdateFinding.Type, "A retired update finding type must load with its stored number");
+                Assert.AreSequenceEqual<int>([3, 4], storedSources, "Retired vulnerability finding sources must load with their stored numbers");
+            }
+        }
+    }
+
+    /// <summary>
     /// Verify the DbContext persists a representative data foundation graph
     /// </summary>
     /// <returns>Task</returns>
@@ -248,7 +402,7 @@ public class MappingTests
                                         ScanRun = scanRun,
                                         SubjectImageVersion = baseImageVersion,
                                         Summary = "Base image update available",
-                                        Type = UpdateFindingType.BaseImageUpdate
+                                        Type = UpdateFindingType.RuntimeImageUpdate
                                     };
 
                 var tagCandidate = new TagCandidate
