@@ -26,7 +26,7 @@ public partial class NavMenu
     private bool _showMyImages;
 
     /// <summary>
-    /// Whether the Base Images navigation entry should be shown
+    /// Whether the Shared Base Images navigation entry should be shown
     /// </summary>
     private bool _showBaseImages;
 

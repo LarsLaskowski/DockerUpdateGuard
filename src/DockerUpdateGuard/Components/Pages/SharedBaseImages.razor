@@ -1,13 +1,13 @@
 @page "/base-images"
 
-<PageTitle>Base Images</PageTitle>
+<PageTitle>Shared Base Images</PageTitle>
 
 <MudStack Spacing="3" Class="page-shell">
     <div class="page-header">
         <div>
             <MudText Typo="Typo.overline" Class="page-eyebrow">Base image inventory</MudText>
-            <MudText Typo="Typo.h3">Base Images</MudText>
-            <MudText Class="page-description">Resolved base images with their parent images, linked runtime containers, and vulnerability posture.</MudText>
+            <MudText Typo="Typo.h3">Shared Base Images</MudText>
+            <MudText Class="page-description">Shared base images: bases used by two or more enabled images or containers, with the images built on them, their running containers, and vulnerability posture.</MudText>
         </div>
     </div>
 
@@ -18,7 +18,7 @@
     else if (_items.Count == 0)
     {
         <MudPaper Class="empty-state-panel" Elevation="0">
-            <MudText>No base images have been resolved yet.</MudText>
+            <MudText>No base image is used by two or more enabled images or containers yet.</MudText>
         </MudPaper>
     }
     else
@@ -26,7 +26,7 @@
         <MudPaper Class="section-paper" Elevation="0">
             <div class="section-header">
                 <MudText Typo="Typo.h5">Base image overview</MudText>
-                <MudText Class="section-description">Track resolved base images, the parent images that use them, linked runtime containers, and their vulnerability status.</MudText>
+                <MudText Class="section-description">Track shared base images, the images built on them, their running containers, and their vulnerability status.</MudText>
             </div>
             <MudTable Items="_items" Hover="true" Dense="false" Breakpoint="Breakpoint.Md" Class="section-table">
                 <HeaderContent>

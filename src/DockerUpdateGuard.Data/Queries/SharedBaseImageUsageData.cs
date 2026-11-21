@@ -43,7 +43,7 @@ public class SharedBaseImageUsageData
     public IReadOnlyList<string> SourceReferences { get; set; } = [];
 
     /// <summary>
-    /// Number of observed images using the base image
+    /// Number of enabled observed images using the base image
     /// </summary>
     public int ObservedImageCount { get; set; }
 
