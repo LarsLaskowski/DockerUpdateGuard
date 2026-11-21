@@ -46,5 +46,5 @@ version of an enabled discovered image without saving anything. The rules are in
   form allows one registration at a time per page.
 - A reference that differs from a discovered image's current version only in its digest (or its tag) is a different
   image version and registers as a manual image; Docker Hub spellings of one image resolve to the same image version
-  ([0053](0053-tracked-state-moves-to-the-canonical-docker-hub-catalog-entries-at-startup.md)).
+  ([0053](0053-tracked-state-moves-to-the-canonical-catalog-entries-at-startup.md)).
 - Revisiting this means a migration with a unique rule once observed images have one identity across sources.
