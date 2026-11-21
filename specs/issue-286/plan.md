@@ -191,3 +191,21 @@ path is not involved (read-only queries).
 - Spellings of one Docker Hub base: #275 (merged in #518). User-controlled enabled state: #282 — it must keep the
   `IsEnabled` filter of this query.
 - `GetObservedImagesByBaseImageAsync` (fact 12) is unchanged: no production caller.
+
+## Challenge notes
+
+Devil's Advocate, mode plan, issue #286 (`/home/user/DockerUpdateGuard/specs/issue-286/plan.md`)
+
+I checked the plan's claims against the code, and they hold:
+- `SharedBaseImageQueryService.cs:66-146` has no `IsEnabled` filter and no minimum count.
+- In `ApplicationViewService.cs`, the relationship load at `:891-897` takes every relationship of a grouped base, whatever its child. Parents (`:941-944`) and containers (`:927-933`) are derived from it.
+- The dashboard (`:1777`, `:1818`) and `HasBaseImagesAsync` (`:2187-2196`) count the unfiltered query.
+- `ImageScanOrchestrator.cs:483-486` deletes only the current version's relationships, and `:570-578` stores every depth with the current version as child. So "child = current version" does cover "any depth".
+- `NavMenu` calls `HasBaseImagesAsync` only in `OnInitializedAsync`, so the extra snapshot load happens once per session, as record 0054 states.
+- The existing `ApplicationViewServiceBaseImagesReturnsAggregatedUsageAsync` (ApplicationViewServiceTests.cs:500-586) seeds two enabled images with current-version relationships and no stale data, so it stays green.
+
+Option 3 (dropping the source-reference re-filter of fact 9) and fact 11 (the single-image test belongs on the view service, not the query) are sound.
+
+Objections:
+
+1. minor: Wording says "running containers" where the rule also counts stopped containers. The current container set comes from runtime scans that list every container, stopped ones included: `DockerInstanceClient.cs:1114` uses `containers/json?all=1` and `PortainerClient.cs:281` uses `?all=true`. `GetLatestContainerSnapshotsAsync` (`ApplicationViewService.cs:1087-1141`) does not filter on `IsRunning`, and the plan's helper does not either. So a base used by one enabled image with one stopped container is listed as shared, while the AC6 page description ("bases used by two or more enabled images or running containers"), the `web-ui.md` `/base-images` row text in *Documentation updates* and the *Shared base images* definition in `base-images.md` say "running". Why minor: only the wording is off, and the Dev can fix it without changing the plan. Instruction for the Dev and Tester: in the AC6 description, the `web-ui.md` row and the `base-images.md` definition, write "containers" (or "runtime containers") instead of "running containers", matching the issue's empty state "…enabled images or containers yet". In the AC6 render test, assert the description text as changed.
