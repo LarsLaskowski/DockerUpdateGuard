@@ -173,3 +173,58 @@ unchanged; no schema change, so migrations are untouched.
 
 - `DockerHubBaseImageResolver` dead code: #9.
 - The issue's removal of the Trivy *not configured* branch, message and event 3420: not done (fact 6, option 1).
+
+## Challenge notes
+
+Devil's Advocate, mode plan, for issue #293 (`/home/user/DockerUpdateGuard/specs/issue-293/plan.md`)
+
+**The Lead's deviation holds.** Fact 6 is right: the Trivy *not configured* branch can be reached, so keeping it is correct.
+- The provider is resolved once per refresh, at `src/DockerUpdateGuard/Images/VulnerabilityEnrichmentService.cs:524`, and that same instance serves every batch.
+- Each `TrivyVulnerabilityProvider.GetVulnerabilitiesAsync` call reads `_optionsMonitor.CurrentValue.Vulnerabilities.TrivyBaseUrl` again (`src/DockerUpdateGuard/Vulnerabilities/TrivyVulnerabilityProvider.cs:327-335`).
+- Validation asks for `TrivyBaseUrl` only when `Enabled` is true and the provider is `Trivy` (`src/DockerUpdateGuard/Configuration/DockerUpdateGuardOptionsValidator.cs:193-198`). So a valid reload partway through a refresh, to Docker Scout or to `Enabled=false` with no URL, returns *not configured* for every Trivy call left in that refresh.
+- `docs/areas/hosting.md:127` confirms the appsettings files are watched. The `ReloadToDockerScout` test helper builds exactly that configuration (`src/Tests/DockerUpdateGuard.Tests/VulnerabilityEnrichmentServiceTests.cs:149-160`).
+
+**Removing the dashboard hint is also right.** In that scenario the current configuration is no longer `Enabled` with provider `Trivy`, so the resolver's Trivy branch (`src/DockerUpdateGuard/UI/VulnerabilityConfigurationHintResolver.cs:40-44`) cannot fire. If the configuration is switched back to Trivy, validation forces a URL, so the hint would be wrong.
+
+**Other claims I checked, all confirmed:**
+- **No other code uses the removed members.** Outside the test sites the plan lists, only the enum files, `ApplicationViewService.cs:689`, `:727-728`, the resolver and `Dashboard.razor:127` reference them.
+- **Fallback labels:** `FormatUpdateFindingType` falls back to `type.ToString()`, so the plan's "1" in AC3 is correct; `FormatVulnerabilitySource` falls back to "Not set".
+- **Test changes:** the `Manual` → `NotSet` swap at `VulnerabilityEnrichmentServiceTests.cs:1050` is sound because that test's provider reports `Trivy`, and the assertions at `:1072-1076` need a value that differs from it.
+- **AC1 helper:** the pattern exists at `src/Tests/DockerUpdateGuard.Data.Tests/ContainerActionTypeTests.cs:17`.
+- **AC5 test** exists at `src/Tests/DockerUpdateGuard.Tests/TrivyVulnerabilityProviderTests.cs:678`.
+
+**Objections**
+
+1. **minor** — In `docs/areas/vulnerabilities.md`, limit the sentence "a stored retired source is shown as 'Not set'" to the **assessment** source. Why it matters: as written the document would claim something untrue about finding sources.
+   - `VulnerabilityFinding.Source` (`src/DockerUpdateGuard.Data/Entities/VulnerabilityFinding.cs:102`) does not go through `FormatVulnerabilitySource`. It is mapped with `entity.Source.ToString()` at `src/DockerUpdateGuard/UI/ApplicationViewService.cs:111`, so a stored finding of source 3 or 4 would map to "3" or "4", not "Not set".
+   - `VulnerabilityFindingsTable` does not show that field today.
+   - The plan's list of areas and AC3 only consider `FormatVulnerabilitySource`, which covers the assessment source via `:314`.
+
+## Security notes
+
+Security plan review: issue 293 (/home/user/DockerUpdateGuard/specs/issue-293/plan.md)
+
+I found no problems. The `standard` tier is right: the change creates, changes or removes no security control. *Security areas touched* lists Database and migrations, which is correct and complete.
+
+What I checked (read and grep only, no probes; the plan claims nothing that rests on measured or library behavior):
+
+- **Database and migrations.** The four enums are stored as plain integers:
+  - The snapshot has `Property<int>` for these columns, for example `DockerUpdateGuardDbContextModelSnapshot.cs:263` `RelationshipType`.
+  - The only `HasConversion` calls are the three digest converters.
+  - The only check constraints are `CK_ImageRelationships_ChildAndBaseDifferent` and `CK_ImageRelationships_DepthGreaterThanZero`. Neither touches an enum column.
+  - `src/DockerUpdateGuard.Data` has no `ConfigureConventions` or `HaveConversion`.
+  - So removing the members changes no model, schema or migration. No query is built from user input and the migration lock is untouched.
+  - AC2 (retired numbers still load) and AC6 (empty Migrations diff) pin this.
+- **External input.** No production code parses these enums from outside input. There is no `Enum.Parse`, `Enum.TryParse`, `Enum.IsDefined` or `JsonStringEnumConverter` in the host, data or telemetry code. Removing the members cannot open a parse or validation bypass.
+- **Stored retired values.** The only switches over the affected enums are the two formatters in `src/DockerUpdateGuard/UI/ApplicationViewService.cs:685-695` and `:721-730`. Both end in a non-throwing fallback (`type.ToString()` / "Not set"). A stored row with a retired number cannot crash a page, and the output is a fixed number or text, never remote data. AC3 pins this.
+- **Trivy not-configured branch.** Keeping it (fact 6, option 1) is the safe choice. In `src/DockerUpdateGuard/Vulnerabilities/TrivyVulnerabilityProvider.cs:327-335`:
+  - The branch reads `CurrentValue` on every call and returns *not configured* before any process starts.
+  - Removing it would make a reload during a refresh run Trivy with a blank URL, or reach the generic error path with a stack-trace log.
+  - The process execution area, its arguments and event 3420 stay unchanged.
+  - AC5 pins the branch.
+- **Removing the hint.**
+  - It is reachable only with `Enabled` and provider `Trivy`. On that path `ValidateVulnerabilityOptions` (`src/DockerUpdateGuard/Configuration/DockerUpdateGuardOptionsValidator.cs:193-198`) requires an absolute HTTP `TrivyBaseUrl`, so the hint was wrong whenever it showed.
+  - The banner in `src/DockerUpdateGuard/Components/Pages/Dashboard.razor:127-132` shows only fixed text: no message text, URL or credential is echoed. Removing it changes no output of a configured URL or secret.
+  - The Docker Scout hint and `VulnerabilityProviderMessages.TrivyBaseUrlNotConfigured` stay.
+- **Logging and telemetry.** No log call, logging file or span tag changes, so the logger-argument concern does not arise.
+- **No other areas.** The change touches no CI, Docker or build configuration and no dependency.
