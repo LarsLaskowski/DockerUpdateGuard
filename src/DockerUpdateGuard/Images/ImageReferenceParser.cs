@@ -9,6 +9,15 @@ namespace DockerUpdateGuard.Images;
 /// </summary>
 public class ImageReferenceParser : IImageReferenceParser
 {
+    #region Properties
+
+    /// <summary>
+    /// Lowercase host names that all denote Docker Hub
+    /// </summary>
+    internal static IReadOnlyList<string> DockerHubRegistryHosts => throw new InvalidOperationException("Skeleton: not implemented");
+
+    #endregion // Properties
+
     #region Methods
 
     /// <summary>

@@ -100,6 +100,16 @@ internal static partial class HostLoggingExtensions
     public static partial void ApplicationDatabaseMigrationLockTimedOut(this ILogger logger, int timeoutSeconds, int attempts);
 
     /// <summary>
+    /// Log that tracked image references were moved to canonical catalog entries
+    /// </summary>
+    /// <param name="logger">Logger</param>
+    /// <param name="count">Number of moved tracked image references</param>
+    [LoggerMessage(EventId = 1009,
+                   Level = LogLevel.Information,
+                   Message = "Moved {Count} tracked image references to canonical catalog entries")]
+    public static partial void TrackedImageReferencesCanonicalized(this ILogger logger, int count);
+
+    /// <summary>
     /// Log that application initialization has completed
     /// </summary>
     /// <param name="logger">Logger</param>
