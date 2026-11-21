@@ -120,20 +120,124 @@ public class ImageReferenceParserTests
     }
 
     /// <summary>
-    /// Verify Docker Hub spellings keep the registry and repository as spelled
+    /// Verify a docker.io reference without a namespace gets the library namespace
+    /// </summary>
+    /// <param name="value">Image reference</param>
+    /// <param name="expectedTag">Expected tag</param>
+    /// <param name="expectedDigest">Expected digest</param>
+    [TestMethod]
+    [TestCategory("AC1")]
+    [DataRow("docker.io/nginx", "latest", null)]
+    [DataRow("docker.io/library/nginx", "latest", null)]
+    [DataRow("DOCKER.IO/Nginx", "latest", null)]
+    [DataRow("docker.io/nginx:1.27", "1.27", null)]
+    [DataRow("docker.io/nginx@sha256:ABC", "latest", "sha256:abc")]
+    [DataRow("docker.io/library/nginx:1.27@sha256:ABC", "1.27", "sha256:abc")]
+    public void ImageReferenceParserParseDockerIoSingleSegmentAddsLibraryNamespace(string value, string expectedTag, string? expectedDigest)
+    {
+        var imageReference = new ImageReferenceParser().Parse(value);
+
+        AssertReference(imageReference, value, "docker.io", "library/nginx", expectedTag, expectedDigest);
+    }
+
+    /// <summary>
+    /// Verify index.docker.io is mapped to docker.io
+    /// </summary>
+    /// <param name="value">Image reference</param>
+    /// <param name="expectedTag">Expected tag</param>
+    /// <param name="expectedDigest">Expected digest</param>
+    [TestMethod]
+    [TestCategory("AC1")]
+    [DataRow("index.docker.io/nginx", "latest", null)]
+    [DataRow("index.docker.io/library/nginx", "latest", null)]
+    [DataRow("index.docker.io/nginx:1.27", "1.27", null)]
+    [DataRow("index.docker.io/library/nginx@sha256:ABC", "latest", "sha256:abc")]
+    [DataRow("INDEX.DOCKER.IO/Nginx:1.27@sha256:ABC", "1.27", "sha256:abc")]
+    public void ImageReferenceParserParseIndexDockerIoNormalizesRegistry(string value, string expectedTag, string? expectedDigest)
+    {
+        var imageReference = new ImageReferenceParser().Parse(value);
+
+        AssertReference(imageReference, value, "docker.io", "library/nginx", expectedTag, expectedDigest);
+        Assert.StartsWith("docker.io/library/nginx:", imageReference.FullReference, $"Full reference of '{value}' must not keep the index.docker.io alias");
+    }
+
+    /// <summary>
+    /// Verify registry-1.docker.io is mapped to docker.io
+    /// </summary>
+    /// <param name="value">Image reference</param>
+    /// <param name="expectedTag">Expected tag</param>
+    /// <param name="expectedDigest">Expected digest</param>
+    [TestMethod]
+    [TestCategory("AC1")]
+    [DataRow("registry-1.docker.io/nginx", "latest", null)]
+    [DataRow("registry-1.docker.io/library/nginx", "latest", null)]
+    [DataRow("registry-1.docker.io/nginx:1.27", "1.27", null)]
+    [DataRow("registry-1.docker.io/library/nginx@sha256:ABC", "latest", "sha256:abc")]
+    public void ImageReferenceParserParseRegistryOneDockerIoNormalizesRegistry(string value, string expectedTag, string? expectedDigest)
+    {
+        var imageReference = new ImageReferenceParser().Parse(value);
+
+        Assert.AreEqual("docker.io", imageReference.Registry, $"Registry of '{value}' must be docker.io, not the registry-1 alias");
+        Assert.AreEqual("library/nginx", imageReference.Repository, $"Repository of '{value}' must carry the library namespace");
+        Assert.AreEqual(expectedTag, imageReference.Tag, $"Tag of '{value}'");
+        Assert.AreEqual(expectedDigest, imageReference.Digest, $"Digest of '{value}'");
+    }
+
+    /// <summary>
+    /// Verify every Docker Hub spelling of a namespaced repository yields docker.io and the repository
+    /// </summary>
+    /// <param name="value">Image reference</param>
+    [TestMethod]
+    [TestCategory("AC2")]
+    [DataRow("docker.io/myuser/app")]
+    [DataRow("index.docker.io/myuser/app")]
+    [DataRow("registry-1.docker.io/myuser/app")]
+    [DataRow("REGISTRY-1.DOCKER.IO/MyUser/App")]
+    [DataRow("myuser/app")]
+    public void ImageReferenceParserParseNamespacedDockerHubSpellingReturnsCanonicalReference(string value)
+    {
+        var imageReference = new ImageReferenceParser().Parse(value);
+
+        AssertReference(imageReference, value, "docker.io", "myuser/app", "latest", null);
+    }
+
+    /// <summary>
+    /// Verify a registry wrapped behind a Docker Hub alias is unwrapped
+    /// </summary>
+    /// <param name="value">Image reference</param>
+    [TestMethod]
+    [TestCategory("AC3")]
+    [DataRow("index.docker.io/ghcr.io/owner/app:1")]
+    [DataRow("registry-1.docker.io/ghcr.io/owner/app:1")]
+    [DataRow("docker.io/ghcr.io/owner/app:1")]
+    public void ImageReferenceParserParseWrappedRegistryBehindDockerHubAliasUnwraps(string value)
+    {
+        var imageReference = new ImageReferenceParser().Parse(value);
+
+        AssertReference(imageReference, value, "ghcr.io", "owner/app", "1", null);
+    }
+
+    /// <summary>
+    /// Verify other registries keep their registry and repository and Docker Hub spellings keep the tag case
     /// </summary>
     /// <param name="value">Image reference</param>
     /// <param name="expectedRegistry">Expected registry</param>
     /// <param name="expectedRepository">Expected repository</param>
+    /// <param name="expectedTag">Expected tag</param>
     [TestMethod]
-    [TestCategory("AC3")]
-    [DataRow("docker.io/nginx", "docker.io", "nginx")]
-    [DataRow("index.docker.io/library/nginx", "index.docker.io", "library/nginx")]
-    public void ImageReferenceParserParseDockerHubSpellingKeepsSpelledRegistryAndRepository(string value, string expectedRegistry, string expectedRepository)
+    [TestCategory("AC4")]
+    [DataRow("localhost:5000/app", "localhost:5000", "app", "latest")]
+    [DataRow("localhost/app", "localhost", "app", "latest")]
+    [DataRow("ghcr.io/owner/app", "ghcr.io", "owner/app", "latest")]
+    [DataRow("registry.example.com/app", "registry.example.com", "app", "latest")]
+    [DataRow("INDEX.DOCKER.IO/Foo/Bar:RC1", "docker.io", "foo/bar", "RC1")]
+    public void ImageReferenceParserParseOtherRegistryKeepsRegistryAndRepository(string value, string expectedRegistry, string expectedRepository, string expectedTag)
     {
         var imageReference = new ImageReferenceParser().Parse(value);
 
-        AssertReference(imageReference, value, expectedRegistry, expectedRepository, "latest", null);
+        Assert.AreEqual(expectedRegistry, imageReference.Registry, $"Registry of '{value}'");
+        Assert.AreEqual(expectedRepository, imageReference.Repository, $"Repository of '{value}' must not get a library namespace outside Docker Hub");
+        Assert.AreEqual(expectedTag, imageReference.Tag, $"Tag of '{value}' must keep its case");
     }
 
     /// <summary>
@@ -186,7 +290,7 @@ public class ImageReferenceParserTests
     [TestCategory("AC5")]
     [DataRow("docker.io/harbor/app", "harbor/app")]
     [DataRow("docker.io/registry.example.com/app", "registry.example.com/app")]
-    [DataRow("docker.io/ghcr.io", "ghcr.io")]
+    [DataRow("docker.io/ghcr.io", "library/ghcr.io")]
     public void ImageReferenceParserParseMirrorWrappedReferenceOfUnknownHostKeepsDockerHub(string value, string expectedRepository)
     {
         var imageReference = new ImageReferenceParser().Parse(value);
@@ -286,6 +390,49 @@ public class ImageReferenceParserTests
         var imageReference = parser.Parse(reference);
 
         AssertReference(imageReference, reference, registry, repository, tag, digest);
+    }
+
+    /// <summary>
+    /// Verify Format of a parsed reference parses back to the same canonical parts for every Docker Hub spelling and other registry
+    /// </summary>
+    /// <param name="value">Image reference</param>
+    /// <param name="expectedRegistry">Expected registry</param>
+    /// <param name="expectedRepository">Expected repository</param>
+    /// <param name="expectedTag">Expected tag</param>
+    /// <param name="expectedDigest">Expected digest</param>
+    [TestMethod]
+    [TestCategory("AC5")]
+    [DataRow("nginx", "docker.io", "library/nginx", "latest", null)]
+    [DataRow("docker.io/nginx:1.27", "docker.io", "library/nginx", "1.27", null)]
+    [DataRow("index.docker.io/library/nginx@sha256:ABC", "docker.io", "library/nginx", "latest", "sha256:abc")]
+    [DataRow("registry-1.docker.io/nginx:1.27@sha256:ABC", "docker.io", "library/nginx", "1.27", "sha256:abc")]
+    [DataRow("DOCKER.IO/Nginx", "docker.io", "library/nginx", "latest", null)]
+    [DataRow("REGISTRY-1.DOCKER.IO/MyUser/App", "docker.io", "myuser/app", "latest", null)]
+    [DataRow("index.docker.io/ghcr.io/owner/app:1", "ghcr.io", "owner/app", "1", null)]
+    [DataRow("registry-1.docker.io/ghcr.io/owner/app:1", "ghcr.io", "owner/app", "1", null)]
+    [DataRow("docker.io/ghcr.io", "docker.io", "library/ghcr.io", "latest", null)]
+    [DataRow("localhost:5000/app", "localhost:5000", "app", "latest", null)]
+    [DataRow("INDEX.DOCKER.IO/Foo/Bar:RC1", "docker.io", "foo/bar", "RC1", null)]
+    [DataRow("library/nginx", "docker.io", "library/nginx", "latest", null)]
+    [DataRow("docker.io/library/nginx", "docker.io", "library/nginx", "latest", null)]
+    [DataRow("index.docker.io/nginx", "docker.io", "library/nginx", "latest", null)]
+    [DataRow("registry-1.docker.io/library/nginx", "docker.io", "library/nginx", "latest", null)]
+    [DataRow("myuser/app", "docker.io", "myuser/app", "latest", null)]
+    [DataRow("docker.io/myuser/app", "docker.io", "myuser/app", "latest", null)]
+    [DataRow("index.docker.io/myuser/app", "docker.io", "myuser/app", "latest", null)]
+    [DataRow("localhost/app", "localhost", "app", "latest", null)]
+    [DataRow("ghcr.io/owner/app", "ghcr.io", "owner/app", "latest", null)]
+    [DataRow("registry.example.com/app", "registry.example.com", "app", "latest", null)]
+    public void ImageReferenceParserFormatCanonicalReferenceRoundTrips(string value, string expectedRegistry, string expectedRepository, string expectedTag, string? expectedDigest)
+    {
+        var parser = new ImageReferenceParser();
+        var parsed = parser.Parse(value);
+        var reference = parser.Format(CreateImageVersion(parsed.Registry, parsed.Repository, parsed.Tag, parsed.Digest));
+
+        var reparsed = parser.Parse(reference);
+
+        AssertReference(parsed, value, expectedRegistry, expectedRepository, expectedTag, expectedDigest);
+        AssertReference(reparsed, reference, expectedRegistry, expectedRepository, expectedTag, expectedDigest);
     }
 
     /// <summary>

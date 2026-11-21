@@ -9,6 +9,24 @@ namespace DockerUpdateGuard.Images;
 /// </summary>
 public class ImageReferenceParser : IImageReferenceParser
 {
+    #region Constants
+
+    /// <summary>
+    /// Canonical registry of Docker Hub
+    /// </summary>
+    internal const string DockerHubRegistry = "docker.io";
+
+    #endregion // Constants
+
+    #region Properties
+
+    /// <summary>
+    /// Lowercase host names that all denote Docker Hub
+    /// </summary>
+    internal static IReadOnlyList<string> DockerHubRegistryHosts { get; } = [DockerHubRegistry, "index.docker.io", "registry-1.docker.io"];
+
+    #endregion // Properties
+
     #region Methods
 
     /// <summary>
@@ -36,6 +54,16 @@ public class ImageReferenceParser : IImageReferenceParser
     }
 
     /// <summary>
+    /// Determine whether a path segment is one of the host names that denote Docker Hub
+    /// </summary>
+    /// <param name="segment">Path segment</param>
+    /// <returns>True when the segment denotes Docker Hub</returns>
+    private static bool IsDockerHubRegistryHost(string segment)
+    {
+        return DockerHubRegistryHosts.Any(host => string.Equals(host, segment, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
     /// Determine whether a path segment looks like a registry host
     /// </summary>
     /// <param name="segment">Path segment</param>
@@ -56,7 +84,7 @@ public class ImageReferenceParser : IImageReferenceParser
     /// <param name="repository">Repository path</param>
     private static void NormalizeWrappedRegistry(ref string registry, ref string repository)
     {
-        if (string.Equals(registry, "docker.io", StringComparison.OrdinalIgnoreCase) == false)
+        if (string.Equals(registry, DockerHubRegistry, StringComparison.OrdinalIgnoreCase) == false)
         {
             return;
         }
@@ -129,21 +157,27 @@ public class ImageReferenceParser : IImageReferenceParser
 
         if (segments.Length == 1)
         {
-            registry = "docker.io";
-            repository = $"library/{segments[0].ToLowerInvariant()}";
+            registry = DockerHubRegistry;
+            repository = segments[0].ToLowerInvariant();
         }
         else if (LooksLikeRegistry(segments[0]))
         {
-            registry = segments[0].ToLowerInvariant();
+            registry = IsDockerHubRegistryHost(segments[0]) ? DockerHubRegistry : segments[0].ToLowerInvariant();
             repository = string.Join('/', segments.Skip(1)).ToLowerInvariant();
         }
         else
         {
-            registry = "docker.io";
+            registry = DockerHubRegistry;
             repository = string.Join('/', segments).ToLowerInvariant();
         }
 
         NormalizeWrappedRegistry(ref registry, ref repository);
+
+        if (string.Equals(registry, DockerHubRegistry, StringComparison.Ordinal)
+            && repository.Contains('/') == false)
+        {
+            repository = $"library/{repository}";
+        }
 
         return new ImageReference
                {

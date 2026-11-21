@@ -140,6 +140,65 @@ public class ApplicationInitializationExtensionsTests
     }
 
     /// <summary>
+    /// Verify the startup initialization moves a seeded non-canonical observed image to the canonical version
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC9")]
+    public async Task ApplicationInitializationExtensionsInitializeDockerUpdateGuardCanonicalizesTrackedImageReferencesAsync()
+    {
+        var application = CreateApplication(Guid.NewGuid().ToString(), CreateLoggerFactory(new TestLogger<WebApplication>()));
+        string reference;
+
+        await using (application.ConfigureAwait(false))
+        {
+            await SeedObservedImageAsync(application).ConfigureAwait(false);
+
+            await application.InitializeDockerUpdateGuardAsync()
+                             .ConfigureAwait(false);
+
+            reference = await LoadObservedImageReferenceAsync(application).ConfigureAwait(false);
+        }
+
+        Assert.AreEqual("docker.io/library/nginx:1.27", reference, "A seeded non-canonical observed image must point at the canonical version after startup");
+    }
+
+    /// <summary>
+    /// Verify the startup initialization logs the number of canonicalized references only when it moved any
+    /// </summary>
+    /// <param name="withRow">Whether a non-canonical observed image is seeded</param>
+    /// <param name="expectedCount">Expected number of log entries</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC9")]
+    [DataRow(true, 1)]
+    [DataRow(false, 0)]
+    public async Task ApplicationInitializationExtensionsInitializeDockerUpdateGuardLogsCanonicalizedReferenceCountAsync(bool withRow, int expectedCount)
+    {
+        var logger = new TestLogger<WebApplication>();
+        var application = CreateApplication(Guid.NewGuid().ToString(), CreateLoggerFactory(logger));
+
+        await using (application.ConfigureAwait(false))
+        {
+            if (withRow)
+            {
+                await SeedObservedImageAsync(application).ConfigureAwait(false);
+            }
+
+            await application.InitializeDockerUpdateGuardAsync()
+                             .ConfigureAwait(false);
+        }
+
+        var entries = logger.Entries.Where(entry => entry.EventId.Id == 1009)
+                                    .ToList();
+
+        Assert.HasCount(expectedCount, entries, "The canonicalization must be logged exactly when a reference was moved");
+        Assert.IsTrue(entries.TrueForAll(entry => entry.LogLevel == LogLevel.Information
+                                                  && entry.Message == "Moved 1 tracked image references to canonical catalog entries"),
+                      "The canonicalization entry must be informational and carry the number of moved references");
+    }
+
+    /// <summary>
     /// Create a logger factory that hands the given logger to the startup category and discards every other category
     /// </summary>
     /// <param name="logger">Logger of the startup category</param>
@@ -172,6 +231,64 @@ public class ApplicationInitializationExtensionsTests
         builder.Services.AddSingleton(loggerFactory);
 
         return builder.Build();
+    }
+
+    /// <summary>
+    /// Seed a manual observed image on the non-canonical reference docker.io/nginx:1.27
+    /// </summary>
+    /// <param name="application">Application holding the database</param>
+    /// <returns>Task</returns>
+    private async Task SeedObservedImageAsync(WebApplication application)
+    {
+        var scope = application.Services.CreateAsyncScope();
+
+        await using (scope.ConfigureAwait(false))
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<DockerUpdateGuardDbContext>();
+
+            dbContext.ObservedImages.Add(new ObservedImage
+                                         {
+                                             Name = "nginx",
+                                             Source = RegistrationSource.Manual,
+                                             CurrentImageVersion = new ImageVersion
+                                                                   {
+                                                                       Tag = "1.27",
+                                                                       Digest = string.Empty,
+                                                                       RegistryRepository = new RegistryRepository
+                                                                                            {
+                                                                                                Registry = "docker.io",
+                                                                                                Repository = "nginx",
+                                                                                            },
+                                                                   },
+                                         });
+
+            await dbContext.SaveChangesAsync(TestContext.CancellationToken)
+                           .ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Load the reference of the only observed image's current version
+    /// </summary>
+    /// <param name="application">Application holding the database</param>
+    /// <returns>Registry, repository and tag of the current version</returns>
+    private async Task<string> LoadObservedImageReferenceAsync(WebApplication application)
+    {
+        var scope = application.Services.CreateAsyncScope();
+
+        await using (scope.ConfigureAwait(false))
+        {
+            var observedImage = await scope.ServiceProvider.GetRequiredService<DockerUpdateGuardDbContext>()
+                                                           .ObservedImages
+                                                           .AsNoTracking()
+                                                           .Include(entity => entity.CurrentImageVersion)
+                                                           .ThenInclude(entity => entity.RegistryRepository)
+                                                           .SingleAsync(TestContext.CancellationToken)
+                                                           .ConfigureAwait(false);
+            var version = observedImage.CurrentImageVersion;
+
+            return $"{version.RegistryRepository.Registry}/{version.RegistryRepository.Repository}:{version.Tag}";
+        }
     }
 
     /// <summary>

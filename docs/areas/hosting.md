@@ -112,7 +112,11 @@ succeeded.
 5. **Reconcile interrupted container actions.** Every container action run still *requested* or *running* from the
    previous process becomes *failed* with an interruption message (see [Container actions](container-actions.md#action-runs));
    the number of reconciled runs is logged when it is above zero.
-6. **Seed the inventory gauges** from the database (see [Telemetry](telemetry.md)).
+6. **Move tracked image references to canonical catalog entries.** The current version of every observed image and
+   every container tag selection that still names a non-canonical Docker Hub spelling moves to the canonical entry
+   (see [Image catalog](image-catalog.md#moving-tracked-state-to-canonical-entries)); the number of moved rows is
+   logged when it is above zero.
+7. **Seed the inventory gauges** from the database (see [Telemetry](telemetry.md)).
 
 Only local database work runs on this path. Work that needs the network, such as Docker Hub account image
 discovery, runs in the background jobs after startup (see [Scan engine](scan-engine.md)), so an unreachable

@@ -1,4 +1,6 @@
+using DockerUpdateGuard.Data;
 using DockerUpdateGuard.Data.Entities;
+using DockerUpdateGuard.Data.Queries;
 using DockerUpdateGuard.Data.Repositories;
 using DockerUpdateGuard.Docker;
 using DockerUpdateGuard.DockerHub;
@@ -189,6 +191,58 @@ public class ImageScanOrchestratorTests
                                                          Arg.Any<string?>(),
                                                          Arg.Any<string?>(),
                                                          cancellationToken: Arg.Any<CancellationToken>());
+            }
+        }
+    }
+
+    /// <summary>
+    /// Verify two observed images whose base image labels name the same Docker Hub image in different spellings share one base image entry
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC7")]
+    public async Task ImageScanOrchestratorScanAsyncBaseImagesOfDockerHubSpellingsShareOneEntryAsync()
+    {
+        using (var database = new SqliteTestDatabase())
+        {
+            var dbContext = database.CreateDbContext();
+
+            await using (dbContext.ConfigureAwait(false))
+            {
+                var imageCatalogRepository = new ImageCatalogRepository(dbContext);
+                var registryMetadataService = CreateLabelledRegistryMetadataService(new Dictionary<string, string>
+                                                                                    {
+                                                                                        ["company/app-a"] = "docker.io/nginx:1.27",
+                                                                                        ["company/app-b"] = "nginx:1.27",
+                                                                                    });
+                var orchestrator = new ImageScanOrchestrator(new ApplicationTelemetry(),
+                                                             new RegistryBaseImageResolver(registryMetadataService),
+                                                             dbContext,
+                                                             Substitute.For<IDerivedBaseRuntimeDetector>(),
+                                                             Substitute.For<IDotNetReleaseMetadataService>(),
+                                                             Substitute.For<INginxReleaseMetadataService>(),
+                                                             imageCatalogRepository,
+                                                             new ImageReferenceParser(),
+                                                             new TestLogger<ImageScanOrchestrator>(),
+                                                             registryMetadataService);
+                var firstId = await AddObservedImageAsync(dbContext, imageCatalogRepository, "company/app-a").ConfigureAwait(false);
+                var secondId = await AddObservedImageAsync(dbContext, imageCatalogRepository, "company/app-b").ConfigureAwait(false);
+
+                await orchestrator.ScanAsync(firstId, ScanTriggerSource.Manual, CancellationToken.None)
+                                  .ConfigureAwait(false);
+                await orchestrator.ScanAsync(secondId, ScanTriggerSource.Manual, CancellationToken.None)
+                                  .ConfigureAwait(false);
+
+                dbContext.ChangeTracker.Clear();
+
+                var baseImages = await new SharedBaseImageQueryService(dbContext).GetBaseImagesAsync(TestContext.CancellationToken)
+                                                                                 .ConfigureAwait(false);
+
+                Assert.HasCount(1, baseImages, "Both spellings of the base image must produce one /base-images entry");
+                Assert.AreEqual("docker.io/library/nginx",
+                                $"{baseImages[0].Registry}/{baseImages[0].Repository}",
+                                "The shared entry must be the canonical Docker Hub repository");
+                Assert.AreEqual(2, baseImages[0].ObservedImageCount, "Both observed images must be counted on the shared entry");
             }
         }
     }
@@ -1974,6 +2028,52 @@ public class ImageScanOrchestratorTests
     }
 
     /// <summary>
+    /// Create a registry metadata service whose image configurations carry the base image name label of their repository
+    /// </summary>
+    /// <param name="baseImageNames">Base image name label by observed image repository</param>
+    /// <returns>Registry metadata service</returns>
+    private static IRegistryMetadataService CreateLabelledRegistryMetadataService(Dictionary<string, string> baseImageNames)
+    {
+        var registryMetadataService = Substitute.For<IRegistryMetadataService>();
+
+        registryMetadataService.GetImageConfigurationAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
+                               .Returns(callInfo =>
+                                        {
+                                            var imageReference = callInfo.ArgAt<ImageReference>(0);
+
+                                            if (baseImageNames.TryGetValue(imageReference.Repository, out var baseImageName) == false)
+                                            {
+                                                return ExternalOperationResult.NotFound<RegistryImageConfigurationData>("No registry config");
+                                            }
+
+                                            return ExternalOperationResult.Succeeded<RegistryImageConfigurationData>(new RegistryImageConfigurationData
+                                                                                                                     {
+                                                                                                                         Labels = new Dictionary<string, string>
+                                                                                                                                  {
+                                                                                                                                      ["org.opencontainers.image.base.name"] = baseImageName,
+                                                                                                                                      ["org.opencontainers.image.base.digest"] = "sha256:base",
+                                                                                                                                  },
+                                                                                                                     });
+                                        });
+        registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), cancellationToken: Arg.Any<CancellationToken>())
+                               .Returns(callInfo =>
+                                        {
+                                            var imageReference = callInfo.ArgAt<ImageReference>(0);
+
+                                            return ExternalOperationResult.Succeeded<DockerHubTagData>(new DockerHubTagData
+                                                                                                       {
+                                                                                                           Tag = imageReference.Tag,
+                                                                                                           Digest = imageReference.Digest,
+                                                                                                           PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
+                                                                                                       });
+                                        });
+        registryMetadataService.GetTagsAsync(Arg.Any<string>(), Arg.Any<string>(), queryOptions: Arg.Any<RegistryTagQueryOptions>(), cancellationToken: Arg.Any<CancellationToken>())
+                               .Returns(ExternalOperationResult.NotFound<IReadOnlyList<DockerHubTagData>>("No tags"));
+
+        return registryMetadataService;
+    }
+
+    /// <summary>
     /// Scan an observed image whose resolved base image carries the given source reference and read the stored value
     /// </summary>
     /// <param name="sourceReference">Source reference of the resolved base image</param>
@@ -2050,6 +2150,35 @@ public class ImageScanOrchestratorTests
                 return relationship.SourceReference;
             }
         }
+    }
+
+    /// <summary>
+    /// Add an observed image on docker.io at the given repository with tag 1.0.0 and a digest of its own
+    /// </summary>
+    /// <param name="dbContext">Database context</param>
+    /// <param name="imageCatalogRepository">Image catalog repository</param>
+    /// <param name="repository">Repository</param>
+    /// <returns>Id of the observed image</returns>
+    private async Task<Guid> AddObservedImageAsync(DockerUpdateGuardDbContext dbContext, ImageCatalogRepository imageCatalogRepository, string repository)
+    {
+        var imageVersion = await imageCatalogRepository.GetOrCreateImageVersionAsync("docker.io",
+                                                                                     repository,
+                                                                                     "1.0.0",
+                                                                                     $"sha256:{repository.Replace('/', '-')}",
+                                                                                     cancellationToken: TestContext.CancellationToken)
+                                                       .ConfigureAwait(false);
+        var observedImage = new ObservedImage
+                            {
+                                Name = repository,
+                                CurrentImageVersionId = imageVersion.Id,
+                            };
+
+        dbContext.ObservedImages.Add(observedImage);
+
+        await dbContext.SaveChangesAsync(TestContext.CancellationToken)
+                       .ConfigureAwait(false);
+
+        return observedImage.Id;
     }
 
     #endregion // Methods
