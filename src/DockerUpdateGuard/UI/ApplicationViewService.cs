@@ -933,16 +933,14 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
         return sharedEntries.Select(shared =>
                                     {
                                         var entity = shared.Entry;
-                                        var relevantBaseImageVersions = entity.BaseImageVersionIds.Where(imageVersions.ContainsKey)
-                                                                                                  .Select(id => imageVersions[id])
+                                        var relevantBaseImageVersions = entity.BaseImageVersionIds.Select(id => imageVersions[id])
                                                                                                   .ToList();
                                         var representativeBaseImage = relevantBaseImageVersions.OrderByDescending(baseImageVersion => baseImageVersion.VulnerabilityAssessmentCheckedAtUtc ?? DateTimeOffset.MinValue)
                                                                                                .ThenBy(baseImageVersion => baseImageVersion.Tag, StringComparer.OrdinalIgnoreCase)
                                                                                                .First();
                                         var worstSeveritySummary = relevantBaseImageVersions.Select(baseImageVersion => GetSummaryOrEmpty(activeFindingLookup, baseImageVersion.Id))
                                                                                             .OrderByDescending(summary => summary.TotalCount)
-                                                                                            .FirstOrDefault()
-                                                                       ?? new VulnerabilitySeveritySummaryViewData();
+                                                                                            .First();
                                         var runtimeContainers = shared.Containers.OrderBy(snapshot => snapshot.DockerInstance.Name, StringComparer.OrdinalIgnoreCase)
                                                                                  .ThenBy(snapshot => snapshot.Name, StringComparer.OrdinalIgnoreCase)
                                                                                  .Select(MapLinkedRuntimeContainer)
@@ -954,8 +952,7 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                                                    BaseImageVersionIds = entity.BaseImageVersionIds,
                                                    ImageReference = FormatImageReference(entity.Registry, entity.Repository, entity.Tag, entity.Digest),
                                                    ObservedImageCount = entity.ObservedImageCount,
-                                                   ParentImageReferences = entity.ConsumingImageVersionIds.Where(imageVersions.ContainsKey)
-                                                                                                          .Select(id => _imageReferenceParser.Format(imageVersions[id]))
+                                                   ParentImageReferences = entity.ConsumingImageVersionIds.Select(id => _imageReferenceParser.Format(imageVersions[id]))
                                                                                                           .Distinct(StringComparer.OrdinalIgnoreCase)
                                                                                                           .OrderBy(reference => reference, StringComparer.OrdinalIgnoreCase)
                                                                                                           .ToList(),
