@@ -3554,6 +3554,78 @@ public class ApplicationViewServiceTests
     }
 
     /// <summary>
+    /// Verify a base used by two enabled observed images is listed with their count
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC2")]
+    public async Task ApplicationViewServiceGetBaseImagesTwoEnabledImagesAreSharedAsync()
+    {
+        var dbContext = CreateSharedBaseDbContext();
+
+        await using (dbContext.ConfigureAwait(false))
+        {
+            var baseVersion = await CreateSharedBaseVersionAsync(dbContext, "library/debian", "12", TestContext.CancellationToken).ConfigureAwait(false);
+            var appA = await CreateSharedBaseVersionAsync(dbContext, "company/app-a", "1.0.0", TestContext.CancellationToken).ConfigureAwait(false);
+            var appB = await CreateSharedBaseVersionAsync(dbContext, "company/app-b", "1.0.0", TestContext.CancellationToken).ConfigureAwait(false);
+
+            AddObservedImage(dbContext, "App A", appA.Id);
+            AddObservedImage(dbContext, "App B", appB.Id);
+            AddBaseRelationship(dbContext, appA.Id, baseVersion.Id);
+            AddBaseRelationship(dbContext, appB.Id, baseVersion.Id);
+
+            await dbContext.SaveChangesAsync(TestContext.CancellationToken).ConfigureAwait(false);
+
+            var baseImages = await CreateSharedBaseService(dbContext).GetBaseImagesAsync(TestContext.CancellationToken).ConfigureAwait(false);
+
+            Assert.HasCount(1, baseImages, "A base used by two enabled observed images must be listed");
+            Assert.AreEqual(2, baseImages[0].ObservedImageCount, "The entry must count both observed images");
+            Assert.AreSequenceEqual(["docker.io/company/app-a:1.0.0@sha256:company/app-a-1.0.0", "docker.io/company/app-b:1.0.0@sha256:company/app-b-1.0.0"],
+                                    baseImages[0].ParentImageReferences.ToArray(),
+                                    SequenceOrder.InAnyOrder,
+                                    "Both images must be listed as parents");
+        }
+    }
+
+    /// <summary>
+    /// Verify a base used by one enabled image whose version runs in current containers is listed with exactly those containers
+    /// </summary>
+    /// <param name="containerCount">Number of current containers</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC3")]
+    [DataRow(1)]
+    [DataRow(2)]
+    public async Task ApplicationViewServiceGetBaseImagesOneImageWithContainerIsSharedAsync(int containerCount)
+    {
+        var dbContext = CreateSharedBaseDbContext();
+
+        await using (dbContext.ConfigureAwait(false))
+        {
+            var baseVersion = await CreateSharedBaseVersionAsync(dbContext, "library/debian", "12", TestContext.CancellationToken).ConfigureAwait(false);
+            var appA = await CreateSharedBaseVersionAsync(dbContext, "company/app-a", "1.0.0", TestContext.CancellationToken).ConfigureAwait(false);
+            var containerNames = Enumerable.Range(1, containerCount)
+                                           .Select(index => $"worker-{index}")
+                                           .ToArray();
+
+            AddObservedImage(dbContext, "App A", appA.Id);
+            AddBaseRelationship(dbContext, appA.Id, baseVersion.Id);
+            AddCurrentContainers(dbContext, appA.Id, containerNames);
+
+            await dbContext.SaveChangesAsync(TestContext.CancellationToken).ConfigureAwait(false);
+
+            var baseImages = await CreateSharedBaseService(dbContext).GetBaseImagesAsync(TestContext.CancellationToken).ConfigureAwait(false);
+
+            Assert.HasCount(1, baseImages, "A base used by one image running in a current container must be listed");
+            Assert.AreEqual(1, baseImages[0].ObservedImageCount, "The entry must count the single observed image");
+            Assert.AreSequenceEqual(containerNames,
+                                    baseImages[0].RuntimeContainers.Select(container => container.ContainerName).ToArray(),
+                                    SequenceOrder.InAnyOrder,
+                                    "Exactly the current containers must be listed");
+        }
+    }
+
+    /// <summary>
     /// Create a Docker instance of the action history test
     /// </summary>
     /// <param name="name">Instance name</param>

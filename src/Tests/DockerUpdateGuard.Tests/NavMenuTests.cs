@@ -164,6 +164,26 @@ public class NavMenuTests
     }
 
     /// <summary>
+    /// Verify the Shared Base Images navigation entry is hidden without shared base images
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC7")]
+    public async Task NavMenuWithoutSharedBaseImagesHidesSharedBaseImagesEntryAsync()
+    {
+        var testContext = BlazorTestContextFactory.Create();
+
+        await using (testContext)
+        {
+            var component = RenderNavMenu(testContext, false);
+
+            await component.WaitForAssertionAsync(() => Assert.IsNotNull(component.Find("a"), "The navigation menu must have finished rendering"));
+
+            Assert.IsNull(FindSharedBaseImagesLink(component), "The Shared Base Images entry must not be rendered without shared base images");
+        }
+    }
+
+    /// <summary>
     /// Render the navigation menu for a base images flag
     /// </summary>
     /// <param name="testContext">bUnit test context</param>
