@@ -111,8 +111,9 @@ go through its retry of transient HTTP failures.
 
 - A listing follows the next-page link of a response (`next` on Docker Hub, `Link: rel="next"` elsewhere) only when
   it stays on the origin of the listing's first request: the same scheme, host (compared case-insensitively) and
-  port. For Docker Hub that origin is the one of `DockerHub:ApiBaseUrl` ; for other registries it is the origin of the first `tags/list` request. A mirror or proxy in
-  front of a registry must rewrite its next-page links to its own origin, otherwise the listing fails.
+  port. For Docker Hub that origin is the one of `DockerHub:ApiBaseUrl`; for other registries it is the origin of the
+  first `tags/list` request. A mirror or proxy in front of a registry must rewrite its next-page links to its own
+  origin, otherwise the listing fails.
 - A link is resolved against the URL of the request that returned it, so a root-relative (`/v2/<repository>/tags/list?...`)
   or path-relative link stays on the same origin and is followed. A link to another host or port, to `http` when the
   listing uses `https`, or with another scheme is not followed and no request is sent to it, so the Docker Hub bearer
