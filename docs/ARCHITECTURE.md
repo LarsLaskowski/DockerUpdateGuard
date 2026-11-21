@@ -201,7 +201,8 @@ auto-discovered via `ApplyConfigurationsFromAssembly`.
 | `DockerInstanceResourceSample` / `RuntimeContainerResourceSample` | Instance-level and per-container CPU/memory/network time series. | [Docker instances](areas/docker-instances.md) |
 
 Every enum used by these entities lives alongside them in the `Entities`
-namespace.
+namespace. Entity enums are stored as their integer number, and the number of a
+removed member is never reused ([0055](decisions/0055-entity-enum-members-nothing-produces-are-removed-and-their-numbers-are-never-reused.md)).
 
 ### 5.2 Repositories vs. Queries
 

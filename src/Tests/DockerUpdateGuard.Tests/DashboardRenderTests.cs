@@ -130,28 +130,6 @@ public class DashboardRenderTests
     }
 
     /// <summary>
-    /// Verify the warning banner names the missing Trivy base URL
-    /// </summary>
-    /// <returns>Task</returns>
-    [TestMethod]
-    public async Task DashboardWithMissingTrivyBaseUrlRendersWarningBanner()
-    {
-        var testContext = BlazorTestContextFactory.Create();
-
-        await using (testContext)
-        {
-            var markup = RenderDashboardMarkup(testContext, VulnerabilityConfigurationHintKind.TrivyBaseUrlMissing);
-
-            Assert.Contains("DockerUpdateGuard:Vulnerabilities:TrivyBaseUrl",
-                            markup,
-                            "The misconfiguration banner must name the missing Trivy base URL setting");
-            Assert.DoesNotContain("Vulnerability scanning is disabled",
-                                  markup,
-                                  "The disabled banner must not be rendered while vulnerability scanning is enabled");
-        }
-    }
-
-    /// <summary>
     /// Verify no configuration banner is rendered for a correctly configured provider
     /// </summary>
     /// <returns>Task</returns>

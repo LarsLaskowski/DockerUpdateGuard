@@ -686,7 +686,6 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
     {
         return type switch
                {
-                   UpdateFindingType.BaseImageUpdate => "Base image update",
                    UpdateFindingType.RuntimeImageUpdate => "Runtime image update",
                    UpdateFindingType.TagRecommendation => "Tag recommendation",
                    UpdateFindingType.DerivedBaseRuntimeUpdate => "Base runtime update",
@@ -724,8 +723,6 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                {
                    VulnerabilitySource.DockerScout => "Docker Scout",
                    VulnerabilitySource.Trivy => "Trivy",
-                   VulnerabilitySource.RegistryAdvisory => "Registry advisory",
-                   VulnerabilitySource.Manual => "Manual",
                    _ => "Not set",
                };
     }

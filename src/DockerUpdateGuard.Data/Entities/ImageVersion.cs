@@ -42,7 +42,7 @@ public class ImageVersion
     public DateTimeOffset? PublishedAtUtc { get; set; }
 
     /// <summary>
-    /// Version source
+    /// Kind of component that registered or last refreshed the version through the catalog; informational only, the last writer wins, and no logic may depend on it
     /// </summary>
     public ImageVersionSource Source { get; set; }
 

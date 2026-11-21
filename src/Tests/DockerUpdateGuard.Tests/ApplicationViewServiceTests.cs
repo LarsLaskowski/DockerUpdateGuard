@@ -276,6 +276,46 @@ public class ApplicationViewServiceTests
         }
     }
 
+    /// <summary>
+    /// Create an image version whose stored vulnerability assessment source is given
+    /// </summary>
+    /// <param name="dbContext">Database context</param>
+    /// <param name="assessmentSource">Stored assessment source</param>
+    /// <returns>Image version</returns>
+    private static async Task<ImageVersion> CreateRetiredValueImageVersionAsync(DockerUpdateGuardDbContext dbContext, VulnerabilitySource assessmentSource)
+    {
+        var imageCatalogRepository = new ImageCatalogRepository(dbContext);
+        var imageVersion = await imageCatalogRepository.GetOrCreateImageVersionAsync("mcr.microsoft.com",
+                                                                                     "dotnet/aspnet",
+                                                                                     "8.0",
+                                                                                     "sha256:image",
+                                                                                     cancellationToken: CancellationToken.None)
+                                                       .ConfigureAwait(false);
+
+        imageVersion.VulnerabilityAssessmentStatus = VulnerabilityAssessmentStatus.Failed;
+        imageVersion.VulnerabilityAssessmentSource = assessmentSource;
+        imageVersion.VulnerabilityAssessmentCheckedAtUtc = DateTimeOffset.UtcNow;
+
+        return imageVersion;
+    }
+
+    /// <summary>
+    /// Read the observed image detail through the view service
+    /// </summary>
+    /// <param name="dbContext">Database context</param>
+    /// <param name="observedImageId">Observed image identifier</param>
+    /// <returns>Observed image detail</returns>
+    private static async Task<ObservedImageDetailViewData?> ReadObservedImageDetailAsync(DockerUpdateGuardDbContext dbContext, Guid observedImageId)
+    {
+        var service = new ApplicationViewService(dbContext,
+                                                 new ImageReferenceParser(),
+                                                 CreateOptionsMonitor(),
+                                                 new SharedBaseImageQueryService(dbContext));
+
+        return await service.GetObservedImageDetailAsync(observedImageId, CancellationToken.None)
+                            .ConfigureAwait(false);
+    }
+
     #endregion // Static methods
 
     #region Methods
@@ -449,7 +489,7 @@ public class ApplicationViewServiceTests
                                              ObservedImage = observedImage,
                                              SubjectImageVersionId = imageVersion.Id,
                                              ScanRun = scanRun,
-                                             Type = UpdateFindingType.BaseImageUpdate,
+                                             Type = UpdateFindingType.RuntimeImageUpdate,
                                              Summary = "Update available",
                                              IsActive = true,
                                          });
@@ -1492,6 +1532,98 @@ public class ApplicationViewServiceTests
             Assert.AreEqual("Trivy",
                             detail.VulnerabilityAssessment.Source,
                             "The observed image detail must expose the vulnerability assessment source");
+        }
+    }
+
+    /// <summary>
+    /// Verify the observed image detail shows the stored number of a retired update finding type
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC3")]
+    public async Task ApplicationViewServiceObservedImageDetailRetiredUpdateFindingTypeShowsNumberAsync()
+    {
+        var options = new DbContextOptionsBuilder<DockerUpdateGuardDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString())
+                                                                               .Options;
+
+        var dbContext = new DockerUpdateGuardDbContext(options);
+
+        await using (dbContext.ConfigureAwait(false))
+        {
+            var imageVersion = await CreateRetiredValueImageVersionAsync(dbContext, VulnerabilitySource.Trivy).ConfigureAwait(false);
+            var observedImage = new ObservedImage
+                                {
+                                    Name = "Retired finding type",
+                                    CurrentImageVersionId = imageVersion.Id,
+                                };
+            var scanRun = new ScanRun
+                          {
+                              Type = ScanRunType.ObservedImage,
+                              Status = ScanRunStatus.Succeeded,
+                              TriggerSource = ScanTriggerSource.Manual,
+                              ObservedImage = observedImage,
+                          };
+
+            dbContext.ObservedImages.Add(observedImage);
+            dbContext.ScanRuns.Add(scanRun);
+            dbContext.UpdateFindings.Add(new UpdateFinding
+                                         {
+                                             ObservedImage = observedImage,
+                                             SubjectImageVersionId = imageVersion.Id,
+                                             ScanRun = scanRun,
+                                             Type = (UpdateFindingType)1,
+                                             Summary = "Retired type",
+                                             IsActive = true,
+                                         });
+
+            await dbContext.SaveChangesAsync(CancellationToken.None)
+                           .ConfigureAwait(false);
+
+            var detail = await ReadObservedImageDetailAsync(dbContext, observedImage.Id).ConfigureAwait(false);
+
+            Assert.IsNotNull(detail, "The observed image detail must be returned for a stored observed image");
+            Assert.AreEqual("1",
+                            detail.UpdateFindings.Single().Type,
+                            "A stored update finding type without a member must be shown as its number");
+        }
+    }
+
+    /// <summary>
+    /// Verify the observed image detail shows a retired vulnerability assessment source as not set
+    /// </summary>
+    /// <param name="storedSource">Retired stored source number</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC3")]
+    [DataRow(3)]
+    [DataRow(4)]
+    public async Task ApplicationViewServiceObservedImageDetailRetiredVulnerabilitySourceShowsNotSetAsync(int storedSource)
+    {
+        var options = new DbContextOptionsBuilder<DockerUpdateGuardDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString())
+                                                                               .Options;
+
+        var dbContext = new DockerUpdateGuardDbContext(options);
+
+        await using (dbContext.ConfigureAwait(false))
+        {
+            var imageVersion = await CreateRetiredValueImageVersionAsync(dbContext, (VulnerabilitySource)storedSource).ConfigureAwait(false);
+            var observedImage = new ObservedImage
+                                {
+                                    Name = "Retired source",
+                                    CurrentImageVersionId = imageVersion.Id,
+                                };
+
+            dbContext.ObservedImages.Add(observedImage);
+
+            await dbContext.SaveChangesAsync(CancellationToken.None)
+                           .ConfigureAwait(false);
+
+            var detail = await ReadObservedImageDetailAsync(dbContext, observedImage.Id).ConfigureAwait(false);
+
+            Assert.IsNotNull(detail, "The observed image detail must be returned for a stored observed image");
+            Assert.AreEqual("Not set",
+                            detail.VulnerabilityAssessment.Source,
+                            "A stored assessment source without a member must be shown as not set");
         }
     }
 
@@ -3008,11 +3140,12 @@ public class ApplicationViewServiceTests
     }
 
     /// <summary>
-    /// Verify the dashboard names the missing Trivy base URL when the latest vulnerability run reported it
+    /// Verify the dashboard reports no hint when a Trivy run reported a missing base URL, since an enabled Trivy configuration always has one
     /// </summary>
     /// <returns>Task</returns>
     [TestMethod]
-    public async Task ApplicationViewServiceDashboardTrivyNotConfiguredReportsTrivyBaseUrlHintAsync()
+    [TestCategory("AC4")]
+    public async Task ApplicationViewServiceDashboardTrivyNotConfiguredMessageReportsNoHintAsync()
     {
         var scanRun = CreateVulnerabilityScanRun(ScanRunStatus.Partial,
                                                  VulnerabilityProviderMessages.TrivyBaseUrlNotConfigured,
@@ -3020,9 +3153,9 @@ public class ApplicationViewServiceTests
         var dashboard = await ReadDashboardAsync(CreateOptionsMonitor(enabled: true, VulnerabilityProviderKind.Trivy), scanRun).ConfigureAwait(false);
 
         Assert.IsTrue(dashboard.VulnerabilityScanningEnabled, "The dashboard must report vulnerability scanning as enabled when the option is switched on");
-        Assert.AreEqual(VulnerabilityConfigurationHintKind.TrivyBaseUrlMissing,
+        Assert.AreEqual(VulnerabilityConfigurationHintKind.None,
                         dashboard.VulnerabilityConfigurationHint,
-                        "A Trivy run reporting a missing base URL must resolve to the Trivy configuration hint");
+                        "A Trivy run reporting a missing base URL must not resolve to a hint, as the configured URL cannot be missing");
     }
 
     /// <summary>

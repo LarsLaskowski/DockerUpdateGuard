@@ -156,8 +156,8 @@ scan run *partial*, with the message added to the run ([Scan engine](scan-engine
   runtime check ([Base images](base-images.md#release-feeds-and-runtime-findings)). When the tag lookup failed, or processing the container raised an error (its snapshot is the fallback one of [Docker instances](docker-instances.md#container-snapshots) when its image version could not be determined), every finding of the container still active at that point stays active, keeps its tag candidates and moves to the container's new snapshot, which the pages read; findings the failed processing had already deactivated or created stay as they are.
 - After a runtime scan of an instance, the active findings of containers that were no longer discovered are
   deactivated the same way.
-- Findings of type *base image update* exist in the data model but are not produced. Findings of type *derived base
-  runtime update* are owned by [Base images](base-images.md).
+- Findings of type *derived base runtime update* are owned by [Base images](base-images.md). A stored finding of the
+  retired type 1 (*base image update*) is shown with its number as the type text.
 
 ### Manual tag selection
 
@@ -183,8 +183,6 @@ scan run *partial*, with the message added to the run ([Scan engine](scan-engine
 
 - The manual tag selection is informational only: it does not pin the recommendation or influence any container
   action. Tracked in [#291](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/291).
-- Findings of type *base image update* are defined in the data model but never produced. Tracked in
-  [#293](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/293).
 - The major-upgrade age conditions read the system clock directly instead of the application's time source, so they
   cannot be controlled independently of the real time.
   Tracked in [#289](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/289).

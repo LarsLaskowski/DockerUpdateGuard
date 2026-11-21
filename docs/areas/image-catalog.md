@@ -57,8 +57,9 @@ refer to the same image the same way.
   container scan for container images, see [Update detection](update-detection.md)).
 - **Concurrency:** when two writers create the same entry at once, the one whose insert collides with the uniqueness
   rule re-reads and returns the entry the other created. No duplicates arise; no writer sees an error for the race.
-- Every image version records which kind of component registered it last: observed image, runtime container or
-  base-image resolution. The value is informational and is overwritten by the next registering component.
+- Every image version records which kind of component registered or last refreshed it through the catalog: observed
+  image, runtime container or base-image resolution. The value is informational only, the last writer wins, and no
+  logic depends on it.
 - Catalog entries are shared: observed images, container snapshots, base-image relationships, update findings and
   vulnerability findings all point at the same entries. Catalog entries are never deleted.
 
@@ -143,9 +144,6 @@ refer to the same image the same way.
 
 - Observed images cannot be disabled or deleted by the user, and discovery enables every listed repository again on
   each run. Tracked in [#282](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/282).
-- The recorded kind of the component that last registered an image version is last-writer-wins and carries no
-  meaning, and a further kind (registry metadata) is defined but never written.
-  Tracked in [#293](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/293).
 
 ## Related decisions
 

@@ -115,4 +115,5 @@ once in the [area document](../areas/README.md) of the record's area, and the re
 | [0052](0052-the-docker-hub-registry-key-only-names-the-account-discovery-host.md) | The Docker Hub registry key only names the host of account discovery | Accepted | 2026-11-21 |
 | [0053](0053-tracked-state-moves-to-the-canonical-catalog-entries-at-startup.md) | Tracked state moves to the canonical catalog entries at startup | Accepted | 2026-11-21 |
 | [0054](0054-a-base-image-is-shared-from-two-users-among-enabled-observed-images-and-their-containers.md) | A base image is shared from two users among enabled observed images and their containers | Accepted | 2026-11-21 |
+| [0055](0055-entity-enum-members-nothing-produces-are-removed-and-their-numbers-are-never-reused.md) | Entity enum members nothing produces are removed, and their numbers are never reused | Accepted | 2026-11-21 |
 <!-- project:end index -->

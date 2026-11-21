@@ -1,7 +1,8 @@
 namespace DockerUpdateGuard.Data.Entities;
 
 /// <summary>
-/// Relationship type between two image versions
+/// Relationship type between two image versions, stored as its integer number;
+/// number 2 (build stage) is retired and never reused
 /// </summary>
 public enum ImageRelationshipType
 {
@@ -13,10 +14,5 @@ public enum ImageRelationshipType
     /// <summary>
     /// Base image relationship
     /// </summary>
-    BaseImage = 1,
-
-    /// <summary>
-    /// Build stage relationship
-    /// </summary>
-    BuildStage = 2
+    BaseImage = 1
 }
