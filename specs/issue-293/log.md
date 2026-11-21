@@ -17,3 +17,5 @@ are quoted in full.
 | 2026-11-21 13:07 | 8 Review | Reviewer | VERDICT: BLOCKING 0 \| NON-BLOCKING 1 on 3ad918efe6847038aad5e0ecd030fd3ea28b43e8; 1 verbatim doc fix in docs/areas/vulnerabilities.md:93 (opus/medium · 84,793 tokens · 12 tool uses · 57 s · 24 in · 5,997 out · 707,583 cache read · 82,945 cache write · 338,139 weighted) |
 | 2026-11-21 13:07 | 8 Verbatim | Orchestrator | [NON-BLOCKING, verbatim] docs/areas/vulnerabilities.md:93 applied as proposed in 33a2b98 |
 | 2026-11-21 13:08 | 7 Gate stamp | Orchestrator | PASS on 33a2b985c9af4c727bf4683f413432e078cf71db (tier standard, verbatim): Format check pass; decision-check.py pass; scope-check.py pass |
+| 2026-11-21 13:08 | 9 PR approval | Orchestrator | approved by checklist; the Trivy-branch deviation from the issue was the Lead's plan, confirmed by Devil's Advocate and Security |
+| 2026-11-21 13:09 | 7 Gate stamp | Orchestrator | PASS on 1722f8553e760dfb9f65b5d8849b9aeb57918792 (tier standard, verbatim): Format check pass; decision-check.py pass; scope-check.py pass |
