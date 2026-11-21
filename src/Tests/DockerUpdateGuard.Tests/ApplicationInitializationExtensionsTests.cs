@@ -253,6 +253,7 @@ public class ApplicationInitializationExtensionsTests
                                              CurrentImageVersion = new ImageVersion
                                                                    {
                                                                        Tag = "1.27",
+                                                                       Digest = string.Empty,
                                                                        RegistryRepository = new RegistryRepository
                                                                                             {
                                                                                                 Registry = "docker.io",

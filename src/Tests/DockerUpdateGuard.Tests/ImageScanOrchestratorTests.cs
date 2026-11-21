@@ -2067,6 +2067,8 @@ public class ImageScanOrchestratorTests
                                                                                                            PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
                                                                                                        });
                                         });
+        registryMetadataService.GetTagsAsync(Arg.Any<string>(), Arg.Any<string>(), queryOptions: Arg.Any<RegistryTagQueryOptions>(), cancellationToken: Arg.Any<CancellationToken>())
+                               .Returns(ExternalOperationResult.NotFound<IReadOnlyList<DockerHubTagData>>("No tags"));
 
         return registryMetadataService;
     }
