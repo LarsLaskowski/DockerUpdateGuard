@@ -413,6 +413,16 @@ public class ImageReferenceParserTests
     [DataRow("docker.io/ghcr.io", "docker.io", "library/ghcr.io", "latest", null)]
     [DataRow("localhost:5000/app", "localhost:5000", "app", "latest", null)]
     [DataRow("INDEX.DOCKER.IO/Foo/Bar:RC1", "docker.io", "foo/bar", "RC1", null)]
+    [DataRow("library/nginx", "docker.io", "library/nginx", "latest", null)]
+    [DataRow("docker.io/library/nginx", "docker.io", "library/nginx", "latest", null)]
+    [DataRow("index.docker.io/nginx", "docker.io", "library/nginx", "latest", null)]
+    [DataRow("registry-1.docker.io/library/nginx", "docker.io", "library/nginx", "latest", null)]
+    [DataRow("myuser/app", "docker.io", "myuser/app", "latest", null)]
+    [DataRow("docker.io/myuser/app", "docker.io", "myuser/app", "latest", null)]
+    [DataRow("index.docker.io/myuser/app", "docker.io", "myuser/app", "latest", null)]
+    [DataRow("localhost/app", "localhost", "app", "latest", null)]
+    [DataRow("ghcr.io/owner/app", "ghcr.io", "owner/app", "latest", null)]
+    [DataRow("registry.example.com/app", "registry.example.com", "app", "latest", null)]
     public void ImageReferenceParserFormatCanonicalReferenceRoundTrips(string value, string expectedRegistry, string expectedRepository, string expectedTag, string? expectedDigest)
     {
         var parser = new ImageReferenceParser();
