@@ -229,5 +229,140 @@ public class SharedBaseImageQueryServiceTests
         }
     }
 
+    /// <summary>
+    /// Create an image version of a docker.io repository
+    /// </summary>
+    /// <param name="repository">Repository path</param>
+    /// <param name="tag">Tag</param>
+    /// <returns>Image version</returns>
+    private static ImageVersion CreateImageVersion(string repository, string tag)
+    {
+        return new ImageVersion
+               {
+                   RegistryRepository = new RegistryRepository
+                                        {
+                                            Registry = "docker.io",
+                                            Repository = repository
+                                        },
+                   Tag = tag,
+                   Digest = $"sha256:{repository}-{tag}"
+               };
+    }
+
+    /// <summary>
+    /// Verify the query reports the current image versions of the consuming observed images
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC2")]
+    public async Task SharedBaseImageQueryServiceGetBaseImagesTwoEnabledImagesReturnConsumingImageVersionIdsAsync()
+    {
+        using (var database = new SqliteTestDatabase())
+        {
+            var dbContext = database.CreateDbContext();
+
+            await using (dbContext.ConfigureAwait(false))
+            {
+                var baseVersion = CreateImageVersion("library/debian", "12");
+                var appVersionA = CreateImageVersion("company/app-a", "1.0.0");
+                var appVersionB = CreateImageVersion("company/app-b", "1.0.0");
+
+                dbContext.AddRange(baseVersion, appVersionA, appVersionB);
+                dbContext.ObservedImages.AddRange(new ObservedImage
+                                                  {
+                                                      Name = "App A",
+                                                      CurrentImageVersion = appVersionA
+                                                  },
+                                                  new ObservedImage
+                                                  {
+                                                      Name = "App B",
+                                                      CurrentImageVersion = appVersionB
+                                                  });
+                dbContext.ImageRelationships.AddRange(new ImageRelationship
+                                                      {
+                                                          ChildImageVersion = appVersionA,
+                                                          BaseImageVersion = baseVersion,
+                                                          RelationshipType = ImageRelationshipType.BaseImage,
+                                                          Depth = 1
+                                                      },
+                                                      new ImageRelationship
+                                                      {
+                                                          ChildImageVersion = appVersionB,
+                                                          BaseImageVersion = baseVersion,
+                                                          RelationshipType = ImageRelationshipType.BaseImage,
+                                                          Depth = 1
+                                                      });
+
+                await dbContext.SaveChangesAsync(TestContext.CancellationToken).ConfigureAwait(false);
+
+                var baseImages = await new SharedBaseImageQueryService(dbContext).GetBaseImagesAsync(TestContext.CancellationToken).ConfigureAwait(false);
+
+                Assert.HasCount(1, baseImages, "The base used by two enabled images must be returned");
+                Assert.AreSequenceEqual([appVersionA.Id, appVersionB.Id],
+                                        baseImages[0].ConsumingImageVersionIds.ToArray(),
+                                        SequenceOrder.InAnyOrder,
+                                        "The entry must name the current image versions of both consuming images");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Verify a disabled observed image is not counted and its version is not a consumer
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC4")]
+    public async Task SharedBaseImageQueryServiceGetBaseImagesDisabledImageIsNotCountedAsync()
+    {
+        using (var database = new SqliteTestDatabase())
+        {
+            var dbContext = database.CreateDbContext();
+
+            await using (dbContext.ConfigureAwait(false))
+            {
+                var baseVersion = CreateImageVersion("library/debian", "12");
+                var appVersionA = CreateImageVersion("company/app-a", "1.0.0");
+                var appVersionB = CreateImageVersion("company/app-b", "1.0.0");
+
+                dbContext.AddRange(baseVersion, appVersionA, appVersionB);
+                dbContext.ObservedImages.AddRange(new ObservedImage
+                                                  {
+                                                      Name = "App A",
+                                                      CurrentImageVersion = appVersionA
+                                                  },
+                                                  new ObservedImage
+                                                  {
+                                                      Name = "App B",
+                                                      CurrentImageVersion = appVersionB,
+                                                      IsEnabled = false
+                                                  });
+                dbContext.ImageRelationships.AddRange(new ImageRelationship
+                                                      {
+                                                          ChildImageVersion = appVersionA,
+                                                          BaseImageVersion = baseVersion,
+                                                          RelationshipType = ImageRelationshipType.BaseImage,
+                                                          Depth = 1
+                                                      },
+                                                      new ImageRelationship
+                                                      {
+                                                          ChildImageVersion = appVersionB,
+                                                          BaseImageVersion = baseVersion,
+                                                          RelationshipType = ImageRelationshipType.BaseImage,
+                                                          Depth = 1
+                                                      });
+
+                await dbContext.SaveChangesAsync(TestContext.CancellationToken).ConfigureAwait(false);
+
+                var baseImages = await new SharedBaseImageQueryService(dbContext).GetBaseImagesAsync(TestContext.CancellationToken).ConfigureAwait(false);
+
+                Assert.HasCount(1, baseImages, "The base still used by the enabled image must be returned");
+                Assert.AreEqual(1, baseImages[0].ObservedImageCount, "The disabled image must not be counted");
+                Assert.AreSequenceEqual([appVersionA.Id],
+                                        baseImages[0].ConsumingImageVersionIds.ToArray(),
+                                        "Only the enabled image's version must be a consumer");
+            }
+        }
+    }
+
     #endregion // Methods
 }

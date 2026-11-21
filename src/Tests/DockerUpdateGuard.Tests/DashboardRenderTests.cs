@@ -66,7 +66,7 @@ public class DashboardRenderTests
             var markup = component.Markup;
 
             Assert.Contains("My Images", markup, "The My Images tile must render when a Docker Hub account is configured");
-            Assert.Contains("Base Images", markup, "The Base Images tile must render when base images exist");
+            Assert.Contains("Shared Base Images", markup, "The Shared Base Images tile must render when shared base images exist");
             Assert.Contains("Observed Images", markup, "The Observed Images metric tile must render");
             Assert.Contains("metric-value", markup, "The number metric tiles must render their values");
             Assert.Contains("metric-card__icon", markup, "The metric tiles must render an icon badge");
