@@ -78,8 +78,8 @@ refer to the same image the same way.
   registries, are not touched, so a second run moves nothing.
 - No catalog entry and no observed image is deleted. Two observed images can end on one version (two manual ones, or a
   manual one on the version of an enabled discovered image); both stay, and the discovered image is unchanged.
-- Until the next scans, a moved observed image has no base images, and on a newly created version no vulnerability
-  assessment. A moved tag selection applies from the container's next runtime scan. Snapshots, findings and scan runs
+- Until the next scans, a moved observed image on a newly created version has no base images and no vulnerability
+  assessment; on an existing version it shows that version's base images and assessment. A moved tag selection applies from the container's next runtime scan. Snapshots, findings and scan runs
   of the old entries stay on them and age out.
 - The number of moved rows is logged (event `1009`) when it is above zero ([Hosting](hosting.md#startup-sequence)). A
   database error in the step fails startup like the other startup steps.

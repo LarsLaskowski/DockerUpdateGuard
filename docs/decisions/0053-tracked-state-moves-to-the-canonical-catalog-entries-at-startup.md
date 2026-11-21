@@ -71,8 +71,8 @@ anyway. The rules are in [Image catalog](../areas/image-catalog.md#image-referen
   discovered image. Both stay, like the duplicates that earlier versions created
   ([0048](0048-manual-registration-identifies-an-observed-image-by-its-image-version.md)) until #282 lets users delete
   them. A new registration of that reference follows the usual rules.
-- Until the next scans, a moved observed image has no base images and, on a newly created version, no vulnerability
-  assessment. A moved tag selection applies from the container's next runtime scan on. Update findings and scan runs
+- Until the next scans, a moved observed image on a newly created version has no base images and no vulnerability
+  assessment; on an existing version it shows that version's base images and assessment. A moved tag selection applies from the container's next runtime scan on. Update findings and scan runs
   stay with the observed image.
 - A container whose spelling is not canonical gets a new image version on its first scan after the update. Its
   carried-over resolved and available update versions start empty and come back with the next evaluation that
