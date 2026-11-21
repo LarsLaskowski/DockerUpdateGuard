@@ -65,7 +65,7 @@ Every exported signal carries the same resource:
 - Exported log records include the category, the formatted message, active scopes and the structured message
   parameters as individual attributes.
 - Application log events have fixed event IDs and message templates; the startup and database events are
-  `1000`–`1008` and the inventory refresh is `1010`. Message parameters are named in PascalCase
+  `1000`–`1009` and the inventory refresh is `1010`. Message parameters are named in PascalCase
   (`{DockerInstanceName}`, `{ImageReference}`, `{StatusCode}`).
 
 ### Metrics

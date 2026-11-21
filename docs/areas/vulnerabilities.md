@@ -132,7 +132,8 @@ scan run:
 
 ### Docker Scout
 
-- Docker Scout scans only `docker.io` images, by tag. A repository without a namespace is looked up under `library`.
+- Docker Scout scans only `docker.io` images, by tag; every Docker Hub spelling counts as `docker.io` after parsing
+  ([Image catalog](image-catalog.md#image-references)). A repository without a namespace is looked up under `library`.
 - **Digest check.** Docker Scout looks up tags only, so an image reference with a digest is checked first, after the
   credentials, registry and path checks (an image reference without a digest skips the check, and a reference those
   checks answer is not checked). The provider reads the tag from Docker Hub's web API through the registry metadata

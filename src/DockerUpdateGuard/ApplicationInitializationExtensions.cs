@@ -1,4 +1,5 @@
 using DockerUpdateGuard.Configuration;
+using DockerUpdateGuard.Images;
 using DockerUpdateGuard.Images.Interfaces;
 using DockerUpdateGuard.Portainer;
 
@@ -56,6 +57,14 @@ public static class ApplicationInitializationExtensions
             if (reconciledRuns > 0)
             {
                 logger.ContainerActionRunsReconciled(reconciledRuns);
+            }
+
+            var canonicalizedReferences = await ImageCatalogCanonicalizer.CanonicalizeTrackedStateAsync(dbContext, CancellationToken.None)
+                                                                         .ConfigureAwait(false);
+
+            if (canonicalizedReferences > 0)
+            {
+                logger.TrackedImageReferencesCanonicalized(canonicalizedReferences);
             }
 
             await applicationTelemetry.RefreshInventoryMetricsAsync(dbContext, CancellationToken.None)

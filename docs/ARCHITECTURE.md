@@ -104,7 +104,7 @@ Auto render mode anywhere in the app.
 
 After `WebApplication.Build()` and before `RunAsync()`, the host calls
 `ApplicationInitializationExtensions.InitializeDockerUpdateGuardAsync`,
-which blocks startup on four steps:
+which blocks startup on five steps:
 
 1. `DatabaseMigrator.MigrateAsync` — waits for the database, then applies
    EF Core migrations under a PostgreSQL session-scoped advisory lock, so
@@ -120,7 +120,12 @@ which blocks startup on four steps:
    container action runs the previous process left *requested* or *running*
    into *failed* "Interrupted" runs (local, DB-only work; §9,
    [decision 0035](decisions/0035-action-runs-are-an-audit-history-written-before-portainer-is-contacted.md)).
-4. `ApplicationTelemetry.RefreshInventoryMetricsAsync` — seeds the
+4. `ImageCatalogCanonicalizer.CanonicalizeTrackedStateAsync` — moves the
+   current version of observed images and the container tag selections that
+   still name a non-canonical Docker Hub spelling to the canonical catalog
+   entries (local, DB-only work;
+   [decision 0053](decisions/0053-tracked-state-moves-to-the-canonical-catalog-entries-at-startup.md)).
+5. `ApplicationTelemetry.RefreshInventoryMetricsAsync` — seeds the
    inventory gauges (§10).
 
 Network-bound work (Docker Hub account discovery, scans) is deliberately

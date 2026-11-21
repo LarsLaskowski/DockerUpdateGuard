@@ -17,12 +17,18 @@ refer to the same image the same way.
 - **Tag:** the text after the last `:` that follows the last `/`, trimmed, with its case kept. A missing or empty tag
   is `latest`, also for a reference that names only a digest.
 - **Registry:** the first path segment, lowercased, when the reference has at least two segments and that segment
-  contains a `.` or a `:` or equals `localhost` (case-insensitive). Otherwise the registry is `docker.io`.
-- **Repository:** the remaining segments joined with `/`, lowercased; empty segments are ignored. A reference with a
-  single segment gets the `library/` namespace (`nginx` → `docker.io/library/nginx:latest`).
-- **Mirror-wrapped references:** when the registry is `docker.io` and the first repository segment is
-  `mcr.microsoft.com`, `ghcr.io`, `quay.io` or a host-like name containing `harbor`, that segment becomes the registry
-  (`docker.io/ghcr.io/owner/app:1` → `ghcr.io/owner/app:1`).
+  contains a `.` or a `:` or equals `localhost` (case-insensitive). Otherwise the registry is `docker.io`. The three
+  Docker Hub hosts `docker.io`, `index.docker.io` and `registry-1.docker.io` (case-insensitive) all become `docker.io`;
+  a host with a port (`docker.io:443`) and the web hosts (`hub.docker.com`) stay registries of their own.
+- **Repository:** the remaining segments joined with `/`, lowercased; empty segments are ignored. A `docker.io`
+  repository without a `/` gets the `library/` namespace, whatever spelling named the registry (`nginx`,
+  `docker.io/nginx` and `index.docker.io/nginx` → `docker.io/library/nginx:latest`); no other registry gets it
+  (`localhost/app` stays `localhost` / `app`).
+- **Mirror-wrapped references:** after the registry mapping above, when the registry is `docker.io` and the first
+  repository segment is `mcr.microsoft.com`, `ghcr.io`, `quay.io` or a host-like name containing `harbor`, that
+  segment becomes the registry (`docker.io/ghcr.io/owner/app:1` and `index.docker.io/ghcr.io/owner/app:1` →
+  `ghcr.io/owner/app:1`). A single-segment repository such as `docker.io/ghcr.io` is no wrapper: it is
+  `docker.io` / `library/ghcr.io`.
 - No other validation happens when parsing: characters and lengths are not checked. A reference without a repository
   name is rejected.
 - A reference read from a remote side — the base-image labels of an image configuration and the image of a Docker
@@ -32,9 +38,9 @@ refer to the same image the same way.
   tag (at most 128 characters) fit the reference grammar of Docker; otherwise it is treated as absent. A digest
   outside the digest grammar becomes none and the reference is kept. A reference entered by the user keeps the plain
   parsing above; registry requests refuse its `.` and `..` segments and, for the OCI client, a registry that is not a host with an optional port ([Registries](registries.md#request-paths)). The Trivy scan passes it after `--`, so a reference that begins with `-` is never read as a Trivy option ([Vulnerabilities](vulnerabilities.md#trivy)). See [0014](../decisions/0014-registry-tag-names-and-digests-are-validated-where-they-are-read.md) and [0015](../decisions/0015-the-trivy-scan-target-follows-an-end-of-options-marker.md).
-- Docker Hub spellings are not unified: `docker.io/nginx` has the repository `nginx`, not `library/nginx`, and
-  `index.docker.io/…` is a different registry from `docker.io/…`. Registry access still treats them alike
-  ([Registries](registries.md)), but they are separate catalog entries.
+- Every Docker Hub spelling therefore parses to one canonical form, `docker.io` with a repository that has a namespace
+  (`library/` for official images), and so to one catalog entry. A single-segment repository of 248 to 255
+  characters becomes longer than 255 with `library/` and is then rejected as a remote reference.
 - The canonical text form is `registry/repository:tag`, followed by `@digest` when the digest is known. Parsing the
   canonical form gives back the same parts.
 
@@ -55,6 +61,28 @@ refer to the same image the same way.
   base-image resolution. The value is informational and is overwritten by the next registering component.
 - Catalog entries are shared: observed images, container snapshots, base-image relationships, update findings and
   vulnerability findings all point at the same entries. Catalog entries are never deleted.
+
+### Moving tracked state to canonical entries
+
+- Entries written by earlier versions can hold a non-canonical spelling. At startup, after the migrations and before
+  any background job, `ImageCatalogCanonicalizer` moves two kinds of rows that never re-parse their reference on their
+  own: the current image version of every observed image, and every container tag selection. Only rows the rules above
+  can change are read: registry `index.docker.io` or `registry-1.docker.io`, and `docker.io` with a repository
+  without a `/`. The canonical pair is the parse of `registry/repository`, so a move can end on another registry
+  (`index.docker.io` / `ghcr.io/owner/app` moves to `ghcr.io` / `owner/app`).
+- An observed image gets the canonical image version for the same tag and digest through get-or-create; a version
+  the step creates takes the old one's publication time and metadata. A tag selection gets the canonical registry
+  repository. Nothing else of the row changes (name, enabled flag, update time).
+- A row whose canonical registry or repository fails the reference rules (registry at most 200 characters,
+  repository at most 255, host and path grammar) stays unchanged. Rows that are already canonical, and rows of other
+  registries, are not touched, so a second run moves nothing.
+- No catalog entry and no observed image is deleted. Two observed images can end on one version (two manual ones, or a
+  manual one on the version of an enabled discovered image); both stay, and the discovered image is unchanged.
+- Until the next scans, a moved observed image has no base images, and on a newly created version no vulnerability
+  assessment. A moved tag selection applies from the container's next runtime scan. Snapshots, findings and scan runs
+  of the old entries stay on them and age out.
+- The number of moved rows is logged (event `1009`) when it is above zero ([Hosting](hosting.md#startup-sequence)). A
+  database error in the step fails startup like the other startup steps.
 
 ### Live image versions
 
@@ -113,9 +141,6 @@ refer to the same image the same way.
 
 ### Known gaps
 
-- Docker Hub references are not normalized to one form (`docker.io/nginx` vs `nginx`, `index.docker.io` vs
-  `docker.io`), so one image can have several catalog entries and is then not recognized as shared. Tracked in
-  [#275](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/275).
 - Observed images cannot be disabled or deleted by the user, and discovery enables every listed repository again on
   each run. Tracked in [#282](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/282).
 - The recorded kind of the component that last registered an image version is last-writer-wins and carries no
@@ -126,6 +151,8 @@ refer to the same image the same way.
 
 - [0048](../decisions/0048-manual-registration-identifies-an-observed-image-by-its-image-version.md): manual registration
   identifies an observed image by its image version.
+- [0053](../decisions/0053-tracked-state-moves-to-the-canonical-catalog-entries-at-startup.md): tracked state moves to
+  the canonical catalog entries at startup.
 
 ## Not here
 

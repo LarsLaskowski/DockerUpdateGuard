@@ -51,9 +51,12 @@ inventory metrics rely on the stored assessments and findings.
   most recently published, then the highest version.
 - The resolved tag is stored on each container snapshot as the container's *resolved version*. When it cannot be
   resolved in a scan, the resolved version of the most recent earlier snapshot of the same container and the same
-  image version is carried over, provided the running digest is known.
+  image version is carried over, provided the running digest is known. A container whose reference spelling became
+  canonical (see [Image catalog](image-catalog.md#moving-tracked-state-to-canonical-entries)) gets a new image version
+  once, so nothing is carried over in that scan ([decision 0053](../decisions/0053-tracked-state-moves-to-the-canonical-catalog-entries-at-startup.md)).
 - A new snapshot starts with the resolved and available update version of the container's latest earlier snapshot when
-  that names the same image version, provided the running digest is known. A completed evaluation replaces both; a
+  that names the same image version, provided the running digest is known (the same applies after the move to a
+  canonical image version). A completed evaluation replaces both; a
   scan whose tag lookup finds *no tag data* or is *unsupported* stores none; a failed tag lookup or a processing error
   keeps the carried ones.
 - When an update is available, the snapshot also stores the *available update version*: the recommended tag itself
