@@ -213,3 +213,92 @@ uses Data). The startup sequence changes: `docs/ARCHITECTURE.md` §3 and Hosting
 - Registry spellings with a port (`docker.io:443/…`) and the web hosts stay separate registries.
 - Historical rows on old entries are not merged; they age out (record 0053).
 - Digest-less base images stay grouped per source reference (fact 6, by design).
+
+## Challenge notes
+
+Devil's Advocate, plan challenge of `/home/user/DockerUpdateGuard/specs/issue-275/plan.md` (with record `/home/user/DockerUpdateGuard/docs/decisions/0053-tracked-state-moves-to-the-canonical-docker-hub-catalog-entries-at-startup.md`) for issue #275, against origin/main at 049dfc4.
+
+The parser approach holds up. The facts I checked are right: parser lines 130-146, exact lookup at `ImageCatalogRepository.cs:108-111` and `:124-125`, event 1009 is free, startup runs before `app.RunAsync` (`Program.cs:43-46`), the unique index on tag selections, and the digest-only merge in `SharedBaseImageQueryService.BuildGroupingKey`. AC6 and AC7 fail on today's code. The objections are about the data side: what the move does to rows it lands on, and what the parser change does to containers.
+
+## Major
+
+1. **Moving observed images can leave two images on one version, a state registration prevents. The plan has no rule and no criterion for it.**
+   - Registration keeps at most one manual observed image per image version. It refuses a reference that an enabled discovered image already tracks (`ImageRegistrationService.cs:126-145`; `docs/areas/image-catalog.md:78-82`, `:105-107`; record 0048).
+   - The canonicalizer moves `CurrentImageVersionId` with no check of who already sits on the target version. Two cases follow:
+     - A manual `nginx:1.27` and a manual `docker.io/nginx:1.27` end up as two manual images on one version.
+     - A manual `index.docker.io/me/app:1` lands on the version of the enabled discovered image `docker.io/me/app:1`.
+   - Effects: `/observed-images` shows duplicates, the base-image overview counts each image separately (`SharedBaseImageQueryService.cs:137-139`), and the same version is scanned twice.
+   - Why major: the plan would create a state that the documented registration rule (record 0048) forbids, without deciding on it.
+   - Needed: the Lead states the rule (keep both and document it in Image catalog and 0053, or skip/merge the colliding row). AC8 gets a case for each collision kind: manual with manual, and manual with an enabled discovered image.
+
+2. **Containers lose their carried-over version tags when they first move to the canonical version (a documented guarantee the plan does not mention).**
+   - The plan and 0053 say containers "re-parse by themselves" and need no work. But the runtime scan only carries version tags forward while the image version id stays the same:
+     - `CreateSnapshot` (`RuntimeContainerScanOrchestrator.cs:178-196`) carries `ResolvedVersionTag` and `AvailableUpdateVersionTag` only when `previous.Snapshot.ImageVersionId == imageVersionId`.
+     - `GetPreviousResolvedVersionTagAsync` (`:1385-1389`) filters on `entity.ImageVersionId == imageVersionId`.
+   - After the parser change, a container started from `docker.io/nginx:latest` or `index.docker.io/...` gets a new image version id on its next scan. If its running digest has dropped out of the tag list, it loses its resolved version for good.
+   - This is the guarantee in `docs/areas/update-detection.md:52-58`; it is not in the plan, the documentation sweep or 0053.
+   - Why major: a sibling path of the same defect, and the plan's "no extra work for containers" claim is refuted.
+   - Needed: either add a criterion and a fix (for example, the carry-over lookups also accept a previous snapshot whose registry/repository is the non-canonical spelling of the same reference), or record the one-time loss as an accepted consequence in 0053 and `docs/areas/update-detection.md`.
+
+## Minor
+
+3. **"Saves once when anything moved" (Approach step 4) is not what the code does.** `GetOrCreateRegistryRepositoryAsync` and `GetOrCreateImageVersionAsync` call `SaveChangesAsync` themselves when they create a row (`ImageCatalogRepository.cs:147`, `:209`). That also flushes the earlier moves pending on the same context. Do not write or test for a single save. The step stays idempotent, so a partial run is fine; say so in the area text instead of "saves once".
+
+4. **The no-op start is not "two small queries".** Step 1 filters on the registry only, so on every start it loads every observed image and tag selection on `docker.io`, including all discovered ones. Narrow the query to rows that can change: registry is `index.docker.io` or `registry-1.docker.io`, or registry is `docker.io` and the repository has no `/`. Otherwise drop the "small" claim.
+
+5. **The move can target a registry other than Docker Hub.** A stored `index.docker.io` / `ghcr.io/owner/app` entry (written before this fix, never unwrapped) re-parses to `ghcr.io` / `owner/app`. So the log text "to canonical Docker Hub catalog entries", the 0053 title and the area text are inaccurate for that row. Add an AC8 case for a wrapped `index.docker.io/ghcr.io/...` row moving to `ghcr.io`, and word the log and docs as "canonical catalog entries".
+
+6. **The moved observed image is blank in two places until the next scans; document both.**
+   - A newly created canonical version has no vulnerability findings or assessment until the next vulnerability refresh. The detail page reads findings by `CurrentImageVersionId` (`ApplicationViewService.cs:1893`).
+   - A moved tag selection does not apply until the container's next runtime scan stores a snapshot on the canonical repository (`ApplicationViewService.cs:1998-2002`).
+   - In the Image catalog subsection on the startup move, state both alongside the existing base-image sentence.
+
+## Security notes
+
+Security plan review for issue #275 (mode `plan`)
+
+I read `specs/issue-275/plan.md`, `docs/decisions/0053-tracked-state-moves-to-the-canonical-docker-hub-catalog-entries-at-startup.md`, `.squad/project.md` (*Security areas*), and the code the plan relies on: `ImageReferenceParser.cs`, `ImageCatalogRepository.cs`, `RegistryReferenceValidator.cs`, `ImageRegistrationService.cs`, the entity configurations, `DockerHubClient.cs`/`DockerHubHosts.cs` and `ApplicationInitializationExtensions.cs`. I ran no measurement. No claim here depends on measured or library behavior. The column limits come from the EF configurations, and how PostgreSQL treats an over-long `varchar` value is standard behavior.
+
+**Tier and areas**
+- `standard` is the right tier.
+- The parser change maps aliases and unwraps prefixes. It adds, changes or removes no guard on what can be reached.
+- Credentials go to the same place as before. `DockerHubClient.IsSupportedRegistry` already accepts every alias through `DockerHubHosts.IsDockerHubHost`, and `OciRegistryClient` has no `docker.io` special case.
+- Unwrapping behind `index.docker.io`/`registry-1.docker.io` sends a request to a host that `docker.io/<host>/…` and a direct `<host>/…` reference can already name today.
+- Docker Scout's `docker.io`-only check is unchanged.
+- The two areas listed are complete: Database and migrations, and Logging and telemetry with a count-only event 1009.
+
+**Findings**
+
+1. [BLOCKING] The canonicalizer writes the new registry without the length check that the normal paths apply, so one stored row can make every startup fail.
+   - Evidence: plan, *Approach* step 2 and AC8(f), skips only rows whose canonical **repository** is over 300 characters. The `Registry` column is `HasMaxLength(200)` (`src/DockerUpdateGuard.Data/Configurations/RegistryRepositoryConfiguration.cs:25`). `ImageCatalogRepository.ValidateRegistryRepository` (`ImageCatalogRepository.cs:41-52`) checks only for blank values.
+   - How it happens: with the new parser, a stored row with registry `index.docker.io` (or `registry-1.docker.io`) and repository `harbor<~200 chars>.io/app` unwraps through `IsKnownWrappedRegistry` (any segment with "harbor" and a dot) to a registry of more than 200 characters.
+   - Today such rows can exist two ways:
+     - **Manual registration** (`ImageRegistrationService.cs:112-123`) parses and stores without `RegistryReferenceValidator`. Old parser result: registry `index.docker.io` (15 characters), repository about 210 characters, under the 300 limit.
+     - **Tag selections** store a runtime container's repository. That repository came from a container image reference, which anyone who can create a container on a monitored host controls. It passed `ValidReferenceOrNull` (`RuntimeContainerScanOrchestrator.cs:698`), because the repository is at most 255 characters and the regex allows dots.
+   - Effect on PostgreSQL: `GetOrCreateRegistryRepositoryAsync` saves, the save throws `DbUpdateException` (value too long), and the catch (`ImageCatalogRepository.cs:152-160`) then runs `SingleAsync` on a row that does not exist. That throws `InvalidOperationException`, which per decision record 0053 fails startup. It fails again on every restart until someone edits the database by hand.
+   - In the regular paths the same reference is rejected per request: the runtime scan validates it, and manual registration fails only that request.
+   - The SQLite tests the plan names cannot catch this, because SQLite does not enforce `varchar` length.
+   - Smallest fix: in step 2, skip a row whose canonical reference fails the reference rules, i.e. `RegistryReferenceValidator.IsValidRegistry(registry) == false || IsValidRepository(repository) == false`. At minimum, skip a registry over 200 characters alongside the repository limit of 300. Add an AC8(g) with its test: a stored `index.docker.io` row whose unwrapped registry is longer than 200 characters stays unchanged. The test can only check the skip on SQLite, so it must check the decision, not rely on a database error.
+   - Also update *Security considerations*, which names only the 300-character limit, and the consequence in decision record 0053 ("A tracked row whose canonical repository would exceed the stored length…"). It should say canonical registry and repository.
+
+2. [NON-BLOCKING] The canonicalizer can store references that no regular path would store.
+   - Fact 17 accepts that a single-segment name of 248–255 characters becomes invalid with `library/`, because remote references are rejected after parsing. The canonicalizer, however, would write such a 256–263 character repository (still under 300) into the catalog. The same applies to an unwrapped host that fails the registry grammar, such as one with `_` (allowed in a repository segment, not in a host).
+   - Later registry calls then fail at their own validation (`OciRegistryClient.cs:477`, `:1479`), so this is not exploitable, only inconsistent.
+   - Smallest fix: the validator-based skip from finding 1 covers it. Recommendation: fix now together with finding 1.
+
+**Checked, no finding**
+- Queries are EF LINQ with a constant host list, so there is no SQL built from input.
+- The 300-character comparison counts UTF-16 code units of strings that are already decoded.
+- Event 1009 carries only an `int`.
+- A database error still fails startup the same way as the other startup steps, and no page shows it.
+- A second instance starting at the same time: a race in get-or-create falls back to reading the winner's row (`ImageCatalogRepository.cs:152-160`, `:214-224`). That holds only once finding 1 is fixed, because otherwise the fallback lookup throws.
+- The canonicalizer runs after `DatabaseMigrator.MigrateAsync` and before any background job (`ApplicationInitializationExtensions.cs:41-58`).
+
+Files referenced:
+- /home/user/DockerUpdateGuard/specs/issue-275/plan.md
+- /home/user/DockerUpdateGuard/docs/decisions/0053-tracked-state-moves-to-the-canonical-docker-hub-catalog-entries-at-startup.md
+- /home/user/DockerUpdateGuard/src/DockerUpdateGuard/Images/ImageReferenceParser.cs
+- /home/user/DockerUpdateGuard/src/DockerUpdateGuard/Images/Helper/RegistryReferenceValidator.cs
+- /home/user/DockerUpdateGuard/src/DockerUpdateGuard/Images/ImageRegistrationService.cs
+- /home/user/DockerUpdateGuard/src/DockerUpdateGuard.Data/Repositories/ImageCatalogRepository.cs
+- /home/user/DockerUpdateGuard/src/DockerUpdateGuard.Data/Configurations/RegistryRepositoryConfiguration.cs
