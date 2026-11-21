@@ -24,3 +24,4 @@ are quoted in full.
 | 2026-11-21 08:28 | 8 Review delta | Reviewer | VERDICT: APPROVE on dae70359b1cfa5bd676edf336e5319db5c678d95; all round-1 findings fixed (opus/medium · 4,228 tokens · 3 tool uses · 14 s · 8 in · 1,489 out · 231,685 cache read · 4,968 cache write · 50,494 weighted · continued) |
 | 2026-11-21 08:28 | 9 PR approval | Orchestrator | approved by checklist |
 | 2026-11-21 08:28 | 7 Gate stamp | Orchestrator | PASS on 74c05a57a2b31d13515d77d50ed0b3157465670f (tier standard, verbatim): Format check pass; decision-check.py pass; scope-check.py pass |
+| 2026-11-21 08:29 | 10 Pull request | Orchestrator | Working record posted to the issue, specs/issue-275 removed, draft PR opened |
