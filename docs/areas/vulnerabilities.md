@@ -90,7 +90,7 @@ scan run:
   is deactivated the same way. A manual rescan never does this.
 - At most one active finding exists per image version, advisory id and affected package.
 - Severity is one of *not set*, *low*, *medium*, *high*, *critical*. The source is the provider resolved for the refresh
-  (*Trivy* or *Docker Scout*). The observed image detail shows a stored retired assessment source (3 or 4) as "Not set". Fix status is one of *not set*, *fixed*, *affected*, *will not fix*, *fix deferred*, *end of life*.
+  (*Trivy* or *Docker Scout*). Every page that shows a vulnerability assessment shows a stored retired assessment source (3 or 4) as "Not set". Fix status is one of *not set*, *fixed*, *affected*, *will not fix*, *fix deferred*, *end of life*.
 
 ### Trivy
 
