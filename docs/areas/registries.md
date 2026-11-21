@@ -111,8 +111,7 @@ go through its retry of transient HTTP failures.
 
 - A listing follows the next-page link of a response (`next` on Docker Hub, `Link: rel="next"` elsewhere) only when
   it stays on the origin of the listing's first request: the same scheme, host (compared case-insensitively) and
-  port. For Docker Hub that origin is the one of `DockerHub:ApiBaseUrl` (or of an absolute `DockerHub:Registry`
-  that replaces it); for other registries it is the origin of the first `tags/list` request. A mirror or proxy in
+  port. For Docker Hub that origin is the one of `DockerHub:ApiBaseUrl` ; for other registries it is the origin of the first `tags/list` request. A mirror or proxy in
   front of a registry must rewrite its next-page links to its own origin, otherwise the listing fails.
 - A link is resolved against the URL of the request that returned it, so a root-relative (`/v2/<repository>/tags/list?...`)
   or path-relative link stays on the same origin and is followed. A link to another host or port, to `http` when the
@@ -176,8 +175,10 @@ go through its retry of transient HTTP failures.
 - Discovers the repositories of the configured Docker Hub account as own images. It runs only when both `UserName`
   and `Pat` are set; otherwise each run is skipped with a log entry. It runs every
   `DockerUpdateGuard:Scanning:DockerHubAccountDiscoveryIntervalMinutes` ([Scan engine](scan-engine.md)).
-- The account listing requires `DockerUpdateGuard:DockerHub:Registry` to name a Docker Hub host; otherwise it answers
-  *unsupported* and the run ends without changes.
+- `DockerUpdateGuard:DockerHub:Registry` names the Docker Hub host of the account: one of `docker.io`,
+  `index.docker.io`, `registry-1.docker.io`, `hub.docker.com`, `docker.com` or `www.docker.com`, validated at startup
+  and on reload. It never changes the address of a web API request or of the login; only `DockerHub:ApiBaseUrl` does.
+  The listing answers *unsupported* and the run ends without changes only for options that bypassed validation.
 - The account is the namespace equal to `UserName`. All its repositories are listed (pages of 100, following the `next` link as described in
   [Pagination links](#pagination-links)) up to 1,000 pages, including private ones the token can see. Repository names are lowercased; duplicates collapse to the most recently updated one.
 - For each repository the full tag list is read and one tag is tracked: the most recently pushed; on equal push time
@@ -234,9 +235,10 @@ go through its retry of transient HTTP failures.
 - Read live: `DockerHub:UserName`, `DockerHub:Pat`, `DockerHub:Registry` (for account discovery)
   and `DockerHub:MaxParallelRequests` (for the next admission of a request).
 - Fixed at startup, a change needs a restart: `DockerHub:ApiBaseUrl` and `DockerHub:RequestTimeoutSeconds`. The
-  origin of `ApiBaseUrl` (or of an absolute `DockerHub:Registry` that replaces it), fixed at startup like `ApiBaseUrl`, is the only one Docker Hub pagination follows ([Pagination links](#pagination-links)).
+  origin of `ApiBaseUrl`, fixed at startup like `ApiBaseUrl`, is the only one Docker Hub pagination follows ([Pagination links](#pagination-links)).
 - Validation of these keys at startup (an invalid value fails startup, see [Hosting](hosting.md)): `Registry`
-  non-empty, `ApiBaseUrl` an absolute `http`/`https` URL, neither `ApiBaseUrl` nor an absolute `Registry` with an `@`
+  not blank and, trimmed, one of the Docker Hub hosts above (otherwise the failure `'DockerUpdateGuard:DockerHub:Registry' must be a Docker Hub registry host (...)` listing them, never the value), `ApiBaseUrl`
+  the only setting of the web API address, an absolute `http`/`https` URL without an `@`
   outside its user info ([Hosting](hosting.md), *Validation*), the ranges above, and a non-blank `UserName`, trimmed,
   which must be a Docker Hub user name: ASCII letters and digits, separated by `.`, `_`, `__` or any run of `-`, at
   most 255 characters. Anything else fails with
@@ -249,7 +251,7 @@ go through its retry of transient HTTP failures.
 
 - Each Docker Hub and OCI request, its body included, is bounded by `RequestTimeoutSeconds`; the duration of a whole
   listing is not ([Request timeout](#request-timeout)).
-- *Unsupported*: an empty registry; the account listing when `DockerHub:Registry` is not a Docker Hub host.
+- *Unsupported*: an empty registry; the account listing when `DockerHub:Registry` is not a Docker Hub host (reachable only with options that bypassed validation).
 - *Not found*: HTTP 404 for an account, repository, tag, manifest or configuration blob; an image whose manifest names
   no configuration blob; a request path with a `.` or `..` segment, or an OCI registry that is not a valid host with an
   optional port, which is not sent ([Request paths](#request-paths)).
@@ -280,9 +282,6 @@ go through its retry of transient HTTP failures.
 
 ### Known gaps
 
-- `DockerHub:Registry` does not decide which registries the Docker Hub client serves (that host list is fixed); it
-  only gates the account listing and, when set to an absolute URL with a non-Docker-Hub host, replaces the web API
-  base address. Tracked in [#268](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/268).
 - For other registries an image configuration lookup without a platform takes the first index entry, which can be an
   attestation manifest, and publication times come only from a top-level `created` field of the manifest, which most
   registries do not send, so their tags usually have no publication time. Tracked in
@@ -290,6 +289,8 @@ go through its retry of transient HTTP failures.
 
 ## Related decisions
 
+- [0052](../decisions/0052-the-docker-hub-registry-key-only-names-the-account-discovery-host.md): the
+  `DockerHub:Registry` key only names the account discovery host.
 - [0039](../decisions/0039-a-registry-request-and-the-read-of-its-response-body-share-one-deadline.md): a registry
   request and the read of its response body share one deadline.
 - [0030](../decisions/0030-docker-hub-request-parallelism-is-limited-process-wide-and-follows-reloads.md): Docker Hub

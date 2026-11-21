@@ -129,19 +129,7 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient
     {
         ArgumentNullException.ThrowIfNull(options);
 
-        var apiBaseUri = new Uri(options.ApiBaseUrl);
-
-        if (Uri.TryCreate(options.Registry, UriKind.Absolute, out var absoluteUri))
-        {
-            if (IsSupportedDockerHubHost(absoluteUri.Host))
-            {
-                return apiBaseUri;
-            }
-
-            return absoluteUri;
-        }
-
-        return apiBaseUri;
+        return new Uri(options.ApiBaseUrl);
     }
 
     /// <summary>
@@ -375,14 +363,7 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient
     /// <returns>True when the host is a supported Docker Hub alias</returns>
     private static bool IsSupportedDockerHubHost(string host)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(host);
-
-        return string.Equals(host, "docker.io", StringComparison.OrdinalIgnoreCase)
-               || string.Equals(host, "index.docker.io", StringComparison.OrdinalIgnoreCase)
-               || string.Equals(host, "registry-1.docker.io", StringComparison.OrdinalIgnoreCase)
-               || string.Equals(host, "hub.docker.com", StringComparison.OrdinalIgnoreCase)
-               || string.Equals(host, "docker.com", StringComparison.OrdinalIgnoreCase)
-               || string.Equals(host, "www.docker.com", StringComparison.OrdinalIgnoreCase);
+        return DockerHubHosts.IsDockerHubHost(host);
     }
 
     /// <summary>

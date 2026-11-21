@@ -120,8 +120,8 @@ Rules: [Registries](docs/areas/registries.md).
 
 | Key | Default | Required | Description |
 | --- | --- | --- | --- |
-| `Registry` | `docker.io` | Yes | Registry host handled by the Docker Hub integration |
-| `ApiBaseUrl` | `https://hub.docker.com/` | No | Docker Hub web API base address; a mirror or proxy must keep next-page links on its own origin ([Pagination links](docs/areas/registries.md#pagination-links)) |
+| `Registry` | `docker.io` | Yes | Docker Hub registry host used for account discovery (a Docker Hub host such as `docker.io`) |
+| `ApiBaseUrl` | `https://hub.docker.com/` | No | Docker Hub web API base address, the only way to change it; a mirror or proxy must keep next-page links on its own origin ([Pagination links](docs/areas/registries.md#pagination-links)) |
 | `UserName` | none | No | Docker Hub user name (Docker ID) for authenticated requests |
 | `Pat` | none | No | Docker Hub personal access token |
 | `RequestTimeoutSeconds` | `30` | No | Timeout of one Docker Hub, OCI registry or release-feed request, retries included; for Docker Hub and OCI registries it also covers reading the response |

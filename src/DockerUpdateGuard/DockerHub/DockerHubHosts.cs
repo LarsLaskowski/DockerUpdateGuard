@@ -1,3 +1,5 @@
+using System.Collections.ObjectModel;
+
 namespace DockerUpdateGuard.DockerHub;
 
 /// <summary>
@@ -5,12 +7,21 @@ namespace DockerUpdateGuard.DockerHub;
 /// </summary>
 public static class DockerHubHosts
 {
+    #region Fields
+
+    /// <summary>
+    /// Read-only list of the Docker Hub host names, built once
+    /// </summary>
+    private static readonly ReadOnlyCollection<string> _names = Array.AsReadOnly(["docker.io", "index.docker.io", "registry-1.docker.io", "hub.docker.com", "docker.com", "www.docker.com"]);
+
+    #endregion // Fields
+
     #region Properties
 
     /// <summary>
     /// Host names of Docker Hub, compared without regard to case
     /// </summary>
-    public static IReadOnlyList<string> Names => throw new InvalidOperationException("Skeleton: not implemented");
+    public static IReadOnlyList<string> Names => _names;
 
     #endregion // Properties
 
@@ -23,7 +34,12 @@ public static class DockerHubHosts
     /// <returns>True when the host is a Docker Hub host name</returns>
     public static bool IsDockerHubHost(string? host)
     {
-        throw new InvalidOperationException("Skeleton: not implemented");
+        if (string.IsNullOrWhiteSpace(host))
+        {
+            return false;
+        }
+
+        return _names.Any(name => string.Equals(host, name, StringComparison.OrdinalIgnoreCase));
     }
 
     #endregion // Methods
