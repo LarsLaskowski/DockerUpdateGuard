@@ -1331,6 +1331,28 @@ public class DockerUpdateGuardOptionsValidatorTests
     }
 
     /// <summary>
+    /// Verify each Docker Hub registry host passes validation in any case and with surrounding whitespace
+    /// </summary>
+    /// <param name="registry">Configured Docker Hub registry</param>
+    [TestMethod]
+    [TestCategory("AC3")]
+    [DataRow("docker.io")]
+    [DataRow("index.docker.io")]
+    [DataRow("registry-1.docker.io")]
+    [DataRow("hub.docker.com")]
+    [DataRow("docker.com")]
+    [DataRow("www.docker.com")]
+    [DataRow("DOCKER.IO")]
+    [DataRow(" docker.io ")]
+    [DataRow("\tHub.Docker.Com\n")]
+    public void DockerUpdateGuardOptionsValidatorDockerHubRegistryDockerHubHostPassesValidation(string registry)
+    {
+        var failures = ValidateDockerHubRegistry(registry);
+
+        Assert.IsEmpty(failures, $"A Docker Hub registry host must produce no failure: {string.Join("; ", failures)}");
+    }
+
+    /// <summary>
     /// Validate otherwise valid options with the given Docker Hub registry
     /// </summary>
     /// <param name="registry">Configured Docker Hub registry</param>

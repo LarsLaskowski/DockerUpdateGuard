@@ -145,6 +145,27 @@ public class DockerUpdateGuardOptionsPostConfigureTests
     }
 
     /// <summary>
+    /// Verify an empty Docker Hub registry stays empty so the validator reports it as missing
+    /// </summary>
+    [TestMethod]
+    [TestCategory("AC4")]
+    public void DockerUpdateGuardOptionsPostConfigurePostConfigureKeepsEmptyDockerHubRegistry()
+    {
+        var options = new DockerUpdateGuardOptions
+                      {
+                          DockerHub = new DockerHubOptions
+                                      {
+                                          Registry = string.Empty,
+                                      },
+                      };
+        var postConfigure = new DockerUpdateGuardOptionsPostConfigure();
+
+        postConfigure.PostConfigure(null, options);
+
+        Assert.AreEqual(string.Empty, options.DockerHub.Registry, "An empty Docker Hub registry must stay empty");
+    }
+
+    /// <summary>
     /// Verify missing options are rejected
     /// </summary>
     [TestMethod]
