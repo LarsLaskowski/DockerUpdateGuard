@@ -807,6 +807,26 @@ public partial class DockerHubClientTests
     }
 
     /// <summary>
+    /// Verify an absolute registry URL of a host other than Docker Hub no longer replaces the Docker Hub API base address
+    /// </summary>
+    [TestMethod]
+    [TestCategory("AC1")]
+    public void DockerHubClientGetBaseUriAbsoluteNonDockerHubRegistryReturnsApiBaseUrl()
+    {
+        var options = new DockerHubOptions
+                      {
+                          Registry = "https://registry.example.internal",
+                          ApiBaseUrl = "https://hub.mirror.example.test/",
+                      };
+
+        var baseUri = DockerHubClient.GetBaseUri(options);
+
+        Assert.AreEqual(new Uri("https://hub.mirror.example.test/"),
+                        baseUri,
+                        "The Docker Hub API base address must come from the API base URL, never from the registry value");
+    }
+
+    /// <summary>
     /// Verify Docker Hub repository listing follows pagination links
     /// </summary>
     /// <returns>Task</returns>

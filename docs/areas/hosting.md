@@ -46,8 +46,7 @@ every feature area relies on it for validated configuration and a migrated datab
   contains more than one `@` or parses with an empty user info; a user info that is present must therefore be the
   one `@`-terminated part of the authority. The rule applies to the URL keys of the `DockerUpdateGuard` section
   (Docker instance `BaseUrl`, Portainer `BaseUrl`, `DockerHub:ApiBaseUrl`, `ReleaseMetadata:DotNetBaseUrl` and
-  `NginxBaseUrl`, `Vulnerabilities:TrivyBaseUrl`, `DockerScoutLoginUrl` and `DockerScoutBaseUrl`) and to
-  `DockerHub:Registry` when it is an absolute URI (a plain registry name such as `docker.io` is not checked); the
+  `NginxBaseUrl`, `Vulnerabilities:TrivyBaseUrl`, `DockerScoutLoginUrl` and `DockerScoutBaseUrl`); the
   `Telemetry:OtlpEndpoint` rule is in [Telemetry](telemetry.md). It is checked after the existing configured,
   absolute and scheme rules, so a value gets at most one of these failures, and it replaces the Portainer
   plaintext-HTTP failure. The failure is exactly `<subject> has an '@' that does not end its user info; percent-encode '@', '#', '?' and '/' in a user name or password`, where the subject is `'<key>'` with the full configuration path as key, or `'<key>' of Docker instance '<Name>'` for a key inside a Docker instance, and never the

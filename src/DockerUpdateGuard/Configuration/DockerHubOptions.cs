@@ -8,12 +8,12 @@ public class DockerHubOptions
     #region Properties
 
     /// <summary>
-    /// Registry host name
+    /// Docker Hub registry host used for account discovery, one of docker.io, index.docker.io, registry-1.docker.io, hub.docker.com, docker.com or www.docker.com; it never changes the address of the web API requests
     /// </summary>
     public string Registry { get; set; } = "docker.io";
 
     /// <summary>
-    /// Base address of the Docker Hub API used for registries served by Docker Hub
+    /// Base address of the Docker Hub web API used for registries served by Docker Hub; the only setting that changes where the web API requests and the login go
     /// </summary>
     public string ApiBaseUrl { get; set; } = "https://hub.docker.com/";
 

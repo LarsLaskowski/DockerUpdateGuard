@@ -20,7 +20,7 @@ internal static class TestDevelopmentConfiguration
                                                                     ["ConnectionStrings:DockerUpdateGuard"] = "Host=database;Port=5432;Database=dockerupdateguard;Username=dockerupdateguard;Password=change-me",
                                                                     ["DockerUpdateGuard:ConnectionString"] = "Host=database;Port=5432;Database=dockerupdateguard;Username=dockerupdateguard;Password=change-me",
                                                                     ["DockerUpdateGuard:ConnectionStringName"] = "DockerUpdateGuard",
-                                                                    ["DockerUpdateGuard:DockerHub:Registry"] = "https://hub.docker.com",
+                                                                    ["DockerUpdateGuard:DockerHub:Registry"] = "docker.io",
                                                                     ["DockerUpdateGuard:DockerHub:UserName"] = "dockerupdateguard",
                                                                     ["DockerUpdateGuard:DockerHub:Pat"] = "change-me",
                                                                     ["DockerUpdateGuard:DockerHub:RequestTimeoutSeconds"] = "30",

@@ -33,12 +33,14 @@ public class ServiceCollectionExtensionsTests
     /// Verify host registration wires core services, hosted services and Docker Hub client settings
     /// </summary>
     [TestMethod]
+    [TestCategory("AC1")]
     public void ServiceCollectionExtensionsAddDockerUpdateGuardHostRegistersExpectedServices()
     {
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
                                                                              {
                                                                                  ["DockerUpdateGuard:ConnectionString"] = "Host=database;Database=dug;Username=test;Password=test",
-                                                                                 ["DockerUpdateGuard:DockerHub:Registry"] = "https://registry.example.test/",
+                                                                                 ["DockerUpdateGuard:DockerHub:Registry"] = "docker.io",
+                                                                                 ["DockerUpdateGuard:DockerHub:ApiBaseUrl"] = "https://hub.mirror.example.test/",
                                                                                  ["DockerUpdateGuard:DockerHub:RequestTimeoutSeconds"] = "42",
                                                                                  ["Telemetry:EnableLogging"] = "true",
                                                                                  ["Telemetry:EnableMetrics"] = "false",
@@ -73,9 +75,9 @@ public class ServiceCollectionExtensionsTests
         Assert.IsTrue(hostedServiceTypes.Contains(typeof(VulnerabilityRefreshBackgroundService)), "The vulnerability refresh background service must be registered");
         Assert.IsTrue(hostedServiceTypes.Contains(typeof(ScanCleanupBackgroundService)), "The cleanup background service must be registered");
         Assert.IsNotNull(httpClient, "The typed Docker Hub client must keep the configured HttpClient instance");
-        Assert.AreEqual(new Uri("https://registry.example.test/"),
+        Assert.AreEqual(new Uri("https://hub.mirror.example.test/"),
                         httpClient.BaseAddress,
-                        "The Docker Hub client must use the configured registry URI as base address");
+                        "The Docker Hub client must use the configured Docker Hub API base URL as base address");
         Assert.AreEqual(TimeSpan.FromSeconds(42),
                         httpClient.Timeout,
                         "The Docker Hub client must use the configured request timeout");
@@ -87,6 +89,38 @@ public class ServiceCollectionExtensionsTests
         Assert.IsNotNull(serviceProvider.GetService<DockerScoutVulnerabilityProvider>(), "The Docker Scout vulnerability provider must be registered unconditionally");
         Assert.IsNotNull(serviceProvider.GetService<TrivyVulnerabilityProvider>(), "The Trivy vulnerability provider must be registered unconditionally");
         Assert.IsNull(serviceProvider.GetService<IVulnerabilityProvider>(), "No conditional IVulnerabilityProvider registration must remain; consumers must depend on the resolver");
+    }
+
+    /// <summary>
+    /// Verify an absolute registry URL of a host other than Docker Hub does not become the Docker Hub client's base address
+    /// </summary>
+    [TestMethod]
+    [TestCategory("AC1")]
+    public void ServiceCollectionExtensionsAddDockerUpdateGuardHostAbsoluteNonDockerHubRegistryUsesApiBaseUrlAsBaseAddress()
+    {
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+                                                                             {
+                                                                                 ["DockerUpdateGuard:ConnectionString"] = "Host=database;Database=dug;Username=test;Password=test",
+                                                                                 ["DockerUpdateGuard:DockerHub:Registry"] = "https://registry.example.test/",
+                                                                                 ["DockerUpdateGuard:DockerHub:ApiBaseUrl"] = "https://hub.mirror.example.test/",
+                                                                                 ["Telemetry:EnableLogging"] = "true",
+                                                                                 ["Telemetry:EnableMetrics"] = "false",
+                                                                                 ["Telemetry:EnableTracing"] = "false",
+                                                                             })
+                                                      .Build();
+        var services = new ServiceCollection();
+
+        services.AddDockerUpdateGuardHost(configuration);
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        var httpClientFactory = serviceProvider.GetRequiredService<IHttpClientFactory>();
+
+        using var httpClient = httpClientFactory.CreateClient(nameof(DockerHubClient));
+
+        Assert.AreEqual(new Uri("https://hub.mirror.example.test/"),
+                        httpClient.BaseAddress,
+                        "The composition root must give the Docker Hub client the API base URL, never the registry value, as base address");
     }
 
     /// <summary>

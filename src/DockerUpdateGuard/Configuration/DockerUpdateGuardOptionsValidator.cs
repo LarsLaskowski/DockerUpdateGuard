@@ -1,5 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
 
+using DockerUpdateGuard.DockerHub;
 using DockerUpdateGuard.Images.Helper;
 
 using Microsoft.Extensions.Options;
@@ -109,10 +110,9 @@ public class DockerUpdateGuardOptionsValidator : IValidateOptions<DockerUpdateGu
         {
             failures.Add($"'{DockerUpdateGuardOptions.SectionName}:DockerHub:Registry' must be configured");
         }
-        else if (Uri.TryCreate(options.Registry, UriKind.Absolute, out var registryUri)
-                 && HasAtSignOutsideUserInfo(options.Registry, registryUri))
+        else if (DockerHubHosts.IsDockerHubHost(options.Registry.Trim()) == false)
         {
-            failures.Add(CreateAtSignFailure($"'{DockerUpdateGuardOptions.SectionName}:DockerHub:Registry'"));
+            failures.Add($"'{DockerUpdateGuardOptions.SectionName}:DockerHub:Registry' must be a Docker Hub registry host ({string.Join(", ", DockerHubHosts.Names)})");
         }
 
         if (string.IsNullOrWhiteSpace(options.UserName) == false

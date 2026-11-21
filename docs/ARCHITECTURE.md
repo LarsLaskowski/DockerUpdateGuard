@@ -83,7 +83,7 @@ documented in [AGENTS.md](../AGENTS.md) and not repeated here.
 registration to `ServiceCollectionExtensions.AddDockerUpdateGuardHost`, the
 composition root, which in order:
 
-1. Binds, normalizes (trims Docker instance names) and validates `DockerUpdateGuardOptions`
+1. Binds, normalizes (trims Docker instance names and `DockerHub:Registry`) and validates `DockerUpdateGuardOptions`
    (`.ValidateOnStart()`).
 2. Resolves the PostgreSQL connection string
    (`DockerUpdateGuardConnectionStringResolver`) and registers the EF Core
@@ -149,9 +149,11 @@ Architecturally relevant points:
   section and one the `Telemetry` section, both wired with
   `.ValidateOnStart()`, so misconfiguration is a startup failure, not a
   runtime surprise.
-- One `IPostConfigureOptions<T>` step trims each Docker instance name before
-  validation and on every reload, so every consumer sees one spelling
-  ([decision 0049](decisions/0049-docker-instance-names-are-trimmed-once-where-the-options-are-built.md)).
+- One `IPostConfigureOptions<T>` step trims each Docker instance name and
+  `DockerHub:Registry` before validation and on every reload, so every consumer
+  sees one spelling
+  ([decision 0049](decisions/0049-docker-instance-names-are-trimmed-once-where-the-options-are-built.md),
+  [decision 0052](decisions/0052-the-docker-hub-registry-key-only-names-the-account-discovery-host.md)).
 - The `DockerUpdateGuard` validator also loads each configured client
   certificate of an enabled Docker instance through `ClientCertificateLoader`,
   the same loader `DockerInstanceClient` uses, so a certificate accepted at
