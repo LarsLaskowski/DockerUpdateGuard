@@ -1,7 +1,8 @@
 namespace DockerUpdateGuard.Data.Entities;
 
 /// <summary>
-/// Source of an image version
+/// Kind of component that registered or last refreshed an image version through the catalog, stored as its integer number;
+/// number 4 (registry metadata) is retired and never reused
 /// </summary>
 public enum ImageVersionSource
 {
@@ -23,10 +24,5 @@ public enum ImageVersionSource
     /// <summary>
     /// Base image resolution source
     /// </summary>
-    BaseImageResolution = 3,
-
-    /// <summary>
-    /// Registry metadata source
-    /// </summary>
-    RegistryMetadata = 4
+    BaseImageResolution = 3
 }

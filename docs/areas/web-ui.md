@@ -133,7 +133,6 @@ to read the state the other areas compute and to start manual scans; it computes
 The dashboard shows at most one hint about vulnerability scanning:
 
 - scanning disabled: how to enable it (`DockerUpdateGuard:Vulnerabilities:Enabled` and a provider);
-- Trivy not configured: set `DockerUpdateGuard:Vulnerabilities:TrivyBaseUrl`;
 - Docker Scout not configured: set `DockerUpdateGuard:DockerHub:UserName` and `DockerUpdateGuard:DockerHub:Pat`.
 
 When the hint applies is owned by [Vulnerabilities](vulnerabilities.md). The hint names configuration keys only,

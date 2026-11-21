@@ -41,8 +41,7 @@ a base-image update or vulnerability reaches; vulnerability refreshes and the da
 - An image without the label has an empty chain; that is a successful resolution.
 - When the observed image's own configuration cannot be read, resolution is unavailable: the stored chain is left
   unchanged and the scan becomes *failed* (outcome *failed*) or *partial* (any other outcome).
-- Only base-image relationships are produced. The relationship type for build stages exists in storage but nothing
-  records it.
+- Only base-image relationships exist.
 
 ### Storing the chain
 
@@ -142,11 +141,6 @@ a base-image update or vulnerability reaches; vulnerability refreshes and the da
 - Feed failures (non-success status, missing `releases-index` array, unreadable content) only suppress the runtime
   finding and keep the previous one (observed image and running container); they do not change the scan status.
   Unreadable content is logged as a warning.
-
-### Known gaps
-
-- The relationship type for build stages is defined in storage but never produced. Tracked in
-  [#293](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/293).
 
 ## Related decisions
 

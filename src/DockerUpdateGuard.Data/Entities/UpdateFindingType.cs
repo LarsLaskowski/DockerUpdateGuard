@@ -1,7 +1,8 @@
 namespace DockerUpdateGuard.Data.Entities;
 
 /// <summary>
-/// Type of update finding
+/// Type of update finding, stored as its integer number;
+/// number 1 (base image update) is retired and never reused
 /// </summary>
 public enum UpdateFindingType
 {
@@ -9,11 +10,6 @@ public enum UpdateFindingType
     /// No finding type set
     /// </summary>
     NotSet = 0,
-
-    /// <summary>
-    /// Update for a base image
-    /// </summary>
-    BaseImageUpdate = 1,
 
     /// <summary>
     /// Update for a runtime container image

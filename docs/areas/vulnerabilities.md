@@ -29,7 +29,9 @@ All keys live under `DockerUpdateGuard:Vulnerabilities`:
 - The provider is chosen anew at the start of every refresh from the current configuration, so a reloaded
   configuration takes effect with the next refresh. The provider chosen at the start of a refresh is used, and named
   as the source of every finding and assessment it stores, for the whole refresh, also when the configuration is
-  reloaded during it. When `Enabled` is `false`, a refresh does nothing: no provider is
+  reloaded during it; each Trivy call reads the current `TrivyBaseUrl`, so a valid reload during a refresh to a
+  configuration without it (Docker Scout, or `Enabled` `false`) makes the remaining Trivy calls *not configured*.
+  When `Enabled` is `false`, a refresh does nothing: no provider is
   called, no scan run is recorded and stored assessments and findings stay as they are.
 - Docker Scout uses the Docker Hub credentials `DockerUpdateGuard:DockerHub:UserName` and
   `DockerUpdateGuard:DockerHub:Pat`; they are not required by validation.
@@ -62,7 +64,7 @@ scan run:
 | Not scanned | No assessment stored yet | — |
 | No findings | Provider succeeded with no advisory | "The vulnerability provider reported no findings" |
 | Findings detected | Provider succeeded with advisories | "The vulnerability provider reported N finding(s)", N after deduplication |
-| Not configured | Provider not configured (missing Trivy URL or Docker Hub credentials) | Provider message |
+| Not configured | Provider not configured (missing Docker Hub credentials, or no Trivy URL after a reload during a refresh) | Provider message |
 | Unsupported | Provider cannot scan this image (Docker Scout and a registry other than `docker.io`) | Provider message |
 | Unavailable | Image or tag not found by the provider or, for Docker Scout, the tag now points to another digest | Provider message |
 | Failed | Any other provider failure, or the results of the image version could not be saved | Provider message, cut to 2000 characters; or `Vulnerability results for '<reference>' could not be saved: <reason>` |
@@ -88,7 +90,7 @@ scan run:
   is deactivated the same way. A manual rescan never does this.
 - At most one active finding exists per image version, advisory id and affected package.
 - Severity is one of *not set*, *low*, *medium*, *high*, *critical*. The source is the provider resolved for the refresh
-  (*Trivy* or *Docker Scout*). Fix status is one of *not set*, *fixed*, *affected*, *will not fix*, *fix deferred*, *end of life*.
+  (*Trivy* or *Docker Scout*). The observed image detail shows a stored retired assessment source (3 or 4) as "Not set". Fix status is one of *not set*, *fixed*, *affected*, *will not fix*, *fix deferred*, *end of life*.
 
 ### Trivy
 
@@ -197,8 +199,6 @@ scan run:
 The dashboard shows at most one hint about the vulnerability configuration:
 
 - *Scanning disabled* when `Enabled` is `false`.
-- *Trivy base URL missing* when `Provider` is `Trivy` and the most recent completed vulnerability scan run (by start
-  time) ended *partial* or *failed* with a message containing "TrivyBaseUrl is not configured".
 - *Docker Hub credentials missing* when `Provider` is `DockerScout` and that run ended *partial* or *failed* with a
   message containing "Docker Hub credentials are required for Docker Scout".
 - No hint otherwise.
@@ -231,13 +231,6 @@ The dashboard shows at most one hint about the vulnerability configuration:
   Scout the failure message of Docker Hub's tag lookup with its body excerpt,
   [Integration failures](integration-failures.md#excerpts-of-remote-text)) or a fixed reason; no tokens or
   passwords are put into them.
-
-### Known gaps
-
-- Some values are kept although nothing produces them: validation makes the *Trivy base URL missing* hint and the
-  Trivy *not configured* result unreachable (unless an invalid reloaded configuration is still served), and the
-  finding sources *registry advisory* and *manual* exist in the data model but are never produced. Tracked in
-  [#293](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/293).
 
 ## Related decisions
 
