@@ -1,6 +1,6 @@
 # 0052: The Docker Hub registry key only names the host of account discovery
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-21
 - **Area:** Registries
 - **Source:** Issue #268

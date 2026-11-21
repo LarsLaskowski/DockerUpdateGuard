@@ -112,5 +112,5 @@ once in the [area document](../areas/README.md) of the record's area, and the re
 | [0049](0049-docker-instance-names-are-trimmed-once-where-the-options-are-built.md) | Docker instance names are trimmed once where the options are built | Accepted | 2026-11-17 |
 | [0050](0050-the-compose-files-move-postgresql-to-a-new-volume-carried-over-by-dump-and-restore.md) | The compose files move PostgreSQL to a new volume, carried over by dump and restore | Accepted | 2026-11-18 |
 | [0051](0051-the-bundled-trivy-and-the-compose-trivy-servers-move-to-v0-76-2.md) | The bundled Trivy and the compose Trivy servers move to v0.76.2 | Accepted | 2026-11-18 |
-| [0052](0052-the-docker-hub-registry-key-only-names-the-account-discovery-host.md) | The Docker Hub registry key only names the host of account discovery | Proposed | 2026-11-21 |
+| [0052](0052-the-docker-hub-registry-key-only-names-the-account-discovery-host.md) | The Docker Hub registry key only names the host of account discovery | Accepted | 2026-11-21 |
 <!-- project:end index -->

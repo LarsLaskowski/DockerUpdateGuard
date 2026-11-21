@@ -57,7 +57,7 @@ call and the PAT login (`CreateLoginUri`, `:925-937`) go there. `ValidateDockerH
 
 | AC | Test(s) | Test file |
 | -- | ------- | --------- |
-| AC1 | `DockerHubClientGetBaseUriAbsoluteNonDockerHubRegistryReturnsApiBaseUrl` (`Registry` `https://registry.example.internal`, `ApiBaseUrl` `https://hub.mirror.example.test/`); `ServiceCollectionExtensionsAddDockerUpdateGuardHostRegistersExpectedServices` adapted: add `DockerHub:ApiBaseUrl` = `https://hub.mirror.example.test/`, keep the absolute `Registry`, assert the `BaseAddress` is the `ApiBaseUrl` | `DockerHubClientTests.cs`; `ServiceCollectionExtensionsTests.cs` |
+| AC1 | `DockerHubClientGetBaseUriAbsoluteNonDockerHubRegistryReturnsApiBaseUrl` (`Registry` `https://registry.example.internal`, `ApiBaseUrl` `https://hub.mirror.example.test/`); `ServiceCollectionExtensionsAddDockerUpdateGuardHostRegistersExpectedServices` adapted: add `DockerHub:ApiBaseUrl` = `https://hub.mirror.example.test/`, keep the absolute `Registry`, assert the `BaseAddress` is the `ApiBaseUrl` (built: `Registry` set to `docker.io`, since resolving the typed client validates the options); `ServiceCollectionExtensionsAddDockerUpdateGuardHostAbsoluteNonDockerHubRegistryUsesApiBaseUrlAsBaseAddress` (absolute `Registry` `https://registry.example.test/`, client from `IHttpClientFactory`, which skips options validation; added in step 5, approved in step 9) | `DockerHubClientTests.cs`; `ServiceCollectionExtensionsTests.cs` |
 | AC2 | `DockerUpdateGuardOptionsValidatorDockerHubRegistryNonDockerHubHostFailsValidation` (rows `ghcr.io`, `registry.example.internal`, `localhost`); `DockerUpdateGuardOptionsValidatorDockerHubRegistryAbsoluteUrlFailsValidation` (rows `https://registry.example.internal`, `https://docker.io`, `https://admin#secret@registry.example`, asserting no failure contains `secret`); `DockerUpdateGuardOptionsValidatorDockerHubRegistryHostWithPortPathOrUserInfoFailsValidation` (rows `docker.io:443`, `docker.io/library`, `user@docker.io`, `docker.io.`) | `DockerUpdateGuardOptionsValidatorTests.cs` |
 | AC3 | `DockerUpdateGuardOptionsValidatorDockerHubRegistryDockerHubHostPassesValidation` (rows: each host, `DOCKER.IO`, `" docker.io "`, `"\tHub.Docker.Com\n"`) — cannot fail on today's code, deferred to step 6 | `DockerUpdateGuardOptionsValidatorTests.cs` |
 | AC4 | `DockerUpdateGuardOptionsPostConfigurePostConfigureTrimsDockerHubRegistry`; `DockerUpdateGuardOptionsPostConfigurePostConfigureKeepsEmptyDockerHubRegistry` | `DockerUpdateGuardOptionsPostConfigureTests.cs` |
@@ -161,7 +161,7 @@ All by the Dev, once the code is green:
 - The area documents above.
 - The PR description names the breaking change (an absolute `Registry` moves to `ApiBaseUrl`) — the orchestrator.
 
-`docs/ARCHITECTURE.md`, `INSTALL.md`, `DOCKER.md` and the compose files do not mention the key (fact 12): no edit.
+`INSTALL.md`, `DOCKER.md` and the compose files do not mention the key (fact 12): no edit. `docs/ARCHITECTURE.md` lists the post-configure normalizations (startup step 1 and the options bullet): both add `DockerHub:Registry` and link 0052 — found in step 8, approved in step 9.
 
 ## Architecture check
 
