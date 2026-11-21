@@ -1,6 +1,6 @@
 # 0055: Entity enum members nothing produces are removed, and their numbers are never reused
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-21
 - **Area:** —
 - **Source:** Issue #293
