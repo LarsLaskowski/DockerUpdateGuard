@@ -1,6 +1,6 @@
 # 0054: A base image is shared from two users among enabled observed images and their containers
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-21
 - **Area:** Base images
 - **Source:** Issue #286
