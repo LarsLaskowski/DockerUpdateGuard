@@ -21,9 +21,9 @@ to read the state the other areas compute and to start manual scans; it computes
   plus own images plus runtime containers) and *last activity* (the start time of the most recent scan run, or "No
   scans yet"). The top bar reloads these values on every navigation and on every dashboard refresh signal (see
   *Refresh without reload*).
-- The navigation lists Dashboard, My Images, Observed Images, Runtime Containers, Docker Instances, Base Images,
-  Vulnerabilities and Scan History. *My Images* is listed only when both `DockerUpdateGuard:DockerHub:UserName` and
-  `DockerUpdateGuard:DockerHub:Pat` are set; *Base Images* only when at least one base image has been resolved. Both
+- The navigation lists Dashboard, My Images, Observed Images, Runtime Containers, Docker Instances, Shared Base
+  Images, Vulnerabilities and Scan History. *My Images* is listed only when both `DockerUpdateGuard:DockerHub:UserName`
+  and `DockerUpdateGuard:DockerHub:Pat` are set; *Shared Base Images* only when at least one shared base image exists. Both
   conditions are evaluated when the session starts. The pages stay reachable by their routes either way.
 - The drawer shows the application version: `DockerUpdateGuard:DisplayVersion` when set, otherwise the version of the
   running build, otherwise "unknown".
@@ -35,7 +35,7 @@ to read the state the other areas compute and to start manual scans; it computes
 
 | Route | Page | Shows |
 | --- | --- | --- |
-| `/` | Dashboard | Counts of my images, manual observed images, Docker instances, runtime containers and resolved base images; active update findings; active derived-runtime warnings of own images; active vulnerability findings of currently running containers with a per-severity breakdown; a configuration hint for vulnerability scanning; the 10 most recent scan runs |
+| `/` | Dashboard | Counts of my images, manual observed images, Docker instances, runtime containers and shared base images; active update findings; active derived-runtime warnings of own images; active vulnerability findings of currently running containers with a per-severity breakdown; a configuration hint for vulnerability scanning; the 10 most recent scan runs |
 | `/my-images` | My Images | Images discovered from the configured Docker Hub account, with latest scan status and message, number of running containers, derived-runtime hint and vulnerability status |
 | `/my-images/{id}` | My Image details | One observed image: reference, latest scan, derived-runtime hint, running containers, base image chain, update findings with tag candidates, and — when there are any — vulnerability findings and its 20 most recent scan runs |
 | `/observed-images` | Observed Images | The registration form and the manually registered images with latest scan, active update findings, derived-runtime hint and vulnerability status |
@@ -44,7 +44,7 @@ to read the state the other areas compute and to start manual scans; it computes
 | `/runtime-containers/{instanceId}/{containerId}` | Runtime Container detail | One container: image and digest, Compose project, linked own image, update state and message, derived-runtime hint, base image chain, resource usage history, manual tag preference, available tag candidates, update findings, vulnerability findings and the scans of its 20 most recent snapshots; for a container of a Docker instance with Portainer enabled, the *Container actions* section with the 20 most recent action runs of the container |
 | `/docker-instances` | Docker Instances | Configured Docker instances with endpoint, connection kind, latest runtime scan status and time, current resource usage and number of containers; with exactly one instance its current usage and usage history are shown on this page directly |
 | `/docker-instances/{id}` | Docker Instance detail | The containers currently observed on one instance with linked own image and resource usage |
-| `/base-images` | Base Images | Resolved base images with the images built on them, the runtime containers and number of observed images that use them, and their vulnerability status |
+| `/base-images` | Shared Base Images | Base images used by two or more enabled images or containers, with the images built on them, the containers and number of enabled observed images that use them, and their vulnerability status |
 | `/vulnerabilities` | Vulnerabilities | Active advisories across all images, one row per advisory, with severity and CVSS score, affected packages, fixed versions, number of affected images and running containers; a row expands to the affected images |
 | `/scan-history` | Scan History | The 20 most recent scan runs with type, status, trigger, target, start time and error message |
 | `/error` | Error | "Unexpected error" — the request could not be completed |
