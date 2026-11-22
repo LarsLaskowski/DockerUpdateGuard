@@ -44,10 +44,5 @@ internal sealed class RuntimeCandidate
     /// </summary>
     public bool HasExactVersion { get; set; }
 
-    /// <summary>
-    /// Evidence string
-    /// </summary>
-    public string? Evidence { get; set; }
-
     #endregion // Properties
 }
