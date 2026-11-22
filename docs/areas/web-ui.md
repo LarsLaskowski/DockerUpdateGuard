@@ -168,7 +168,8 @@ never their values.
   of [Integration failures](integration-failures.md#fixed-failure-reasons); an application-composed message (the rejected image
   reference, name or already tracked own image of [Image catalog](image-catalog.md)) is passed on. The prefix names the user action, not the step that
   failed: a later step of the same action (the scan after a registration, the reload after a save) can fail after the
-  earlier step succeeded. The error is logged as an error with event ID 4000 (`User action <action> failed`) and the
+  earlier step succeeded. When the list reload after a failed registration fails as well, the registration's message stays, the
+  list keeps what it showed, and the reload error is logged as a second `RegisterObservedImage` entry. The error is logged as an error with event ID 4000 (`User action <action> failed`) and the
   exception.
 
   | Action | Prefix | Logged action |
