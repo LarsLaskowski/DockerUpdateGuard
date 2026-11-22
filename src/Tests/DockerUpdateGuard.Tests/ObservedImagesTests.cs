@@ -23,6 +23,15 @@ namespace DockerUpdateGuard.Tests;
 [TestClass]
 public class ObservedImagesTests
 {
+    #region Constants
+
+    /// <summary>
+    /// Name of the list item shown before the submit, unique in the page markup
+    /// </summary>
+    private const string ExistingImageName = "existing-observed-image";
+
+    #endregion // Constants
+
     #region Static methods
 
     /// <summary>
@@ -67,6 +76,57 @@ public class ObservedImagesTests
             Assert.DoesNotContain("Registration failed", component.Markup, "A length message is not a failed registration");
             await registrationService.DidNotReceive().RegisterAsync(Arg.Any<ObservedImageRegistrationRequest>(), Arg.Any<CancellationToken>()).ConfigureAwait(false);
         }
+    }
+
+    /// <summary>
+    /// Render the page with a registration and a following list reload that both fail, and submit the form
+    /// </summary>
+    /// <param name="testContext">Test context</param>
+    /// <param name="logger">Logger the page writes to</param>
+    /// <param name="registrationException">Exception of the registration</param>
+    /// <param name="reloadException">Exception of the list reload after the failed registration</param>
+    /// <returns>Rendered page after the submit</returns>
+    private static async Task<IRenderedComponent<ObservedImages>> SubmitWithFailingReloadAsync(BunitContext testContext,
+                                                                                               TestLogger<ObservedImages> logger,
+                                                                                               Exception registrationException,
+                                                                                               Exception reloadException)
+    {
+        var viewService = Substitute.For<IApplicationViewService>();
+        var registrationService = Substitute.For<IImageRegistrationService>();
+        IReadOnlyList<ObservedImageListItemData> initialList = [
+                                                                   new()
+                                                                   {
+                                                                       Id = Guid.NewGuid(),
+                                                                       Name = ExistingImageName,
+                                                                       ImageReference = "docker.io/existing/image:2.0.0",
+                                                                   }
+                                                               ];
+
+        viewService.GetManualObservedImagesAsync(Arg.Any<CancellationToken>())
+                   .Returns(Task.FromResult(initialList), Task.FromException<IReadOnlyList<ObservedImageListItemData>>(reloadException));
+        registrationService.RegisterAsync(Arg.Any<ObservedImageRegistrationRequest>(), Arg.Any<CancellationToken>())
+                           .Returns(Task.FromException<ObservedImage>(registrationException));
+
+        testContext.Services.AddSingleton(viewService);
+        testContext.Services.AddSingleton(registrationService);
+        testContext.Services.AddSingleton(Substitute.For<IImageScanOrchestrator>());
+        testContext.Services.AddSingleton(new DashboardRefreshState());
+        testContext.Services.AddSingleton<ILogger<ObservedImages>>(logger);
+
+        var component = testContext.Render<ObservedImages>();
+        var inputs = component.FindAll("input");
+
+        await inputs[0].ChangeAsync(new ChangeEventArgs
+                                    {
+                                        Value = "Company API"
+                                    }).ConfigureAwait(false);
+        await inputs[1].ChangeAsync(new ChangeEventArgs
+                                    {
+                                        Value = "docker.io/company/api:1.0.0"
+                                    }).ConfigureAwait(false);
+        await component.Find("form").SubmitAsync().ConfigureAwait(false);
+
+        return component;
     }
 
     #endregion // Static methods
@@ -123,6 +183,66 @@ public class ObservedImagesTests
             UserActionFailureAssert.AssertShown(component.Markup, "Registration failed: unexpected error", "db.internal.test", "refused", "/my-images/", "Open own image");
             UserActionFailureAssert.AssertLogged(logger, "RegisterObservedImage", exception);
             await scanOrchestrator.DidNotReceive().ScanAsync(Arg.Any<Guid>(), Arg.Any<ScanTriggerSource>(), Arg.Any<CancellationToken>()).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Verify a failed list reload after a failed registration keeps the registration message, the list and the button usable
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC1")]
+    [TestCategory("AC3")]
+    public async Task ObservedImagesFailedReloadAfterFailedRegistrationKeepsPageUsableAsync()
+    {
+        var testContext = BlazorTestContextFactory.Create();
+
+        await using (testContext)
+        {
+            var registrationException = new InvalidOperationException("connection to db.internal.test:5432 refused");
+            var reloadException = new InvalidOperationException("connection to reload.db.internal.test:5432 refused");
+
+            var component = await SubmitWithFailingReloadAsync(testContext, new TestLogger<ObservedImages>(), registrationException, reloadException).ConfigureAwait(false);
+
+            UserActionFailureAssert.AssertShown(component.Markup,
+                                                "Registration failed: unexpected error",
+                                                "db.internal.test",
+                                                "reload.db.internal.test",
+                                                "refused");
+            Assert.IsNull(component.Find("button[type=submit]").GetAttribute("disabled"), "The submit button must be enabled again");
+            Assert.Contains(ExistingImageName, component.Markup, "The list must still show the rows it showed before the submit");
+        }
+    }
+
+    /// <summary>
+    /// Verify a failed list reload after a failed registration is logged as a second entry of the registration action
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC2")]
+    public async Task ObservedImagesFailedReloadAfterFailedRegistrationIsLoggedAsync()
+    {
+        var testContext = BlazorTestContextFactory.Create();
+
+        await using (testContext)
+        {
+            var logger = new TestLogger<ObservedImages>();
+            var registrationException = new InvalidOperationException("connection to db.internal.test:5432 refused");
+            var reloadException = new InvalidOperationException("connection to reload.db.internal.test:5432 refused");
+
+            await SubmitWithFailingReloadAsync(testContext, logger, registrationException, reloadException).ConfigureAwait(false);
+
+            Assert.HasCount(2, logger.Entries, "The registration and the reload failure must both be logged");
+
+            foreach (var entry in logger.Entries)
+            {
+                Assert.AreEqual(4000, entry.EventId.Id, "The failure must be logged with event ID 4000");
+                Assert.AreEqual(LogLevel.Error, entry.LogLevel, "The failure must be logged as an error");
+                Assert.AreEqual("User action RegisterObservedImage failed", entry.Message, "The log entry must name the failed action");
+            }
+
+            Assert.AreSame(registrationException, logger.Entries[0].Exception, "The first entry must carry the registration exception");
+            Assert.AreSame(reloadException, logger.Entries[1].Exception, "The second entry must carry the reload exception");
         }
     }
 
