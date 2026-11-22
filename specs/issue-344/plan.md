@@ -142,3 +142,25 @@ kept: the reload exception reaches only the log, through the existing `UserActio
 
 - A failed list load in `OnInitializedAsync` (database unreachable when the page opens) is a page load, not a user
   action, and falls under the unhandled-error handling of [Hosting](../../docs/areas/hosting.md); not changed here.
+
+## Challenge notes
+
+Plan challenge for issue #344 (/home/user/DockerUpdateGuard/specs/issue-344/plan.md). The plan holds up. I found two minor test-detail problems and nothing major.
+
+I checked these claims in the code and they are correct:
+- **The reported fault is real.** `RegisterAsync` calls `LoadAsync()` unguarded inside its `catch` (`src/DockerUpdateGuard/Components/Pages/ObservedImages.razor.cs:200-211`). `LoadAsync` assigns `_images` only after the query returns (`:156-162`), so a failed reload leaves the list unchanged.
+- **No sibling code path has the same fault.**
+  - Every other `catch (Exception …)` under `Components/` only logs and sets a message.
+  - The reloads in `RuntimeContainerDetail.razor.cs` sit inside the `try`: `SaveSelectionAsync` (`:278-279`), `ClearSelectionAsync` (`:308-309`) and `ExecuteActionAsync` (`:445-447`).
+  - `HandleRescannedAsync` (`:222-227`) runs inside `VulnerabilityRescanControl`'s `try`.
+  - `MyImages`, `ObservedImageDetail` and `MyImageDetail` have no reload inside a `catch`.
+- **The test helper does need replacing for AC2.** `UserActionFailureAssert.AssertLogged` asserts exactly one entry (`src/Tests/DockerUpdateGuard.Tests/Helper/UserActionFailureAssert.cs:48`), so the AC2 test has to check its two entries itself.
+- **A rendered row works in the test.** `ObservedImagesPersistentStateTests.cs:76-87` renders one with only the page's services registered, so the planned setup with one list item on the first call is feasible.
+- **The rejected options are rightly rejected.** Dropping the reload would hide an image whose scan failed. Moving it into `finally` would also run it on success, which navigates away.
+- **The scope and the area document change are right.** The *Limits and errors* change matches `docs/areas/web-ui.md:165-172`, which logs a later step under the action's own name.
+
+Objections:
+
+1. **minor: the list-item name in AC3 could match by accident.** The AC3 check "the initial item's name is still in the markup" passes for the wrong reason if that name also appears elsewhere on the page. The values typed into the form are rendered back into the inputs' `value` attributes, and the exception texts are also on the page side. Instruction for the Tester: give the initial list item a unique name that is neither a typed form value (`Company API`, `docker.io/company/api:1.0.0`) nor part of either exception message, for example `existing-observed-image`. This is minor because it only changes the test fixture.
+
+2. **minor: the forbidden-text check in AC1 cannot tell the two messages apart.** The plan gives the reload exception "a host name and 'refused'". The existing registration exception in `ObservedImagesTests.cs:87` is `"connection to db.internal.test:5432 refused"`. If both messages share the host and the word "refused", the check cannot show that the reload's own text stays off the page. Instruction for the Tester: give the reload exception a host of its own (for example `reload.db.internal.test`) and pass that host as a forbidden text, next to the registration exception's host. This is minor because it only strengthens an assertion and needs no change to the plan's approach.
