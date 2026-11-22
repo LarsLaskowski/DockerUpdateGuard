@@ -81,7 +81,7 @@ None: the change has no API.
 
 ## Test files
 
-None; no test call sites affected; the configuration files are verified as above.
+None; no test call sites affected.
 
 ## Areas
 
