@@ -10,6 +10,27 @@ namespace DockerUpdateGuard.Tests;
 [TestClass]
 public class DerivedBaseRuntimeDetectorTests
 {
+    #region Static methods
+
+    /// <summary>
+    /// Collect the string form of every public instance property value of an object
+    /// </summary>
+    /// <param name="instance">Object to inspect</param>
+    /// <returns>String forms of the property values</returns>
+    private static List<string> GetPublicPropertyTexts(object instance)
+    {
+        var texts = new List<string>();
+
+        foreach (var property in instance.GetType().GetProperties())
+        {
+            texts.Add(property.GetValue(instance)?.ToString() ?? string.Empty);
+        }
+
+        return texts;
+    }
+
+    #endregion // Static methods
+
     #region Methods
 
     /// <summary>
@@ -72,6 +93,42 @@ public class DerivedBaseRuntimeDetectorTests
         Assert.AreEqual("8.0.15",
                         result.RuntimeVersion?.ToString(3),
                         "The detector must surface the history environment runtime version");
+    }
+
+    /// <summary>
+    /// Verify the descriptor carries no raw text of further variables of a history environment line
+    /// </summary>
+    [TestMethod]
+    [TestCategory("AC1")]
+    public void DerivedBaseRuntimeDetectorDetectHistoryEnvironmentWithFurtherVariablesKeepsNoRawText()
+    {
+        var detector = new DerivedBaseRuntimeDetector();
+        var historyEntries = new[]
+                             {
+                                 new DockerImageHistoryEntryData
+                                 {
+                                     CreatedBy = "/bin/sh -c #(nop)  ENV DOTNET_VERSION=8.0.11 API_TOKEN=s3cr3t-value",
+                                 }
+                             };
+
+        var result = detector.Detect(inspectData: null, historyEntries);
+
+        Assert.IsNotNull(result, "The detector must recognize .NET metadata from the history line");
+        Assert.AreEqual(DerivedBaseRuntimeDetectionSource.HistoryEnvironment,
+                        result.Source,
+                        "The history line must be reported as the detection source");
+        Assert.AreEqual("8.0.11",
+                        result.RuntimeVersion?.ToString(3),
+                        "The detector must surface the version of the matched variable");
+
+        var text = string.Join("|", GetPublicPropertyTexts(result));
+
+        Assert.DoesNotContain("s3cr3t-value",
+                              text,
+                              "No public property of the descriptor may contain the value of a further variable");
+        Assert.DoesNotContain("API_TOKEN",
+                              text,
+                              "No public property of the descriptor may contain the name of a further variable");
     }
 
     /// <summary>
