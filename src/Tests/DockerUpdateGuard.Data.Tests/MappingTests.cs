@@ -61,6 +61,176 @@ public class MappingTests
                };
     }
 
+    /// <summary>
+    /// Add a representative graph of related entities to the database context
+    /// </summary>
+    /// <param name="dbContext">Database context to add the graph to</param>
+    private static void AddRepresentativeGraph(DockerUpdateGuardDbContext dbContext)
+    {
+        var runtimeEntities = AddRepresentativeRuntimeEntities(dbContext);
+
+        AddRepresentativeFindings(dbContext, runtimeEntities);
+    }
+
+    /// <summary>
+    /// Add the image, instance, scan and container entities of the representative graph to the database context
+    /// </summary>
+    /// <param name="dbContext">Database context to add the entities to</param>
+    /// <returns>The entities the findings of the representative graph refer to</returns>
+    private static (ImageVersion BaseImageVersion, ObservedImage ObservedImage, DockerInstance DockerInstance, PortainerEndpoint PortainerEndpoint, ScanRun ScanRun, ContainerSnapshot ContainerSnapshot) AddRepresentativeRuntimeEntities(DockerUpdateGuardDbContext dbContext)
+    {
+        var baseImageVersionRepository = new RegistryRepository
+                                         {
+                                             Registry = "docker.io",
+                                             Repository = "library/debian"
+                                         };
+
+        var baseImageVersion = new ImageVersion
+                               {
+                                   Digest = "sha256:base",
+                                   RegistryRepository = baseImageVersionRepository,
+                                   Tag = "12-slim"
+                               };
+
+        var currentImageVersionRepository = new RegistryRepository
+                                            {
+                                                Registry = "docker.io",
+                                                Repository = "company/example-app"
+                                            };
+
+        var currentImageVersion = new ImageVersion
+                                  {
+                                      Digest = "sha256:app",
+                                      RegistryRepository = currentImageVersionRepository,
+                                      Tag = "1.0.0"
+                                  };
+
+        var observedImage = new ObservedImage
+                            {
+                                CurrentImageVersion = currentImageVersion,
+                                Description = "Primary application image",
+                                Name = "Example App"
+                            };
+
+        var dockerInstance = new DockerInstance
+                             {
+                                 ConnectionKind = DockerConnectionKind.Https,
+                                 EndpointUri = "https://docker.example.local",
+                                 Name = "Production"
+                             };
+
+        var portainerEndpoint = new PortainerEndpoint
+                                {
+                                    BaseUrl = "https://portainer.example.local",
+                                    DockerInstance = dockerInstance,
+                                    ExternalEndpointId = "17",
+                                    Name = "Production Portainer"
+                                };
+
+        var scanRun = new ScanRun
+                      {
+                          DockerInstance = dockerInstance,
+                          ObservedImage = observedImage,
+                          Status = ScanRunStatus.Succeeded,
+                          Type = ScanRunType.ObservedImage
+                      };
+
+        var containerSnapshot = new ContainerSnapshot
+                                {
+                                    ContainerId = "container-001",
+                                    DockerInstance = dockerInstance,
+                                    ImageVersion = currentImageVersion,
+                                    IsRunning = true,
+                                    Name = "example-app-1",
+                                    ScanRun = scanRun,
+                                    Status = ContainerRuntimeStatus.Running
+                                };
+
+        var imageRelationship = new ImageRelationship
+                                {
+                                    BaseImageVersion = baseImageVersion,
+                                    ChildImageVersion = currentImageVersion,
+                                    Depth = 1,
+                                    RelationshipType = ImageRelationshipType.BaseImage,
+                                    ScanRun = scanRun
+                                };
+
+        dbContext.AddRange(baseImageVersion,
+                           currentImageVersion,
+                           observedImage,
+                           dockerInstance,
+                           portainerEndpoint,
+                           scanRun,
+                           containerSnapshot,
+                           imageRelationship);
+
+        return (baseImageVersion, observedImage, dockerInstance, portainerEndpoint, scanRun, containerSnapshot);
+    }
+
+    /// <summary>
+    /// Add the findings and the container action of the representative graph to the database context
+    /// </summary>
+    /// <param name="dbContext">Database context to add the entities to</param>
+    /// <param name="runtimeEntities">Entities the findings refer to</param>
+    private static void AddRepresentativeFindings(DockerUpdateGuardDbContext dbContext, (ImageVersion BaseImageVersion, ObservedImage ObservedImage, DockerInstance DockerInstance, PortainerEndpoint PortainerEndpoint, ScanRun ScanRun, ContainerSnapshot ContainerSnapshot) runtimeEntities)
+    {
+        var (baseImageVersion, observedImage, dockerInstance, portainerEndpoint, scanRun, containerSnapshot) = runtimeEntities;
+
+        var updateFinding = new UpdateFinding
+                            {
+                                ContainerSnapshot = containerSnapshot,
+                                DetectedAtUtc = DateTimeOffset.UtcNow,
+                                IsActive = true,
+                                ObservedImage = observedImage,
+                                RecommendedImageVersion = baseImageVersion,
+                                ScanRun = scanRun,
+                                SubjectImageVersion = baseImageVersion,
+                                Summary = "Base image update available",
+                                Type = UpdateFindingType.RuntimeImageUpdate
+                            };
+
+        var tagCandidate = new TagCandidate
+                           {
+                               Digest = "sha256:base-new",
+                               IsRecommended = true,
+                               Rank = 1,
+                               Reason = "Newer base image tag",
+                               Tag = "12.1-slim",
+                               UpdateFinding = updateFinding
+                           };
+
+        var vulnerabilityFinding = new VulnerabilityFinding
+                                   {
+                                       AdvisoryId = "CVE-2026-0001",
+                                       DetectedAtUtc = DateTimeOffset.UtcNow,
+                                       ImageVersion = baseImageVersion,
+                                       FixStatus = VulnerabilityFixStatus.WillNotFix,
+                                       IsActive = true,
+                                       PackageClass = "os-pkgs",
+                                       PackageType = "debian",
+                                       Severity = VulnerabilitySeverity.High,
+                                       Summary = "Representative advisory",
+                                       Title = "glibc issue"
+                                   };
+
+        var containerActionRun = new ContainerActionRun
+                                 {
+                                     ActionType = ContainerActionType.RestartContainer,
+                                     ContainerSnapshot = containerSnapshot,
+                                     DockerInstance = dockerInstance,
+                                     PortainerEndpoint = portainerEndpoint,
+                                     RequestedAtUtc = DateTimeOffset.UtcNow,
+                                     ResourceName = "example-app-1",
+                                     ResourceType = PortainerResourceType.Container,
+                                     Status = ContainerActionStatus.Succeeded
+                                 };
+
+        dbContext.AddRange(updateFinding,
+                           tagCandidate,
+                           vulnerabilityFinding,
+                           containerActionRun);
+    }
+
     #endregion // Static methods
 
     #region Methods
@@ -316,143 +486,7 @@ public class MappingTests
 
             await using (dbContext.ConfigureAwait(false))
             {
-                var baseImageVersionRepository = new RegistryRepository
-                                                 {
-                                                     Registry = "docker.io",
-                                                     Repository = "library/debian"
-                                                 };
-
-                var baseImageVersion = new ImageVersion
-                                       {
-                                           Digest = "sha256:base",
-                                           RegistryRepository = baseImageVersionRepository,
-                                           Tag = "12-slim"
-                                       };
-
-                var currentImageVersionRepository = new RegistryRepository
-                                                    {
-                                                        Registry = "docker.io",
-                                                        Repository = "company/example-app"
-                                                    };
-
-                var currentImageVersion = new ImageVersion
-                                          {
-                                              Digest = "sha256:app",
-                                              RegistryRepository = currentImageVersionRepository,
-                                              Tag = "1.0.0"
-                                          };
-
-                var observedImage = new ObservedImage
-                                    {
-                                        CurrentImageVersion = currentImageVersion,
-                                        Description = "Primary application image",
-                                        Name = "Example App"
-                                    };
-
-                var dockerInstance = new DockerInstance
-                                     {
-                                         ConnectionKind = DockerConnectionKind.Https,
-                                         EndpointUri = "https://docker.example.local",
-                                         Name = "Production"
-                                     };
-
-                var portainerEndpoint = new PortainerEndpoint
-                                        {
-                                            BaseUrl = "https://portainer.example.local",
-                                            DockerInstance = dockerInstance,
-                                            ExternalEndpointId = "17",
-                                            Name = "Production Portainer"
-                                        };
-
-                var scanRun = new ScanRun
-                              {
-                                  DockerInstance = dockerInstance,
-                                  ObservedImage = observedImage,
-                                  Status = ScanRunStatus.Succeeded,
-                                  Type = ScanRunType.ObservedImage
-                              };
-
-                var containerSnapshot = new ContainerSnapshot
-                                        {
-                                            ContainerId = "container-001",
-                                            DockerInstance = dockerInstance,
-                                            ImageVersion = currentImageVersion,
-                                            IsRunning = true,
-                                            Name = "example-app-1",
-                                            ScanRun = scanRun,
-                                            Status = ContainerRuntimeStatus.Running
-                                        };
-
-                var imageRelationship = new ImageRelationship
-                                        {
-                                            BaseImageVersion = baseImageVersion,
-                                            ChildImageVersion = currentImageVersion,
-                                            Depth = 1,
-                                            RelationshipType = ImageRelationshipType.BaseImage,
-                                            ScanRun = scanRun
-                                        };
-
-                var updateFinding = new UpdateFinding
-                                    {
-                                        ContainerSnapshot = containerSnapshot,
-                                        DetectedAtUtc = DateTimeOffset.UtcNow,
-                                        IsActive = true,
-                                        ObservedImage = observedImage,
-                                        RecommendedImageVersion = baseImageVersion,
-                                        ScanRun = scanRun,
-                                        SubjectImageVersion = baseImageVersion,
-                                        Summary = "Base image update available",
-                                        Type = UpdateFindingType.RuntimeImageUpdate
-                                    };
-
-                var tagCandidate = new TagCandidate
-                                   {
-                                       Digest = "sha256:base-new",
-                                       IsRecommended = true,
-                                       Rank = 1,
-                                       Reason = "Newer base image tag",
-                                       Tag = "12.1-slim",
-                                       UpdateFinding = updateFinding
-                                   };
-
-                var vulnerabilityFinding = new VulnerabilityFinding
-                                           {
-                                               AdvisoryId = "CVE-2026-0001",
-                                               DetectedAtUtc = DateTimeOffset.UtcNow,
-                                               ImageVersion = baseImageVersion,
-                                               FixStatus = VulnerabilityFixStatus.WillNotFix,
-                                               IsActive = true,
-                                               PackageClass = "os-pkgs",
-                                               PackageType = "debian",
-                                               Severity = VulnerabilitySeverity.High,
-                                               Summary = "Representative advisory",
-                                               Title = "glibc issue"
-                                           };
-
-                var containerActionRun = new ContainerActionRun
-                                         {
-                                             ActionType = ContainerActionType.RestartContainer,
-                                             ContainerSnapshot = containerSnapshot,
-                                             DockerInstance = dockerInstance,
-                                             PortainerEndpoint = portainerEndpoint,
-                                             RequestedAtUtc = DateTimeOffset.UtcNow,
-                                             ResourceName = "example-app-1",
-                                             ResourceType = PortainerResourceType.Container,
-                                             Status = ContainerActionStatus.Succeeded
-                                         };
-
-                dbContext.AddRange(baseImageVersion,
-                                   currentImageVersion,
-                                   observedImage,
-                                   dockerInstance,
-                                   portainerEndpoint,
-                                   scanRun,
-                                   containerSnapshot,
-                                   imageRelationship,
-                                   updateFinding,
-                                   tagCandidate,
-                                   vulnerabilityFinding,
-                                   containerActionRun);
+                AddRepresentativeGraph(dbContext);
 
                 await dbContext.SaveChangesAsync(TestContext.CancellationToken).ConfigureAwait(false);
                 dbContext.ChangeTracker.Clear();

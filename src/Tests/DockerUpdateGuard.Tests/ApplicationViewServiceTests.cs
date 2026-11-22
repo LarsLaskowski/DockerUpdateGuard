@@ -18,15 +18,6 @@ namespace DockerUpdateGuard.Tests;
 [TestClass]
 public class ApplicationViewServiceTests
 {
-    #region Fields
-
-    /// <summary>
-    /// Expected advisory order for the vulnerability overview sorting test
-    /// </summary>
-    private static readonly string[] _expectedSortedAdvisoryIds = ["CVE-2026-5000", "CVE-2026-5002", "CVE-2026-5001"];
-
-    #endregion // Fields
-
     #region Properties
 
     /// <summary>
@@ -316,6 +307,284 @@ public class ApplicationViewServiceTests
                             .ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Seed a runtime container with tag candidates, a manual tag selection and vulnerability findings
+    /// </summary>
+    /// <param name="dbContext">Database context to seed</param>
+    /// <returns>Identifier of the seeded Docker instance</returns>
+    private static async Task<Guid> SeedRuntimeContainerDetailDataAsync(DockerUpdateGuardDbContext dbContext)
+    {
+        var imageCatalogRepository = new ImageCatalogRepository(dbContext);
+        var imageVersion = await imageCatalogRepository.GetOrCreateImageVersionAsync("ghcr.io",
+                                                                                     "acme/api",
+                                                                                     "1.0.0",
+                                                                                     "sha256:current",
+                                                                                     new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
+                                                                                     cancellationToken: CancellationToken.None)
+                                                       .ConfigureAwait(false);
+        imageVersion.VulnerabilityAssessmentStatus = VulnerabilityAssessmentStatus.FindingsDetected;
+        imageVersion.VulnerabilityAssessmentSource = VulnerabilitySource.Trivy;
+        imageVersion.VulnerabilityAssessmentMessage = "Trivy reported active findings";
+        imageVersion.VulnerabilityAssessmentCheckedAtUtc = DateTimeOffset.UtcNow;
+
+        var recommendedImageVersion = await imageCatalogRepository.GetOrCreateImageVersionAsync("ghcr.io",
+                                                                                                "acme/api",
+                                                                                                "1.1.0",
+                                                                                                "sha256:recommended",
+                                                                                                cancellationToken: CancellationToken.None)
+                                                                  .ConfigureAwait(false);
+        var dockerInstance = new DockerInstance
+                             {
+                                 Name = "Production",
+                                 EndpointUri = "https://docker.example.test",
+                                 ConnectionKind = DockerConnectionKind.Https,
+                             };
+        var scanRun = new ScanRun
+                      {
+                          Type = ScanRunType.RuntimeContainer,
+                          Status = ScanRunStatus.Succeeded,
+                          TriggerSource = ScanTriggerSource.Manual,
+                          DockerInstance = dockerInstance,
+                      };
+        var snapshot = new ContainerSnapshot
+                       {
+                           DockerInstance = dockerInstance,
+                           ImageVersionId = imageVersion.Id,
+                           ScanRun = scanRun,
+                           ContainerId = "container-a",
+                           Name = "api",
+                           Status = ContainerRuntimeStatus.Running,
+                           IsRunning = true,
+                           UpdateAssessmentStatus = UpdateAssessmentStatus.ManualReviewRequired,
+                           UpdateAssessmentMessage = "Alternative tags are available and require manual review",
+                       };
+        var updateFinding = new UpdateFinding
+                            {
+                                ScanRun = scanRun,
+                                ContainerSnapshot = snapshot,
+                                SubjectImageVersionId = imageVersion.Id,
+                                RecommendedImageVersionId = recommendedImageVersion.Id,
+                                Type = UpdateFindingType.TagRecommendation,
+                                Summary = "Alternative tags are available",
+                                Details = "Choose a compatible tag manually",
+                                IsActive = true,
+                            };
+
+        AddManualSelectionTagCandidates(updateFinding);
+
+        dbContext.ContainerSnapshots.Add(snapshot);
+        dbContext.UpdateFindings.Add(updateFinding);
+        dbContext.RuntimeContainerTagSelections.Add(new RuntimeContainerTagSelection
+                                                    {
+                                                        DockerInstance = dockerInstance,
+                                                        RegistryRepositoryId = imageVersion.RegistryRepositoryId,
+                                                        ContainerId = "container-a",
+                                                        Tag = "1.0.5",
+                                                        Digest = "sha256:manual",
+                                                    });
+
+        dbContext.VulnerabilityFindings.Add(new VulnerabilityFinding
+                                            {
+                                                ImageVersionId = imageVersion.Id,
+                                                ScanRun = scanRun,
+                                                AdvisoryId = "CVE-2026-1000",
+                                                Title = "Remote code execution",
+                                                Severity = VulnerabilitySeverity.Critical,
+                                                Source = VulnerabilitySource.Trivy,
+                                                AffectedPackage = "openssl",
+                                                FixedVersion = "3.0.1",
+                                                IsActive = true,
+                                            });
+        dbContext.VulnerabilityFindings.Add(new VulnerabilityFinding
+                                            {
+                                                ImageVersionId = imageVersion.Id,
+                                                ScanRun = scanRun,
+                                                AdvisoryId = "CVE-2026-1001",
+                                                Title = "Denial of service",
+                                                Severity = VulnerabilitySeverity.High,
+                                                Source = VulnerabilitySource.Trivy,
+                                                AffectedPackage = "libcurl",
+                                                IsActive = true,
+                                            });
+        dbContext.VulnerabilityFindings.Add(new VulnerabilityFinding
+                                            {
+                                                ImageVersionId = imageVersion.Id,
+                                                ScanRun = scanRun,
+                                                AdvisoryId = "CVE-2026-1002",
+                                                Title = "Resolved information disclosure",
+                                                Severity = VulnerabilitySeverity.Medium,
+                                                Source = VulnerabilitySource.Trivy,
+                                                AffectedPackage = "zlib",
+                                                FixedVersion = "1.3.1",
+                                                IsActive = false,
+                                                ResolvedAtUtc = DateTimeOffset.UtcNow,
+                                            });
+
+        await dbContext.SaveChangesAsync(CancellationToken.None)
+                       .ConfigureAwait(false);
+
+        return dockerInstance.Id;
+    }
+
+    /// <summary>
+    /// Seed observed images, a container, update findings and a vulnerability finding for the dashboard counts
+    /// </summary>
+    /// <param name="dbContext">Database context to seed</param>
+    /// <returns>Task</returns>
+    private static async Task SeedDashboardAggregateDataAsync(DockerUpdateGuardDbContext dbContext)
+    {
+        var imageCatalogRepository = new ImageCatalogRepository(dbContext);
+        var imageVersionTask = imageCatalogRepository.GetOrCreateImageVersionAsync("docker.io",
+                                                                                   "company/api",
+                                                                                   "1.0.0",
+                                                                                   "sha256:api",
+                                                                                   cancellationToken: CancellationToken.None);
+        var imageVersion = await imageVersionTask.ConfigureAwait(false);
+        var observedImage = new ObservedImage
+                            {
+                                Name = "Company API",
+                                CurrentImageVersionId = imageVersion.Id,
+                                Source = RegistrationSource.Discovery,
+                            };
+
+        var manualObservedImage = new ObservedImage
+                                  {
+                                      Name = "Manual API",
+                                      CurrentImageVersionId = imageVersion.Id,
+                                      Source = RegistrationSource.Manual,
+                                  };
+
+        var dockerInstance = new DockerInstance
+                             {
+                                 Name = "Production Engine",
+                                 EndpointUri = "https://docker.example.test",
+                                 ConnectionKind = DockerConnectionKind.Https,
+                             };
+
+        var scanRun = new ScanRun
+                      {
+                          Type = ScanRunType.ObservedImage,
+                          Status = ScanRunStatus.Succeeded,
+                          TriggerSource = ScanTriggerSource.Manual,
+                          ObservedImage = observedImage,
+                      };
+
+        dbContext.ObservedImages.Add(observedImage);
+        dbContext.ObservedImages.Add(manualObservedImage);
+        dbContext.DockerInstances.Add(dockerInstance);
+        dbContext.ScanRuns.Add(scanRun);
+        dbContext.ContainerSnapshots.Add(new ContainerSnapshot
+                                         {
+                                             DockerInstance = dockerInstance,
+                                             ImageVersionId = imageVersion.Id,
+                                             ScanRun = scanRun,
+                                             ContainerId = "container-a",
+                                             Name = "api",
+                                             Status = ContainerRuntimeStatus.Running,
+                                             IsRunning = true,
+                                         });
+
+        dbContext.UpdateFindings.Add(new UpdateFinding
+                                     {
+                                         ObservedImage = observedImage,
+                                         SubjectImageVersionId = imageVersion.Id,
+                                         ScanRun = scanRun,
+                                         Type = UpdateFindingType.RuntimeImageUpdate,
+                                         Summary = "Update available",
+                                         IsActive = true,
+                                     });
+
+        dbContext.UpdateFindings.Add(new UpdateFinding
+                                     {
+                                         ObservedImage = observedImage,
+                                         SubjectImageVersionId = imageVersion.Id,
+                                         ScanRun = scanRun,
+                                         Type = UpdateFindingType.DerivedBaseRuntimeUpdate,
+                                         Summary = "Own runtime warning",
+                                         IsActive = true,
+                                     });
+
+        dbContext.UpdateFindings.Add(new UpdateFinding
+                                     {
+                                         ObservedImage = manualObservedImage,
+                                         SubjectImageVersionId = imageVersion.Id,
+                                         ScanRun = scanRun,
+                                         Type = UpdateFindingType.DerivedBaseRuntimeUpdate,
+                                         Summary = "Manual runtime hint",
+                                         IsActive = true,
+                                     });
+
+        dbContext.VulnerabilityFindings.Add(new VulnerabilityFinding
+                                            {
+                                                ImageVersionId = imageVersion.Id,
+                                                ScanRun = scanRun,
+                                                AdvisoryId = "CVE-2026-0001",
+                                                Title = "Sample vulnerability",
+                                                Severity = VulnerabilitySeverity.High,
+                                                Source = VulnerabilitySource.Trivy,
+                                                IsActive = true,
+                                            });
+
+        await dbContext.SaveChangesAsync(CancellationToken.None)
+                       .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Add the recommended, manual, outdated, legacy and invalid tag candidates to an update finding
+    /// </summary>
+    /// <param name="updateFinding">Update finding to add the tag candidates to</param>
+    private static void AddManualSelectionTagCandidates(UpdateFinding updateFinding)
+    {
+        updateFinding.TagCandidates.Add(new TagCandidate
+                                        {
+                                            Tag = "1.1.0",
+                                            Digest = "sha256:recommended",
+                                            Rank = 0,
+                                            IsRecommended = true,
+                                            PublishedAtUtc = new DateTimeOffset(2025, 06, 03, 12, 00, 00, TimeSpan.Zero),
+                                            Reason = "Latest compatible stable tag",
+                                        });
+
+        updateFinding.TagCandidates.Add(new TagCandidate
+                                        {
+                                            Tag = "1.0.5",
+                                            Digest = "sha256:manual",
+                                            Rank = 1,
+                                            IsRecommended = false,
+                                            PublishedAtUtc = new DateTimeOffset(2025, 06, 02, 12, 00, 00, TimeSpan.Zero),
+                                            Reason = "Latest patch in the current minor line",
+                                        });
+
+        updateFinding.TagCandidates.Add(new TagCandidate
+                                        {
+                                            Tag = "0.9.9",
+                                            Digest = "sha256:legacy-version",
+                                            Rank = 2,
+                                            IsRecommended = false,
+                                            PublishedAtUtc = new DateTimeOffset(2025, 06, 04, 12, 00, 00, TimeSpan.Zero),
+                                            Reason = "Older major line",
+                                        });
+
+        updateFinding.TagCandidates.Add(new TagCandidate
+                                        {
+                                            Tag = "1.0.7",
+                                            Digest = "sha256:old-publish",
+                                            Rank = 3,
+                                            IsRecommended = false,
+                                            PublishedAtUtc = new DateTimeOffset(2025, 05, 30, 12, 00, 00, TimeSpan.Zero),
+                                            Reason = "Older publication timestamp",
+                                        });
+
+        updateFinding.TagCandidates.Add(new TagCandidate
+                                        {
+                                            Tag = "broken",
+                                            Digest = string.Empty,
+                                            Rank = 4,
+                                            IsRecommended = false,
+                                            Reason = "Legacy invalid candidate",
+                                        });
+    }
+
     #endregion // Static methods
 
     #region Methods
@@ -433,100 +702,7 @@ public class ApplicationViewServiceTests
 
         await using (dbContext.ConfigureAwait(false))
         {
-            var imageCatalogRepository = new ImageCatalogRepository(dbContext);
-            var imageVersionTask = imageCatalogRepository.GetOrCreateImageVersionAsync("docker.io",
-                                                                                       "company/api",
-                                                                                       "1.0.0",
-                                                                                       "sha256:api",
-                                                                                       cancellationToken: CancellationToken.None);
-            var imageVersion = await imageVersionTask.ConfigureAwait(false);
-            var observedImage = new ObservedImage
-                                {
-                                    Name = "Company API",
-                                    CurrentImageVersionId = imageVersion.Id,
-                                    Source = RegistrationSource.Discovery,
-                                };
-
-            var manualObservedImage = new ObservedImage
-                                      {
-                                          Name = "Manual API",
-                                          CurrentImageVersionId = imageVersion.Id,
-                                          Source = RegistrationSource.Manual,
-                                      };
-
-            var dockerInstance = new DockerInstance
-                                 {
-                                     Name = "Production Engine",
-                                     EndpointUri = "https://docker.example.test",
-                                     ConnectionKind = DockerConnectionKind.Https,
-                                 };
-
-            var scanRun = new ScanRun
-                          {
-                              Type = ScanRunType.ObservedImage,
-                              Status = ScanRunStatus.Succeeded,
-                              TriggerSource = ScanTriggerSource.Manual,
-                              ObservedImage = observedImage,
-                          };
-
-            dbContext.ObservedImages.Add(observedImage);
-            dbContext.ObservedImages.Add(manualObservedImage);
-            dbContext.DockerInstances.Add(dockerInstance);
-            dbContext.ScanRuns.Add(scanRun);
-            dbContext.ContainerSnapshots.Add(new ContainerSnapshot
-                                             {
-                                                 DockerInstance = dockerInstance,
-                                                 ImageVersionId = imageVersion.Id,
-                                                 ScanRun = scanRun,
-                                                 ContainerId = "container-a",
-                                                 Name = "api",
-                                                 Status = ContainerRuntimeStatus.Running,
-                                                 IsRunning = true,
-                                             });
-
-            dbContext.UpdateFindings.Add(new UpdateFinding
-                                         {
-                                             ObservedImage = observedImage,
-                                             SubjectImageVersionId = imageVersion.Id,
-                                             ScanRun = scanRun,
-                                             Type = UpdateFindingType.RuntimeImageUpdate,
-                                             Summary = "Update available",
-                                             IsActive = true,
-                                         });
-
-            dbContext.UpdateFindings.Add(new UpdateFinding
-                                         {
-                                             ObservedImage = observedImage,
-                                             SubjectImageVersionId = imageVersion.Id,
-                                             ScanRun = scanRun,
-                                             Type = UpdateFindingType.DerivedBaseRuntimeUpdate,
-                                             Summary = "Own runtime warning",
-                                             IsActive = true,
-                                         });
-
-            dbContext.UpdateFindings.Add(new UpdateFinding
-                                         {
-                                             ObservedImage = manualObservedImage,
-                                             SubjectImageVersionId = imageVersion.Id,
-                                             ScanRun = scanRun,
-                                             Type = UpdateFindingType.DerivedBaseRuntimeUpdate,
-                                             Summary = "Manual runtime hint",
-                                             IsActive = true,
-                                         });
-
-            dbContext.VulnerabilityFindings.Add(new VulnerabilityFinding
-                                                {
-                                                    ImageVersionId = imageVersion.Id,
-                                                    ScanRun = scanRun,
-                                                    AdvisoryId = "CVE-2026-0001",
-                                                    Title = "Sample vulnerability",
-                                                    Severity = VulnerabilitySeverity.High,
-                                                    Source = VulnerabilitySource.Trivy,
-                                                    IsActive = true,
-                                                });
-
-            await dbContext.SaveChangesAsync(CancellationToken.None)
-                           .ConfigureAwait(false);
+            await SeedDashboardAggregateDataAsync(dbContext).ConfigureAwait(false);
 
             var service = new ApplicationViewService(dbContext,
                                                      new ImageReferenceParser(),
@@ -757,168 +933,14 @@ public class ApplicationViewServiceTests
 
         await using (dbContext.ConfigureAwait(false))
         {
-            var imageCatalogRepository = new ImageCatalogRepository(dbContext);
-            var imageVersion = await imageCatalogRepository.GetOrCreateImageVersionAsync("ghcr.io",
-                                                                                         "acme/api",
-                                                                                         "1.0.0",
-                                                                                         "sha256:current",
-                                                                                         new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
-                                                                                         cancellationToken: CancellationToken.None)
-                                                           .ConfigureAwait(false);
-            imageVersion.VulnerabilityAssessmentStatus = VulnerabilityAssessmentStatus.FindingsDetected;
-            imageVersion.VulnerabilityAssessmentSource = VulnerabilitySource.Trivy;
-            imageVersion.VulnerabilityAssessmentMessage = "Trivy reported active findings";
-            imageVersion.VulnerabilityAssessmentCheckedAtUtc = DateTimeOffset.UtcNow;
-
-            var recommendedImageVersion = await imageCatalogRepository.GetOrCreateImageVersionAsync("ghcr.io",
-                                                                                                    "acme/api",
-                                                                                                    "1.1.0",
-                                                                                                    "sha256:recommended",
-                                                                                                    cancellationToken: CancellationToken.None)
-                                                                      .ConfigureAwait(false);
-            var dockerInstance = new DockerInstance
-                                 {
-                                     Name = "Production",
-                                     EndpointUri = "https://docker.example.test",
-                                     ConnectionKind = DockerConnectionKind.Https,
-                                 };
-            var scanRun = new ScanRun
-                          {
-                              Type = ScanRunType.RuntimeContainer,
-                              Status = ScanRunStatus.Succeeded,
-                              TriggerSource = ScanTriggerSource.Manual,
-                              DockerInstance = dockerInstance,
-                          };
-            var snapshot = new ContainerSnapshot
-                           {
-                               DockerInstance = dockerInstance,
-                               ImageVersionId = imageVersion.Id,
-                               ScanRun = scanRun,
-                               ContainerId = "container-a",
-                               Name = "api",
-                               Status = ContainerRuntimeStatus.Running,
-                               IsRunning = true,
-                               UpdateAssessmentStatus = UpdateAssessmentStatus.ManualReviewRequired,
-                               UpdateAssessmentMessage = "Alternative tags are available and require manual review",
-                           };
-            var updateFinding = new UpdateFinding
-                                {
-                                    ScanRun = scanRun,
-                                    ContainerSnapshot = snapshot,
-                                    SubjectImageVersionId = imageVersion.Id,
-                                    RecommendedImageVersionId = recommendedImageVersion.Id,
-                                    Type = UpdateFindingType.TagRecommendation,
-                                    Summary = "Alternative tags are available",
-                                    Details = "Choose a compatible tag manually",
-                                    IsActive = true,
-                                };
-
-            updateFinding.TagCandidates.Add(new TagCandidate
-                                            {
-                                                Tag = "1.1.0",
-                                                Digest = "sha256:recommended",
-                                                Rank = 0,
-                                                IsRecommended = true,
-                                                PublishedAtUtc = new DateTimeOffset(2025, 06, 03, 12, 00, 00, TimeSpan.Zero),
-                                                Reason = "Latest compatible stable tag",
-                                            });
-
-            updateFinding.TagCandidates.Add(new TagCandidate
-                                            {
-                                                Tag = "1.0.5",
-                                                Digest = "sha256:manual",
-                                                Rank = 1,
-                                                IsRecommended = false,
-                                                PublishedAtUtc = new DateTimeOffset(2025, 06, 02, 12, 00, 00, TimeSpan.Zero),
-                                                Reason = "Latest patch in the current minor line",
-                                            });
-
-            updateFinding.TagCandidates.Add(new TagCandidate
-                                            {
-                                                Tag = "0.9.9",
-                                                Digest = "sha256:legacy-version",
-                                                Rank = 2,
-                                                IsRecommended = false,
-                                                PublishedAtUtc = new DateTimeOffset(2025, 06, 04, 12, 00, 00, TimeSpan.Zero),
-                                                Reason = "Older major line",
-                                            });
-
-            updateFinding.TagCandidates.Add(new TagCandidate
-                                            {
-                                                Tag = "1.0.7",
-                                                Digest = "sha256:old-publish",
-                                                Rank = 3,
-                                                IsRecommended = false,
-                                                PublishedAtUtc = new DateTimeOffset(2025, 05, 30, 12, 00, 00, TimeSpan.Zero),
-                                                Reason = "Older publication timestamp",
-                                            });
-
-            updateFinding.TagCandidates.Add(new TagCandidate
-                                            {
-                                                Tag = "broken",
-                                                Digest = string.Empty,
-                                                Rank = 4,
-                                                IsRecommended = false,
-                                                Reason = "Legacy invalid candidate",
-                                            });
-
-            dbContext.ContainerSnapshots.Add(snapshot);
-            dbContext.UpdateFindings.Add(updateFinding);
-            dbContext.RuntimeContainerTagSelections.Add(new RuntimeContainerTagSelection
-                                                        {
-                                                            DockerInstance = dockerInstance,
-                                                            RegistryRepositoryId = imageVersion.RegistryRepositoryId,
-                                                            ContainerId = "container-a",
-                                                            Tag = "1.0.5",
-                                                            Digest = "sha256:manual",
-                                                        });
-
-            dbContext.VulnerabilityFindings.Add(new VulnerabilityFinding
-                                                {
-                                                    ImageVersionId = imageVersion.Id,
-                                                    ScanRun = scanRun,
-                                                    AdvisoryId = "CVE-2026-1000",
-                                                    Title = "Remote code execution",
-                                                    Severity = VulnerabilitySeverity.Critical,
-                                                    Source = VulnerabilitySource.Trivy,
-                                                    AffectedPackage = "openssl",
-                                                    FixedVersion = "3.0.1",
-                                                    IsActive = true,
-                                                });
-            dbContext.VulnerabilityFindings.Add(new VulnerabilityFinding
-                                                {
-                                                    ImageVersionId = imageVersion.Id,
-                                                    ScanRun = scanRun,
-                                                    AdvisoryId = "CVE-2026-1001",
-                                                    Title = "Denial of service",
-                                                    Severity = VulnerabilitySeverity.High,
-                                                    Source = VulnerabilitySource.Trivy,
-                                                    AffectedPackage = "libcurl",
-                                                    IsActive = true,
-                                                });
-            dbContext.VulnerabilityFindings.Add(new VulnerabilityFinding
-                                                {
-                                                    ImageVersionId = imageVersion.Id,
-                                                    ScanRun = scanRun,
-                                                    AdvisoryId = "CVE-2026-1002",
-                                                    Title = "Resolved information disclosure",
-                                                    Severity = VulnerabilitySeverity.Medium,
-                                                    Source = VulnerabilitySource.Trivy,
-                                                    AffectedPackage = "zlib",
-                                                    FixedVersion = "1.3.1",
-                                                    IsActive = false,
-                                                    ResolvedAtUtc = DateTimeOffset.UtcNow,
-                                                });
-
-            await dbContext.SaveChangesAsync(CancellationToken.None)
-                           .ConfigureAwait(false);
+            var dockerInstanceId = await SeedRuntimeContainerDetailDataAsync(dbContext).ConfigureAwait(false);
 
             var service = new ApplicationViewService(dbContext,
                                                      new ImageReferenceParser(),
                                                      CreateOptionsMonitor(),
                                                      new SharedBaseImageQueryService(dbContext));
 
-            var detail = await service.GetRuntimeContainerDetailAsync(dockerInstance.Id, "container-a", CancellationToken.None)
+            var detail = await service.GetRuntimeContainerDetailAsync(dockerInstanceId, "container-a", CancellationToken.None)
                                       .ConfigureAwait(false);
 
             Assert.IsNotNull(detail, "Runtime container detail must be returned for the latest snapshot");
@@ -2547,517 +2569,6 @@ public class ApplicationViewServiceTests
                             "GetDiscoveryObservedImagesAsync must return the discovery-owned image by name");
             Assert.IsTrue(discoveryImages.Single().IsOwnImage,
                           "Discovery images must be flagged as own images");
-        }
-    }
-
-    /// <summary>
-    /// Verify the vulnerability overview groups findings sharing an advisory across image versions
-    /// </summary>
-    /// <returns>Task</returns>
-    [TestMethod]
-    public async Task ApplicationViewServiceVulnerabilityOverviewGroupsFindingsByAdvisoryAcrossImageVersionsAsync()
-    {
-        var options = new DbContextOptionsBuilder<DockerUpdateGuardDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString())
-                                                                               .Options;
-
-        var dbContext = new DockerUpdateGuardDbContext(options);
-
-        await using (dbContext.ConfigureAwait(false))
-        {
-            var imageCatalogRepository = new ImageCatalogRepository(dbContext);
-            var apiImageVersion = await imageCatalogRepository.GetOrCreateImageVersionAsync("docker.io",
-                                                                                            "company/api",
-                                                                                            "1.0.0",
-                                                                                            "sha256:api",
-                                                                                            cancellationToken: CancellationToken.None)
-                                                              .ConfigureAwait(false);
-            var workerImageVersion = await imageCatalogRepository.GetOrCreateImageVersionAsync("docker.io",
-                                                                                               "company/worker",
-                                                                                               "2.0.0",
-                                                                                               "sha256:worker",
-                                                                                               cancellationToken: CancellationToken.None)
-                                                                 .ConfigureAwait(false);
-
-            var apiObservedImage = new ObservedImage
-                                   {
-                                       Name = "Company API",
-                                       CurrentImageVersionId = apiImageVersion.Id,
-                                       Source = RegistrationSource.Discovery,
-                                   };
-            var workerObservedImage = new ObservedImage
-                                      {
-                                          Name = "Company Worker",
-                                          CurrentImageVersionId = workerImageVersion.Id,
-                                          Source = RegistrationSource.Manual,
-                                      };
-
-            dbContext.ObservedImages.AddRange(apiObservedImage, workerObservedImage);
-            dbContext.VulnerabilityFindings.Add(new VulnerabilityFinding
-                                                {
-                                                    ImageVersionId = apiImageVersion.Id,
-                                                    AdvisoryId = "CVE-2026-3001",
-                                                    Title = "Shared advisory",
-                                                    Severity = VulnerabilitySeverity.High,
-                                                    Source = VulnerabilitySource.Trivy,
-                                                    AffectedPackage = "openssl",
-                                                    FixedVersion = "3.0.1",
-                                                    CvssScore = 7.5m,
-                                                    IsActive = true,
-                                                });
-            dbContext.VulnerabilityFindings.Add(new VulnerabilityFinding
-                                                {
-                                                    ImageVersionId = workerImageVersion.Id,
-                                                    AdvisoryId = "cve-2026-3001",
-                                                    Title = "Shared advisory",
-                                                    Severity = VulnerabilitySeverity.High,
-                                                    Source = VulnerabilitySource.Trivy,
-                                                    AffectedPackage = "openssl",
-                                                    FixedVersion = "3.0.1",
-                                                    CvssScore = 7.5m,
-                                                    IsActive = true,
-                                                });
-
-            await dbContext.SaveChangesAsync(CancellationToken.None)
-                           .ConfigureAwait(false);
-
-            var service = new ApplicationViewService(dbContext,
-                                                     new ImageReferenceParser(),
-                                                     CreateOptionsMonitor(),
-                                                     new SharedBaseImageQueryService(dbContext));
-
-            var overview = await service.GetVulnerabilityOverviewAsync(CancellationToken.None)
-                                        .ConfigureAwait(false);
-
-            Assert.HasCount(1,
-                            overview,
-                            "Findings that share an advisory id case-insensitively must be grouped into a single overview item");
-
-            var item = overview.Single();
-
-            Assert.HasCount(2,
-                            item.AffectedImages,
-                            "The grouped advisory must list both affected image versions");
-            Assert.Contains(entity => entity.ObservedImageId == apiObservedImage.Id && entity.IsOwnImage,
-                            item.AffectedImages,
-                            "The affected images must link back to the discovery-owned observed image");
-            Assert.Contains(entity => entity.ObservedImageId == workerObservedImage.Id && entity.IsOwnImage == false,
-                            item.AffectedImages,
-                            "The affected images must link back to the manually-registered observed image");
-        }
-    }
-
-    /// <summary>
-    /// Verify the vulnerability overview excludes resolved findings
-    /// </summary>
-    /// <returns>Task</returns>
-    [TestMethod]
-    public async Task ApplicationViewServiceVulnerabilityOverviewExcludesInactiveFindingsAsync()
-    {
-        var options = new DbContextOptionsBuilder<DockerUpdateGuardDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString())
-                                                                               .Options;
-
-        var dbContext = new DockerUpdateGuardDbContext(options);
-
-        await using (dbContext.ConfigureAwait(false))
-        {
-            var imageCatalogRepository = new ImageCatalogRepository(dbContext);
-            var imageVersion = await imageCatalogRepository.GetOrCreateImageVersionAsync("docker.io",
-                                                                                         "company/api",
-                                                                                         "1.0.0",
-                                                                                         "sha256:api",
-                                                                                         cancellationToken: CancellationToken.None)
-                                                           .ConfigureAwait(false);
-
-            dbContext.VulnerabilityFindings.Add(new VulnerabilityFinding
-                                                {
-                                                    ImageVersionId = imageVersion.Id,
-                                                    AdvisoryId = "CVE-2026-4001",
-                                                    Title = "Active advisory",
-                                                    Severity = VulnerabilitySeverity.Medium,
-                                                    Source = VulnerabilitySource.Trivy,
-                                                    IsActive = true,
-                                                });
-            dbContext.VulnerabilityFindings.Add(new VulnerabilityFinding
-                                                {
-                                                    ImageVersionId = imageVersion.Id,
-                                                    AdvisoryId = "CVE-2026-4002",
-                                                    Title = "Resolved advisory",
-                                                    Severity = VulnerabilitySeverity.Critical,
-                                                    Source = VulnerabilitySource.Trivy,
-                                                    IsActive = false,
-                                                    ResolvedAtUtc = DateTimeOffset.UtcNow,
-                                                });
-
-            await dbContext.SaveChangesAsync(CancellationToken.None)
-                           .ConfigureAwait(false);
-
-            var service = new ApplicationViewService(dbContext,
-                                                     new ImageReferenceParser(),
-                                                     CreateOptionsMonitor(),
-                                                     new SharedBaseImageQueryService(dbContext));
-
-            var overview = await service.GetVulnerabilityOverviewAsync(CancellationToken.None)
-                                        .ConfigureAwait(false);
-
-            Assert.HasCount(1,
-                            overview,
-                            "The vulnerability overview must only include active findings");
-            Assert.AreEqual("CVE-2026-4001",
-                            overview.Single().AdvisoryId,
-                            "The resolved advisory must not appear in the vulnerability overview");
-        }
-    }
-
-    /// <summary>
-    /// Verify the vulnerability overview is sorted by severity, then CVSS score, then affected image count
-    /// </summary>
-    /// <returns>Task</returns>
-    [TestMethod]
-    public async Task ApplicationViewServiceVulnerabilityOverviewSortsBySeverityThenCvssThenAffectedImageCountAsync()
-    {
-        var options = new DbContextOptionsBuilder<DockerUpdateGuardDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString())
-                                                                               .Options;
-
-        var dbContext = new DockerUpdateGuardDbContext(options);
-
-        await using (dbContext.ConfigureAwait(false))
-        {
-            var imageCatalogRepository = new ImageCatalogRepository(dbContext);
-            var apiImageVersion = await imageCatalogRepository.GetOrCreateImageVersionAsync("docker.io",
-                                                                                            "company/api",
-                                                                                            "1.0.0",
-                                                                                            "sha256:api",
-                                                                                            cancellationToken: CancellationToken.None)
-                                                              .ConfigureAwait(false);
-            var workerImageVersion = await imageCatalogRepository.GetOrCreateImageVersionAsync("docker.io",
-                                                                                               "company/worker",
-                                                                                               "2.0.0",
-                                                                                               "sha256:worker",
-                                                                                               cancellationToken: CancellationToken.None)
-                                                                 .ConfigureAwait(false);
-
-            dbContext.VulnerabilityFindings.Add(new VulnerabilityFinding
-                                                {
-                                                    ImageVersionId = apiImageVersion.Id,
-                                                    AdvisoryId = "CVE-2026-5000",
-                                                    Title = "Critical advisory",
-                                                    Severity = VulnerabilitySeverity.Critical,
-                                                    Source = VulnerabilitySource.Trivy,
-                                                    CvssScore = 9.0m,
-                                                    IsActive = true,
-                                                });
-            dbContext.VulnerabilityFindings.Add(new VulnerabilityFinding
-                                                {
-                                                    ImageVersionId = apiImageVersion.Id,
-                                                    AdvisoryId = "CVE-2026-5001",
-                                                    Title = "High advisory affecting a single image",
-                                                    Severity = VulnerabilitySeverity.High,
-                                                    Source = VulnerabilitySource.Trivy,
-                                                    CvssScore = 8.5m,
-                                                    IsActive = true,
-                                                });
-            dbContext.VulnerabilityFindings.Add(new VulnerabilityFinding
-                                                {
-                                                    ImageVersionId = apiImageVersion.Id,
-                                                    AdvisoryId = "CVE-2026-5002",
-                                                    Title = "High advisory affecting two images",
-                                                    Severity = VulnerabilitySeverity.High,
-                                                    Source = VulnerabilitySource.Trivy,
-                                                    CvssScore = 8.5m,
-                                                    IsActive = true,
-                                                });
-            dbContext.VulnerabilityFindings.Add(new VulnerabilityFinding
-                                                {
-                                                    ImageVersionId = workerImageVersion.Id,
-                                                    AdvisoryId = "CVE-2026-5002",
-                                                    Title = "High advisory affecting two images",
-                                                    Severity = VulnerabilitySeverity.High,
-                                                    Source = VulnerabilitySource.Trivy,
-                                                    CvssScore = 8.5m,
-                                                    IsActive = true,
-                                                });
-
-            await dbContext.SaveChangesAsync(CancellationToken.None)
-                           .ConfigureAwait(false);
-
-            var service = new ApplicationViewService(dbContext,
-                                                     new ImageReferenceParser(),
-                                                     CreateOptionsMonitor(),
-                                                     new SharedBaseImageQueryService(dbContext));
-
-            var overview = await service.GetVulnerabilityOverviewAsync(CancellationToken.None)
-                                        .ConfigureAwait(false);
-
-            Assert.HasCount(3,
-                            overview,
-                            "All three distinct advisories must be present in the overview");
-            Assert.AreSequenceEqual(_expectedSortedAdvisoryIds,
-                                    overview.Select(entity => entity.AdvisoryId).ToList(),
-                                    "The overview must be sorted by severity descending, then CVSS descending, then affected image count descending");
-        }
-    }
-
-    /// <summary>
-    /// Verify the vulnerability overview counts the running containers affected by an advisory
-    /// </summary>
-    /// <returns>Task</returns>
-    [TestMethod]
-    public async Task ApplicationViewServiceVulnerabilityOverviewCountsAffectedRunningContainersAsync()
-    {
-        var options = new DbContextOptionsBuilder<DockerUpdateGuardDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString())
-                                                                               .Options;
-
-        var dbContext = new DockerUpdateGuardDbContext(options);
-
-        await using (dbContext.ConfigureAwait(false))
-        {
-            var imageCatalogRepository = new ImageCatalogRepository(dbContext);
-            var imageVersion = await imageCatalogRepository.GetOrCreateImageVersionAsync("docker.io",
-                                                                                         "company/api",
-                                                                                         "1.0.0",
-                                                                                         "sha256:api",
-                                                                                         cancellationToken: CancellationToken.None)
-                                                           .ConfigureAwait(false);
-            var unrelatedImageVersion = await imageCatalogRepository.GetOrCreateImageVersionAsync("docker.io",
-                                                                                                  "company/worker",
-                                                                                                  "2.0.0",
-                                                                                                  "sha256:worker",
-                                                                                                  cancellationToken: CancellationToken.None)
-                                                                    .ConfigureAwait(false);
-            var dockerInstance = new DockerInstance
-                                 {
-                                     Name = "Production",
-                                     EndpointUri = "https://docker.example.test",
-                                     ConnectionKind = DockerConnectionKind.Https,
-                                 };
-
-            dbContext.ContainerSnapshots.Add(new ContainerSnapshot
-                                             {
-                                                 DockerInstance = dockerInstance,
-                                                 ImageVersionId = imageVersion.Id,
-                                                 ContainerId = "container-1",
-                                                 Name = "api-1",
-                                             });
-            dbContext.ContainerSnapshots.Add(new ContainerSnapshot
-                                             {
-                                                 DockerInstance = dockerInstance,
-                                                 ImageVersionId = imageVersion.Id,
-                                                 ContainerId = "container-2",
-                                                 Name = "api-2",
-                                             });
-            dbContext.ContainerSnapshots.Add(new ContainerSnapshot
-                                             {
-                                                 DockerInstance = dockerInstance,
-                                                 ImageVersionId = unrelatedImageVersion.Id,
-                                                 ContainerId = "container-3",
-                                                 Name = "worker-1",
-                                             });
-            dbContext.VulnerabilityFindings.Add(new VulnerabilityFinding
-                                                {
-                                                    ImageVersionId = imageVersion.Id,
-                                                    AdvisoryId = "CVE-2026-6001",
-                                                    Title = "Running container advisory",
-                                                    Severity = VulnerabilitySeverity.High,
-                                                    Source = VulnerabilitySource.Trivy,
-                                                    IsActive = true,
-                                                });
-
-            await dbContext.SaveChangesAsync(CancellationToken.None)
-                           .ConfigureAwait(false);
-
-            var service = new ApplicationViewService(dbContext,
-                                                     new ImageReferenceParser(),
-                                                     CreateOptionsMonitor(),
-                                                     new SharedBaseImageQueryService(dbContext));
-
-            var overview = await service.GetVulnerabilityOverviewAsync(CancellationToken.None)
-                                        .ConfigureAwait(false);
-
-            Assert.AreEqual(2,
-                            overview.Single().AffectedContainerCount,
-                            "Only the two running containers using the affected image version must be counted");
-        }
-    }
-
-    /// <summary>
-    /// Verify the vulnerability overview collapses image versions that share the same digest-less reference into a single affected image
-    /// </summary>
-    /// <returns>Task</returns>
-    [TestMethod]
-    public async Task ApplicationViewServiceVulnerabilityOverviewCollapsesDuplicateImageReferencesAsync()
-    {
-        var options = new DbContextOptionsBuilder<DockerUpdateGuardDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString())
-                                                                               .Options;
-
-        var dbContext = new DockerUpdateGuardDbContext(options);
-
-        await using (dbContext.ConfigureAwait(false))
-        {
-            var imageCatalogRepository = new ImageCatalogRepository(dbContext);
-            var firstVersion = await imageCatalogRepository.GetOrCreateImageVersionAsync("docker.io",
-                                                                                         "networlddev/dockerupdateguard",
-                                                                                         "latest",
-                                                                                         "sha256:first",
-                                                                                         cancellationToken: CancellationToken.None)
-                                                           .ConfigureAwait(false);
-            var secondVersion = await imageCatalogRepository.GetOrCreateImageVersionAsync("docker.io",
-                                                                                          "networlddev/dockerupdateguard",
-                                                                                          "latest",
-                                                                                          "sha256:second",
-                                                                                          cancellationToken: CancellationToken.None)
-                                                            .ConfigureAwait(false);
-
-            var observedImage = new ObservedImage
-                                {
-                                    Name = "Docker Update Guard",
-                                    CurrentImageVersionId = secondVersion.Id,
-                                    Source = RegistrationSource.Discovery,
-                                };
-            var dockerInstance = new DockerInstance
-                                 {
-                                     Name = "Production",
-                                     EndpointUri = "https://docker.example.test",
-                                     ConnectionKind = DockerConnectionKind.Https,
-                                 };
-
-            dbContext.ObservedImages.Add(observedImage);
-            dbContext.ContainerSnapshots.Add(new ContainerSnapshot
-                                             {
-                                                 DockerInstance = dockerInstance,
-                                                 ImageVersionId = firstVersion.Id,
-                                                 ContainerId = "container-old",
-                                                 Name = "guard-old",
-                                             });
-            dbContext.ContainerSnapshots.Add(new ContainerSnapshot
-                                             {
-                                                 DockerInstance = dockerInstance,
-                                                 ImageVersionId = secondVersion.Id,
-                                                 ContainerId = "container-new",
-                                                 Name = "guard-new",
-                                             });
-            dbContext.VulnerabilityFindings.Add(new VulnerabilityFinding
-                                                {
-                                                    ImageVersionId = firstVersion.Id,
-                                                    AdvisoryId = "CVE-2025-68121",
-                                                    Title = "stdlib advisory",
-                                                    Severity = VulnerabilitySeverity.High,
-                                                    Source = VulnerabilitySource.Trivy,
-                                                    AffectedPackage = "stdlib",
-                                                    IsActive = true,
-                                                });
-            dbContext.VulnerabilityFindings.Add(new VulnerabilityFinding
-                                                {
-                                                    ImageVersionId = secondVersion.Id,
-                                                    AdvisoryId = "CVE-2025-68121",
-                                                    Title = "stdlib advisory",
-                                                    Severity = VulnerabilitySeverity.High,
-                                                    Source = VulnerabilitySource.Trivy,
-                                                    AffectedPackage = "stdlib",
-                                                    IsActive = true,
-                                                });
-
-            await dbContext.SaveChangesAsync(CancellationToken.None)
-                           .ConfigureAwait(false);
-
-            var service = new ApplicationViewService(dbContext,
-                                                     new ImageReferenceParser(),
-                                                     CreateOptionsMonitor(),
-                                                     new SharedBaseImageQueryService(dbContext));
-
-            var overview = await service.GetVulnerabilityOverviewAsync(CancellationToken.None)
-                                        .ConfigureAwait(false);
-            var item = overview.Single();
-
-            Assert.HasCount(1,
-                            item.AffectedImages,
-                            "Image versions that differ only by digest must collapse into a single affected image entry");
-            Assert.AreEqual(observedImage.Id,
-                            item.AffectedImages.Single().ObservedImageId,
-                            "The collapsed affected image must keep the linkable observed image as its representative");
-            Assert.AreEqual(2,
-                            item.AffectedContainerCount,
-                            "Running containers must still be counted across every collapsed image version");
-        }
-    }
-
-    /// <summary>
-    /// Verify collapsing duplicate affected images prefers the discovery-owned image as the representative
-    /// </summary>
-    /// <returns>Task</returns>
-    [TestMethod]
-    public async Task ApplicationViewServiceVulnerabilityOverviewPrefersOwnImageWhenCollapsingDuplicatesAsync()
-    {
-        var options = new DbContextOptionsBuilder<DockerUpdateGuardDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString())
-                                                                               .Options;
-
-        var dbContext = new DockerUpdateGuardDbContext(options);
-
-        await using (dbContext.ConfigureAwait(false))
-        {
-            var imageCatalogRepository = new ImageCatalogRepository(dbContext);
-            var manualVersion = await imageCatalogRepository.GetOrCreateImageVersionAsync("docker.io",
-                                                                                          "networlddev/dockerupdateguard",
-                                                                                          "latest",
-                                                                                          "sha256:manual",
-                                                                                          cancellationToken: CancellationToken.None)
-                                                            .ConfigureAwait(false);
-            var ownVersion = await imageCatalogRepository.GetOrCreateImageVersionAsync("docker.io",
-                                                                                       "networlddev/dockerupdateguard",
-                                                                                       "latest",
-                                                                                       "sha256:own",
-                                                                                       cancellationToken: CancellationToken.None)
-                                                         .ConfigureAwait(false);
-            var manualObservedImage = new ObservedImage
-                                      {
-                                          Name = "Manual Docker Update Guard",
-                                          CurrentImageVersionId = manualVersion.Id,
-                                          Source = RegistrationSource.Manual,
-                                      };
-            var ownObservedImage = new ObservedImage
-                                   {
-                                       Name = "Own Docker Update Guard",
-                                       CurrentImageVersionId = ownVersion.Id,
-                                       Source = RegistrationSource.Discovery,
-                                   };
-
-            dbContext.ObservedImages.AddRange(manualObservedImage, ownObservedImage);
-            dbContext.VulnerabilityFindings.Add(new VulnerabilityFinding
-                                                {
-                                                    ImageVersionId = manualVersion.Id,
-                                                    AdvisoryId = "CVE-2025-68121",
-                                                    Title = "stdlib advisory",
-                                                    Severity = VulnerabilitySeverity.High,
-                                                    Source = VulnerabilitySource.Trivy,
-                                                    AffectedPackage = "stdlib",
-                                                    IsActive = true,
-                                                });
-            dbContext.VulnerabilityFindings.Add(new VulnerabilityFinding
-                                                {
-                                                    ImageVersionId = ownVersion.Id,
-                                                    AdvisoryId = "CVE-2025-68121",
-                                                    Title = "stdlib advisory",
-                                                    Severity = VulnerabilitySeverity.High,
-                                                    Source = VulnerabilitySource.Trivy,
-                                                    AffectedPackage = "stdlib",
-                                                    IsActive = true,
-                                                });
-
-            await dbContext.SaveChangesAsync(CancellationToken.None)
-                           .ConfigureAwait(false);
-
-            var service = new ApplicationViewService(dbContext,
-                                                     new ImageReferenceParser(),
-                                                     CreateOptionsMonitor(),
-                                                     new SharedBaseImageQueryService(dbContext));
-
-            var overview = await service.GetVulnerabilityOverviewAsync(CancellationToken.None)
-                                        .ConfigureAwait(false);
-            var affectedImage = overview.Single().AffectedImages.Single();
-
-            Assert.IsTrue(affectedImage.IsOwnImage, "The collapsed affected image must prefer the discovery-owned image as its representative");
-            Assert.AreEqual(ownObservedImage.Id,
-                            affectedImage.ObservedImageId,
-                            "The representative affected image must link back to the discovery-owned observed image");
         }
     }
 

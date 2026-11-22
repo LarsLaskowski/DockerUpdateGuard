@@ -66,9 +66,11 @@ MSTest, NSubstitute, and MSTest's own `Assert`/`CollectionAssert` APIs.
   a `Data` folder (for example `Data.SqliteTestDatabase`).
 - One test file per type under test. Name the file `{TypeUnderTest}Tests.cs`.
   When a single type has distinct concerns worth separating (for example
-  rendering vs. persisted state of a Blazor page), split into
-  `{TypeUnderTest}RenderTests.cs` and `{TypeUnderTest}PersistentStateTests.cs`
-  rather than growing one file indefinitely.
+  rendering vs. persisted state of a Blazor page, or the failure handling of
+  a scan), split into `{TypeUnderTest}{Concern}Tests.cs` (for example
+  `{TypeUnderTest}RenderTests.cs` and `{TypeUnderTest}PersistentStateTests.cs`)
+  rather than growing one file indefinitely. Each split class declares its own
+  `TestContext` property and the helpers its tests use.
 
 ## Naming your tests
 
@@ -93,9 +95,10 @@ public void MyImagesGetSectionTitleWithUserNameIncludesUserName()
 public async Task VulnerabilityEnrichmentServiceRefreshAsyncProviderExceptionMarksRunFailedAsync()
 ```
 
-Test class names follow `{TypeUnderTest}Tests` (or `{TypeUnderTest}RenderTests`
-/ `{TypeUnderTest}PersistentStateTests` when split, as described under the
-test project layout above).
+Test class names follow `{TypeUnderTest}Tests` (or `{TypeUnderTest}{Concern}Tests`
+when split, for example `{TypeUnderTest}RenderTests` or
+`{TypeUnderTest}PersistentStateTests`, as described under the test project
+layout above).
 
 ## Criterion ids
 
@@ -361,8 +364,9 @@ reportgenerator "-reports:TestResults/**/coverage.cobertura.xml" "-targetdir:cov
       file (MSTest analyzer rules are info-level and only visible there or in SonarQube Cloud).
 - [ ] At least 80 % coverage (lines and branch conditions) on new/changed production code and 80 % line coverage
       overall (*Coverage gate*).
-- [ ] Test class named `{TypeUnderTest}Tests` (or `...RenderTests` /
-      `...PersistentStateTests` when split), in the matching test project.
+- [ ] Test class named `{TypeUnderTest}Tests` (or `{TypeUnderTest}{Concern}Tests`,
+      for example `...RenderTests` / `...PersistentStateTests`, when split), in
+      the matching test project.
 - [ ] Test method named `{TypeUnderTest}{Scenario}{ExpectedResult}` (PascalCase,
       no underscores, `Async` suffix for async tests).
 - [ ] A test for a squad acceptance criterion carries its id as `[TestCategory("AC3")]`.

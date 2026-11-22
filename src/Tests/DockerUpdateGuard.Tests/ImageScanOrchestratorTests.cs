@@ -34,6 +34,101 @@ public class ImageScanOrchestratorTests
 
     #endregion // Properties
 
+    #region Static methods
+
+    /// <summary>
+    /// Configure the substitutes for the MCR base image alias scan
+    /// </summary>
+    /// <param name="baseImageResolver">Base image resolver substitute to configure</param>
+    /// <param name="registryMetadataService">Registry metadata substitute to configure</param>
+    private static void ConfigureMcrAliasMetadata(IBaseImageResolver baseImageResolver, IRegistryMetadataService registryMetadataService)
+    {
+        baseImageResolver.ResolveAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
+                         .Returns(ExternalOperationResult.Succeeded<IReadOnlyList<BaseImageDescriptor>>([
+                                                                                                            new BaseImageDescriptor
+                                                                                                            {
+                                                                                                                Registry = "mcr.microsoft.com",
+                                                                                                                Repository = "dotnet/runtime",
+                                                                                                                Tag = "10.0-alpine",
+                                                                                                                Digest = "sha256:base-current",
+                                                                                                                Depth = 1,
+                                                                                                                SourceReference = "FROM mcr.microsoft.com/dotnet/runtime:10.0-alpine",
+                                                                                                            },
+                                                                                                        ]));
+        registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), cancellationToken: Arg.Any<CancellationToken>())
+                               .Returns(callInfo =>
+                                        {
+                                            var imageReference = callInfo.ArgAt<ImageReference>(0);
+
+                                            return imageReference.Repository switch
+                                                   {
+                                                       "company/app" => ExternalOperationResult.Succeeded<DockerHubTagData>(new DockerHubTagData
+                                                                                                                            {
+                                                                                                                                Tag = "1.0.0-alpine",
+                                                                                                                                Digest = "sha256:app",
+                                                                                                                                PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
+                                                                                                                            }),
+                                                       "dotnet/runtime" => ExternalOperationResult.Succeeded<DockerHubTagData>(new DockerHubTagData
+                                                                                                                               {
+                                                                                                                                   Tag = "10.0-alpine",
+                                                                                                                                   Digest = "sha256:base-current",
+                                                                                                                                   PublishedAtUtc = new DateTimeOffset(2025, 06, 02, 12, 00, 00, TimeSpan.Zero),
+                                                                                                                               }),
+                                                       _ => ExternalOperationResult.NotFound<DockerHubTagData>($"No tag metadata is available for '{imageReference.FullReference}'"),
+                                                   };
+                                        });
+        registryMetadataService.GetImageConfigurationAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
+                               .Returns(ExternalOperationResult.NotFound<RegistryImageConfigurationData>("No registry config"));
+    }
+
+    /// <summary>
+    /// Configure the substitutes for the exact base image scan
+    /// </summary>
+    /// <param name="baseImageResolver">Base image resolver substitute to configure</param>
+    /// <param name="registryMetadataService">Registry metadata substitute to configure</param>
+    private static void ConfigureExactBaseImageMetadata(IBaseImageResolver baseImageResolver, IRegistryMetadataService registryMetadataService)
+    {
+        baseImageResolver.ResolveAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
+                         .Returns(ExternalOperationResult.Succeeded<IReadOnlyList<BaseImageDescriptor>>([
+                                                                                                            new BaseImageDescriptor
+                                                                                                            {
+                                                                                                                Registry = "docker.io",
+                                                                                                                Repository = "library/debian",
+                                                                                                                Tag = "12.0.0",
+                                                                                                                Digest = "sha256:base-old",
+                                                                                                                Depth = 1,
+                                                                                                                SourceReference = "FROM debian:12.0.0",
+                                                                                                            },
+                                                                                                        ]));
+        registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), cancellationToken: Arg.Any<CancellationToken>())
+                               .Returns(callInfo =>
+                                        {
+                                            var imageReference = callInfo.ArgAt<ImageReference>(0);
+
+                                            return imageReference.Repository switch
+                                                   {
+                                                       "company/app" => ExternalOperationResult.Succeeded<DockerHubTagData>(new DockerHubTagData
+                                                                                                                            {
+                                                                                                                                Tag = "1.0.0",
+                                                                                                                                Digest = "sha256:app",
+                                                                                                                                PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
+                                                                                                                            }),
+                                                       "library/debian" => ExternalOperationResult.Succeeded<DockerHubTagData>(new DockerHubTagData
+                                                                                                                               {
+                                                                                                                                   Tag = "12.0.0",
+                                                                                                                                   Digest = "sha256:base-old",
+                                                                                                                                   PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
+                                                                                                                               }),
+                                                       _ => ExternalOperationResult.NotFound<DockerHubTagData>($"No tag metadata is available for '{imageReference.FullReference}'"),
+                                                   };
+                                        });
+
+        registryMetadataService.GetImageConfigurationAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
+                               .Returns(ExternalOperationResult.NotFound<RegistryImageConfigurationData>("No registry config"));
+    }
+
+    #endregion // Static methods
+
     #region Methods
 
     /// <summary>
@@ -74,43 +169,7 @@ public class ImageScanOrchestratorTests
 
                 var logger = new TestLogger<ImageScanOrchestrator>();
 
-                baseImageResolver.ResolveAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
-                                 .Returns(ExternalOperationResult.Succeeded<IReadOnlyList<BaseImageDescriptor>>([
-                                                                                                                    new BaseImageDescriptor
-                                                                                                                    {
-                                                                                                                        Registry = "docker.io",
-                                                                                                                        Repository = "library/debian",
-                                                                                                                        Tag = "12.0.0",
-                                                                                                                        Digest = "sha256:base-old",
-                                                                                                                        Depth = 1,
-                                                                                                                        SourceReference = "FROM debian:12.0.0",
-                                                                                                                    },
-                                                                                                                ]));
-                registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), cancellationToken: Arg.Any<CancellationToken>())
-                                       .Returns(callInfo =>
-                                                {
-                                                    var imageReference = callInfo.ArgAt<ImageReference>(0);
-
-                                                    return imageReference.Repository switch
-                                                           {
-                                                               "company/app" => ExternalOperationResult.Succeeded<DockerHubTagData>(new DockerHubTagData
-                                                                                                                                    {
-                                                                                                                                        Tag = "1.0.0",
-                                                                                                                                        Digest = "sha256:app",
-                                                                                                                                        PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
-                                                                                                                                    }),
-                                                               "library/debian" => ExternalOperationResult.Succeeded<DockerHubTagData>(new DockerHubTagData
-                                                                                                                                       {
-                                                                                                                                           Tag = "12.0.0",
-                                                                                                                                           Digest = "sha256:base-old",
-                                                                                                                                           PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
-                                                                                                                                       }),
-                                                               _ => ExternalOperationResult.NotFound<DockerHubTagData>($"No tag metadata is available for '{imageReference.FullReference}'"),
-                                                           };
-                                                });
-
-                registryMetadataService.GetImageConfigurationAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
-                                       .Returns(ExternalOperationResult.NotFound<RegistryImageConfigurationData>("No registry config"));
+                ConfigureExactBaseImageMetadata(baseImageResolver, registryMetadataService);
 
                 var orchestrator = new ImageScanOrchestrator(new ApplicationTelemetry(),
                                                              baseImageResolver,
@@ -283,42 +342,7 @@ public class ImageScanOrchestratorTests
                 await dbContext.SaveChangesAsync(TestContext.CancellationToken)
                                .ConfigureAwait(false);
 
-                baseImageResolver.ResolveAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
-                                 .Returns(ExternalOperationResult.Succeeded<IReadOnlyList<BaseImageDescriptor>>([
-                                                                                                                    new BaseImageDescriptor
-                                                                                                                    {
-                                                                                                                        Registry = "mcr.microsoft.com",
-                                                                                                                        Repository = "dotnet/runtime",
-                                                                                                                        Tag = "10.0-alpine",
-                                                                                                                        Digest = "sha256:base-current",
-                                                                                                                        Depth = 1,
-                                                                                                                        SourceReference = "FROM mcr.microsoft.com/dotnet/runtime:10.0-alpine",
-                                                                                                                    },
-                                                                                                                ]));
-                registryMetadataService.GetTagAsync(Arg.Any<ImageReference>(), cancellationToken: Arg.Any<CancellationToken>())
-                                       .Returns(callInfo =>
-                                                {
-                                                    var imageReference = callInfo.ArgAt<ImageReference>(0);
-
-                                                    return imageReference.Repository switch
-                                                           {
-                                                               "company/app" => ExternalOperationResult.Succeeded<DockerHubTagData>(new DockerHubTagData
-                                                                                                                                    {
-                                                                                                                                        Tag = "1.0.0-alpine",
-                                                                                                                                        Digest = "sha256:app",
-                                                                                                                                        PublishedAtUtc = new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero),
-                                                                                                                                    }),
-                                                               "dotnet/runtime" => ExternalOperationResult.Succeeded<DockerHubTagData>(new DockerHubTagData
-                                                                                                                                       {
-                                                                                                                                           Tag = "10.0-alpine",
-                                                                                                                                           Digest = "sha256:base-current",
-                                                                                                                                           PublishedAtUtc = new DateTimeOffset(2025, 06, 02, 12, 00, 00, TimeSpan.Zero),
-                                                                                                                                       }),
-                                                               _ => ExternalOperationResult.NotFound<DockerHubTagData>($"No tag metadata is available for '{imageReference.FullReference}'"),
-                                                           };
-                                                });
-                registryMetadataService.GetImageConfigurationAsync(Arg.Any<ImageReference>(), Arg.Any<CancellationToken>())
-                                       .Returns(ExternalOperationResult.NotFound<RegistryImageConfigurationData>("No registry config"));
+                ConfigureMcrAliasMetadata(baseImageResolver, registryMetadataService);
                 registryMetadataService.GetTagsAsync("mcr.microsoft.com",
                                                      "dotnet/runtime",
                                                      Arg.Any<string?>(),
