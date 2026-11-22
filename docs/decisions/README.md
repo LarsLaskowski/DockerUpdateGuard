@@ -116,4 +116,5 @@ once in the [area document](../areas/README.md) of the record's area, and the re
 | [0053](0053-tracked-state-moves-to-the-canonical-catalog-entries-at-startup.md) | Tracked state moves to the canonical catalog entries at startup | Accepted | 2026-11-21 |
 | [0054](0054-a-base-image-is-shared-from-two-users-among-enabled-observed-images-and-their-containers.md) | A base image is shared from two users among enabled observed images and their containers | Accepted | 2026-11-21 |
 | [0055](0055-entity-enum-members-nothing-produces-are-removed-and-their-numbers-are-never-reused.md) | Entity enum members nothing produces are removed, and their numbers are never reused | Accepted | 2026-11-21 |
+| [0056](0056-the-image-catalog-takes-only-a-postgresql-unique-violation-for-a-lost-insert-race.md) | The image catalog takes only a PostgreSQL unique violation for a lost insert race | Accepted | 2026-11-22 |
 <!-- project:end index -->

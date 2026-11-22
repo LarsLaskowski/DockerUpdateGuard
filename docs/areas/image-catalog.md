@@ -56,7 +56,7 @@ refer to the same image the same way.
   component that owns the refresh ([Base images](base-images.md) for observed images and their bases, the runtime
   container scan for container images, see [Update detection](update-detection.md)).
 - **Concurrency:** when two writers create the same entry at once, the one whose insert collides with the uniqueness
-  rule re-reads and returns the entry the other created. No duplicates arise; no writer sees an error for the race.
+  rule re-reads and returns the entry the other created. No duplicates arise; no writer sees an error for the race. Only a unique-key collision is taken for the race: every other failed save, and a collision after which the entry is not found, reaches the caller as the original database error, with the new entry no longer tracked.
 - Every image version records which kind of component registered or last refreshed it through the catalog: observed
   image, runtime container or base-image resolution. The value is informational only, the last writer wins, and no
   logic depends on it.
@@ -159,6 +159,8 @@ refer to the same image the same way.
   identifies an observed image by its image version.
 - [0053](../decisions/0053-tracked-state-moves-to-the-canonical-catalog-entries-at-startup.md): tracked state moves to
   the canonical catalog entries at startup.
+- [0056](../decisions/0056-the-image-catalog-takes-only-a-postgresql-unique-violation-for-a-lost-insert-race.md): the
+  catalog takes only a PostgreSQL unique violation for a lost insert race.
 
 ## Not here
 
