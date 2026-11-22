@@ -2,7 +2,7 @@
 
 Source: Issue #523
 Tier: standard — a behavior-neutral refactoring, but it rewrites the control flow of 19 production members (scan engine, integration clients, composition root, UI facade) into new methods and types, which is more than `trivial`'s "no change to control flow"; in doubt the higher tier.
-Security areas touched: Configured URLs and their user info (`Configuration/DockerUpdateGuardOptionsValidator.cs`); TLS relaxation of Docker instances and Docker Engine access (`Docker/DockerInstanceClient.cs`); Registry and Docker Scout calls (`DockerHub/DockerHubClient.cs`, `Vulnerabilities/DockerScoutVulnerabilityProvider.cs`); Secrets in configuration (the Docker Hub PAT the Docker Scout token step receives); Database and migrations (`src/DockerUpdateGuard.Data/Queries/`); Logging and telemetry of external data (log calls that move into extracted methods)
+Security areas touched: Configured URLs and their user info (`Configuration/DockerUpdateGuardOptionsValidator.cs`); TLS relaxation of Docker instances and Docker Engine access (`Docker/DockerInstanceClient.cs`); Registry and Docker Scout calls (`DockerHub/DockerHubClient.cs`, `Vulnerabilities/DockerScoutVulnerabilityProvider.cs`); Secrets in configuration (the Docker Hub PAT the Docker Scout token step receives); Database and migrations (`src/DockerUpdateGuard.Data/Queries/`); Logging and telemetry of external data (log calls that move into extracted methods); Failure messages and remote text (scan-run ErrorMessage via ScanRunCompletion, the snapshot's UpdateAssessmentMessage in MarkSnapshotFailed, ReferenceUrl sanitization moved to VulnerabilityViewMapper)
 
 ## Problem / root cause
 
@@ -61,7 +61,7 @@ Production paths are under `src/DockerUpdateGuard/` unless they say otherwise; t
 - AC1: The *Analyzer gate* passes with no diagnostic in a changed file and reports "Diagnostics in unchanged files
   (not gating): 0" — no RH2008 or RH2111 finding remains anywhere.
 - AC2: Behavior is unchanged: the full *Test* run passes; every test method on `main` exists afterwards with the same
-  name, attributes and assertions (moved to another class at most), and only tests the coverage pass adds are new.
+  name, attributes and assertions (moved to another class at most), and only tests the coverage pass adds and the overview sanitization test of T1 are new.
 - AC3: No public or protected signature changes; every new type is `internal`.
 - AC4: Each split keeps the invariants under *Approach* (order of reads, writes, registrations and log calls;
   exception handlers and the locals they read; log operation names).
@@ -222,3 +222,71 @@ none: the limits are the template baseline and the splits routine refactoring; t
 ## Out of scope / follow-ups
 
 RH2009 reports nothing. `DOTNET_RULES_PENDING` holds no entry to remove (issue comment of 2026-11-22).
+
+## Challenge notes
+
+Devil's Advocate, mode `plan`: challenge of specs/issue-523/plan.md (/home/user/DockerUpdateGuard/specs/issue-523/plan.md) for issue #523
+
+The plan holds up. I checked these claims in the code and they are correct:
+- **Fact 7:** the `catch` of `ProcessContainerAsync` reads `snapshot`, `previousSnapshot`, `previousFindings` and `parsedReference` (src/DockerUpdateGuard/Images/RuntimeContainerScanOrchestrator.cs:669–826).
+- **Fact 8:** `resolvedBaseImageCount` is assigned inside the inner `try` and logged after it (ImageScanOrchestrator.cs:738, 767).
+- **Fact 9:** the three scan-run completions are identical (Runtime…:635–637, VulnerabilityEnrichmentService.cs:638–640, ImageScanOrchestrator.cs:750–752).
+- **Fact 10:** the cleanup only reads between `RepairStaleRunningScanRunsAsync` and `RemoveRange` (ScanCleanupBackgroundService.cs:196–284), and `RetainScanRunsDays` is read twice (lines 200 and 292).
+- **P20:** none of the moved `ApplicationViewService` helpers is referenced outside that file. The `PopulateResolvedVersionTags` in RuntimeContainerScanOrchestrator.cs:282 is a separate method with a different signature. The helpers that become private in the new types are only called by other moved helpers (lines 104/171, 132/165, 248/163, 260/167, 720/314, 470/485, 597/512+637, 615/514, 628/515, 25/481).
+- **P15:** the registration order in ServiceCollectionExtensions.cs:43–158 can be kept with two extracted blocks.
+- **T1:** the six `ApplicationViewServiceVulnerabilityOverview…` tests are lines 2557–3067, and `_expectedSortedAdvisoryIds` (line 26) is used only at line 2794.
+- **T2:** the helpers at 3601–4116 are used only inside the ranges to be moved. `CreateFailureOrchestrator` and `CreateGatedDockerInstanceClient` are used only at 2587–3030, so they rightly stay.
+- **Fact 11 (P1):** the risk is low. Real SQLite tests call `GetBaseImagesAsync` (src/Tests/DockerUpdateGuard.Data.Tests/SharedBaseImageQueryServiceTests.cs:116, 216 and two more tests).
+- **Docs:** no area document, decision record or ARCHITECTURE.md passage names a moved helper. ARCHITECTURE.md mentions only `AddDockerUpdateGuardHost` (line 83) and `ExecuteCoreAsync` (lines 359, 364), and both keep their names.
+
+## Objections
+
+1. **minor, Approach invariants (AC4 wording).** The plan says "each `try`/`catch`/`finally` stays in the method that holds it today". Read literally, it conflicts with the plan's own splits:
+   - **P5** moves the batch loop's lock `try`/`finally`, the locked stale-finding `try`/`finally` and the final save's retry `try`/`catch` into new methods (VulnerabilityEnrichmentService.cs:570–620 and 642–660).
+   - **P9** moves the inner `try`/`catch` into `ScanObservedImageAsync` (ImageScanOrchestrator.cs:699–747).
+
+   Why minor: the Reviewer's AC4 check, step 8, could flag every one of these splits. The intent is clear and the Dev can follow it without changing the plan. **Instruction for the Dev and Reviewer:** read the invariant as "a `try`/`catch`/`finally` moves only as a whole, with the lock wait it guards, into one method. Every local its handler or `finally` reads is declared in that same method and assigned at the same point. The handler of `ProcessContainerAsync` (fact 7) and the inner `try` of `ScanAsync` with `resolvedBaseImageCount` (fact 8) keep the placement P9 and P11 give them."
+
+2. **minor, T2 test count and class shape.** T2 says "the 21 tests … (lines 2168–2349 and 3195–3484)". Those ranges hold 19 tests: 8 at 2168–2306 and 11 at 3195–3467. The test at 2350, `…ContinuesAfterInstanceScanFailureAsync`, is not a failed-evaluation test and lies outside the range. Also, `RunAliasScansAsync` (3835), `RunTwoDerivedScansAsync` (3960) and `RunTwoScansAsync` (3990) are instance methods that use the `TestContext` property (RuntimeContainerScanOrchestratorTests.cs:32).
+
+   Why minor: the Tester's before/after name list for AC2 would catch a lost test, so this needs no plan change. **Instruction for the Tester:** "move the 19 tests declared in lines 2168–2306 and 3195–3467, plus the helpers at 3601–4116, to `RuntimeContainerScanOrchestratorFailureTests`. Give the new class its own public `TestContext TestContext { get; set; }` property. `…ContinuesAfterInstanceScanFailureAsync` (2350) stays in `RuntimeContainerScanOrchestratorTests`."
+
+## Security notes
+
+## Security plan review: issue #523 (mode `plan`)
+
+**Scope:** `/home/user/DockerUpdateGuard/specs/issue-523/plan.md` at `2a10e01`. To check it I read the production code behind P3, P7, P11, P12, P15, P20 and the scan-run completions of P5, P9 and P10.
+
+**Tier: `standard` is correct.** No security control is created, changed or removed.
+- **Moved verbatim with their guards:** the Docker Scout token-refresh path (P3), the Docker Hub listing with its `PaginationLinkGuard` (P12), and the Docker Engine sampling loop with its `MaxContainerIdLength` bound and caller token (P7).
+- **P3 exceptions:** `FetchWithTokenRefreshAsync` is called inside the existing `try`, so its exceptions still reach the same `catch`.
+- **Composition root (P15):** keeps every registration in place. That includes the `RequestDeadlineHandler`/`TransientHttpRetryHandler` order and the named Scout/Portainer clients.
+- **`SanitizeHttpUrl` (P20):** this is an output guard (an allow-list of `href` schemes). It moves unchanged to `VulnerabilityViewMapper`, so this is a relocation, not a control change.
+
+### Findings
+
+1. **[NON-BLOCKING] A touched security area is not listed.** The plan touches *Failure messages and remote text* (`.squad/project.md`), but *Security areas touched* does not list it.
+   - **Evidence:** P5, P9 and P10 move the write of `scanRun.ErrorMessage` (built from `FailureReason.FromException` messages) into `ScanRunCompletion.Complete`.
+   - `/home/user/DockerUpdateGuard/src/DockerUpdateGuard/Images/RuntimeContainerScanOrchestrator.cs:635-637`
+   - `/home/user/DockerUpdateGuard/src/DockerUpdateGuard/Images/VulnerabilityEnrichmentService.cs:638-640`
+   - `/home/user/DockerUpdateGuard/src/DockerUpdateGuard/Images/ImageScanOrchestrator.cs:750-752`
+   - P11 moves `snapshot.UpdateAssessmentMessage = failureMessage` into `MarkSnapshotFailed` (`RuntimeContainerScanOrchestrator.cs:809-813`).
+   - P20 moves the handling of the remote `ReferenceUrl` that a page renders as `href`.
+   - The plan's own *Security considerations* already rely on this area ("fixed failure reasons").
+   - **Smallest fix:** append to the *Security areas touched* line: `; Failure messages and remote text (scan-run ErrorMessage via ScanRunCompletion, the snapshot's UpdateAssessmentMessage in MarkSnapshotFailed, ReferenceUrl sanitization moved to VulnerabilityViewMapper)`.
+   - Recommendation: fix now
+
+2. **[NON-BLOCKING] P20 rewrites the overview's call to the URL guard, and no test pins that call.**
+   - **Where it is:** `/home/user/DockerUpdateGuard/src/DockerUpdateGuard/UI/ApplicationViewService.cs:1741` is the only check between a remote advisory URL and `<MudLink Href="@context.ReferenceUrl">` in `/home/user/DockerUpdateGuard/src/DockerUpdateGuard/Components/Pages/Vulnerabilities.razor:78`.
+   - **What P20 does:** it rewrites that line to `VulnerabilityViewMapper.SanitizeHttpUrl(...)`.
+   - **Existing coverage:** the only `javascript:` test, `ApplicationViewServiceSanitizesVulnerabilityReferenceUrlsAsync` (`/home/user/DockerUpdateGuard/src/Tests/DockerUpdateGuard.Tests/ApplicationViewServiceTests.cs:959-1024`), covers the detail path (line 117). None of the six overview tests sets an unsafe URL. A dropped or mis-wired call at 1741 would therefore pass *Test* and the coverage gate (the line is covered by safe URLs).
+   - **Smallest fix:** add one test to T1 in the new `ApplicationViewServiceVulnerabilityOverviewTests`, e.g. `ApplicationViewServiceVulnerabilityOverviewDropsUnsafeReferenceUrlAsync`. It seeds one finding with `ReferenceUrl = "javascript:alert(1)"` and asserts that `GetVulnerabilityOverviewAsync` returns `ReferenceUrl` null. AC2's "only tests the coverage pass adds are new" also needs to read "...and the overview sanitization test of T1".
+   - Recommendation: fix now
+
+### Checked, no finding
+- **P11:** the `catch` keeps `snapshot ??= CreateFallbackSnapshot(...)`, `KeepActiveFindings`, and the four locals of fact 7.
+- **P12:** every `nameof` stays `nameof(GetRepositoriesAsync)`, which keeps the log operation names.
+- **P2:** the validator's checks on URL user info keep their order. **P1:** the query takes no user input.
+- **Secrets:** the PAT is still read only from `hubOptions` and passed through, with no new logging of it.
+- **Log calls:** the *Logger arguments* check on log calls that move belongs to the Reviewer's diff review in step 8, since the tier is `standard`.
+- **Measurements:** no security property here depends on measured or library behavior, so none was required. Fact 11 (EF projection) is functional and the Dev verifies it.
