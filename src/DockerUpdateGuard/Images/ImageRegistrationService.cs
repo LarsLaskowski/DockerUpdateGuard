@@ -69,6 +69,29 @@ public class ImageRegistrationService : IImageRegistrationService
 
     #endregion // Constructors
 
+    #region Static methods
+
+    /// <summary>
+    /// Parse the image reference of a registration request
+    /// </summary>
+    /// <param name="imageReferenceParser">Image reference parser</param>
+    /// <param name="imageReference">Image reference as entered</param>
+    /// <returns>Parsed image reference</returns>
+    /// <exception cref="ReportableException">The reference does not name a repository</exception>
+    private static ImageReference ParseReference(IImageReferenceParser imageReferenceParser, string imageReference)
+    {
+        try
+        {
+            return imageReferenceParser.Parse(imageReference);
+        }
+        catch (ArgumentException exception)
+        {
+            throw new ReportableException(ReferenceWithoutRepositoryMessage, exception);
+        }
+    }
+
+    #endregion // Static methods
+
     #region IImageRegistrationService
 
     /// <inheritdoc/>
@@ -87,16 +110,7 @@ public class ImageRegistrationService : IImageRegistrationService
 
         var name = request.Name.Trim();
 
-        ImageReference parsedReference;
-
-        try
-        {
-            parsedReference = _imageReferenceParser.Parse(request.ImageReference);
-        }
-        catch (ArgumentException exception)
-        {
-            throw new ReportableException(ReferenceWithoutRepositoryMessage, exception);
-        }
+        var parsedReference = ParseReference(_imageReferenceParser, request.ImageReference);
 
         var partsError = ObservedImageRegistrationRules.GetPartsError(parsedReference);
 
