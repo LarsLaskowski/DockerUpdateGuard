@@ -10,3 +10,4 @@ are quoted in full.
 | 2026-11-22 12:19 | 2 Challenge skipped | Orchestrator | challenge skipped — tier trivial is never challenged |
 | 2026-11-22 12:20 | 3 Plan security | Security | VERDICT: APPROVED \| NON-BLOCKING 1; wording fix applied verbatim by the orchestrator (opus/medium · 40,487 tokens · 8 tool uses · 40 s · 14 in · 4,335 out · 187,253 cache read · 38,632 cache write · 158,683 weighted) |
 | 2026-11-22 12:20 | 2 Plan revise (plan-check) | Lead | RESULT: DONE, plan shortened under 800 words (opus/medium · 5,423 tokens · 4 tool uses · 15 s · 8 in · 647 out · 231,310 cache read · 6,463 cache write · 45,774 weighted · continued) |
+| 2026-11-22 12:20 | 2 Plan revise (security notes) | Orchestrator | no launch: the one fix-now note was an exact wording edit, applied verbatim to plan.md before the Lead's last revision, which confirmed it is in place |
