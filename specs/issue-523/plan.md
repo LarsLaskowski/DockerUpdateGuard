@@ -100,7 +100,7 @@ No guarantee touched: the analyzer runs at build time only (fact 9).
 
 - [x] no limits.
 - [x] none: no runtime code changes.
-- Same package IDs from nuget.org, no new source; only length rules are lowered, no security rule.
+- Same package IDs from nuget.org, no new source; only method/type length and method complexity rules are lowered, no security rule.
 
 ## Decision records
 
@@ -110,3 +110,36 @@ none: a dependency update touching no guarantee (`docs/decisions/README.md`); #5
 
 - #523: fix the findings, remove the entries.
 - Step 12 `squad-upstream` lesson: add RH2008, RH2009, RH2111 to the template baseline.
+
+## Security notes
+
+Security plan review: specs/issue-523/plan.md (Reihitsu 1.4.0 -> 1.5.0), mode plan, round 1.
+
+Tier check: `trivial` holds. The change creates, changes and removes no security control. It does not touch CI permissions, secrets, triggers or actions, signing or provenance. No runtime code changes, and no security area from .squad/project.md is touched. *Security areas touched* lists the two that apply: the dependency, and the build configuration (Directory.Packages.props, .config/dotnet-tools.json, .editorconfig). No area is missing.
+
+What I checked (read-only, using the NuGet cache in ~/.nuget/packages, which already holds both versions):
+- **Where it comes from.** `.nupkg.metadata` gives `"source": "https://api.nuget.org/v3/index.json"` for reihitsu.analyzer 1.4.0 and 1.5.0. There is no nuget.config in the repository root, so no new feed comes in. Both versions of both packages have nuspec `<authors>Thoenissen</authors>` and repository `https://github.com/thoenissen/Reihitsu`. 1.5.0 is built from commit 5af53bd1b2c8..., which matches fact 5's tool version `1.5.0+5af53bd`.
+- **Dependencies.** Neither the analyzer nuspec nor the Reihitsu.Cli.nuspec declares a `<dependency>` in 1.4.0 or 1.5.0, so no new transitive package comes in. The tool directory still holds 35 files.
+- **Code that runs at build time.** `diff -r` of `buildTransitive/` shows one change in Reihitsu.Analyzer.targets, which only adds `<CompilerVisibleProperty Include="IsTestProject" />` and `IsTestingPlatformApplication`. That adds no Exec, task or download. `tools/install.ps1` and `uninstall.ps1` have the same sha256 in both versions.
+- **What reaches the image.** Directory.Build.props:26-28 sets `PrivateAssets` to `all`, which confirms fact 9: the analyzer does not ship in the image.
+- **CI.** Both the formatter (`dotnet tool run reihitsu-format --check .`) and the analyzer run in ci.yml's build job. That job has `SONAR_TOKEN` in its env and `checks: write`. They also run in release.yml, which has `contents: write`. All of this was already true before the change, and the update keeps the same package ID, publisher and feed. So the update does not widen this exposure, and I raise no finding on it.
+- **What the three rules check.** From the README.MD of the 1.5.0 package: RH2008 is "Methods should not exceed the line limit.", RH2009 is "Methods should not exceed the complexity limit." and RH2111 is "Types should not exceed the line limit.". None of them is a security rule, and the plan lowers no Sonar or security rule.
+
+Findings:
+
+[NON-BLOCKING] plan.md, *Security considerations*, third bullet: "only length rules are lowered" is not accurate. RH2009 is a complexity limit, not a length limit (README.MD of reihitsu.analyzer 1.5.0, line 37). The conclusion still holds, because none of the three is a security rule. Smallest fix, verbatim. Replace
+"- Same package IDs from nuget.org, no new source; only length rules are lowered, no security rule."
+with
+"- Same package IDs from nuget.org, no new source; only method/type length and method complexity rules are lowered,
+  no security rule."
+Recommendation: fix now, in the Lead's plan edit, if one happens anyway. Otherwise leave it, since it changes no decision.
+
+No measurement-backed security claim needs my own run here. I did not run the build, the formatter or dotnet-rules.py. Facts 3 to 6 and 8 rest on the orchestrator's and the Lead's runs, and on the Dev's checks in step 6, as the plan says.
+
+Relevant files:
+- /home/user/DockerUpdateGuard/specs/issue-523/plan.md
+- /home/user/DockerUpdateGuard/Directory.Packages.props
+- /home/user/DockerUpdateGuard/.config/dotnet-tools.json
+- /home/user/DockerUpdateGuard/Directory.Build.props
+- /home/user/DockerUpdateGuard/.github/workflows/ci.yml
+- /home/user/DockerUpdateGuard/.github/workflows/release.yml
