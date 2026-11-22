@@ -70,6 +70,19 @@ public static class ServiceCollectionExtensions
                                                                 });
                                           });
         services.AddDockerUpdateGuardTelemetry(configuration);
+        AddOutboundHttpClients(services, applicationOptions);
+        AddApplicationServices(services);
+
+        return services;
+    }
+
+    /// <summary>
+    /// Register the outbound HTTP clients and their handlers
+    /// </summary>
+    /// <param name="services">Service collection</param>
+    /// <param name="applicationOptions">Bound application options</param>
+    private static void AddOutboundHttpClients(IServiceCollection services, DockerUpdateGuardOptions applicationOptions)
+    {
         services.AddTransient<TransientHttpRetryHandler>();
         services.AddHttpClient<DockerHubClient>(client =>
                                                 {
@@ -106,6 +119,14 @@ public static class ServiceCollectionExtensions
                 .AddHttpMessageHandler<TransientHttpRetryHandler>();
         services.AddHttpClient(DockerScoutVulnerabilityProvider.HttpClientName)
                 .AddHttpMessageHandler<TransientHttpRetryHandler>();
+    }
+
+    /// <summary>
+    /// Register the application services, the vulnerability providers and the hosted services
+    /// </summary>
+    /// <param name="services">Service collection</param>
+    private static void AddApplicationServices(IServiceCollection services)
+    {
         services.TryAddSingleton(TimeProvider.System);
         services.AddSingleton<LoginRetryAfterRegistry>();
         services.AddSingleton<DockerHubAccessTokenCache>();
@@ -148,8 +169,6 @@ public static class ServiceCollectionExtensions
         services.AddHostedService<ResourceStatisticsRefreshBackgroundService>();
         services.AddHostedService<VulnerabilityRefreshBackgroundService>();
         services.AddHostedService<ScanCleanupBackgroundService>();
-
-        return services;
     }
 
     #endregion // Methods

@@ -253,6 +253,16 @@ public class DockerUpdateGuardOptionsValidator : IValidateOptions<DockerUpdateGu
             failures.Add($"'{DockerUpdateGuardOptions.SectionName}:Scanning:DockerHubReservedManualRequestsPerWindow' must be smaller than DockerHubRequestLimitPerWindow");
         }
 
+        ValidateScanningIntervalOptions(options, failures);
+    }
+
+    /// <summary>
+    /// Validate the remaining scanning options after the Docker Hub request limits
+    /// </summary>
+    /// <param name="options">Scanning options</param>
+    /// <param name="failures">Failure list</param>
+    private static void ValidateScanningIntervalOptions(ScanningOptions options, List<string> failures)
+    {
         ValidateRange(options.DockerHubAccountDiscoveryIntervalMinutes,
                       1,
                       10080,

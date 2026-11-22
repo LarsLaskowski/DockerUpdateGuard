@@ -209,6 +209,24 @@ public class ImageScanOrchestrator : IImageScanOrchestrator
     }
 
     /// <summary>
+    /// Create the running scan run of an observed image
+    /// </summary>
+    /// <param name="observedImageId">Observed image identifier</param>
+    /// <param name="triggerSource">Trigger source</param>
+    /// <returns>Scan run</returns>
+    private static ScanRun CreateScanRun(Guid observedImageId, ScanTriggerSource triggerSource)
+    {
+        return new ScanRun
+               {
+                   Type = ScanRunType.ObservedImage,
+                   Status = ScanRunStatus.Running,
+                   TriggerSource = triggerSource,
+                   ObservedImageId = observedImageId,
+                   StartedAtUtc = DateTimeOffset.UtcNow,
+               };
+    }
+
+    /// <summary>
     /// Resolve the stored base-image tag for display and persistence
     /// </summary>
     /// <param name="baseImageReference">Base image reference</param>
@@ -604,6 +622,177 @@ public class ImageScanOrchestrator : IImageScanOrchestrator
                                       cancellationToken);
     }
 
+    /// <summary>
+    /// Load an observed image with its current image version and registry repository for a scan
+    /// </summary>
+    /// <param name="observedImageId">Observed image identifier</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Observed image, or null when it does not exist</returns>
+    private async Task<ObservedImage?> LoadObservedImageAsync(Guid observedImageId, CancellationToken cancellationToken)
+    {
+        return await _dbContext.ObservedImages.Include(entity => entity.CurrentImageVersion.RegistryRepository)
+                                              .SingleOrDefaultAsync(entity => entity.Id == observedImageId, cancellationToken)
+                                              .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Complete the scan run, save it and record the scan telemetry
+    /// </summary>
+    /// <param name="scanRun">Scan run</param>
+    /// <param name="finalStatus">Final status</param>
+    /// <param name="statusMessages">Collected status messages</param>
+    /// <param name="subjectName">Name of the scanned observed image for the log</param>
+    /// <param name="stopwatch">Stopwatch of the scan</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Task</returns>
+    private async Task CompleteScanRunAsync(ScanRun scanRun,
+                                            ScanRunStatus finalStatus,
+                                            List<string> statusMessages,
+                                            string subjectName,
+                                            Stopwatch stopwatch,
+                                            CancellationToken cancellationToken)
+    {
+        ScanRunCompletion.Complete(scanRun, finalStatus, statusMessages);
+
+        await SaveScanRunAsync(scanRun,
+                               true,
+                               statusMessages,
+                               subjectName,
+                               cancellationToken).ConfigureAwait(false);
+
+        await _applicationTelemetry.RefreshInventoryMetricsAsync(_dbContext, cancellationToken)
+                                   .ConfigureAwait(false);
+
+        _applicationTelemetry.RecordScanRun(ScanRunType.ObservedImage,
+                                            finalStatus,
+                                            stopwatch.Elapsed);
+    }
+
+    /// <summary>
+    /// Refresh the registry tag metadata of the current image version of an observed image
+    /// </summary>
+    /// <param name="observedImage">Observed image</param>
+    /// <param name="imageReference">Parsed image reference</param>
+    /// <param name="statusMessages">Collected status messages</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Scan status after the metadata refresh</returns>
+    private async Task<ScanRunStatus> RefreshTagMetadataAsync(ObservedImage observedImage,
+                                                              ImageReference imageReference,
+                                                              List<string> statusMessages,
+                                                              CancellationToken cancellationToken)
+    {
+        var finalStatus = ScanRunStatus.Succeeded;
+        var tagResult = await _registryMetadataService.GetTagAsync(imageReference, cancellationToken: cancellationToken)
+                                                      .ConfigureAwait(false);
+
+        if (tagResult.Status == ExternalOperationStatus.Succeeded && tagResult.Data is not null)
+        {
+            observedImage.CurrentImageVersion.MetadataJson = JsonSerializer.Serialize(tagResult.Data);
+            observedImage.CurrentImageVersion.PublishedAtUtc = tagResult.Data.PublishedAtUtc;
+            observedImage.CurrentImageVersion.UpdatedAtUtc = DateTimeOffset.UtcNow;
+        }
+        else
+        {
+            finalStatus = tagResult.Status == ExternalOperationStatus.Failed ? ScanRunStatus.Failed : ScanRunStatus.Partial;
+
+            statusMessages.Add(tagResult.Message ?? "Unable to refresh registry tag metadata");
+
+            _logger.ObservedImageMetadataRefreshIncomplete(observedImage.Name,
+                                                           tagResult.Status,
+                                                           tagResult.Message);
+        }
+
+        return finalStatus;
+    }
+
+    /// <summary>
+    /// Scan an observed image whose scan lock is held by the caller
+    /// </summary>
+    /// <param name="observedImageId">Observed image identifier</param>
+    /// <param name="triggerSource">Trigger source</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Task</returns>
+    private async Task ScanObservedImageAsync(Guid observedImageId,
+                                              ScanTriggerSource triggerSource,
+                                              CancellationToken cancellationToken)
+    {
+        var resolvedBaseImageCount = 0;
+        var observedImage = await LoadObservedImageAsync(observedImageId, cancellationToken).ConfigureAwait(false);
+
+        if (observedImage is null)
+        {
+            _logger.ObservedImageScanSkippedMissing(observedImageId);
+
+            return;
+        }
+
+        var scanRun = CreateScanRun(observedImage.Id, triggerSource);
+
+        var stopwatch = Stopwatch.StartNew();
+        var statusMessages = new List<string>();
+        ScanRunStatus finalStatus;
+
+        _logger.ObservedImageScanStarted(observedImage.Name, triggerSource);
+
+        _dbContext.ScanRuns.Add(scanRun);
+
+        await SaveScanRunAsync(scanRun,
+                               false,
+                               statusMessages,
+                               observedImage.Name,
+                               cancellationToken).ConfigureAwait(false);
+
+        try
+        {
+            var imageReference = _imageReferenceParser.Parse(_imageReferenceParser.Format(observedImage.CurrentImageVersion));
+
+            finalStatus = await RefreshTagMetadataAsync(observedImage,
+                                                        imageReference,
+                                                        statusMessages,
+                                                        cancellationToken).ConfigureAwait(false);
+
+            var baseImagesResult = await _baseImageResolver.ResolveAsync(imageReference, cancellationToken)
+                                                           .ConfigureAwait(false);
+
+            var baseImageOutcome = await ApplyBaseImageResolutionAsync(scanRun,
+                                                                       observedImage,
+                                                                       baseImagesResult,
+                                                                       finalStatus,
+                                                                       statusMessages,
+                                                                       cancellationToken).ConfigureAwait(false);
+
+            finalStatus = baseImageOutcome.Status;
+            resolvedBaseImageCount = baseImageOutcome.ResolvedBaseImageCount;
+
+            await CreateDerivedBaseRuntimeFindingAsync(scanRun,
+                                                       observedImage,
+                                                       imageReference,
+                                                       observedImage.CurrentImageVersion,
+                                                       cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            finalStatus = ScanRunStatus.Failed;
+
+            statusMessages.Add($"Observed image scan failed: {FailureReason.FromException(exception, null, cancellationToken)}");
+
+            _logger.ObservedImageScanFailed(exception, observedImage.Name);
+        }
+
+        await CompleteScanRunAsync(scanRun,
+                                   finalStatus,
+                                   statusMessages,
+                                   observedImage.Name,
+                                   stopwatch,
+                                   cancellationToken).ConfigureAwait(false);
+
+        _logger.ObservedImageScanCompleted(observedImage.Name,
+                                           finalStatus,
+                                           resolvedBaseImageCount,
+                                           statusMessages.Count,
+                                           stopwatch.ElapsedMilliseconds);
+    }
+
     #endregion // Methods
 
     #region IImageScanOrchestrator
@@ -653,7 +842,6 @@ public class ImageScanOrchestrator : IImageScanOrchestrator
                                 ScanTriggerSource triggerSource,
                                 CancellationToken cancellationToken = default)
     {
-        var resolvedBaseImageCount = 0;
         var observedImageScanLockAcquired = false;
 
         try
@@ -662,113 +850,9 @@ public class ImageScanOrchestrator : IImageScanOrchestrator
 
             observedImageScanLockAcquired = true;
 
-            var observedImage = await _dbContext.ObservedImages.Include(entity => entity.CurrentImageVersion.RegistryRepository)
-                                                               .SingleOrDefaultAsync(entity => entity.Id == observedImageId, cancellationToken)
-                                                               .ConfigureAwait(false);
-
-            if (observedImage is null)
-            {
-                _logger.ObservedImageScanSkippedMissing(observedImageId);
-
-                return;
-            }
-
-            var scanRun = new ScanRun
-                          {
-                              Type = ScanRunType.ObservedImage,
-                              Status = ScanRunStatus.Running,
-                              TriggerSource = triggerSource,
-                              ObservedImageId = observedImage.Id,
-                              StartedAtUtc = DateTimeOffset.UtcNow,
-                          };
-
-            var stopwatch = Stopwatch.StartNew();
-            var statusMessages = new List<string>();
-            var finalStatus = ScanRunStatus.Succeeded;
-
-            _logger.ObservedImageScanStarted(observedImage.Name, triggerSource);
-
-            _dbContext.ScanRuns.Add(scanRun);
-
-            await SaveScanRunAsync(scanRun,
-                                   false,
-                                   statusMessages,
-                                   observedImage.Name,
-                                   cancellationToken).ConfigureAwait(false);
-
-            try
-            {
-                var imageReference = _imageReferenceParser.Parse(_imageReferenceParser.Format(observedImage.CurrentImageVersion));
-                var tagResult = await _registryMetadataService.GetTagAsync(imageReference, cancellationToken: cancellationToken)
-                                                              .ConfigureAwait(false);
-
-                if (tagResult.Status == ExternalOperationStatus.Succeeded && tagResult.Data is not null)
-                {
-                    observedImage.CurrentImageVersion.MetadataJson = JsonSerializer.Serialize(tagResult.Data);
-                    observedImage.CurrentImageVersion.PublishedAtUtc = tagResult.Data.PublishedAtUtc;
-                    observedImage.CurrentImageVersion.UpdatedAtUtc = DateTimeOffset.UtcNow;
-                }
-                else
-                {
-                    finalStatus = tagResult.Status == ExternalOperationStatus.Failed ? ScanRunStatus.Failed : ScanRunStatus.Partial;
-
-                    statusMessages.Add(tagResult.Message ?? "Unable to refresh registry tag metadata");
-
-                    _logger.ObservedImageMetadataRefreshIncomplete(observedImage.Name,
-                                                                   tagResult.Status,
-                                                                   tagResult.Message);
-                }
-
-                var baseImagesResult = await _baseImageResolver.ResolveAsync(imageReference, cancellationToken)
-                                                               .ConfigureAwait(false);
-
-                var baseImageOutcome = await ApplyBaseImageResolutionAsync(scanRun,
-                                                                           observedImage,
-                                                                           baseImagesResult,
-                                                                           finalStatus,
-                                                                           statusMessages,
-                                                                           cancellationToken).ConfigureAwait(false);
-
-                finalStatus = baseImageOutcome.Status;
-                resolvedBaseImageCount = baseImageOutcome.ResolvedBaseImageCount;
-
-                await CreateDerivedBaseRuntimeFindingAsync(scanRun,
-                                                           observedImage,
-                                                           imageReference,
-                                                           observedImage.CurrentImageVersion,
-                                                           cancellationToken).ConfigureAwait(false);
-            }
-            catch (Exception exception)
-            {
-                finalStatus = ScanRunStatus.Failed;
-
-                statusMessages.Add($"Observed image scan failed: {FailureReason.FromException(exception, null, cancellationToken)}");
-
-                _logger.ObservedImageScanFailed(exception, observedImage.Name);
-            }
-
-            scanRun.Status = finalStatus;
-            scanRun.CompletedAtUtc = DateTimeOffset.UtcNow;
-            scanRun.ErrorMessage = statusMessages.Count == 0 ? null : string.Join(Environment.NewLine, statusMessages.Distinct());
-
-            await SaveScanRunAsync(scanRun,
-                                   true,
-                                   statusMessages,
-                                   observedImage.Name,
-                                   cancellationToken).ConfigureAwait(false);
-
-            await _applicationTelemetry.RefreshInventoryMetricsAsync(_dbContext, cancellationToken)
-                                       .ConfigureAwait(false);
-
-            _applicationTelemetry.RecordScanRun(ScanRunType.ObservedImage,
-                                                finalStatus,
-                                                stopwatch.Elapsed);
-
-            _logger.ObservedImageScanCompleted(observedImage.Name,
-                                               finalStatus,
-                                               resolvedBaseImageCount,
-                                               statusMessages.Count,
-                                               stopwatch.ElapsedMilliseconds);
+            await ScanObservedImageAsync(observedImageId,
+                                         triggerSource,
+                                         cancellationToken).ConfigureAwait(false);
         }
         finally
         {

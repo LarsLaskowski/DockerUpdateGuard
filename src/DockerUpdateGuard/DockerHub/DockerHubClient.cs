@@ -1193,6 +1193,85 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient
         return ExternalOperationResult.Succeeded<IReadOnlyList<DockerHubTagData>>(results);
     }
 
+    /// <summary>
+    /// List all repositories of a Docker Hub account by following the paginated listing
+    /// </summary>
+    /// <param name="accountName">Account name</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Repository listing result</returns>
+    private async Task<ExternalOperationResult<IReadOnlyList<DockerHubRepositoryData>>> ListRepositoriesAsync(string accountName, CancellationToken cancellationToken)
+    {
+        var repositories = new List<DockerHubRepositoryData>();
+        var apiBaseUri = GetApiBaseUri();
+        var requestUri = new Uri(apiBaseUri, $"v2/repositories/{Uri.EscapeDataString(accountName)}/?page_size=100");
+        var requestedPages = new HashSet<string>(StringComparer.Ordinal)
+                             {
+                                 PaginationLinkGuard.CreateRequestKey(requestUri)
+                             };
+
+        while (requestUri is not null)
+        {
+            using var response = await SendGetAsync(requestUri, cancellationToken).ConfigureAwait(false);
+
+            if (response.StatusCode == HttpStatusCode.NotFound)
+            {
+                _logger.DockerHubTargetNotFound(nameof(GetRepositoriesAsync), accountName);
+
+                return ExternalOperationResult.NotFound<IReadOnlyList<DockerHubRepositoryData>>($"Docker Hub account '{accountName}' was not found");
+            }
+
+            if (response.IsSuccessStatusCode == false)
+            {
+                _logger.DockerHubRequestFailed(nameof(GetRepositoriesAsync),
+                                               accountName,
+                                               (int)response.StatusCode);
+
+                return await CreateFailureResultAsync<IReadOnlyList<DockerHubRepositoryData>>(response,
+                                                                                              $"Docker Hub repository listing failed for '{accountName}'",
+                                                                                              cancellationToken).ConfigureAwait(false);
+            }
+
+            string? nextLink;
+            var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken)
+                                                       .ConfigureAwait(false);
+
+            await using (responseStream.ConfigureAwait(false))
+            {
+                using var jsonDocument = await RemoteJsonDocument.ParseAsync(responseStream, cancellationToken)
+                                                                 .ConfigureAwait(false);
+
+                AppendRepositoryPage(jsonDocument.RootElement, repositories);
+
+                nextLink = TryGetString(jsonDocument.RootElement, "next");
+            }
+
+            if (string.IsNullOrWhiteSpace(nextLink))
+            {
+                requestUri = null;
+
+                continue;
+            }
+
+            var (nextUri, stopResult) = AdvanceListing<IReadOnlyList<DockerHubRepositoryData>>(nameof(GetRepositoriesAsync),
+                                                                                               accountName,
+                                                                                               $"Docker Hub repository listing for '{accountName}'",
+                                                                                               requestUri,
+                                                                                               nextLink,
+                                                                                               requestedPages);
+
+            if (stopResult is not null)
+            {
+                return stopResult;
+            }
+
+            requestUri = nextUri!;
+        }
+
+        _logger.DockerHubRepositoriesListed(accountName, repositories.Count);
+
+        return ExternalOperationResult.Succeeded<IReadOnlyList<DockerHubRepositoryData>>(repositories);
+    }
+
     #endregion // Methods
 
     #region IDockerHubClient
@@ -1265,78 +1344,7 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient
         return await ExecuteAsync(nameof(GetRepositoriesAsync),
                                   accountName,
                                   $"Docker Hub repository listing failed for '{accountName}'",
-                                  async () =>
-                                  {
-                                      var repositories = new List<DockerHubRepositoryData>();
-                                      var apiBaseUri = GetApiBaseUri();
-                                      var requestUri = new Uri(apiBaseUri, $"v2/repositories/{Uri.EscapeDataString(accountName)}/?page_size=100");
-                                      var requestedPages = new HashSet<string>(StringComparer.Ordinal)
-                                                           {
-                                                               PaginationLinkGuard.CreateRequestKey(requestUri)
-                                                           };
-
-                                      while (requestUri is not null)
-                                      {
-                                          using var response = await SendGetAsync(requestUri, cancellationToken).ConfigureAwait(false);
-
-                                          if (response.StatusCode == HttpStatusCode.NotFound)
-                                          {
-                                              _logger.DockerHubTargetNotFound(nameof(GetRepositoriesAsync), accountName);
-
-                                              return ExternalOperationResult.NotFound<IReadOnlyList<DockerHubRepositoryData>>($"Docker Hub account '{accountName}' was not found");
-                                          }
-
-                                          if (response.IsSuccessStatusCode == false)
-                                          {
-                                              _logger.DockerHubRequestFailed(nameof(GetRepositoriesAsync),
-                                                                             accountName,
-                                                                             (int)response.StatusCode);
-
-                                              return await CreateFailureResultAsync<IReadOnlyList<DockerHubRepositoryData>>(response,
-                                                                                                                            $"Docker Hub repository listing failed for '{accountName}'",
-                                                                                                                            cancellationToken).ConfigureAwait(false);
-                                          }
-
-                                          string? nextLink;
-                                          var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken)
-                                                                                     .ConfigureAwait(false);
-
-                                          await using (responseStream.ConfigureAwait(false))
-                                          {
-                                              using var jsonDocument = await RemoteJsonDocument.ParseAsync(responseStream, cancellationToken)
-                                                                                               .ConfigureAwait(false);
-
-                                              AppendRepositoryPage(jsonDocument.RootElement, repositories);
-
-                                              nextLink = TryGetString(jsonDocument.RootElement, "next");
-                                          }
-
-                                          if (string.IsNullOrWhiteSpace(nextLink))
-                                          {
-                                              requestUri = null;
-
-                                              continue;
-                                          }
-
-                                          var (nextUri, stopResult) = AdvanceListing<IReadOnlyList<DockerHubRepositoryData>>(nameof(GetRepositoriesAsync),
-                                                                                                                             accountName,
-                                                                                                                             $"Docker Hub repository listing for '{accountName}'",
-                                                                                                                             requestUri,
-                                                                                                                             nextLink,
-                                                                                                                             requestedPages);
-
-                                          if (stopResult is not null)
-                                          {
-                                              return stopResult;
-                                          }
-
-                                          requestUri = nextUri!;
-                                      }
-
-                                      _logger.DockerHubRepositoriesListed(accountName, repositories.Count);
-
-                                      return ExternalOperationResult.Succeeded<IReadOnlyList<DockerHubRepositoryData>>(repositories);
-                                  },
+                                  () => ListRepositoriesAsync(accountName, cancellationToken),
                                   cancellationToken).ConfigureAwait(false);
     }
 

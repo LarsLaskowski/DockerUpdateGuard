@@ -17,7 +17,9 @@ internal static class ScanRunCompletion
     /// <param name="statusMessages">Collected status messages</param>
     internal static void Complete(ScanRun scanRun, ScanRunStatus finalStatus, List<string> statusMessages)
     {
-        throw new InvalidOperationException("Skeleton: not implemented");
+        scanRun.Status = finalStatus;
+        scanRun.CompletedAtUtc = DateTimeOffset.UtcNow;
+        scanRun.ErrorMessage = statusMessages.Count == 0 ? null : string.Join(Environment.NewLine, statusMessages.Distinct());
     }
 
     #endregion // Methods

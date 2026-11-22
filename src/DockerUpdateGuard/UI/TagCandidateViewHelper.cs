@@ -1,7 +1,7 @@
-namespace DockerUpdateGuard.UI;
+using DockerUpdateGuard.Images.Data;
+using DockerUpdateGuard.Images.Helper;
 
-// Skeleton: removed with the implementation
-#pragma warning disable S1192
+namespace DockerUpdateGuard.UI;
 
 /// <summary>
 /// Filters and resolves tag candidates for UI views
@@ -27,20 +27,40 @@ internal static class TagCandidateViewHelper
     /// <returns>Filtered candidates</returns>
     internal static List<TagCandidateViewData> FilterVisibleTagCandidates(IEnumerable<TagCandidateViewData> candidates, int take = MaxAvailableTagCandidates)
     {
-        throw new InvalidOperationException("Skeleton: not implemented");
+        return candidates.Where(entity => string.IsNullOrWhiteSpace(entity.Tag) == false
+                                          && UpdateFindingPersistenceHelper.HasPersistableDigest(entity.Digest))
+                         .GroupBy(entity => CreateTagCandidateKey(entity.Tag, entity.Digest!),
+                                  StringComparer.OrdinalIgnoreCase)
+                         .Select(group => group.OrderByDescending(entity => entity.IsSelected)
+                                               .ThenByDescending(entity => entity.IsRecommended)
+                                               .ThenByDescending(entity => entity.PublishedAtUtc)
+                                               .ThenBy(entity => entity.Tag, StringComparer.OrdinalIgnoreCase)
+                                               .First())
+                         .Take(take)
+                         .ToList();
     }
 
     /// <summary>
-    /// Filter tag candidates that are available for a runtime image
+    /// Filter runtime tag candidates against the current image baseline
     /// </summary>
-    /// <param name="candidates">Tag candidates</param>
+    /// <param name="candidates">Visible candidates</param>
     /// <param name="currentTag">Current image tag</param>
     /// <param name="resolvedVersionTag">Resolved current version tag</param>
     /// <param name="currentPublishedAtUtc">Current image publication timestamp</param>
     /// <returns>Filtered candidates</returns>
-    internal static List<TagCandidateViewData> FilterRuntimeAvailableTagCandidates(IEnumerable<TagCandidateViewData> candidates, string currentTag, string? resolvedVersionTag, DateTimeOffset? currentPublishedAtUtc)
+    internal static List<TagCandidateViewData> FilterRuntimeAvailableTagCandidates(IEnumerable<TagCandidateViewData> candidates,
+                                                                                   string currentTag,
+                                                                                   string? resolvedVersionTag,
+                                                                                   DateTimeOffset? currentPublishedAtUtc)
     {
-        throw new InvalidOperationException("Skeleton: not implemented");
+        ArgumentException.ThrowIfNullOrWhiteSpace(currentTag);
+        ArgumentNullException.ThrowIfNull(candidates);
+
+        var currentComparableTag = ResolveComparableVersionTag(currentTag, resolvedVersionTag);
+
+        return candidates.Where(entity => IsCandidatePublishedOnOrAfterBaseline(entity.PublishedAtUtc, currentPublishedAtUtc)
+                                          && HasSameOrNewerComparableVersion(entity, currentComparableTag))
+                         .ToList();
     }
 
     /// <summary>
@@ -49,7 +69,20 @@ internal static class TagCandidateViewHelper
     /// <param name="candidates">Tag candidates</param>
     internal static void PopulateResolvedVersionTags(IList<TagCandidateViewData> candidates)
     {
-        throw new InvalidOperationException("Skeleton: not implemented");
+        var versionCandidates = candidates.Select(entity => new VersionTagCandidateData
+                                                            {
+                                                                Tag = entity.Tag,
+                                                                Digest = entity.Digest,
+                                                                PublishedAtUtc = entity.PublishedAtUtc,
+                                                            })
+                                          .ToList();
+
+        foreach (var candidate in candidates)
+        {
+            candidate.ResolvedVersionTag = VersionTagResolutionHelper.ResolveAliasVersionTag(candidate.Tag,
+                                                                                             candidate.Digest,
+                                                                                             versionCandidates);
+        }
     }
 
     /// <summary>
@@ -59,9 +92,18 @@ internal static class TagCandidateViewHelper
     /// <param name="currentDigest">Current digest</param>
     /// <param name="candidates">Available candidates</param>
     /// <returns>Resolved semantic version tag or null</returns>
-    internal static string? ResolveResolvedVersionTag(string currentTag, string? currentDigest, IEnumerable<TagCandidateViewData> candidates)
+    internal static string? ResolveResolvedVersionTag(string currentTag,
+                                                      string? currentDigest,
+                                                      IEnumerable<TagCandidateViewData> candidates)
     {
-        throw new InvalidOperationException("Skeleton: not implemented");
+        return VersionTagResolutionHelper.ResolveAliasVersionTag(currentTag,
+                                                                 currentDigest,
+                                                                 candidates.Select(entity => new VersionTagCandidateData
+                                                                                             {
+                                                                                                 Tag = entity.Tag,
+                                                                                                 Digest = entity.Digest,
+                                                                                                 PublishedAtUtc = entity.PublishedAtUtc,
+                                                                                             }));
     }
 
     /// <summary>
@@ -70,13 +112,29 @@ internal static class TagCandidateViewHelper
     /// <param name="candidates">Tag candidates</param>
     /// <param name="preferredVariantFamilySourceTag">Optional concrete tag whose variant family is preferred among digest-matching candidates</param>
     /// <returns>Displayable version tag or null</returns>
-    internal static string? ResolveAvailableUpdateVersionTag(IEnumerable<TagCandidateViewData> candidates, string? preferredVariantFamilySourceTag = null)
+    internal static string? ResolveAvailableUpdateVersionTag(IEnumerable<TagCandidateViewData> candidates,
+                                                             string? preferredVariantFamilySourceTag = null)
     {
-        throw new InvalidOperationException("Skeleton: not implemented");
+        var candidateList = candidates.Where(entity => string.IsNullOrWhiteSpace(entity.Tag) == false)
+                                      .ToList();
+        var recommendedCandidate = candidateList.FirstOrDefault(entity => entity.IsRecommended);
+
+        if (recommendedCandidate is null)
+        {
+            return null;
+        }
+
+        return VersionTagResolutionHelper.ResolveDisplayVersionTag(recommendedCandidate.Tag,
+                                                                   recommendedCandidate.Digest,
+                                                                   candidateList.Select(entity => new VersionTagCandidateData
+                                                                                                  {
+                                                                                                      Tag = entity.Tag,
+                                                                                                      Digest = entity.Digest,
+                                                                                                      PublishedAtUtc = entity.PublishedAtUtc,
+                                                                                                  }),
+                                                                   preferredVariantFamilySourceTag);
     }
 
-    // Skeleton: removed with the implementation
-#pragma warning disable S1144, S1172, S4487, S2325
     /// <summary>
     /// Create a stable identity for a tag candidate
     /// </summary>
@@ -85,53 +143,78 @@ internal static class TagCandidateViewHelper
     /// <returns>Candidate identity</returns>
     private static string CreateTagCandidateKey(string tag, string digest)
     {
-        throw new InvalidOperationException("Skeleton: not implemented");
+        return $"{tag.Trim().ToLowerInvariant()}|{digest.Trim().ToLowerInvariant()}";
     }
-#pragma warning restore S1144, S1172, S4487, S2325
 
-    // Skeleton: removed with the implementation
-#pragma warning disable S1144, S1172, S4487, S2325
     /// <summary>
-    /// Resolve the version tag used for comparison
+    /// Resolve the comparable version tag for filtering
     /// </summary>
-    /// <param name="tag">Tag name</param>
+    /// <param name="tag">Tag value</param>
     /// <param name="resolvedVersionTag">Resolved version tag</param>
     /// <returns>Comparable version tag or null</returns>
     private static string? ResolveComparableVersionTag(string tag, string? resolvedVersionTag)
     {
-        throw new InvalidOperationException("Skeleton: not implemented");
-    }
-#pragma warning restore S1144, S1172, S4487, S2325
+        if (string.IsNullOrWhiteSpace(resolvedVersionTag) == false)
+        {
+            return resolvedVersionTag;
+        }
 
-    // Skeleton: removed with the implementation
-#pragma warning disable S1144, S1172, S4487, S2325
+        return VersionTagResolutionHelper.IsDisplayableSpecificVersionTag(tag)
+                   ? tag
+                   : null;
+    }
+
     /// <summary>
-    /// Check whether a candidate was published on or after the baseline
+    /// Determine whether a candidate is published on or after the current baseline
     /// </summary>
     /// <param name="candidatePublishedAtUtc">Candidate publication timestamp</param>
     /// <param name="baselinePublishedAtUtc">Baseline publication timestamp</param>
     /// <returns>True when the candidate is not older than the baseline</returns>
     private static bool IsCandidatePublishedOnOrAfterBaseline(DateTimeOffset? candidatePublishedAtUtc, DateTimeOffset? baselinePublishedAtUtc)
     {
-        throw new InvalidOperationException("Skeleton: not implemented");
+        return baselinePublishedAtUtc is null
+               || candidatePublishedAtUtc is null
+               || candidatePublishedAtUtc >= baselinePublishedAtUtc;
     }
-#pragma warning restore S1144, S1172, S4487, S2325
 
-    // Skeleton: removed with the implementation
-#pragma warning disable S1144, S1172, S4487, S2325
     /// <summary>
-    /// Check whether a candidate has the same or a newer comparable version
+    /// Determine whether a candidate has the same or a newer comparable version
     /// </summary>
-    /// <param name="candidate">Tag candidate</param>
-    /// <param name="currentComparableTag">Current comparable version tag</param>
-    /// <returns>True when the candidate is not older</returns>
+    /// <param name="candidate">Candidate tag</param>
+    /// <param name="currentComparableTag">Current comparable tag</param>
+    /// <returns>True when the candidate is not older than the current version</returns>
     private static bool HasSameOrNewerComparableVersion(TagCandidateViewData candidate, string? currentComparableTag)
     {
-        throw new InvalidOperationException("Skeleton: not implemented");
+        ArgumentNullException.ThrowIfNull(candidate);
+
+        if (string.IsNullOrWhiteSpace(currentComparableTag))
+        {
+            return true;
+        }
+
+        var candidateComparableTag = ResolveComparableVersionTag(candidate.Tag, candidate.ResolvedVersionTag);
+
+        if (string.IsNullOrWhiteSpace(candidateComparableTag))
+        {
+            return false;
+        }
+
+        if (VersionTagResolutionHelper.TryCompareVersionTags(candidateComparableTag,
+                                                             currentComparableTag,
+                                                             out var versionComparison))
+        {
+            return versionComparison >= 0;
+        }
+
+        if (VersionTagResolutionHelper.TryParseYearPrefixedTag(currentComparableTag, out var currentYear, out _)
+            && VersionTagResolutionHelper.TryParseYearPrefixedTag(candidateComparableTag, out var candidateYear, out _))
+        {
+            return candidateYear == currentYear
+                   && VersionTagResolutionHelper.CompareYearPrefixedTags(candidateComparableTag, currentComparableTag) >= 0;
+        }
+
+        return false;
     }
-#pragma warning restore S1144, S1172, S4487, S2325
 
     #endregion // Methods
 }
-
-#pragma warning restore S1192

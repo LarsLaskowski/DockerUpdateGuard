@@ -56,6 +56,95 @@ public class SharedBaseImageQueryService : ISharedBaseImageQueryService
         return $"{registry}/{repository}:{tag}|{sourceReference ?? string.Empty}";
     }
 
+    /// <summary>
+    /// Create the usage data of one grouping of base-image rows
+    /// </summary>
+    /// <param name="group">Rows of one grouping key</param>
+    /// <returns>Shared base image usage data</returns>
+    private static SharedBaseImageUsageData CreateUsageData(IGrouping<string, SharedBaseImageUsageRowData> group)
+    {
+        var first = group.OrderBy(entity => entity.Registry, StringComparer.OrdinalIgnoreCase)
+                         .ThenBy(entity => entity.Repository, StringComparer.OrdinalIgnoreCase)
+                         .ThenBy(entity => entity.Tag, StringComparer.OrdinalIgnoreCase)
+                         .ThenBy(entity => entity.SourceReference, StringComparer.OrdinalIgnoreCase)
+                         .First();
+
+        return new SharedBaseImageUsageData
+               {
+                   BaseImageVersionId = first.BaseImageVersionId,
+                   BaseImageVersionIds = group.Select(entity => entity.BaseImageVersionId)
+                                              .Distinct()
+                                              .ToList(),
+                   Registry = first.Registry,
+                   Repository = first.Repository,
+                   Tag = first.Tag,
+                   Digest = first.Digest,
+                   SourceReferences = group.Select(entity => entity.SourceReference ?? string.Empty)
+                                           .Where(entity => string.IsNullOrWhiteSpace(entity) == false)
+                                           .Distinct(StringComparer.OrdinalIgnoreCase)
+                                           .OrderBy(entity => entity, StringComparer.OrdinalIgnoreCase)
+                                           .ToList(),
+                   ObservedImageCount = group.Select(entity => entity.ObservedImageId)
+                                             .Distinct()
+                                             .Count(),
+                   ConsumingImageVersionIds = group.Select(entity => entity.CurrentImageVersionId)
+                                                   .Distinct()
+                                                   .ToList(),
+               };
+    }
+
+    /// <summary>
+    /// Query the flat rows of enabled observed images and their base-image relationships
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Flat usage rows</returns>
+    private async Task<List<SharedBaseImageUsageRowData>> QueryBaseImageUsageRowsAsync(CancellationToken cancellationToken)
+    {
+        return await _dbContext.ObservedImages.AsNoTracking()
+                                              .Where(observedImage => observedImage.IsEnabled)
+                                              .Join(_dbContext.ImageRelationships.AsNoTracking(),
+                                                    observedImage => observedImage.CurrentImageVersionId,
+                                                    imageRelationship => imageRelationship.ChildImageVersionId,
+                                                    (observedImage, imageRelationship) => new
+                                                                                          {
+                                                                                              observedImage,
+                                                                                              imageRelationship
+                                                                                          })
+                                              .Join(_dbContext.ImageVersions.AsNoTracking(),
+                                                    x => x.imageRelationship.BaseImageVersionId,
+                                                    baseImageVersion => baseImageVersion.Id,
+                                                    (x, baseImageVersion) => new
+                                                                             {
+                                                                                 x.observedImage,
+                                                                                 x.imageRelationship,
+                                                                                 baseImageVersion
+                                                                             })
+                                              .Join(_dbContext.RegistryRepositories.AsNoTracking(),
+                                                    x => x.baseImageVersion.RegistryRepositoryId,
+                                                    registryRepository => registryRepository.Id,
+                                                    (x, registryRepository) => new
+                                                                               {
+                                                                                   x.observedImage,
+                                                                                   x.imageRelationship,
+                                                                                   x.baseImageVersion,
+                                                                                   registryRepository
+                                                                               })
+                                              .Where(x => x.imageRelationship.RelationshipType == ImageRelationshipType.BaseImage)
+                                              .Select(x => new SharedBaseImageUsageRowData
+                                                           {
+                                                               BaseImageVersionId = x.imageRelationship.BaseImageVersionId,
+                                                               Registry = x.registryRepository.Registry,
+                                                               Repository = x.registryRepository.Repository,
+                                                               Tag = x.baseImageVersion.Tag,
+                                                               Digest = x.baseImageVersion.Digest,
+                                                               SourceReference = x.imageRelationship.SourceReference,
+                                                               ObservedImageId = x.observedImage.Id,
+                                                               CurrentImageVersionId = x.observedImage.CurrentImageVersionId,
+                                                           })
+                                              .ToListAsync(cancellationToken)
+                                              .ConfigureAwait(false);
+    }
+
     #endregion // Methods
 
     #region ISharedBaseImageQueryService
@@ -63,49 +152,7 @@ public class SharedBaseImageQueryService : ISharedBaseImageQueryService
     /// <inheritdoc/>
     public async Task<IReadOnlyList<SharedBaseImageUsageData>> GetBaseImagesAsync(CancellationToken cancellationToken = default)
     {
-        var flatResults = await _dbContext.ObservedImages.AsNoTracking()
-                                                         .Where(observedImage => observedImage.IsEnabled)
-                                                         .Join(_dbContext.ImageRelationships.AsNoTracking(),
-                                                               observedImage => observedImage.CurrentImageVersionId,
-                                                               imageRelationship => imageRelationship.ChildImageVersionId,
-                                                               (observedImage, imageRelationship) => new
-                                                                                                     {
-                                                                                                         observedImage,
-                                                                                                         imageRelationship
-                                                                                                     })
-                                                         .Join(_dbContext.ImageVersions.AsNoTracking(),
-                                                               x => x.imageRelationship.BaseImageVersionId,
-                                                               baseImageVersion => baseImageVersion.Id,
-                                                               (x, baseImageVersion) => new
-                                                                                        {
-                                                                                            x.observedImage,
-                                                                                            x.imageRelationship,
-                                                                                            baseImageVersion
-                                                                                        })
-                                                         .Join(_dbContext.RegistryRepositories.AsNoTracking(),
-                                                               x => x.baseImageVersion.RegistryRepositoryId,
-                                                               registryRepository => registryRepository.Id,
-                                                               (x, registryRepository) => new
-                                                                                          {
-                                                                                              x.observedImage,
-                                                                                              x.imageRelationship,
-                                                                                              x.baseImageVersion,
-                                                                                              registryRepository
-                                                                                          })
-                                                         .Where(x => x.imageRelationship.RelationshipType == ImageRelationshipType.BaseImage)
-                                                         .Select(x => new
-                                                                      {
-                                                                          x.imageRelationship.BaseImageVersionId,
-                                                                          x.registryRepository.Registry,
-                                                                          x.registryRepository.Repository,
-                                                                          x.baseImageVersion.Tag,
-                                                                          x.baseImageVersion.Digest,
-                                                                          x.imageRelationship.SourceReference,
-                                                                          ObservedImageId = x.observedImage.Id,
-                                                                          x.observedImage.CurrentImageVersionId,
-                                                                      })
-                                                         .ToListAsync(cancellationToken)
-                                                         .ConfigureAwait(false);
+        var flatResults = await QueryBaseImageUsageRowsAsync(cancellationToken).ConfigureAwait(false);
 
         return flatResults.GroupBy(entity => BuildGroupingKey(entity.Registry,
                                                               entity.Repository,
@@ -113,37 +160,7 @@ public class SharedBaseImageQueryService : ISharedBaseImageQueryService
                                                               entity.Digest,
                                                               entity.SourceReference),
                                    StringComparer.OrdinalIgnoreCase)
-                          .Select(group =>
-                                  {
-                                      var first = group.OrderBy(entity => entity.Registry, StringComparer.OrdinalIgnoreCase)
-                                                       .ThenBy(entity => entity.Repository, StringComparer.OrdinalIgnoreCase)
-                                                       .ThenBy(entity => entity.Tag, StringComparer.OrdinalIgnoreCase)
-                                                       .ThenBy(entity => entity.SourceReference, StringComparer.OrdinalIgnoreCase)
-                                                       .First();
-
-                                      return new SharedBaseImageUsageData
-                                             {
-                                                 BaseImageVersionId = first.BaseImageVersionId,
-                                                 BaseImageVersionIds = group.Select(entity => entity.BaseImageVersionId)
-                                                                            .Distinct()
-                                                                            .ToList(),
-                                                 Registry = first.Registry,
-                                                 Repository = first.Repository,
-                                                 Tag = first.Tag,
-                                                 Digest = first.Digest,
-                                                 SourceReferences = group.Select(entity => entity.SourceReference ?? string.Empty)
-                                                                         .Where(entity => string.IsNullOrWhiteSpace(entity) == false)
-                                                                         .Distinct(StringComparer.OrdinalIgnoreCase)
-                                                                         .OrderBy(entity => entity, StringComparer.OrdinalIgnoreCase)
-                                                                         .ToList(),
-                                                 ObservedImageCount = group.Select(entity => entity.ObservedImageId)
-                                                                           .Distinct()
-                                                                           .Count(),
-                                                 ConsumingImageVersionIds = group.Select(entity => entity.CurrentImageVersionId)
-                                                                                 .Distinct()
-                                                                                 .ToList(),
-                                             };
-                                  })
+                          .Select(CreateUsageData)
                           .OrderByDescending(entity => entity.ObservedImageCount)
                           .ThenBy(entity => entity.Registry)
                           .ThenBy(entity => entity.Repository)
