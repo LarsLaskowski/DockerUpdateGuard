@@ -29,10 +29,5 @@ public class DerivedBaseRuntimeDescriptor
     /// </summary>
     public DerivedBaseRuntimeDetectionSource Source { get; set; }
 
-    /// <summary>
-    /// Evidence string
-    /// </summary>
-    public string? Evidence { get; set; }
-
     #endregion // Properties
 }

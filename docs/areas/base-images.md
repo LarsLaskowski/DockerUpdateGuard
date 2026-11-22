@@ -101,6 +101,8 @@ a base-image update or vulnerability reaches; vulnerability refreshes and the da
 - Variable names are matched case-insensitively; in history the name must be followed by `=`, `:` or whitespace and a
   version. The version is the first `major.minor.patch` in the value (anything after it is ignored); a value without
   three numeric parts is no signal. The channel is `major.minor`.
+- The detection result carries only the runtime kind, version, channel and signal source, never the raw environment
+  entry or history text it was read from.
 
 ### Release feeds and runtime findings
 

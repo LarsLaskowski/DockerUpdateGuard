@@ -35,8 +35,7 @@ public partial class DerivedBaseRuntimeDetector : IDerivedBaseRuntimeDetector
                                     dotNetVersion,
                                     DerivedBaseRuntimeDetectionSource.InspectEnvironment,
                                     sourcePriority: 0,
-                                    order: 0,
-                                    environmentVariable);
+                                    order: 0);
             }
 
             if (TryParseEnvironmentVariable(environmentVariable, "ASPNET_VERSION", out var aspNetVersion))
@@ -46,8 +45,7 @@ public partial class DerivedBaseRuntimeDetector : IDerivedBaseRuntimeDetector
                                     aspNetVersion,
                                     DerivedBaseRuntimeDetectionSource.InspectAspNetEnvironment,
                                     sourcePriority: 2,
-                                    order: 0,
-                                    environmentVariable);
+                                    order: 0);
             }
 
             if (TryParseEnvironmentVariable(environmentVariable, "NGINX_VERSION", out var nginxVersion))
@@ -57,8 +55,7 @@ public partial class DerivedBaseRuntimeDetector : IDerivedBaseRuntimeDetector
                                     nginxVersion,
                                     DerivedBaseRuntimeDetectionSource.InspectEnvironment,
                                     sourcePriority: 1,
-                                    order: 0,
-                                    environmentVariable);
+                                    order: 0);
             }
         }
     }
@@ -87,8 +84,7 @@ public partial class DerivedBaseRuntimeDetector : IDerivedBaseRuntimeDetector
                                     dotNetVersion,
                                     DerivedBaseRuntimeDetectionSource.HistoryEnvironment,
                                     sourcePriority: 1,
-                                    order: index,
-                                    entryText);
+                                    order: index);
             }
 
             if (TryExtractRuntimeVersion(entryText, "ASPNET_VERSION", out var aspNetVersion))
@@ -98,8 +94,7 @@ public partial class DerivedBaseRuntimeDetector : IDerivedBaseRuntimeDetector
                                     aspNetVersion,
                                     DerivedBaseRuntimeDetectionSource.HistoryAspNetEnvironment,
                                     sourcePriority: 3,
-                                    order: index,
-                                    entryText);
+                                    order: index);
             }
 
             var repositoryMatch = HistoryRepositoryVersionRegex().Match(entryText);
@@ -111,8 +106,7 @@ public partial class DerivedBaseRuntimeDetector : IDerivedBaseRuntimeDetector
                                     repositoryMatch.Groups["version"].Value,
                                     DerivedBaseRuntimeDetectionSource.HistoryCommand,
                                     sourcePriority: 4,
-                                    order: index,
-                                    entryText);
+                                    order: index);
             }
 
             if (TryExtractRuntimeVersion(entryText, "NGINX_VERSION", out var nginxVersion))
@@ -122,8 +116,7 @@ public partial class DerivedBaseRuntimeDetector : IDerivedBaseRuntimeDetector
                                     nginxVersion,
                                     DerivedBaseRuntimeDetectionSource.HistoryEnvironment,
                                     sourcePriority: 2,
-                                    order: index,
-                                    entryText);
+                                    order: index);
             }
         }
     }
@@ -137,14 +130,12 @@ public partial class DerivedBaseRuntimeDetector : IDerivedBaseRuntimeDetector
     /// <param name="source">Detection source</param>
     /// <param name="sourcePriority">Source priority</param>
     /// <param name="order">Encounter order</param>
-    /// <param name="evidence">Evidence string</param>
     private static void AddVersionCandidate(IList<RuntimeCandidate> candidates,
                                             DerivedBaseRuntimeKind kind,
                                             string rawVersion,
                                             DerivedBaseRuntimeDetectionSource source,
                                             int sourcePriority,
-                                            int order,
-                                            string? evidence)
+                                            int order)
     {
         if (TryParseRuntimeVersion(rawVersion, out var version) == false || version is null)
         {
@@ -160,7 +151,6 @@ public partial class DerivedBaseRuntimeDetector : IDerivedBaseRuntimeDetector
                            SourcePriority = sourcePriority,
                            Order = order,
                            HasExactVersion = true,
-                           Evidence = evidence,
                        });
     }
 
@@ -304,7 +294,6 @@ public partial class DerivedBaseRuntimeDetector : IDerivedBaseRuntimeDetector
                    RuntimeVersion = bestCandidate.Version,
                    ChannelVersion = bestCandidate.ChannelVersion,
                    Source = bestCandidate.Source,
-                   Evidence = bestCandidate.Evidence,
                };
     }
 
