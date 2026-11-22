@@ -206,6 +206,40 @@ public partial class ImageRegistrationServiceTests
         }
     }
 
+    /// <summary>
+    /// Assert a reference is rejected with the text and nothing is saved
+    /// </summary>
+    /// <param name="imageReference">Image reference</param>
+    /// <param name="expectedMessage">Expected message</param>
+    /// <returns>Task</returns>
+    private static async Task AssertReferenceRejectedBeforeCatalogAsync(string imageReference, string expectedMessage)
+    {
+        using (var database = new SqliteTestDatabase())
+        {
+            var dbContext = database.CreateDbContext();
+
+            await using (dbContext.ConfigureAwait(false))
+            {
+                var service = CreateService(dbContext, _firstRegistrationTime);
+                var request = CreateRequest("Company API", null, imageReference);
+
+                var exception = await Assert.ThrowsExactlyAsync<ReportableException>(() => service.RegisterAsync(request, CancellationToken.None),
+                                                                                     "An over-long reference part must raise a reportable error")
+                                            .ConfigureAwait(false);
+
+                Assert.AreEqual(expectedMessage, exception.Message, "The reportable error must carry the fixed message");
+
+                var registryRepositoryCount = await dbContext.RegistryRepositories.CountAsync(CancellationToken.None).ConfigureAwait(false);
+                var imageVersionCount = await dbContext.ImageVersions.CountAsync(CancellationToken.None).ConfigureAwait(false);
+                var observedImageCount = await dbContext.ObservedImages.CountAsync(CancellationToken.None).ConfigureAwait(false);
+
+                Assert.AreEqual(0, registryRepositoryCount, "A rejected reference must not save a registry repository");
+                Assert.AreEqual(0, imageVersionCount, "A rejected reference must not save an image version");
+                Assert.AreEqual(0, observedImageCount, "A rejected reference must not save an observed image");
+            }
+        }
+    }
+
     #endregion // Static methods
 
     #region Methods
@@ -659,6 +693,28 @@ public partial class ImageRegistrationServiceTests
                 AssertSeedState(storedNewer, "newer", imageVersion, RegistrationSource.Manual);
             }
         }
+    }
+
+    /// <summary>
+    /// Verify an over-long tag is rejected before anything reaches the catalog
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC4")]
+    public Task ImageRegistrationServiceRegisterTooLongTagIsRejectedBeforeCatalogAsync()
+    {
+        return AssertReferenceRejectedBeforeCatalogAsync($"docker.io/company/api:{new string('t', 201)}", "The tag must not be longer than 200 characters");
+    }
+
+    /// <summary>
+    /// Verify an over-long repository is rejected before anything reaches the catalog
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC4")]
+    public Task ImageRegistrationServiceRegisterTooLongRepositoryIsRejectedBeforeCatalogAsync()
+    {
+        return AssertReferenceRejectedBeforeCatalogAsync($"docker.io/company/{new string('a', 293)}:1.0.0", "The repository must not be longer than 300 characters");
     }
 
     #endregion // Methods
