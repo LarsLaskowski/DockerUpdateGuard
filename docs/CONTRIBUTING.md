@@ -130,7 +130,7 @@ never publishes a release (see [`ARCHITECTURE.md`](ARCHITECTURE.md), *Build, CI,
 ### Release plan from 1.3.8
 
 The GitHub milestones are the release plan: one milestone is one release. A release is due when the last open
-issue of its milestone has been closed, not earlier and not later. The current release is **1.3.8**.
+issue of its milestone has been closed, not earlier and not later. The current release is **1.3.10**.
 
 | Milestone                                  | Issues                                                            | Version     | What an operator gets afterwards                                                   |
 | ------------------------------------------ | ----------------------------------------------------------------- | ----------- | ---------------------------------------------------------------------------------- |
