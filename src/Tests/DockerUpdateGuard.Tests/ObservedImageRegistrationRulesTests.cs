@@ -1,5 +1,8 @@
+using DockerUpdateGuard.Data;
+using DockerUpdateGuard.Data.Entities;
 using DockerUpdateGuard.Images;
 using DockerUpdateGuard.Images.Data;
+using DockerUpdateGuard.Tests.Data;
 
 namespace DockerUpdateGuard.Tests;
 
@@ -24,6 +27,18 @@ public class ObservedImageRegistrationRulesTests
                    Tag = "1.0.0",
                    Digest = "sha256:abc",
                };
+    }
+
+    /// <summary>
+    /// Read the maximum length of a property from the model
+    /// </summary>
+    /// <param name="context">Database context</param>
+    /// <param name="entityType">Entity type</param>
+    /// <param name="propertyName">Property name</param>
+    /// <returns>Maximum length, or null when none is configured</returns>
+    private static int? GetMaxLength(DockerUpdateGuardDbContext context, Type entityType, string propertyName)
+    {
+        return context.Model.FindEntityType(entityType)?.FindProperty(propertyName)?.GetMaxLength();
     }
 
     #endregion // Static methods
@@ -214,6 +229,34 @@ public class ObservedImageRegistrationRulesTests
                       "A blank reference must be left to the required check");
         Assert.IsNull(ObservedImageRegistrationRules.GetReferenceError(null),
                       "A missing reference must be left to the required check");
+    }
+
+    /// <summary>
+    /// Verify the limits of the rules equal the maximum lengths of the columns that store the values
+    /// </summary>
+    [TestMethod]
+    [TestCategory("AC5")]
+    public void ObservedImageRegistrationRulesLimitsMatchModelMaxLengths()
+    {
+        using (var database = new SqliteTestDatabase())
+            using (var context = database.CreateDbContext())
+            {
+                Assert.AreEqual(ObservedImageRegistrationRules.MaxNameLength,
+                                GetMaxLength(context, typeof(ObservedImage), nameof(ObservedImage.Name)),
+                                "The name limit must equal the column length");
+                Assert.AreEqual(ObservedImageRegistrationRules.MaxRegistryLength,
+                                GetMaxLength(context, typeof(RegistryRepository), nameof(RegistryRepository.Registry)),
+                                "The registry limit must equal the column length");
+                Assert.AreEqual(ObservedImageRegistrationRules.MaxRepositoryLength,
+                                GetMaxLength(context, typeof(RegistryRepository), nameof(RegistryRepository.Repository)),
+                                "The repository limit must equal the column length");
+                Assert.AreEqual(ObservedImageRegistrationRules.MaxTagLength,
+                                GetMaxLength(context, typeof(ImageVersion), nameof(ImageVersion.Tag)),
+                                "The tag limit must equal the column length");
+                Assert.AreEqual(ObservedImageRegistrationRules.MaxDigestLength,
+                                GetMaxLength(context, typeof(ImageVersion), nameof(ImageVersion.Digest)),
+                                "The digest limit must equal the column length");
+            }
     }
 
     #endregion // Methods
