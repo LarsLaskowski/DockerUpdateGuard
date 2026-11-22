@@ -121,4 +121,3 @@ and the exposure of the CI jobs to `SONAR_TOKEN` and `contents: write` is unchan
 
 - #523: fix the findings, remove the entries.
 - Step 12 `squad-upstream` lesson: add RH2008, RH2009, RH2111 to the template baseline.
-
