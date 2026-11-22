@@ -113,6 +113,11 @@ docker compose pull
 docker compose up -d
 ```
 
+Before updating from a version older than 1.3.10, check your `appsettings.json` (or the environment variable
+`DockerUpdateGuard__DockerHub__Registry`): `DockerHub:Registry` must now be a plain host such as `docker.io`, not a URL
+such as `https://hub.docker.com`; otherwise the container stops at startup with the message `'DockerUpdateGuard:DockerHub:Registry' must be a
+Docker Hub registry host`. An absolute URL there that changed the web API address belongs in `DockerHub:ApiBaseUrl`.
+
 If your `docker-compose.yml` still names `postgres:16-alpine`, `pull` and
 `up -d` keep it on PostgreSQL 16; do not replace it with a newly downloaded
 compose file: follow
