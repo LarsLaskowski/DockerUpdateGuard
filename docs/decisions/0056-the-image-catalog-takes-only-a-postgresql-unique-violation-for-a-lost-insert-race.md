@@ -1,6 +1,6 @@
 # 0056: The image catalog takes only a PostgreSQL unique violation for a lost insert race
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-22
 - **Area:** Image catalog
 - **Source:** Issue #527
