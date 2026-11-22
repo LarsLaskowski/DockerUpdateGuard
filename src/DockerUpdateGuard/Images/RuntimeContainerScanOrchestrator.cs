@@ -505,6 +505,78 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
                    : $"{message} This image must be refreshed by its upstream publisher before the newer NGINX base runtime can be consumed.";
     }
 
+    /// <summary>
+    /// Create the running scan run of a Docker instance
+    /// </summary>
+    /// <param name="dockerInstanceId">Docker instance identifier</param>
+    /// <param name="triggerSource">Trigger source</param>
+    /// <returns>Scan run</returns>
+    private static ScanRun CreateScanRun(Guid dockerInstanceId, ScanTriggerSource triggerSource)
+    {
+        return new ScanRun
+               {
+                   Type = ScanRunType.RuntimeContainer,
+                   Status = ScanRunStatus.Running,
+                   TriggerSource = triggerSource,
+                   DockerInstanceId = dockerInstanceId,
+                   StartedAtUtc = DateTimeOffset.UtcNow,
+               };
+    }
+
+    /// <summary>
+    /// Create the context of a Docker instance scan
+    /// </summary>
+    /// <param name="dockerInstance">Persisted Docker instance</param>
+    /// <param name="configuredInstance">Configured Docker instance options</param>
+    /// <param name="scanRun">Scan run of the current pass</param>
+    /// <param name="ownRepositoryKeys">Repository keys of the application's own images</param>
+    /// <returns>Scan context</returns>
+    private static RuntimeContainerScanContext CreateScanContext(DockerInstance dockerInstance,
+                                                                 DockerInstanceOptions configuredInstance,
+                                                                 ScanRun scanRun,
+                                                                 IReadOnlySet<string> ownRepositoryKeys)
+    {
+        return new RuntimeContainerScanContext
+               {
+                   DockerInstance = dockerInstance,
+                   ConfiguredInstance = configuredInstance,
+                   ScanRun = scanRun,
+                   OwnRepositoryKeys = ownRepositoryKeys,
+               };
+    }
+
+    /// <summary>
+    /// Take the digest the container runs when the image reference carries none
+    /// </summary>
+    /// <param name="parsedReference">Parsed runtime image reference</param>
+    /// <param name="container">Discovered runtime container</param>
+    private static void ApplyRunningDigest(ImageReference parsedReference, RuntimeContainerDescriptor container)
+    {
+        if (string.IsNullOrWhiteSpace(parsedReference.Digest)
+            && string.IsNullOrWhiteSpace(container.ImageDigest) == false)
+        {
+            parsedReference.Digest = container.ImageDigest.Trim().ToLowerInvariant();
+        }
+    }
+
+    /// <summary>
+    /// Mark a snapshot as failed and keep the findings that were active before
+    /// </summary>
+    /// <param name="snapshot">Container snapshot</param>
+    /// <param name="failureMessage">Failure message</param>
+    /// <param name="previousFindings">Findings loaded before the container was processed</param>
+    private static void MarkSnapshotFailed(ContainerSnapshot snapshot,
+                                           string failureMessage,
+                                           IReadOnlyList<UpdateFinding> previousFindings)
+    {
+        snapshot.UpdateAssessmentStatus = UpdateAssessmentStatus.Failed;
+        snapshot.UpdateAssessmentMessage = failureMessage;
+
+        // A failure inside DeactivateSupersededRuntimeFindingsAsync can leave the previous and the new update
+        // finding both active here; the next evaluated scan deactivates both (accepted).
+        KeepActiveFindings(previousFindings, snapshot);
+    }
+
     #endregion // Static methods
 
     #region Methods
@@ -551,17 +623,10 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
                                                CancellationToken cancellationToken)
     {
         var processedContainerCount = 0;
-        var scanRun = new ScanRun
-                      {
-                          Type = ScanRunType.RuntimeContainer,
-                          Status = ScanRunStatus.Running,
-                          TriggerSource = triggerSource,
-                          DockerInstanceId = dockerInstance.Id,
-                          StartedAtUtc = DateTimeOffset.UtcNow,
-                      };
+        var scanRun = CreateScanRun(dockerInstance.Id, triggerSource);
         var stopwatch = Stopwatch.StartNew();
         var statusMessages = new List<string>();
-        var finalStatus = ScanRunStatus.Succeeded;
+        ScanRunStatus finalStatus;
 
         _logger.RuntimeContainerScanStarted(dockerInstance.Name, triggerSource);
 
@@ -576,6 +641,10 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
         try
         {
             var ownRepositoryKeys = await LoadOwnRepositoryKeysAsync(cancellationToken).ConfigureAwait(false);
+            var scanContext = CreateScanContext(dockerInstance,
+                                                configuredInstance,
+                                                scanRun,
+                                                ownRepositoryKeys);
             var discoveryResult = await _dockerInstanceClient.DiscoverContainersAsync(configuredInstance, cancellationToken)
                                                              .ConfigureAwait(false);
 
@@ -598,29 +667,10 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
                     _logger.RuntimeContainerScanFoundNoContainers(dockerInstance.Name);
                 }
 
-                foreach (var container in discoveryResult.Data)
-                {
-                    var containerFailureMessage = await ProcessContainerAsync(dockerInstance,
-                                                                              configuredInstance,
-                                                                              scanRun,
-                                                                              container,
-                                                                              ownRepositoryKeys,
-                                                                              cancellationToken).ConfigureAwait(false);
-
-                    if (containerFailureMessage is not null)
-                    {
-                        finalStatus = ScanRunStatus.Partial;
-
-                        statusMessages.Add(containerFailureMessage);
-                    }
-                }
-
-                var discoveredContainerIds = discoveryResult.Data.Select(entity => entity.ContainerId)
-                                                                 .ToHashSet(StringComparer.Ordinal);
-
-                await DeactivateRemovedRuntimeFindingsAsync(dockerInstance.Id,
-                                                            discoveredContainerIds,
-                                                            cancellationToken).ConfigureAwait(false);
+                finalStatus = await ProcessDiscoveredContainersAsync(scanContext,
+                                                                     discoveryResult.Data,
+                                                                     statusMessages,
+                                                                     cancellationToken).ConfigureAwait(false);
             }
         }
         catch (Exception exception)
@@ -632,22 +682,12 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
             _logger.RuntimeContainerScanFailed(exception, dockerInstance.Name);
         }
 
-        scanRun.Status = finalStatus;
-        scanRun.CompletedAtUtc = DateTimeOffset.UtcNow;
-        scanRun.ErrorMessage = statusMessages.Count == 0 ? null : string.Join(Environment.NewLine, statusMessages.Distinct());
-
-        await SaveScanRunAsync(scanRun,
-                               true,
-                               statusMessages,
-                               dockerInstance.Name,
-                               cancellationToken).ConfigureAwait(false);
-
-        await _applicationTelemetry.RefreshInventoryMetricsAsync(_dbContext, cancellationToken)
-                                   .ConfigureAwait(false);
-
-        _applicationTelemetry.RecordScanRun(ScanRunType.RuntimeContainer,
-                                            finalStatus,
-                                            stopwatch.Elapsed);
+        await CompleteScanRunAsync(scanRun,
+                                   finalStatus,
+                                   statusMessages,
+                                   dockerInstance.Name,
+                                   stopwatch,
+                                   cancellationToken).ConfigureAwait(false);
 
         _logger.RuntimeContainerScanCompleted(dockerInstance.Name,
                                               finalStatus,
@@ -659,20 +699,15 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
     /// <summary>
     /// Process a single discovered runtime container
     /// </summary>
-    /// <param name="dockerInstance">Persisted Docker instance</param>
-    /// <param name="configuredInstance">Configured Docker instance options</param>
-    /// <param name="scanRun">Owning scan run</param>
+    /// <param name="scanContext">Context of the instance scan</param>
     /// <param name="container">Discovered runtime container</param>
-    /// <param name="ownRepositoryKeys">Repository keys of the observed own images</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Failure message when the container could not be evaluated completely, otherwise null</returns>
-    private async Task<string?> ProcessContainerAsync(DockerInstance dockerInstance,
-                                                      DockerInstanceOptions configuredInstance,
-                                                      ScanRun scanRun,
+    private async Task<string?> ProcessContainerAsync(RuntimeContainerScanContext scanContext,
                                                       RuntimeContainerDescriptor container,
-                                                      IReadOnlySet<string> ownRepositoryKeys,
                                                       CancellationToken cancellationToken)
     {
+        var dockerInstance = scanContext.DockerInstance;
         ContainerSnapshot? snapshot = null;
         ContainerSnapshot? previousSnapshot = null;
         IReadOnlyList<UpdateFinding> previousFindings = [];
@@ -689,11 +724,7 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
 
         try
         {
-            if (string.IsNullOrWhiteSpace(parsedReference.Digest)
-                && string.IsNullOrWhiteSpace(container.ImageDigest) == false)
-            {
-                parsedReference.Digest = container.ImageDigest.Trim().ToLowerInvariant();
-            }
+            ApplyRunningDigest(parsedReference, container);
 
             if (RegistryReferenceValidator.ValidReferenceOrNull(parsedReference) is null)
             {
@@ -707,114 +738,38 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
                                                                container.ContainerId,
                                                                cancellationToken).ConfigureAwait(false);
 
-            var imageVersion = await _imageCatalogRepository.GetOrCreateImageVersionAsync(parsedReference.Registry,
-                                                                                          parsedReference.Repository,
-                                                                                          parsedReference.Tag,
-                                                                                          parsedReference.Digest,
-                                                                                          cancellationToken: cancellationToken)
-                                                            .ConfigureAwait(false);
-
-            imageVersion.Source = ImageVersionSource.RuntimeContainer;
+            var imageVersion = await GetOrCreateRuntimeImageVersionAsync(parsedReference, cancellationToken).ConfigureAwait(false);
 
             snapshot = CreateSnapshot(dockerInstance,
-                                      scanRun,
+                                      scanContext.ScanRun,
                                       container,
                                       imageVersion.Id,
                                       (previousSnapshot, parsedReference.Digest));
 
             _dbContext.ContainerSnapshots.Add(snapshot);
 
-            var inspectData = await GetCurrentImageInspectDataAsync(configuredInstance,
-                                                                    container,
-                                                                    cancellationToken).ConfigureAwait(false);
-            var currentTagResult = await _registryMetadataService.GetTagAsync(parsedReference,
-                                                                              inspectData?.OperatingSystem,
-                                                                              inspectData?.Architecture,
-                                                                              cancellationToken)
-                                                                 .ConfigureAwait(false);
-            var currentTagData = currentTagResult.Status == ExternalOperationStatus.Succeeded
-                                     ? currentTagResult.Data
-                                     : null;
-            var tagsResult = await _registryMetadataService.GetTagsAsync(parsedReference.Registry,
-                                                                         parsedReference.Repository,
-                                                                         inspectData?.OperatingSystem,
-                                                                         inspectData?.Architecture,
-                                                                         CreateTagQueryOptions(parsedReference, currentTagData),
-                                                                         cancellationToken)
-                                                           .ConfigureAwait(false);
-            var repositoryTags = tagsResult.Status == ExternalOperationStatus.Succeeded
-                                     ? tagsResult.Data
-                                     : null;
-            var evaluated = false;
-            string? failureMessage = null;
-
-            if (repositoryTags is not null)
-            {
-                evaluated = true;
-
-                await EvaluateContainerUpdateAsync(scanRun,
-                                                   snapshot,
-                                                   imageVersion,
-                                                   parsedReference,
-                                                   repositoryTags,
-                                                   currentTagData,
-                                                   cancellationToken).ConfigureAwait(false);
-            }
-            else
-            {
-                failureMessage = ApplyUnevaluatedTagResult(snapshot,
-                                                           dockerInstance.Name,
-                                                           parsedReference.FullReference,
-                                                           tagsResult,
-                                                           out evaluated);
-
-                if (evaluated == false)
-                {
-                    KeepActiveFindings(previousFindings, snapshot);
-                }
-            }
-
-            if (evaluated)
-            {
-                await DeactivateSupersededRuntimeFindingsAsync(dockerInstance.Id,
-                                                               container.ContainerId,
-                                                               cancellationToken).ConfigureAwait(false);
-
-                var findingContext = new RuntimeFindingContext
-                                     {
-                                         ScanRun = scanRun,
-                                         Snapshot = snapshot,
-                                         SubjectImageVersion = imageVersion,
-                                         DockerInstanceName = dockerInstance.Name,
-                                     };
-
-                await CreateDerivedBaseRuntimeFindingAsync(findingContext,
-                                                           container,
-                                                           inspectData,
-                                                           configuredInstance,
-                                                           ownRepositoryKeys,
-                                                           cancellationToken).ConfigureAwait(false);
-            }
-
-            return failureMessage;
+            return await EvaluateContainerSnapshotAsync(scanContext,
+                                                        container,
+                                                        snapshot,
+                                                        imageVersion,
+                                                        parsedReference,
+                                                        previousFindings,
+                                                        cancellationToken).ConfigureAwait(false);
         }
         catch (Exception exception)
         {
             var failureMessage = $"Container '{container.Name}' could not be processed: {FailureReason.FromException(exception, null, cancellationToken)}";
 
             snapshot ??= CreateFallbackSnapshot(dockerInstance,
-                                                scanRun,
+                                                scanContext.ScanRun,
                                                 container,
                                                 (previousSnapshot, parsedReference.Digest));
 
             if (snapshot is not null)
             {
-                snapshot.UpdateAssessmentStatus = UpdateAssessmentStatus.Failed;
-                snapshot.UpdateAssessmentMessage = failureMessage;
-
-                // A failure inside DeactivateSupersededRuntimeFindingsAsync can leave the previous and the new update
-                // finding both active here; the next evaluated scan deactivates both (accepted).
-                KeepActiveFindings(previousFindings, snapshot);
+                MarkSnapshotFailed(snapshot,
+                                   failureMessage,
+                                   previousFindings);
             }
 
             _logger.RuntimeContainerProcessingFailed(exception,
@@ -824,6 +779,212 @@ public class RuntimeContainerScanOrchestrator : IRuntimeContainerScanOrchestrato
 
             return failureMessage;
         }
+    }
+
+    /// <summary>
+    /// Complete the scan run, save it and record the scan telemetry
+    /// </summary>
+    /// <param name="scanRun">Scan run</param>
+    /// <param name="finalStatus">Final status</param>
+    /// <param name="statusMessages">Collected status messages</param>
+    /// <param name="subjectName">Name of the scanned Docker instance for the log</param>
+    /// <param name="stopwatch">Stopwatch of the scan</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Task</returns>
+    private async Task CompleteScanRunAsync(ScanRun scanRun,
+                                            ScanRunStatus finalStatus,
+                                            List<string> statusMessages,
+                                            string subjectName,
+                                            Stopwatch stopwatch,
+                                            CancellationToken cancellationToken)
+    {
+        ScanRunCompletion.Complete(scanRun, finalStatus, statusMessages);
+
+        await SaveScanRunAsync(scanRun,
+                               true,
+                               statusMessages,
+                               subjectName,
+                               cancellationToken).ConfigureAwait(false);
+
+        await _applicationTelemetry.RefreshInventoryMetricsAsync(_dbContext, cancellationToken)
+                                   .ConfigureAwait(false);
+
+        _applicationTelemetry.RecordScanRun(ScanRunType.RuntimeContainer,
+                                            finalStatus,
+                                            stopwatch.Elapsed);
+    }
+
+    /// <summary>
+    /// Process the discovered containers of an instance and deactivate the findings of removed containers
+    /// </summary>
+    /// <param name="scanContext">Context of the instance scan</param>
+    /// <param name="containers">Discovered containers</param>
+    /// <param name="statusMessages">Collected status messages</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Partial when a container could not be evaluated completely, otherwise succeeded</returns>
+    private async Task<ScanRunStatus> ProcessDiscoveredContainersAsync(RuntimeContainerScanContext scanContext,
+                                                                       IReadOnlyList<RuntimeContainerDescriptor> containers,
+                                                                       List<string> statusMessages,
+                                                                       CancellationToken cancellationToken)
+    {
+        var finalStatus = ScanRunStatus.Succeeded;
+
+        foreach (var container in containers)
+        {
+            var containerFailureMessage = await ProcessContainerAsync(scanContext,
+                                                                      container,
+                                                                      cancellationToken).ConfigureAwait(false);
+
+            if (containerFailureMessage is not null)
+            {
+                finalStatus = ScanRunStatus.Partial;
+
+                statusMessages.Add(containerFailureMessage);
+            }
+        }
+
+        var discoveredContainerIds = containers.Select(entity => entity.ContainerId)
+                                               .ToHashSet(StringComparer.Ordinal);
+
+        await DeactivateRemovedRuntimeFindingsAsync(scanContext.DockerInstance.Id,
+                                                    discoveredContainerIds,
+                                                    cancellationToken).ConfigureAwait(false);
+
+        return finalStatus;
+    }
+
+    /// <summary>
+    /// Get or create the image version of a runtime container
+    /// </summary>
+    /// <param name="parsedReference">Parsed runtime image reference</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Image version marked as runtime container source</returns>
+    private async Task<ImageVersion> GetOrCreateRuntimeImageVersionAsync(ImageReference parsedReference, CancellationToken cancellationToken)
+    {
+        var imageVersion = await _imageCatalogRepository.GetOrCreateImageVersionAsync(parsedReference.Registry,
+                                                                                      parsedReference.Repository,
+                                                                                      parsedReference.Tag,
+                                                                                      parsedReference.Digest,
+                                                                                      cancellationToken: cancellationToken)
+                                                        .ConfigureAwait(false);
+
+        imageVersion.Source = ImageVersionSource.RuntimeContainer;
+
+        return imageVersion;
+    }
+
+    /// <summary>
+    /// Load the tag metadata of the running image and the repository tags of its repository
+    /// </summary>
+    /// <param name="parsedReference">Parsed runtime image reference</param>
+    /// <param name="inspectData">Inspect data of the running image</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Tag metadata of the running image, if any, and the repository tags result</returns>
+    private async Task<(DockerHubTagData? CurrentTagData, ExternalOperationResult<IReadOnlyList<DockerHubTagData>> TagsResult)> LoadContainerTagDataAsync(ImageReference parsedReference,
+                                                                                                                                                          DockerImageInspectData? inspectData,
+                                                                                                                                                          CancellationToken cancellationToken)
+    {
+        var currentTagResult = await _registryMetadataService.GetTagAsync(parsedReference,
+                                                                          inspectData?.OperatingSystem,
+                                                                          inspectData?.Architecture,
+                                                                          cancellationToken)
+                                                             .ConfigureAwait(false);
+        var currentTagData = currentTagResult.Status == ExternalOperationStatus.Succeeded
+                                 ? currentTagResult.Data
+                                 : null;
+        var tagsResult = await _registryMetadataService.GetTagsAsync(parsedReference.Registry,
+                                                                     parsedReference.Repository,
+                                                                     inspectData?.OperatingSystem,
+                                                                     inspectData?.Architecture,
+                                                                     CreateTagQueryOptions(parsedReference, currentTagData),
+                                                                     cancellationToken)
+                                                       .ConfigureAwait(false);
+
+        return (currentTagData, tagsResult);
+    }
+
+    /// <summary>
+    /// Evaluate the registry tags of a runtime container and persist the resulting findings
+    /// </summary>
+    /// <param name="scanContext">Context of the instance scan</param>
+    /// <param name="container">Discovered runtime container</param>
+    /// <param name="snapshot">Container snapshot</param>
+    /// <param name="imageVersion">Current image version</param>
+    /// <param name="parsedReference">Parsed runtime image reference</param>
+    /// <param name="previousFindings">Findings loaded before the container was processed</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Failure message when the container could not be evaluated completely, otherwise null</returns>
+    private async Task<string?> EvaluateContainerSnapshotAsync(RuntimeContainerScanContext scanContext,
+                                                               RuntimeContainerDescriptor container,
+                                                               ContainerSnapshot snapshot,
+                                                               ImageVersion imageVersion,
+                                                               ImageReference parsedReference,
+                                                               IReadOnlyList<UpdateFinding> previousFindings,
+                                                               CancellationToken cancellationToken)
+    {
+        var dockerInstance = scanContext.DockerInstance;
+        var inspectData = await GetCurrentImageInspectDataAsync(scanContext.ConfiguredInstance,
+                                                                container,
+                                                                cancellationToken).ConfigureAwait(false);
+        var (currentTagData, tagsResult) = await LoadContainerTagDataAsync(parsedReference,
+                                                                           inspectData,
+                                                                           cancellationToken).ConfigureAwait(false);
+
+        var repositoryTags = tagsResult.Status == ExternalOperationStatus.Succeeded
+                                 ? tagsResult.Data
+                                 : null;
+        var evaluated = false;
+        string? failureMessage = null;
+
+        if (repositoryTags is not null)
+        {
+            evaluated = true;
+
+            await EvaluateContainerUpdateAsync(scanContext.ScanRun,
+                                               snapshot,
+                                               imageVersion,
+                                               parsedReference,
+                                               repositoryTags,
+                                               currentTagData,
+                                               cancellationToken).ConfigureAwait(false);
+        }
+        else
+        {
+            failureMessage = ApplyUnevaluatedTagResult(snapshot,
+                                                       dockerInstance.Name,
+                                                       parsedReference.FullReference,
+                                                       tagsResult,
+                                                       out evaluated);
+
+            if (evaluated == false)
+            {
+                KeepActiveFindings(previousFindings, snapshot);
+            }
+        }
+
+        if (evaluated)
+        {
+            await DeactivateSupersededRuntimeFindingsAsync(dockerInstance.Id,
+                                                           container.ContainerId,
+                                                           cancellationToken).ConfigureAwait(false);
+
+            var findingContext = new RuntimeFindingContext
+                                 {
+                                     ScanRun = scanContext.ScanRun,
+                                     Snapshot = snapshot,
+                                     SubjectImageVersion = imageVersion,
+                                     DockerInstanceName = dockerInstance.Name,
+                                 };
+
+            await CreateDerivedBaseRuntimeFindingAsync(findingContext,
+                                                       container,
+                                                       inspectData,
+                                                       scanContext.ConfiguredInstance,
+                                                       scanContext.OwnRepositoryKeys,
+                                                       cancellationToken).ConfigureAwait(false);
+        }
+
+        return failureMessage;
     }
 
     /// <summary>

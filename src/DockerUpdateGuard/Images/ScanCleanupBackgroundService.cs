@@ -108,6 +108,97 @@ public class ScanCleanupBackgroundService : ScheduledBackgroundService
         return intervalThreshold < minimumThreshold ? minimumThreshold : intervalThreshold;
     }
 
+    /// <summary>
+    /// Load the tag candidates that are removable: those of long resolved findings and those without a digest
+    /// </summary>
+    /// <param name="dbContext">Database context</param>
+    /// <param name="cutoff">Retention cutoff</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Removable tag candidates</returns>
+    private static async Task<List<TagCandidate>> LoadRemovableTagCandidatesAsync(DockerUpdateGuardDbContext dbContext,
+                                                                                  DateTimeOffset cutoff,
+                                                                                  CancellationToken cancellationToken)
+    {
+        var oldTagCandidates = await dbContext.TagCandidates
+                                              .Where(entity => entity.UpdateFinding.ResolvedAtUtc != null
+                                                               && entity.UpdateFinding.ResolvedAtUtc < cutoff)
+                                              .ToListAsync(cancellationToken)
+                                              .ConfigureAwait(false);
+
+        var invalidTagCandidates = await dbContext.TagCandidates
+                                                  .Where(entity => entity.Digest == null || entity.Digest == string.Empty)
+                                                  .ToListAsync(cancellationToken)
+                                                  .ConfigureAwait(false);
+
+        return oldTagCandidates.Concat(invalidTagCandidates)
+                               .DistinctBy(entity => entity.Id)
+                               .ToList();
+    }
+
+    /// <summary>
+    /// Load the completed scan runs that are removable: those older than the cutoff and those beyond the retained count
+    /// </summary>
+    /// <param name="dbContext">Database context</param>
+    /// <param name="cleanupStartedAtUtc">Start of the cleanup</param>
+    /// <param name="cutoff">Retention cutoff</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Removable scan runs</returns>
+    private static async Task<List<ScanRun>> LoadRemovableScanRunsAsync(DockerUpdateGuardDbContext dbContext,
+                                                                        DateTimeOffset cleanupStartedAtUtc,
+                                                                        DateTimeOffset cutoff,
+                                                                        CancellationToken cancellationToken)
+    {
+        var completedUnreferencedScanRuns = dbContext.ScanRuns
+                                                     .Where(entity => entity.CompletedAtUtc != null
+                                                                      && entity.CompletedAtUtc <= cleanupStartedAtUtc
+                                                                      && entity.UpdateFindings.Any() == false
+                                                                      && entity.VulnerabilityFindings.Any() == false
+                                                                      && entity.ContainerSnapshots.Any() == false
+                                                                      && entity.ImageRelationships.Any() == false);
+
+        var retainedScanRunIds = await completedUnreferencedScanRuns.OrderByDescending(entity => entity.CompletedAtUtc)
+                                                                    .Take(MaxRetainedScanRuns)
+                                                                    .Select(entity => entity.Id)
+                                                                    .ToListAsync(cancellationToken)
+                                                                    .ConfigureAwait(false);
+
+        var oldScanRuns = await completedUnreferencedScanRuns.Where(entity => entity.CompletedAtUtc < cutoff)
+                                                             .ToListAsync(cancellationToken)
+                                                             .ConfigureAwait(false);
+
+        var excessScanRuns = await completedUnreferencedScanRuns.Where(entity => retainedScanRunIds.Contains(entity.Id) == false)
+                                                                .ToListAsync(cancellationToken)
+                                                                .ConfigureAwait(false);
+
+        return oldScanRuns.Concat(excessScanRuns)
+                          .DistinctBy(entity => entity.Id)
+                          .ToList();
+    }
+
+    /// <summary>
+    /// Load the resource samples older than the cutoff
+    /// </summary>
+    /// <param name="dbContext">Database context</param>
+    /// <param name="cutoff">Retention cutoff</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Old container resource samples and old Docker instance resource samples</returns>
+    private static async Task<(List<RuntimeContainerResourceSample> ContainerSamples, List<DockerInstanceResourceSample> InstanceSamples)> LoadOldResourceSamplesAsync(DockerUpdateGuardDbContext dbContext,
+                                                                                                                                                                       DateTimeOffset cutoff,
+                                                                                                                                                                       CancellationToken cancellationToken)
+    {
+        var oldRuntimeContainerSamples = await dbContext.RuntimeContainerResourceSamples
+                                                        .Where(entity => entity.RecordedAtUtc < cutoff)
+                                                        .ToListAsync(cancellationToken)
+                                                        .ConfigureAwait(false);
+
+        var oldDockerInstanceSamples = await dbContext.DockerInstanceResourceSamples
+                                                      .Where(entity => entity.RecordedAtUtc < cutoff)
+                                                      .ToListAsync(cancellationToken)
+                                                      .ConfigureAwait(false);
+
+        return (oldRuntimeContainerSamples, oldDockerInstanceSamples);
+    }
+
     #endregion // Static methods
 
     #region Methods
@@ -201,30 +292,9 @@ public class ScanCleanupBackgroundService : ScheduledBackgroundService
             var liveImageVersionIds = await liveImageInventoryQueryService.GetLiveImageVersionIdsAsync(stoppingToken).ConfigureAwait(false);
             var liveImageVersionIdList = liveImageVersionIds.ToList();
 
-            var completedUnreferencedScanRuns = dbContext.ScanRuns
-                                                         .Where(entity => entity.CompletedAtUtc != null
-                                                                          && entity.CompletedAtUtc <= cleanupStartedAtUtc
-                                                                          && entity.UpdateFindings.Any() == false
-                                                                          && entity.VulnerabilityFindings.Any() == false
-                                                                          && entity.ContainerSnapshots.Any() == false
-                                                                          && entity.ImageRelationships.Any() == false);
-
-            var retainedScanRunIds = await completedUnreferencedScanRuns.OrderByDescending(entity => entity.CompletedAtUtc)
-                                                                        .Take(MaxRetainedScanRuns)
-                                                                        .Select(entity => entity.Id)
-                                                                        .ToListAsync(stoppingToken)
-                                                                        .ConfigureAwait(false);
-
-            var oldTagCandidates = await dbContext.TagCandidates
-                                                  .Where(entity => entity.UpdateFinding.ResolvedAtUtc != null
-                                                                   && entity.UpdateFinding.ResolvedAtUtc < cutoff)
-                                                  .ToListAsync(stoppingToken)
-                                                  .ConfigureAwait(false);
-
-            var invalidTagCandidates = await dbContext.TagCandidates
-                                                      .Where(entity => entity.Digest == null || entity.Digest == string.Empty)
-                                                      .ToListAsync(stoppingToken)
-                                                      .ConfigureAwait(false);
+            var removableTagCandidates = await LoadRemovableTagCandidatesAsync(dbContext,
+                                                                               cutoff,
+                                                                               stoppingToken).ConfigureAwait(false);
 
             var oldUpdateFindings = await dbContext.UpdateFindings
                                                    .Where(entity => entity.IsActive == false
@@ -249,31 +319,14 @@ public class ScanCleanupBackgroundService : ScheduledBackgroundService
                                               .ToListAsync(stoppingToken)
                                               .ConfigureAwait(false);
 
-            var oldScanRuns = await completedUnreferencedScanRuns.Where(entity => entity.CompletedAtUtc < cutoff)
-                                                                 .ToListAsync(stoppingToken)
-                                                                 .ConfigureAwait(false);
+            var removableScanRuns = await LoadRemovableScanRunsAsync(dbContext,
+                                                                     cleanupStartedAtUtc,
+                                                                     cutoff,
+                                                                     stoppingToken).ConfigureAwait(false);
 
-            var excessScanRuns = await completedUnreferencedScanRuns.Where(entity => retainedScanRunIds.Contains(entity.Id) == false)
-                                                                    .ToListAsync(stoppingToken)
-                                                                    .ConfigureAwait(false);
-
-            var oldRuntimeContainerSamples = await dbContext.RuntimeContainerResourceSamples
-                                                            .Where(entity => entity.RecordedAtUtc < cutoff)
-                                                            .ToListAsync(stoppingToken)
-                                                            .ConfigureAwait(false);
-
-            var oldDockerInstanceSamples = await dbContext.DockerInstanceResourceSamples
-                                                          .Where(entity => entity.RecordedAtUtc < cutoff)
-                                                          .ToListAsync(stoppingToken)
-                                                          .ConfigureAwait(false);
-
-            var removableTagCandidates = oldTagCandidates.Concat(invalidTagCandidates)
-                                                         .DistinctBy(entity => entity.Id)
-                                                         .ToList();
-
-            var removableScanRuns = oldScanRuns.Concat(excessScanRuns)
-                                               .DistinctBy(entity => entity.Id)
-                                               .ToList();
+            var (oldRuntimeContainerSamples, oldDockerInstanceSamples) = await LoadOldResourceSamplesAsync(dbContext,
+                                                                                                           cutoff,
+                                                                                                           stoppingToken).ConfigureAwait(false);
 
             dbContext.TagCandidates.RemoveRange(removableTagCandidates);
             dbContext.UpdateFindings.RemoveRange(oldUpdateFindings);

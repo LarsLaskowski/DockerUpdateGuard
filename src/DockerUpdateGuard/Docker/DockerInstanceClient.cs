@@ -931,6 +931,28 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
         }
     }
 
+    /// <summary>
+    /// Parse the container descriptors of a container listing, skipping entries without a storable identifier
+    /// </summary>
+    /// <param name="root">Root element of the container listing</param>
+    /// <returns>Container descriptors</returns>
+    private static List<RuntimeContainerDescriptor> ParseContainers(JsonElement root)
+    {
+        var containers = new List<RuntimeContainerDescriptor>();
+
+        foreach (var element in root.EnumerateArray())
+        {
+            if (HasStorableId(element) == false)
+            {
+                continue;
+            }
+
+            containers.Add(ParseContainer(element));
+        }
+
+        return containers;
+    }
+
     #endregion // Static methods
 
     #region Methods
@@ -1080,6 +1102,50 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
         }
     }
 
+    /// <summary>
+    /// Read the resource samples of the listed containers
+    /// </summary>
+    /// <param name="httpClient">HTTP client</param>
+    /// <param name="instanceOptions">Docker instance options</param>
+    /// <param name="root">Root element of the container listing</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Resource samples or the failure when no container stats could be read</returns>
+    private async Task<ExternalOperationResult<IReadOnlyList<RuntimeContainerResourceDescriptor>>> ReadContainerSamplesAsync(HttpClient httpClient,
+                                                                                                                             DockerInstanceOptions instanceOptions,
+                                                                                                                             JsonElement root,
+                                                                                                                             CancellationToken cancellationToken)
+    {
+        var samples = new List<RuntimeContainerResourceDescriptor>();
+        var requestedCount = 0;
+
+        foreach (var containerElement in root.EnumerateArray())
+        {
+            var containerId = TryGetString(containerElement, "Id");
+
+            if (string.IsNullOrWhiteSpace(containerId)
+                || containerId.Length > MaxContainerIdLength)
+            {
+                continue;
+            }
+
+            requestedCount++;
+
+            var sample = await TryReadContainerSampleAsync(httpClient, instanceOptions, containerElement, containerId, cancellationToken).ConfigureAwait(false);
+
+            if (sample is not null)
+            {
+                samples.Add(sample);
+            }
+        }
+
+        if (requestedCount > 0 && samples.Count == 0)
+        {
+            return ExternalOperationResult.Failed<IReadOnlyList<RuntimeContainerResourceDescriptor>>($"Docker container resource sampling failed for '{instanceOptions.Name}': no container stats could be read");
+        }
+
+        return ExternalOperationResult.Succeeded<IReadOnlyList<RuntimeContainerResourceDescriptor>>(samples);
+    }
+
     #endregion // Methods
 
     #region IDockerInstanceClient
@@ -1131,17 +1197,7 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
             {
                 using var jsonDocument = await RemoteJsonDocument.ParseAsync(responseStream, requestTimeoutSource.Token)
                                                                  .ConfigureAwait(false);
-                var containers = new List<RuntimeContainerDescriptor>();
-
-                foreach (var element in jsonDocument.RootElement.EnumerateArray())
-                {
-                    if (HasStorableId(element) == false)
-                    {
-                        continue;
-                    }
-
-                    containers.Add(ParseContainer(element));
-                }
+                var containers = ParseContainers(jsonDocument.RootElement);
 
                 await PopulateRepositoryDigestsAsync(httpClient,
                                                      instanceOptions,
@@ -1208,35 +1264,11 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
             {
                 using var jsonDocument = await RemoteJsonDocument.ParseAsync(responseStream, requestTimeoutSource.Token)
                                                                  .ConfigureAwait(false);
-                var samples = new List<RuntimeContainerResourceDescriptor>();
-                var requestedCount = 0;
 
-                foreach (var containerElement in jsonDocument.RootElement.EnumerateArray())
-                {
-                    var containerId = TryGetString(containerElement, "Id");
-
-                    if (string.IsNullOrWhiteSpace(containerId)
-                        || containerId.Length > MaxContainerIdLength)
-                    {
-                        continue;
-                    }
-
-                    requestedCount++;
-
-                    var sample = await TryReadContainerSampleAsync(httpClient, instanceOptions, containerElement, containerId, cancellationToken).ConfigureAwait(false);
-
-                    if (sample is not null)
-                    {
-                        samples.Add(sample);
-                    }
-                }
-
-                if (requestedCount > 0 && samples.Count == 0)
-                {
-                    return ExternalOperationResult.Failed<IReadOnlyList<RuntimeContainerResourceDescriptor>>($"Docker container resource sampling failed for '{instanceOptions.Name}': no container stats could be read");
-                }
-
-                return ExternalOperationResult.Succeeded<IReadOnlyList<RuntimeContainerResourceDescriptor>>(samples);
+                return await ReadContainerSamplesAsync(httpClient,
+                                                       instanceOptions,
+                                                       jsonDocument.RootElement,
+                                                       cancellationToken).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)

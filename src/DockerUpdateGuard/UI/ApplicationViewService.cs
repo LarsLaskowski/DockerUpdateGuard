@@ -20,11 +20,6 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
     #region Fields
 
     /// <summary>
-    /// Maximum number of tag candidates exposed to detail views
-    /// </summary>
-    private const int MaxAvailableTagCandidates = 50;
-
-    /// <summary>
     /// Maximum number of resource samples shown in runtime list sparklines
     /// </summary>
     private const int RuntimeListResourceHistoryCount = 12;
@@ -94,258 +89,6 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
     #endregion // Constructors
 
     #region Static methods
-
-    /// <summary>
-    /// Map a vulnerability finding to view data
-    /// </summary>
-    /// <param name="entity">Vulnerability finding entity</param>
-    /// <param name="isNewSinceLastScan">Whether the finding was newly detected in the most recent completed vulnerability scan</param>
-    /// <returns>Vulnerability finding view data</returns>
-    private static VulnerabilityFindingViewData MapVulnerabilityFinding(VulnerabilityFinding entity, bool isNewSinceLastScan)
-    {
-        return new VulnerabilityFindingViewData
-               {
-                   AdvisoryId = entity.AdvisoryId,
-                   Title = entity.Title,
-                   Severity = entity.Severity.ToString(),
-                   Source = entity.Source.ToString(),
-                   Summary = entity.Summary,
-                   AffectedPackage = entity.AffectedPackage,
-                   InstalledVersion = entity.InstalledVersion,
-                   FixedVersion = entity.FixedVersion,
-                   CvssScore = entity.CvssScore,
-                   ReferenceUrl = SanitizeHttpUrl(entity.ReferenceUrl),
-                   IsActive = entity.IsActive,
-                   DetectedAtUtc = entity.DetectedAtUtc,
-                   ResolvedAtUtc = entity.ResolvedAtUtc,
-                   IsNewSinceLastScan = isNewSinceLastScan,
-               };
-    }
-
-    /// <summary>
-    /// Compute the new/resolved finding deltas of the most recent vulnerability scan run, suppressing the
-    /// deltas when every finding still originates from that same run and therefore from the image's first scan
-    /// </summary>
-    /// <param name="findings">Vulnerability findings for the image version</param>
-    /// <param name="currentScanRunId">Identifier of the scan run that produced the latest vulnerability assessment</param>
-    /// <returns>New finding count, resolved finding count, and whether the deltas were suppressed as a first scan</returns>
-    private static (int NewFindingCount, int ResolvedFindingCount, bool IsFirstScan) ComputeVulnerabilityScanDelta(List<VulnerabilityFinding> findings,
-                                                                                                                   Guid? currentScanRunId)
-    {
-        if (findings.Count == 0 || currentScanRunId is null)
-        {
-            return (0, 0, true);
-        }
-
-        var hasFindingFromEarlierScanRun = findings.Any(entity => entity.ScanRunId != currentScanRunId);
-
-        if (hasFindingFromEarlierScanRun == false)
-        {
-            return (0, 0, true);
-        }
-
-        var newFindingCount = findings.Count(entity => entity.IsActive && entity.ScanRunId == currentScanRunId);
-        var resolvedFindingCount = findings.Count(entity => entity.ResolvedByScanRunId == currentScanRunId);
-
-        return (newFindingCount, resolvedFindingCount, false);
-    }
-
-    /// <summary>
-    /// Build the vulnerability assessment and mapped finding list for an image version, including the
-    /// new/resolved deltas of the most recent completed vulnerability scan
-    /// </summary>
-    /// <param name="imageVersion">Image version entity</param>
-    /// <param name="vulnerabilityFindings">Vulnerability findings for the image version, sorted for display</param>
-    /// <returns>Vulnerability assessment view data and mapped finding view data list</returns>
-    private static (VulnerabilityAssessmentViewData Assessment, List<VulnerabilityFindingViewData> Findings) BuildVulnerabilityAssessmentDetail(ImageVersion imageVersion,
-                                                                                                                                                List<VulnerabilityFinding> vulnerabilityFindings)
-    {
-        var vulnerabilityAssessment = CreateVulnerabilityAssessment(imageVersion, CreateSeveritySummaryFromFindings(vulnerabilityFindings));
-        var currentScanRunId = imageVersion.VulnerabilityAssessmentScanRunId;
-        var scanDelta = ComputeVulnerabilityScanDelta(vulnerabilityFindings, currentScanRunId);
-
-        vulnerabilityAssessment.FixableFindingCount = CountFixableActiveFindings(vulnerabilityFindings);
-        vulnerabilityAssessment.NewFindingCount = scanDelta.NewFindingCount;
-        vulnerabilityAssessment.ResolvedFindingCount = scanDelta.ResolvedFindingCount;
-
-        var mappedFindings = vulnerabilityFindings.Select(entity => MapVulnerabilityFinding(entity,
-                                                                                            scanDelta.IsFirstScan == false
-                                                                                            && entity.IsActive
-                                                                                            && entity.ScanRunId == currentScanRunId))
-                                                  .ToList();
-
-        return (vulnerabilityAssessment, mappedFindings);
-    }
-
-    /// <summary>
-    /// Sort vulnerability findings for display (active first, then by severity and CVSS score)
-    /// </summary>
-    /// <param name="findings">Vulnerability findings</param>
-    /// <returns>Sorted findings</returns>
-    private static List<VulnerabilityFinding> SortFindingsForDisplay(IEnumerable<VulnerabilityFinding> findings)
-    {
-        return findings.OrderByDescending(entity => entity.IsActive)
-                       .ThenByDescending(entity => entity.Severity)
-                       .ThenByDescending(entity => entity.CvssScore ?? decimal.MinValue)
-                       .ThenBy(entity => entity.AdvisoryId, StringComparer.OrdinalIgnoreCase)
-                       .ThenBy(entity => entity.AffectedPackage, StringComparer.OrdinalIgnoreCase)
-                       .ToList();
-    }
-
-    /// <summary>
-    /// Create a severity summary from severity/count pairs
-    /// </summary>
-    /// <param name="severityCounts">Severity/count pairs</param>
-    /// <returns>Severity summary</returns>
-    private static VulnerabilitySeveritySummaryViewData CreateSeveritySummary(IEnumerable<KeyValuePair<VulnerabilitySeverity, int>> severityCounts)
-    {
-        var summary = new VulnerabilitySeveritySummaryViewData();
-
-        foreach (var severityCount in severityCounts)
-        {
-            switch (severityCount.Key)
-            {
-                case VulnerabilitySeverity.Critical:
-                    {
-                        summary.CriticalCount += severityCount.Value;
-                    }
-                    break;
-
-                case VulnerabilitySeverity.High:
-                    {
-                        summary.HighCount += severityCount.Value;
-                    }
-                    break;
-
-                case VulnerabilitySeverity.Medium:
-                    {
-                        summary.MediumCount += severityCount.Value;
-                    }
-                    break;
-
-                case VulnerabilitySeverity.Low:
-                    {
-                        summary.LowCount += severityCount.Value;
-                    }
-                    break;
-
-                default:
-                    {
-                        summary.OtherCount += severityCount.Value;
-                    }
-                    break;
-            }
-        }
-
-        return summary;
-    }
-
-    /// <summary>
-    /// Create a severity summary from the active findings of a finding list
-    /// </summary>
-    /// <param name="findings">Vulnerability findings</param>
-    /// <returns>Severity summary</returns>
-    private static VulnerabilitySeveritySummaryViewData CreateSeveritySummaryFromFindings(IEnumerable<VulnerabilityFinding> findings)
-    {
-        return CreateSeveritySummary(findings.Where(entity => entity.IsActive)
-                                             .GroupBy(entity => entity.Severity)
-                                             .Select(group => new KeyValuePair<VulnerabilitySeverity, int>(group.Key, group.Count())));
-    }
-
-    /// <summary>
-    /// Count active findings that have a fixed version available
-    /// </summary>
-    /// <param name="findings">Vulnerability findings</param>
-    /// <returns>Number of active findings with a non-empty fixed version</returns>
-    private static int CountFixableActiveFindings(IEnumerable<VulnerabilityFinding> findings)
-    {
-        return findings.Count(entity => entity.IsActive && string.IsNullOrWhiteSpace(entity.FixedVersion) == false);
-    }
-
-    /// <summary>
-    /// Resolve a severity summary from a lookup or return an empty summary
-    /// </summary>
-    /// <param name="summaries">Severity summaries by image version identifier</param>
-    /// <param name="key">Image version identifier</param>
-    /// <returns>Severity summary</returns>
-    private static VulnerabilitySeveritySummaryViewData GetSummaryOrEmpty(Dictionary<Guid, VulnerabilitySeveritySummaryViewData> summaries, Guid key)
-    {
-        return summaries.TryGetValue(key, out var summary) ? summary : new VulnerabilitySeveritySummaryViewData();
-    }
-
-    /// <summary>
-    /// Validate an external reference URL before it is exposed to the UI so that only
-    /// absolute <c>http</c>/<c>https</c> URLs are kept and anything else (for example a
-    /// <c>javascript:</c> scheme) is dropped and can never be rendered as an <c>href</c>
-    /// </summary>
-    /// <param name="url">Untrusted reference URL from a vulnerability provider</param>
-    /// <returns>The URL if it is a safe absolute http(s) URL; otherwise <c>null</c></returns>
-    private static string? SanitizeHttpUrl(string? url)
-    {
-        if (string.IsNullOrWhiteSpace(url) == true)
-        {
-            return null;
-        }
-
-        if (Uri.TryCreate(url, UriKind.Absolute, out var parsed) == false)
-        {
-            return null;
-        }
-
-        if (parsed.Scheme != Uri.UriSchemeHttp && parsed.Scheme != Uri.UriSchemeHttps)
-        {
-            return null;
-        }
-
-        return url;
-    }
-
-    /// <summary>
-    /// Create vulnerability assessment view data for an image version
-    /// </summary>
-    /// <param name="imageVersion">Image version entity</param>
-    /// <param name="severitySummary">Severity summary of the active findings</param>
-    /// <returns>Vulnerability assessment view data</returns>
-    private static VulnerabilityAssessmentViewData CreateVulnerabilityAssessment(ImageVersion imageVersion, VulnerabilitySeveritySummaryViewData severitySummary)
-    {
-        return new VulnerabilityAssessmentViewData
-               {
-                   Status = FormatVulnerabilityAssessmentStatus(imageVersion.VulnerabilityAssessmentStatus),
-                   Source = FormatVulnerabilitySource(imageVersion.VulnerabilityAssessmentSource),
-                   Message = imageVersion.VulnerabilityAssessmentMessage,
-                   CheckedAtUtc = imageVersion.VulnerabilityAssessmentCheckedAtUtc,
-                   ActiveFindingCount = severitySummary.TotalCount,
-                   SeveritySummary = severitySummary,
-               };
-    }
-
-    /// <summary>
-    /// Summarize base-image vulnerability findings for a relationship list
-    /// </summary>
-    /// <param name="baseImageRelationships">Base-image relationship list</param>
-    /// <returns>Active finding count and summary</returns>
-    private static (int ActiveFindingCount, string? Summary) SummarizeBaseImageVulnerabilities(IReadOnlyList<BaseImageRelationshipData>? baseImageRelationships)
-    {
-        if (baseImageRelationships is null || baseImageRelationships.Count == 0)
-        {
-            return (0, null);
-        }
-
-        var groupedAssessments = baseImageRelationships.GroupBy(entity => entity.ImageReference, StringComparer.OrdinalIgnoreCase)
-                                                       .Select(group => group.Max(entity => entity.VulnerabilityAssessment.ActiveFindingCount))
-                                                       .ToList();
-        var activeFindingCount = groupedAssessments.Sum();
-
-        if (activeFindingCount == 0)
-        {
-            return (0, null);
-        }
-
-        var vulnerableBaseImageCount = groupedAssessments.Count(entity => entity > 0);
-        var baseImageLabel = vulnerableBaseImageCount == 1 ? "base image" : "base images";
-
-        return (activeFindingCount, $"{activeFindingCount} active finding(s) across {vulnerableBaseImageCount} {baseImageLabel}");
-    }
 
     /// <summary>
     /// Map a Docker-instance resource sample
@@ -462,203 +205,6 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
     }
 
     /// <summary>
-    /// Create a stable identity for a tag candidate
-    /// </summary>
-    /// <param name="tag">Tag name</param>
-    /// <param name="digest">Digest value</param>
-    /// <returns>Candidate identity</returns>
-    private static string CreateTagCandidateKey(string tag, string digest)
-    {
-        return $"{tag.Trim().ToLowerInvariant()}|{digest.Trim().ToLowerInvariant()}";
-    }
-
-    /// <summary>
-    /// Filter visible tag candidates for UI display
-    /// </summary>
-    /// <param name="candidates">Candidates to filter</param>
-    /// <param name="take">Maximum number of candidates</param>
-    /// <returns>Filtered candidates</returns>
-    private static List<TagCandidateViewData> FilterVisibleTagCandidates(IEnumerable<TagCandidateViewData> candidates, int take = MaxAvailableTagCandidates)
-    {
-        return candidates.Where(entity => string.IsNullOrWhiteSpace(entity.Tag) == false
-                                          && UpdateFindingPersistenceHelper.HasPersistableDigest(entity.Digest))
-                         .GroupBy(entity => CreateTagCandidateKey(entity.Tag, entity.Digest!),
-                                  StringComparer.OrdinalIgnoreCase)
-                         .Select(group => group.OrderByDescending(entity => entity.IsSelected)
-                                               .ThenByDescending(entity => entity.IsRecommended)
-                                               .ThenByDescending(entity => entity.PublishedAtUtc)
-                                               .ThenBy(entity => entity.Tag, StringComparer.OrdinalIgnoreCase)
-                                               .First())
-                         .Take(take)
-                         .ToList();
-    }
-
-    /// <summary>
-    /// Filter runtime tag candidates against the current image baseline
-    /// </summary>
-    /// <param name="candidates">Visible candidates</param>
-    /// <param name="currentTag">Current image tag</param>
-    /// <param name="resolvedVersionTag">Resolved current version tag</param>
-    /// <param name="currentPublishedAtUtc">Current image publication timestamp</param>
-    /// <returns>Filtered candidates</returns>
-    private static List<TagCandidateViewData> FilterRuntimeAvailableTagCandidates(IEnumerable<TagCandidateViewData> candidates,
-                                                                                  string currentTag,
-                                                                                  string? resolvedVersionTag,
-                                                                                  DateTimeOffset? currentPublishedAtUtc)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(currentTag);
-        ArgumentNullException.ThrowIfNull(candidates);
-
-        var currentComparableTag = ResolveComparableVersionTag(currentTag, resolvedVersionTag);
-
-        return candidates.Where(entity => IsCandidatePublishedOnOrAfterBaseline(entity.PublishedAtUtc, currentPublishedAtUtc)
-                                          && HasSameOrNewerComparableVersion(entity, currentComparableTag))
-                         .ToList();
-    }
-
-    /// <summary>
-    /// Populate resolved semantic version tags for alias candidates
-    /// </summary>
-    /// <param name="candidates">Tag candidates</param>
-    private static void PopulateResolvedVersionTags(IList<TagCandidateViewData> candidates)
-    {
-        var versionCandidates = candidates.Select(entity => new VersionTagCandidateData
-                                                            {
-                                                                Tag = entity.Tag,
-                                                                Digest = entity.Digest,
-                                                                PublishedAtUtc = entity.PublishedAtUtc,
-                                                            })
-                                          .ToList();
-
-        foreach (var candidate in candidates)
-        {
-            candidate.ResolvedVersionTag = VersionTagResolutionHelper.ResolveAliasVersionTag(candidate.Tag,
-                                                                                             candidate.Digest,
-                                                                                             versionCandidates);
-        }
-    }
-
-    /// <summary>
-    /// Resolve the semantic version behind an alias tag with the same digest
-    /// </summary>
-    /// <param name="currentTag">Current tag</param>
-    /// <param name="currentDigest">Current digest</param>
-    /// <param name="candidates">Available candidates</param>
-    /// <returns>Resolved semantic version tag or null</returns>
-    private static string? ResolveResolvedVersionTag(string currentTag,
-                                                     string? currentDigest,
-                                                     IEnumerable<TagCandidateViewData> candidates)
-    {
-        return VersionTagResolutionHelper.ResolveAliasVersionTag(currentTag,
-                                                                 currentDigest,
-                                                                 candidates.Select(entity => new VersionTagCandidateData
-                                                                                             {
-                                                                                                 Tag = entity.Tag,
-                                                                                                 Digest = entity.Digest,
-                                                                                                 PublishedAtUtc = entity.PublishedAtUtc,
-                                                                                             }));
-    }
-
-    /// <summary>
-    /// Resolve the available update version tag for display
-    /// </summary>
-    /// <param name="candidates">Tag candidates</param>
-    /// <param name="preferredVariantFamilySourceTag">Optional concrete tag whose variant family is preferred among digest-matching candidates</param>
-    /// <returns>Displayable version tag or null</returns>
-    private static string? ResolveAvailableUpdateVersionTag(IEnumerable<TagCandidateViewData> candidates,
-                                                            string? preferredVariantFamilySourceTag = null)
-    {
-        var candidateList = candidates.Where(entity => string.IsNullOrWhiteSpace(entity.Tag) == false)
-                                      .ToList();
-        var recommendedCandidate = candidateList.FirstOrDefault(entity => entity.IsRecommended);
-
-        if (recommendedCandidate is null)
-        {
-            return null;
-        }
-
-        return VersionTagResolutionHelper.ResolveDisplayVersionTag(recommendedCandidate.Tag,
-                                                                   recommendedCandidate.Digest,
-                                                                   candidateList.Select(entity => new VersionTagCandidateData
-                                                                                                  {
-                                                                                                      Tag = entity.Tag,
-                                                                                                      Digest = entity.Digest,
-                                                                                                      PublishedAtUtc = entity.PublishedAtUtc,
-                                                                                                  }),
-                                                                   preferredVariantFamilySourceTag);
-    }
-
-    /// <summary>
-    /// Resolve the comparable version tag for filtering
-    /// </summary>
-    /// <param name="tag">Tag value</param>
-    /// <param name="resolvedVersionTag">Resolved version tag</param>
-    /// <returns>Comparable version tag or null</returns>
-    private static string? ResolveComparableVersionTag(string tag, string? resolvedVersionTag)
-    {
-        if (string.IsNullOrWhiteSpace(resolvedVersionTag) == false)
-        {
-            return resolvedVersionTag;
-        }
-
-        return VersionTagResolutionHelper.IsDisplayableSpecificVersionTag(tag)
-                   ? tag
-                   : null;
-    }
-
-    /// <summary>
-    /// Determine whether a candidate is published on or after the current baseline
-    /// </summary>
-    /// <param name="candidatePublishedAtUtc">Candidate publication timestamp</param>
-    /// <param name="baselinePublishedAtUtc">Baseline publication timestamp</param>
-    /// <returns>True when the candidate is not older than the baseline</returns>
-    private static bool IsCandidatePublishedOnOrAfterBaseline(DateTimeOffset? candidatePublishedAtUtc, DateTimeOffset? baselinePublishedAtUtc)
-    {
-        return baselinePublishedAtUtc is null
-               || candidatePublishedAtUtc is null
-               || candidatePublishedAtUtc >= baselinePublishedAtUtc;
-    }
-
-    /// <summary>
-    /// Determine whether a candidate has the same or a newer comparable version
-    /// </summary>
-    /// <param name="candidate">Candidate tag</param>
-    /// <param name="currentComparableTag">Current comparable tag</param>
-    /// <returns>True when the candidate is not older than the current version</returns>
-    private static bool HasSameOrNewerComparableVersion(TagCandidateViewData candidate, string? currentComparableTag)
-    {
-        ArgumentNullException.ThrowIfNull(candidate);
-
-        if (string.IsNullOrWhiteSpace(currentComparableTag))
-        {
-            return true;
-        }
-
-        var candidateComparableTag = ResolveComparableVersionTag(candidate.Tag, candidate.ResolvedVersionTag);
-
-        if (string.IsNullOrWhiteSpace(candidateComparableTag))
-        {
-            return false;
-        }
-
-        if (VersionTagResolutionHelper.TryCompareVersionTags(candidateComparableTag,
-                                                             currentComparableTag,
-                                                             out var versionComparison))
-        {
-            return versionComparison >= 0;
-        }
-
-        if (VersionTagResolutionHelper.TryParseYearPrefixedTag(currentComparableTag, out var currentYear, out _)
-            && VersionTagResolutionHelper.TryParseYearPrefixedTag(candidateComparableTag, out var candidateYear, out _))
-        {
-            return candidateYear == currentYear
-                   && VersionTagResolutionHelper.CompareYearPrefixedTags(candidateComparableTag, currentComparableTag) >= 0;
-        }
-
-        return false;
-    }
-
-    /// <summary>
     /// Format an update assessment status for the UI
     /// </summary>
     /// <param name="status">Update assessment status</param>
@@ -694,40 +240,6 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
     }
 
     /// <summary>
-    /// Format a vulnerability assessment status for the UI
-    /// </summary>
-    /// <param name="status">Vulnerability assessment status</param>
-    /// <returns>Formatted status</returns>
-    private static string FormatVulnerabilityAssessmentStatus(VulnerabilityAssessmentStatus status)
-    {
-        return status switch
-               {
-                   VulnerabilityAssessmentStatus.NoFindings => "No findings",
-                   VulnerabilityAssessmentStatus.FindingsDetected => "Findings detected",
-                   VulnerabilityAssessmentStatus.NotConfigured => "Not configured",
-                   VulnerabilityAssessmentStatus.Unsupported => "Unsupported",
-                   VulnerabilityAssessmentStatus.Unavailable => "Unavailable",
-                   VulnerabilityAssessmentStatus.Failed => "Failed",
-                   _ => "Not scanned",
-               };
-    }
-
-    /// <summary>
-    /// Format a vulnerability source for the UI
-    /// </summary>
-    /// <param name="source">Vulnerability source</param>
-    /// <returns>Formatted source</returns>
-    private static string FormatVulnerabilitySource(VulnerabilitySource source)
-    {
-        return source switch
-               {
-                   VulnerabilitySource.DockerScout => "Docker Scout",
-                   VulnerabilitySource.Trivy => "Trivy",
-                   _ => "Not set",
-               };
-    }
-
-    /// <summary>
     /// Select the representative affected image for a set of image versions that share the same digest-less reference
     /// </summary>
     /// <param name="referenceGroup">Affected image versions resolving to the same registry, repository and tag</param>
@@ -737,6 +249,130 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
         return referenceGroup.OrderByDescending(entity => entity.IsOwnImage)
                              .ThenByDescending(entity => entity.ObservedImageId.HasValue)
                              .First();
+    }
+
+    /// <summary>
+    /// Group the tag candidates of update findings by container snapshot
+    /// </summary>
+    /// <param name="latestFindings">Update findings of the current container snapshots</param>
+    /// <returns>Tag candidate view data by container snapshot identifier</returns>
+    private static Dictionary<Guid, List<TagCandidateViewData>> GroupTagCandidatesBySnapshot(IReadOnlyList<UpdateFinding> latestFindings)
+    {
+        return latestFindings.Where(entity => entity.ContainerSnapshotId is not null)
+                             .GroupBy(entity => entity.ContainerSnapshotId!.Value)
+                             .ToDictionary(group => group.Key,
+                                           group => group.SelectMany(entity => entity.TagCandidates)
+                                                         .OrderBy(candidate => candidate.Rank)
+                                                         .Select(candidate => new TagCandidateViewData
+                                                                              {
+                                                                                  Tag = candidate.Tag,
+                                                                                  Digest = candidate.Digest,
+                                                                                  PublishedAtUtc = candidate.PublishedAtUtc,
+                                                                                  Reason = candidate.Reason,
+                                                                                  IsRecommended = candidate.IsRecommended,
+                                                                              })
+                                                         .ToList());
+    }
+
+    /// <summary>
+    /// Create the lookup of the latest derived base runtime finding by repository key of the current containers
+    /// </summary>
+    /// <param name="derivedBaseRuntimeFindings">Derived base runtime findings</param>
+    /// <param name="repositoryKeyBySnapshotId">Repository keys by container snapshot identifier</param>
+    /// <returns>Latest finding by repository key</returns>
+    private static Dictionary<string, UpdateFinding> CreateRuntimeAlertLookup(List<UpdateFinding> derivedBaseRuntimeFindings, Dictionary<Guid, string> repositoryKeyBySnapshotId)
+    {
+        return derivedBaseRuntimeFindings.Where(entity => entity.ContainerSnapshotId is not null
+                                                          && repositoryKeyBySnapshotId.ContainsKey(entity.ContainerSnapshotId.Value))
+                                         .GroupBy(entity => repositoryKeyBySnapshotId[entity.ContainerSnapshotId!.Value],
+                                                  StringComparer.OrdinalIgnoreCase)
+                                         .ToDictionary(group => group.Key,
+                                                       group => group.OrderByDescending(entity => entity.DetectedAtUtc)
+                                                                     .First(),
+                                                       StringComparer.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Create the lookup of the latest derived base runtime finding by observed image
+    /// </summary>
+    /// <param name="derivedBaseRuntimeFindings">Derived base runtime findings</param>
+    /// <returns>Latest finding by observed image identifier</returns>
+    private static Dictionary<Guid, UpdateFinding> CreateObservedAlertLookup(List<UpdateFinding> derivedBaseRuntimeFindings)
+    {
+        return derivedBaseRuntimeFindings.Where(entity => entity.ObservedImageId != null)
+                                         .GroupBy(entity => entity.ObservedImageId!.Value)
+                                         .ToDictionary(group => group.Key,
+                                                       group => group.OrderByDescending(entity => entity.DetectedAtUtc)
+                                                                     .First());
+    }
+
+    /// <summary>
+    /// Select the current container snapshots that run an image of the same repository, ordered by instance and name
+    /// </summary>
+    /// <param name="latestSnapshots">Current container snapshots</param>
+    /// <param name="imageVersion">Image version whose repository the containers must run</param>
+    /// <returns>Linked container snapshots</returns>
+    private static List<ContainerSnapshot> SelectLinkedSnapshots(IReadOnlyList<ContainerSnapshot> latestSnapshots, ImageVersion imageVersion)
+    {
+        return latestSnapshots.Where(entity => string.Equals(CreateRepositoryKey(entity),
+                                                             CreateRepositoryKey(imageVersion),
+                                                             StringComparison.OrdinalIgnoreCase))
+                              .OrderBy(entity => entity.DockerInstance.Name)
+                              .ThenBy(entity => entity.Name)
+                              .ToList();
+    }
+
+    /// <summary>
+    /// Select the newest active derived base runtime finding of an observed image, falling back to the runtime derived findings
+    /// </summary>
+    /// <param name="updateFindings">Active update findings of the observed image</param>
+    /// <param name="runtimeDerivedFindings">Derived base runtime findings of the linked containers</param>
+    /// <returns>Base runtime alert, or null when there is none</returns>
+    private static UpdateFinding? SelectBaseRuntimeAlert(List<UpdateFinding> updateFindings, List<UpdateFinding> runtimeDerivedFindings)
+    {
+        return updateFindings.Where(entity => entity.IsActive
+                                              && entity.Type == UpdateFindingType.DerivedBaseRuntimeUpdate)
+                             .OrderByDescending(entity => entity.DetectedAtUtc)
+                             .FirstOrDefault()
+                   ?? runtimeDerivedFindings.FirstOrDefault();
+    }
+
+    /// <summary>
+    /// Create the tag candidates that are available for the runtime image of a container snapshot
+    /// </summary>
+    /// <param name="mappedUpdateFindings">Mapped update findings of the container snapshot</param>
+    /// <param name="latestSnapshot">Latest container snapshot</param>
+    /// <returns>Available tag candidates</returns>
+    private static List<TagCandidateViewData> CreateAvailableTagCandidates(List<UpdateFindingViewData> mappedUpdateFindings, ContainerSnapshot latestSnapshot)
+    {
+        return TagCandidateViewHelper.FilterRuntimeAvailableTagCandidates(TagCandidateViewHelper.FilterVisibleTagCandidates(mappedUpdateFindings.SelectMany(entity => entity.TagCandidates)
+                                                                                                                                                .OrderByDescending(entity => entity.IsRecommended)
+                                                                                                                                                .ThenBy(entity => entity.Tag, StringComparer.OrdinalIgnoreCase)),
+                                                                          latestSnapshot.ImageVersion.Tag,
+                                                                          latestSnapshot.ResolvedVersionTag,
+                                                                          latestSnapshot.ImageVersion.PublishedAtUtc);
+    }
+
+    /// <summary>
+    /// Apply the base image and vulnerability data of an image version to a runtime container detail
+    /// </summary>
+    /// <param name="detail">Runtime container detail</param>
+    /// <param name="imageVersion">Image version of the container</param>
+    /// <param name="baseImages">Base image relationships, if any</param>
+    /// <param name="vulnerabilityFindings">Vulnerability findings of the image version, sorted for display</param>
+    private static void ApplyImageVulnerabilityData(RuntimeContainerDetailViewData detail,
+                                                    ImageVersion imageVersion,
+                                                    IReadOnlyList<BaseImageRelationshipData>? baseImages,
+                                                    List<VulnerabilityFinding> vulnerabilityFindings)
+    {
+        var baseImageVulnerabilitySummary = VulnerabilityViewMapper.SummarizeBaseImageVulnerabilities(baseImages);
+        var vulnerabilityAssessmentDetail = VulnerabilityViewMapper.BuildVulnerabilityAssessmentDetail(imageVersion, vulnerabilityFindings);
+
+        detail.BaseImages = baseImages ?? [];
+        detail.ActiveBaseImageVulnerabilityFindingCount = baseImageVulnerabilitySummary.ActiveFindingCount;
+        detail.BaseImageVulnerabilitySummary = baseImageVulnerabilitySummary.Summary;
+        detail.VulnerabilityAssessment = vulnerabilityAssessmentDetail.Assessment;
+        detail.VulnerabilityFindings = vulnerabilityAssessmentDetail.Findings;
     }
 
     #endregion // Static methods
@@ -781,92 +417,20 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
         var latestSnapshotIds = latestSnapshots.Select(entity => entity.Id)
                                                .ToList();
 
-        IReadOnlyList<UpdateFinding> latestFindings = latestSnapshotIds.Count == 0
-                                                          ? []
-                                                          : await _dbContext.UpdateFindings.Include(entity => entity.TagCandidates)
-                                                                                           .Where(entity => entity.ContainerSnapshotId != null
-                                                                                                            && latestSnapshotIds.Contains(entity.ContainerSnapshotId.Value))
-                                                                                           .AsNoTracking()
-                                                                                           .ToListAsync(cancellationToken)
-                                                                                           .ConfigureAwait(false);
-
-        var tagCandidatesBySnapshot = latestFindings.Where(entity => entity.ContainerSnapshotId is not null)
-                                                    .GroupBy(entity => entity.ContainerSnapshotId!.Value)
-                                                    .ToDictionary(group => group.Key,
-                                                                  group => group.SelectMany(entity => entity.TagCandidates)
-                                                                                .OrderBy(candidate => candidate.Rank)
-                                                                                .Select(candidate => new TagCandidateViewData
-                                                                                                     {
-                                                                                                         Tag = candidate.Tag,
-                                                                                                         Digest = candidate.Digest,
-                                                                                                         PublishedAtUtc = candidate.PublishedAtUtc,
-                                                                                                         Reason = candidate.Reason,
-                                                                                                         IsRecommended = candidate.IsRecommended,
-                                                                                                     })
-                                                                                .ToList());
+        var latestFindings = await LoadLatestUpdateFindingsAsync(latestSnapshotIds, cancellationToken).ConfigureAwait(false);
+        var tagCandidatesBySnapshot = GroupTagCandidatesBySnapshot(latestFindings);
 
         var runtimeImageVersionIds = latestSnapshots.Select(entity => entity.ImageVersionId)
                                                     .Distinct()
                                                     .ToList();
         var activeVulnerabilityFindingLookup = await LoadActiveVulnerabilitySeveritySummariesAsync(runtimeImageVersionIds, cancellationToken).ConfigureAwait(false);
 
-        return latestSnapshots.Select(entity =>
-                                      {
-                                          var dockerInstance = entity.DockerInstance;
-                                          var imageVersion = entity.ImageVersion;
-                                          var repositoryKey = CreateRepositoryKey(entity);
-
-                                          ArgumentNullException.ThrowIfNull(dockerInstance);
-                                          ArgumentNullException.ThrowIfNull(imageVersion);
-
-                                          ownImagesByRepository.TryGetValue(repositoryKey, out var linkedObservedImage);
-                                          resourceHistories.TryGetValue(CreateContainerKey(entity.DockerInstanceId, entity.ContainerId), out var resourceUsageHistory);
-                                          tagCandidatesBySnapshot.TryGetValue(entity.Id, out var tagCandidates);
-                                          baseImageRelationshipsByChildVersion.TryGetValue(entity.ImageVersionId, out var baseImageRelationships);
-
-                                          var currentResourceUsage = GetCurrentResourceUsage(resourceUsageHistory);
-                                          var baseImageVulnerabilitySummary = SummarizeBaseImageVulnerabilities(baseImageRelationships);
-                                          var availableTagCandidates = tagCandidates ?? [];
-
-                                          var resolvedVersionTag = string.IsNullOrWhiteSpace(entity.ResolvedVersionTag) == false
-                                                                       ? entity.ResolvedVersionTag
-                                                                       : ResolveResolvedVersionTag(imageVersion.Tag,
-                                                                                                   imageVersion.Digest,
-                                                                                                   availableTagCandidates);
-                                          var availableUpdateVersionTag = string.IsNullOrWhiteSpace(entity.AvailableUpdateVersionTag) == false
-                                                                              ? entity.AvailableUpdateVersionTag
-                                                                              : ResolveAvailableUpdateVersionTag(availableTagCandidates,
-                                                                                                                 resolvedVersionTag ?? imageVersion.Tag);
-
-                                          return new RuntimeContainerListItemData
-                                                 {
-                                                     DockerInstanceId = entity.DockerInstanceId,
-                                                     ContainerId = entity.ContainerId,
-                                                     ContainerName = entity.Name,
-                                                     DockerInstanceName = dockerInstance.Name,
-                                                     ImageVersionId = entity.ImageVersionId,
-                                                     ImageReference = _imageReferenceParser.Format(imageVersion),
-                                                     CurrentTag = imageVersion.Tag,
-                                                     ResolvedVersionTag = resolvedVersionTag,
-                                                     RuntimeStatus = entity.Status.ToString(),
-                                                     UpdateState = FormatUpdateAssessmentStatus(entity.UpdateAssessmentStatus),
-                                                     UpdateSummary = entity.UpdateAssessmentMessage,
-                                                     AvailableUpdateVersionTag = availableUpdateVersionTag,
-                                                     PortainerAvailable = dockerInstance.PortainerEndpoint is not null && dockerInstance.PortainerEndpoint.IsEnabled,
-                                                     ActiveVulnerabilityFindingCount = GetSummaryOrEmpty(activeVulnerabilityFindingLookup, entity.ImageVersionId).TotalCount,
-                                                     VulnerabilitySeveritySummary = GetSummaryOrEmpty(activeVulnerabilityFindingLookup, entity.ImageVersionId),
-                                                     VulnerabilityStatus = FormatVulnerabilityAssessmentStatus(imageVersion.VulnerabilityAssessmentStatus),
-                                                     VulnerabilitySummary = imageVersion.VulnerabilityAssessmentMessage,
-                                                     VulnerabilityCheckedAtUtc = imageVersion.VulnerabilityAssessmentCheckedAtUtc,
-                                                     ActiveBaseImageVulnerabilityFindingCount = baseImageVulnerabilitySummary.ActiveFindingCount,
-                                                     BaseImageVulnerabilitySummary = baseImageVulnerabilitySummary.Summary,
-                                                     RecordedAtUtc = entity.RecordedAtUtc,
-                                                     LinkedObservedImageId = linkedObservedImage?.Id,
-                                                     LinkedObservedImageName = linkedObservedImage?.Name,
-                                                     CurrentResourceUsage = currentResourceUsage,
-                                                     ResourceUsageHistory = resourceUsageHistory ?? [],
-                                                 };
-                                      })
+        return latestSnapshots.Select(entity => MapRuntimeContainerListItem(entity,
+                                                                            ownImagesByRepository,
+                                                                            resourceHistories,
+                                                                            tagCandidatesBySnapshot,
+                                                                            baseImageRelationshipsByChildVersion,
+                                                                            activeVulnerabilityFindingLookup))
                               .OrderByDescending(entity => entity.LinkedObservedImageId.HasValue)
                               .ThenBy(entity => entity.DockerInstanceName)
                               .ThenBy(entity => entity.ContainerName)
@@ -935,7 +499,7 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                                         var representativeBaseImage = relevantBaseImageVersions.OrderByDescending(baseImageVersion => baseImageVersion.VulnerabilityAssessmentCheckedAtUtc ?? DateTimeOffset.MinValue)
                                                                                                .ThenBy(baseImageVersion => baseImageVersion.Tag, StringComparer.OrdinalIgnoreCase)
                                                                                                .First();
-                                        var worstSeveritySummary = relevantBaseImageVersions.Select(baseImageVersion => GetSummaryOrEmpty(activeFindingLookup, baseImageVersion.Id))
+                                        var worstSeveritySummary = relevantBaseImageVersions.Select(baseImageVersion => VulnerabilityViewMapper.GetSummaryOrEmpty(activeFindingLookup, baseImageVersion.Id))
                                                                                             .OrderByDescending(summary => summary.TotalCount)
                                                                                             .First();
                                         var runtimeContainers = shared.Containers.OrderBy(snapshot => snapshot.DockerInstance.Name, StringComparer.OrdinalIgnoreCase)
@@ -954,7 +518,7 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                                                                                                           .OrderBy(reference => reference, StringComparer.OrdinalIgnoreCase)
                                                                                                           .ToList(),
                                                    RuntimeContainers = runtimeContainers,
-                                                   VulnerabilityAssessment = CreateVulnerabilityAssessment(representativeBaseImage, worstSeveritySummary),
+                                                   VulnerabilityAssessment = VulnerabilityViewMapper.CreateVulnerabilityAssessment(representativeBaseImage, worstSeveritySummary),
                                                };
                                     })
                             .OrderByDescending(entity => entity.RuntimeContainers.Count)
@@ -1205,8 +769,8 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                                                                                                                         ImageReference = _imageReferenceParser.Format(entity.BaseImageVersion),
                                                                                                                         Depth = entity.Depth,
                                                                                                                         SourceReference = entity.SourceReference,
-                                                                                                                        VulnerabilityAssessment = CreateVulnerabilityAssessment(entity.BaseImageVersion,
-                                                                                                                                                                                GetSummaryOrEmpty(activeFindingLookup, entity.BaseImageVersionId)),
+                                                                                                                        VulnerabilityAssessment = VulnerabilityViewMapper.CreateVulnerabilityAssessment(entity.BaseImageVersion,
+                                                                                                                                                                                                        VulnerabilityViewMapper.GetSummaryOrEmpty(activeFindingLookup, entity.BaseImageVersionId)),
                                                                                                                     })
                                                                                                   .ToList());
     }
@@ -1242,8 +806,8 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
 
         return activeFindingCounts.GroupBy(entity => entity.ImageVersionId)
                                   .ToDictionary(group => group.Key,
-                                                group => CreateSeveritySummary(group.Select(entity => new KeyValuePair<VulnerabilitySeverity, int>(entity.Severity,
-                                                                                                                                                   entity.ActiveFindingCount))));
+                                                group => VulnerabilityViewMapper.CreateSeveritySummary(group.Select(entity => new KeyValuePair<VulnerabilitySeverity, int>(entity.Severity,
+                                                                                                                                                                           entity.ActiveFindingCount))));
     }
 
     /// <summary>
@@ -1469,22 +1033,22 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
             recommendedImageVersions.TryGetValue(entity.RecommendedImageVersionId.GetValueOrDefault(), out recommendedImageVersion);
         }
 
-        var tagCandidates = FilterVisibleTagCandidates(entity.TagCandidates.OrderBy(candidate => candidate.Rank)
-                                                                           .Select(candidate => new TagCandidateViewData
-                                                                                                {
-                                                                                                    Tag = candidate.Tag,
-                                                                                                    Digest = candidate.Digest,
-                                                                                                    PublishedAtUtc = candidate.PublishedAtUtc,
-                                                                                                    Reason = candidate.Reason,
-                                                                                                    IsRecommended = candidate.IsRecommended,
-                                                                                                    IsSelected = manualSelection is not null
-                                                                                                                 && string.Equals(candidate.Tag, manualSelection.Tag, StringComparison.OrdinalIgnoreCase)
-                                                                                                                 && string.Equals(candidate.Digest ?? string.Empty,
-                                                                                                                                  manualSelection.Digest ?? string.Empty,
-                                                                                                                                  StringComparison.OrdinalIgnoreCase),
-                                                                                                }));
+        var tagCandidates = TagCandidateViewHelper.FilterVisibleTagCandidates(entity.TagCandidates.OrderBy(candidate => candidate.Rank)
+                                                                                                  .Select(candidate => new TagCandidateViewData
+                                                                                                                       {
+                                                                                                                           Tag = candidate.Tag,
+                                                                                                                           Digest = candidate.Digest,
+                                                                                                                           PublishedAtUtc = candidate.PublishedAtUtc,
+                                                                                                                           Reason = candidate.Reason,
+                                                                                                                           IsRecommended = candidate.IsRecommended,
+                                                                                                                           IsSelected = manualSelection is not null
+                                                                                                                                        && string.Equals(candidate.Tag, manualSelection.Tag, StringComparison.OrdinalIgnoreCase)
+                                                                                                                                        && string.Equals(candidate.Digest ?? string.Empty,
+                                                                                                                                                         manualSelection.Digest ?? string.Empty,
+                                                                                                                                                         StringComparison.OrdinalIgnoreCase),
+                                                                                                                       }));
 
-        PopulateResolvedVersionTags(tagCandidates);
+        TagCandidateViewHelper.PopulateResolvedVersionTags(tagCandidates);
 
         return new UpdateFindingViewData
                {
@@ -1575,109 +1139,7 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
     /// <returns>Observed image list items</returns>
     private async Task<IReadOnlyList<ObservedImageListItemData>> GetObservedImagesCoreAsync(RegistrationSource? source, CancellationToken cancellationToken)
     {
-        return await ExecuteSerializedAsync(async () =>
-                                            {
-                                                var observedImagesQuery = _dbContext.ObservedImages.Include(entity => entity.CurrentImageVersion.RegistryRepository)
-                                                                                                   .AsNoTracking();
-
-                                                if (source.HasValue)
-                                                {
-                                                    observedImagesQuery = observedImagesQuery.Where(entity => entity.Source == source.Value);
-                                                }
-
-                                                var observedImages = await observedImagesQuery.ToListAsync(cancellationToken)
-                                                                                              .ConfigureAwait(false);
-
-                                                var latestSnapshots = await GetLatestContainerSnapshotsAsync(cancellationToken).ConfigureAwait(false);
-                                                var latestSnapshotIds = latestSnapshots.Select(entity => entity.Id)
-                                                                                       .ToList();
-                                                var repositoryKeyBySnapshotId = latestSnapshots.ToDictionary(entity => entity.Id,
-                                                                                                             CreateRepositoryKey);
-                                                var observedImageIds = observedImages.Select(entity => entity.Id)
-                                                                                     .ToList();
-                                                var derivedBaseRuntimeFindings = await _dbContext.UpdateFindings.Where(entity => entity.IsActive
-                                                                                                                                 && entity.Type == UpdateFindingType.DerivedBaseRuntimeUpdate
-                                                                                                                                 && ((entity.ObservedImageId != null
-                                                                                                                                      && observedImageIds.Contains(entity.ObservedImageId.Value))
-                                                                                                                                     || (entity.ContainerSnapshotId != null
-                                                                                                                                         && latestSnapshotIds.Contains(entity.ContainerSnapshotId.Value))))
-                                                                                                                .OrderByDescending(entity => entity.DetectedAtUtc)
-                                                                                                                .AsNoTracking()
-                                                                                                                .ToListAsync(cancellationToken)
-                                                                                                                .ConfigureAwait(false);
-
-                                                var runtimeLinkLookup = latestSnapshots.GroupBy(CreateRepositoryKey)
-                                                                                       .ToDictionary(group => group.Key,
-                                                                                                     group => group.Count(),
-                                                                                                     StringComparer.OrdinalIgnoreCase);
-                                                var runtimeAlertLookup = derivedBaseRuntimeFindings.Where(entity => entity.ContainerSnapshotId is not null
-                                                                                                                    && repositoryKeyBySnapshotId.ContainsKey(entity.ContainerSnapshotId.Value))
-                                                                                                   .GroupBy(entity => repositoryKeyBySnapshotId[entity.ContainerSnapshotId!.Value],
-                                                                                                            StringComparer.OrdinalIgnoreCase)
-                                                                                                   .ToDictionary(group => group.Key,
-                                                                                                                 group => group.OrderByDescending(entity => entity.DetectedAtUtc)
-                                                                                                                               .First(),
-                                                                                                                 StringComparer.OrdinalIgnoreCase);
-                                                var observedAlertLookup = derivedBaseRuntimeFindings.Where(entity => entity.ObservedImageId != null)
-                                                                                                    .GroupBy(entity => entity.ObservedImageId!.Value)
-                                                                                                    .ToDictionary(group => group.Key,
-                                                                                                                  group => group.OrderByDescending(entity => entity.DetectedAtUtc)
-                                                                                                                                .First());
-                                                var baseImageRelationshipsByChildVersion = await LoadBaseImageRelationshipsByChildVersionAsync(observedImages.Select(entity => entity.CurrentImageVersionId)
-                                                                                                                                                             .Distinct()
-                                                                                                                                                             .ToList(),
-                                                                                                                                               cancellationToken).ConfigureAwait(false);
-                                                var observedImageVersionIds = observedImages.Select(entity => entity.CurrentImageVersionId)
-                                                                                            .Distinct()
-                                                                                            .ToList();
-                                                var activeVulnerabilityFindingLookup = await LoadActiveVulnerabilitySeveritySummariesAsync(observedImageVersionIds, cancellationToken).ConfigureAwait(false);
-                                                var activeUpdateFindingLookup = await LoadActiveUpdateFindingCountsByObservedImageAsync(observedImageIds, cancellationToken).ConfigureAwait(false);
-
-                                                return observedImages.Select(entity =>
-                                                                             {
-                                                                                 var repositoryKey = CreateRepositoryKey(entity.CurrentImageVersion);
-
-                                                                                 observedAlertLookup.TryGetValue(entity.Id, out var observedAlert);
-                                                                                 runtimeAlertLookup.TryGetValue(repositoryKey, out var runtimeAlert);
-
-                                                                                 var baseRuntimeAlert = observedAlert ?? runtimeAlert;
-
-                                                                                 baseImageRelationshipsByChildVersion.TryGetValue(entity.CurrentImageVersionId, out var baseImageRelationships);
-
-                                                                                 var baseImageVulnerabilitySummary = SummarizeBaseImageVulnerabilities(baseImageRelationships);
-
-                                                                                 return new ObservedImageListItemData
-                                                                                        {
-                                                                                            Id = entity.Id,
-                                                                                            Name = entity.Name,
-                                                                                            Description = entity.Description,
-                                                                                            CurrentImageVersionId = entity.CurrentImageVersionId,
-                                                                                            ImageReference = _imageReferenceParser.Format(entity.CurrentImageVersion),
-                                                                                            LatestScanStatus = GetLatestObservedScanStatus(entity.Id),
-                                                                                            LatestScanMessage = GetLatestObservedScanMessage(entity.Id),
-                                                                                            ActiveUpdateFindingCount = GetCountOrZero(activeUpdateFindingLookup, entity.Id),
-                                                                                            ActiveVulnerabilityFindingCount = GetSummaryOrEmpty(activeVulnerabilityFindingLookup, entity.CurrentImageVersionId).TotalCount,
-                                                                                            VulnerabilitySeveritySummary = GetSummaryOrEmpty(activeVulnerabilityFindingLookup, entity.CurrentImageVersionId),
-                                                                                            VulnerabilityStatus = FormatVulnerabilityAssessmentStatus(entity.CurrentImageVersion.VulnerabilityAssessmentStatus),
-                                                                                            VulnerabilityMessage = entity.CurrentImageVersion.VulnerabilityAssessmentMessage,
-                                                                                            VulnerabilityCheckedAtUtc = entity.CurrentImageVersion.VulnerabilityAssessmentCheckedAtUtc,
-                                                                                            ActiveBaseImageVulnerabilityFindingCount = baseImageVulnerabilitySummary.ActiveFindingCount,
-                                                                                            BaseImageVulnerabilitySummary = baseImageVulnerabilitySummary.Summary,
-                                                                                            IsOwnImage = entity.Source == RegistrationSource.Discovery,
-                                                                                            LinkedRuntimeContainerCount = entity.Source == RegistrationSource.Discovery
-                                                                                                                          && runtimeLinkLookup.TryGetValue(repositoryKey, out var linkedRuntimeContainerCount)
-                                                                                                                              ? linkedRuntimeContainerCount
-                                                                                                                              : 0,
-                                                                                            BaseRuntimeAlertSummary = baseRuntimeAlert?.Summary,
-                                                                                            BaseRuntimeAlertDetails = baseRuntimeAlert?.Details,
-                                                                                        };
-                                                                             })
-                                                                     .OrderByDescending(entity => entity.IsOwnImage)
-                                                                     .ThenByDescending(entity => entity.LinkedRuntimeContainerCount)
-                                                                     .ThenBy(entity => entity.Name)
-                                                                     .ToList();
-                                            },
-                                            cancellationToken).ConfigureAwait(false);
+        return await ExecuteSerializedAsync(() => LoadObservedImageListAsync(source, cancellationToken), cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -1738,7 +1200,7 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                    Title = representativeFinding.Title,
                    Severity = advisoryGroup.Max(entity => entity.Severity).ToString(),
                    CvssScore = advisoryGroup.Max(entity => entity.CvssScore),
-                   ReferenceUrl = SanitizeHttpUrl(representativeFinding.ReferenceUrl),
+                   ReferenceUrl = VulnerabilityViewMapper.SanitizeHttpUrl(representativeFinding.ReferenceUrl),
                    AffectedPackages = advisoryGroup.Select(entity => entity.AffectedPackage)
                                                    .Where(package => string.IsNullOrWhiteSpace(package) == false)
                                                    .Select(package => package!)
@@ -1772,6 +1234,607 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                    ImageReference = _imageReferenceParser.Format(imageVersion),
                    ObservedImageId = observedImage?.Id,
                    IsOwnImage = observedImage?.Source == RegistrationSource.Discovery,
+               };
+    }
+
+    /// <summary>
+    /// Map a current container snapshot to a runtime container list item
+    /// </summary>
+    /// <param name="entity">Current container snapshot</param>
+    /// <param name="ownImagesByRepository">Observed own images by repository key</param>
+    /// <param name="resourceHistories">Resource usage histories by container key</param>
+    /// <param name="tagCandidatesBySnapshot">Tag candidates by container snapshot identifier</param>
+    /// <param name="baseImageRelationshipsByChildVersion">Base image relationships by child image version identifier</param>
+    /// <param name="activeVulnerabilityFindingLookup">Active vulnerability severity summaries by image version identifier</param>
+    /// <returns>Runtime container list item</returns>
+    private RuntimeContainerListItemData MapRuntimeContainerListItem(ContainerSnapshot entity,
+                                                                     Dictionary<string, ObservedImage> ownImagesByRepository,
+                                                                     Dictionary<string, IReadOnlyList<ResourceUsagePointViewData>> resourceHistories,
+                                                                     Dictionary<Guid, List<TagCandidateViewData>> tagCandidatesBySnapshot,
+                                                                     Dictionary<Guid, IReadOnlyList<BaseImageRelationshipData>> baseImageRelationshipsByChildVersion,
+                                                                     Dictionary<Guid, VulnerabilitySeveritySummaryViewData> activeVulnerabilityFindingLookup)
+    {
+        var dockerInstance = entity.DockerInstance;
+        var imageVersion = entity.ImageVersion;
+        var repositoryKey = CreateRepositoryKey(entity);
+
+        ArgumentNullException.ThrowIfNull(dockerInstance);
+        ArgumentNullException.ThrowIfNull(imageVersion);
+
+        ownImagesByRepository.TryGetValue(repositoryKey, out var linkedObservedImage);
+        resourceHistories.TryGetValue(CreateContainerKey(entity.DockerInstanceId, entity.ContainerId), out var resourceUsageHistory);
+        tagCandidatesBySnapshot.TryGetValue(entity.Id, out var tagCandidates);
+        baseImageRelationshipsByChildVersion.TryGetValue(entity.ImageVersionId, out var baseImageRelationships);
+
+        var currentResourceUsage = GetCurrentResourceUsage(resourceUsageHistory);
+        var baseImageVulnerabilitySummary = VulnerabilityViewMapper.SummarizeBaseImageVulnerabilities(baseImageRelationships);
+        var availableTagCandidates = tagCandidates ?? [];
+
+        var resolvedVersionTag = string.IsNullOrWhiteSpace(entity.ResolvedVersionTag) == false
+                                     ? entity.ResolvedVersionTag
+                                     : TagCandidateViewHelper.ResolveResolvedVersionTag(imageVersion.Tag,
+                                                                                        imageVersion.Digest,
+                                                                                        availableTagCandidates);
+        var availableUpdateVersionTag = string.IsNullOrWhiteSpace(entity.AvailableUpdateVersionTag) == false
+                                            ? entity.AvailableUpdateVersionTag
+                                            : TagCandidateViewHelper.ResolveAvailableUpdateVersionTag(availableTagCandidates,
+                                                                                                      resolvedVersionTag ?? imageVersion.Tag);
+
+        return new RuntimeContainerListItemData
+               {
+                   DockerInstanceId = entity.DockerInstanceId,
+                   ContainerId = entity.ContainerId,
+                   ContainerName = entity.Name,
+                   DockerInstanceName = dockerInstance.Name,
+                   ImageVersionId = entity.ImageVersionId,
+                   ImageReference = _imageReferenceParser.Format(imageVersion),
+                   CurrentTag = imageVersion.Tag,
+                   ResolvedVersionTag = resolvedVersionTag,
+                   RuntimeStatus = entity.Status.ToString(),
+                   UpdateState = FormatUpdateAssessmentStatus(entity.UpdateAssessmentStatus),
+                   UpdateSummary = entity.UpdateAssessmentMessage,
+                   AvailableUpdateVersionTag = availableUpdateVersionTag,
+                   PortainerAvailable = dockerInstance.PortainerEndpoint is not null && dockerInstance.PortainerEndpoint.IsEnabled,
+                   ActiveVulnerabilityFindingCount = VulnerabilityViewMapper.GetSummaryOrEmpty(activeVulnerabilityFindingLookup, entity.ImageVersionId).TotalCount,
+                   VulnerabilitySeveritySummary = VulnerabilityViewMapper.GetSummaryOrEmpty(activeVulnerabilityFindingLookup, entity.ImageVersionId),
+                   VulnerabilityStatus = VulnerabilityViewMapper.FormatVulnerabilityAssessmentStatus(imageVersion.VulnerabilityAssessmentStatus),
+                   VulnerabilitySummary = imageVersion.VulnerabilityAssessmentMessage,
+                   VulnerabilityCheckedAtUtc = imageVersion.VulnerabilityAssessmentCheckedAtUtc,
+                   ActiveBaseImageVulnerabilityFindingCount = baseImageVulnerabilitySummary.ActiveFindingCount,
+                   BaseImageVulnerabilitySummary = baseImageVulnerabilitySummary.Summary,
+                   RecordedAtUtc = entity.RecordedAtUtc,
+                   LinkedObservedImageId = linkedObservedImage?.Id,
+                   LinkedObservedImageName = linkedObservedImage?.Name,
+                   CurrentResourceUsage = currentResourceUsage,
+                   ResourceUsageHistory = resourceUsageHistory ?? [],
+               };
+    }
+
+    /// <summary>
+    /// Load the update findings of the current container snapshots including their tag candidates
+    /// </summary>
+    /// <param name="latestSnapshotIds">Identifiers of the current container snapshots</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Update findings of the snapshots</returns>
+    private async Task<IReadOnlyList<UpdateFinding>> LoadLatestUpdateFindingsAsync(List<Guid> latestSnapshotIds, CancellationToken cancellationToken)
+    {
+        if (latestSnapshotIds.Count == 0)
+        {
+            return [];
+        }
+
+        return await _dbContext.UpdateFindings.Include(entity => entity.TagCandidates)
+                                              .Where(entity => entity.ContainerSnapshotId != null
+                                                               && latestSnapshotIds.Contains(entity.ContainerSnapshotId.Value))
+                                              .AsNoTracking()
+                                              .ToListAsync(cancellationToken)
+                                              .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Load the observed images, optionally filtered to a single registration source
+    /// </summary>
+    /// <param name="source">Registration source filter; null loads all sources</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Observed images</returns>
+    private async Task<List<ObservedImage>> LoadObservedImagesAsync(RegistrationSource? source, CancellationToken cancellationToken)
+    {
+        var observedImagesQuery = _dbContext.ObservedImages.Include(entity => entity.CurrentImageVersion.RegistryRepository)
+                                                           .AsNoTracking();
+
+        if (source.HasValue)
+        {
+            observedImagesQuery = observedImagesQuery.Where(entity => entity.Source == source.Value);
+        }
+
+        var observedImages = await observedImagesQuery.ToListAsync(cancellationToken)
+                                                      .ConfigureAwait(false);
+
+        return observedImages;
+    }
+
+    /// <summary>
+    /// Load the active derived base runtime findings of the observed images and the current container snapshots
+    /// </summary>
+    /// <param name="observedImageIds">Observed image identifiers</param>
+    /// <param name="latestSnapshotIds">Identifiers of the current container snapshots</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Derived base runtime findings, newest first</returns>
+    private async Task<List<UpdateFinding>> LoadDerivedBaseRuntimeFindingsAsync(List<Guid> observedImageIds, List<Guid> latestSnapshotIds, CancellationToken cancellationToken)
+    {
+        return await _dbContext.UpdateFindings.Where(entity => entity.IsActive
+                                                               && entity.Type == UpdateFindingType.DerivedBaseRuntimeUpdate
+                                                               && ((entity.ObservedImageId != null
+                                                                    && observedImageIds.Contains(entity.ObservedImageId.Value))
+                                                                   || (entity.ContainerSnapshotId != null
+                                                                       && latestSnapshotIds.Contains(entity.ContainerSnapshotId.Value))))
+                                              .OrderByDescending(entity => entity.DetectedAtUtc)
+                                              .AsNoTracking()
+                                              .ToListAsync(cancellationToken)
+                                              .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Map an observed image to a list item
+    /// </summary>
+    /// <param name="entity">Observed image</param>
+    /// <param name="observedAlertLookup">Latest derived base runtime finding by observed image identifier</param>
+    /// <param name="runtimeAlertLookup">Latest derived base runtime finding by repository key</param>
+    /// <param name="baseImageRelationshipsByChildVersion">Base image relationships by child image version identifier</param>
+    /// <param name="activeVulnerabilityFindingLookup">Active vulnerability severity summaries by image version identifier</param>
+    /// <param name="activeUpdateFindingLookup">Active update finding counts by observed image identifier</param>
+    /// <param name="runtimeLinkLookup">Linked runtime container counts by repository key</param>
+    /// <returns>Observed image list item</returns>
+    private ObservedImageListItemData MapObservedImageListItem(ObservedImage entity,
+                                                               Dictionary<Guid, UpdateFinding> observedAlertLookup,
+                                                               Dictionary<string, UpdateFinding> runtimeAlertLookup,
+                                                               Dictionary<Guid, IReadOnlyList<BaseImageRelationshipData>> baseImageRelationshipsByChildVersion,
+                                                               Dictionary<Guid, VulnerabilitySeveritySummaryViewData> activeVulnerabilityFindingLookup,
+                                                               Dictionary<Guid, int> activeUpdateFindingLookup,
+                                                               Dictionary<string, int> runtimeLinkLookup)
+    {
+        var repositoryKey = CreateRepositoryKey(entity.CurrentImageVersion);
+
+        observedAlertLookup.TryGetValue(entity.Id, out var observedAlert);
+        runtimeAlertLookup.TryGetValue(repositoryKey, out var runtimeAlert);
+
+        var baseRuntimeAlert = observedAlert ?? runtimeAlert;
+
+        baseImageRelationshipsByChildVersion.TryGetValue(entity.CurrentImageVersionId, out var baseImageRelationships);
+
+        var baseImageVulnerabilitySummary = VulnerabilityViewMapper.SummarizeBaseImageVulnerabilities(baseImageRelationships);
+
+        return new ObservedImageListItemData
+               {
+                   Id = entity.Id,
+                   Name = entity.Name,
+                   Description = entity.Description,
+                   CurrentImageVersionId = entity.CurrentImageVersionId,
+                   ImageReference = _imageReferenceParser.Format(entity.CurrentImageVersion),
+                   LatestScanStatus = GetLatestObservedScanStatus(entity.Id),
+                   LatestScanMessage = GetLatestObservedScanMessage(entity.Id),
+                   ActiveUpdateFindingCount = GetCountOrZero(activeUpdateFindingLookup, entity.Id),
+                   ActiveVulnerabilityFindingCount = VulnerabilityViewMapper.GetSummaryOrEmpty(activeVulnerabilityFindingLookup, entity.CurrentImageVersionId).TotalCount,
+                   VulnerabilitySeveritySummary = VulnerabilityViewMapper.GetSummaryOrEmpty(activeVulnerabilityFindingLookup, entity.CurrentImageVersionId),
+                   VulnerabilityStatus = VulnerabilityViewMapper.FormatVulnerabilityAssessmentStatus(entity.CurrentImageVersion.VulnerabilityAssessmentStatus),
+                   VulnerabilityMessage = entity.CurrentImageVersion.VulnerabilityAssessmentMessage,
+                   VulnerabilityCheckedAtUtc = entity.CurrentImageVersion.VulnerabilityAssessmentCheckedAtUtc,
+                   ActiveBaseImageVulnerabilityFindingCount = baseImageVulnerabilitySummary.ActiveFindingCount,
+                   BaseImageVulnerabilitySummary = baseImageVulnerabilitySummary.Summary,
+                   IsOwnImage = entity.Source == RegistrationSource.Discovery,
+                   LinkedRuntimeContainerCount = entity.Source == RegistrationSource.Discovery
+                                                 && runtimeLinkLookup.TryGetValue(repositoryKey, out var linkedRuntimeContainerCount)
+                                                     ? linkedRuntimeContainerCount
+                                                     : 0,
+                   BaseRuntimeAlertSummary = baseRuntimeAlert?.Summary,
+                   BaseRuntimeAlertDetails = baseRuntimeAlert?.Details,
+               };
+    }
+
+    /// <summary>
+    /// Read the observed image list items, optionally filtered to a single registration source
+    /// </summary>
+    /// <param name="source">Registration source filter; null loads all sources</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Observed image list items</returns>
+    private async Task<IReadOnlyList<ObservedImageListItemData>> LoadObservedImageListAsync(RegistrationSource? source, CancellationToken cancellationToken)
+    {
+        var observedImages = await LoadObservedImagesAsync(source, cancellationToken).ConfigureAwait(false);
+
+        var latestSnapshots = await GetLatestContainerSnapshotsAsync(cancellationToken).ConfigureAwait(false);
+        var latestSnapshotIds = latestSnapshots.Select(entity => entity.Id)
+                                               .ToList();
+        var repositoryKeyBySnapshotId = latestSnapshots.ToDictionary(entity => entity.Id,
+                                                                     CreateRepositoryKey);
+        var observedImageIds = observedImages.Select(entity => entity.Id)
+                                             .ToList();
+        var derivedBaseRuntimeFindings = await LoadDerivedBaseRuntimeFindingsAsync(observedImageIds, latestSnapshotIds, cancellationToken).ConfigureAwait(false);
+
+        var runtimeLinkLookup = latestSnapshots.GroupBy(CreateRepositoryKey)
+                                               .ToDictionary(group => group.Key,
+                                                             group => group.Count(),
+                                                             StringComparer.OrdinalIgnoreCase);
+        var runtimeAlertLookup = CreateRuntimeAlertLookup(derivedBaseRuntimeFindings, repositoryKeyBySnapshotId);
+        var observedAlertLookup = CreateObservedAlertLookup(derivedBaseRuntimeFindings);
+        var baseImageRelationshipsByChildVersion = await LoadBaseImageRelationshipsByChildVersionAsync(observedImages.Select(entity => entity.CurrentImageVersionId)
+                                                                                                                     .Distinct()
+                                                                                                                     .ToList(),
+                                                                                                       cancellationToken).ConfigureAwait(false);
+        var observedImageVersionIds = observedImages.Select(entity => entity.CurrentImageVersionId)
+                                                    .Distinct()
+                                                    .ToList();
+        var activeVulnerabilityFindingLookup = await LoadActiveVulnerabilitySeveritySummariesAsync(observedImageVersionIds, cancellationToken).ConfigureAwait(false);
+        var activeUpdateFindingLookup = await LoadActiveUpdateFindingCountsByObservedImageAsync(observedImageIds, cancellationToken).ConfigureAwait(false);
+
+        return observedImages.Select(entity => MapObservedImageListItem(entity,
+                                                                        observedAlertLookup,
+                                                                        runtimeAlertLookup,
+                                                                        baseImageRelationshipsByChildVersion,
+                                                                        activeVulnerabilityFindingLookup,
+                                                                        activeUpdateFindingLookup,
+                                                                        runtimeLinkLookup))
+                             .OrderByDescending(entity => entity.IsOwnImage)
+                             .ThenByDescending(entity => entity.LinkedRuntimeContainerCount)
+                             .ThenBy(entity => entity.Name)
+                             .ToList();
+    }
+
+    /// <summary>
+    /// Load an observed image with its current image version and registry repository
+    /// </summary>
+    /// <param name="observedImageId">ID of the observed image</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Observed image, or null when it does not exist</returns>
+    private async Task<ObservedImage?> LoadObservedImageAsync(Guid observedImageId, CancellationToken cancellationToken)
+    {
+        return await _dbContext.ObservedImages.Include(entity => entity.CurrentImageVersion.RegistryRepository)
+                                              .AsNoTracking()
+                                              .SingleOrDefaultAsync(entity => entity.Id == observedImageId, cancellationToken)
+                                              .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Load the active update findings of an observed image including their tag candidates
+    /// </summary>
+    /// <param name="observedImageId">ID of the observed image</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Active update findings, newest first</returns>
+    private async Task<List<UpdateFinding>> LoadActiveObservedUpdateFindingsAsync(Guid observedImageId, CancellationToken cancellationToken)
+    {
+        return await _dbContext.UpdateFindings.Include(entity => entity.TagCandidates)
+                                              .Where(entity => entity.ObservedImageId == observedImageId && entity.IsActive)
+                                              .OrderByDescending(entity => entity.DetectedAtUtc)
+                                              .AsNoTracking()
+                                              .ToListAsync(cancellationToken)
+                                              .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Load the vulnerability findings of an image version sorted for display
+    /// </summary>
+    /// <param name="imageVersionId">ID of the image version</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Sorted vulnerability findings</returns>
+    private async Task<List<VulnerabilityFinding>> LoadSortedVulnerabilityFindingsAsync(Guid imageVersionId, CancellationToken cancellationToken)
+    {
+        var vulnerabilityFindings = await _dbContext.VulnerabilityFindings.Where(entity => entity.ImageVersionId == imageVersionId)
+                                                                          .AsNoTracking()
+                                                                          .ToListAsync(cancellationToken)
+                                                                          .ConfigureAwait(false);
+
+        return VulnerabilityViewMapper.SortFindingsForDisplay(vulnerabilityFindings);
+    }
+
+    /// <summary>
+    /// Load the active derived base runtime findings of the supplied container snapshots including their tag candidates
+    /// </summary>
+    /// <param name="linkedSnapshotIds">Identifiers of the container snapshots</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Derived base runtime findings, newest first</returns>
+    private async Task<List<UpdateFinding>> LoadRuntimeDerivedFindingsAsync(List<Guid> linkedSnapshotIds, CancellationToken cancellationToken)
+    {
+        if (linkedSnapshotIds.Count == 0)
+        {
+            return [];
+        }
+
+        return await _dbContext.UpdateFindings.Include(entity => entity.TagCandidates)
+                                              .Where(entity => entity.IsActive
+                                                               && entity.Type == UpdateFindingType.DerivedBaseRuntimeUpdate
+                                                               && entity.ContainerSnapshotId != null
+                                                               && linkedSnapshotIds.Contains(entity.ContainerSnapshotId.Value))
+                                              .OrderByDescending(entity => entity.DetectedAtUtc)
+                                              .AsNoTracking()
+                                              .ToListAsync(cancellationToken)
+                                              .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Read the observed image detail without re-entering the service gate
+    /// </summary>
+    /// <param name="observedImageId">ID of the observed image</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Observed image detail, or null when the observed image does not exist</returns>
+    private async Task<ObservedImageDetailViewData?> GetObservedImageDetailCoreAsync(Guid observedImageId, CancellationToken cancellationToken)
+    {
+        var observedImage = await LoadObservedImageAsync(observedImageId, cancellationToken).ConfigureAwait(false);
+
+        if (observedImage is null)
+        {
+            return null;
+        }
+
+        var baseImageRelationshipsByChildVersion = await LoadBaseImageRelationshipsByChildVersionAsync([observedImage.CurrentImageVersionId], cancellationToken).ConfigureAwait(false);
+
+        var updateFindings = await LoadActiveObservedUpdateFindingsAsync(observedImage.Id, cancellationToken).ConfigureAwait(false);
+        var vulnerabilityFindings = await LoadSortedVulnerabilityFindingsAsync(observedImage.CurrentImageVersionId, cancellationToken).ConfigureAwait(false);
+        var latestSnapshots = await GetLatestContainerSnapshotsAsync(cancellationToken).ConfigureAwait(false);
+        var linkedSnapshots = SelectLinkedSnapshots(latestSnapshots, observedImage.CurrentImageVersion);
+        var linkedSnapshotIds = linkedSnapshots.Select(entity => entity.Id)
+                                               .ToList();
+        var runtimeDerivedFindings = await LoadRuntimeDerivedFindingsAsync(linkedSnapshotIds, cancellationToken).ConfigureAwait(false);
+        var combinedUpdateFindings = updateFindings.Concat(runtimeDerivedFindings)
+                                                   .OrderByDescending(entity => entity.DetectedAtUtc)
+                                                   .ToList();
+        var baseRuntimeAlert = SelectBaseRuntimeAlert(updateFindings, runtimeDerivedFindings);
+        var recommendedImageVersions = await LoadRecommendedImageVersionsAsync(combinedUpdateFindings, cancellationToken).ConfigureAwait(false);
+
+        baseImageRelationshipsByChildVersion.TryGetValue(observedImage.CurrentImageVersionId, out var baseImages);
+
+        var baseImageVulnerabilitySummary = VulnerabilityViewMapper.SummarizeBaseImageVulnerabilities(baseImages);
+        var vulnerabilityAssessmentDetail = VulnerabilityViewMapper.BuildVulnerabilityAssessmentDetail(observedImage.CurrentImageVersion, vulnerabilityFindings);
+
+        return new ObservedImageDetailViewData
+               {
+                   Id = observedImage.Id,
+                   Name = observedImage.Name,
+                   Description = observedImage.Description,
+                   ImageReference = _imageReferenceParser.Format(observedImage.CurrentImageVersion),
+                   LatestScanStatus = GetLatestObservedScanStatus(observedImage.Id),
+                   LatestScanMessage = GetLatestObservedScanMessage(observedImage.Id),
+                   IsOwnImage = observedImage.Source == RegistrationSource.Discovery,
+                   BaseImages = baseImages ?? [],
+                   ActiveBaseImageVulnerabilityFindingCount = baseImageVulnerabilitySummary.ActiveFindingCount,
+                   BaseImageVulnerabilitySummary = baseImageVulnerabilitySummary.Summary,
+                   UpdateFindings = combinedUpdateFindings.Select(entity => MapUpdateFinding(entity, recommendedImageVersions, manualSelection: null))
+                                                          .ToList(),
+                   BaseRuntimeAlertSummary = baseRuntimeAlert?.Summary,
+                   BaseRuntimeAlertDetails = baseRuntimeAlert?.Details,
+                   VulnerabilityAssessment = vulnerabilityAssessmentDetail.Assessment,
+                   VulnerabilityFindings = vulnerabilityAssessmentDetail.Findings,
+                   LinkedRuntimeContainers = observedImage.Source == RegistrationSource.Discovery
+                                                 ? linkedSnapshots.Select(MapLinkedRuntimeContainer)
+                                                                  .ToList()
+                                                 : [],
+                   ScanHistory = await GetObservedImageScanHistoryAsync(observedImage.Id, cancellationToken).ConfigureAwait(false),
+               };
+    }
+
+    /// <summary>
+    /// Load the latest snapshot of a container including its Docker instance, Portainer endpoint and image version
+    /// </summary>
+    /// <param name="dockerInstanceId">ID of the Docker instance</param>
+    /// <param name="containerId">Container identifier</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Latest snapshot, or null when the container is unknown</returns>
+    private async Task<ContainerSnapshot?> LoadLatestRuntimeSnapshotAsync(Guid dockerInstanceId, string containerId, CancellationToken cancellationToken)
+    {
+        return await _dbContext.ContainerSnapshots.Include(entity => entity.DockerInstance.PortainerEndpoint)
+                                                  .Include(entity => entity.ImageVersion.RegistryRepository)
+                                                  .AsNoTracking()
+                                                  .OrderByDescending(entity => entity.RecordedAtUtc)
+                                                  .FirstOrDefaultAsync(entity => entity.DockerInstanceId == dockerInstanceId
+                                                                                 && entity.ContainerId == containerId,
+                                                                       cancellationToken)
+                                                  .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Load the update findings of a container snapshot including their tag candidates
+    /// </summary>
+    /// <param name="containerSnapshotId">ID of the container snapshot</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Update findings, newest first</returns>
+    private async Task<List<UpdateFinding>> LoadContainerSnapshotUpdateFindingsAsync(Guid containerSnapshotId, CancellationToken cancellationToken)
+    {
+        return await _dbContext.UpdateFindings.Include(entity => entity.TagCandidates)
+                                              .Where(entity => entity.ContainerSnapshotId == containerSnapshotId)
+                                              .OrderByDescending(entity => entity.DetectedAtUtc)
+                                              .AsNoTracking()
+                                              .ToListAsync(cancellationToken)
+                                              .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Load the manual tag selection of a container for the repository of its snapshot
+    /// </summary>
+    /// <param name="latestSnapshot">Latest container snapshot</param>
+    /// <param name="dockerInstanceId">ID of the Docker instance</param>
+    /// <param name="containerId">Container identifier</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Manual tag selection, or null when none exists</returns>
+    private async Task<RuntimeContainerTagSelection?> LoadManualTagSelectionAsync(ContainerSnapshot latestSnapshot,
+                                                                                  Guid dockerInstanceId,
+                                                                                  string containerId,
+                                                                                  CancellationToken cancellationToken)
+    {
+        return await _dbContext.RuntimeContainerTagSelections.AsNoTracking()
+                                                             .SingleOrDefaultAsync(entity => entity.DockerInstanceId == dockerInstanceId
+                                                                                             && entity.ContainerId == containerId
+                                                                                             && entity.RegistryRepositoryId == latestSnapshot.ImageVersion.RegistryRepositoryId,
+                                                                                   cancellationToken)
+                                                             .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Load the newest active derived base runtime finding of the observed image linked to a container, unless the container's own findings hold one
+    /// </summary>
+    /// <param name="updateFindings">Update findings of the container snapshot</param>
+    /// <param name="linkedObservedImage">Observed image linked to the container, if any</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Base runtime alert, or null when there is none</returns>
+    private async Task<UpdateFinding?> LoadBaseRuntimeAlertAsync(List<UpdateFinding> updateFindings, ObservedImage? linkedObservedImage, CancellationToken cancellationToken)
+    {
+        var baseRuntimeAlert = updateFindings.FirstOrDefault(entity => entity.IsActive
+                                                                       && entity.Type == UpdateFindingType.DerivedBaseRuntimeUpdate);
+
+        if (baseRuntimeAlert is null && linkedObservedImage is not null)
+        {
+            baseRuntimeAlert = await _dbContext.UpdateFindings.Where(entity => entity.IsActive
+                                                                               && entity.ObservedImageId == linkedObservedImage.Id
+                                                                               && entity.Type == UpdateFindingType.DerivedBaseRuntimeUpdate)
+                                                              .OrderByDescending(entity => entity.DetectedAtUtc)
+                                                              .AsNoTracking()
+                                                              .FirstOrDefaultAsync(cancellationToken)
+                                                              .ConfigureAwait(false);
+        }
+
+        return baseRuntimeAlert;
+    }
+
+    /// <summary>
+    /// Read the runtime container detail without re-entering the service gate
+    /// </summary>
+    /// <param name="dockerInstanceId">ID of the Docker instance</param>
+    /// <param name="containerId">Container identifier</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Runtime container detail, or null when the container is unknown</returns>
+    private async Task<RuntimeContainerDetailViewData?> GetRuntimeContainerDetailCoreAsync(Guid dockerInstanceId, string containerId, CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(containerId);
+
+        var latestSnapshot = await LoadLatestRuntimeSnapshotAsync(dockerInstanceId, containerId, cancellationToken).ConfigureAwait(false);
+
+        if (latestSnapshot is null)
+        {
+            return null;
+        }
+
+        var detail = await BuildRuntimeContainerDetailAsync(latestSnapshot,
+                                                            dockerInstanceId,
+                                                            containerId,
+                                                            cancellationToken).ConfigureAwait(false);
+
+        detail.ScanHistory = await GetRuntimeContainerScanHistoryAsync(dockerInstanceId, containerId, cancellationToken).ConfigureAwait(false);
+        detail.ActionHistory = await GetContainerActionHistoryAsync(dockerInstanceId, containerId, cancellationToken).ConfigureAwait(false);
+
+        return detail;
+    }
+
+    /// <summary>
+    /// Load the findings, selections and links of a container snapshot and map them to the runtime container detail without its histories
+    /// </summary>
+    /// <param name="latestSnapshot">Latest container snapshot</param>
+    /// <param name="dockerInstanceId">ID of the Docker instance</param>
+    /// <param name="containerId">Container identifier</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Runtime container detail</returns>
+    private async Task<RuntimeContainerDetailViewData> BuildRuntimeContainerDetailAsync(ContainerSnapshot latestSnapshot,
+                                                                                        Guid dockerInstanceId,
+                                                                                        string containerId,
+                                                                                        CancellationToken cancellationToken)
+    {
+        var updateFindings = await LoadContainerSnapshotUpdateFindingsAsync(latestSnapshot.Id, cancellationToken).ConfigureAwait(false);
+        var recommendedImageVersions = await LoadRecommendedImageVersionsAsync(updateFindings, cancellationToken).ConfigureAwait(false);
+        var manualSelection = await LoadManualTagSelectionAsync(latestSnapshot,
+                                                                dockerInstanceId,
+                                                                containerId,
+                                                                cancellationToken).ConfigureAwait(false);
+        var vulnerabilityFindings = await LoadSortedVulnerabilityFindingsAsync(latestSnapshot.ImageVersionId, cancellationToken).ConfigureAwait(false);
+        var baseImageRelationshipsByChildVersion = await LoadBaseImageRelationshipsByChildVersionAsync([latestSnapshot.ImageVersionId], cancellationToken).ConfigureAwait(false);
+        var mappedUpdateFindings = updateFindings.Select(entity => MapUpdateFinding(entity, recommendedImageVersions, manualSelection))
+                                                 .ToList();
+        var registryRepository = latestSnapshot.ImageVersion.RegistryRepository;
+        var ownImagesByRepository = await LoadOwnImagesByRepositoryAsync(cancellationToken).ConfigureAwait(false);
+        var resourceUsageHistory = await GetRuntimeContainerResourceHistoryAsync(dockerInstanceId, containerId, cancellationToken).ConfigureAwait(false);
+
+        ArgumentNullException.ThrowIfNull(registryRepository);
+
+        ownImagesByRepository.TryGetValue(CreateRepositoryKey(latestSnapshot), out var linkedObservedImage);
+
+        var baseRuntimeAlert = await LoadBaseRuntimeAlertAsync(updateFindings, linkedObservedImage, cancellationToken).ConfigureAwait(false);
+
+        baseImageRelationshipsByChildVersion.TryGetValue(latestSnapshot.ImageVersionId, out var baseImages);
+
+        var detail = CreateRuntimeContainerDetail(dockerInstanceId,
+                                                  containerId,
+                                                  latestSnapshot,
+                                                  mappedUpdateFindings,
+                                                  manualSelection,
+                                                  linkedObservedImage,
+                                                  baseRuntimeAlert);
+
+        ApplyImageVulnerabilityData(detail,
+                                    latestSnapshot.ImageVersion,
+                                    baseImages,
+                                    vulnerabilityFindings);
+
+        detail.CurrentResourceUsage = GetCurrentResourceUsage(resourceUsageHistory);
+        detail.ResourceUsageHistory = resourceUsageHistory;
+
+        return detail;
+    }
+
+    /// <summary>
+    /// Map a container snapshot, its findings and its links to the runtime container detail without vulnerability data, resource usage and histories
+    /// </summary>
+    /// <param name="dockerInstanceId">ID of the Docker instance</param>
+    /// <param name="containerId">Container identifier</param>
+    /// <param name="latestSnapshot">Latest container snapshot</param>
+    /// <param name="mappedUpdateFindings">Mapped update findings of the container snapshot</param>
+    /// <param name="manualSelection">Manual tag selection, if any</param>
+    /// <param name="linkedObservedImage">Observed image linked to the container, if any</param>
+    /// <param name="baseRuntimeAlert">Base runtime alert, if any</param>
+    /// <returns>Runtime container detail</returns>
+    private RuntimeContainerDetailViewData CreateRuntimeContainerDetail(Guid dockerInstanceId,
+                                                                        string containerId,
+                                                                        ContainerSnapshot latestSnapshot,
+                                                                        List<UpdateFindingViewData> mappedUpdateFindings,
+                                                                        RuntimeContainerTagSelection? manualSelection,
+                                                                        ObservedImage? linkedObservedImage,
+                                                                        UpdateFinding? baseRuntimeAlert)
+    {
+        var availableTagCandidates = CreateAvailableTagCandidates(mappedUpdateFindings, latestSnapshot);
+        var resolvedVersionTag = string.IsNullOrWhiteSpace(latestSnapshot.ResolvedVersionTag) == false
+                                     ? latestSnapshot.ResolvedVersionTag
+                                     : TagCandidateViewHelper.ResolveResolvedVersionTag(latestSnapshot.ImageVersion.Tag,
+                                                                                        latestSnapshot.ImageVersion.Digest,
+                                                                                        availableTagCandidates);
+        var availableUpdateVersionTag = string.IsNullOrWhiteSpace(latestSnapshot.AvailableUpdateVersionTag) == false
+                                            ? latestSnapshot.AvailableUpdateVersionTag
+                                            : TagCandidateViewHelper.ResolveAvailableUpdateVersionTag(availableTagCandidates,
+                                                                                                      resolvedVersionTag ?? latestSnapshot.ImageVersion.Tag);
+
+        return new RuntimeContainerDetailViewData
+               {
+                   DockerInstanceId = dockerInstanceId,
+                   ContainerId = containerId,
+                   ContainerName = latestSnapshot.Name,
+                   DockerInstanceName = latestSnapshot.DockerInstance.Name,
+                   ImageReference = _imageReferenceParser.Format(latestSnapshot.ImageVersion),
+                   CurrentTag = latestSnapshot.ImageVersion.Tag,
+                   ResolvedVersionTag = resolvedVersionTag,
+                   RuntimeStatus = latestSnapshot.Status.ToString(),
+                   ComposeProject = latestSnapshot.ComposeProject,
+                   StackName = latestSnapshot.StackName,
+                   ServiceName = latestSnapshot.ServiceName,
+                   RecordedAtUtc = latestSnapshot.RecordedAtUtc,
+                   LinkedObservedImageId = linkedObservedImage?.Id,
+                   LinkedObservedImageName = linkedObservedImage?.Name,
+                   UpdateStatus = FormatUpdateAssessmentStatus(latestSnapshot.UpdateAssessmentStatus),
+                   UpdateMessage = latestSnapshot.UpdateAssessmentMessage,
+                   AvailableUpdateVersionTag = availableUpdateVersionTag,
+                   ManualSelectionImage = manualSelection is null
+                                              ? null
+                                              : FormatImageReference(latestSnapshot.ImageVersion.RegistryRepository.Registry,
+                                                                     latestSnapshot.ImageVersion.RegistryRepository.Repository,
+                                                                     manualSelection.Tag,
+                                                                     manualSelection.Digest),
+                   ManualSelectionAtUtc = manualSelection?.SelectedAtUtc,
+                   AvailableTagCandidates = availableTagCandidates,
+                   UpdateFindings = mappedUpdateFindings,
+                   BaseRuntimeAlertSummary = baseRuntimeAlert?.Summary,
+                   BaseRuntimeAlertDetails = baseRuntimeAlert?.Details,
                };
     }
 
@@ -1881,91 +1944,7 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
     /// <inheritdoc/>
     public async Task<ObservedImageDetailViewData?> GetObservedImageDetailAsync(Guid observedImageId, CancellationToken cancellationToken = default)
     {
-        return await ExecuteSerializedAsync(async () =>
-                                            {
-                                                var observedImage = await _dbContext.ObservedImages.Include(entity => entity.CurrentImageVersion.RegistryRepository)
-                                                                                                   .AsNoTracking()
-                                                                                                   .SingleOrDefaultAsync(entity => entity.Id == observedImageId, cancellationToken)
-                                                                                                   .ConfigureAwait(false);
-
-                                                if (observedImage is null)
-                                                {
-                                                    return null;
-                                                }
-
-                                                var baseImageRelationshipsByChildVersion = await LoadBaseImageRelationshipsByChildVersionAsync([observedImage.CurrentImageVersionId], cancellationToken).ConfigureAwait(false);
-
-                                                var updateFindings = await _dbContext.UpdateFindings.Include(entity => entity.TagCandidates)
-                                                                                                    .Where(entity => entity.ObservedImageId == observedImage.Id && entity.IsActive)
-                                                                                                    .OrderByDescending(entity => entity.DetectedAtUtc)
-                                                                                                    .AsNoTracking()
-                                                                                                    .ToListAsync(cancellationToken)
-                                                                                                    .ConfigureAwait(false);
-                                                var vulnerabilityFindings = SortFindingsForDisplay(await _dbContext.VulnerabilityFindings.Where(entity => entity.ImageVersionId == observedImage.CurrentImageVersionId)
-                                                                                                                                         .AsNoTracking()
-                                                                                                                                         .ToListAsync(cancellationToken)
-                                                                                                                                         .ConfigureAwait(false));
-                                                var latestSnapshots = await GetLatestContainerSnapshotsAsync(cancellationToken).ConfigureAwait(false);
-                                                var linkedSnapshots = latestSnapshots.Where(entity => string.Equals(CreateRepositoryKey(entity),
-                                                                                                                    CreateRepositoryKey(observedImage.CurrentImageVersion),
-                                                                                                                    StringComparison.OrdinalIgnoreCase))
-                                                                                     .OrderBy(entity => entity.DockerInstance.Name)
-                                                                                     .ThenBy(entity => entity.Name)
-                                                                                     .ToList();
-                                                var linkedSnapshotIds = linkedSnapshots.Select(entity => entity.Id)
-                                                                                       .ToList();
-                                                var runtimeDerivedFindings = linkedSnapshotIds.Count == 0
-                                                                                 ? []
-                                                                                 : await _dbContext.UpdateFindings.Include(entity => entity.TagCandidates)
-                                                                                                                  .Where(entity => entity.IsActive
-                                                                                                                                   && entity.Type == UpdateFindingType.DerivedBaseRuntimeUpdate
-                                                                                                                                   && entity.ContainerSnapshotId != null
-                                                                                                                                   && linkedSnapshotIds.Contains(entity.ContainerSnapshotId.Value))
-                                                                                                                  .OrderByDescending(entity => entity.DetectedAtUtc)
-                                                                                                                  .AsNoTracking()
-                                                                                                                  .ToListAsync(cancellationToken)
-                                                                                                                  .ConfigureAwait(false);
-                                                var combinedUpdateFindings = updateFindings.Concat(runtimeDerivedFindings)
-                                                                                           .OrderByDescending(entity => entity.DetectedAtUtc)
-                                                                                           .ToList();
-                                                var baseRuntimeAlert = updateFindings.Where(entity => entity.IsActive
-                                                                                                      && entity.Type == UpdateFindingType.DerivedBaseRuntimeUpdate)
-                                                                                     .OrderByDescending(entity => entity.DetectedAtUtc)
-                                                                                     .FirstOrDefault()
-                                                                           ?? runtimeDerivedFindings.FirstOrDefault();
-                                                var recommendedImageVersions = await LoadRecommendedImageVersionsAsync(combinedUpdateFindings, cancellationToken).ConfigureAwait(false);
-
-                                                baseImageRelationshipsByChildVersion.TryGetValue(observedImage.CurrentImageVersionId, out var baseImages);
-
-                                                var baseImageVulnerabilitySummary = SummarizeBaseImageVulnerabilities(baseImages);
-                                                var vulnerabilityAssessmentDetail = BuildVulnerabilityAssessmentDetail(observedImage.CurrentImageVersion, vulnerabilityFindings);
-
-                                                return new ObservedImageDetailViewData
-                                                       {
-                                                           Id = observedImage.Id,
-                                                           Name = observedImage.Name,
-                                                           Description = observedImage.Description,
-                                                           ImageReference = _imageReferenceParser.Format(observedImage.CurrentImageVersion),
-                                                           LatestScanStatus = GetLatestObservedScanStatus(observedImage.Id),
-                                                           LatestScanMessage = GetLatestObservedScanMessage(observedImage.Id),
-                                                           IsOwnImage = observedImage.Source == RegistrationSource.Discovery,
-                                                           BaseImages = baseImages ?? [],
-                                                           ActiveBaseImageVulnerabilityFindingCount = baseImageVulnerabilitySummary.ActiveFindingCount,
-                                                           BaseImageVulnerabilitySummary = baseImageVulnerabilitySummary.Summary,
-                                                           UpdateFindings = combinedUpdateFindings.Select(entity => MapUpdateFinding(entity, recommendedImageVersions, manualSelection: null))
-                                                                                                  .ToList(),
-                                                           BaseRuntimeAlertSummary = baseRuntimeAlert?.Summary,
-                                                           BaseRuntimeAlertDetails = baseRuntimeAlert?.Details,
-                                                           VulnerabilityAssessment = vulnerabilityAssessmentDetail.Assessment,
-                                                           VulnerabilityFindings = vulnerabilityAssessmentDetail.Findings,
-                                                           LinkedRuntimeContainers = observedImage.Source == RegistrationSource.Discovery
-                                                                                         ? linkedSnapshots.Select(MapLinkedRuntimeContainer)
-                                                                                                          .ToList()
-                                                                                         : [],
-                                                           ScanHistory = await GetObservedImageScanHistoryAsync(observedImage.Id, cancellationToken).ConfigureAwait(false),
-                                                       };
-                                            },
-                                            cancellationToken).ConfigureAwait(false);
+        return await ExecuteSerializedAsync(() => GetObservedImageDetailCoreAsync(observedImageId, cancellationToken), cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc/>
@@ -1979,136 +1958,7 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
                                                                                       string containerId,
                                                                                       CancellationToken cancellationToken = default)
     {
-        return await ExecuteSerializedAsync(async () =>
-                                            {
-                                                ArgumentException.ThrowIfNullOrWhiteSpace(containerId);
-
-                                                var latestSnapshot = await _dbContext.ContainerSnapshots.Include(entity => entity.DockerInstance.PortainerEndpoint)
-                                                                                                        .Include(entity => entity.ImageVersion.RegistryRepository)
-                                                                                                        .AsNoTracking()
-                                                                                                        .OrderByDescending(entity => entity.RecordedAtUtc)
-                                                                                                        .FirstOrDefaultAsync(entity => entity.DockerInstanceId == dockerInstanceId
-                                                                                                                                       && entity.ContainerId == containerId,
-                                                                                                                             cancellationToken)
-                                                                                                        .ConfigureAwait(false);
-
-                                                if (latestSnapshot is null)
-                                                {
-                                                    return null;
-                                                }
-
-                                                var updateFindings = await _dbContext.UpdateFindings.Include(entity => entity.TagCandidates)
-                                                                                                    .Where(entity => entity.ContainerSnapshotId == latestSnapshot.Id)
-                                                                                                    .OrderByDescending(entity => entity.DetectedAtUtc)
-                                                                                                    .AsNoTracking()
-                                                                                                    .ToListAsync(cancellationToken)
-                                                                                                    .ConfigureAwait(false);
-
-                                                var recommendedImageVersions = await LoadRecommendedImageVersionsAsync(updateFindings, cancellationToken).ConfigureAwait(false);
-
-                                                var manualSelection = await _dbContext.RuntimeContainerTagSelections.AsNoTracking()
-                                                                                                                    .SingleOrDefaultAsync(entity => entity.DockerInstanceId == dockerInstanceId
-                                                                                                                                                    && entity.ContainerId == containerId
-                                                                                                                                                    && entity.RegistryRepositoryId == latestSnapshot.ImageVersion.RegistryRepositoryId,
-                                                                                                                                          cancellationToken)
-                                                                                                                    .ConfigureAwait(false);
-
-                                                var vulnerabilityFindings = SortFindingsForDisplay(await _dbContext.VulnerabilityFindings.Where(entity => entity.ImageVersionId == latestSnapshot.ImageVersionId)
-                                                                                                                                         .AsNoTracking()
-                                                                                                                                         .ToListAsync(cancellationToken)
-                                                                                                                                         .ConfigureAwait(false));
-                                                var baseImageRelationshipsByChildVersion = await LoadBaseImageRelationshipsByChildVersionAsync([latestSnapshot.ImageVersionId], cancellationToken).ConfigureAwait(false);
-
-                                                var mappedUpdateFindings = updateFindings.Select(entity => MapUpdateFinding(entity, recommendedImageVersions, manualSelection))
-                                                                                         .ToList();
-
-                                                var availableTagCandidates = FilterRuntimeAvailableTagCandidates(FilterVisibleTagCandidates(mappedUpdateFindings.SelectMany(entity => entity.TagCandidates)
-                                                                                                                                                                .OrderByDescending(entity => entity.IsRecommended)
-                                                                                                                                                                .ThenBy(entity => entity.Tag, StringComparer.OrdinalIgnoreCase)),
-                                                                                                                 latestSnapshot.ImageVersion.Tag,
-                                                                                                                 latestSnapshot.ResolvedVersionTag,
-                                                                                                                 latestSnapshot.ImageVersion.PublishedAtUtc);
-
-                                                var resolvedVersionTag = string.IsNullOrWhiteSpace(latestSnapshot.ResolvedVersionTag) == false
-                                                                             ? latestSnapshot.ResolvedVersionTag
-                                                                             : ResolveResolvedVersionTag(latestSnapshot.ImageVersion.Tag,
-                                                                                                         latestSnapshot.ImageVersion.Digest,
-                                                                                                         availableTagCandidates);
-                                                var availableUpdateVersionTag = string.IsNullOrWhiteSpace(latestSnapshot.AvailableUpdateVersionTag) == false
-                                                                                    ? latestSnapshot.AvailableUpdateVersionTag
-                                                                                    : ResolveAvailableUpdateVersionTag(availableTagCandidates,
-                                                                                                                       resolvedVersionTag ?? latestSnapshot.ImageVersion.Tag);
-
-                                                var registryRepository = latestSnapshot.ImageVersion.RegistryRepository;
-
-                                                var ownImagesByRepository = await LoadOwnImagesByRepositoryAsync(cancellationToken).ConfigureAwait(false);
-                                                var resourceUsageHistory = await GetRuntimeContainerResourceHistoryAsync(dockerInstanceId, containerId, cancellationToken).ConfigureAwait(false);
-
-                                                ArgumentNullException.ThrowIfNull(registryRepository);
-
-                                                ownImagesByRepository.TryGetValue(CreateRepositoryKey(latestSnapshot), out var linkedObservedImage);
-
-                                                var baseRuntimeAlert = updateFindings.FirstOrDefault(entity => entity.IsActive
-                                                                                                               && entity.Type == UpdateFindingType.DerivedBaseRuntimeUpdate);
-
-                                                if (baseRuntimeAlert is null && linkedObservedImage is not null)
-                                                {
-                                                    baseRuntimeAlert = await _dbContext.UpdateFindings.Where(entity => entity.IsActive
-                                                                                                                       && entity.ObservedImageId == linkedObservedImage.Id
-                                                                                                                       && entity.Type == UpdateFindingType.DerivedBaseRuntimeUpdate)
-                                                                                                      .OrderByDescending(entity => entity.DetectedAtUtc)
-                                                                                                      .AsNoTracking()
-                                                                                                      .FirstOrDefaultAsync(cancellationToken)
-                                                                                                      .ConfigureAwait(false);
-                                                }
-
-                                                baseImageRelationshipsByChildVersion.TryGetValue(latestSnapshot.ImageVersionId, out var baseImages);
-
-                                                var baseImageVulnerabilitySummary = SummarizeBaseImageVulnerabilities(baseImages);
-                                                var vulnerabilityAssessmentDetail = BuildVulnerabilityAssessmentDetail(latestSnapshot.ImageVersion, vulnerabilityFindings);
-
-                                                return new RuntimeContainerDetailViewData
-                                                       {
-                                                           DockerInstanceId = dockerInstanceId,
-                                                           ContainerId = containerId,
-                                                           ContainerName = latestSnapshot.Name,
-                                                           DockerInstanceName = latestSnapshot.DockerInstance.Name,
-                                                           ImageReference = _imageReferenceParser.Format(latestSnapshot.ImageVersion),
-                                                           CurrentTag = latestSnapshot.ImageVersion.Tag,
-                                                           ResolvedVersionTag = resolvedVersionTag,
-                                                           RuntimeStatus = latestSnapshot.Status.ToString(),
-                                                           ComposeProject = latestSnapshot.ComposeProject,
-                                                           StackName = latestSnapshot.StackName,
-                                                           ServiceName = latestSnapshot.ServiceName,
-                                                           RecordedAtUtc = latestSnapshot.RecordedAtUtc,
-                                                           LinkedObservedImageId = linkedObservedImage?.Id,
-                                                           LinkedObservedImageName = linkedObservedImage?.Name,
-                                                           UpdateStatus = FormatUpdateAssessmentStatus(latestSnapshot.UpdateAssessmentStatus),
-                                                           UpdateMessage = latestSnapshot.UpdateAssessmentMessage,
-                                                           AvailableUpdateVersionTag = availableUpdateVersionTag,
-                                                           ManualSelectionImage = manualSelection is null
-                                                                                      ? null
-                                                                                      : FormatImageReference(registryRepository.Registry,
-                                                                                                             registryRepository.Repository,
-                                                                                                             manualSelection.Tag,
-                                                                                                             manualSelection.Digest),
-                                                           ManualSelectionAtUtc = manualSelection?.SelectedAtUtc,
-                                                           AvailableTagCandidates = availableTagCandidates,
-                                                           BaseImages = baseImages ?? [],
-                                                           ActiveBaseImageVulnerabilityFindingCount = baseImageVulnerabilitySummary.ActiveFindingCount,
-                                                           BaseImageVulnerabilitySummary = baseImageVulnerabilitySummary.Summary,
-                                                           UpdateFindings = mappedUpdateFindings,
-                                                           BaseRuntimeAlertSummary = baseRuntimeAlert?.Summary,
-                                                           BaseRuntimeAlertDetails = baseRuntimeAlert?.Details,
-                                                           VulnerabilityAssessment = vulnerabilityAssessmentDetail.Assessment,
-                                                           VulnerabilityFindings = vulnerabilityAssessmentDetail.Findings,
-                                                           CurrentResourceUsage = GetCurrentResourceUsage(resourceUsageHistory),
-                                                           ResourceUsageHistory = resourceUsageHistory,
-                                                           ScanHistory = await GetRuntimeContainerScanHistoryAsync(dockerInstanceId, containerId, cancellationToken).ConfigureAwait(false),
-                                                           ActionHistory = await GetContainerActionHistoryAsync(dockerInstanceId, containerId, cancellationToken).ConfigureAwait(false),
-                                                       };
-                                            },
-                                            cancellationToken).ConfigureAwait(false);
+        return await ExecuteSerializedAsync(() => GetRuntimeContainerDetailCoreAsync(dockerInstanceId, containerId, cancellationToken), cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc/>

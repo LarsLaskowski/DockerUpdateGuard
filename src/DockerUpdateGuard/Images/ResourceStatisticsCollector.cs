@@ -105,6 +105,39 @@ public class ResourceStatisticsCollector : IResourceStatisticsCollector
         return Math.Round(delta / elapsedSeconds, 4);
     }
 
+    /// <summary>
+    /// Create a container resource sample with the network rates derived from the previous sample
+    /// </summary>
+    /// <param name="dockerInstanceId">Docker instance identifier</param>
+    /// <param name="resourceSample">Sample reported by the Docker instance</param>
+    /// <param name="previousSample">Previous stored sample of the container, if any</param>
+    /// <returns>Container resource sample</returns>
+    private static RuntimeContainerResourceSample CreateContainerSample(Guid dockerInstanceId,
+                                                                        RuntimeContainerResourceDescriptor resourceSample,
+                                                                        RuntimeContainerResourceSample? previousSample)
+    {
+        return new RuntimeContainerResourceSample
+               {
+                   DockerInstanceId = dockerInstanceId,
+                   ContainerId = resourceSample.ContainerId,
+                   ContainerName = resourceSample.ContainerName,
+                   CpuPercent = resourceSample.CpuPercent,
+                   MemoryUsageBytes = resourceSample.MemoryUsageBytes,
+                   MemoryLimitBytes = resourceSample.MemoryLimitBytes,
+                   NetworkRxBytesTotal = resourceSample.NetworkRxBytesTotal,
+                   NetworkTxBytesTotal = resourceSample.NetworkTxBytesTotal,
+                   NetworkRxBytesPerSecond = CalculateBytesPerSecond(previousSample?.NetworkRxBytesTotal,
+                                                                     resourceSample.NetworkRxBytesTotal,
+                                                                     previousSample?.RecordedAtUtc,
+                                                                     resourceSample.RecordedAtUtc),
+                   NetworkTxBytesPerSecond = CalculateBytesPerSecond(previousSample?.NetworkTxBytesTotal,
+                                                                     resourceSample.NetworkTxBytesTotal,
+                                                                     previousSample?.RecordedAtUtc,
+                                                                     resourceSample.RecordedAtUtc),
+                   RecordedAtUtc = resourceSample.RecordedAtUtc,
+               };
+    }
+
     #endregion // Static methods
 
     #region Methods
@@ -152,26 +185,9 @@ public class ResourceStatisticsCollector : IResourceStatisticsCollector
         {
             latestContainerSamples.TryGetValue(resourceSample.ContainerId, out var previousSample);
 
-            var currentSample = new RuntimeContainerResourceSample
-                                {
-                                    DockerInstanceId = dockerInstance.Id,
-                                    ContainerId = resourceSample.ContainerId,
-                                    ContainerName = resourceSample.ContainerName,
-                                    CpuPercent = resourceSample.CpuPercent,
-                                    MemoryUsageBytes = resourceSample.MemoryUsageBytes,
-                                    MemoryLimitBytes = resourceSample.MemoryLimitBytes,
-                                    NetworkRxBytesTotal = resourceSample.NetworkRxBytesTotal,
-                                    NetworkTxBytesTotal = resourceSample.NetworkTxBytesTotal,
-                                    NetworkRxBytesPerSecond = CalculateBytesPerSecond(previousSample?.NetworkRxBytesTotal,
-                                                                                      resourceSample.NetworkRxBytesTotal,
-                                                                                      previousSample?.RecordedAtUtc,
-                                                                                      resourceSample.RecordedAtUtc),
-                                    NetworkTxBytesPerSecond = CalculateBytesPerSecond(previousSample?.NetworkTxBytesTotal,
-                                                                                      resourceSample.NetworkTxBytesTotal,
-                                                                                      previousSample?.RecordedAtUtc,
-                                                                                      resourceSample.RecordedAtUtc),
-                                    RecordedAtUtc = resourceSample.RecordedAtUtc,
-                                };
+            var currentSample = CreateContainerSample(dockerInstance.Id,
+                                                      resourceSample,
+                                                      previousSample);
 
             currentSamples.Add(currentSample);
         }

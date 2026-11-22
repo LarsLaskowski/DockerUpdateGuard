@@ -529,6 +529,66 @@ public class UpdateDetectionService : IUpdateDetectionService
     }
 
     /// <summary>
+    /// Order the tags by publication, keeping the most recently published entry of every tag
+    /// </summary>
+    /// <param name="availableTags">Available tags</param>
+    /// <returns>Tags ordered by publication, newest first</returns>
+    private static List<DockerHubTagData> OrderTagsByPublication(IReadOnlyList<DockerHubTagData> availableTags)
+    {
+        return availableTags.Where(tag => string.IsNullOrWhiteSpace(tag.Tag) == false)
+                            .GroupBy(tag => tag.Tag, StringComparer.OrdinalIgnoreCase)
+                            .Select(group => group.OrderByDescending(item => item.PublishedAtUtc)
+                                                  .First())
+                            .OrderByDescending(tag => tag.PublishedAtUtc)
+                            .ToList();
+    }
+
+    /// <summary>
+    /// Create the result for a tag that has no automatic successor: review candidates or up to date
+    /// </summary>
+    /// <param name="currentImage">Current image reference</param>
+    /// <param name="currentTagData">Tag data of the current image</param>
+    /// <param name="orderedTags">Tags ordered by publication</param>
+    /// <returns>Evaluation result</returns>
+    private static UpdateEvaluationResult CreateReviewOrUpToDateResult(ImageReference currentImage,
+                                                                       DockerHubTagData? currentTagData,
+                                                                       IReadOnlyList<DockerHubTagData> orderedTags)
+    {
+        var reviewCandidates = orderedTags.Where(tag => string.Equals(tag.Tag,
+                                                                      currentImage.Tag,
+                                                                      StringComparison.OrdinalIgnoreCase) == false
+                                                        && string.IsNullOrWhiteSpace(tag.Digest) == false
+                                                        && IsCandidatePublishedAfterBaseline(tag.PublishedAtUtc, currentTagData?.PublishedAtUtc))
+                                          .Take(MaxCandidateCount)
+                                          .Select(tag => new UpdateCandidateData
+                                                         {
+                                                             Tag = tag.Tag,
+                                                             Digest = tag.Digest,
+                                                             PublishedAtUtc = tag.PublishedAtUtc,
+                                                         })
+                                          .ToList();
+
+        if (reviewCandidates.Count > 0)
+        {
+            return new UpdateEvaluationResult
+                   {
+                       Status = UpdateEvaluationStatus.NeedsReview,
+                       Summary = "Alternative tags are available and require manual review",
+                       Details = currentTagData?.PublishedAtUtc is null
+                                     ? "The current tag is not semantic, so an automatic successor cannot be selected reliably"
+                                     : $"The current tag was last published at {currentTagData.PublishedAtUtc:O}",
+                       Candidates = reviewCandidates,
+                   };
+        }
+
+        return new UpdateEvaluationResult
+               {
+                   Status = UpdateEvaluationStatus.UpToDate,
+                   Summary = "No newer tags were identified",
+               };
+    }
+
+    /// <summary>
     /// Apply the major-version upgrade policy to the higher semantic version candidates
     /// Successors inside the current major line always win; a major upgrade is only offered once no
     /// in-line successor exists and the new major line is established
@@ -746,12 +806,7 @@ public class UpdateDetectionService : IUpdateDetectionService
                    };
         }
 
-        var orderedTags = availableTags.Where(tag => string.IsNullOrWhiteSpace(tag.Tag) == false)
-                                       .GroupBy(tag => tag.Tag, StringComparer.OrdinalIgnoreCase)
-                                       .Select(group => group.OrderByDescending(item => item.PublishedAtUtc)
-                                                             .First())
-                                       .OrderByDescending(tag => tag.PublishedAtUtc)
-                                       .ToList();
+        var orderedTags = OrderTagsByPublication(availableTags);
         var currentTagData = orderedTags.FirstOrDefault(tag => string.Equals(tag.Tag,
                                                                              currentImage.Tag,
                                                                              StringComparison.OrdinalIgnoreCase));
@@ -795,38 +850,7 @@ public class UpdateDetectionService : IUpdateDetectionService
             return resolvedDigestResult;
         }
 
-        var reviewCandidates = orderedTags.Where(tag => string.Equals(tag.Tag,
-                                                                      currentImage.Tag,
-                                                                      StringComparison.OrdinalIgnoreCase) == false
-                                                        && string.IsNullOrWhiteSpace(tag.Digest) == false
-                                                        && IsCandidatePublishedAfterBaseline(tag.PublishedAtUtc, currentTagData?.PublishedAtUtc))
-                                          .Take(MaxCandidateCount)
-                                          .Select(tag => new UpdateCandidateData
-                                                         {
-                                                             Tag = tag.Tag,
-                                                             Digest = tag.Digest,
-                                                             PublishedAtUtc = tag.PublishedAtUtc,
-                                                         })
-                                          .ToList();
-
-        if (reviewCandidates.Count > 0)
-        {
-            return new UpdateEvaluationResult
-                   {
-                       Status = UpdateEvaluationStatus.NeedsReview,
-                       Summary = "Alternative tags are available and require manual review",
-                       Details = currentTagData?.PublishedAtUtc is null
-                                     ? "The current tag is not semantic, so an automatic successor cannot be selected reliably"
-                                     : $"The current tag was last published at {currentTagData.PublishedAtUtc:O}",
-                       Candidates = reviewCandidates,
-                   };
-        }
-
-        return new UpdateEvaluationResult
-               {
-                   Status = UpdateEvaluationStatus.UpToDate,
-                   Summary = "No newer tags were identified",
-               };
+        return CreateReviewOrUpToDateResult(currentImage, currentTagData, orderedTags);
     }
 
     #endregion // IUpdateDetectionService

@@ -127,6 +127,41 @@ public class DockerHubAccountImageDiscoveryService : IDockerHubAccountImageDisco
     }
 
     /// <summary>
+    /// Select the most recently updated repository of every repository path
+    /// </summary>
+    /// <param name="repositories">Repositories returned by Docker Hub</param>
+    /// <returns>Latest repository per path</returns>
+    private static List<DockerHubRepositoryData> SelectLatestRepositories(IEnumerable<DockerHubRepositoryData> repositories)
+    {
+        return repositories.Where(entity => string.IsNullOrWhiteSpace(entity.Repository) == false)
+                           .GroupBy(entity => entity.Repository, StringComparer.OrdinalIgnoreCase)
+                           .Select(group => group.OrderByDescending(entity => entity.LastUpdatedAtUtc)
+                                                 .First())
+                           .ToList();
+    }
+
+    /// <summary>
+    /// Disable the discovered observed images that no longer match a discovered repository
+    /// </summary>
+    /// <param name="existingObservedImages">Existing discovered observed images</param>
+    /// <param name="discoveredRepositories">Discovered repository paths</param>
+    /// <returns>Number of observed images that were enabled before</returns>
+    private static int DisableObsoleteObservedImages(List<ObservedImage> existingObservedImages, HashSet<string> discoveredRepositories)
+    {
+        var obsoleteObservedImages = existingObservedImages.Where(entity => MatchesRepository(entity, discoveredRepositories) == false)
+                                                           .ToList();
+        var disabledImageCount = obsoleteObservedImages.Count(entity => entity.IsEnabled);
+
+        foreach (var obsoleteObservedImage in obsoleteObservedImages)
+        {
+            obsoleteObservedImage.IsEnabled = false;
+            obsoleteObservedImage.UpdatedAtUtc = DateTimeOffset.UtcNow;
+        }
+
+        return disabledImageCount;
+    }
+
+    /// <summary>
     /// Select the tag that should be tracked for a repository
     /// </summary>
     /// <param name="tags">Available repository tags</param>
@@ -285,11 +320,7 @@ public class DockerHubAccountImageDiscoveryService : IDockerHubAccountImageDisco
             return;
         }
 
-        var repositories = repositoriesResult.Data.Where(entity => string.IsNullOrWhiteSpace(entity.Repository) == false)
-                                                  .GroupBy(entity => entity.Repository, StringComparer.OrdinalIgnoreCase)
-                                                  .Select(group => group.OrderByDescending(entity => entity.LastUpdatedAtUtc)
-                                                                        .First())
-                                                  .ToList();
+        var repositories = SelectLatestRepositories(repositoriesResult.Data);
         var discoveredRepositories = repositories.Select(entity => entity.Repository)
                                                  .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var existingObservedImages = await _dbContext.ObservedImages
@@ -298,17 +329,9 @@ public class DockerHubAccountImageDiscoveryService : IDockerHubAccountImageDisco
                                                      .ToListAsync(cancellationToken)
                                                      .ConfigureAwait(false);
 
-        var obsoleteObservedImages = existingObservedImages.Where(entity => MatchesRepository(entity, discoveredRepositories) == false)
-                                                           .ToList();
-        var disabledImageCount = obsoleteObservedImages.Count(entity => entity.IsEnabled);
+        var disabledImageCount = DisableObsoleteObservedImages(existingObservedImages, discoveredRepositories);
         var synchronizedImageCount = 0;
         var skippedRepositoryCount = 0;
-
-        foreach (var obsoleteObservedImage in obsoleteObservedImages)
-        {
-            obsoleteObservedImage.IsEnabled = false;
-            obsoleteObservedImage.UpdatedAtUtc = DateTimeOffset.UtcNow;
-        }
 
         foreach (var repository in repositories)
         {
