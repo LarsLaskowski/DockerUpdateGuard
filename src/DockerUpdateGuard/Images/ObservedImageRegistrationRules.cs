@@ -75,7 +75,17 @@ internal static class ObservedImageRegistrationRules
     /// <returns>Error text or null</returns>
     internal static string? GetNameError(string? name)
     {
-        throw new InvalidOperationException("Skeleton: not implemented");
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return EmptyNameMessage;
+        }
+
+        if (name.Trim().Length > MaxNameLength)
+        {
+            return NameTooLongMessage;
+        }
+
+        return null;
     }
 
     /// <summary>
@@ -85,7 +95,27 @@ internal static class ObservedImageRegistrationRules
     /// <returns>Error text of the first part that is too long or null</returns>
     internal static string? GetPartsError(ImageReference reference)
     {
-        throw new InvalidOperationException("Skeleton: not implemented");
+        if (reference.Registry.Length > MaxRegistryLength)
+        {
+            return RegistryTooLongMessage;
+        }
+
+        if (reference.Repository.Length > MaxRepositoryLength)
+        {
+            return RepositoryTooLongMessage;
+        }
+
+        if (reference.Tag.Length > MaxTagLength)
+        {
+            return TagTooLongMessage;
+        }
+
+        if (reference.Digest?.Length > MaxDigestLength)
+        {
+            return DigestTooLongMessage;
+        }
+
+        return null;
     }
 
     /// <summary>
@@ -95,7 +125,23 @@ internal static class ObservedImageRegistrationRules
     /// <returns>Error text or null, also for a blank or unparsable reference</returns>
     internal static string? GetReferenceError(string? imageReference)
     {
-        throw new InvalidOperationException("Skeleton: not implemented");
+        if (string.IsNullOrWhiteSpace(imageReference))
+        {
+            return null;
+        }
+
+        ImageReference parsedReference;
+
+        try
+        {
+            parsedReference = new ImageReferenceParser().Parse(imageReference);
+        }
+        catch (ArgumentException)
+        {
+            return null;
+        }
+
+        return GetPartsError(parsedReference);
     }
 
     #endregion // Methods

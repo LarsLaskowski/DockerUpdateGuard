@@ -102,8 +102,10 @@ refer to the same image the same way.
   shown as "My images" on `/my-images`; see [Registries](registries.md)). Discovered images are the user's own images.
 - **Manual registration** takes a name and an image reference (both required) and an optional description, then:
   1. parses the reference and gets or creates its image version exactly as written — tag and, if given, digest — with
-     no registry call;
-  2. validates the trimmed name first (not blank, at most 200 characters), before anything reaches the catalog;
+     no registry call (after the check of step 2);
+  2. validates the trimmed name first (not blank, at most 200 characters) and, once the reference is parsed, its
+     parts against the catalog limits (registry 200, repository 300, tag 200, digest 255 characters), all before
+     anything reaches the catalog;
   3. looks for the observed images whose current version is that image version, oldest first (by creation time, then
      id). If one of them is an enabled discovered image, the registration is rejected and nothing is changed. Otherwise
      the oldest manual one is updated (name and description replaced, enabled again, version unchanged, update time set
@@ -125,8 +127,14 @@ refer to the same image the same way.
 
 - A blank name or reference is rejected by the registration form. A reference without a repository name makes the
   registration fail and the form shows `Registration failed: The image reference does not contain a repository name`;
-  a reference part longer than the stored limits makes it fail with `Registration failed: unexpected error`. In both cases the
-  observed image is not saved (an image version created before the failure remains in the catalog).
+  a parsed part longer than its stored limit makes it fail with `Registration failed: The registry must not be
+  longer than 200 characters`, `…The repository must not be longer than 300 characters`, `…The tag must not be longer
+  than 200 characters` or `…The digest must not be longer than 255 characters` (the first of that order when several
+  apply). The limits count UTF-16 code units of the parts as stored, so `library/` added to a single-segment Docker
+  Hub repository counts and the surrounding whitespace of tag and digest and the `@` separator do not. In all these
+  cases nothing is saved and no catalog entry is created. The form reports an over-long name or reference part before
+  anything is sent, with the same texts and without the `Registration failed:` prefix; a reference the parser rejects
+  gets no such message from the form.
 - A name that is blank after trimming fails with `Registration failed: The name must not be empty`; a trimmed name
   longer than 200 characters with `Registration failed: The name must not be longer than 200 characters`. The limit
   counts UTF-16 code units of the trimmed .NET string, never more than the column's character count; a name of 200

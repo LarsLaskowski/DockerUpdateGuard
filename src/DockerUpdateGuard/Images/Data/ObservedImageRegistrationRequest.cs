@@ -33,7 +33,19 @@ public class ObservedImageRegistrationRequest : IValidatableObject
     /// <inheritdoc/>
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
     {
-        throw new InvalidOperationException("Skeleton: not implemented");
+        var nameError = ObservedImageRegistrationRules.GetNameError(Name);
+
+        if (nameError is not null)
+        {
+            yield return new ValidationResult(nameError, [nameof(Name)]);
+        }
+
+        var referenceError = ObservedImageRegistrationRules.GetReferenceError(ImageReference);
+
+        if (referenceError is not null)
+        {
+            yield return new ValidationResult(referenceError, [nameof(ImageReference)]);
+        }
     }
 
     #endregion // IValidatableObject
