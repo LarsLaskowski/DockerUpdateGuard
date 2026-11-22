@@ -12,3 +12,4 @@ are quoted in full.
 | 2026-11-22 12:20 | 2 Plan revise (plan-check) | Lead | RESULT: DONE, plan shortened under 800 words (opus/medium · 5,423 tokens · 4 tool uses · 15 s · 8 in · 647 out · 231,310 cache read · 6,463 cache write · 45,774 weighted · continued) |
 | 2026-11-22 12:20 | 2 Plan revise (security notes) | Orchestrator | no launch: the one fix-now note was an exact wording edit, applied verbatim to plan.md before the Lead's last revision, which confirmed it is in place |
 | 2026-11-22 12:21 | 2 Plan revise (security notes) | Lead | RESULT: DONE, Security notes folded into the plan (opus/medium · 1,018 tokens · 2 tool uses · 13 s · 6 in · 712 out · 162,521 cache read · 943 cache write · 25,742 weighted · continued) |
+| 2026-11-22 12:21 | 3 Plan security delta | Security | VERDICT: APPROVED (opus/medium · 3,768 tokens · 3 tool uses · 18 s · 8 in · 1,197 out · 120,157 cache read · 4,727 cache write · 35,819 weighted · continued) |

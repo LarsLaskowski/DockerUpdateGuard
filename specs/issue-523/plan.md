@@ -106,6 +106,17 @@ No guarantee touched: the analyzer runs at build time only (fact 9).
 
 none: a dependency update touching no guarantee (`docs/decisions/README.md`); #523 stands beside each pending line.
 
+## Security review
+
+Round 1, verdict APPROVED: tier `trivial` and *Security areas touched* confirmed. Security checked both packages
+in the local NuGet cache. Both versions come from nuget.org with the same author and repository, and 1.5.0 is built
+from commit 5af53bd. Neither package declares a dependency. The only change to the build-time targets adds
+compiler-visible properties: no Exec, task or download. `PrivateAssets` `all` keeps the analyzer out of the image,
+and the exposure of the CI jobs to `SONAR_TOKEN` and `contents: write` is unchanged.
+
+- NON-BLOCKING, *Security considerations*: "only length rules" was inaccurate, since RH2009 is a complexity limit.
+  Accepted: the bullet now names length and complexity rules, in Security's wording. No decision changes.
+
 ## Out of scope / follow-ups
 
 - #523: fix the findings, remove the entries.
