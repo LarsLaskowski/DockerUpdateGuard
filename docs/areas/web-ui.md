@@ -76,8 +76,9 @@ to read the state the other areas compute and to start manual scans; it computes
 - Manual scans are recorded as scan runs with trigger `Manual` ([Scan engine](scan-engine.md)).
 - The per-image rescan is offered even when vulnerability scanning is disabled; it then completes without doing
   anything and records no run.
-- Name and image reference are required for a registration; the form reports a missing value before anything is
-  sent. A registration rejected because the reference is already tracked as an own image shows
+- Name and image reference are required for a registration; the form reports a missing value, a name longer than
+  200 characters or a reference part longer than its stored limit before anything is sent, at the field and in the
+  form's validation summary. A registration rejected because the reference is already tracked as an own image shows
   `Registration failed: This image is already tracked as own image '<name>'.` with an `Open own image` link to
   `/my-images/{id}`; no other failure shows that link.
 - The expected time of the next scheduled vulnerability refresh is an estimate: the start of the most recent

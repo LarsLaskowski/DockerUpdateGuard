@@ -23,6 +23,54 @@ namespace DockerUpdateGuard.Tests;
 [TestClass]
 public class ObservedImagesTests
 {
+    #region Static methods
+
+    /// <summary>
+    /// Submit the form and assert the message is shown as validation text and the service was not called
+    /// </summary>
+    /// <param name="name">Name to type</param>
+    /// <param name="imageReference">Image reference to type</param>
+    /// <param name="expectedMessage">Expected validation message</param>
+    /// <returns>Task</returns>
+    private static async Task AssertReportedWithoutRegistrationAsync(string name, string imageReference, string expectedMessage)
+    {
+        var testContext = BlazorTestContextFactory.Create();
+
+        await using (testContext)
+        {
+            var viewService = Substitute.For<IApplicationViewService>();
+            var registrationService = Substitute.For<IImageRegistrationService>();
+
+            viewService.GetManualObservedImagesAsync(Arg.Any<CancellationToken>())
+                       .Returns([]);
+
+            testContext.Services.AddSingleton(viewService);
+            testContext.Services.AddSingleton(registrationService);
+            testContext.Services.AddSingleton(Substitute.For<IImageScanOrchestrator>());
+            testContext.Services.AddSingleton(new DashboardRefreshState());
+            testContext.Services.AddSingleton<ILogger<ObservedImages>>(new TestLogger<ObservedImages>());
+
+            var component = testContext.Render<ObservedImages>();
+            var inputs = component.FindAll("input");
+
+            await inputs[0].ChangeAsync(new ChangeEventArgs
+                                        {
+                                            Value = name
+                                        }).ConfigureAwait(false);
+            await inputs[1].ChangeAsync(new ChangeEventArgs
+                                        {
+                                            Value = imageReference
+                                        }).ConfigureAwait(false);
+            await component.Find("form").SubmitAsync().ConfigureAwait(false);
+
+            Assert.Contains($">{expectedMessage}<", component.Markup, "The form must show the length message as validation text");
+            Assert.DoesNotContain("Registration failed", component.Markup, "A length message is not a failed registration");
+            await registrationService.DidNotReceive().RegisterAsync(Arg.Any<ObservedImageRegistrationRequest>(), Arg.Any<CancellationToken>()).ConfigureAwait(false);
+        }
+    }
+
+    #endregion // Static methods
+
     #region Methods
 
     /// <summary>
@@ -131,6 +179,32 @@ public class ObservedImagesTests
             UserActionFailureAssert.AssertLogged(logger, "RegisterObservedImage", exception);
             await scanOrchestrator.DidNotReceive().ScanAsync(Arg.Any<Guid>(), Arg.Any<ScanTriggerSource>(), Arg.Any<CancellationToken>()).ConfigureAwait(false);
         }
+    }
+
+    /// <summary>
+    /// Verify a name over 200 characters is reported in the form and nothing is registered
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC1")]
+    public Task ObservedImagesTooLongNameIsReportedWithoutRegistrationAsync()
+    {
+        return AssertReportedWithoutRegistrationAsync(new string('a', 201),
+                                                      "docker.io/company/api:1.0.0",
+                                                      "The name must not be longer than 200 characters");
+    }
+
+    /// <summary>
+    /// Verify an over-long tag is reported in the form and nothing is registered
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC2")]
+    public Task ObservedImagesTooLongTagIsReportedWithoutRegistrationAsync()
+    {
+        return AssertReportedWithoutRegistrationAsync("Company API",
+                                                      $"docker.io/company/api:{new string('t', 201)}",
+                                                      "The tag must not be longer than 200 characters");
     }
 
     #endregion // Methods

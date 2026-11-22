@@ -21,21 +21,6 @@ public class ImageRegistrationService : IImageRegistrationService
     /// </summary>
     internal const string ReferenceWithoutRepositoryMessage = "The image reference does not contain a repository name";
 
-    /// <summary>
-    /// Maximum length of an image name
-    /// </summary>
-    internal const int MaxNameLength = 200;
-
-    /// <summary>
-    /// Message of the error raised when the image name is empty
-    /// </summary>
-    internal const string EmptyNameMessage = "The name must not be empty";
-
-    /// <summary>
-    /// Message of the error raised when the image name is too long
-    /// </summary>
-    internal const string NameTooLongMessage = "The name must not be longer than 200 characters";
-
     #endregion // Constants
 
     #region Fields
@@ -84,6 +69,29 @@ public class ImageRegistrationService : IImageRegistrationService
 
     #endregion // Constructors
 
+    #region Static methods
+
+    /// <summary>
+    /// Parse the image reference of a registration request
+    /// </summary>
+    /// <param name="imageReferenceParser">Image reference parser</param>
+    /// <param name="imageReference">Image reference as entered</param>
+    /// <returns>Parsed image reference</returns>
+    /// <exception cref="ReportableException">The reference does not name a repository</exception>
+    private static ImageReference ParseReference(IImageReferenceParser imageReferenceParser, string imageReference)
+    {
+        try
+        {
+            return imageReferenceParser.Parse(imageReference);
+        }
+        catch (ArgumentException exception)
+        {
+            throw new ReportableException(ReferenceWithoutRepositoryMessage, exception);
+        }
+    }
+
+    #endregion // Static methods
+
     #region IImageRegistrationService
 
     /// <inheritdoc/>
@@ -93,27 +101,22 @@ public class ImageRegistrationService : IImageRegistrationService
 
         ArgumentException.ThrowIfNullOrWhiteSpace(request.ImageReference);
 
-        if (string.IsNullOrWhiteSpace(request.Name))
+        var nameError = ObservedImageRegistrationRules.GetNameError(request.Name);
+
+        if (nameError is not null)
         {
-            throw new ReportableException(EmptyNameMessage);
+            throw new ReportableException(nameError);
         }
 
         var name = request.Name.Trim();
 
-        if (name.Length > MaxNameLength)
-        {
-            throw new ReportableException(NameTooLongMessage);
-        }
+        var parsedReference = ParseReference(_imageReferenceParser, request.ImageReference);
 
-        ImageReference parsedReference;
+        var partsError = ObservedImageRegistrationRules.GetPartsError(parsedReference);
 
-        try
+        if (partsError is not null)
         {
-            parsedReference = _imageReferenceParser.Parse(request.ImageReference);
-        }
-        catch (ArgumentException exception)
-        {
-            throw new ReportableException(ReferenceWithoutRepositoryMessage, exception);
+            throw new ReportableException(partsError);
         }
 
         var imageVersion = await _imageCatalogRepository.GetOrCreateImageVersionAsync(parsedReference.Registry,
