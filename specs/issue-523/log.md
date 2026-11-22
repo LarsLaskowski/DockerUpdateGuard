@@ -19,4 +19,5 @@ are quoted in full.
 | 2026-11-22 17:43 | 7 Gate stamp | Orchestrator | PASS on 4aabd821f26d7a827eb63e0a89b223e5e3b03a19 (tier standard): Format check pass; Analyzer gate pass; Test with coverage pass; Coverage gate pass; scope-check.py pass · figure-check.py 5 hit(s) |
 | 2026-11-22 17:47 | 8 Review | Reviewer | VERDICT: BLOCKING 2 \| NON-BLOCKING 0 on 4aabd821f26d7a827eb63e0a89b223e5e3b03a19; both [BLOCKING, verbatim] doc fixes: UNIT_TESTS.md TestContext sentence, stack.md test naming line; production splits match plan (opus/medium · 163,649 tokens · 41 tool uses · 207 s · 76 in · 20,534 out · 3,745,874 cache read · 160,914 cache write · 982,364 weighted) |
 | 2026-11-22 17:47 | 7 Gate stamp | Orchestrator | PASS on 883e1b1fe392899fc3effea183cefd95e01f40dc (tier standard, verbatim): Format check pass; decision-check.py pass; scope-check.py pass |
-| 2026-11-22 17:47 | 8 Verbatim fix | Orchestrator | [BLOCKING, verbatim] x2 applied: docs/UNIT_TESTS.md TestContext sentence, .squad/stack.md test naming line (rewrapped); commit 883e1b1 |
+| 2026-11-22 17:47 | 8 Verbatim fix | Orchestrator | verbatim: [BLOCKING, verbatim] docs/UNIT_TESTS.md:72 TestContext sentence; [BLOCKING, verbatim] .squad/stack.md:46-48 test naming line (rewrapped); commit 883e1b1 |
+| 2026-11-22 17:47 | 9 PR approval | Orchestrator | approved by checklist |
