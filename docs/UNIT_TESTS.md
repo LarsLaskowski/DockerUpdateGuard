@@ -69,8 +69,9 @@ MSTest, NSubstitute, and MSTest's own `Assert`/`CollectionAssert` APIs.
   rendering vs. persisted state of a Blazor page, or the failure handling of
   a scan), split into `{TypeUnderTest}{Concern}Tests.cs` (for example
   `{TypeUnderTest}RenderTests.cs` and `{TypeUnderTest}PersistentStateTests.cs`)
-  rather than growing one file indefinitely. Each split class declares its own
-  `TestContext` property and the helpers its tests use.
+  rather than growing one file indefinitely. Each split class declares the
+  helpers its tests use, and its own `TestContext` property when its tests read
+  one.
 
 ## Naming your tests
 
