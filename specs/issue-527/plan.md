@@ -147,3 +147,22 @@ other writer's entry. No guarantee of `.squad/project.md` is touched.
 ## Out of scope / follow-ups
 
 None.
+
+## Challenge notes
+
+## Devil's Advocate: plan challenge for issue #527
+
+The plan holds up. I checked every factual claim I could reach in the code:
+
+- **Both catches.** `catch (DbUpdateException)` with detach and `SingleAsync` is at `src/DockerUpdateGuard.Data/Repositories/ImageCatalogRepository.cs:152-161` and `:214-225`. Nothing is logged or rethrown.
+- **No sibling path.** These are the only `catch` blocks in the data project outside migrations. No production code filters on `DbUpdateException`, and none of the `InvalidOperationException` catches in `src/DockerUpdateGuard` (`MainLayout.razor.cs:229/247`, `DatabaseMigrator.cs:305`, `RemoteJsonDocument.cs:35`, `ExternalJson.cs:79`) wraps a catalog call.
+- **Callers.** The callers are `ImageCatalogCanonicalizer`, `RuntimeContainerScanOrchestrator`, `DockerHubAccountImageDiscoveryService`, `ImageScanOrchestrator` and `ImageRegistrationService`. None depends on the `InvalidOperationException`, so the scope is right.
+- **Shared context in the Docker Hub sync.** `DockerHubAccountImageDiscoveryService.cs:208-233` adds unsaved `ObservedImage` entries to the shared context. It then calls `GetOrCreateImageVersionAsync` for the next repository, whose `SaveChangesAsync` saves those pending entries too. So the plan's "another pending change" defect is real and has a production trigger.
+- **Unique indexes exist** on both entities (`RegistryRepositoryConfiguration.cs:38-43`, `ImageVersionConfiguration.cs:57-63`).
+- **Options.** The alternatives were weighed fairly; options 2 to 5 are rightly rejected.
+- **Tier and tests.** Standard tier fits. AC1, AC2 and AC5 fail on today's code (it throws `InvalidOperationException`), so they catch the reported defect. The `SaveChangesInterceptor` seam is sound: an exception thrown in `SavingChangesAsync` reaches the caller unwrapped, so `Assert.AreSame` can hold. The competing insert on a second context of the same `SqliteConnection` runs before any transaction of the first context.
+- **Docs.** The area document's **Concurrency** item (`docs/areas/image-catalog.md:58-59`) is the right place for the update. The plan keeps `ARCHITECTURE.md` lines 214 and 470 ("race-retry") unchanged, which is fine because a real race still returns the other writer's entry.
+
+### Objections
+
+1. **minor — the record and the plan overstate what the 23505 check alone does.** `docs/decisions/0056-...md`, option 1, and the plan's root-cause paragraph say a unique violation of another pending change "is not taken for the race". The SQLSTATE check alone cannot tell which entity collided: one save batch includes every pending entry, as in the Docker Hub sync above. That case is only rejected because the re-read then finds nothing. If the catalog entry also exists (a real race at the same moment), the method returns it while the other pending entry is still tracked and fails again on the next save. That is the same "coincidental row" weakness the record holds against option 2. **Instruction for the Dev (the Lead owns the record):** reword the record's option 1 and Context, and the plan's root-cause line, to say that a unique violation of another pending change is rethrown *when the re-read finds no entry* (AC5). Alternatively, if you want the stronger claim, also match `PostgresException.ConstraintName` against the entity's unique index name. Either way, the AC5 tests stay as planned.
