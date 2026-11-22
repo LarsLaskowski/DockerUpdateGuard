@@ -11,8 +11,8 @@
 `ImageCatalogRepository`'s get-or-create methods insert a missing registry repository or image version and, when two
 writers insert the same entry at once, re-read the entry the other one created. They took every `DbUpdateException` for
 that race. A save that failed for another reason (a value longer than its column, as #343 showed for the registration
-form, or a collision of another pending change of the caller's context) re-read nothing and surfaced as
-`InvalidOperationException` ("Sequence contains no elements"), losing the original error. The application runs only
+form, or a collision of another pending change of the caller's context, whose save the catalog's own save also carries) re-read
+nothing and surfaced as `InvalidOperationException` ("Sequence contains no elements"), losing the original error. The application runs only
 against PostgreSQL; EF Core wraps the provider's `PostgresException` as the `DbUpdateException`'s inner exception. The
 data tests run on SQLite, whose `SqliteException` carries no SQLSTATE.
 
@@ -20,7 +20,8 @@ data tests run on SQLite, whose `SqliteException` carries no SQLSTATE.
 
 1. **Take the race only for an inner `PostgresException` with SQLSTATE `23505` (unique violation) and rethrow the
    original exception when the re-read finds no entry (chosen)** — the error the issue names is passed on unchanged,
-   and a unique violation of another pending change is not taken for the race. Couples the repository to Npgsql, which
+   and a unique violation of another pending change is rethrown when the re-read finds no entry (the SQLSTATE alone
+   cannot tell which entity collided). Couples the repository to Npgsql, which
    the data project references already; the race path is tested with a substituted save failure, not a real SQLite
    collision.
 2. **Keep catching every `DbUpdateException` and rethrow it when the re-read finds nothing** — provider-neutral, but a

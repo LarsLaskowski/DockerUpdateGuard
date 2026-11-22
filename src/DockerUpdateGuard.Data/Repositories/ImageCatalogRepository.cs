@@ -2,6 +2,8 @@ using DockerUpdateGuard.Data.Entities;
 
 using Microsoft.EntityFrameworkCore;
 
+using Npgsql;
+
 namespace DockerUpdateGuard.Data.Repositories;
 
 /// <summary>
@@ -87,6 +89,16 @@ public class ImageCatalogRepository : IImageCatalogRepository
         return normalizedDigest;
     }
 
+    /// <summary>
+    /// Check whether a failed save is a PostgreSQL unique violation (SQLSTATE 23505)
+    /// </summary>
+    /// <param name="exception">Failed save</param>
+    /// <returns>True if the inner exception is a PostgreSQL unique violation</returns>
+    private static bool IsUniqueViolation(DbUpdateException exception)
+    {
+        return exception.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation };
+    }
+
     #endregion // Methods
 
     #region IImageCatalogRepository
@@ -149,15 +161,27 @@ public class ImageCatalogRepository : IImageCatalogRepository
 
             return newRepository;
         }
-        catch (DbUpdateException)
+        catch (DbUpdateException exception)
         {
             _dbContext.Entry(newRepository).State = EntityState.Detached;
 
-            return await _dbContext.RegistryRepositories
-                                   .SingleAsync(entity => entity.Registry == registry
-                                                          && entity.Repository == repository,
-                                                cancellationToken)
-                                   .ConfigureAwait(false);
+            if (IsUniqueViolation(exception) == false)
+            {
+                throw;
+            }
+
+            var competingRepository = await _dbContext.RegistryRepositories
+                                                      .SingleOrDefaultAsync(entity => entity.Registry == registry
+                                                                                      && entity.Repository == repository,
+                                                                            cancellationToken)
+                                                      .ConfigureAwait(false);
+
+            if (competingRepository is null)
+            {
+                throw;
+            }
+
+            return competingRepository;
         }
     }
 
@@ -211,17 +235,29 @@ public class ImageCatalogRepository : IImageCatalogRepository
 
             return newVersion;
         }
-        catch (DbUpdateException)
+        catch (DbUpdateException exception)
         {
             _dbContext.Entry(newVersion).State = EntityState.Detached;
 
-            return await _dbContext.ImageVersions
-                                   .Include(entity => entity.RegistryRepository)
-                                   .SingleAsync(entity => entity.RegistryRepositoryId == registryRepository.Id
-                                                          && entity.Tag == tag
-                                                          && entity.Digest == normalizedDigest,
-                                                cancellationToken)
-                                   .ConfigureAwait(false);
+            if (IsUniqueViolation(exception) == false)
+            {
+                throw;
+            }
+
+            var competingVersion = await _dbContext.ImageVersions
+                                                   .Include(entity => entity.RegistryRepository)
+                                                   .SingleOrDefaultAsync(entity => entity.RegistryRepositoryId == registryRepository.Id
+                                                                                   && entity.Tag == tag
+                                                                                   && entity.Digest == normalizedDigest,
+                                                                         cancellationToken)
+                                                   .ConfigureAwait(false);
+
+            if (competingVersion is null)
+            {
+                throw;
+            }
+
+            return competingVersion;
         }
     }
 

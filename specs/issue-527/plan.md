@@ -11,7 +11,7 @@ line 152) and `GetOrCreateImageVersionAsync` (catch at line 214) catch every `Db
 and re-read with `SingleAsync`. A failure that is not the insert race leaves nothing to re-read, so `SingleAsync` throws
 `InvalidOperationException` ("Sequence contains no elements") and the original exception is lost. Related defect found on
 the way: `SaveChangesAsync` saves every pending change of the caller's context, so a unique violation of *another*
-pending entity is also taken for the race and ends the same way; the fix covers it (AC5).
+pending entity is also taken for the race and ends the same way; the fix rethrows it when the re-read finds no entry (AC5).
 
 ## Verified facts
 
