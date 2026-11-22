@@ -232,6 +232,10 @@ dotnet_diagnostic.RH2004.severity = error
 dotnet_diagnostic.RH2005.severity = error
 dotnet_diagnostic.RH2006.severity = error
 dotnet_diagnostic.RH2007.severity = error
+# Reihitsu.Analyzer 1.5.0 adds this length/complexity rule; unset it is an error and breaks the build of every repository on the update, so it is a suggestion (#447)
+dotnet_diagnostic.RH2008.severity = suggestion
+# Reihitsu.Analyzer 1.5.0 adds this length/complexity rule; unset it is an error and breaks the build of every repository on the update, so it is a suggestion (#447)
+dotnet_diagnostic.RH2009.severity = suggestion
 dotnet_diagnostic.RH2101.severity = error
 dotnet_diagnostic.RH2102.severity = none
 dotnet_diagnostic.RH2103.severity = error
@@ -241,6 +245,8 @@ dotnet_diagnostic.RH2106.severity = error
 dotnet_diagnostic.RH2107.severity = error
 dotnet_diagnostic.RH2108.severity = error
 dotnet_diagnostic.RH2109.severity = error
+# Reihitsu.Analyzer 1.5.0 adds this length/complexity rule; unset it is an error and breaks the build of every repository on the update, so it is a suggestion (#447)
+dotnet_diagnostic.RH2111.severity = suggestion
 # RH3001 forbids the negation operator !: write == false instead (#338)
 dotnet_diagnostic.RH3001.severity = error
 dotnet_diagnostic.RH3002.severity = error
