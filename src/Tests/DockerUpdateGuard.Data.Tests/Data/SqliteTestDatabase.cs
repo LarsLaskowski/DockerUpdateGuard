@@ -1,5 +1,6 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 
 namespace DockerUpdateGuard.Data.Tests.Data;
 
@@ -35,7 +36,18 @@ internal sealed class SqliteTestDatabase : IDisposable
     /// <returns>Configured database context</returns>
     public DockerUpdateGuardDbContext CreateDbContext()
     {
+        return CreateDbContext([]);
+    }
+
+    /// <summary>
+    /// Create a database context with interceptors
+    /// </summary>
+    /// <param name="interceptors">Interceptors to register</param>
+    /// <returns>Configured database context</returns>
+    public DockerUpdateGuardDbContext CreateDbContext(IEnumerable<IInterceptor> interceptors)
+    {
         var options = new DbContextOptionsBuilder<DockerUpdateGuardDbContext>().UseSqlite(_connection)
+                                                                               .AddInterceptors(interceptors.ToArray())
                                                                                .EnableSensitiveDataLogging()
                                                                                .Options;
         var dbContext = new DockerUpdateGuardDbContext(options);

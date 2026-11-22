@@ -4,6 +4,8 @@ using DockerUpdateGuard.Data.Tests.Data;
 
 using Microsoft.EntityFrameworkCore;
 
+using Npgsql;
+
 namespace DockerUpdateGuard.Data.Tests;
 
 /// <summary>
@@ -137,6 +139,118 @@ public class ImageCatalogRepositoryTests
                 Assert.AreEqual("library/redis",
                                 imageVersion.RegistryRepository.Repository,
                                 "The populated registry repository must expose the normalized repository path");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Verify a non-unique save failure of a new image version reaches the caller unchanged
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC1")]
+    public async Task ImageCatalogRepositoryGetOrCreateImageVersionAsyncNonUniqueSaveFailureRethrowsOriginalExceptionAsync()
+    {
+        using (var database = new SqliteTestDatabase())
+        {
+            var interceptor = new FailingSaveChangesInterceptor(typeof(ImageVersion), "22001");
+            var dbContext = database.CreateDbContext([interceptor]);
+
+            await using (dbContext.ConfigureAwait(false))
+            {
+                var repository = new ImageCatalogRepository(dbContext);
+
+                var exception = await Assert.ThrowsExactlyAsync<DbUpdateException>(async () => await repository.GetOrCreateImageVersionAsync("docker.io", "library/nginx", "1.27", "sha256:123", cancellationToken: TestContext.CancellationToken).ConfigureAwait(false))
+                                            .ConfigureAwait(false);
+
+                Assert.IsNotNull(interceptor.ThrownException, "The substituted save failure must have been raised");
+                Assert.AreSame(interceptor.ThrownException, exception, "The original save failure must reach the caller");
+                Assert.IsEmpty(dbContext.ChangeTracker.Entries<ImageVersion>().ToList(),
+                               "The context must no longer track the new entity");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Verify a non-unique save failure of a new registry repository reaches the caller unchanged
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC2")]
+    public async Task ImageCatalogRepositoryGetOrCreateRegistryRepositoryAsyncNonUniqueSaveFailureRethrowsOriginalExceptionAsync()
+    {
+        using (var database = new SqliteTestDatabase())
+        {
+            var interceptor = new FailingSaveChangesInterceptor(typeof(RegistryRepository), "22001");
+            var dbContext = database.CreateDbContext([interceptor]);
+
+            await using (dbContext.ConfigureAwait(false))
+            {
+                var repository = new ImageCatalogRepository(dbContext);
+
+                var exception = await Assert.ThrowsExactlyAsync<DbUpdateException>(async () => await repository.GetOrCreateRegistryRepositoryAsync("docker.io", "library/nginx", TestContext.CancellationToken).ConfigureAwait(false))
+                                            .ConfigureAwait(false);
+
+                Assert.IsNotNull(interceptor.ThrownException, "The substituted save failure must have been raised");
+                Assert.AreSame(interceptor.ThrownException, exception, "The original save failure must reach the caller");
+                Assert.IsEmpty(dbContext.ChangeTracker.Entries<RegistryRepository>().ToList(),
+                               "The context must no longer track the new entity");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Verify a unique violation without a competing image version reaches the caller unchanged
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC5")]
+    public async Task ImageCatalogRepositoryGetOrCreateImageVersionAsyncUniqueViolationWithoutEntryRethrowsOriginalExceptionAsync()
+    {
+        using (var database = new SqliteTestDatabase())
+        {
+            var interceptor = new FailingSaveChangesInterceptor(typeof(ImageVersion), PostgresErrorCodes.UniqueViolation);
+            var dbContext = database.CreateDbContext([interceptor]);
+
+            await using (dbContext.ConfigureAwait(false))
+            {
+                var repository = new ImageCatalogRepository(dbContext);
+
+                var exception = await Assert.ThrowsExactlyAsync<DbUpdateException>(async () => await repository.GetOrCreateImageVersionAsync("docker.io", "library/nginx", "1.27", "sha256:123", cancellationToken: TestContext.CancellationToken).ConfigureAwait(false))
+                                            .ConfigureAwait(false);
+
+                Assert.IsNotNull(interceptor.ThrownException, "The substituted save failure must have been raised");
+                Assert.AreSame(interceptor.ThrownException, exception, "The original save failure must reach the caller");
+                Assert.IsEmpty(dbContext.ChangeTracker.Entries<ImageVersion>().ToList(),
+                               "The context must no longer track the new entity");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Verify a unique violation without a competing registry repository reaches the caller unchanged
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC5")]
+    public async Task ImageCatalogRepositoryGetOrCreateRegistryRepositoryAsyncUniqueViolationWithoutEntryRethrowsOriginalExceptionAsync()
+    {
+        using (var database = new SqliteTestDatabase())
+        {
+            var interceptor = new FailingSaveChangesInterceptor(typeof(RegistryRepository), PostgresErrorCodes.UniqueViolation);
+            var dbContext = database.CreateDbContext([interceptor]);
+
+            await using (dbContext.ConfigureAwait(false))
+            {
+                var repository = new ImageCatalogRepository(dbContext);
+
+                var exception = await Assert.ThrowsExactlyAsync<DbUpdateException>(async () => await repository.GetOrCreateRegistryRepositoryAsync("docker.io", "library/nginx", TestContext.CancellationToken).ConfigureAwait(false))
+                                            .ConfigureAwait(false);
+
+                Assert.IsNotNull(interceptor.ThrownException, "The substituted save failure must have been raised");
+                Assert.AreSame(interceptor.ThrownException, exception, "The original save failure must reach the caller");
+                Assert.IsEmpty(dbContext.ChangeTracker.Entries<RegistryRepository>().ToList(),
+                               "The context must no longer track the new entity");
             }
         }
     }
