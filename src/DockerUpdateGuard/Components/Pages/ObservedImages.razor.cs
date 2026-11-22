@@ -207,11 +207,27 @@ public sealed partial class ObservedImages : IDisposable
                                   _ownImageId = (exception as OwnImageAlreadyTrackedException)?.ObservedImageId;
                               }).ConfigureAwait(false);
 
-            await LoadAsync().ConfigureAwait(false);
+            await ReloadAfterFailedRegistrationAsync().ConfigureAwait(false);
         }
         finally
         {
             await InvokeAsync(() => _isBusy = false).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Reload the image list after a failed registration; a failed reload is only logged, so the registration's message stays and the list keeps its last rows
+    /// </summary>
+    /// <returns>Task</returns>
+    private async Task ReloadAfterFailedRegistrationAsync()
+    {
+        try
+        {
+            await LoadAsync().ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            Logger.UserActionFailed("RegisterObservedImage", exception);
         }
     }
 
