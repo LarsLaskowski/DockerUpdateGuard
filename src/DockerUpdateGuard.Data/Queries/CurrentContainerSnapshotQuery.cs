@@ -82,8 +82,7 @@ public static class CurrentContainerSnapshotQuery
                                                                  .ToListAsync(cancellationToken)
                                                                  .ConfigureAwait(false);
 
-        currentSnapshots.AddRange(runtimeSnapshots.Where(entity => targetScanRunByInstance.TryGetValue(entity.DockerInstanceId, out var scanRunId)
-                                                                   && scanRunId == entity.ScanRunId)
+        currentSnapshots.AddRange(runtimeSnapshots.Where(entity => targetScanRunByInstance.GetValueOrDefault(entity.DockerInstanceId) == entity.ScanRunId)
                                                   .Select(entity => CreateData(entity.Id,
                                                                                entity.DockerInstanceId,
                                                                                entity.ContainerId,
