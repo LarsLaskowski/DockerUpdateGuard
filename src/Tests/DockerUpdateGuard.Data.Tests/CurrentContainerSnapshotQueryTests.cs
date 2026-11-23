@@ -175,5 +175,85 @@ public class CurrentContainerSnapshotQueryTests
         }
     }
 
+    /// <summary>
+    /// Verify without any runtime scan run the latest snapshot of each container is returned
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC2")]
+    public async Task CurrentContainerSnapshotQueryNoRuntimeScanRunsReturnsLatestSnapshotPerContainerAsync()
+    {
+        using (var database = new SqliteTestDatabase())
+        {
+            var dbContext = database.CreateDbContext();
+
+            await using (dbContext.ConfigureAwait(false))
+            {
+                var baseTime = new DateTimeOffset(2026, 3, 1, 12, 0, 0, TimeSpan.Zero);
+                var imageVersion = CreateImageVersion();
+                var instance = CreateInstance("solo");
+                var newestX = CreateSnapshot(instance, imageVersion, null, "X", baseTime);
+
+                dbContext.ContainerSnapshots.AddRange(CreateSnapshot(instance, imageVersion, null, "X", baseTime.AddHours(-1)),
+                                                      newestX);
+
+                await dbContext.SaveChangesAsync(TestContext.CancellationToken)
+                               .ConfigureAwait(false);
+
+                var result = await CurrentContainerSnapshotQuery.GetCurrentContainerSnapshotsAsync(dbContext, TestContext.CancellationToken)
+                                                                .ConfigureAwait(false);
+
+                Assert.HasCount(1, result, "Only the latest snapshot of the container is current.");
+                Assert.AreEqual(newestX.Id, result[0].SnapshotId, "The newest snapshot is returned.");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Verify a snapshot of an instance that references the target run of another instance is not current
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC2")]
+    public async Task CurrentContainerSnapshotQuerySnapshotReferencingForeignTargetRunIsIgnoredAsync()
+    {
+        using (var database = new SqliteTestDatabase())
+        {
+            var dbContext = database.CreateDbContext();
+
+            await using (dbContext.ConfigureAwait(false))
+            {
+                var baseTime = new DateTimeOffset(2026, 3, 1, 12, 0, 0, TimeSpan.Zero);
+                var imageVersion = CreateImageVersion();
+                var instanceOne = CreateInstance("one");
+                var instanceTwo = CreateInstance("two");
+                var runOne = CreateRuntimeRun(baseTime.AddHours(-3));
+                var runTwo = CreateRuntimeRun(baseTime);
+
+                dbContext.ContainerSnapshots.AddRange(CreateSnapshot(instanceOne, imageVersion, runOne, "A", baseTime.AddHours(-3)),
+                                                      CreateSnapshot(instanceTwo, imageVersion, runTwo, "B", baseTime),
+                                                      CreateSnapshot(instanceTwo, imageVersion, runOne, "Foreign", baseTime.AddHours(-3)));
+
+                await dbContext.SaveChangesAsync(TestContext.CancellationToken)
+                               .ConfigureAwait(false);
+
+                var result = await CurrentContainerSnapshotQuery.GetCurrentContainerSnapshotsAsync(dbContext, TestContext.CancellationToken)
+                                                                .ConfigureAwait(false);
+
+                var keys = result.Select(entity => $"{entity.DockerInstanceId}/{entity.ContainerId}")
+                                 .Order(StringComparer.Ordinal)
+                                 .ToList();
+                var expectedKeys = new[]
+                                   {
+                                       $"{instanceOne.Id}/A",
+                                       $"{instanceTwo.Id}/B"
+                                   }.Order(StringComparer.Ordinal)
+                                    .ToList();
+
+                Assert.AreSequenceEqual(expectedKeys, keys, "A snapshot whose run is not the target run of its own instance is not current.");
+            }
+        }
+    }
+
     #endregion // Methods
 }
