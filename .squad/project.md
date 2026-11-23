@@ -1,14 +1,15 @@
 # Project
 
 What the squad needs to know about this project that is not stack-specific. Read by the Lead, the Devil's
-Advocate, Security, the Tester and the Reviewer. Not template-managed: `adopt-template` creates it once
-and never overwrites it. A product PR updates it when the change makes an entry untrue
-(`.squad/routing.md`, *Scope of a product PR*).
+Advocate, Security and the Reviewer; the test doubles are in `docs/UNIT_TESTS.md` (*Test doubles*). Not
+template-managed: `adopt-template` creates it once and never overwrites it. A product PR updates it when the change
+makes an entry untrue (`.squad/routing.md`, *Scope of a product PR*).
 
 Every entry points: it names files, types or endpoints and links the document that says more. Behavior, values,
 limits and sequences are written once, in the area documents (`docs/areas/README.md`), and the reasons in the
-decision records; a copy here goes stale with the next change. `config-check.py` warns when this file grows past
-`PROJECT_MAX_WORDS` words (`.squad/tools/squad_settings.py`).
+decision records; a copy here goes stale with the next change. `config-check.py` warns about an entry of more than
+`PROJECT_ENTRY_MAX_PROSE` prose words (code spans and links do not count) and about a change that adds more than
+`PROJECT_MAX_GROWTH` words to this file (`.squad/tools/squad_settings.py`).
 
 ## Security areas
 
@@ -102,7 +103,7 @@ change with it. The area document of the feature (`docs/areas/README.md`) change
   ([fixed reasons](../docs/areas/integration-failures.md#fixed-failure-reasons))
 - remote text through `ResponseBodyExcerpt` and next-page links through `PaginationLinkGuard` and remote JSON through `ExternalJson` (`RemoteJsonDocument` where strings must decode)
 - `RegistryMetadataService` dispatch (`CanHandle`) for a new registry type — [Registries](../docs/areas/registries.md)
-- the fake/stub in the tests (*Test doubles*)
+- the fake/stub in the tests (`docs/UNIT_TESTS.md`, *Test doubles*)
 - the client table in `docs/ARCHITECTURE.md`, *Integration clients*
 
 **A change to the entity model** touches:
@@ -119,34 +120,3 @@ diff and reads the SonarQube Cloud result of the PR; a description that overstat
 
 **Async code in service and data-access code** uses `.ConfigureAwait(false)`; EF Core navigation and query
 assumptions (included navigations, tracking) are checked against the query that loads the entity.
-
-## Test doubles
-
-MSTest with **NSubstitute** (`Substitute.For<T>()`) for collaborators that cross an infrastructure boundary
-(HTTP, process, clock); real objects otherwise. Data tests use EF Core InMemory (host tests) or SQLite
-(`DockerUpdateGuard.Data.Tests`). Details and helpers in `docs/UNIT_TESTS.md`. A hand-written fake or stub gets one
-line here: the double, where it lives and what it stands in for; how it behaves is read in its code. `Helper/` and
-`Data/` are under `src/Tests/DockerUpdateGuard.Tests/`.
-
-- `StubHttpMessageHandler` (`Helper/`) — the Docker Hub web API, token service and registry
-- `SequenceHttpMessageHandler` (`Helper/`) — an HTTP endpoint answering a fixed sequence (Docker Engine, OCI registries, Portainer, Docker Scout)
-- `DelegateHttpMessageHandler` (`Helper/`) — an HTTP endpoint whose answer a test builds per request
-- `StaticHttpMessageHandler`, `StaticHttpJsonMessageHandler` (`Helper/`) — the nginx and .NET release feeds
-- `RetryProbeHttpMessageHandler` (`Helper/`) — an endpoint replaying transient failures for the retry handler
-- `TimeoutHttpMessageHandler` (`Helper/`) — an endpoint that never answers
-- `ConcurrencyTrackingHttpMessageHandler` (`Helper/`) — an endpoint that records concurrent requests
-- `ConcurrencyTrackingVulnerabilityProvider` (`Helper/`) — a vulnerability provider that records concurrent scans
-- `CountingHttpContent`, `ByteCountingHttpContent`, `CountingReadStream` (`Helper/`) — request and response bodies
-- `TestImageCatalogRepository` (`Helper/`) — the image catalog repository, without persistence
-- `TestScheduledBackgroundService`, `TestScanCleanupBackgroundService`, `TestOwnImageBaseRefreshBackgroundService` (`Helper/`) — the background job base, the cleanup job and the observed-image refresh
-- `ClientCertificateTestData` (`Helper/`) — client certificate files, generated per test
-- `TestLogger<T>` with `TestLogEntry` and `NullScope` (`Data/`) — the logger
-- `TestOptionsMonitor<T>` with `ListenerRegistration` (`Data/`) — the options monitor of a reloadable configuration; `Reload` replaces `CurrentValue` and calls the `OnChange` listeners
-- `TestDevelopmentConfiguration` (`Data/`) — the development configuration files
-- `SaveChangesFailingDbContext` (`Data/`) — a database whose save fails
-- `GatedSaveChangesDbContext` (`Data/`, created by `SqliteTestDatabase.CreateGatedSaveChangesDbContext`) — a database whose first save of an added vulnerability finding signals `SaveEntered` and waits for `ReleaseSave` before touching the database
-- `ScanLockObserver` (`Helper/`) — a scan lock registry observer: `WaitUntilWaitingAsync` yields until a second reference of a key exists or the run's task has completed
-- `SqliteTestDatabase` (`Data/` of both test projects) — the PostgreSQL database, as SQLite
-- `ThrowingExecutionStrategy` (`Helper/`) — the EF Core execution strategy, which fails every operation after the first ones with a given exception
-- `CommandTimeoutRecordingInterceptor` (`Helper/`) — the EF Core command pipeline, which records each executed command's timeout and fails every command with its own exception
-- `ContainerActionRunWriteFailingInterceptor` (`Helper/`) — the database's save of a container action run, which fails for the given statuses in every context and scope
