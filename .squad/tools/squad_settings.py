@@ -41,7 +41,9 @@ COVERAGE_EXCLUDES = ["src/Tests/*", "src/DockerUpdateGuard.Data/Migrations/*"]  
 COVERAGE_TEST_PATHSPECS = ["src/Tests/*.cs"]  # a diff touching these is gated on overall coverage too
 
 # Size warnings (config-check.py, decision-check.py): a file past its limit is reported with the split it needs.
-PROJECT_MAX_WORDS = 1500  # .squad/project.md, read by five members on every launch
+PROJECT_MAX_GROWTH = 200  # words .squad/project.md may gain in one change (against the merge base with BASE_REF)
+PROJECT_ENTRY_MAX_PROSE = 50  # prose words of one entry of .squad/project.md or *Test doubles* (no code spans, links)
+TEST_DOUBLES_MAX_GROWTH = 100  # words *Test doubles* in docs/UNIT_TESTS.md may gain in one change
 AREA_MAX_WORDS = 5000  # each area document in docs/areas/
 RECORD_MAX_WORDS = 1500  # each unreleased decision record
 RECORD_MAX_OPTIONS = 8  # the options under *Options considered* of an unreleased decision record

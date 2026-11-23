@@ -158,9 +158,9 @@ them is a sync bug to fix):
 
 <!-- stack:begin testing -->
 **Unit tests are mandatory for newly written code.** MSTest with its own `Assert` / `CollectionAssert` (no
-FluentAssertions); test doubles as `.squad/project.md` (*Test doubles*) and `docs/UNIT_TESTS.md` prescribe —
+FluentAssertions); test doubles as `docs/UNIT_TESTS.md` (*Test doubles*) prescribes —
 real objects and hand-written fakes/stubs unless the project names a mocking library. Classes
-`{TypeUnderTest}Tests`, methods `{Class}{Scenario}{ExpectedResult}` in PascalCase **without underscores**;
+`{TypeUnderTest}Tests` (`{TypeUnderTest}{Concern}Tests` when split, `docs/UNIT_TESTS.md`), methods `{Class}{Scenario}{ExpectedResult}` in PascalCase **without underscores**;
 a test for a squad acceptance criterion carries its id as `[TestCategory("AC3")]` (`docs/UNIT_TESTS.md`,
 *Criterion ids*); always pass an assert message. Timing through an injected `TimeProvider`, never the real clock (the narrow
 exceptions, such as a time bound tested as the ratio of two durations, never an absolute one, are in
