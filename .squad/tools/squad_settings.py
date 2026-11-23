@@ -40,7 +40,8 @@ COVERAGE_PATHSPECS = ["src/*.cs", "src/*.razor"]
 COVERAGE_EXCLUDES = ["src/Tests/*", "src/DockerUpdateGuard.Data/Migrations/*"]  # tests and generated EF Core migrations
 COVERAGE_TEST_PATHSPECS = ["src/Tests/*.cs"]  # a diff touching these is gated on overall coverage too
 
-# Size warnings (config-check.py, decision-check.py): a file past its limit is reported with the split it needs.
+# Size warnings (config-check.py, plan-check.py, decision-check.py): a file or a change past its limit is reported with
+# what it needs.
 PROJECT_MAX_GROWTH = 200  # words .squad/project.md may gain in one change (against the merge base with BASE_REF)
 PROJECT_ENTRY_MAX_PROSE = 50  # prose words of one entry of .squad/project.md or *Test doubles* (no code spans, links)
 TEST_DOUBLES_MAX_GROWTH = 100  # words *Test doubles* in docs/UNIT_TESTS.md may gain in one change

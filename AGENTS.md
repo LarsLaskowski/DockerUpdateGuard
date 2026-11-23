@@ -153,7 +153,7 @@ them is a sync bug to fix):
 
 - CRLF line endings and no final newline (`.editorconfig`).
 - Tests: the conventions in [`UNIT_TESTS.md`](/docs/UNIT_TESTS.md); the mocking library and the hand-written test
-  doubles are listed in [`.squad/project.md`](/.squad/project.md) (*Test doubles*).
+  doubles are listed in [`UNIT_TESTS.md`](/docs/UNIT_TESTS.md) (*Test doubles*).
 <!-- project:end code-style -->
 
 ## Testing

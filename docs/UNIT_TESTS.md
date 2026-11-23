@@ -54,6 +54,39 @@ a new pattern.
 Do not introduce xUnit, NUnit, FluentAssertions, or Moq — the project standardizes on
 MSTest, NSubstitute, and MSTest's own `Assert`/`CollectionAssert` APIs.
 
+## Test doubles
+
+The hand-written fakes and stubs the tests reuse (no mocking library unless *Test stack* says otherwise), one line
+each: the double, where it lives and what it stands in for; how it behaves is read in its code.
+
+MSTest with **NSubstitute** (`Substitute.For<T>()`) for collaborators that cross an infrastructure boundary
+(HTTP, process, clock); real objects otherwise. Data tests use EF Core InMemory (host tests) or SQLite
+(`DockerUpdateGuard.Data.Tests`). Details and helpers are in the sections below. `Helper/` and
+`Data/` are under `src/Tests/DockerUpdateGuard.Tests/`.
+
+- `StubHttpMessageHandler` (`Helper/`) — the Docker Hub web API, token service and registry
+- `SequenceHttpMessageHandler` (`Helper/`) — an HTTP endpoint answering a fixed sequence (Docker Engine, OCI registries, Portainer, Docker Scout)
+- `DelegateHttpMessageHandler` (`Helper/`) — an HTTP endpoint whose answer a test builds per request
+- `StaticHttpMessageHandler`, `StaticHttpJsonMessageHandler` (`Helper/`) — the nginx and .NET release feeds
+- `RetryProbeHttpMessageHandler` (`Helper/`) — an endpoint replaying transient failures for the retry handler
+- `TimeoutHttpMessageHandler` (`Helper/`) — an endpoint that never answers
+- `ConcurrencyTrackingHttpMessageHandler` (`Helper/`) — an endpoint that records concurrent requests
+- `ConcurrencyTrackingVulnerabilityProvider` (`Helper/`) — a vulnerability provider that records concurrent scans
+- `CountingHttpContent`, `ByteCountingHttpContent`, `CountingReadStream` (`Helper/`) — request and response bodies
+- `TestImageCatalogRepository` (`Helper/`) — the image catalog repository, without persistence
+- `TestScheduledBackgroundService`, `TestScanCleanupBackgroundService`, `TestOwnImageBaseRefreshBackgroundService` (`Helper/`) — the background job base, the cleanup job and the observed-image refresh
+- `ClientCertificateTestData` (`Helper/`) — client certificate files, generated per test
+- `TestLogger<T>` with `TestLogEntry` and `NullScope` (`Data/`) — the logger
+- `TestOptionsMonitor<T>` with `ListenerRegistration` (`Data/`) — the options monitor of a reloadable configuration; `Reload` replaces `CurrentValue` and calls the `OnChange` listeners
+- `TestDevelopmentConfiguration` (`Data/`) — the development configuration files
+- `SaveChangesFailingDbContext` (`Data/`) — a database whose save fails
+- `GatedSaveChangesDbContext` (`Data/`, created by `SqliteTestDatabase.CreateGatedSaveChangesDbContext`) — a database whose first save of an added vulnerability finding signals `SaveEntered` and waits for `ReleaseSave` before touching the database
+- `ScanLockObserver` (`Helper/`) — a scan lock registry observer: `WaitUntilWaitingAsync` yields until a second reference of a key exists or the run's task has completed
+- `SqliteTestDatabase` (`Data/` of both test projects) — the PostgreSQL database, as SQLite
+- `ThrowingExecutionStrategy` (`Helper/`) — the EF Core execution strategy, which fails every operation after the first ones with a given exception
+- `CommandTimeoutRecordingInterceptor` (`Helper/`) — the EF Core command pipeline, which records each executed command's timeout and fails every command with its own exception
+- `ContainerActionRunWriteFailingInterceptor` (`Helper/`) — the database's save of a container action run, which fails for the given statuses in every context and scope
+
 ## Where tests live
 
 - Tests live under `src\Tests`, never in a top-level `tests` folder.
@@ -285,8 +318,8 @@ publicly (for example a static markup-formatting helper), reflection via
 ## Time in tests
 
 Tests never depend on the real clock. New or changed time-dependent logic in services takes an injected
-`TimeProvider`; its tests substitute it with NSubstitute (`GetUtcNow` is virtual), as `.squad/project.md`
-(*Test doubles*) does for every clock, and never wait with `Thread.Sleep` or `Task.Delay` for time to pass.
+`TimeProvider`; its tests substitute it with NSubstitute (`GetUtcNow` is virtual), as *Test doubles*
+does for every clock, and never wait with `Thread.Sleep` or `Task.Delay` for time to pass.
 Existing services still read `DateTimeOffset.UtcNow` directly and move to `TimeProvider` when they are changed;
 entity timestamp defaults (`CreatedAtUtc = DateTimeOffset.UtcNow`) stay as they are. A `Task.Delay` inside a
 test double that simulates latency is fine; an assertion on elapsed wall-clock time is not.
