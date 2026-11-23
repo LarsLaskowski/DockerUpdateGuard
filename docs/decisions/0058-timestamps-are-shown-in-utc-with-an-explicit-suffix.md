@@ -1,6 +1,6 @@
 # 0058: Timestamps are shown in UTC with an explicit suffix
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-23
 - **Area:** Web UI
 - **Source:** Issue #36
