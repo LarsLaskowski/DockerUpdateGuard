@@ -152,3 +152,21 @@ rendering is unchanged.
 
 - Conversion to the browser's time zone (option 2): not planned; the formatter is its single seam.
 - Stored messages with timestamps (fact 10) and log output keep their formats.
+
+## Challenge notes
+
+Devil's Advocate, plan mode, issue #36 (`/home/user/DockerUpdateGuard/specs/issue-36/plan.md`)
+
+The plan holds up. I checked its assumptions against the code:
+
+- **Sites:** `grep` for `ToLocalTime`, `"g"` and `:g}` in `src/DockerUpdateGuard` finds exactly the sites the plan lists, with the same lines. The grep also turned up no other place that shows a timestamp: no implicit `DateTimeOffset` rendering, no `toLocale` in `wwwroot`, and `LoginRetryAfterRegistry.cs:48` already uses invariant UTC.
+- **Facts 8 and 12:** confirmed. The three tests compute their expected text with `ToLocalTime().ToString("g", ...)` (`VulnerabilityAssessmentCardTests.cs:155`, `ScanHistoryTests.cs:173`, `RuntimeContainerDetailTests.cs:398`). The `_requestedAtUtc` fixture at `RuntimeContainerDetailTests.cs:69` has offset zero, so the zone conversion is proven only by the AC1 test that uses `+02:00`.
+- **Test seams:** they exist for the planned tests.
+  - `MainLayoutRenderTests.CreateContext(DashboardSummaryViewData?)` takes a summary from the test.
+  - `VulnerabilityRescanControlTests.cs` exists.
+  - `ResourceUsageChartBuilder` is internal and has a `GetChartLabels(history, maxVisibleLabels)` overload (`UI/ResourceUsageChartBuilder.cs:30`), so the AC2 test can produce hidden labels.
+- **Scope and option:** right-sized. Choosing UTC with a suffix through one formatter matches the issue's own recommendation.
+
+Objections:
+
+1. **minor:** The plan removes the unused `System.Globalization` using only in `ResourceUsageChartBuilder.cs`, but two more files lose their only `CultureInfo` use in this change. In `Components/Layout/MainLayout.razor.cs` it is line 281, in `Components/Pages/ScanHistory.razor.cs` line 137, and each file imports `using System.Globalization;` on line 1. Left in place, each would raise an unnecessary-using (IDE0005) diagnostic, which the *Analyzer gate* forbids on a changed file. Instruction for the Dev: remove `using System.Globalization;` from `MainLayout.razor.cs` and `ScanHistory.razor.cs` along with the formatter change, unless something else in the file still uses it.
