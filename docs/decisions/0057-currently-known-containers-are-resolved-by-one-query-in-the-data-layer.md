@@ -1,6 +1,6 @@
 # 0057: Currently known containers are resolved by one query in the data layer
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-23
 - **Area:** Docker instances
 - **Source:** Issue #294
