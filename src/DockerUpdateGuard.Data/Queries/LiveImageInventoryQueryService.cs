@@ -31,57 +31,6 @@ public class LiveImageInventoryQueryService : ILiveImageInventoryQueryService
 
     #endregion // Constructors
 
-    #region Methods
-
-    /// <summary>
-    /// Resolve the image versions referenced by the most recent runtime-container scan of each Docker instance
-    /// </summary>
-    /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>Identifiers of the currently running image versions</returns>
-    private async Task<HashSet<Guid>> GetRunningImageVersionIdsAsync(CancellationToken cancellationToken)
-    {
-        var snapshots = await _dbContext.ContainerSnapshots.AsNoTracking()
-                                                           .Select(entity => new
-                                                                             {
-                                                                                 entity.DockerInstanceId,
-                                                                                 entity.ContainerId,
-                                                                                 entity.ImageVersionId,
-                                                                                 entity.ScanRunId,
-                                                                                 entity.RecordedAtUtc,
-                                                                                 ScanRunType = entity.ScanRun != null ? entity.ScanRun.Type : (ScanRunType?)null,
-                                                                                 ScanRunStartedAtUtc = entity.ScanRun != null ? entity.ScanRun.StartedAtUtc : (DateTimeOffset?)null,
-                                                                             })
-                                                           .ToListAsync(cancellationToken)
-                                                           .ConfigureAwait(false);
-
-        var runningImageVersionIds = new HashSet<Guid>();
-
-        foreach (var instanceGroup in snapshots.GroupBy(entity => entity.DockerInstanceId))
-        {
-            var latestRuntimeScanSnapshots = instanceGroup.Where(entity => entity.ScanRunType == ScanRunType.RuntimeContainer)
-                                                          .GroupBy(entity => entity.ScanRunId)
-                                                          .OrderByDescending(group => group.Max(item => item.ScanRunStartedAtUtc ?? item.RecordedAtUtc))
-                                                          .FirstOrDefault();
-
-            if (latestRuntimeScanSnapshots is not null)
-            {
-                runningImageVersionIds.UnionWith(latestRuntimeScanSnapshots.Select(entity => entity.ImageVersionId));
-
-                continue;
-            }
-
-            var latestSnapshotPerContainer = instanceGroup.GroupBy(entity => entity.ContainerId)
-                                                          .Select(group => group.OrderByDescending(item => item.RecordedAtUtc)
-                                                                                .First());
-
-            runningImageVersionIds.UnionWith(latestSnapshotPerContainer.Select(entity => entity.ImageVersionId));
-        }
-
-        return runningImageVersionIds;
-    }
-
-    #endregion // Methods
-
     #region ILiveImageInventoryQueryService
 
     /// <inheritdoc/>
@@ -90,10 +39,10 @@ public class LiveImageInventoryQueryService : ILiveImageInventoryQueryService
         var observedImageVersionIds = await _dbContext.ObservedImages.Select(entity => entity.CurrentImageVersionId)
                                                                      .ToListAsync(cancellationToken)
                                                                      .ConfigureAwait(false);
-        var runningImageVersionIds = await GetRunningImageVersionIdsAsync(cancellationToken).ConfigureAwait(false);
+        var currentSnapshots = await CurrentContainerSnapshotQuery.GetCurrentContainerSnapshotsAsync(_dbContext, cancellationToken).ConfigureAwait(false);
         var liveImageVersionIds = new HashSet<Guid>(observedImageVersionIds);
 
-        liveImageVersionIds.UnionWith(runningImageVersionIds);
+        liveImageVersionIds.UnionWith(currentSnapshots.Select(entity => entity.ImageVersionId));
 
         var childImageVersionIds = liveImageVersionIds.ToList();
         var baseImageVersionIds = await _dbContext.ImageRelationships.Where(entity => entity.RelationshipType == ImageRelationshipType.BaseImage

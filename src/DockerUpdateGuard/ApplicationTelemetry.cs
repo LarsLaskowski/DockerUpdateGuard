@@ -2,6 +2,7 @@ using System.Diagnostics.Metrics;
 
 using DockerUpdateGuard.Data;
 using DockerUpdateGuard.Data.Entities;
+using DockerUpdateGuard.Data.Queries;
 using DockerUpdateGuard.Telemetry;
 
 using Microsoft.EntityFrameworkCore;
@@ -143,14 +144,10 @@ public class ApplicationTelemetry
         _observedImages = await dbContext.ObservedImages
                                          .LongCountAsync(cancellationToken)
                                          .ConfigureAwait(false);
-        RuntimeContainerCount = await dbContext.ContainerSnapshots
-                                               .GroupBy(entity => new
-                                                                  {
-                                                                      entity.DockerInstanceId,
-                                                                      entity.ContainerId
-                                                                  })
-                                               .LongCountAsync(cancellationToken)
-                                               .ConfigureAwait(false);
+
+        var currentSnapshots = await CurrentContainerSnapshotQuery.GetCurrentContainerSnapshotsAsync(dbContext, cancellationToken).ConfigureAwait(false);
+
+        RuntimeContainerCount = currentSnapshots.Count;
         _deduplicatedBaseImages = await dbContext.ImageRelationships
                                                  .Where(entity => entity.RelationshipType == ImageRelationshipType.BaseImage)
                                                  .Select(entity => entity.BaseImageVersionId)

@@ -133,7 +133,9 @@ on the snapshots and samples it produces.
   assessment fields are filled by [Update detection](update-detection.md).
 - The **current** containers of an instance are the snapshots of its most recent runtime scan run that recorded
   snapshots. A later run that recorded none (for example because the Engine was unreachable) does not empty the
-  current set; the previous set stays current.
+  current set; the previous set stays current. An instance without any snapshot of a runtime scan run (for example
+  because the runs were deleted) takes the latest snapshot of each container instead. This one set is what the pages,
+  the dashboard, the live-image inventory and the `dockerupdateguard.runtime_containers` gauge use.
 - A container whose image catalog call raises an error is still recorded: its snapshot takes the image version of the container's latest earlier snapshot, with
   update assessment *failed* and the message `Container '<name>' could not be processed: <reason>`, and the container's
   active findings stay active and move to it. Its resolved and available update version are those of that earlier
@@ -234,6 +236,8 @@ on the snapshots and samples it produces.
   a runtime container whose processing fails takes what it could not determine from its latest earlier snapshot.
 - [0049](../decisions/0049-docker-instance-names-are-trimmed-once-where-the-options-are-built.md): Docker instance
   names are trimmed once where the options are built.
+- [0057](../decisions/0057-currently-known-containers-are-resolved-by-one-query-in-the-data-layer.md): currently
+  known containers are resolved by one query in the data layer.
 
 ## Not here
 

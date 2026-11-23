@@ -217,12 +217,14 @@ read/write intent, not by entity:
   the only repository in the project — no entity outside the catalog
   needed one.
 - **`Queries\` — `ILiveImageInventoryQueryService`,
-  `ISharedBaseImageQueryService`.** Read-only, multi-entity, page-shaped
+  `ISharedBaseImageQueryService`, `CurrentContainerSnapshotQuery`.** Read-only, multi-entity, page-shaped
   projections that return plain DTOs instead of tracked entities and don't
   naturally belong to any single entity's repository.
   `ILiveImageInventoryQueryService` is the shared definition of "still
   relevant" that cleanup uses to decide what history to keep
-  ([Scan engine](areas/scan-engine.md)).
+  ([Scan engine](areas/scan-engine.md)). `CurrentContainerSnapshotQuery` is the shared definition of the currently
+  known containers, read over the caller's context by the view service, the live-image inventory and the inventory
+  gauge ([0057](decisions/0057-currently-known-containers-are-resolved-by-one-query-in-the-data-layer.md)).
 
 ### 5.3 Migrations
 
