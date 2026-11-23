@@ -42,11 +42,6 @@ public class ApplicationTelemetry
     private long _observedImages;
 
     /// <summary>
-    /// Runtime-container count
-    /// </summary>
-    private long _runtimeContainers;
-
-    /// <summary>
     /// Deduplicated base-image count
     /// </summary>
     private long _deduplicatedBaseImages;
@@ -91,7 +86,7 @@ public class ApplicationTelemetry
         _scanDurationHistogram = DockerUpdateGuardTelemetry.Meter.CreateHistogram<double>(TelemetryMetricNames.ScanDuration, unit: "s");
 
         DockerUpdateGuardTelemetry.Meter.CreateObservableGauge(TelemetryMetricNames.ObservedImages, () => new Measurement<long>(_observedImages));
-        DockerUpdateGuardTelemetry.Meter.CreateObservableGauge(TelemetryMetricNames.RuntimeContainers, () => new Measurement<long>(_runtimeContainers));
+        DockerUpdateGuardTelemetry.Meter.CreateObservableGauge(TelemetryMetricNames.RuntimeContainers, () => new Measurement<long>(RuntimeContainerCount));
         DockerUpdateGuardTelemetry.Meter.CreateObservableGauge(TelemetryMetricNames.DeduplicatedBaseImages, () => new Measurement<long>(_deduplicatedBaseImages));
         DockerUpdateGuardTelemetry.Meter.CreateObservableGauge(TelemetryMetricNames.ActiveUpdateFindings, () => new Measurement<long>(_activeUpdateFindings));
         DockerUpdateGuardTelemetry.Meter.CreateObservableGauge(TelemetryMetricNames.ActiveCveFindings, () => new Measurement<long>(_activeCveFindings));
@@ -99,6 +94,15 @@ public class ApplicationTelemetry
     }
 
     #endregion // Constructors
+
+    #region Properties
+
+    /// <summary>
+    /// Number of currently known runtime containers the gauge reports
+    /// </summary>
+    internal long RuntimeContainerCount { get; private set; }
+
+    #endregion // Properties
 
     #region Methods
 
@@ -139,14 +143,14 @@ public class ApplicationTelemetry
         _observedImages = await dbContext.ObservedImages
                                          .LongCountAsync(cancellationToken)
                                          .ConfigureAwait(false);
-        _runtimeContainers = await dbContext.ContainerSnapshots
-                                            .GroupBy(entity => new
-                                                               {
-                                                                   entity.DockerInstanceId,
-                                                                   entity.ContainerId
-                                                               })
-                                            .LongCountAsync(cancellationToken)
-                                            .ConfigureAwait(false);
+        RuntimeContainerCount = await dbContext.ContainerSnapshots
+                                               .GroupBy(entity => new
+                                                                  {
+                                                                      entity.DockerInstanceId,
+                                                                      entity.ContainerId
+                                                                  })
+                                               .LongCountAsync(cancellationToken)
+                                               .ConfigureAwait(false);
         _deduplicatedBaseImages = await dbContext.ImageRelationships
                                                  .Where(entity => entity.RelationshipType == ImageRelationshipType.BaseImage)
                                                  .Select(entity => entity.BaseImageVersionId)
@@ -163,7 +167,7 @@ public class ApplicationTelemetry
                                                              .LongCountAsync(cancellationToken)
                                                              .ConfigureAwait(false);
         _logger.InventoryMetricsRefreshed(_observedImages,
-                                          _runtimeContainers,
+                                          RuntimeContainerCount,
                                           _deduplicatedBaseImages,
                                           _activeUpdateFindings,
                                           _activeCveFindings,
