@@ -661,59 +661,17 @@ public sealed class ApplicationViewService : IApplicationViewService, IDisposabl
     /// <returns>Latest snapshots</returns>
     private async Task<IReadOnlyList<ContainerSnapshot>> GetLatestContainerSnapshotsAsync(CancellationToken cancellationToken)
     {
-        var runtimeScanReferences = await _dbContext.ContainerSnapshots.Where(entity => entity.ScanRunId != null
-                                                                                        && entity.ScanRun!.Type == ScanRunType.RuntimeContainer)
-                                                                       .Select(entity => new
-                                                                                         {
-                                                                                             entity.DockerInstanceId,
-                                                                                             entity.ScanRunId,
-                                                                                             entity.ScanRun!.StartedAtUtc,
-                                                                                         })
-                                                                       .Distinct()
-                                                                       .ToListAsync(cancellationToken)
-                                                                       .ConfigureAwait(false);
+        var currentSnapshots = await CurrentContainerSnapshotQuery.GetCurrentContainerSnapshotsAsync(_dbContext, cancellationToken).ConfigureAwait(false);
+        var currentSnapshotIds = currentSnapshots.Select(entity => entity.SnapshotId).ToList();
 
-        var targetScanRunByInstance = runtimeScanReferences.GroupBy(reference => reference.DockerInstanceId)
-                                                           .ToDictionary(group => group.Key,
-                                                                         group => group.OrderByDescending(reference => reference.StartedAtUtc)
-                                                                                       .First()
-                                                                                       .ScanRunId);
-
-        var currentSnapshots = new List<ContainerSnapshot>();
-
-        if (targetScanRunByInstance.Count > 0)
-        {
-            var targetScanRunIds = targetScanRunByInstance.Values.ToList();
-            var runtimeSnapshots = await _dbContext.ContainerSnapshots.Include(entity => entity.DockerInstance.PortainerEndpoint)
-                                                                      .Include(entity => entity.ImageVersion.RegistryRepository)
-                                                                      .Include(entity => entity.ScanRun)
-                                                                      .Where(entity => targetScanRunIds.Contains(entity.ScanRunId))
-                                                                      .AsNoTracking()
-                                                                      .OrderByDescending(entity => entity.RecordedAtUtc)
-                                                                      .ToListAsync(cancellationToken)
-                                                                      .ConfigureAwait(false);
-
-            currentSnapshots.AddRange(runtimeSnapshots.Where(entity => targetScanRunByInstance.TryGetValue(entity.DockerInstanceId, out var scanRunId)
-                                                                       && scanRunId == entity.ScanRunId));
-        }
-
-        var runtimeInstanceIds = targetScanRunByInstance.Keys.ToList();
-        var fallbackSnapshots = await _dbContext.ContainerSnapshots.Include(entity => entity.DockerInstance.PortainerEndpoint)
-                                                                   .Include(entity => entity.ImageVersion.RegistryRepository)
-                                                                   .Include(entity => entity.ScanRun)
-                                                                   .Where(entity => runtimeInstanceIds.Contains(entity.DockerInstanceId) == false
-                                                                                    && _dbContext.ContainerSnapshots.Any(other => other.DockerInstanceId == entity.DockerInstanceId
-                                                                                                                                  && other.ContainerId == entity.ContainerId
-                                                                                                                                  && other.RecordedAtUtc > entity.RecordedAtUtc) == false)
-                                                                   .AsNoTracking()
-                                                                   .OrderByDescending(entity => entity.RecordedAtUtc)
-                                                                   .ToListAsync(cancellationToken)
-                                                                   .ConfigureAwait(false);
-
-        currentSnapshots.AddRange(fallbackSnapshots.GroupBy(entity => CreateContainerKey(entity.DockerInstanceId, entity.ContainerId))
-                                                   .Select(group => group.First()));
-
-        return currentSnapshots;
+        return await _dbContext.ContainerSnapshots.Include(entity => entity.DockerInstance.PortainerEndpoint)
+                                                  .Include(entity => entity.ImageVersion.RegistryRepository)
+                                                  .Include(entity => entity.ScanRun)
+                                                  .Where(entity => currentSnapshotIds.Contains(entity.Id))
+                                                  .AsNoTracking()
+                                                  .OrderByDescending(entity => entity.RecordedAtUtc)
+                                                  .ToListAsync(cancellationToken)
+                                                  .ConfigureAwait(false);
     }
 
     /// <summary>

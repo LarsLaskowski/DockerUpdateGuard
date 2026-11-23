@@ -89,7 +89,7 @@ Every exported signal carries the same resource:
   | Name | Value |
   | --- | --- |
   | `dockerupdateguard.observed_images` | Number of observed images, enabled or not |
-  | `dockerupdateguard.runtime_containers` | Number of distinct containers (per Docker instance and container ID) that have a stored snapshot |
+  | `dockerupdateguard.runtime_containers` | Number of currently known runtime containers, the set the dashboard and the Runtime Containers page show ([Docker instances](docker-instances.md#container-snapshots)); stopped containers that still exist count, removed ones do not |
   | `dockerupdateguard.base_images.deduplicated` | Number of distinct image versions used as a base image by at least one image |
   | `dockerupdateguard.findings.update.active` | Number of active update findings |
   | `dockerupdateguard.findings.cve.active` | Number of active vulnerability findings |
@@ -146,14 +146,12 @@ Every exported signal carries the same resource:
 
 - Scans, vulnerability provider calls, Portainer requests and persistence have no application span; the reserved span
   names `scan.run`, `cve.request`, `portainer.request` and `persistence.operation` are never emitted. Tracked in [#83](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/83).
-- `dockerupdateguard.runtime_containers` counts every container that still has a stored snapshot, including
-  containers that have since stopped or been removed, until cleanup deletes their snapshots; it does not count only
-  the currently known containers. Tracked in [#294](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/294).
 
 ## Related decisions
 
 - [0005](../decisions/0005-urls-are-output-with-user-info-masked.md) — URLs are output with their user info masked.
 - [0045](../decisions/0045-json-parse-failures-of-external-data-carry-a-fixed-message-with-their-position.md) — JSON parse failures of external data carry a fixed message with their position.
+- [0057](../decisions/0057-currently-known-containers-are-resolved-by-one-query-in-the-data-layer.md) — Currently known containers are resolved by one query in the data layer.
 
 ## Not here
 
