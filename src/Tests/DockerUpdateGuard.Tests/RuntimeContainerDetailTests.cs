@@ -1,5 +1,3 @@
-using System.Globalization;
-
 using Bunit;
 
 using DockerUpdateGuard.Components.Common;
@@ -66,7 +64,7 @@ public class RuntimeContainerDetailTests
     /// <summary>
     /// Request time of the history rows
     /// </summary>
-    private static readonly DateTimeOffset _requestedAtUtc = new(2026, 11, 14, 9, 30, 0, TimeSpan.Zero);
+    private static readonly DateTimeOffset _requestedAtUtc = new(2026, 11, 14, 11, 30, 0, TimeSpan.FromHours(2));
 
     #endregion // Fields
 
@@ -342,6 +340,7 @@ public class RuntimeContainerDetailTests
     /// <returns>Task</returns>
     [TestMethod]
     [TestCategory("AC10")]
+    [TestCategory("AC3")]
     public async Task RuntimeContainerDetailAfterActionShowsOutcomeAndReloadsHistoryAsync()
     {
         var history = new List<ContainerActionRunViewData>
@@ -395,7 +394,7 @@ public class RuntimeContainerDetailTests
             Assert.Contains("Action history", FindActionSection(page).TextContent, "The history must carry its heading");
             Assert.Contains(text => text.Contains("Restart", StringComparison.Ordinal)
                                     && text.Contains("Succeeded", StringComparison.Ordinal)
-                                    && text.Contains(_requestedAtUtc.ToLocalTime().ToString("g", CultureInfo.CurrentCulture), StringComparison.Ordinal)
+                                    && text.Contains("2026-11-14 09:30 UTC", StringComparison.Ordinal)
                                     && text.Contains("UI", StringComparison.Ordinal)
                                     && text.Contains(RestartSucceededMessage, StringComparison.Ordinal),
                             rows,
