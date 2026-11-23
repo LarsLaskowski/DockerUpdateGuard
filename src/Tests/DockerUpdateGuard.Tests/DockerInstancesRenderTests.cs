@@ -62,6 +62,47 @@ public class DockerInstancesRenderTests
     }
 
     /// <summary>
+    /// Verify the instance list shows the latest scan completion in UTC and nothing for an instance never scanned
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC3")]
+    public async Task DockerInstancesWithAndWithoutScanCompletionRendersUtcOrEmptyAsync()
+    {
+        var testContext = BlazorTestContextFactory.Create();
+
+        await using (testContext)
+        {
+            var viewService = Substitute.For<IApplicationViewService>();
+
+            viewService.GetDockerInstancesAsync(Arg.Any<CancellationToken>())
+                       .Returns(Task.FromResult<IReadOnlyList<DockerInstanceListItemData>>([
+                                                                                               new DockerInstanceListItemData
+                                                                                               {
+                                                                                                   Id = Guid.NewGuid(),
+                                                                                                   Name = "scanned",
+                                                                                                   LatestScanStatus = "Succeeded",
+                                                                                                   LatestScanCompletedAtUtc = new DateTimeOffset(2026, 11, 23, 23, 27, 0, TimeSpan.FromHours(2)),
+                                                                                               },
+                                                                                               new DockerInstanceListItemData
+                                                                                               {
+                                                                                                   Id = Guid.NewGuid(),
+                                                                                                   Name = "fresh",
+                                                                                                   LatestScanStatus = "NotScanned",
+                                                                                               },
+                                                                                           ]));
+
+            testContext.Services.AddSingleton(viewService);
+
+            var component = testContext.Render<DockerInstancesPage>();
+            var secondaries = component.FindAll("span.table-secondary").Select(element => element.TextContent.Trim()).ToList();
+
+            Assert.Contains("Succeeded · 2026-11-23 21:27 UTC", secondaries, "A completed scan must be shown in UTC with the zone suffix");
+            Assert.Contains("NotScanned ·", secondaries, "An instance without a completed scan must show no timestamp");
+        }
+    }
+
+    /// <summary>
     /// Create a resource usage point for the tests
     /// </summary>
     /// <returns>Resource usage point</returns>

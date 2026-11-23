@@ -159,5 +159,65 @@ public class MyImageDetailTests
         }
     }
 
+    /// <summary>
+    /// Verify the linked container observation time and the scan history times are shown in UTC
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC3")]
+    public async Task MyImageDetailWithLinkedContainerRendersTimestampsInUtcAsync()
+    {
+        var testContext = BlazorTestContextFactory.Create();
+
+        await using (testContext)
+        {
+            var observedImageId = Guid.NewGuid();
+            var viewService = Substitute.For<IApplicationViewService>();
+
+            viewService.GetObservedImageDetailAsync(observedImageId, Arg.Any<CancellationToken>())
+                       .Returns(new ObservedImageDetailViewData
+                                {
+                                    Id = observedImageId,
+                                    Name = "Company API",
+                                    ImageReference = "docker.io/company/api:1.0.0",
+                                    LinkedRuntimeContainers = [
+                                                                  new LinkedRuntimeContainerViewData
+                                                                  {
+                                                                      DockerInstanceId = Guid.NewGuid(),
+                                                                      ContainerId = "abc",
+                                                                      ContainerName = "api",
+                                                                      RecordedAtUtc = new DateTimeOffset(2026, 11, 23, 23, 27, 0, TimeSpan.FromHours(2)),
+                                                                  },
+                                                              ],
+                                    ScanHistory = [
+                                                      new ScanHistoryItemData
+                                                      {
+                                                          Type = "Registry",
+                                                          Status = "Succeeded",
+                                                          StartedAtUtc = new DateTimeOffset(2026, 11, 23, 10, 5, 0, TimeSpan.FromHours(2)),
+                                                          CompletedAtUtc = new DateTimeOffset(2026, 11, 23, 10, 9, 0, TimeSpan.FromHours(2)),
+                                                      },
+                                                      new ScanHistoryItemData
+                                                      {
+                                                          Type = "Registry",
+                                                          Status = "Running",
+                                                          StartedAtUtc = new DateTimeOffset(2026, 11, 22, 1, 30, 0, TimeSpan.Zero),
+                                                      },
+                                                  ],
+                                });
+
+            testContext.Services.AddSingleton(viewService);
+
+            var component = testContext.Render<MyImageDetail>(parameters => parameters.Add(page => page.ObservedImageId, observedImageId));
+            var markup = component.Markup;
+
+            Assert.Contains("2026-11-23 21:27 UTC", markup, "The linked container observation time must be shown in UTC");
+            Assert.Contains("2026-11-23 08:05 UTC", markup, "The scan start must be shown in UTC");
+            Assert.Contains("2026-11-23 08:09 UTC", markup, "The scan completion must be shown in UTC");
+            Assert.Contains("2026-11-22 01:30 UTC", markup, "A UTC scan start must keep its wall-clock time");
+            Assert.Contains("In progress", markup, "A scan without completion must show the in-progress marker");
+        }
+    }
+
     #endregion // Methods
 }
