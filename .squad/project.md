@@ -103,7 +103,7 @@ change with it. The area document of the feature (`docs/areas/README.md`) change
   ([fixed reasons](../docs/areas/integration-failures.md#fixed-failure-reasons))
 - remote text through `ResponseBodyExcerpt` and next-page links through `PaginationLinkGuard` and remote JSON through `ExternalJson` (`RemoteJsonDocument` where strings must decode)
 - `RegistryMetadataService` dispatch (`CanHandle`) for a new registry type — [Registries](../docs/areas/registries.md)
-- the fake/stub in the tests (*Test doubles*)
+- the fake/stub in the tests (`docs/UNIT_TESTS.md`, *Test doubles*)
 - the client table in `docs/ARCHITECTURE.md`, *Integration clients*
 
 **A change to the entity model** touches:
