@@ -75,7 +75,7 @@
                     </MudTd>
                     <MudTd DataLabel="Trigger">@context.TriggerSource</MudTd>
                     <MudTd DataLabel="Target">@context.SubjectName</MudTd>
-                    <MudTd DataLabel="Started">@context.StartedAtUtc.ToLocalTime().ToString("g")</MudTd>
+                    <MudTd DataLabel="Started">@TimestampFormatter.Format(context.StartedAtUtc)</MudTd>
                     <MudTd DataLabel="Error">@context.ErrorMessage</MudTd>
                 </RowTemplate>
             </MudTable>

@@ -1,5 +1,3 @@
-using System.Globalization;
-
 using MudBlazor;
 
 namespace DockerUpdateGuard.UI;
@@ -50,7 +48,7 @@ internal static class ResourceUsageChartBuilder
                                                    return string.Empty;
                                                }
 
-                                               return FormatChartLabel(point.RecordedAtUtc, index, chronologicalHistory.Count);
+                                               return TimestampFormatter.FormatChartLabel(point.RecordedAtUtc, index == 0 || index == chronologicalHistory.Count - 1);
                                            })
                                    .ToArray();
     }
@@ -123,22 +121,6 @@ internal static class ResourceUsageChartBuilder
     {
         return history.OrderBy(point => point.RecordedAtUtc)
                       .ToList();
-    }
-
-    /// <summary>
-    /// Format a chart label based on its position in the series
-    /// </summary>
-    /// <param name="recordedAtUtc">Recorded timestamp</param>
-    /// <param name="index">Zero-based label index</param>
-    /// <param name="labelCount">Total label count</param>
-    /// <returns>Formatted label</returns>
-    private static string FormatChartLabel(DateTimeOffset recordedAtUtc, int index, int labelCount)
-    {
-        var localTime = recordedAtUtc.ToLocalTime();
-
-        return index == 0 || index == labelCount - 1
-                   ? localTime.ToString("MM-dd HH:mm", CultureInfo.CurrentCulture)
-                   : localTime.ToString("HH:mm", CultureInfo.CurrentCulture);
     }
 
     /// <summary>

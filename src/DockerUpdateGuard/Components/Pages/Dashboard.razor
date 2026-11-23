@@ -231,7 +231,7 @@ else
                             <MudChip T="string" Size="Size.Small" Color="@GetScanStatusColor(context.Status)">@context.Status</MudChip>
                         </MudTd>
                         <MudTd DataLabel="Target">@context.SubjectName</MudTd>
-                        <MudTd DataLabel="Started">@context.StartedAtUtc.ToLocalTime().ToString("g")</MudTd>
+                        <MudTd DataLabel="Started">@TimestampFormatter.Format(context.StartedAtUtc)</MudTd>
                         <MudTd DataLabel="Error">@context.ErrorMessage</MudTd>
                     </RowTemplate>
                 </MudTable>

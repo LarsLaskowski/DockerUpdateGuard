@@ -132,7 +132,7 @@
                 <RowTemplate>
                     <MudTd DataLabel="Name">
                         <MudLink Href="@($"/docker-instances/{context.Id}")" Class="table-link">@context.Name</MudLink>
-                        <span class="table-secondary">@context.LatestScanStatus · @context.LatestScanCompletedAtUtc?.ToLocalTime().ToString("g")</span>
+                        <span class="table-secondary">@context.LatestScanStatus · @TimestampFormatter.FormatOptional(context.LatestScanCompletedAtUtc)</span>
                     </MudTd>
                     <MudTd DataLabel="Endpoint">@context.EndpointUri</MudTd>
                     <MudTd DataLabel="Connection">@context.ConnectionKind</MudTd>

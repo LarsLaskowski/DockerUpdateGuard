@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Security.Cryptography;
 
 using DockerUpdateGuard.UI;
@@ -275,10 +274,7 @@ public sealed partial class MainLayout : LayoutComponentBase, IDisposable
             return "No scans yet";
         }
 
-        return _dashboardSummary.LatestScan
-                                .StartedAtUtc
-                                .ToLocalTime()
-                                .ToString("g", CultureInfo.CurrentCulture);
+        return TimestampFormatter.Format(_dashboardSummary.LatestScan.StartedAtUtc);
     }
 
     #endregion // Methods

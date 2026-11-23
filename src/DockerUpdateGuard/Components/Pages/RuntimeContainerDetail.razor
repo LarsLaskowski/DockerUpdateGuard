@@ -51,7 +51,7 @@
                     <MudPaper Class="summary-card" Elevation="0">
                         <span class="summary-label">Runtime state</span>
                         <MudChip T="string" Size="Size.Small" Color="Color.Info">@_detail.RuntimeStatus</MudChip>
-                        <span class="table-secondary">Observed @_detail.RecordedAtUtc.ToLocalTime().ToString("g")</span>
+                        <span class="table-secondary">Observed @TimestampFormatter.Format(_detail.RecordedAtUtc)</span>
                         @if (string.IsNullOrWhiteSpace(_detail.ComposeProject) == false
                             || string.IsNullOrWhiteSpace(_detail.StackName) == false
                             || string.IsNullOrWhiteSpace(_detail.ServiceName) == false)
@@ -127,7 +127,7 @@
                     <MudText Class="section-description">Start, stop or restart this container through Portainer. Every action asks for confirmation and is recorded.</MudText>
                 </div>
 
-                <span class="table-secondary">@($"Runtime status as of the last runtime scan ({_detail.RecordedAtUtc.ToLocalTime().ToString("g")}); an action does not update it. Run \"Check image updates\" on Runtime Containers to refresh it.")</span>
+                <span class="table-secondary">@($"Runtime status as of the last runtime scan ({TimestampFormatter.Format(_detail.RecordedAtUtc)}); an action does not update it. Run \"Check image updates\" on Runtime Containers to refresh it.")</span>
 
                 @if (_availability.IsCurrent == false || _availability.IsSupported == false || _availability.IsInProgress)
                 {
@@ -186,8 +186,8 @@
                             <MudTd DataLabel="Status">
                                 <MudChip T="string" Size="Size.Small" Color="@GetActionStatusColor(context.Status)">@context.Status</MudChip>
                             </MudTd>
-                            <MudTd DataLabel="Requested">@context.RequestedAtUtc.ToLocalTime().ToString("g")</MudTd>
-                            <MudTd DataLabel="Completed">@(context.CompletedAtUtc is DateTimeOffset completedAtUtc ? completedAtUtc.ToLocalTime().ToString("g") : "—")</MudTd>
+                            <MudTd DataLabel="Requested">@TimestampFormatter.Format(context.RequestedAtUtc)</MudTd>
+                            <MudTd DataLabel="Completed">@(context.CompletedAtUtc is DateTimeOffset completedAtUtc ? TimestampFormatter.Format(completedAtUtc) : "—")</MudTd>
                             <MudTd DataLabel="Requested by">@context.RequestedBy</MudTd>
                             <MudTd DataLabel="Message">@context.Message</MudTd>
                         </RowTemplate>
@@ -327,7 +327,7 @@
                     <MudText>@_detail.ManualSelectionImage</MudText>
                     @if (_detail.ManualSelectionAtUtc is DateTimeOffset selectedAtUtc)
                     {
-                        <MudText Class="table-secondary">Saved @selectedAtUtc.ToLocalTime().ToString("g")</MudText>
+                        <MudText Class="table-secondary">Saved @TimestampFormatter.Format(selectedAtUtc)</MudText>
                     }
                     <MudButton Variant="Variant.Outlined"
                                Color="Color.Default"
@@ -393,7 +393,7 @@
                             }
                         </MudTd>
                         <MudTd DataLabel="Reason">@context.Reason</MudTd>
-                        <MudTd DataLabel="Published">@context.PublishedAtUtc?.ToLocalTime().ToString("g")</MudTd>
+                        <MudTd DataLabel="Published">@TimestampFormatter.FormatOptional(context.PublishedAtUtc)</MudTd>
                         <MudTd DataLabel="Action">
                             <MudButton Variant="Variant.Outlined"
                                        Color="Color.Primary"
@@ -485,7 +485,7 @@
                         <MudChip T="string" Size="Size.Small" Color="@GetScanStatusColor(context.Status)">@context.Status</MudChip>
                     </MudTd>
                     <MudTd DataLabel="Trigger">@context.TriggerSource</MudTd>
-                    <MudTd DataLabel="Started">@context.StartedAtUtc.ToLocalTime().ToString("g")</MudTd>
+                    <MudTd DataLabel="Started">@TimestampFormatter.Format(context.StartedAtUtc)</MudTd>
                     <MudTd DataLabel="Error">@context.ErrorMessage</MudTd>
                 </RowTemplate>
             </MudTable>
