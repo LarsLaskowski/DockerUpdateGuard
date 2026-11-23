@@ -255,5 +255,80 @@ public class CurrentContainerSnapshotQueryTests
         }
     }
 
+    /// <summary>
+    /// Verify runtime scan runs of one instance with the same start time are resolved by the higher run identifier
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC2")]
+    public async Task CurrentContainerSnapshotQueryRuntimeRunsWithSameStartTimeReturnsRunWithHigherIdAsync()
+    {
+        using (var database = new SqliteTestDatabase())
+        {
+            var dbContext = database.CreateDbContext();
+
+            await using (dbContext.ConfigureAwait(false))
+            {
+                var baseTime = new DateTimeOffset(2026, 3, 1, 12, 0, 0, TimeSpan.Zero);
+                var imageVersion = CreateImageVersion();
+                var instance = CreateInstance("tie");
+                var lowerRun = CreateRuntimeRun(baseTime);
+                var higherRun = CreateRuntimeRun(baseTime);
+
+                lowerRun.Id = new Guid("00000000-0000-0000-0000-000000000001");
+                higherRun.Id = new Guid("00000000-0000-0000-0000-000000000002");
+
+                dbContext.ContainerSnapshots.AddRange(CreateSnapshot(instance, imageVersion, lowerRun, "Lower", baseTime),
+                                                      CreateSnapshot(instance, imageVersion, higherRun, "Higher", baseTime));
+
+                await dbContext.SaveChangesAsync(TestContext.CancellationToken)
+                               .ConfigureAwait(false);
+
+                var result = await CurrentContainerSnapshotQuery.GetCurrentContainerSnapshotsAsync(dbContext, TestContext.CancellationToken)
+                                                                .ConfigureAwait(false);
+
+                Assert.HasCount(1, result, "Only the snapshots of one run are current.");
+                Assert.AreEqual("Higher", result[0].ContainerId, "The run with the higher identifier wins a tie of start times.");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Verify snapshots of one container with the same recording time are resolved by the higher snapshot identifier
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC2")]
+    public async Task CurrentContainerSnapshotQuerySnapshotsWithSameRecordingTimeReturnsSnapshotWithHigherIdAsync()
+    {
+        using (var database = new SqliteTestDatabase())
+        {
+            var dbContext = database.CreateDbContext();
+
+            await using (dbContext.ConfigureAwait(false))
+            {
+                var baseTime = new DateTimeOffset(2026, 3, 1, 12, 0, 0, TimeSpan.Zero);
+                var imageVersion = CreateImageVersion();
+                var instance = CreateInstance("tie");
+                var lowerSnapshot = CreateSnapshot(instance, imageVersion, null, "X", baseTime);
+                var higherSnapshot = CreateSnapshot(instance, imageVersion, null, "X", baseTime);
+
+                lowerSnapshot.Id = new Guid("00000000-0000-0000-0000-000000000001");
+                higherSnapshot.Id = new Guid("00000000-0000-0000-0000-000000000002");
+
+                dbContext.ContainerSnapshots.AddRange(lowerSnapshot, higherSnapshot);
+
+                await dbContext.SaveChangesAsync(TestContext.CancellationToken)
+                               .ConfigureAwait(false);
+
+                var result = await CurrentContainerSnapshotQuery.GetCurrentContainerSnapshotsAsync(dbContext, TestContext.CancellationToken)
+                                                                .ConfigureAwait(false);
+
+                Assert.HasCount(1, result, "Only one snapshot per container is current.");
+                Assert.AreEqual(higherSnapshot.Id, result[0].SnapshotId, "The snapshot with the higher identifier wins a tie of recording times.");
+            }
+        }
+    }
+
     #endregion // Methods
 }
