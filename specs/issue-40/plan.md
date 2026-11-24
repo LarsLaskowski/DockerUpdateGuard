@@ -210,3 +210,63 @@ is kept on the pages: the alert carries only `FailureReason.FromException`'s rea
   A view-service exception ends the prerender on `/error` or ends the interactive circuit instead of an inline error
   alert, unlike the detail pages after #40. Show a fixed-reason alert as the detail pages do."
 - The HTTP status of a not-found detail page stays 200 (option 2).
+- `RuntimeContainerDetail.OnAfterRenderAsync` still calls `ContainerActionService.GetAvailabilityAsync` for a container that is not there; the container-actions path stays unchanged (challenge note 2).
+
+## Challenge notes
+
+Devil's Advocate, mode plan, issue 40 (/home/user/DockerUpdateGuard/specs/issue-40/plan.md, /home/user/DockerUpdateGuard/docs/decisions/0059-a-detail-page-shows-a-missing-record-or-a-failed-load-inline.md)
+
+The plan holds up. I found no major objections and two minor ones.
+
+**What I checked, and it matches the plan**
+- **The three null answers.**
+  - The observed image (used by both image pages) and the Docker instance return null in `src/DockerUpdateGuard/UI/ApplicationViewService.cs:1516-1523` and `:1963-1975`. The runtime container returns null at `:1660-1668`.
+  - The container path also has `ArgumentException.ThrowIfNullOrWhiteSpace(containerId)`. The route `{ContainerId}` makes that unreachable in practice, but the plan's catch-all covers it anyway.
+- **The cause.** Each page's `LoadAsync` assigns `_detail` directly, and `OnParametersSetAsync` has no try/catch: DockerInstanceDetail.razor.cs:104-110 and 144-154, MyImageDetail 93-99 and 133-143, ObservedImageDetail 103-109 and 143-153, RuntimeContainerDetail 240-246 and 489-499.
+- **Fact 5 (Option 4 rightly rejected).** `RuntimeContainerDetail`'s actions reload through `LoadAsync` inside their own catch with their own prefix (lines 280, 310, 448). Putting the catch inside `LoadAsync` would have changed which prefix an action's reload failure shows.
+- **Scope.** Only these four pages have a parameterized route. `DockerInstances.razor:124` `_singleInstanceDetail` is a list-page variant, not a sibling defect. The list pages are correctly a follow-up.
+- **No stale doc claims.** `docs/areas/web-ui.md:33` (the loading sentence) and `:203-205` (the #40 known gap) are the lines the plan updates.
+- **The bUnit test context is interactive.** Existing tests call `SetRendererInfo` only to force "Static" (`RuntimeContainerDetailTests.cs:480`), so `OnAfterRenderAsync` runs in the new tests.
+- **No need for `RESULT: NO CHANGE` and no simpler option.** The defect reproduces from the code. The shared helper is the least code that handles all four pages.
+
+**Objections**
+
+1. **minor: a previous state stays visible while a new identifier loads.** Step 2 sets `_isNotFound` and `_loadErrorMessage` only after a load finishes (fields `_isNotFound` / `_loadErrorMessage`, *Approach* step 2). So after a route change, while the new load is pending, the page still shows the previous identifier's not-found panel or error alert (and, as today, its previous detail) instead of the skeleton that AC3 describes. AC3's tests cover only the first load, so they cannot catch this.
+   - Instruction for the Dev: at the start of `OnParametersSetAsync` (after the restored-state branch), clear `_isNotFound` and `_loadErrorMessage` in one `InvokeAsync` before calling `DetailPageLoader.LoadAsync`. Whether to also clear `_detail` there is the Dev's call, but say which in web-ui.md.
+   - Instruction for the Tester: extend the AC4 test `RuntimeContainerDetailRouteChangeAfterLoadFailureClearsAlert` (or the ObservedImageDetail one) so the second load is held by a `TaskCompletionSource`. While it is pending, assert that the previous alert or panel is gone.
+
+2. **minor: the runtime container page still contacts Portainer for a container that is not there.** `RuntimeContainerDetail.OnAfterRenderAsync` (`RuntimeContainerDetail.razor.cs:502-514`) calls `ContainerActionService.GetAvailabilityAsync` on every interactive render with a new key. It does so whether the page shows a detail, the new not-found panel or the load error alert. On a not-found container this is a Portainer call whose failure is logged as `LoadContainerActions` (line 347), next to the new `LoadRuntimeContainerDetail` entry.
+   - Instruction for the Dev: leave the call as it is (no change to the container-actions path, as the plan's *Security areas* line promises) and record it in plan *Out of scope*.
+   - Instruction for the Tester: the AC2 test for RuntimeContainerDetail must assert exactly one `UserActionFailed` entry whose action is `LoadRuntimeContainerDetail`, not the total number of log entries, because the availability check can add its own entry.
+
+## Security notes
+
+Security plan review for issue 40, mode `plan`. Inputs: `/home/user/DockerUpdateGuard/specs/issue-40/plan.md` and `/home/user/DockerUpdateGuard/docs/decisions/0059-a-detail-page-shows-a-missing-record-or-a-failed-load-inline.md` at HEAD `20addd8`.
+
+I found no blocking problems. There is one non-blocking finding, about older behaviour this plan does not cause.
+
+**Tier and listed areas**
+- The tier `standard` is right. The plan adds no security control and changes or removes none. It only sends one more failure path through the existing `FailureReason.FromException` and `UserActionFailed` (event 4000). `FailureReason.cs`, `ReportableException.cs` and `ComponentLoggingExtensions.cs` stay unchanged.
+- *Security areas touched* lists all three areas the change reaches:
+  - Failure messages and remote text
+  - Logging and telemetry of external data
+  - Container actions (`RuntimeContainerDetail.razor`)
+- I found no area that is touched but not listed. The change parses no input, adds no outbound call, and the pages still depend only on `IApplicationViewService`.
+
+**What I checked by reading the code**
+- **Fixed reason in the alert.** In `src/DockerUpdateGuard/Infrastructure/FailureReason.cs:49-85`, `FromException` returns the exception's message only for a `ReportableException`. Every other type maps to a fixed string, and `InvalidOperationException` falls through to `unexpected error`. So the AC2 example ("secret text" gives `Loading the observed image failed: unexpected error`) holds, and the prefixes in the plan's table are all fixed strings. This keeps decision 0009 and the Integration failures rules.
+- **Logged exception.** `docs/areas/telemetry.md` (*Credentials and external data*) already lets the error entries of user actions carry "the exception with its message, which can name a registry, Docker or database host". The new calls use the same message with a fixed action name. They do not log the route values (`ContainerId` and the GUIDs come from the URL), and no new log template is added. I ran the *Logger arguments* concern on the planned call `UserActionFailed(action, exception)`: `action` is always a constant from the plan's table, so no logger argument carries external data.
+- **Rendered text.** The not-found note and the alert are plain text, encoded by Razor. The not-found note does not echo the route identifier.
+- **Container actions.** The plan makes these stricter, not looser. `ConfirmAndExecuteAsync` (`RuntimeContainerDetail.razor.cs`, around line 373) refuses when `_detail is null`. A failed load now sets `_detail = null`, and the action buttons sit inside the detail branch, so nothing can be triggered from the not-found or error state. The user actions keep their own `catch` and prefix (AC5), so an action's reload is still reported under its own message.
+- **Prerender.** A failed or not-found prerender saves nothing to persisted state (`PersistDetail` stores only a non-null detail). No exception data reaches the persisted JSON.
+- **No measurements.** The plan makes no security claim that depends on measured or library behaviour, so I ran no commands.
+
+**Findings**
+
+[NON-BLOCKING] Stale container detail while a new route is loading (this existed before the change)
+- File: `src/DockerUpdateGuard/Components/Pages/RuntimeContainerDetail.razor.cs`. `OnParametersSetAsync` around line 488 does not clear `_detail` before `LoadAsync`, and the actions target the route values (`ExecuteActionAsync` at around line 444 calls `ContainerActionService.ExecuteAsync(DockerInstanceId, ContainerId, …)`).
+- The scenario: the same page instance gets a new `ContainerId`. This happens with browser back/forward between two container detail pages, because Blazor reuses the component. While the new load is pending, the previous container's detail and action buttons stay on screen. The confirmation dialog would name the old container (`detail.ContainerName`), but the action would run against the new route's container.
+- The plan does not cause this: AC4 clears the old detail only when the new load answers `null` or throws. Fixing it would also change AC3/AC4 behaviour, so it belongs in its own issue.
+- Smallest fix: in `OnParametersSetAsync`, when the route key differs from the loaded one, set `_detail = null` (and `_availability = null`) before loading, so the skeleton shows and `ConfirmAndExecuteAsync`'s guard applies.
+- Proposed issue, title: "A runtime container detail page keeps the previous container's actions while a new route loads". Body: "`RuntimeContainerDetail` keeps `_detail` and `_availability` of the previous route until the new load completes, while its actions use the new route's `DockerInstanceId`/`ContainerId`; a confirmation during that window names the old container and acts on the new one. Clear both when the route key changes before the load."
+- Recommendation: issue
