@@ -277,5 +277,41 @@ public class MyImageDetailTests
         }
     }
 
+    /// <summary>
+    /// Verify a pending load shows the skeleton only, and the loaded detail replaces it
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC3")]
+    public async Task MyImageDetailPendingLoadShowsSkeletonOnly()
+    {
+        var testContext = BlazorTestContextFactory.Create();
+
+        await using (testContext)
+        {
+            var id = Guid.NewGuid();
+            var pending = new TaskCompletionSource<ObservedImageDetailViewData?>();
+            var viewService = Substitute.For<IApplicationViewService>();
+
+            viewService.GetObservedImageDetailAsync(id, Arg.Any<CancellationToken>())
+                       .Returns(pending.Task);
+
+            testContext.Services.AddSingleton(viewService);
+
+            var page = testContext.Render<MyImageDetail>(parameters => parameters.Add(component => component.ObservedImageId, id));
+
+            DetailPageAssert.AssertLoading(page);
+
+            pending.SetResult(new ObservedImageDetailViewData
+                              {
+                                  Id = id,
+                                  Name = "Company API",
+                                  ImageReference = "docker.io/company/api:1.0.0"
+                              });
+
+            await DetailPageAssert.AssertLoadedAsync(page, "Company API", "This image does not exist.").ConfigureAwait(false);
+        }
+    }
+
     #endregion // Methods
 }

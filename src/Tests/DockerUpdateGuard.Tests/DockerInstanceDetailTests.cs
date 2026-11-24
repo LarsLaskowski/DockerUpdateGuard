@@ -76,5 +76,40 @@ public class DockerInstanceDetailTests
         }
     }
 
+    /// <summary>
+    /// Verify a pending load shows the skeleton only, and the loaded detail replaces it
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC3")]
+    public async Task DockerInstanceDetailPendingLoadShowsSkeletonOnly()
+    {
+        var testContext = BlazorTestContextFactory.Create();
+
+        await using (testContext)
+        {
+            var id = Guid.NewGuid();
+            var pending = new TaskCompletionSource<DockerInstanceDetailViewData?>();
+            var viewService = Substitute.For<IApplicationViewService>();
+
+            viewService.GetDockerInstanceDetailAsync(id, Arg.Any<CancellationToken>())
+                       .Returns(pending.Task);
+
+            testContext.Services.AddSingleton(viewService);
+
+            var page = testContext.Render<DockerInstanceDetail>(parameters => parameters.Add(component => component.DockerInstanceId, id));
+
+            DetailPageAssert.AssertLoading(page);
+
+            pending.SetResult(new DockerInstanceDetailViewData
+                              {
+                                  Id = id,
+                                  Name = "Prod Host"
+                              });
+
+            await DetailPageAssert.AssertLoadedAsync(page, "Prod Host", "This Docker instance does not exist.").ConfigureAwait(false);
+        }
+    }
+
     #endregion // Methods
 }

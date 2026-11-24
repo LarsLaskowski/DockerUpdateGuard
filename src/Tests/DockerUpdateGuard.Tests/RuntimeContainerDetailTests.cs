@@ -859,6 +859,70 @@ public class RuntimeContainerDetailTests
     }
 
     /// <summary>
+    /// Verify a pending load shows the skeleton only, and the loaded detail replaces it
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC3")]
+    public async Task RuntimeContainerDetailPendingLoadShowsSkeletonOnly()
+    {
+        var pending = new TaskCompletionSource<RuntimeContainerDetailViewData?>();
+        var viewService = Substitute.For<IApplicationViewService>();
+        var testContext = CreateLoadContext(viewService, new TestLogger<RuntimeContainerDetail>());
+
+        await using (testContext)
+        {
+            viewService.GetRuntimeContainerDetailAsync(_loadInstanceId, LoadContainerId, Arg.Any<CancellationToken>())
+                       .Returns(pending.Task);
+
+            var page = RenderLoadPage(testContext, LoadContainerId);
+
+            DetailPageAssert.AssertLoading(page);
+
+            pending.SetResult(CreateLoadDetail(LoadContainerId, "load-api"));
+
+            await DetailPageAssert.AssertLoadedAsync(page, "load-api", "This container is not known on this Docker instance.").ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Verify a reload after a tag selection that fails keeps the action's prefix, shows no skeleton or not-found panel and logs the action once
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC5")]
+    public async Task RuntimeContainerDetailSelectReloadFailureKeepsActionPrefix()
+    {
+        var exception = new InvalidOperationException("secret text");
+        var logger = new TestLogger<RuntimeContainerDetail>();
+        var viewService = Substitute.For<IApplicationViewService>();
+        var testContext = CreateLoadContext(viewService, logger);
+
+        await using (testContext)
+        {
+            viewService.GetRuntimeContainerDetailAsync(_loadInstanceId, LoadContainerId, Arg.Any<CancellationToken>())
+                       .Returns(CreateLoadDetail(LoadContainerId, "load-api"));
+
+            var page = RenderLoadPage(testContext, LoadContainerId);
+
+            await DetailPageAssert.AssertLoadedAsync(page, "load-api", "This container is not known on this Docker instance.").ConfigureAwait(false);
+
+            viewService.GetRuntimeContainerDetailAsync(_loadInstanceId, LoadContainerId, Arg.Any<CancellationToken>())
+                       .Returns(Task.FromException<RuntimeContainerDetailViewData?>(exception));
+
+            await FindButton(page, "Select").ClickAsync().ConfigureAwait(false);
+
+            await page.WaitForAssertionAsync(() => Assert.Contains("Saving the tag selection failed: unexpected error", page.Markup, "The reload failure must carry the action's prefix"), TimeSpan.FromSeconds(WaitSeconds)).ConfigureAwait(false);
+
+            Assert.DoesNotContain("Loading the container failed", page.Markup, "The reload failure must not carry the load prefix");
+            Assert.DoesNotContain("secret text", page.Markup, "The exception text must not be shown");
+            Assert.IsEmpty(page.FindAll(".mud-skeleton"), "The failed reload must not show the skeleton");
+            Assert.DoesNotContain("This container is not known on this Docker instance.", page.Markup, "The failed reload must not show the not-found message");
+            DetailPageAssert.AssertLoadLoggedOnce(logger, "SaveTagSelection", exception);
+        }
+    }
+
+    /// <summary>
     /// Create a test context whose tag selection service throws the given exception from save and clear
     /// </summary>
     /// <param name="exception">Exception thrown by the tag selection service</param>
