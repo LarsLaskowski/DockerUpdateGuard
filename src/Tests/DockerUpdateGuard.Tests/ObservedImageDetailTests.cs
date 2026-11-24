@@ -288,6 +288,45 @@ public class ObservedImageDetailTests
     }
 
     /// <summary>
+    /// Verify a route change to an identifier whose load throws hides the previous detail and shows the fixed error
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC4")]
+    public async Task ObservedImageDetailRouteChangeToFailingIdHidesPreviousDetail()
+    {
+        var exception = new InvalidOperationException("secret text");
+        var logger = new TestLogger<ObservedImageDetail>();
+        var testContext = BlazorTestContextFactory.Create();
+
+        await using (testContext)
+        {
+            var firstId = Guid.NewGuid();
+            var failingId = Guid.NewGuid();
+            var viewService = Substitute.For<IApplicationViewService>();
+
+            viewService.GetObservedImageDetailAsync(firstId, Arg.Any<CancellationToken>())
+                       .Returns(CreateObservedImageDetailViewData(firstId, "Company API"));
+            viewService.GetObservedImageDetailAsync(failingId, Arg.Any<CancellationToken>())
+                       .Returns(Task.FromException<ObservedImageDetailViewData?>(exception));
+
+            testContext.Services.AddSingleton(viewService);
+            testContext.Services.AddSingleton<ILogger<ObservedImageDetail>>(logger);
+
+            var page = testContext.Render<ObservedImageDetail>(parameters => parameters.Add(component => component.ObservedImageId, firstId));
+
+            await DetailPageAssert.AssertLoadedAsync(page, "Company API", "This observed image does not exist.").ConfigureAwait(false);
+
+            page.Render(parameters => parameters.Add(component => component.ObservedImageId, failingId));
+
+            await DetailPageAssert.AssertLoadErrorAsync(page, "Loading the observed image failed: unexpected error", "secret text").ConfigureAwait(false);
+
+            Assert.DoesNotContain("Company API", page.Markup, "The previous detail must not be shown after the new load failed");
+            DetailPageAssert.AssertLoadLoggedOnce(logger, "LoadObservedImageDetail", exception);
+        }
+    }
+
+    /// <summary>
     /// Create a detail for the load tests
     /// </summary>
     /// <param name="id">Identifier</param>
