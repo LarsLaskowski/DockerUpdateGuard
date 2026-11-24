@@ -30,7 +30,11 @@ to read the state the other areas compute and to start manual scans; it computes
 - Timestamps are shown in UTC as `yyyy-MM-dd HH:mm UTC`, the same for every browser and independent of the time zone and
   culture of the server process. The resource chart labels are UTC too: the first and the last label read
   `MM-dd HH:mm UTC`, the visible labels between them `HH:mm`.
-- While a page loads its data it shows placeholder skeletons; a list without data shows an explanatory empty state.
+- While a page loads its data it shows placeholder skeletons; a list without data shows an explanatory empty state. A
+  detail page (Docker instance, own image, observed image, runtime container) whose record does not exist shows a
+  not-found note with a link back to its list instead, and keeps its route. When the page gets another route
+  identifier, its not-found note and load error are cleared at once, while the previously loaded detail stays shown
+  until the new load completes.
 
 ### Pages and routes
 
@@ -183,6 +187,17 @@ never their values.
   | Register and scan | `Registration failed` | `RegisterObservedImage` |
   | Refresh vulnerabilities | `Vulnerability refresh failed` | `VulnerabilityRefresh` |
 
+- A failed load of a detail page shows one error alert `<prefix>: <reason>` with the fixed reason, no detail data and
+  no not-found note, and is logged like a user action (event ID 4000). The reload after a runtime container action
+  keeps the action's prefix; a reload without a record shows the not-found note.
+
+  | Page load | Prefix | Logged action |
+  | --- | --- | --- |
+  | Docker instance detail | `Loading the Docker instance failed` | `LoadDockerInstanceDetail` |
+  | Own image detail | `Loading the image failed` | `LoadMyImageDetail` |
+  | Observed image detail | `Loading the observed image failed` | `LoadObservedImageDetail` |
+  | Runtime container detail | `Loading the container failed` | `LoadRuntimeContainerDetail` |
+
   An action that Portainer or a check rejects is not a page error but an outcome: its message is shown in the outcome
   alert and stored in the run ([Container actions](container-actions.md#actions)). `Container action failed` appears
   when the action service itself raises an error, for example an invalid configuration or a run that cannot be
@@ -200,9 +215,6 @@ never their values.
 - The scan status chips (dashboard, scan history, observed image and My Images lists) color only `Failed`, `Running`
   and `Pending`; `Succeeded` and `Partial` are shown without color, so a partial run is not marked as a warning.
   Tracked in [#274](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/274).
-- A detail route with a well-formed identifier that does not exist (for example a deleted observed image) keeps
-  showing the loading skeleton instead of a not-found state.
-  Tracked in [#40](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/40).
 - The Scan History and dashboard descriptions mention discovery and cleanup runs, although those jobs record no scan
   runs ([Scan engine](scan-engine.md)).
   Tracked in [#278](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/278).
@@ -214,6 +226,8 @@ never their values.
   also on the pages.
 - [0058](../decisions/0058-timestamps-are-shown-in-utc-with-an-explicit-suffix.md) — Timestamps are shown in UTC with an
   explicit suffix.
+- [0059](../decisions/0059-a-detail-page-shows-a-missing-record-or-a-failed-load-inline.md) — A detail page shows a
+  missing record or a failed load inline.
 
 ## Not here
 

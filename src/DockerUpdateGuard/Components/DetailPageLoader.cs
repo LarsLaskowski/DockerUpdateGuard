@@ -1,3 +1,5 @@
+using DockerUpdateGuard.Infrastructure;
+
 namespace DockerUpdateGuard.Components;
 
 /// <summary>
@@ -15,14 +17,21 @@ internal static class DetailPageLoader
     /// <param name="action">Name of the logged user action</param>
     /// <param name="messagePrefix">Prefix of the message shown to the user</param>
     /// <returns>Null when the load completed, otherwise the message with the fixed failure reason</returns>
-#pragma warning disable S1172 // Skeleton: removed with the implementation
     internal static async Task<string?> LoadAsync(Func<Task> load, ILogger logger, string action, string messagePrefix)
     {
-        await Task.CompletedTask.ConfigureAwait(false);
+        try
+        {
+            await load().ConfigureAwait(false);
 
-        throw new InvalidOperationException("Skeleton: not implemented");
+            return null;
+        }
+        catch (Exception exception)
+        {
+            logger.UserActionFailed(action, exception);
+
+            return $"{messagePrefix}: {FailureReason.FromException(exception, null, CancellationToken.None)}";
+        }
     }
-#pragma warning restore S1172 // Skeleton: removed with the implementation
 
     #endregion // Static methods
 }

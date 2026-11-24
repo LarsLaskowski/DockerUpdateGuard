@@ -72,6 +72,16 @@ public sealed partial class RuntimeContainerDetail : IDisposable
     /// </summary>
     private bool _restoredFromState;
 
+    /// <summary>
+    /// Indicates whether the last load found no record for the route identifier
+    /// </summary>
+    private bool _isNotFound;
+
+    /// <summary>
+    /// Message of the last failed load, null when the load did not fail
+    /// </summary>
+    private string? _loadErrorMessage;
+
     #endregion // Fields
 
     #region Properties
@@ -242,7 +252,11 @@ public sealed partial class RuntimeContainerDetail : IDisposable
         var detail = await ViewService.GetRuntimeContainerDetailAsync(DockerInstanceId, ContainerId)
                                       .ConfigureAwait(false);
 
-        await InvokeAsync(() => _detail = detail).ConfigureAwait(false);
+        await InvokeAsync(() =>
+                          {
+                              _detail = detail;
+                              _isNotFound = detail is null;
+                          }).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -495,7 +509,24 @@ public sealed partial class RuntimeContainerDetail : IDisposable
             return;
         }
 
-        await LoadAsync().ConfigureAwait(false);
+        await InvokeAsync(() =>
+                          {
+                              _isNotFound = false;
+                              _loadErrorMessage = null;
+                          }).ConfigureAwait(false);
+
+        var loadErrorMessage = await DetailPageLoader.LoadAsync(LoadAsync, Logger, "LoadRuntimeContainerDetail", "Loading the container failed").ConfigureAwait(false);
+
+        await InvokeAsync(() =>
+                          {
+                              _loadErrorMessage = loadErrorMessage;
+
+                              if (loadErrorMessage is not null)
+                              {
+                                  _detail = null;
+                                  _isNotFound = false;
+                              }
+                          }).ConfigureAwait(false);
     }
 
     /// <inheritdoc/>
