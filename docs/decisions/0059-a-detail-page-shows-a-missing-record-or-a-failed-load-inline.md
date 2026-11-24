@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-11-24
 - **Area:** Web UI
-- **Source:** Issue #40
+- **Source:** Issues #40, #539
 - **Supersedes:** —
 
 ## Context
@@ -14,6 +14,7 @@ stale bookmark, a record removed by cleanup), so such a page showed the skeleton
 error handling either: an exception of the view service ended the server prerender on the error page or ended the
 interactive connection, while the user actions of the same pages report failures inline with a fixed reason
 ([decision 0009](0009-integration-results-carry-fixed-failure-reasons.md)). The router has a generic not-found page.
+The list pages and the dashboard load their data the same way, without error handling either (#539).
 
 ## Options considered
 
@@ -32,10 +33,14 @@ interactive connection, while the user actions of the same pages report failures
 
 A detail page shows a loading skeleton only while its load is pending; a load without a record shows a not-found note
 with a link to the page's list, and a failed load shows an error alert with a fixed reason and is logged like a failed
-user action. The texts are in [Web UI](../areas/web-ui.md#limits-and-errors).
+user action. A list page or the dashboard whose first load fails shows the same alert in place of its skeleton, through
+the same helper, until a later load of the page succeeds. The texts are in
+[Web UI](../areas/web-ui.md#limits-and-errors).
 
 ## Consequences
 
 - A stale link explains itself instead of looking stuck; load failures are visible and logged without the error page.
 - A missing detail still answers HTTP 200; a 404 would need option 2.
 - A user action's reload keeps its own error message; only the page's own load uses the load message.
+- A failed first load persists nothing for the interactive render, which loads again: a failure on both renders is
+  logged twice.
