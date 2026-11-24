@@ -33,6 +33,16 @@ public class RuntimeContainerDetailTests
     private const string FailingSelectionContainerId = "container-failing";
 
     /// <summary>
+    /// Container identifier of the load tests
+    /// </summary>
+    private const string LoadContainerId = "container-load";
+
+    /// <summary>
+    /// Second container identifier of the load tests
+    /// </summary>
+    private const string SecondContainerId = "container-load-second";
+
+    /// <summary>
     /// Container identifier of the container action tests
     /// </summary>
     private const string ActionContainerId = "f907e278af7c63d535c4c440b720247f8c2dca219ffc8167dd3865b16004319e";
@@ -55,6 +65,11 @@ public class RuntimeContainerDetailTests
     /// Docker instance identifier of the failing-selection tests
     /// </summary>
     private static readonly Guid _failingSelectionInstanceId = Guid.NewGuid();
+
+    /// <summary>
+    /// Docker instance identifier of the load tests
+    /// </summary>
+    private static readonly Guid _loadInstanceId = Guid.NewGuid();
 
     /// <summary>
     /// Docker instance identifier of the container action tests
@@ -731,6 +746,183 @@ public class RuntimeContainerDetailTests
     }
 
     /// <summary>
+    /// Verify an unknown container shows the not-found panel with a link back to the list instead of the skeleton
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC1")]
+    public async Task RuntimeContainerDetailUnknownContainerShowsNotFoundPanel()
+    {
+        var viewService = Substitute.For<IApplicationViewService>();
+        var testContext = CreateLoadContext(viewService, new TestLogger<RuntimeContainerDetail>());
+
+        await using (testContext)
+        {
+            viewService.GetRuntimeContainerDetailAsync(_loadInstanceId, LoadContainerId, Arg.Any<CancellationToken>())
+                       .Returns(Task.FromResult<RuntimeContainerDetailViewData?>(null));
+
+            var page = RenderLoadPage(testContext, LoadContainerId);
+
+            await DetailPageAssert.AssertNotFoundAsync(page, "This container is not known on this Docker instance.", "Back to Runtime Containers", "/runtime-containers").ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Verify a failed load shows the fixed reason instead of the exception text, shows no skeleton and logs the load failure once
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC2")]
+    public async Task RuntimeContainerDetailLoadFailureShowsFixedErrorAndLogs()
+    {
+        var exception = new InvalidOperationException("secret text");
+        var logger = new TestLogger<RuntimeContainerDetail>();
+        var viewService = Substitute.For<IApplicationViewService>();
+        var testContext = CreateLoadContext(viewService, logger);
+
+        await using (testContext)
+        {
+            viewService.GetRuntimeContainerDetailAsync(_loadInstanceId, LoadContainerId, Arg.Any<CancellationToken>())
+                       .Returns(Task.FromException<RuntimeContainerDetailViewData?>(exception));
+
+            var page = RenderLoadPage(testContext, LoadContainerId);
+
+            await DetailPageAssert.AssertLoadErrorAsync(page, "Loading the container failed: unexpected error", "secret text").ConfigureAwait(false);
+            DetailPageAssert.AssertLoadLoggedOnce(logger, "LoadRuntimeContainerDetail", exception);
+        }
+    }
+
+    /// <summary>
+    /// Verify a route change after a failed load clears the alert at once, while the new load is pending, and the loaded detail shows no alert
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC4")]
+    public async Task RuntimeContainerDetailRouteChangeAfterLoadFailureClearsAlert()
+    {
+        var exception = new InvalidOperationException("secret text");
+        var pending = new TaskCompletionSource<RuntimeContainerDetailViewData?>();
+        var logger = new TestLogger<RuntimeContainerDetail>();
+        var viewService = Substitute.For<IApplicationViewService>();
+        var testContext = CreateLoadContext(viewService, logger);
+
+        await using (testContext)
+        {
+            viewService.GetRuntimeContainerDetailAsync(_loadInstanceId, LoadContainerId, Arg.Any<CancellationToken>())
+                       .Returns(Task.FromException<RuntimeContainerDetailViewData?>(exception));
+            viewService.GetRuntimeContainerDetailAsync(_loadInstanceId, SecondContainerId, Arg.Any<CancellationToken>())
+                       .Returns(pending.Task);
+
+            var page = RenderLoadPage(testContext, LoadContainerId);
+
+            await DetailPageAssert.AssertLoadErrorAsync(page, "Loading the container failed: unexpected error", "secret text").ConfigureAwait(false);
+
+            page.Render(parameters => parameters.Add(component => component.DockerInstanceId, _loadInstanceId)
+                                                .Add(component => component.ContainerId, SecondContainerId));
+
+            DetailPageAssert.AssertLoading(page);
+
+            pending.SetResult(CreateLoadDetail(SecondContainerId, "second-api"));
+
+            await DetailPageAssert.AssertLoadedAsync(page, "second-api", "This container is not known on this Docker instance.").ConfigureAwait(false);
+            DetailPageAssert.AssertLoadLoggedOnce(logger, "LoadRuntimeContainerDetail", exception);
+        }
+    }
+
+    /// <summary>
+    /// Verify a reload after a tag selection that answers no detail replaces the skeleton with the not-found panel
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC5")]
+    public async Task RuntimeContainerDetailSelectReloadWithoutDetailShowsNotFoundPanel()
+    {
+        var viewService = Substitute.For<IApplicationViewService>();
+        var testContext = CreateLoadContext(viewService, new TestLogger<RuntimeContainerDetail>());
+
+        await using (testContext)
+        {
+            viewService.GetRuntimeContainerDetailAsync(_loadInstanceId, LoadContainerId, Arg.Any<CancellationToken>())
+                       .Returns(CreateLoadDetail(LoadContainerId, "load-api"));
+
+            var page = RenderLoadPage(testContext, LoadContainerId);
+
+            await DetailPageAssert.AssertLoadedAsync(page, "load-api", "This container is not known on this Docker instance.").ConfigureAwait(false);
+
+            viewService.GetRuntimeContainerDetailAsync(_loadInstanceId, LoadContainerId, Arg.Any<CancellationToken>())
+                       .Returns(Task.FromResult<RuntimeContainerDetailViewData?>(null));
+
+            await FindButton(page, "Select").ClickAsync().ConfigureAwait(false);
+
+            await DetailPageAssert.AssertNotFoundAsync(page, "This container is not known on this Docker instance.", "Back to Runtime Containers", "/runtime-containers").ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Verify a pending load shows the skeleton only, and the loaded detail replaces it
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC3")]
+    public async Task RuntimeContainerDetailPendingLoadShowsSkeletonOnly()
+    {
+        var pending = new TaskCompletionSource<RuntimeContainerDetailViewData?>();
+        var viewService = Substitute.For<IApplicationViewService>();
+        var testContext = CreateLoadContext(viewService, new TestLogger<RuntimeContainerDetail>());
+
+        await using (testContext)
+        {
+            viewService.GetRuntimeContainerDetailAsync(_loadInstanceId, LoadContainerId, Arg.Any<CancellationToken>())
+                       .Returns(pending.Task);
+
+            var page = RenderLoadPage(testContext, LoadContainerId);
+
+            DetailPageAssert.AssertLoading(page);
+
+            pending.SetResult(CreateLoadDetail(LoadContainerId, "load-api"));
+
+            await DetailPageAssert.AssertLoadedAsync(page, "load-api", "This container is not known on this Docker instance.").ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Verify a reload after a tag selection that fails keeps the action's prefix, shows no skeleton or not-found panel and logs the action once
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC5")]
+    public async Task RuntimeContainerDetailSelectReloadFailureKeepsActionPrefix()
+    {
+        var exception = new InvalidOperationException("secret text");
+        var logger = new TestLogger<RuntimeContainerDetail>();
+        var viewService = Substitute.For<IApplicationViewService>();
+        var testContext = CreateLoadContext(viewService, logger);
+
+        await using (testContext)
+        {
+            viewService.GetRuntimeContainerDetailAsync(_loadInstanceId, LoadContainerId, Arg.Any<CancellationToken>())
+                       .Returns(CreateLoadDetail(LoadContainerId, "load-api"));
+
+            var page = RenderLoadPage(testContext, LoadContainerId);
+
+            await DetailPageAssert.AssertLoadedAsync(page, "load-api", "This container is not known on this Docker instance.").ConfigureAwait(false);
+
+            viewService.GetRuntimeContainerDetailAsync(_loadInstanceId, LoadContainerId, Arg.Any<CancellationToken>())
+                       .Returns(Task.FromException<RuntimeContainerDetailViewData?>(exception));
+
+            await FindButton(page, "Select").ClickAsync().ConfigureAwait(false);
+
+            await page.WaitForAssertionAsync(() => Assert.Contains("Saving the tag selection failed: unexpected error", page.Markup, "The reload failure must carry the action's prefix"), TimeSpan.FromSeconds(WaitSeconds)).ConfigureAwait(false);
+
+            Assert.DoesNotContain("Loading the container failed", page.Markup, "The reload failure must not carry the load prefix");
+            Assert.DoesNotContain("secret text", page.Markup, "The exception text must not be shown");
+            Assert.IsEmpty(page.FindAll(".mud-skeleton"), "The failed reload must not show the skeleton");
+            Assert.DoesNotContain("This container is not known on this Docker instance.", page.Markup, "The failed reload must not show the not-found message");
+            DetailPageAssert.AssertLoadLoggedOnce(logger, "SaveTagSelection", exception);
+        }
+    }
+
+    /// <summary>
     /// Create a test context whose tag selection service throws the given exception from save and clear
     /// </summary>
     /// <param name="exception">Exception thrown by the tag selection service</param>
@@ -1057,6 +1249,63 @@ public class RuntimeContainerDetailTests
                                    .Single(button => button.TextContent.Trim() == dialogButtonText);
 
         await dialogButton.ClickAsync().ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Create a test context for the load tests: the given view service, a tag selection service, the logger and hidden container actions
+    /// </summary>
+    /// <param name="viewService">View service substitute</param>
+    /// <param name="logger">Logger registered for the page</param>
+    /// <returns>Test context</returns>
+    private static Bunit.BunitContext CreateLoadContext(IApplicationViewService viewService, TestLogger<RuntimeContainerDetail> logger)
+    {
+        var testContext = BlazorTestContextFactory.Create();
+
+        testContext.Services.AddSingleton(viewService);
+        testContext.Services.AddSingleton(Substitute.For<IRuntimeContainerTagSelectionService>());
+        testContext.Services.AddSingleton<ILogger<RuntimeContainerDetail>>(logger);
+        testContext.AddHiddenContainerActions();
+
+        return testContext;
+    }
+
+    /// <summary>
+    /// Render the page of the load tests for a container
+    /// </summary>
+    /// <param name="testContext">Test context</param>
+    /// <param name="containerId">Container identifier of the route</param>
+    /// <returns>Rendered page</returns>
+    private static IRenderedComponent<RuntimeContainerDetail> RenderLoadPage(Bunit.BunitContext testContext, string containerId)
+    {
+        return testContext.Render<RuntimeContainerDetail>(parameters => parameters.Add(page => page.DockerInstanceId, _loadInstanceId)
+                                                                                  .Add(page => page.ContainerId, containerId));
+    }
+
+    /// <summary>
+    /// Create the detail of the load tests, offering one tag candidate
+    /// </summary>
+    /// <param name="containerId">Container identifier</param>
+    /// <param name="containerName">Container name</param>
+    /// <returns>Detail</returns>
+    private static RuntimeContainerDetailViewData CreateLoadDetail(string containerId, string containerName)
+    {
+        return new RuntimeContainerDetailViewData
+               {
+                   DockerInstanceId = _loadInstanceId,
+                   ContainerId = containerId,
+                   ContainerName = containerName,
+                   DockerInstanceName = "Production",
+                   ImageReference = "ghcr.io/acme/api:1.0.0",
+                   CurrentTag = "1.0.0",
+                   RuntimeStatus = "Running",
+                   AvailableTagCandidates = [
+                                                new TagCandidateViewData
+                                                {
+                                                    Tag = "1.1.0",
+                                                    Reason = "Newer patch release",
+                                                }
+                                            ],
+               };
     }
 
     #endregion // Methods

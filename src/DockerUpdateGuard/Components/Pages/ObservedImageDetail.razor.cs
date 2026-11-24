@@ -23,6 +23,11 @@ public sealed partial class ObservedImageDetail : IDisposable
     #region Fields
 
     /// <summary>
+    /// Outcome of the last load of the detail
+    /// </summary>
+    private readonly DetailLoadState _loadState = new();
+
+    /// <summary>
     /// Persisting-state subscription used to hand the prerendered data to the interactive render
     /// </summary>
     private PersistingComponentStateSubscription _persistingSubscription;
@@ -58,6 +63,12 @@ public sealed partial class ObservedImageDetail : IDisposable
     /// </summary>
     [Inject]
     public PersistentComponentState PersistentState { get; set; } = null!;
+
+    /// <summary>
+    /// Logger
+    /// </summary>
+    [Inject]
+    public ILogger<ObservedImageDetail> Logger { get; set; } = null!;
 
     #endregion // Properties
 
@@ -105,7 +116,7 @@ public sealed partial class ObservedImageDetail : IDisposable
         var detail = await ViewService.GetObservedImageDetailAsync(ObservedImageId)
                                       .ConfigureAwait(false);
 
-        await InvokeAsync(() => _detail = detail).ConfigureAwait(false);
+        await InvokeAsync(() => _detail = _loadState.Found(detail)).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -149,7 +160,7 @@ public sealed partial class ObservedImageDetail : IDisposable
             return;
         }
 
-        await LoadAsync().ConfigureAwait(false);
+        await _loadState.RunAsync(InvokeAsync, LoadAsync, Logger, "LoadObservedImageDetail", "Loading the observed image failed", () => _detail = null).ConfigureAwait(false);
     }
 
     #endregion // ComponentBase

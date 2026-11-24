@@ -18,11 +18,11 @@
         <MudAlert Severity="Severity.Error" Dense="true">@_errorMessage</MudAlert>
     }
 
-    @if (_detail is null)
+    @if (_loadState.ErrorMessage is not null)
     {
-        <TableSkeleton Rows="6" />
+        <MudAlert Severity="Severity.Error" Dense="true">@_loadState.ErrorMessage</MudAlert>
     }
-    else
+    else if (_detail is not null)
     {
         <MudPaper Class="section-paper" Elevation="0">
             <div class="section-header">
@@ -490,5 +490,16 @@
                 </RowTemplate>
             </MudTable>
         </MudPaper>
+    }
+    else if (_loadState.IsNotFound)
+    {
+        <MudPaper Class="empty-state-panel" Elevation="0">
+            <MudText>This container is not known on this Docker instance.</MudText>
+            <MudLink Href="/runtime-containers">Back to Runtime Containers</MudLink>
+        </MudPaper>
+    }
+    else
+    {
+        <TableSkeleton Rows="6" />
     }
 </MudStack>

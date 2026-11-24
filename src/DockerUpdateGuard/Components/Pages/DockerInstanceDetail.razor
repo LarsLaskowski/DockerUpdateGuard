@@ -11,11 +11,11 @@
         </div>
     </div>
 
-    @if (_detail is null)
+    @if (_loadState.ErrorMessage is not null)
     {
-        <TableSkeleton Title="Runtime containers" Rows="6" />
+        <MudAlert Severity="Severity.Error" Dense="true">@_loadState.ErrorMessage</MudAlert>
     }
-    else
+    else if (_detail is not null)
     {
         <MudPaper Class="section-paper" Elevation="0">
             <div class="section-header">
@@ -65,5 +65,16 @@
                 </RowTemplate>
             </MudTable>
         </MudPaper>
+    }
+    else if (_loadState.IsNotFound)
+    {
+        <MudPaper Class="empty-state-panel" Elevation="0">
+            <MudText>This Docker instance does not exist.</MudText>
+            <MudLink Href="/docker-instances">Back to Docker Instances</MudLink>
+        </MudPaper>
+    }
+    else
+    {
+        <TableSkeleton Title="Runtime containers" Rows="6" />
     }
 </MudStack>

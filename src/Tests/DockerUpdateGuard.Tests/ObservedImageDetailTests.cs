@@ -1,10 +1,12 @@
 using Bunit;
 
 using DockerUpdateGuard.Components.Pages;
+using DockerUpdateGuard.Tests.Data;
 using DockerUpdateGuard.Tests.Helper;
 using DockerUpdateGuard.UI;
 
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 using NSubstitute;
 
@@ -149,6 +151,195 @@ public class ObservedImageDetailTests
 
             Assert.Contains("2026-11-23 21:27 UTC", markup, "The linked container observation time must be shown in UTC");
         }
+    }
+
+    /// <summary>
+    /// Verify an unknown identifier shows the not-found panel with a link back to the list instead of the skeleton
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC1")]
+    public async Task ObservedImageDetailUnknownIdShowsNotFoundPanel()
+    {
+        var testContext = BlazorTestContextFactory.Create();
+
+        await using (testContext)
+        {
+            var id = Guid.NewGuid();
+            var viewService = Substitute.For<IApplicationViewService>();
+
+            viewService.GetObservedImageDetailAsync(id, Arg.Any<CancellationToken>())
+                       .Returns(Task.FromResult<ObservedImageDetailViewData?>(null));
+
+            testContext.Services.AddSingleton(viewService);
+
+            var page = testContext.Render<ObservedImageDetail>(parameters => parameters.Add(component => component.ObservedImageId, id));
+
+            await DetailPageAssert.AssertNotFoundAsync(page, "This observed image does not exist.", "Back to Observed Images", "/observed-images").ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Verify a failed load shows the fixed reason instead of the exception text, shows no skeleton and logs the exception once
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC2")]
+    public async Task ObservedImageDetailLoadFailureShowsFixedErrorAndLogs()
+    {
+        var exception = new InvalidOperationException("secret text");
+        var logger = new TestLogger<ObservedImageDetail>();
+        var testContext = BlazorTestContextFactory.Create();
+
+        await using (testContext)
+        {
+            var id = Guid.NewGuid();
+            var viewService = Substitute.For<IApplicationViewService>();
+
+            viewService.GetObservedImageDetailAsync(id, Arg.Any<CancellationToken>())
+                       .Returns(Task.FromException<ObservedImageDetailViewData?>(exception));
+
+            testContext.Services.AddSingleton(viewService);
+            testContext.Services.AddSingleton<ILogger<ObservedImageDetail>>(logger);
+
+            var page = testContext.Render<ObservedImageDetail>(parameters => parameters.Add(component => component.ObservedImageId, id));
+
+            await DetailPageAssert.AssertLoadErrorAsync(page, "Loading the observed image failed: unexpected error", "secret text").ConfigureAwait(false);
+            DetailPageAssert.AssertLoadLoggedOnce(logger, "LoadObservedImageDetail", exception);
+        }
+    }
+
+    /// <summary>
+    /// Verify a route change to an unknown identifier hides the previous detail and a following pending load clears the not-found panel
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC4")]
+    public async Task ObservedImageDetailRouteChangeToUnknownIdHidesPreviousDetail()
+    {
+        var testContext = BlazorTestContextFactory.Create();
+
+        await using (testContext)
+        {
+            var firstId = Guid.NewGuid();
+            var unknownId = Guid.NewGuid();
+            var thirdId = Guid.NewGuid();
+            var pending = new TaskCompletionSource<ObservedImageDetailViewData?>();
+            var viewService = Substitute.For<IApplicationViewService>();
+
+            viewService.GetObservedImageDetailAsync(firstId, Arg.Any<CancellationToken>())
+                       .Returns(CreateObservedImageDetailViewData(firstId, "Company API"));
+            viewService.GetObservedImageDetailAsync(unknownId, Arg.Any<CancellationToken>())
+                       .Returns(Task.FromResult<ObservedImageDetailViewData?>(null));
+            viewService.GetObservedImageDetailAsync(thirdId, Arg.Any<CancellationToken>())
+                       .Returns(pending.Task);
+
+            testContext.Services.AddSingleton(viewService);
+
+            var page = testContext.Render<ObservedImageDetail>(parameters => parameters.Add(component => component.ObservedImageId, firstId));
+
+            await DetailPageAssert.AssertLoadedAsync(page, "Company API", "This observed image does not exist.").ConfigureAwait(false);
+
+            page.Render(parameters => parameters.Add(component => component.ObservedImageId, unknownId));
+
+            await DetailPageAssert.AssertNotFoundAsync(page, "This observed image does not exist.", "Back to Observed Images", "/observed-images").ConfigureAwait(false);
+
+            Assert.DoesNotContain("Company API", page.Markup, "The previous detail must not be shown for the unknown identifier");
+
+            page.Render(parameters => parameters.Add(component => component.ObservedImageId, thirdId));
+
+            DetailPageAssert.AssertLoading(page);
+
+            pending.SetResult(CreateObservedImageDetailViewData(thirdId, "Company Web"));
+
+            await DetailPageAssert.AssertLoadedAsync(page, "Company Web", "This observed image does not exist.").ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Verify a pending load shows the skeleton only, and the loaded detail replaces it
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC3")]
+    public async Task ObservedImageDetailPendingLoadShowsSkeletonOnly()
+    {
+        var testContext = BlazorTestContextFactory.Create();
+
+        await using (testContext)
+        {
+            var id = Guid.NewGuid();
+            var pending = new TaskCompletionSource<ObservedImageDetailViewData?>();
+            var viewService = Substitute.For<IApplicationViewService>();
+
+            viewService.GetObservedImageDetailAsync(id, Arg.Any<CancellationToken>())
+                       .Returns(pending.Task);
+
+            testContext.Services.AddSingleton(viewService);
+
+            var page = testContext.Render<ObservedImageDetail>(parameters => parameters.Add(component => component.ObservedImageId, id));
+
+            DetailPageAssert.AssertLoading(page);
+
+            pending.SetResult(CreateObservedImageDetailViewData(id, "Company API"));
+
+            await DetailPageAssert.AssertLoadedAsync(page, "Company API", "This observed image does not exist.").ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Verify a route change to an identifier whose load throws hides the previous detail and shows the fixed error
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC4")]
+    public async Task ObservedImageDetailRouteChangeToFailingIdHidesPreviousDetail()
+    {
+        var exception = new InvalidOperationException("secret text");
+        var logger = new TestLogger<ObservedImageDetail>();
+        var testContext = BlazorTestContextFactory.Create();
+
+        await using (testContext)
+        {
+            var firstId = Guid.NewGuid();
+            var failingId = Guid.NewGuid();
+            var viewService = Substitute.For<IApplicationViewService>();
+
+            viewService.GetObservedImageDetailAsync(firstId, Arg.Any<CancellationToken>())
+                       .Returns(CreateObservedImageDetailViewData(firstId, "Company API"));
+            viewService.GetObservedImageDetailAsync(failingId, Arg.Any<CancellationToken>())
+                       .Returns(Task.FromException<ObservedImageDetailViewData?>(exception));
+
+            testContext.Services.AddSingleton(viewService);
+            testContext.Services.AddSingleton<ILogger<ObservedImageDetail>>(logger);
+
+            var page = testContext.Render<ObservedImageDetail>(parameters => parameters.Add(component => component.ObservedImageId, firstId));
+
+            await DetailPageAssert.AssertLoadedAsync(page, "Company API", "This observed image does not exist.").ConfigureAwait(false);
+
+            page.Render(parameters => parameters.Add(component => component.ObservedImageId, failingId));
+
+            await DetailPageAssert.AssertLoadErrorAsync(page, "Loading the observed image failed: unexpected error", "secret text").ConfigureAwait(false);
+
+            Assert.DoesNotContain("Company API", page.Markup, "The previous detail must not be shown after the new load failed");
+            DetailPageAssert.AssertLoadLoggedOnce(logger, "LoadObservedImageDetail", exception);
+        }
+    }
+
+    /// <summary>
+    /// Create a detail for the load tests
+    /// </summary>
+    /// <param name="id">Identifier</param>
+    /// <param name="name">Name</param>
+    /// <returns>Detail</returns>
+    private static ObservedImageDetailViewData CreateObservedImageDetailViewData(Guid id, string name)
+    {
+        return new ObservedImageDetailViewData
+               {
+                   Id = id,
+                   Name = name,
+                   ImageReference = "docker.io/company/api:1.0.0",
+               };
     }
 
     #endregion // Methods

@@ -28,6 +28,11 @@ public sealed partial class RuntimeContainerDetail : IDisposable
     #region Fields
 
     /// <summary>
+    /// Outcome of the last load of the detail
+    /// </summary>
+    private readonly DetailLoadState _loadState = new();
+
+    /// <summary>
     /// Persisting-state subscription used to hand the prerendered data to the interactive render
     /// </summary>
     private PersistingComponentStateSubscription _persistingSubscription;
@@ -242,7 +247,7 @@ public sealed partial class RuntimeContainerDetail : IDisposable
         var detail = await ViewService.GetRuntimeContainerDetailAsync(DockerInstanceId, ContainerId)
                                       .ConfigureAwait(false);
 
-        await InvokeAsync(() => _detail = detail).ConfigureAwait(false);
+        await InvokeAsync(() => _detail = _loadState.Found(detail)).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -495,7 +500,7 @@ public sealed partial class RuntimeContainerDetail : IDisposable
             return;
         }
 
-        await LoadAsync().ConfigureAwait(false);
+        await _loadState.RunAsync(InvokeAsync, LoadAsync, Logger, "LoadRuntimeContainerDetail", "Loading the container failed", () => _detail = null).ConfigureAwait(false);
     }
 
     /// <inheritdoc/>

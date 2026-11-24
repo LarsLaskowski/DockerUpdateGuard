@@ -3,10 +3,12 @@ using System.Reflection;
 using Bunit;
 
 using DockerUpdateGuard.Components.Pages;
+using DockerUpdateGuard.Tests.Data;
 using DockerUpdateGuard.Tests.Helper;
 using DockerUpdateGuard.UI;
 
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 using MudBlazor;
 
@@ -216,6 +218,98 @@ public class MyImageDetailTests
             Assert.Contains("2026-11-23 08:09 UTC", markup, "The scan completion must be shown in UTC");
             Assert.Contains("2026-11-22 01:30 UTC", markup, "A UTC scan start must keep its wall-clock time");
             Assert.Contains("In progress", markup, "A scan without completion must show the in-progress marker");
+        }
+    }
+
+    /// <summary>
+    /// Verify an unknown identifier shows the not-found panel with a link back to the list instead of the skeleton
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC1")]
+    public async Task MyImageDetailUnknownIdShowsNotFoundPanel()
+    {
+        var testContext = BlazorTestContextFactory.Create();
+
+        await using (testContext)
+        {
+            var id = Guid.NewGuid();
+            var viewService = Substitute.For<IApplicationViewService>();
+
+            viewService.GetObservedImageDetailAsync(id, Arg.Any<CancellationToken>())
+                       .Returns(Task.FromResult<ObservedImageDetailViewData?>(null));
+
+            testContext.Services.AddSingleton(viewService);
+
+            var page = testContext.Render<MyImageDetail>(parameters => parameters.Add(component => component.ObservedImageId, id));
+
+            await DetailPageAssert.AssertNotFoundAsync(page, "This image does not exist.", "Back to My Images", "/my-images").ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Verify a failed load shows the fixed reason instead of the exception text, shows no skeleton and logs the exception once
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC2")]
+    public async Task MyImageDetailLoadFailureShowsFixedErrorAndLogs()
+    {
+        var exception = new InvalidOperationException("secret text");
+        var logger = new TestLogger<MyImageDetail>();
+        var testContext = BlazorTestContextFactory.Create();
+
+        await using (testContext)
+        {
+            var id = Guid.NewGuid();
+            var viewService = Substitute.For<IApplicationViewService>();
+
+            viewService.GetObservedImageDetailAsync(id, Arg.Any<CancellationToken>())
+                       .Returns(Task.FromException<ObservedImageDetailViewData?>(exception));
+
+            testContext.Services.AddSingleton(viewService);
+            testContext.Services.AddSingleton<ILogger<MyImageDetail>>(logger);
+
+            var page = testContext.Render<MyImageDetail>(parameters => parameters.Add(component => component.ObservedImageId, id));
+
+            await DetailPageAssert.AssertLoadErrorAsync(page, "Loading the image failed: unexpected error", "secret text").ConfigureAwait(false);
+            DetailPageAssert.AssertLoadLoggedOnce(logger, "LoadMyImageDetail", exception);
+        }
+    }
+
+    /// <summary>
+    /// Verify a pending load shows the skeleton only, and the loaded detail replaces it
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC3")]
+    public async Task MyImageDetailPendingLoadShowsSkeletonOnly()
+    {
+        var testContext = BlazorTestContextFactory.Create();
+
+        await using (testContext)
+        {
+            var id = Guid.NewGuid();
+            var pending = new TaskCompletionSource<ObservedImageDetailViewData?>();
+            var viewService = Substitute.For<IApplicationViewService>();
+
+            viewService.GetObservedImageDetailAsync(id, Arg.Any<CancellationToken>())
+                       .Returns(pending.Task);
+
+            testContext.Services.AddSingleton(viewService);
+
+            var page = testContext.Render<MyImageDetail>(parameters => parameters.Add(component => component.ObservedImageId, id));
+
+            DetailPageAssert.AssertLoading(page);
+
+            pending.SetResult(new ObservedImageDetailViewData
+                              {
+                                  Id = id,
+                                  Name = "Company API",
+                                  ImageReference = "docker.io/company/api:1.0.0"
+                              });
+
+            await DetailPageAssert.AssertLoadedAsync(page, "Company API", "This image does not exist.").ConfigureAwait(false);
         }
     }
 

@@ -21,6 +21,11 @@ public sealed partial class DockerInstanceDetail : IDisposable
     #region Fields
 
     /// <summary>
+    /// Outcome of the last load of the detail
+    /// </summary>
+    private readonly DetailLoadState _loadState = new();
+
+    /// <summary>
     /// Persisting-state subscription used to hand the prerendered data to the interactive render
     /// </summary>
     private PersistingComponentStateSubscription _persistingSubscription;
@@ -56,6 +61,12 @@ public sealed partial class DockerInstanceDetail : IDisposable
     /// </summary>
     [Inject]
     public PersistentComponentState PersistentState { get; set; } = null!;
+
+    /// <summary>
+    /// Logger
+    /// </summary>
+    [Inject]
+    public ILogger<DockerInstanceDetail> Logger { get; set; } = null!;
 
     #endregion // Properties
 
@@ -106,7 +117,7 @@ public sealed partial class DockerInstanceDetail : IDisposable
         var detail = await ViewService.GetDockerInstanceDetailAsync(DockerInstanceId)
                                       .ConfigureAwait(false);
 
-        await InvokeAsync(() => _detail = detail).ConfigureAwait(false);
+        await InvokeAsync(() => _detail = _loadState.Found(detail)).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -150,7 +161,7 @@ public sealed partial class DockerInstanceDetail : IDisposable
             return;
         }
 
-        await LoadAsync().ConfigureAwait(false);
+        await _loadState.RunAsync(InvokeAsync, LoadAsync, Logger, "LoadDockerInstanceDetail", "Loading the Docker instance failed", () => _detail = null).ConfigureAwait(false);
     }
 
     #endregion // ComponentBase
