@@ -1,6 +1,6 @@
 # 0059: A detail page shows a missing record or a failed load inline
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-24
 - **Area:** Web UI
 - **Source:** Issue #40
