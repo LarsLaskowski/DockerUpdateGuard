@@ -57,6 +57,30 @@ public class MainLayoutRenderTests
     }
 
     /// <summary>
+    /// Verify the last activity of the top bar is rendered as a UTC timestamp
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC3")]
+    public async Task MainLayoutWithLatestScanRendersLastActivityInUtc()
+    {
+        var testContext = CreateContext(new DashboardSummaryViewData
+                                        {
+                                            LatestScan = new ScanHistoryItemData
+                                                         {
+                                                             StartedAtUtc = new DateTimeOffset(2026, 11, 24, 0, 27, 0, TimeSpan.FromHours(2)),
+                                                         },
+                                        });
+
+        await using (testContext)
+        {
+            var component = testContext.Render<MainLayout>(parameters => parameters.Add(layout => layout.Body, string.Empty));
+
+            Assert.Contains("2026-11-23 22:27 UTC", component.Markup, "The last activity must be rendered in UTC with the zone suffix");
+        }
+    }
+
+    /// <summary>
     /// Verify a fixed-size skeleton is rendered while the dashboard summary is still loading
     /// </summary>
     /// <returns>Task</returns>

@@ -1,5 +1,3 @@
-using System.Globalization;
-
 using Bunit;
 
 using DockerUpdateGuard.Components.Pages;
@@ -142,6 +140,7 @@ public class ScanHistoryTests
     /// </summary>
     /// <returns>Task</returns>
     [TestMethod]
+    [TestCategory("AC3")]
     public async Task ScanHistoryVulnerabilitiesEnabledShowsNextScheduledRefresh()
     {
         var testContext = BlazorTestContextFactory.Create();
@@ -149,7 +148,7 @@ public class ScanHistoryTests
         await using (testContext)
         {
             var viewService = Substitute.For<IApplicationViewService>();
-            var nextRefreshUtc = new DateTimeOffset(2026, 7, 29, 18, 30, 0, TimeSpan.Zero);
+            var nextRefreshUtc = new DateTimeOffset(2026, 7, 29, 20, 30, 0, TimeSpan.FromHours(2));
 
             viewService.GetScanHistoryAsync(Arg.Any<int>(), Arg.Any<CancellationToken>())
                        .Returns([]);
@@ -170,9 +169,9 @@ public class ScanHistoryTests
             Assert.Contains("Next scheduled vulnerability refresh:",
                             component.Markup,
                             "The page header must show the estimated next scheduled vulnerability refresh");
-            Assert.Contains(nextRefreshUtc.ToLocalTime().ToString("g", CultureInfo.CurrentCulture),
+            Assert.Contains("2026-07-29 18:30 UTC",
                             component.Markup,
-                            "The estimated next scheduled vulnerability refresh must be rendered as a local timestamp");
+                            "The estimated next scheduled vulnerability refresh must be rendered as a UTC timestamp");
         }
     }
 

@@ -80,7 +80,7 @@
                             {
                                 <span class="table-secondary">@($"{context.CurrentTag} ({context.ResolvedVersionTag})")</span>
                             }
-                            <span class="table-secondary">@context.RecordedAtUtc.ToLocalTime().ToString("g")</span>
+                            <span class="table-secondary">@TimestampFormatter.Format(context.RecordedAtUtc)</span>
                         </MudTd>
                         <MudTd DataLabel="Instance">@context.DockerInstanceName</MudTd>
                         <MudTd DataLabel="CPU" Class="runtime-containers-table__resource">

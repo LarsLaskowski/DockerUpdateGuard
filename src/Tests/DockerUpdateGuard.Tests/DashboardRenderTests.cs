@@ -152,6 +152,45 @@ public class DashboardRenderTests
     }
 
     /// <summary>
+    /// Verify the recent scans table shows the scan start in UTC with the zone suffix
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC3")]
+    public async Task DashboardWithRecentScanRendersStartedInUtcAsync()
+    {
+        var testContext = BlazorTestContextFactory.Create();
+
+        await using (testContext)
+        {
+            var viewService = Substitute.For<IApplicationViewService>();
+
+            viewService.GetDashboardAsync(Arg.Any<CancellationToken>())
+                       .Returns(Task.FromResult(new DashboardViewData
+                                                {
+                                                    RecentScans = [
+                                                                      new ScanHistoryItemData
+                                                                      {
+                                                                          Type = "Runtime",
+                                                                          Status = "Succeeded",
+                                                                          SubjectName = "local",
+                                                                          StartedAtUtc = new DateTimeOffset(2026, 11, 23, 23, 27, 0, TimeSpan.FromHours(2)),
+                                                                      },
+                                                                  ],
+                                                }));
+
+            testContext.Services.AddSingleton(viewService);
+            testContext.Services.AddSingleton(new DashboardRefreshState());
+            testContext.Services.AddSingleton<IOptions<DockerUpdateGuardOptions>>(Options.Create(new DockerUpdateGuardOptions()));
+            testContext.AddBunitPersistentComponentState();
+
+            var component = testContext.Render<DashboardPage>();
+
+            Assert.Contains("2026-11-23 21:27 UTC", component.Markup, "The recent scan start must be shown in UTC with the zone suffix");
+        }
+    }
+
+    /// <summary>
     /// Render the dashboard for a vulnerability configuration hint and return its markup
     /// </summary>
     /// <param name="testContext">bUnit test context</param>

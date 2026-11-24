@@ -1,5 +1,3 @@
-using System.Globalization;
-
 using DockerUpdateGuard.Configuration;
 using DockerUpdateGuard.Data.Entities;
 using DockerUpdateGuard.Images.Interfaces;
@@ -134,7 +132,7 @@ public sealed partial class ScanHistory : IDisposable
     {
         return schedule.NextVulnerabilityRefreshUtc is null
                    ? "shortly (no run recorded yet)"
-                   : schedule.NextVulnerabilityRefreshUtc.GetValueOrDefault().ToLocalTime().ToString("g", CultureInfo.CurrentCulture);
+                   : TimestampFormatter.Format(schedule.NextVulnerabilityRefreshUtc.GetValueOrDefault());
     }
 
     #endregion // Static methods

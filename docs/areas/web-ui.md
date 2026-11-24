@@ -27,8 +27,9 @@ to read the state the other areas compute and to start manual scans; it computes
   conditions are evaluated when the session starts. The pages stay reachable by their routes either way.
 - The drawer shows the application version: `DockerUpdateGuard:DisplayVersion` when set, otherwise the version of the
   running build, otherwise "unknown".
-- Timestamps are shown as short date and short time in the time zone and culture of the server process, not of the
-  browser.
+- Timestamps are shown in UTC as `yyyy-MM-dd HH:mm UTC`, the same for every browser and independent of the time zone and
+  culture of the server process. The resource chart labels are UTC too: the first and the last label read
+  `MM-dd HH:mm UTC`, the visible labels between them `HH:mm`.
 - While a page loads its data it shows placeholder skeletons; a list without data shows an explanatory empty state.
 
 ### Pages and routes
@@ -211,6 +212,8 @@ never their values.
 - [0005](../decisions/0005-urls-are-output-with-user-info-masked.md) — URLs are output with their user info masked.
 - [0009](../decisions/0009-integration-results-carry-fixed-failure-reasons.md) — Failure messages carry fixed reasons,
   also on the pages.
+- [0058](../decisions/0058-timestamps-are-shown-in-utc-with-an-explicit-suffix.md) — Timestamps are shown in UTC with an
+  explicit suffix.
 
 ## Not here
 

@@ -109,5 +109,47 @@ public class ObservedImageDetailTests
         }
     }
 
+    /// <summary>
+    /// Verify the linked container observation time are shown in UTC
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC3")]
+    public async Task ObservedImageDetailWithLinkedContainerRendersTimestampsInUtcAsync()
+    {
+        var testContext = BlazorTestContextFactory.Create();
+
+        await using (testContext)
+        {
+            var observedImageId = Guid.NewGuid();
+            var viewService = Substitute.For<IApplicationViewService>();
+
+            viewService.GetObservedImageDetailAsync(observedImageId, Arg.Any<CancellationToken>())
+                       .Returns(new ObservedImageDetailViewData
+                                {
+                                    Id = observedImageId,
+                                    Name = "Company API",
+                                    ImageReference = "docker.io/company/api:1.0.0",
+                                    IsOwnImage = true,
+                                    LinkedRuntimeContainers = [
+                                                                  new LinkedRuntimeContainerViewData
+                                                                  {
+                                                                      DockerInstanceId = Guid.NewGuid(),
+                                                                      ContainerId = "abc",
+                                                                      ContainerName = "api",
+                                                                      RecordedAtUtc = new DateTimeOffset(2026, 11, 23, 23, 27, 0, TimeSpan.FromHours(2)),
+                                                                  },
+                                                              ],
+                                });
+
+            testContext.Services.AddSingleton(viewService);
+
+            var component = testContext.Render<ObservedImageDetail>(parameters => parameters.Add(page => page.ObservedImageId, observedImageId));
+            var markup = component.Markup;
+
+            Assert.Contains("2026-11-23 21:27 UTC", markup, "The linked container observation time must be shown in UTC");
+        }
+    }
+
     #endregion // Methods
 }
