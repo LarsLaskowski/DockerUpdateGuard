@@ -1,0 +1,28 @@
+namespace DockerUpdateGuard.Components;
+
+/// <summary>
+/// Guards the load of a detail page so that a failed load becomes a fixed message instead of an unhandled exception
+/// </summary>
+internal static class DetailPageLoader
+{
+    #region Static methods
+
+    /// <summary>
+    /// Run the load of a detail page and report a failure as a fixed message
+    /// </summary>
+    /// <param name="load">Load of the page</param>
+    /// <param name="logger">Logger of the page</param>
+    /// <param name="action">Name of the logged user action</param>
+    /// <param name="messagePrefix">Prefix of the message shown to the user</param>
+    /// <returns>Null when the load completed, otherwise the message with the fixed failure reason</returns>
+#pragma warning disable S1172 // Skeleton: removed with the implementation
+    internal static async Task<string?> LoadAsync(Func<Task> load, ILogger logger, string action, string messagePrefix)
+    {
+        await Task.CompletedTask.ConfigureAwait(false);
+
+        throw new InvalidOperationException("Skeleton: not implemented");
+    }
+#pragma warning restore S1172 // Skeleton: removed with the implementation
+
+    #endregion // Static methods
+}

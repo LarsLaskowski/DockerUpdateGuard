@@ -59,6 +59,12 @@ public sealed partial class ObservedImageDetail : IDisposable
     [Inject]
     public PersistentComponentState PersistentState { get; set; } = null!;
 
+    /// <summary>
+    /// Logger
+    /// </summary>
+    [Inject]
+    public ILogger<ObservedImageDetail> Logger { get; set; } = null!;
+
     #endregion // Properties
 
     #region Static methods
