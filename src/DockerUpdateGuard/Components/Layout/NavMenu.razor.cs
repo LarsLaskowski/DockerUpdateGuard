@@ -52,6 +52,12 @@ public partial class NavMenu
     [Inject]
     public IApplicationViewService ViewService { get; set; } = null!;
 
+    /// <summary>
+    /// Logger
+    /// </summary>
+    [Inject]
+    public ILogger<NavMenu> Logger { get; set; } = null!;
+
     #endregion // Properties
 
     #region Static methods

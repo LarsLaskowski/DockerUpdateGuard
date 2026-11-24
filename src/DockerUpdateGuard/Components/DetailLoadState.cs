@@ -53,7 +53,7 @@ internal sealed class DetailLoadState
                          ErrorMessage = null;
                      }).ConfigureAwait(false);
 
-        var errorMessage = await DetailPageLoader.LoadAsync(load, logger, action, messagePrefix).ConfigureAwait(false);
+        var errorMessage = await PageLoader.LoadAsync(load, logger, action, messagePrefix).ConfigureAwait(false);
 
         await invoke(() =>
                      {

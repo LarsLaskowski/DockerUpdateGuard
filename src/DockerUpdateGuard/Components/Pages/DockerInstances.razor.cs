@@ -56,6 +56,12 @@ public sealed partial class DockerInstances : IDisposable
     [Inject]
     public PersistentComponentState PersistentState { get; set; } = null!;
 
+    /// <summary>
+    /// Logger
+    /// </summary>
+    [Inject]
+    public ILogger<DockerInstances> Logger { get; set; } = null!;
+
     #endregion // Properties
 
     #region Static methods

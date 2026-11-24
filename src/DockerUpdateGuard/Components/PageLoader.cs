@@ -3,14 +3,14 @@ using DockerUpdateGuard.Infrastructure;
 namespace DockerUpdateGuard.Components;
 
 /// <summary>
-/// Guards the load of a detail page so that a failed load becomes a fixed message instead of an unhandled exception
+/// Guards the load of a page so that a failed load becomes a fixed message instead of an unhandled exception
 /// </summary>
-internal static class DetailPageLoader
+internal static class PageLoader
 {
     #region Static methods
 
     /// <summary>
-    /// Run the load of a detail page and report a failure as a fixed message
+    /// Run the load of a page and report a failure as a fixed message
     /// </summary>
     /// <param name="load">Load of the page</param>
     /// <param name="logger">Logger of the page</param>

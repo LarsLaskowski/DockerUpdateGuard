@@ -79,6 +79,12 @@ public sealed partial class Vulnerabilities : IDisposable
     public PersistentComponentState PersistentState { get; set; } = null!;
 
     /// <summary>
+    /// Logger
+    /// </summary>
+    [Inject]
+    public ILogger<Vulnerabilities> Logger { get; set; } = null!;
+
+    /// <summary>
     /// Available severity filter values
     /// </summary>
     private static IReadOnlyList<string> SeverityFilterOptions => _severityFilterOptions;

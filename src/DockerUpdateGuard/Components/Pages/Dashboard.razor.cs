@@ -67,6 +67,12 @@ public sealed partial class Dashboard : IDisposable
     [Inject]
     public PersistentComponentState PersistentState { get; set; } = null!;
 
+    /// <summary>
+    /// Logger
+    /// </summary>
+    [Inject]
+    public ILogger<Dashboard> Logger { get; set; } = null!;
+
     #endregion // Properties
 
     #region Static methods

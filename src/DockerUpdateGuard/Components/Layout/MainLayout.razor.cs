@@ -131,6 +131,12 @@ public sealed partial class MainLayout : LayoutComponentBase, IDisposable
     [Inject]
     public ProtectedLocalStorage BrowserStorage { get; set; } = null!;
 
+    /// <summary>
+    /// Logger
+    /// </summary>
+    [Inject]
+    public ILogger<MainLayout> Logger { get; set; } = null!;
+
     #endregion // Properties
 
     #region Methods

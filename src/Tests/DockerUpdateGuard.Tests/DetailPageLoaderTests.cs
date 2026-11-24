@@ -5,7 +5,7 @@ using DockerUpdateGuard.Tests.Helper;
 namespace DockerUpdateGuard.Tests;
 
 /// <summary>
-/// Tests for <see cref="DetailPageLoader"/>
+/// Tests for <see cref="PageLoader"/>
 /// </summary>
 [TestClass]
 public class DetailPageLoaderTests
@@ -23,16 +23,16 @@ public class DetailPageLoaderTests
         var logger = new TestLogger<DetailPageLoaderTests>();
         var loadCount = 0;
 
-        var message = await DetailPageLoader.LoadAsync(() =>
-                                                       {
-                                                           loadCount++;
+        var message = await PageLoader.LoadAsync(() =>
+                                                 {
+                                                     loadCount++;
 
-                                                           return Task.CompletedTask;
-                                                       },
-                                                       logger,
-                                                       "LoadSomething",
-                                                       "Loading something failed")
-                                            .ConfigureAwait(false);
+                                                     return Task.CompletedTask;
+                                                 },
+                                                 logger,
+                                                 "LoadSomething",
+                                                 "Loading something failed")
+                                      .ConfigureAwait(false);
 
         Assert.IsNull(message, "A completed load must return no message");
         Assert.AreEqual(1, loadCount, "The load must run once");
@@ -56,11 +56,11 @@ public class DetailPageLoaderTests
                                   : new InvalidOperationException("secret text from host.internal.test");
         var logger = new TestLogger<DetailPageLoaderTests>();
 
-        var message = await DetailPageLoader.LoadAsync(() => Task.FromException(exception),
-                                                       logger,
-                                                       "LoadSomething",
-                                                       "Loading something failed")
-                                            .ConfigureAwait(false);
+        var message = await PageLoader.LoadAsync(() => Task.FromException(exception),
+                                                 logger,
+                                                 "LoadSomething",
+                                                 "Loading something failed")
+                                      .ConfigureAwait(false);
 
         Assert.AreEqual($"Loading something failed: {expectedReason}", message, "A failed load must return the prefix with the fixed reason");
         Assert.DoesNotContain("secret text", message!, "The message must not carry the exception's own text");
