@@ -241,6 +241,91 @@ public class ScanHistoryTests
     }
 
     /// <summary>
+    /// Verify a failed first load shows the fixed error alert in place of the skeleton and logs the failure once
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC1")]
+    [TestCategory("AC2")]
+    public async Task ScanHistoryLoadFailureShowsFixedErrorAndLogs()
+    {
+        var exception = new InvalidOperationException("secret text");
+        var logger = new TestLogger<ScanHistory>();
+        var testContext = BlazorTestContextFactory.Create();
+
+        await using (testContext)
+        {
+            var viewService = Substitute.For<IApplicationViewService>();
+
+            viewService.GetScanHistoryAsync(Arg.Any<int>(), Arg.Any<CancellationToken>())
+                       .Returns(Task.FromException<IReadOnlyList<ScanHistoryItemData>>(exception));
+
+            testContext.Services.AddSingleton(viewService);
+            testContext.Services.AddSingleton(Substitute.For<IVulnerabilityEnrichmentService>());
+            testContext.Services.AddSingleton(new DashboardRefreshState());
+            testContext.Services.AddSingleton((IOptionsMonitor<DockerUpdateGuardOptions>)CreateOptionsMonitor(enabled: false));
+            testContext.Services.AddSingleton<ILogger<ScanHistory>>(logger);
+
+            var page = testContext.Render<ScanHistory>();
+
+            await DetailPageAssert.AssertLoadErrorAsync(page, "Loading the scan history failed: unexpected error", "secret text").ConfigureAwait(false);
+            DetailPageAssert.AssertLoadLoggedOnce(logger, "LoadScanHistory", exception);
+        }
+    }
+
+    /// <summary>
+    /// Verify a failing schedule call shows no part of the data (no scan row, no next-refresh caption) and keeps the refresh button enabled
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC3")]
+    public async Task ScanHistoryScheduleLoadFailureShowsNoScheduleAndKeepsRefreshEnabled()
+    {
+        var exception = new InvalidOperationException("secret text");
+        var logger = new TestLogger<ScanHistory>();
+        var testContext = BlazorTestContextFactory.Create();
+
+        await using (testContext)
+        {
+            var viewService = Substitute.For<IApplicationViewService>();
+
+            viewService.GetScanHistoryAsync(Arg.Any<int>(), Arg.Any<CancellationToken>())
+                       .Returns([
+                                    new()
+                                    {
+                                        Type = "Vulnerability",
+                                        Status = "Completed",
+                                        TriggerSource = "Manual",
+                                        SubjectName = "unique-scan-subject",
+                                        StartedAtUtc = DateTimeOffset.UtcNow,
+                                    }
+                                ]);
+            viewService.GetVulnerabilityScheduleAsync(Arg.Any<CancellationToken>())
+                       .Returns(Task.FromException<VulnerabilityScheduleViewData>(exception));
+
+            testContext.Services.AddSingleton(viewService);
+            testContext.Services.AddSingleton(Substitute.For<IVulnerabilityEnrichmentService>());
+            testContext.Services.AddSingleton(new DashboardRefreshState());
+            testContext.Services.AddSingleton<IOptionsMonitor<DockerUpdateGuardOptions>>(CreateOptionsMonitor(enabled: true));
+            testContext.Services.AddSingleton<ILogger<ScanHistory>>(logger);
+
+            var page = testContext.Render<ScanHistory>();
+
+            await DetailPageAssert.AssertLoadErrorAsync(page,
+                                                        "Loading the scan history failed: unexpected error",
+                                                        "secret text",
+                                                        "unique-scan-subject",
+                                                        "Next scheduled vulnerability refresh").ConfigureAwait(false);
+
+            var refreshButton = page.FindAll("button").SingleOrDefault(button => button.TextContent.Contains("Refresh vulnerabilities"));
+
+            Assert.IsNotNull(refreshButton, "The refresh button must stay present");
+            Assert.IsFalse(refreshButton.HasAttribute("disabled"), "The refresh button must stay enabled");
+            DetailPageAssert.AssertLoadLoggedOnce(logger, "LoadScanHistory", exception);
+        }
+    }
+
+    /// <summary>
     /// Create a test context whose vulnerability refresh throws the given exception
     /// </summary>
     /// <param name="exception">Exception thrown by the refresh</param>

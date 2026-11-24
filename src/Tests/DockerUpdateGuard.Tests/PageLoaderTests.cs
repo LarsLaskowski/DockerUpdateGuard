@@ -8,7 +8,7 @@ namespace DockerUpdateGuard.Tests;
 /// Tests for <see cref="PageLoader"/>
 /// </summary>
 [TestClass]
-public class DetailPageLoaderTests
+public class PageLoaderTests
 {
     #region Methods
 
@@ -18,9 +18,9 @@ public class DetailPageLoaderTests
     /// <returns>Task</returns>
     [TestMethod]
     [TestCategory("AC6")]
-    public async Task DetailPageLoaderCompletedLoadReturnsNullWithoutLog()
+    public async Task PageLoaderCompletedLoadReturnsNullWithoutLog()
     {
-        var logger = new TestLogger<DetailPageLoaderTests>();
+        var logger = new TestLogger<PageLoaderTests>();
         var loadCount = 0;
 
         var message = await PageLoader.LoadAsync(() =>
@@ -49,12 +49,12 @@ public class DetailPageLoaderTests
     [TestCategory("AC6")]
     [DataRow("InvalidOperation", "unexpected error")]
     [DataRow("Http", "connection failed")]
-    public async Task DetailPageLoaderFailedLoadReturnsPrefixedFixedReasonAndLogs(string exceptionKind, string expectedReason)
+    public async Task PageLoaderFailedLoadReturnsPrefixedFixedReasonAndLogs(string exceptionKind, string expectedReason)
     {
         Exception exception = exceptionKind == "Http"
                                   ? new HttpRequestException("secret text from host.internal.test")
                                   : new InvalidOperationException("secret text from host.internal.test");
-        var logger = new TestLogger<DetailPageLoaderTests>();
+        var logger = new TestLogger<PageLoaderTests>();
 
         var message = await PageLoader.LoadAsync(() => Task.FromException(exception),
                                                  logger,

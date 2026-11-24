@@ -4,11 +4,13 @@ using Bunit;
 
 using DockerUpdateGuard.Components.Layout;
 using DockerUpdateGuard.Configuration;
+using DockerUpdateGuard.Tests.Data;
 using DockerUpdateGuard.Tests.Helper;
 using DockerUpdateGuard.UI;
 
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 using NSubstitute;
@@ -180,6 +182,40 @@ public class NavMenuTests
             await component.WaitForAssertionAsync(() => Assert.IsNotNull(component.Find("a"), "The navigation menu must have finished rendering"));
 
             Assert.IsNull(FindSharedBaseImagesLink(component), "The Shared Base Images entry must not be rendered without shared base images");
+        }
+    }
+
+    /// <summary>
+    /// Verify a failing base images check hides the Shared Base Images entry, keeps the other entries, shows no error text and logs the failure once
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC6")]
+    public async Task NavMenuBaseImagesCheckFailureHidesEntryAndLogs()
+    {
+        var exception = new InvalidOperationException("secret text");
+        var logger = new TestLogger<NavMenu>();
+        var testContext = BlazorTestContextFactory.Create();
+
+        await using (testContext)
+        {
+            var viewService = Substitute.For<IApplicationViewService>();
+
+            viewService.HasBaseImagesAsync(Arg.Any<CancellationToken>())
+                       .Returns(Task.FromException<bool>(exception));
+
+            testContext.Services.AddSingleton(viewService);
+            testContext.Services.AddSingleton<IConfiguration>(new ConfigurationBuilder().Build());
+            testContext.Services.AddSingleton<IOptions<DockerUpdateGuardOptions>>(Options.Create(new DockerUpdateGuardOptions()));
+            testContext.Services.AddSingleton<ILogger<NavMenu>>(logger);
+
+            var component = testContext.Render<NavMenu>();
+
+            await component.WaitForAssertionAsync(() => DetailPageAssert.AssertLoadLoggedOnce(logger, "LoadNavigation", exception), TimeSpan.FromSeconds(DetailPageAssert.WaitSeconds)).ConfigureAwait(false);
+
+            Assert.IsNotNull(component.FindAll("a").SingleOrDefault(link => link.TextContent.Trim() == "Vulnerabilities"), "The other entries must stay rendered");
+            Assert.IsNull(FindSharedBaseImagesLink(component), "The Shared Base Images entry must be hidden");
+            Assert.DoesNotContain("secret text", component.Markup, "The menu must not show the exception's text");
         }
     }
 

@@ -2,10 +2,12 @@ using Bunit;
 using Bunit.TestDoubles;
 
 using DockerUpdateGuard.Configuration;
+using DockerUpdateGuard.Tests.Data;
 using DockerUpdateGuard.Tests.Helper;
 using DockerUpdateGuard.UI;
 
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 using NSubstitute;
@@ -187,6 +189,89 @@ public class DashboardRenderTests
             var component = testContext.Render<DashboardPage>();
 
             Assert.Contains("2026-11-23 21:27 UTC", component.Markup, "The recent scan start must be shown in UTC with the zone suffix");
+        }
+    }
+
+    /// <summary>
+    /// Verify a failed first load shows the fixed error alert in place of the skeleton and logs the failure once
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC1")]
+    [TestCategory("AC2")]
+    public async Task DashboardLoadFailureShowsFixedErrorAndLogs()
+    {
+        var exception = new InvalidOperationException("secret text");
+        var logger = new TestLogger<DashboardPage>();
+        var testContext = BlazorTestContextFactory.Create();
+
+        await using (testContext)
+        {
+            var viewService = Substitute.For<IApplicationViewService>();
+
+            viewService.GetDashboardAsync(Arg.Any<CancellationToken>())
+                       .Returns(Task.FromException<DashboardViewData>(exception));
+
+            testContext.Services.AddSingleton(viewService);
+            testContext.Services.AddSingleton(new DashboardRefreshState());
+            testContext.Services.AddSingleton(Options.Create(new DockerUpdateGuardOptions()));
+            testContext.Services.AddSingleton<ILogger<DashboardPage>>(logger);
+
+            var page = testContext.Render<DashboardPage>();
+
+            await DetailPageAssert.AssertLoadErrorAsync(page, "Loading the dashboard failed: unexpected error", "secret text").ConfigureAwait(false);
+            DetailPageAssert.AssertLoadLoggedOnce(logger, "LoadDashboard", exception);
+        }
+    }
+
+    /// <summary>
+    /// Verify a refresh signal whose reload fails keeps the shown dashboard, shows no alert and logs the failure once
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC7")]
+    public async Task DashboardFailedRefreshKeepsDashboardAndLogs()
+    {
+        var exception = new InvalidOperationException("secret text");
+        var logger = new TestLogger<DashboardPage>();
+        var refreshState = new DashboardRefreshState();
+        var testContext = BlazorTestContextFactory.Create();
+
+        await using (testContext)
+        {
+            var viewService = Substitute.For<IApplicationViewService>();
+            var dashboard = new DashboardViewData
+                            {
+                                RecentScans = [
+                                                  new ScanHistoryItemData
+                                                  {
+                                                      Type = "Runtime",
+                                                      Status = "Succeeded",
+                                                      SubjectName = "kept-scan-subject",
+                                                      StartedAtUtc = DateTimeOffset.UtcNow,
+                                                  },
+                                              ],
+                            };
+
+            viewService.GetDashboardAsync(Arg.Any<CancellationToken>())
+                       .Returns(Task.FromResult(dashboard), Task.FromException<DashboardViewData>(exception));
+
+            testContext.Services.AddSingleton(viewService);
+            testContext.Services.AddSingleton(refreshState);
+            testContext.Services.AddSingleton<IOptions<DockerUpdateGuardOptions>>(Options.Create(new DockerUpdateGuardOptions()));
+            testContext.Services.AddSingleton<ILogger<DashboardPage>>(logger);
+
+            var page = testContext.Render<DashboardPage>();
+            var alertCount = page.FindAll(".mud-alert").Count;
+
+            Assert.Contains("kept-scan-subject", page.Markup, "The first load must show the dashboard");
+
+            await page.InvokeAsync(() => refreshState.NotifyChanged()).ConfigureAwait(false);
+            await page.WaitForAssertionAsync(() => DetailPageAssert.AssertLoadLoggedOnce(logger, "LoadDashboard", exception), TimeSpan.FromSeconds(DetailPageAssert.WaitSeconds)).ConfigureAwait(false);
+
+            Assert.Contains("kept-scan-subject", page.Markup, "A failed reload must keep the dashboard shown");
+            Assert.HasCount(alertCount, page.FindAll(".mud-alert"), "A failed reload must show no alert");
+            Assert.DoesNotContain("secret text", page.Markup, "A failed reload must not show the exception's text");
         }
     }
 
