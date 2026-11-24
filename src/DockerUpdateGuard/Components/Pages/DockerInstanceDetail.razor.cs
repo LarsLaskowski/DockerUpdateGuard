@@ -21,6 +21,11 @@ public sealed partial class DockerInstanceDetail : IDisposable
     #region Fields
 
     /// <summary>
+    /// Outcome of the last load of the detail
+    /// </summary>
+    private readonly DetailLoadState _loadState = new();
+
+    /// <summary>
     /// Persisting-state subscription used to hand the prerendered data to the interactive render
     /// </summary>
     private PersistingComponentStateSubscription _persistingSubscription;
@@ -34,16 +39,6 @@ public sealed partial class DockerInstanceDetail : IDisposable
     /// Indicates whether the current detail was restored from persistent state
     /// </summary>
     private bool _restoredFromState;
-
-    /// <summary>
-    /// Indicates whether the last load found no record for the route identifier
-    /// </summary>
-    private bool _isNotFound;
-
-    /// <summary>
-    /// Message of the last failed load, null when the load did not fail
-    /// </summary>
-    private string? _loadErrorMessage;
 
     #endregion // Fields
 
@@ -122,11 +117,7 @@ public sealed partial class DockerInstanceDetail : IDisposable
         var detail = await ViewService.GetDockerInstanceDetailAsync(DockerInstanceId)
                                       .ConfigureAwait(false);
 
-        await InvokeAsync(() =>
-                          {
-                              _detail = detail;
-                              _isNotFound = detail is null;
-                          }).ConfigureAwait(false);
+        await InvokeAsync(() => _detail = _loadState.Found(detail)).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -170,24 +161,7 @@ public sealed partial class DockerInstanceDetail : IDisposable
             return;
         }
 
-        await InvokeAsync(() =>
-                          {
-                              _isNotFound = false;
-                              _loadErrorMessage = null;
-                          }).ConfigureAwait(false);
-
-        var loadErrorMessage = await DetailPageLoader.LoadAsync(LoadAsync, Logger, "LoadDockerInstanceDetail", "Loading the Docker instance failed").ConfigureAwait(false);
-
-        await InvokeAsync(() =>
-                          {
-                              _loadErrorMessage = loadErrorMessage;
-
-                              if (loadErrorMessage is not null)
-                              {
-                                  _detail = null;
-                                  _isNotFound = false;
-                              }
-                          }).ConfigureAwait(false);
+        await _loadState.RunAsync(InvokeAsync, LoadAsync, Logger, "LoadDockerInstanceDetail", "Loading the Docker instance failed", () => _detail = null).ConfigureAwait(false);
     }
 
     #endregion // ComponentBase

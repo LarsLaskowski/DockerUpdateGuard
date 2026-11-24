@@ -18,9 +18,9 @@
         <MudAlert Severity="Severity.Error" Dense="true">@_errorMessage</MudAlert>
     }
 
-    @if (string.IsNullOrWhiteSpace(_loadErrorMessage) == false)
+    @if (_loadState.ErrorMessage is not null)
     {
-        <MudAlert Severity="Severity.Error" Dense="true">@_loadErrorMessage</MudAlert>
+        <MudAlert Severity="Severity.Error" Dense="true">@_loadState.ErrorMessage</MudAlert>
     }
     else if (_detail is not null)
     {
@@ -491,7 +491,7 @@
             </MudTable>
         </MudPaper>
     }
-    else if (_isNotFound)
+    else if (_loadState.IsNotFound)
     {
         <MudPaper Class="empty-state-panel" Elevation="0">
             <MudText>This container is not known on this Docker instance.</MudText>
