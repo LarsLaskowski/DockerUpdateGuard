@@ -10,7 +10,7 @@ internal sealed class DetailLoadState
     /// <summary>
     /// Indicates whether the last load found no record for the route identifier
     /// </summary>
-    public bool IsNotFound { get; set; }
+    public bool IsNotFound { get; private set; }
 
     /// <summary>
     /// Message of the last failed load, null when the load did not fail
