@@ -39,6 +39,11 @@ public sealed partial class Dashboard : IDisposable
     /// </summary>
     private bool _showMyImages;
 
+    /// <summary>
+    /// Message of the last failed load, null when the last load completed
+    /// </summary>
+    private string? _loadErrorMessage;
+
     #endregion // Fields
 
     #region Properties
@@ -146,11 +151,22 @@ public sealed partial class Dashboard : IDisposable
     }
 
     /// <summary>
+    /// Load the dashboard view model and keep the message of a failed load
+    /// </summary>
+    /// <returns>Task</returns>
+    private async Task LoadOrReportAsync()
+    {
+        var loadErrorMessage = await PageLoader.LoadAsync(LoadAsync, Logger, "LoadDashboard", "Loading the dashboard failed").ConfigureAwait(false);
+
+        await InvokeAsync(() => _loadErrorMessage = loadErrorMessage).ConfigureAwait(false);
+    }
+
+    /// <summary>
     /// React to explicit dashboard refresh notifications
     /// </summary>
     private void OnDashboardRefreshRequested()
     {
-        _ = InvokeAsync(LoadAsync);
+        _ = InvokeAsync(LoadOrReportAsync);
     }
 
     /// <summary>
@@ -187,7 +203,7 @@ public sealed partial class Dashboard : IDisposable
             return;
         }
 
-        await LoadAsync().ConfigureAwait(false);
+        await LoadOrReportAsync().ConfigureAwait(false);
     }
 
     #endregion // ComponentBase

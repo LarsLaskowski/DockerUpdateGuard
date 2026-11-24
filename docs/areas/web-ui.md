@@ -20,11 +20,18 @@ to read the state the other areas compute and to start manual scans; it computes
 - The top bar shows the product name, the dark-mode toggle, the number of *protected assets* (manual observed images
   plus own images plus runtime containers) and *last activity* (the start time of the most recent scan run, or "No
   scans yet"). The top bar reloads these values on every navigation and on every dashboard refresh signal (see
-  *Refresh without reload*).
+  *Refresh without reload*). When its first load fails the top bar shows neither the values nor a placeholder; when
+  a reload fails it keeps the last values.
 - The navigation lists Dashboard, My Images, Observed Images, Runtime Containers, Docker Instances, Shared Base
   Images, Vulnerabilities and Scan History. *My Images* is listed only when both `DockerUpdateGuard:DockerHub:UserName`
   and `DockerUpdateGuard:DockerHub:Pat` are set; *Shared Base Images* only when at least one shared base image exists. Both
-  conditions are evaluated when the session starts. The pages stay reachable by their routes either way.
+  conditions are evaluated when the session starts. The pages stay reachable by their routes either way. When the
+  check for shared base images fails, *Shared Base Images* is hidden.
+- When the first load of the Dashboard, My Images, Observed Images, Runtime Containers, Docker Instances, Shared Base
+  Images, Vulnerabilities or Scan History page fails, the page shows an error alert in place of its loading skeleton
+  (on Observed Images inside the *Manual images* section, the registration form stays usable) until a later load
+  succeeds. A page whose load needs two answers (Docker Instances, Scan History) shows no part of its data when
+  either fails. A reload that fails after a successful load keeps what is shown.
 - The drawer shows the application version: `DockerUpdateGuard:DisplayVersion` when set, otherwise the version of the
   running build, otherwise "unknown".
 - Timestamps are shown in UTC as `yyyy-MM-dd HH:mm UTC`, the same for every browser and independent of the time zone and
@@ -192,6 +199,22 @@ never their values.
   when the action service itself raises an error, for example an invalid configuration or a run that cannot be
   written, and then no action was sent; or when the page's reload after an action fails, and then the outcome alert
   shows what became of the action.
+
+- A failed first load of a list page or the dashboard shows one error alert `<prefix>: <reason>` with the fixed
+  reason in place of the skeleton, no empty-state note and no rows, and is logged like a user action (event ID
+  4000). A failed reload after a successful load is logged and shows nothing. The layout's loads are logged the same
+  way and show no text: `LoadDashboardSummary` (top bar) and `LoadNavigation` (the *Shared Base Images* entry).
+
+  | Page load | Prefix | Logged action |
+  | --- | --- | --- |
+  | Dashboard | `Loading the dashboard failed` | `LoadDashboard` |
+  | My Images | `Loading the images failed` | `LoadMyImages` |
+  | Observed Images | `Loading the observed images failed` | `LoadObservedImages` |
+  | Runtime Containers | `Loading the containers failed` | `LoadRuntimeContainers` |
+  | Docker Instances | `Loading the Docker instances failed` | `LoadDockerInstances` |
+  | Shared Base Images | `Loading the shared base images failed` | `LoadSharedBaseImages` |
+  | Vulnerabilities | `Loading the vulnerabilities failed` | `LoadVulnerabilities` |
+  | Scan History | `Loading the scan history failed` | `LoadScanHistory` |
 
 - A failed load of a detail page shows one error alert `<prefix>: <reason>` with the fixed reason, no detail data and
   no not-found note, and is logged like a user action (event ID 4000). The reload after a runtime container action

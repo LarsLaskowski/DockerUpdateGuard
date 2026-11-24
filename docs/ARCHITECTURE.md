@@ -499,7 +499,7 @@ it links:
   be sent to a different host than the one written after the `@`
   ([record 0012](decisions/0012-configured-urls-are-rejected-when-an-at-sign-is-not-their-user-info-separator.md)).
 - **Failure messages carry fixed reasons.** Integration clients and the scan orchestrators never put an exception's
-  message into a result or a scan run, and the pages never show one for a failed user action
+  message into a result or a scan run, and the pages never show one for a failed user action or page load
   ([Web UI](areas/web-ui.md#limits-and-errors)); they report a fixed reason and log the exception
   ([Integration failures](areas/integration-failures.md#fixed-failure-reasons),
   [record 0009](decisions/0009-integration-results-carry-fixed-failure-reasons.md)). Remote text a message

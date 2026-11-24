@@ -13,7 +13,14 @@
 
     @if (_instances is null)
     {
-        <TableSkeleton Title="Configured instances" />
+        @if (_loadErrorMessage is not null)
+        {
+            <MudAlert Severity="Severity.Error" Dense="true">@_loadErrorMessage</MudAlert>
+        }
+        else
+        {
+            <TableSkeleton Title="Configured instances" />
+        }
     }
     else if (_instances.Count == 0)
     {

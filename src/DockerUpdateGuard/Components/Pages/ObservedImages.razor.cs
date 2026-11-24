@@ -57,6 +57,11 @@ public sealed partial class ObservedImages : IDisposable
     /// </summary>
     private IReadOnlyList<ObservedImageListItemData>? _images;
 
+    /// <summary>
+    /// Message of the last failed load, null when the last load completed
+    /// </summary>
+    private string? _loadErrorMessage;
+
     #endregion // Fields
 
     #region Properties
@@ -242,6 +247,17 @@ public sealed partial class ObservedImages : IDisposable
         await LoadAsync().ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Load the page data and keep the message of a failed load
+    /// </summary>
+    /// <returns>Task</returns>
+    private async Task LoadOrReportAsync()
+    {
+        var loadErrorMessage = await PageLoader.LoadAsync(LoadAsync, Logger, "LoadObservedImages", "Loading the observed images failed").ConfigureAwait(false);
+
+        await InvokeAsync(() => _loadErrorMessage = loadErrorMessage).ConfigureAwait(false);
+    }
+
     #endregion // Methods
 
     #region ComponentBase
@@ -259,7 +275,7 @@ public sealed partial class ObservedImages : IDisposable
             return;
         }
 
-        await LoadAsync().ConfigureAwait(false);
+        await LoadOrReportAsync().ConfigureAwait(false);
     }
 
     #endregion // ComponentBase

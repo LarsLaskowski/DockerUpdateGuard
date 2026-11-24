@@ -87,6 +87,17 @@ public partial class NavMenu
     }
 
     /// <summary>
+    /// Load whether the Shared Base Images navigation entry should be shown
+    /// </summary>
+    /// <returns>Task</returns>
+    private async Task LoadBaseImagesEntryAsync()
+    {
+        var hasBaseImages = await ViewService.HasBaseImagesAsync().ConfigureAwait(false);
+
+        await InvokeAsync(() => _showBaseImages = hasBaseImages).ConfigureAwait(false);
+    }
+
+    /// <summary>
     /// Resolve the version to display in the navigation footer
     /// </summary>
     /// <returns>Display version</returns>
@@ -140,7 +151,7 @@ public partial class NavMenu
     {
         _displayVersion = ResolveDisplayVersion();
         _showMyImages = IsDockerHubAccountConfigured();
-        _showBaseImages = await ViewService.HasBaseImagesAsync().ConfigureAwait(false);
+        _ = await PageLoader.LoadAsync(LoadBaseImagesEntryAsync, Logger, "LoadNavigation", "Loading the navigation failed").ConfigureAwait(false);
     }
 
     #endregion // ComponentBase

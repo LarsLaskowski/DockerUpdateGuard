@@ -62,6 +62,11 @@ public sealed partial class Vulnerabilities : IDisposable
     /// </summary>
     private string _severityFilter = AllSeveritiesFilterValue;
 
+    /// <summary>
+    /// Message of the last failed load, null when the last load completed
+    /// </summary>
+    private string? _loadErrorMessage;
+
     #endregion // Fields
 
     #region Properties
@@ -135,6 +140,29 @@ public sealed partial class Vulnerabilities : IDisposable
     #endregion // Static methods
 
     #region Methods
+
+    /// <summary>
+    /// Load the page data
+    /// </summary>
+    /// <returns>Task</returns>
+    private async Task LoadAsync()
+    {
+        var items = await ViewService.GetVulnerabilityOverviewAsync()
+                                     .ConfigureAwait(false);
+
+        await InvokeAsync(() => _items = items).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Load the page data and keep the message of a failed load
+    /// </summary>
+    /// <returns>Task</returns>
+    private async Task LoadOrReportAsync()
+    {
+        var loadErrorMessage = await PageLoader.LoadAsync(LoadAsync, Logger, "LoadVulnerabilities", "Loading the vulnerabilities failed").ConfigureAwait(false);
+
+        await InvokeAsync(() => _loadErrorMessage = loadErrorMessage).ConfigureAwait(false);
+    }
 
     /// <summary>
     /// Resolve the vulnerability overview items matching the current filter settings
@@ -222,10 +250,7 @@ public sealed partial class Vulnerabilities : IDisposable
             return;
         }
 
-        var items = await ViewService.GetVulnerabilityOverviewAsync()
-                                     .ConfigureAwait(false);
-
-        await InvokeAsync(() => _items = items).ConfigureAwait(false);
+        await LoadOrReportAsync().ConfigureAwait(false);
     }
 
     #endregion // ComponentBase

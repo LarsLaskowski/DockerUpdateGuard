@@ -35,7 +35,14 @@
 
     @if (_containers is null)
     {
-        <TableSkeleton Title="Container inventory" />
+        @if (_loadErrorMessage is not null)
+        {
+            <MudAlert Severity="Severity.Error" Dense="true">@_loadErrorMessage</MudAlert>
+        }
+        else
+        {
+            <TableSkeleton Title="Container inventory" />
+        }
     }
     else if (_containers.Count == 0)
     {

@@ -40,6 +40,11 @@ public sealed partial class DockerInstances : IDisposable
     /// </summary>
     private DockerInstanceDetailViewData? _singleInstanceDetail;
 
+    /// <summary>
+    /// Message of the last failed load, null when the last load completed
+    /// </summary>
+    private string? _loadErrorMessage;
+
     #endregion // Fields
 
     #region Properties
@@ -141,6 +146,17 @@ public sealed partial class DockerInstances : IDisposable
         return Task.CompletedTask;
     }
 
+    /// <summary>
+    /// Load the page data and keep the message of a failed load
+    /// </summary>
+    /// <returns>Task</returns>
+    private async Task LoadOrReportAsync()
+    {
+        var loadErrorMessage = await PageLoader.LoadAsync(LoadAsync, Logger, "LoadDockerInstances", "Loading the Docker instances failed").ConfigureAwait(false);
+
+        await InvokeAsync(() => _loadErrorMessage = loadErrorMessage).ConfigureAwait(false);
+    }
+
     #endregion // Methods
 
     #region ComponentBase
@@ -164,7 +180,7 @@ public sealed partial class DockerInstances : IDisposable
             return;
         }
 
-        await LoadAsync().ConfigureAwait(false);
+        await LoadOrReportAsync().ConfigureAwait(false);
     }
 
     #endregion // ComponentBase

@@ -83,6 +83,11 @@ public sealed partial class MainLayout : LayoutComponentBase, IDisposable
     private DashboardSummaryViewData? _dashboardSummary;
 
     /// <summary>
+    /// Whether the last load of the dashboard summary failed
+    /// </summary>
+    private bool _summaryLoadFailed;
+
+    /// <summary>
     /// Navigation-drawer state
     /// </summary>
     private bool _drawerOpen = true;
@@ -159,13 +164,29 @@ public sealed partial class MainLayout : LayoutComponentBase, IDisposable
     }
 
     /// <summary>
+    /// Load the current dashboard summary and keep whether the load failed
+    /// </summary>
+    /// <returns>Task</returns>
+    private async Task LoadSummaryOrReportAsync()
+    {
+        var loadErrorMessage = await PageLoader.LoadAsync(LoadSummaryAsync, Logger, "LoadDashboardSummary", "Loading the summary failed").ConfigureAwait(false);
+
+        await InvokeAsync(() =>
+                          {
+                              _summaryLoadFailed = loadErrorMessage is not null;
+
+                              StateHasChanged();
+                          }).ConfigureAwait(false);
+    }
+
+    /// <summary>
     /// React to application navigation changes
     /// </summary>
     /// <param name="sender">Event sender</param>
     /// <param name="args">Navigation event arguments</param>
     private void OnLocationChanged(object? sender, LocationChangedEventArgs args)
     {
-        _ = InvokeAsync(LoadSummaryAsync);
+        _ = InvokeAsync(LoadSummaryOrReportAsync);
     }
 
     /// <summary>
@@ -173,7 +194,7 @@ public sealed partial class MainLayout : LayoutComponentBase, IDisposable
     /// </summary>
     private void OnDashboardRefreshRequested()
     {
-        _ = InvokeAsync(LoadSummaryAsync);
+        _ = InvokeAsync(LoadSummaryOrReportAsync);
     }
 
     /// <summary>
@@ -302,7 +323,7 @@ public sealed partial class MainLayout : LayoutComponentBase, IDisposable
             return;
         }
 
-        await LoadSummaryAsync().ConfigureAwait(false);
+        await LoadSummaryOrReportAsync().ConfigureAwait(false);
     }
 
     /// <inheritdoc/>

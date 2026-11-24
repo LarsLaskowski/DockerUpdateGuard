@@ -81,7 +81,14 @@
 
         @if (_images is null)
         {
-            <TableSkeleton Embedded="true" />
+            @if (_loadErrorMessage is not null)
+            {
+                <MudAlert Severity="Severity.Error" Dense="true">@_loadErrorMessage</MudAlert>
+            }
+            else
+            {
+                <TableSkeleton Embedded="true" />
+            }
         }
         else if (_images.Count == 0)
         {
