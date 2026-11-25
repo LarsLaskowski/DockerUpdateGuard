@@ -42,7 +42,9 @@ the route changed. The resulting behavior is in [Web UI](../areas/web-ui.md#cont
   the target ([Container actions](../areas/container-actions.md#actions)).
 - The runtime container page now shows its skeleton during a route change, unlike the other detail pages, which keep
   the previous detail until the new load completes.
-- A late *failed* load of an earlier route still sets the load alert on the current page, which then shows no
-  detail and no actions; guarding the shared helper against late answers is the follow-up of option 4.
-- An action that runs while the user moves away keeps the new container's buttons disabled until it ends; its run is
-  in its own container's history.
+- A late load of an earlier route still sets the outcome of the shared load helper: a failure shows the load alert
+  and drops the current detail, a success hides the current route's load alert and leaves the skeleton up. Neither
+  shows actions; guarding the shared helper against late answers is the follow-up of option 4.
+- An action that runs while the user moves away keeps the new container's buttons disabled, without progress, until
+  it ends; its run is in its own container's history.
+- The action is sent with the identifiers of the detail the dialog names, and only while they are the route's.
