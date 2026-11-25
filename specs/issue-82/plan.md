@@ -162,3 +162,19 @@ cap and the digest and publication conditions are unchanged.
 ## Out of scope / follow-ups
 
 - Date-stamped tags with a lettered variant (`2024-12-15-alpine`) keep the same-year rule (record 0061, Consequences).
+
+## Challenge notes
+
+The plan holds up. I checked its claims against the code and found one minor gap in the test fixtures and no major objections.
+
+**What I checked**
+- **The defect:** the filter `candidate.Year == currentYear` is at `src/DockerUpdateGuard/Images/UpdateDetectionService.cs:101`. `EvaluateYearPrefixedUpdate` (`:496-529`) returns *up to date* when there are no candidates and the digest has not changed, so facts 1-3 are right, including the refutation of the issue's "NeedsReview" claim.
+- **The sibling path:** `src/DockerUpdateGuard/UI/TagCandidateViewHelper.cs:209-216` is the only other place that applies the year rule. A grep for `YearPrefixed` outside the three files the plan names finds only `RegistryTagQueryHelper.cs:135`. That code goes through `TryCompareDisplayVersionTags` → `CompareYearPrefixedTags`, which compares the year first (`VersionTagResolutionHelper.cs:286-291`, `:355-371`), so tags from later years already reach the evaluation (fact 5).
+- **Telling calendar tags from product-year tags:** `2019-CU32` gets the empty family key, the same as a calendar tag (`:404-430`). So the "no letter in the suffix" test is the right discriminator and the family check alone is not enough (fact 8).
+- **The new UI line is safe:** replacing `:209-214` with the helper call followed by `CompareYearPrefixedTags` cannot throw. The helper returns false for any tag that is not year-prefixed before the comparison runs. Because the variant family is not checked there today, the behavior is otherwise unchanged.
+- **Existing tests:** `UpdateDetectionServiceTests.cs:200-272` exist as described. Every year-prefixed tag in the test suite has a lettered suffix, apart from the same-year pair `2024-01-15`/`2024-02-01` at `VersionTagResolutionHelperTests.cs:335`. So the plan's claim that no existing test changes outcome is true.
+- **Documentation:** a grep for year rules in the Markdown files finds only `docs/areas/update-detection.md:20,38,63,88` and `docs/areas/base-images.md:52`, which matches the plan's sweep. Decision record 0061 exists and agrees with option C.
+
+**Objection**
+- **minor:** In the AC3 and AC4 tests, the current tag's registry entry must have the same digest as the running image (or the current tag must be left out of the list). Otherwise `TryCreateDigestUpdateResult` (`UpdateDetectionService.cs:258-287`) returns *update available* for a republished tag, and the expected *up to date* fails for the wrong reason. Why it is minor: it is a fixture detail the Tester can follow without changing the plan.
+  - These two criteria already pass on the current code. They guard against regressions, and the tests that should fail first are AC1, AC2, the cross-year cases of AC5 and the first case of AC6.
