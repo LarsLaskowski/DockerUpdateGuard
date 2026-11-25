@@ -1,6 +1,6 @@
 # 0060: The runtime container page acts only on the state of its current route
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-25
 - **Area:** Web UI
 - **Source:** Issue #540
