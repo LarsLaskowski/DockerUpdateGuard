@@ -1,3 +1,5 @@
+using System.Runtime.CompilerServices;
+
 using DockerUpdateGuard.Components.Common;
 using DockerUpdateGuard.Data.Entities;
 using DockerUpdateGuard.Infrastructure;
@@ -513,7 +515,7 @@ public sealed partial class RuntimeContainerDetail : IDisposable
                                           Guid dockerInstanceId,
                                           string containerId)
     {
-        var isCurrent = false;
+        var isCurrent = new StrongBox<bool>(false);
 
         await InvokeAsync(() =>
                           {
@@ -522,7 +524,7 @@ public sealed partial class RuntimeContainerDetail : IDisposable
                                   return;
                               }
 
-                              isCurrent = true;
+                              isCurrent.Value = true;
                               _runningAction = actionType;
                               _runningActionRouteKey = RouteKey;
                               _actionOutcome = null;
@@ -530,7 +532,7 @@ public sealed partial class RuntimeContainerDetail : IDisposable
                               StateHasChanged();
                           }).ConfigureAwait(false);
 
-        if (isCurrent == false)
+        if (isCurrent.Value == false)
         {
             return;
         }
