@@ -90,8 +90,8 @@ details, an optional recommended tag and digest, and at most **50** candidates. 
 4. **Year-prefixed current tag** — candidates are the tags of the same year-variant family that order above the
    current tag, with the same digest and publication conditions; highest first. They are of the same year or, when
    the current tag and the candidate are both calendar tags, of any later year. No major-upgrade policy applies, and a
-   later year is recommended only between calendar tags. Without candidates, a republished current tag is the update; otherwise *up
-   to date*.
+   later year is recommended only between calendar tags. Without candidates, a republished current tag is the update;
+   otherwise *up to date*.
 5. **Republished alias** — the registry digest of the current tag differs from the running digest: *update available*
    recommending the current tag with its new digest. Its candidates are the tags carrying that new digest: the
    current tag first, then tags of the same version line, then semantic tags, then newest and highest.
