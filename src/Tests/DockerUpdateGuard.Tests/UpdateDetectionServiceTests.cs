@@ -1137,6 +1137,121 @@ public class UpdateDetectionServiceTests
                         "The details must name the major version that is held back");
     }
 
+    /// <summary>
+    /// Verify a calendar tag is advanced to a calendar tag of a later year
+    /// </summary>
+    [TestMethod]
+    [TestCategory("AC1")]
+    public void UpdateDetectionServiceCalendarTagRecommendsLaterYearSuccessor()
+    {
+        var evaluation = EvaluateCalendarTag("2024-12-15",
+                                             "sha256:a",
+                                             [
+                                                 CreateTagData("2024-12-15", "sha256:a", new DateTimeOffset(2024, 12, 15, 12, 00, 00, TimeSpan.Zero)),
+                                                 CreateTagData("2025-01-05", "sha256:b", new DateTimeOffset(2025, 01, 05, 12, 00, 00, TimeSpan.Zero)),
+                                             ]);
+
+        Assert.AreEqual(UpdateEvaluationStatus.UpdateAvailable,
+                        evaluation.Status,
+                        "A calendar tag must see a calendar tag of a later year as an available update");
+        Assert.AreEqual("2025-01-05",
+                        evaluation.RecommendedTag,
+                        "The later-year calendar tag must be the recommendation");
+        Assert.AreEqual("Newer tag '2025-01-05' is available",
+                        evaluation.Summary,
+                        "The summary must name the later-year calendar tag");
+    }
+
+    /// <summary>
+    /// Verify calendar candidates of several years are ordered highest first
+    /// </summary>
+    [TestMethod]
+    [TestCategory("AC2")]
+    public void UpdateDetectionServiceCalendarTagOrdersCandidatesAcrossYears()
+    {
+        var evaluation = EvaluateCalendarTag("2024-11-01",
+                                             null,
+                                             [
+                                                 CreateTagData("2024-12-15", "sha256:b", new DateTimeOffset(2024, 12, 15, 12, 00, 00, TimeSpan.Zero)),
+                                                 CreateTagData("2025-01-05", "sha256:c", new DateTimeOffset(2025, 01, 05, 12, 00, 00, TimeSpan.Zero)),
+                                                 CreateTagData("2025-02-10", "sha256:d", new DateTimeOffset(2025, 02, 10, 12, 00, 00, TimeSpan.Zero)),
+                                             ]);
+
+        Assert.AreEqual("2025-02-10",
+                        evaluation.RecommendedTag,
+                        "The highest calendar tag across years must be recommended");
+        Assert.AreSequenceEqual(["2025-02-10", "2025-01-05", "2024-12-15"],
+                                evaluation.Candidates.Select(candidate => candidate.Tag)
+                                                     .ToArray(),
+                                "Calendar candidates must be ordered highest first across years");
+    }
+
+    /// <summary>
+    /// Verify a product-year tag ignores a tag of a later year
+    /// </summary>
+    [TestMethod]
+    [TestCategory("AC3")]
+    public void UpdateDetectionServiceProductYearTagIgnoresLaterYearSuccessor()
+    {
+        var evaluation = EvaluateCalendarTag("2019-CU32-ubuntu-20.04",
+                                             "sha256:a",
+                                             [
+                                                 CreateTagData("2019-CU32-ubuntu-20.04", "sha256:a", new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero)),
+                                                 CreateTagData("2022-CU1-ubuntu-20.04", "sha256:b", new DateTimeOffset(2025, 06, 04, 12, 00, 00, TimeSpan.Zero)),
+                                             ]);
+
+        Assert.AreEqual(UpdateEvaluationStatus.UpToDate,
+                        evaluation.Status,
+                        "A product-year tag must never see a later-year tag as an update");
+        Assert.AreEqual("No newer year-based version was found",
+                        evaluation.Summary,
+                        "The summary must report that no newer year-based version exists");
+    }
+
+    /// <summary>
+    /// Verify a calendar tag ignores a later-year tag with a lettered suffix
+    /// </summary>
+    [TestMethod]
+    [TestCategory("AC4")]
+    public void UpdateDetectionServiceCalendarTagIgnoresLaterYearProductTag()
+    {
+        var evaluation = EvaluateCalendarTag("2024-12-15",
+                                             "sha256:a",
+                                             [
+                                                 CreateTagData("2024-12-15", "sha256:a", new DateTimeOffset(2024, 12, 15, 12, 00, 00, TimeSpan.Zero)),
+                                                 CreateTagData("2025-CU1", "sha256:b", new DateTimeOffset(2025, 06, 04, 12, 00, 00, TimeSpan.Zero)),
+                                             ]);
+
+        Assert.AreEqual(UpdateEvaluationStatus.UpToDate,
+                        evaluation.Status,
+                        "A later-year tag with a lettered suffix must not be an update for a calendar tag");
+        Assert.AreEqual("No newer year-based version was found",
+                        evaluation.Summary,
+                        "The summary must report that no newer year-based version exists");
+    }
+
+    /// <summary>
+    /// Verify a product-year tag ignores a later-year calendar tag
+    /// </summary>
+    [TestMethod]
+    [TestCategory("AC4")]
+    public void UpdateDetectionServiceProductYearTagIgnoresLaterYearCalendarTag()
+    {
+        var evaluation = EvaluateCalendarTag("2019-CU32",
+                                             "sha256:a",
+                                             [
+                                                 CreateTagData("2019-CU32", "sha256:a", new DateTimeOffset(2025, 06, 01, 12, 00, 00, TimeSpan.Zero)),
+                                                 CreateTagData("2025-01-05", "sha256:b", new DateTimeOffset(2025, 06, 04, 12, 00, 00, TimeSpan.Zero)),
+                                             ]);
+
+        Assert.AreEqual(UpdateEvaluationStatus.UpToDate,
+                        evaluation.Status,
+                        "A later-year calendar tag must not be an update for a product-year tag");
+        Assert.AreEqual("No newer year-based version was found",
+                        evaluation.Summary,
+                        "The summary must report that no newer year-based version exists");
+    }
+
     #endregion // Methods
 
     #region Static methods
@@ -1173,6 +1288,44 @@ public class UpdateDetectionServiceTests
     private static DateTimeOffset CreateRelativeTimestamp(int offsetDays)
     {
         return DateTimeOffset.UtcNow.AddDays(offsetDays);
+    }
+
+    /// <summary>
+    /// Evaluate a year-prefixed current tag against registry tags
+    /// </summary>
+    /// <param name="currentTag">Current tag</param>
+    /// <param name="currentDigest">Running image digest</param>
+    /// <param name="tags">Registry tags</param>
+    /// <returns>Evaluation result</returns>
+    private static UpdateEvaluationResult EvaluateCalendarTag(string currentTag, string? currentDigest, IReadOnlyList<DockerHubTagData> tags)
+    {
+        var service = CreateService();
+
+        return service.Evaluate(new ImageReference
+                                {
+                                    Registry = "registry.example.com",
+                                    Repository = "example/app",
+                                    Tag = currentTag,
+                                    Digest = currentDigest,
+                                },
+                                tags);
+    }
+
+    /// <summary>
+    /// Create registry tag data
+    /// </summary>
+    /// <param name="tag">Tag</param>
+    /// <param name="digest">Digest</param>
+    /// <param name="publishedAtUtc">Publication time</param>
+    /// <returns>Tag data</returns>
+    private static DockerHubTagData CreateTagData(string tag, string digest, DateTimeOffset publishedAtUtc)
+    {
+        return new DockerHubTagData
+               {
+                   Tag = tag,
+                   Digest = digest,
+                   PublishedAtUtc = publishedAtUtc,
+               };
     }
 
     #endregion // Static methods
