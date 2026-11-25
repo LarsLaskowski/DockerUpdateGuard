@@ -1,6 +1,6 @@
 # 0061: Calendar year-prefixed tags are compared across years
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-25
 - **Area:** Update detection
 - **Source:** Issue #82
