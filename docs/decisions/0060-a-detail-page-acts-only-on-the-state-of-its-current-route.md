@@ -35,9 +35,10 @@ page with its actions), a late success hid the alert of the current route's fail
 4. **The same clearing and late-answer guard in the shared load helper for all four detail pages, keyed by the
    route** — one place decides whether a load's answer still belongs to the route shown; first left to a follow-up
    (#540), taken with #544.
-5. **A load sequence number in the helper instead of the route key** — would also order two loads of the same route,
-   but those answers describe the same record, and the route key is what the runtime container page already compares
-   for its availability checks and actions.
+5. **A sequence number for every load instead of a count of route changes** — would also order two reloads of a
+   route that was never left, which never show another record; the route key alone, on the other hand, lets a load
+   of a first visit decide the outcome after a return to the same route (A → B → A), where a late failure would drop
+   the record of the second visit.
 6. **The route comparison and the clearing as a copy in each page** — no change to the helper, but four copies of the
    same comparison, and the helper would still apply a late failure.
 
@@ -45,8 +46,8 @@ page with its actions), a late success hid the alert of the current route's fail
 
 Options 1 and 4: every detail page records the route of each parameter set in the shared load helper and drops its
 detail at once when the route identifier changes (the runtime container page also its action availability, action
-outcome and error); the helper keeps the answer of a load — record, missing record or failure — only while the route
-it was requested for is still current. The runtime container page also keeps the answer of an availability check or
+outcome and error); the helper keeps the record or missing record a load answers only while its route is current,
+and a load's outcome — failure or success — only while no route change happened since the load started. The runtime container page also keeps the answer of an availability check or
 action only for its current route, and sends no action whose confirmation ended after the route changed. The
 resulting behavior is in [Web UI](../areas/web-ui.md#general) and its
 [container actions section](../areas/web-ui.md#container-actions-section).
@@ -58,7 +59,9 @@ resulting behavior is in [Web UI](../areas/web-ui.md#general) and its
 - Every detail page shows its skeleton during a route change, also after its first render reused the prerendered
   record; a re-render with the same route keeps the shown record until its reload completes.
 - A late load of an earlier route changes nothing shown; its failure is still logged.
-- Two loads of the same route are not ordered: the answer that ends last stands, as both describe the shown record.
+- Two loads of a route that was never left in between are not ordered: the answer that ends last stands. After a
+  return to a route (A → B → A) the outcome is the later visit's, while a late record of the first visit under the
+  same route is still applied as that route's record.
 - A page that never records its route keeps no load answer at all, so a new detail page wires the helper completely
   or shows only its skeleton.
 - An action that runs while the user moves away keeps the new container's buttons disabled, without progress, until

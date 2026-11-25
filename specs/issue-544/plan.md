@@ -39,11 +39,13 @@ Security areas touched: none
   route's load ends — also when the first render reused the prerendered record (persistent state).
 - AC2: On every detail page, a record or not-found answer of a load for an earlier route that arrives after the route
   change shows nothing of it: the current route's skeleton, detail, not-found note or alert stays.
-- AC3: On every detail page, a failed load of an earlier route that ends after the route change shows no load alert
+- AC3: On every detail page, a failed load started before the latest route change (also when the page has since
+  returned to that load's route, A → B → A) that ends after the change shows no load alert
   and keeps the current route's detail (on the runtime container page with its action section); the failure is still
   logged once as `UserActionFailed` with the page's load action. Decided by the second step of
   `DetailLoadState.RunAsync`.
-- AC4: On every detail page, a successful load of an earlier route that ends after the current route's load failed
+- AC4: On every detail page, a successful load started before the latest route change (also for A → B → A) that ends
+  after the current load failed
   keeps the current alert `<prefix>: <reason>` shown. Decided by the second step of `DetailLoadState.RunAsync`.
 - AC5: A re-render with the same route identifier keeps the shown record until its reload completes, on every detail
   page (unchanged behavior).
@@ -63,10 +65,10 @@ Security areas touched: none
 | AC2 | `DockerInstanceDetailLateDetailOfPreviousRouteIsDropped` | `src/Tests/DockerUpdateGuard.Tests/DockerInstanceDetailTests.cs` |
 | AC2 | `MyImageDetailLateDetailOfPreviousRouteIsDropped` | `src/Tests/DockerUpdateGuard.Tests/MyImageDetailTests.cs` |
 | AC2 | `ObservedImageDetailLateDetailOfPreviousRouteIsDropped` | `src/Tests/DockerUpdateGuard.Tests/ObservedImageDetailTests.cs` |
-| AC3 | `DetailLoadStateLateFailureOfEarlierRouteKeepsCurrentOutcome` | `src/Tests/DockerUpdateGuard.Tests/DetailLoadStateTests.cs` |
+| AC3 | `DetailLoadStateLateFailureOfEarlierRouteKeepsCurrentOutcome` (A → B and A → B → A) | `src/Tests/DockerUpdateGuard.Tests/DetailLoadStateTests.cs` |
 | AC3 | `DockerInstanceDetailLateLoadFailureOfPreviousRouteKeepsCurrentDetail` | `src/Tests/DockerUpdateGuard.Tests/DockerInstanceDetailTests.cs` |
 | AC3 | `RuntimeContainerDetailLateLoadFailureOfPreviousRouteKeepsCurrentDetailAsync` | `src/Tests/DockerUpdateGuard.Tests/RuntimeContainerDetailTests.cs` |
-| AC4 | `DetailLoadStateLateSuccessOfEarlierRouteKeepsCurrentAlert` | `src/Tests/DockerUpdateGuard.Tests/DetailLoadStateTests.cs` |
+| AC4 | `DetailLoadStateLateSuccessOfEarlierRouteKeepsCurrentAlert` (A → B and A → B → A) | `src/Tests/DockerUpdateGuard.Tests/DetailLoadStateTests.cs` |
 | AC4 | `DockerInstanceDetailLateDetailAfterCurrentLoadFailureKeepsAlert` | `src/Tests/DockerUpdateGuard.Tests/DockerInstanceDetailTests.cs` |
 | AC4 | `RuntimeContainerDetailLateDetailAfterCurrentLoadFailureKeepsAlert` | `src/Tests/DockerUpdateGuard.Tests/RuntimeContainerDetailTests.cs` |
 | AC5 | `DetailLoadStateSetRouteReportsOnlyChangedKey` (same key answers false) | `src/Tests/DockerUpdateGuard.Tests/DetailLoadStateTests.cs` |
@@ -80,7 +82,9 @@ Test cases the Tester derives:
   `shown`, and `Found("a", null, shown)` leaves `IsNotFound` `false`; `Found("b", null, shown)` returns `null` and sets
   `IsNotFound`. Late failure: run A pending, `SetRoute("b")`, run B completes, A fails → `ErrorMessage` null,
   `clearDetail` not called, one `UserActionFailed` entry. Late success: run A pending, B fails, A completes →
-  `ErrorMessage` is B's message. The control case (the current route's failure sets the message and calls
+  `ErrorMessage` is B's message. Both cases also run for A → B → A: run A1 pending, `SetRoute("b")`, `SetRoute("a")`,
+  run A2 ends (success for the late-failure case, failure for the late-success case), then A1 ends → A2's outcome
+  stays (`clearDetail` not called, or A2's message kept). The control case (the current route's failure sets the message and calls
   `clearDetail`) is covered by the existing `…LoadFailureShowsFixedErrorAndLogs` page tests.
 - Page tests use the existing patterns: `page.Render(...)` to move the route (as `ObservedImageDetailRouteChangeTo…`),
   `DetailPageAssert.AssertLoading` / `AssertLoadedAsync` / `AssertLoadErrorAsync`, and for the runtime page its private
@@ -96,16 +100,20 @@ Test cases the Tester derives:
 
 `DetailLoadState` owns the route key:
 
-- New private field `_routeKey` (`string?`), the key of the latest parameter set. `SetRoute(routeKey)` records it and
-  answers whether it replaced a different, earlier key (`false` on the first call and for the same key).
-- `RunAsync` keeps its signature; it captures `_routeKey` synchronously at its start (it is called from
+- New private fields `_routeKey` (`string?`), the key of the latest parameter set, and `_routeChanges` (`int`), the
+  number of route changes so far. `SetRoute(routeKey)` records the key and answers whether it replaced a different,
+  earlier key (`false` on the first call and for the same key); each time it answers `true` it increments
+  `_routeChanges`.
+- `RunAsync` keeps its signature; it captures `_routeChanges` synchronously at its start (it is called from
   `OnParametersSetAsync` on the renderer's context, right after `SetRoute`) and in its second `invoke` returns at once,
-  setting nothing and calling nothing, when `_routeKey` no longer equals the captured key (`string.Equals`, ordinal).
-  The first step stays as it is (fact 6). `PageLoader.LoadAsync` still logs every failure, also a late one.
+  setting nothing and calling nothing, when `_routeChanges` has moved on. The counter, not the key, decides here, so a
+  load started before A → B → A cannot set the outcome of the load started after the return (*Challenge*, objection
+  1). Same-route reloads that never left the route stay unordered (AC5). The first step stays as it is (fact 6). `PageLoader.LoadAsync` still logs every failure, also a late one.
 - `Found` takes the route key the load was requested for and the detail the page shows: while that key is `_routeKey`
   it sets `IsNotFound` and returns the loaded detail, otherwise it changes nothing and returns the shown detail. A
-  page that never calls `SetRoute` keeps no answer (fails closed; record 0060 *Consequences*).
-- All reads and writes of `_routeKey` happen on the renderer's synchronization context (`OnParametersSetAsync`, the
+  page that never calls `SetRoute` keeps no answer (fails closed; record 0060 *Consequences*). `Found` keeps comparing
+  keys: a late answer under the same key is that route's record.
+- All reads and writes of `_routeKey` and `_routeChanges` happen on the renderer's synchronization context (`OnParametersSetAsync`, the
   `invoke` callbacks, `InvokeAsync` in `LoadAsync`), so no lock is needed.
 
 Pages:
@@ -126,10 +134,12 @@ Early draft PR: no
 
 ## Options considered
 
-- **Route key in the helper (chosen)** — the issue's request and record 0060 option 4; one comparison for all four
-  pages.
-- **A load sequence number in the helper** — orders same-route reloads too, but those answers describe the same
-  record; the runtime page already compares route keys for availability and actions (record 0060, option 5).
+- **Route key and a count of route changes in the helper (chosen)** — the issue's request and record 0060 option 4;
+  one place for all four pages; the count keeps A → B → A from reviving a load of the first visit.
+- **The route key alone as the guard of `RunAsync`** — the first plan; a late failure of a load started before
+  A → B → A matched the key again and dropped the current record (*Challenge*, objection 1).
+- **A sequence number for every load** — orders same-route reloads too, which never showed another record; the runtime
+  page already compares route keys for availability and actions (record 0060, option 5).
 - **Route comparison and clearing copied into each page, helper unchanged** — leaves the helper applying a late
   failure, four copies of one comparison (the duplication condition on new code) (record 0060, option 6).
 - **Pass the route key into `RunAsync` as a seventh parameter instead of `SetRoute`** — would still need the key
@@ -142,7 +152,7 @@ Early draft PR: no
 
 | Project | Type / file | Change |
 | ------- | ----------- | ------ |
-| DockerUpdateGuard | `Components/DetailLoadState.cs` | `_routeKey`, `SetRoute`, `Found` changed, guard in `RunAsync` |
+| DockerUpdateGuard | `Components/DetailLoadState.cs` | `_routeKey`, `_routeChanges`, `SetRoute`, `Found` changed, guard in `RunAsync` |
 | DockerUpdateGuard | `Components/Pages/DockerInstanceDetail.razor.cs` | `RouteKey`, `SetRoute` call and clearing, `Found` call |
 | DockerUpdateGuard | `Components/Pages/MyImageDetail.razor.cs` | as above |
 | DockerUpdateGuard | `Components/Pages/ObservedImageDetail.razor.cs` | as above |
@@ -160,7 +170,7 @@ In `internal sealed class DetailLoadState`:
   deleted.
 - `RunAsync` keeps its signature (six parameters, within S107's seven); only its body changes.
 
-New private members described in *Approach*: field `_routeKey` (new `Fields` region in `DetailLoadState`), property
+New private members described in *Approach*: fields `_routeKey` and `_routeChanges` (new `Fields` region in `DetailLoadState`), property
 `RouteKey` in the three pages (`Properties` region, as in `RuntimeContainerDetail`). Deleted: the field `_lastRouteKey`
 of `RuntimeContainerDetail`.
 
@@ -217,6 +227,14 @@ service once per parameter set and through `PageLoader`; only which answers are 
   place): renamed from `0060-the-runtime-container-page-acts-only-on-the-state-of-its-current-route.md`, retitled,
   options 4–6, decision now options 1 and 4, consequences updated; index row updated.
 
+## Challenge
+
+- Objection 1 (major): a route-key guard in `RunAsync` fails for A → B → A — a late failure of the first visit's load
+  drops the record of the second visit's load, a late success hides its alert. **Accepted.** `SetRoute` counts route
+  changes and `RunAsync` compares the count captured at its start (*Approach*); `Found` keeps the key comparison; the
+  AC3 and AC4 helper tests gain an A → B → A case (*Tests per criterion*, test cases); record 0060's option 5,
+  decision and consequence on unordered loads were reworded to cover only reloads of a route that was never left.
+
 ## Out of scope / follow-ups
 
-- Ordering two loads of the same route (record 0060, *Consequences*).
+- Ordering two loads of the same route that was never left (record 0060, *Consequences*).
