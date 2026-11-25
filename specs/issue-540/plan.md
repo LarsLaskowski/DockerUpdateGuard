@@ -173,3 +173,40 @@ unchanged. Layering unchanged.
   instance, own image and observed image pages keep the previous detail during a route change, and
   `DetailLoadState.RunAsync` applies a late answer — a failed one too, also on the runtime container page — of an
   earlier route; guard the shared helper by route key (decision 0060, option 4).
+
+## Challenge notes
+
+Devil's Advocate, mode plan, specs/issue-540/plan.md
+
+The plan holds up on the points that decide it. The page really is reused across routes: `Routes` has `@rendermode="InteractiveServer"` globally (`src/DockerUpdateGuard/Components/App.razor:16`), so the issue's report can happen. The plan's line references match the code: `RuntimeContainerDetail.razor.cs:245-251, 333-360, 378, 410-430, 449, 452, 464, 494-519`, `DetailLoadState.cs:50-67`, and the markup at `RuntimeContainerDetail.razor:25, 122-150, 494-503`. It is right that the issue's smallest fix is too narrow, because a late answer or an open dialog would still pair A with B. The test helpers it names exist (`RuntimeContainerDetailTests.cs:1155, 1193, 1260, 1278`; `Helper/DetailPageAssert.cs:79`). I found no major objection, only four sibling paths that the plan leaves unguarded:
+
+1. **minor:** A late load answer for A can still change B's page through `DetailLoadState.RunAsync`, and AC2 as worded does not exclude that. The second `invoke` (`DetailLoadState.cs:58-67`) sets `ErrorMessage = errorMessage` without any condition and calls `clearDetail()` on a failure. The plan's guard in `LoadAsync` does not reach it. Two cases follow:
+   - A late failure for A drops B's detail that is already shown and shows "Loading the container failed". The plan names this only in the follow-up.
+   - A late success for A sets `ErrorMessage = null` after B's own load failed. That hides B's error alert and leaves the skeleton up for good. The plan does not mention this case at all.
+
+   Instruction: either word AC2 and its *Areas* text as "a successful detail answer for A is dropped", or route-guard the page's `clearDetail`/error step (for example, skip `RunAsync`'s second step when the route changed). In both cases, name both cases (late failure and late success) in the follow-up issue text.
+
+2. **minor:** Keeping `_runningAction` across the move (Approach step 2) disables B's buttons, and it also shows the progress spinner on B's button of the same action type (`RuntimeContainerDetail.razor:151-154`, `_runningAction == offeredAction`). So B's page shows "Stop" spinning while A is being stopped, which is the same misattribution as "outcome on the wrong page". Instruction: show the spinner only when the running action belongs to the current route, or keep the disabled state and say in the web-ui.md *Container actions section* text that the buttons stay disabled without a spinner. Add one assertion to the AC5 tests that matches whichever you choose.
+
+3. **minor:** The outer catch of `ConfirmAndExecuteAsync` (`RuntimeContainerDetail.razor.cs:391-399`) sets `_errorMessage = "Container action failed: …"` with no route check. It catches exceptions from `DialogService.ShowAsync`, from `dialogReference.Result`, and from the `InvokeAsync` calls of `ExecuteActionAsync`. Step 4 guards only the `_errorMessage` set inside `ExecuteActionAsync` (`:464`). Instruction: apply the same `IsCurrentRoute` check, with the locals taken at the start of `ShowConfirmationAndExecuteAsync`, to that catch block too. That way AC5's "no error alert on B" holds for every failure path.
+
+4. **minor:** Tag selection has the same "outcome on the wrong page" defect, and the plan's scope misses it. `SaveSelectionAsync` and `ClearSelectionAsync` (`:273-327`) read `DockerInstanceId`/`ContainerId` at call time and set `_errorMessage` ("Saving/Clearing the tag selection failed") after the service returns. A failure that lands after the move therefore shows on B's page. Step 2 clears `_errorMessage` only at the move itself. Instruction: take the ids into locals at the start of both methods, send them, and set `_errorMessage` only when `IsCurrentRoute(locals)`. Otherwise, list this explicitly under *Out of scope*.
+
+## Security notes
+
+Security plan review, issue #540 (mode `plan`). I reviewed `/home/user/DockerUpdateGuard/specs/issue-540/plan.md` against `src/DockerUpdateGuard/Components/Pages/RuntimeContainerDetail.razor.cs` (lines 240-530), `src/DockerUpdateGuard/Components/DetailLoadState.cs`, `src/DockerUpdateGuard/UI/RuntimeContainerDetailViewData.cs`, `docs/areas/container-actions.md` (*Actions*, *Checks at confirmation*) and the `security` row of *Tiers* in `.squad/routing.md`. I ran no probes or measurements. None were needed: see the last point below.
+
+**Tier.** `standard` is correct. The confirmation dialog stops an operator from acting on the wrong container by mistake. It does not decide what an attacker can reach: the app has no sign-in, and the server's checks at confirmation and the one-action-per-container guard (decision 0036) are unchanged. *Security areas touched* lists Container actions, which is the only area involved. Logging is unchanged, since the plan adds no new log call.
+
+**What I checked.**
+- **The dialog names the container it acts on.** Step 4 copies the identifiers into locals before the first `await` (`StartAction` → `ConfirmAndExecuteAsync` → `ShowConfirmationAndExecuteAsync` run synchronously on the dispatcher). `ExecuteAsync` is then called with those locals. So even if the route changes between the route check and the send, the action goes to the container the dialog named, never to B. A route that goes A→B→A before the user confirms sends A's action under A's name, which is correct.
+- **What the dialog reads matches the route.** Every write to `_detail` and `_availability` is either guarded by step 3, a clear to null (step 2, `DetailLoadState`'s `clearDetail`), or the prerender restore in `OnInitialized`, which runs only for the first route. So the `_detail` and `_availability` the dialog reads at click time belong to the current route.
+- **Failures fail safe.** When the route check fails, nothing is sent. `_runningAction` and `_isBusy` are kept, so B's buttons stay disabled. The plan does not rely on MudBlazor closing the dialog: a dialog closed that way returns canceled and sends nothing.
+- **No measurement needed.** The pairing rests on plain C# async ordering and on the locals, not on how a library behaves. Fact 1 is pinned by the existing test `RuntimeContainerDetailRouteChangeAfterLoadFailureClearsAlert`. Fact 2 only explains why the late-answer guards exist, and those guards are safe either way.
+- **Tests.** The AC4 and AC5 tests assert `DidNotReceive().ExecuteAsync(…)` for any arguments, and `Received(1)` with A's identifiers. That pins the property.
+
+**Findings**
+
+1. [NON-BLOCKING] Plan, *Approach* step 4. The dialog takes A's name from `detail` but the identifiers it sends from the route, so the right pairing depends on steps 2 and 3 holding. `RuntimeContainerDetailViewData` already carries `DockerInstanceId` (line 13) and `ContainerId` (line 18), so the pairing can be made to hold by construction. Smallest fix: in step 4, also check that the captured identifiers equal `detail.DockerInstanceId` and `detail.ContainerId` (ordinal), and send nothing if they differ. The AC4 test covers this unchanged. Recommendation: fix now
+
+2. [NON-BLOCKING] Plan, *Approach* step 3. Today `LoadAsync` assigns `_detail = _loadState.Found(detail)`, and `Found` also sets `IsNotFound`. If only the `_detail` assignment is guarded, A's late not-found answer can still show "not found" on B's page while B is loading. Smallest fix: in step 3, add the sentence "the whole assignment `_detail = _loadState.Found(detail)` runs inside the guard, so a late answer also leaves `IsNotFound` alone". The follow-up issue already covers `DetailLoadState.RunAsync` applying a late failed answer. That one only clears or shows a fixed message and never pairs a name with other identifiers, so it can wait for the follow-up. Recommendation: fix now
