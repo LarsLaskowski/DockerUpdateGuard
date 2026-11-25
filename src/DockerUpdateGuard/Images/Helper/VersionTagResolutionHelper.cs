@@ -393,6 +393,22 @@ public static partial class VersionTagResolutionHelper
     }
 
     /// <summary>
+    /// Determine whether two year-prefixed tags belong to the same year line
+    /// Tags of the same year always match; tags of different years match only when both are calendar tags
+    /// without a letter in the suffix
+    /// </summary>
+    /// <param name="tag">Current year-prefixed tag</param>
+    /// <param name="candidateTag">Candidate year-prefixed tag</param>
+    /// <returns>True when the candidate tag belongs to the year line of the current tag</returns>
+    public static bool IsMatchingYearPrefixedLine(string tag, string candidateTag)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tag);
+        ArgumentException.ThrowIfNullOrWhiteSpace(candidateTag);
+
+        throw new InvalidOperationException("Skeleton: not implemented");
+    }
+
+    /// <summary>
     /// Resolve the variant-family key of a year-prefixed tag suffix
     /// The leading servicing segments such as 'CU32' or 'GDR10' describe the update level inside a
     /// family, while the remaining segments such as 'ubuntu-20.04' or 'latest' identify the family
