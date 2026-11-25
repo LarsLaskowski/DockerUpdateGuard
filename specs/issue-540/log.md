@@ -20,3 +20,5 @@ are quoted in full.
 | 2026-11-25 12:19 | 8 Review | Reviewer | VERDICT: BLOCKING 0 \| NON-BLOCKING 2 on 35ba77f30b2739798ab7669b2743ce13e76bf6a1. Both verbatim doc fixes in web-ui.md: (1) Layout sentence on late failed load (line 46); (2) add decision 0060 to Related decisions. (opus/medium · 52,461 tokens · 12 tool uses · 64 s · 22 in · 5,419 out · 442,954 cache read · 45,418 cache write · 212,074 weighted) |
 | 2026-11-25 12:19 | 8 Verbatim fix | Orchestrator | verbatim: [NON-BLOCKING, verbatim] docs/areas/web-ui.md:46; [NON-BLOCKING, verbatim] docs/areas/web-ui.md:258 |
 | 2026-11-25 12:19 | 7 Gate stamp | Orchestrator | PASS on 8c3aa9a029515c8c6512f40b2384db474ad342fa (tier standard, verbatim): Format check pass; decision-check.py pass; scope-check.py pass |
+| 2026-11-25 12:19 | 7 Gate stamp | Orchestrator | PASS on 8064e66c4c871f115def45eff12ef25a33229ca8 (tier standard, verbatim): Format check pass; decision-check.py pass; scope-check.py pass |
+| 2026-11-25 12:19 | 9 PR approval | Orchestrator | approved by checklist |
