@@ -41,7 +41,9 @@ to read the state the other areas compute and to start manual scans; it computes
   detail page (Docker instance, own image, observed image, runtime container) whose record does not exist shows a
   not-found note with a link back to its list instead, and keeps its route. When the page gets another route
   identifier, its not-found note and load error are cleared at once, while the previously loaded detail stays shown
-  until the new load completes.
+  until the new load completes. The runtime container page is the exception: it also clears its detail, its action
+  section and the outcome or error of an action at once, so it shows the loading skeleton until the new container's
+  detail arrives, and it drops a detail answer or an availability answer that arrives for an earlier route.
 
 ### Pages and routes
 
@@ -132,6 +134,10 @@ to read the state the other areas compute and to start manual scans; it computes
   the action has ended, the page shows the outcome, reloads its data (so the history's newest row is this run, though
   the runtime status stays that of the last runtime scan) and asks for the availability again. Closing the browser
   does not stop the action.
+- A confirmation given after the page moved to another container sends and records nothing. While an action of the
+  earlier container still runs, the new container's buttons are disabled and none shows progress. The outcome or
+  failure of an action, confirmation or tag selection that ends after such a move is not shown (an action's run is in
+  its container's history).
 - Messages of Portainer or the action are rendered HTML-encoded.
 
 ### Refresh without reload

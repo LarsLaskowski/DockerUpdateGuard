@@ -53,6 +53,16 @@ public sealed partial class RuntimeContainerDetail : IDisposable
     private string? _availabilityKey;
 
     /// <summary>
+    /// Route key of the last parameter set
+    /// </summary>
+    private string? _lastRouteKey;
+
+    /// <summary>
+    /// Route key of the container the running action was started for
+    /// </summary>
+    private string? _runningActionRouteKey;
+
+    /// <summary>
     /// Action that is executing for the container
     /// </summary>
     private ContainerActionType? _runningAction;
@@ -128,6 +138,11 @@ public sealed partial class RuntimeContainerDetail : IDisposable
     /// </summary>
     [Inject]
     public ILogger<RuntimeContainerDetail> Logger { get; set; } = null!;
+
+    /// <summary>
+    /// Key of the route the page currently shows: Docker instance and container
+    /// </summary>
+    private string RouteKey => $"{DockerInstanceId}/{ContainerId}";
 
     #endregion // Properties
 
@@ -239,15 +254,34 @@ public sealed partial class RuntimeContainerDetail : IDisposable
     #region Methods
 
     /// <summary>
+    /// Check whether the identifiers are those of the route the page currently shows
+    /// </summary>
+    /// <param name="dockerInstanceId">Docker instance identifier</param>
+    /// <param name="containerId">Container identifier</param>
+    /// <returns>True when the identifiers are the current route's</returns>
+    private bool IsCurrentRoute(Guid dockerInstanceId, string containerId)
+    {
+        return string.Equals($"{dockerInstanceId}/{containerId}", RouteKey, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Load the detail view model
     /// </summary>
     /// <returns>Task</returns>
     private async Task LoadAsync()
     {
-        var detail = await ViewService.GetRuntimeContainerDetailAsync(DockerInstanceId, ContainerId)
+        var dockerInstanceId = DockerInstanceId;
+        var containerId = ContainerId;
+        var detail = await ViewService.GetRuntimeContainerDetailAsync(dockerInstanceId, containerId)
                                       .ConfigureAwait(false);
 
-        await InvokeAsync(() => _detail = _loadState.Found(detail)).ConfigureAwait(false);
+        await InvokeAsync(() =>
+                          {
+                              if (IsCurrentRoute(dockerInstanceId, containerId))
+                              {
+                                  _detail = _loadState.Found(detail);
+                              }
+                          }).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -272,6 +306,9 @@ public sealed partial class RuntimeContainerDetail : IDisposable
     /// <returns>Task</returns>
     private async Task SaveSelectionAsync(string tag, string? digest)
     {
+        var dockerInstanceId = DockerInstanceId;
+        var containerId = ContainerId;
+
         await InvokeAsync(() =>
                           {
                               _isBusy = true;
@@ -280,7 +317,7 @@ public sealed partial class RuntimeContainerDetail : IDisposable
 
         try
         {
-            await TagSelectionService.SaveSelectionAsync(DockerInstanceId, ContainerId, tag, digest)
+            await TagSelectionService.SaveSelectionAsync(dockerInstanceId, containerId, tag, digest)
                                      .ConfigureAwait(false);
             await LoadAsync().ConfigureAwait(false);
         }
@@ -288,7 +325,13 @@ public sealed partial class RuntimeContainerDetail : IDisposable
         {
             Logger.UserActionFailed("SaveTagSelection", exception);
 
-            await InvokeAsync(() => _errorMessage = $"Saving the tag selection failed: {FailureReason.FromException(exception, null, CancellationToken.None)}").ConfigureAwait(false);
+            await InvokeAsync(() =>
+                              {
+                                  if (IsCurrentRoute(dockerInstanceId, containerId))
+                                  {
+                                      _errorMessage = $"Saving the tag selection failed: {FailureReason.FromException(exception, null, CancellationToken.None)}";
+                                  }
+                              }).ConfigureAwait(false);
         }
         finally
         {
@@ -302,6 +345,9 @@ public sealed partial class RuntimeContainerDetail : IDisposable
     /// <returns>Task</returns>
     private async Task ClearSelectionAsync()
     {
+        var dockerInstanceId = DockerInstanceId;
+        var containerId = ContainerId;
+
         await InvokeAsync(() =>
                           {
                               _isBusy = true;
@@ -310,7 +356,7 @@ public sealed partial class RuntimeContainerDetail : IDisposable
 
         try
         {
-            await TagSelectionService.ClearSelectionAsync(DockerInstanceId, ContainerId)
+            await TagSelectionService.ClearSelectionAsync(dockerInstanceId, containerId)
                                      .ConfigureAwait(false);
             await LoadAsync().ConfigureAwait(false);
         }
@@ -318,7 +364,13 @@ public sealed partial class RuntimeContainerDetail : IDisposable
         {
             Logger.UserActionFailed("ClearTagSelection", exception);
 
-            await InvokeAsync(() => _errorMessage = $"Clearing the tag selection failed: {FailureReason.FromException(exception, null, CancellationToken.None)}").ConfigureAwait(false);
+            await InvokeAsync(() =>
+                              {
+                                  if (IsCurrentRoute(dockerInstanceId, containerId))
+                                  {
+                                      _errorMessage = $"Clearing the tag selection failed: {FailureReason.FromException(exception, null, CancellationToken.None)}";
+                                  }
+                              }).ConfigureAwait(false);
         }
         finally
         {
@@ -332,14 +384,21 @@ public sealed partial class RuntimeContainerDetail : IDisposable
     /// <returns>Task</returns>
     private async Task LoadAvailabilityAsync()
     {
+        var dockerInstanceId = DockerInstanceId;
+        var containerId = ContainerId;
+
         try
         {
-            var availability = await ContainerActionService.GetAvailabilityAsync(DockerInstanceId, ContainerId)
+            var availability = await ContainerActionService.GetAvailabilityAsync(dockerInstanceId, containerId)
                                                            .ConfigureAwait(false);
 
             await InvokeAsync(() =>
                               {
-                                  _availability = availability;
+                                  if (IsCurrentRoute(dockerInstanceId, containerId))
+                                  {
+                                      _availability = availability;
+                                  }
+
                                   StateHasChanged();
                               }).ConfigureAwait(false);
         }
@@ -353,7 +412,11 @@ public sealed partial class RuntimeContainerDetail : IDisposable
 
             await InvokeAsync(() =>
                               {
-                                  _availability = null;
+                                  if (IsCurrentRoute(dockerInstanceId, containerId))
+                                  {
+                                      _availability = null;
+                                  }
+
                                   StateHasChanged();
                               }).ConfigureAwait(false);
         }
@@ -375,14 +438,20 @@ public sealed partial class RuntimeContainerDetail : IDisposable
     /// <returns>Task</returns>
     private async Task ConfirmAndExecuteAsync(ContainerActionType actionType)
     {
-        if (_detail is null || _availability is null || _runningAction is not null)
+        var detail = _detail;
+        var availability = _availability;
+
+        if (detail is null
+            || availability is null
+            || _runningAction is not null
+            || IsCurrentRoute(detail.DockerInstanceId, detail.ContainerId) == false)
         {
             return;
         }
 
         try
         {
-            await ShowConfirmationAndExecuteAsync(actionType, _detail, _availability).ConfigureAwait(false);
+            await ShowConfirmationAndExecuteAsync(actionType, detail, availability).ConfigureAwait(false);
         }
         catch (ObjectDisposedException)
         {
@@ -394,7 +463,11 @@ public sealed partial class RuntimeContainerDetail : IDisposable
 
             await InvokeAsync(() =>
                               {
-                                  _errorMessage = $"Container action failed: {FailureReason.FromException(exception, null, CancellationToken.None)}";
+                                  if (IsCurrentRoute(detail.DockerInstanceId, detail.ContainerId))
+                                  {
+                                      _errorMessage = $"Container action failed: {FailureReason.FromException(exception, null, CancellationToken.None)}";
+                                  }
+
                                   StateHasChanged();
                               }).ConfigureAwait(false);
         }
@@ -426,30 +499,54 @@ public sealed partial class RuntimeContainerDetail : IDisposable
             return;
         }
 
-        await ExecuteActionAsync(actionType).ConfigureAwait(false);
+        await ExecuteActionAsync(actionType, detail.DockerInstanceId, detail.ContainerId).ConfigureAwait(false);
     }
 
     /// <summary>
     /// Execute a confirmed container action and show its outcome
     /// </summary>
     /// <param name="actionType">Action type</param>
+    /// <param name="dockerInstanceId">Docker instance identifier the action is for</param>
+    /// <param name="containerId">Container identifier the action is for</param>
     /// <returns>Task</returns>
-    private async Task ExecuteActionAsync(ContainerActionType actionType)
+    private async Task ExecuteActionAsync(ContainerActionType actionType,
+                                          Guid dockerInstanceId,
+                                          string containerId)
     {
+        var isCurrent = false;
+
         await InvokeAsync(() =>
                           {
+                              if (IsCurrentRoute(dockerInstanceId, containerId) == false)
+                              {
+                                  return;
+                              }
+
+                              isCurrent = true;
                               _runningAction = actionType;
+                              _runningActionRouteKey = RouteKey;
                               _actionOutcome = null;
                               _errorMessage = null;
                               StateHasChanged();
                           }).ConfigureAwait(false);
 
+        if (isCurrent == false)
+        {
+            return;
+        }
+
         try
         {
-            var outcome = await ContainerActionService.ExecuteAsync(DockerInstanceId, ContainerId, actionType)
+            var outcome = await ContainerActionService.ExecuteAsync(dockerInstanceId, containerId, actionType)
                                                       .ConfigureAwait(false);
 
-            await InvokeAsync(() => _actionOutcome = outcome).ConfigureAwait(false);
+            await InvokeAsync(() =>
+                              {
+                                  if (IsCurrentRoute(dockerInstanceId, containerId))
+                                  {
+                                      _actionOutcome = outcome;
+                                  }
+                              }).ConfigureAwait(false);
             await LoadAsync().ConfigureAwait(false);
             await LoadAvailabilityAsync().ConfigureAwait(false);
         }
@@ -461,13 +558,20 @@ public sealed partial class RuntimeContainerDetail : IDisposable
         {
             Logger.UserActionFailed("ContainerAction", exception);
 
-            await InvokeAsync(() => _errorMessage = $"Container action failed: {FailureReason.FromException(exception, null, CancellationToken.None)}").ConfigureAwait(false);
+            await InvokeAsync(() =>
+                              {
+                                  if (IsCurrentRoute(dockerInstanceId, containerId))
+                                  {
+                                      _errorMessage = $"Container action failed: {FailureReason.FromException(exception, null, CancellationToken.None)}";
+                                  }
+                              }).ConfigureAwait(false);
         }
         finally
         {
             await InvokeAsync(() =>
                               {
                                   _runningAction = null;
+                                  _runningActionRouteKey = null;
                                   StateHasChanged();
                               }).ConfigureAwait(false);
         }
@@ -493,6 +597,19 @@ public sealed partial class RuntimeContainerDetail : IDisposable
     /// <inheritdoc/>
     protected override async Task OnParametersSetAsync()
     {
+        var routeKey = RouteKey;
+
+        if (_lastRouteKey is not null && _lastRouteKey != routeKey)
+        {
+            _detail = null;
+            _availability = null;
+            _availabilityKey = null;
+            _actionOutcome = null;
+            _errorMessage = null;
+        }
+
+        _lastRouteKey = routeKey;
+
         if (_restoredFromState)
         {
             _restoredFromState = false;
@@ -507,7 +624,7 @@ public sealed partial class RuntimeContainerDetail : IDisposable
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         // The capability check contacts Portainer, so it runs on the interactive render only, never during prerender
-        var key = $"{DockerInstanceId}/{ContainerId}";
+        var key = RouteKey;
 
         if (RendererInfo.IsInteractive && _availabilityKey != key)
         {

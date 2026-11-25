@@ -148,7 +148,7 @@
                                        Color="@(offeredAction == ContainerActionType.StartContainer ? Color.Primary : Color.Error)"
                                        Disabled="@(_runningAction is not null)"
                                        OnClick="@(() => StartAction(offeredAction))">
-                                @if (_runningAction == offeredAction)
+                                @if (_runningAction == offeredAction && _runningActionRouteKey == RouteKey)
                                 {
                                     <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
                                 }
