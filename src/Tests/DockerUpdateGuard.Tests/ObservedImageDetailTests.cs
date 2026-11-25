@@ -327,6 +327,84 @@ public class ObservedImageDetailTests
     }
 
     /// <summary>
+    /// Verify a route change while the new load is pending shows the skeleton only and none of the previous record
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC1")]
+    public async Task ObservedImageDetailRouteChangeWhileLoadPendingShowsSkeleton()
+    {
+        var testContext = BlazorTestContextFactory.Create();
+
+        await using (testContext)
+        {
+            var firstId = Guid.NewGuid();
+            var secondId = Guid.NewGuid();
+            var pending = new TaskCompletionSource<ObservedImageDetailViewData?>();
+            var viewService = Substitute.For<IApplicationViewService>();
+
+            viewService.GetObservedImageDetailAsync(firstId, Arg.Any<CancellationToken>())
+                       .Returns(CreateObservedImageDetailViewData(firstId, "Company API"));
+            viewService.GetObservedImageDetailAsync(secondId, Arg.Any<CancellationToken>())
+                       .Returns(pending.Task);
+
+            testContext.Services.AddSingleton(viewService);
+
+            var page = testContext.Render<ObservedImageDetail>(parameters => parameters.Add(component => component.ObservedImageId, firstId));
+
+            await DetailPageAssert.AssertLoadedAsync(page, "Company API", "This observed image does not exist.").ConfigureAwait(false);
+
+            page.Render(parameters => parameters.Add(component => component.ObservedImageId, secondId));
+
+            DetailPageAssert.AssertLoading(page);
+            Assert.DoesNotContain("Company API", page.Markup, "The previous record must not be shown while the new load is pending");
+        }
+    }
+
+    /// <summary>
+    /// Verify a record of the earlier route that arrives after the route change is dropped
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC2")]
+    public async Task ObservedImageDetailLateDetailOfPreviousRouteIsDropped()
+    {
+        var testContext = BlazorTestContextFactory.Create();
+
+        await using (testContext)
+        {
+            var firstId = Guid.NewGuid();
+            var secondId = Guid.NewGuid();
+            var pendingFirst = new TaskCompletionSource<ObservedImageDetailViewData?>();
+            var pendingSecond = new TaskCompletionSource<ObservedImageDetailViewData?>();
+            var viewService = Substitute.For<IApplicationViewService>();
+
+            viewService.GetObservedImageDetailAsync(firstId, Arg.Any<CancellationToken>())
+                       .Returns(pendingFirst.Task);
+            viewService.GetObservedImageDetailAsync(secondId, Arg.Any<CancellationToken>())
+                       .Returns(pendingSecond.Task);
+
+            testContext.Services.AddSingleton(viewService);
+
+            var page = testContext.Render<ObservedImageDetail>(parameters => parameters.Add(component => component.ObservedImageId, firstId));
+
+            page.Render(parameters => parameters.Add(component => component.ObservedImageId, secondId));
+            pendingFirst.SetResult(CreateObservedImageDetailViewData(firstId, "Company API"));
+
+            await DetailPageAssert.SettleAsync(page).ConfigureAwait(false);
+
+            DetailPageAssert.AssertLoading(page);
+            Assert.DoesNotContain("Company API", page.Markup, "The late record of the earlier route must not be shown");
+
+            pendingSecond.SetResult(CreateObservedImageDetailViewData(secondId, "Company Web"));
+
+            await DetailPageAssert.AssertLoadedAsync(page, "Company Web", "This observed image does not exist.").ConfigureAwait(false);
+
+            Assert.DoesNotContain("Company API", page.Markup, "The shown record must stay the one of the current route");
+        }
+    }
+
+    /// <summary>
     /// Create a detail for the load tests
     /// </summary>
     /// <param name="id">Identifier</param>

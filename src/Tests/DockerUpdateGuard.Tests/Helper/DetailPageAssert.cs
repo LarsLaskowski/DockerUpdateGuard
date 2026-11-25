@@ -103,6 +103,42 @@ internal static class DetailPageAssert
     }
 
     /// <summary>
+    /// Let the answers that are already completed reach the page's dispatcher
+    /// </summary>
+    /// <typeparam name="TComponent">Page type</typeparam>
+    /// <param name="page">Rendered page</param>
+    /// <returns>Task</returns>
+    public static async Task SettleAsync<TComponent>(IRenderedComponent<TComponent> page)
+        where TComponent : IComponent
+    {
+        for (var round = 0; round < 3; round++)
+        {
+            await Task.Yield();
+            await page.InvokeAsync(() =>
+                                   {
+                                   }).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Wait until the logger holds a user-action failure entry of the action
+    /// </summary>
+    /// <typeparam name="TComponent">Page type</typeparam>
+    /// <typeparam name="TCategoryName">Logger category</typeparam>
+    /// <param name="page">Rendered page, used to wait</param>
+    /// <param name="logger">Test logger</param>
+    /// <param name="action">Expected action name</param>
+    /// <returns>Task</returns>
+    public static async Task WaitForLoadLoggedAsync<TComponent, TCategoryName>(IRenderedComponent<TComponent> page, TestLogger<TCategoryName> logger, string action)
+        where TComponent : IComponent
+    {
+        await page.WaitForAssertionAsync(() => Assert.Contains(entry => entry.EventId.Id == UserActionFailedEventId && entry.Message == $"User action {action} failed",
+                                                               logger.Entries,
+                                                               $"The late failed load must be logged as user action {action}"),
+                                         TimeSpan.FromSeconds(WaitSeconds)).ConfigureAwait(false);
+    }
+
+    /// <summary>
     /// Assert the logger holds exactly one user-action failure entry of the action, carrying the exception; other entries are ignored
     /// </summary>
     /// <typeparam name="TCategoryName">Logger category</typeparam>

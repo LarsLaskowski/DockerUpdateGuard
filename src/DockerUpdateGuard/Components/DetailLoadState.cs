@@ -5,6 +5,20 @@ namespace DockerUpdateGuard.Components;
 /// </summary>
 internal sealed class DetailLoadState
 {
+    #region Fields
+
+    /// <summary>
+    /// Key of the latest parameter set
+    /// </summary>
+    private string? _routeKey;
+
+    /// <summary>
+    /// Number of route changes so far
+    /// </summary>
+    private int _routeChanges;
+
+    #endregion // Fields
+
     #region Properties
 
     /// <summary>
@@ -22,14 +36,40 @@ internal sealed class DetailLoadState
     #region Methods
 
     /// <summary>
-    /// Record the answer of a load
+    /// Record the route key of the latest parameter set
+    /// </summary>
+    /// <param name="routeKey">Key of the route the page shows</param>
+    /// <returns>True when the key replaces a different key of an earlier parameter set</returns>
+    public bool SetRoute(string routeKey)
+    {
+        var changed = _routeKey is not null && string.Equals(_routeKey, routeKey, StringComparison.Ordinal) == false;
+
+        _routeKey = routeKey;
+
+        if (changed)
+        {
+            _routeChanges++;
+        }
+
+        return changed;
+    }
+
+    /// <summary>
+    /// Record the answer of a load for a route
     /// </summary>
     /// <typeparam name="T">Type of the detail</typeparam>
+    /// <param name="routeKey">Key of the route the load was requested for</param>
     /// <param name="detail">Loaded detail, null when the record does not exist</param>
-    /// <returns>The detail</returns>
-    public T? Found<T>(T? detail)
+    /// <param name="shown">Detail the page currently shows</param>
+    /// <returns>The detail the page shows afterwards</returns>
+    public T? Found<T>(string routeKey, T? detail, T? shown)
         where T : class
     {
+        if (string.Equals(_routeKey, routeKey, StringComparison.Ordinal) == false)
+        {
+            return shown;
+        }
+
         IsNotFound = detail is null;
 
         return detail;
@@ -47,6 +87,8 @@ internal sealed class DetailLoadState
     /// <returns>Task</returns>
     public async Task RunAsync(Func<Action, Task> invoke, Func<Task> load, ILogger logger, string action, string messagePrefix, Action clearDetail)
     {
+        var routeChanges = _routeChanges;
+
         await invoke(() =>
                      {
                          IsNotFound = false;
@@ -57,6 +99,11 @@ internal sealed class DetailLoadState
 
         await invoke(() =>
                      {
+                         if (routeChanges != _routeChanges)
+                         {
+                             return;
+                         }
+
                          ErrorMessage = errorMessage;
 
                          if (errorMessage is not null)

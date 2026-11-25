@@ -108,5 +108,42 @@ public class MyImageDetailPersistentStateTests
         }
     }
 
+    /// <summary>
+    /// Verify a route change after the first render reused the prerendered record shows the skeleton and none of the restored record
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC1")]
+    public async Task MyImageDetailRouteChangeAfterRestoreShowsSkeleton()
+    {
+        var testContext = BlazorTestContextFactory.Create();
+
+        await using (testContext)
+        {
+            var firstId = Guid.NewGuid();
+            var secondId = Guid.NewGuid();
+            var pending = new TaskCompletionSource<ObservedImageDetailViewData?>();
+            var viewService = Substitute.For<IApplicationViewService>();
+
+            viewService.GetObservedImageDetailAsync(secondId, Arg.Any<CancellationToken>())
+                       .Returns(pending.Task);
+
+            testContext.Services.AddSingleton(viewService);
+
+            var persistentState = testContext.GetPersistentComponentState();
+
+            persistentState.Persist(StateKey, CreateDetail(firstId, "restored-image"));
+
+            var page = testContext.Render<MyImageDetail>(parameters => parameters.Add(component => component.ObservedImageId, firstId));
+
+            Assert.Contains("restored-image", page.Markup, "The first render must show the record restored from persistent state");
+
+            page.Render(parameters => parameters.Add(component => component.ObservedImageId, secondId));
+
+            DetailPageAssert.AssertLoading(page);
+            Assert.DoesNotContain("restored-image", page.Markup, "The restored record must not be shown for the new route");
+        }
+    }
+
     #endregion // Methods
 }
