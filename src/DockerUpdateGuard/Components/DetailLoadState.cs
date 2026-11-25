@@ -7,8 +7,6 @@ internal sealed class DetailLoadState
 {
     #region Fields
 
-    // Skeleton: removed with the implementation
-#pragma warning disable S1144, IDE0044, CS0169
     /// <summary>
     /// Key of the latest parameter set
     /// </summary>
@@ -18,7 +16,6 @@ internal sealed class DetailLoadState
     /// Number of route changes so far
     /// </summary>
     private int _routeChanges;
-#pragma warning restore S1144, IDE0044, CS0169
 
     #endregion // Fields
 
@@ -38,8 +35,6 @@ internal sealed class DetailLoadState
 
     #region Methods
 
-    // Skeleton: removed with the implementation
-#pragma warning disable CA1822, S2325
     /// <summary>
     /// Record the route key of the latest parameter set
     /// </summary>
@@ -47,9 +42,17 @@ internal sealed class DetailLoadState
     /// <returns>True when the key replaces a different key of an earlier parameter set</returns>
     public bool SetRoute(string routeKey)
     {
-        throw new InvalidOperationException("Skeleton: not implemented");
+        var changed = _routeKey is not null && string.Equals(_routeKey, routeKey, StringComparison.Ordinal) == false;
+
+        _routeKey = routeKey;
+
+        if (changed)
+        {
+            _routeChanges++;
+        }
+
+        return changed;
     }
-#pragma warning restore CA1822, S2325
 
     /// <summary>
     /// Record the answer of a load for a route
@@ -62,7 +65,11 @@ internal sealed class DetailLoadState
     public T? Found<T>(string routeKey, T? detail, T? shown)
         where T : class
     {
-        // Skeleton: zero-value stub keeps the existing page tests green
+        if (string.Equals(_routeKey, routeKey, StringComparison.Ordinal) == false)
+        {
+            return shown;
+        }
+
         IsNotFound = detail is null;
 
         return detail;
@@ -80,6 +87,8 @@ internal sealed class DetailLoadState
     /// <returns>Task</returns>
     public async Task RunAsync(Func<Action, Task> invoke, Func<Task> load, ILogger logger, string action, string messagePrefix, Action clearDetail)
     {
+        var routeChanges = _routeChanges;
+
         await invoke(() =>
                      {
                          IsNotFound = false;
@@ -90,6 +99,11 @@ internal sealed class DetailLoadState
 
         await invoke(() =>
                      {
+                         if (routeChanges != _routeChanges)
+                         {
+                             return;
+                         }
+
                          ErrorMessage = errorMessage;
 
                          if (errorMessage is not null)

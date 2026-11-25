@@ -149,6 +149,11 @@ public sealed partial class MyImageDetail : IDisposable
     /// <inheritdoc/>
     protected override async Task OnParametersSetAsync()
     {
+        if (_loadState.SetRoute(RouteKey))
+        {
+            _detail = null;
+        }
+
         if (_restoredFromState)
         {
             _restoredFromState = false;

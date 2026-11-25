@@ -55,11 +55,6 @@ public sealed partial class RuntimeContainerDetail : IDisposable
     private string? _availabilityKey;
 
     /// <summary>
-    /// Route key of the last parameter set
-    /// </summary>
-    private string? _lastRouteKey;
-
-    /// <summary>
     /// Route key of the container the running action was started for
     /// </summary>
     private string? _runningActionRouteKey;
@@ -278,13 +273,7 @@ public sealed partial class RuntimeContainerDetail : IDisposable
         var detail = await ViewService.GetRuntimeContainerDetailAsync(dockerInstanceId, containerId)
                                       .ConfigureAwait(false);
 
-        await InvokeAsync(() =>
-                          {
-                              if (IsCurrentRoute(dockerInstanceId, containerId))
-                              {
-                                  _detail = _loadState.Found(routeKey, detail, _detail);
-                              }
-                          }).ConfigureAwait(false);
+        await InvokeAsync(() => _detail = _loadState.Found(routeKey, detail, _detail)).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -602,7 +591,7 @@ public sealed partial class RuntimeContainerDetail : IDisposable
     {
         var routeKey = RouteKey;
 
-        if (_lastRouteKey is not null && _lastRouteKey != routeKey)
+        if (_loadState.SetRoute(routeKey))
         {
             _detail = null;
             _availability = null;
@@ -610,8 +599,6 @@ public sealed partial class RuntimeContainerDetail : IDisposable
             _actionOutcome = null;
             _errorMessage = null;
         }
-
-        _lastRouteKey = routeKey;
 
         if (_restoredFromState)
         {

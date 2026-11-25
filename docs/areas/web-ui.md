@@ -40,11 +40,13 @@ to read the state the other areas compute and to start manual scans; it computes
 - While a page loads its data it shows placeholder skeletons; a list without data shows an explanatory empty state. A
   detail page (Docker instance, own image, observed image, runtime container) whose record does not exist shows a
   not-found note with a link back to its list instead, and keeps its route. When the page gets another route
-  identifier, its not-found note and load error are cleared at once, while the previously loaded detail stays shown
-  until the new load completes. The runtime container page is the exception: it also clears its detail, its action
-  section and the outcome or error of an action at once, so it shows the loading skeleton until the new container's
-  detail arrives, and it drops a successful detail answer or an availability answer that arrives for an earlier route
-  (a failed load of an earlier route that ends late still shows the load alert and drops the shown detail).
+  identifier, it clears its detail, its not-found note and its load error at once and shows the loading skeleton until
+  the new load ends, also when the first render reused the prerendered record; a record, not-found or failure answer
+  that arrives for an earlier route is dropped (also when the page has since returned to that route), so the current
+  route's skeleton, detail, not-found note or alert stays; a failed load of an earlier route is still logged. The
+  runtime container page also clears its action section and the outcome or error of an action, and drops an
+  availability answer that arrives for an earlier route. A re-render with the same route identifier keeps the shown
+  record until its reload completes.
 
 ### Pages and routes
 
@@ -259,8 +261,8 @@ never their values.
   explicit suffix.
 - [0059](../decisions/0059-a-detail-page-shows-a-missing-record-or-a-failed-load-inline.md) — A detail page shows a
   missing record or a failed load inline.
-- [0060](../decisions/0060-the-runtime-container-page-acts-only-on-the-state-of-its-current-route.md) — The runtime
-  container page acts only on the state of its current route.
+- [0060](../decisions/0060-a-detail-page-acts-only-on-the-state-of-its-current-route.md) — A detail page
+  acts only on the state of its current route.
 
 ## Not here
 
