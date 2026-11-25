@@ -120,4 +120,5 @@ once in the [area document](../areas/README.md) of the record's area, and the re
 | [0057](0057-currently-known-containers-are-resolved-by-one-query-in-the-data-layer.md) | Currently known containers are resolved by one query in the data layer | Accepted | 2026-11-23 |
 | [0058](0058-timestamps-are-shown-in-utc-with-an-explicit-suffix.md) | Timestamps are shown in UTC with an explicit suffix | Accepted | 2026-11-23 |
 | [0059](0059-a-detail-page-shows-a-missing-record-or-a-failed-load-inline.md) | A detail page shows a missing record or a failed load inline | Accepted | 2026-11-24 |
+| [0060](0060-the-runtime-container-page-acts-only-on-the-state-of-its-current-route.md) | The runtime container page acts only on the state of its current route | Accepted | 2026-11-25 |
 <!-- project:end index -->
