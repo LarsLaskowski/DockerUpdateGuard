@@ -81,13 +81,11 @@ public class UpdateDetectionService : IUpdateDetectionService
     /// </summary>
     /// <param name="orderedTags">Ordered available tags</param>
     /// <param name="currentTag">Current tag</param>
-    /// <param name="currentYear">Current major year</param>
     /// <param name="currentDigest">Current running digest</param>
     /// <param name="currentPublishedAtUtc">Current tag publication timestamp</param>
     /// <returns>Higher year-based candidates</returns>
     private static List<(DockerHubTagData Tag, int Year, string Suffix)> GetHigherYearPrefixedCandidates(IReadOnlyList<DockerHubTagData> orderedTags,
                                                                                                          string currentTag,
-                                                                                                         int currentYear,
                                                                                                          string? currentDigest,
                                                                                                          DateTimeOffset? currentPublishedAtUtc)
     {
@@ -98,7 +96,7 @@ public class UpdateDetectionService : IUpdateDetectionService
                                       return (Tag: tag, IsYearPrefixedVersion: isYearPrefixedVersion, Year: tagYear, Suffix: suffix);
                                   })
                           .Where(candidate => candidate.IsYearPrefixedVersion
-                                              && candidate.Year == currentYear
+                                              && VersionTagResolutionHelper.IsMatchingYearPrefixedLine(currentTag, candidate.Tag.Tag)
                                               && VersionTagResolutionHelper.IsMatchingYearPrefixedVariantFamily(currentTag, candidate.Tag.Tag)
                                               && VersionTagResolutionHelper.CompareYearPrefixedTags(candidate.Tag.Tag, currentTag) > 0
                                               && CurrentDigestMatches(currentDigest, candidate.Tag.Digest) == false
@@ -497,14 +495,13 @@ public class UpdateDetectionService : IUpdateDetectionService
                                                                       DockerHubTagData? currentTagData,
                                                                       IReadOnlyList<DockerHubTagData> orderedTags)
     {
-        if (TryParseYearPrefixedVersion(currentImage.Tag, out var currentYear, out _) == false)
+        if (TryParseYearPrefixedVersion(currentImage.Tag, out _, out _) == false)
         {
             return null;
         }
 
         var versionCandidates = GetHigherYearPrefixedCandidates(orderedTags,
                                                                 currentImage.Tag,
-                                                                currentYear,
                                                                 currentImage.Digest,
                                                                 currentTagData?.PublishedAtUtc);
 

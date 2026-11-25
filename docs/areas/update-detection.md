@@ -35,10 +35,12 @@ inventory metrics rely on the stored assessments and findings.
 - Comparable tags order by major, minor, patch; then by their variant segments in natural order (digit runs compared
   numerically, text case-insensitively); then a release ranks above any pre-release of the same version; then
   pre-release segments in natural order (`rc2` below `rc10`).
-- Year-prefixed tags are comparable only within the same year and the same year-variant family. The year-variant
-  family is the suffix after its leading servicing segments (segments that start with letters and contain a digit,
-  such as `CU12`), lower-cased; it is empty when that rest contains no letter. Within a family, tags order by the
-  natural order of the suffix.
+- Year-prefixed tags are comparable only within the same year-variant family and the same year, except that two
+  **calendar tags** (year-prefixed tags whose suffix contains no letter, such as `2024-12-15`) are comparable across
+  years and order by year, then suffix. The year-variant family is the suffix after its leading servicing segments
+  (segments that start with letters and contain a digit, such as `CU12`), lower-cased; it is empty when that rest
+  contains no letter. Within a family, tags order by the natural order of the suffix. A tag with a letter in its
+  suffix (`2019-CU32-ubuntu-20.04`, `2024-12-15-alpine`) names a product line and never compares with another year.
 
 ### Alias resolution
 
@@ -85,9 +87,10 @@ details, an optional recommended tag and digest, and at most **50** candidates. 
    and filtered by the major-upgrade policy below. If candidates remain, the first is recommended (*update
    available*). Otherwise, if the current tag was republished with a different digest, that is the update; otherwise
    *up to date*.
-4. **Year-prefixed current tag** — candidates are the tags of the same year and year-variant family that order above
-   the current tag, with the same digest and publication conditions; highest first. No major-upgrade policy applies,
-   and no other year is ever recommended. Without candidates, a republished current tag is the update; otherwise *up
+4. **Year-prefixed current tag** — candidates are the tags of the same year-variant family that order above the
+   current tag, with the same digest and publication conditions; highest first. They are of the same year or, when
+   the current tag and the candidate are both calendar tags, of any later year. No major-upgrade policy applies, and a
+   later year is recommended only between calendar tags. Without candidates, a republished current tag is the update; otherwise *up
    to date*.
 5. **Republished alias** — the registry digest of the current tag differs from the running digest: *update available*
    recommending the current tag with its new digest. Its candidates are the tags carrying that new digest: the
@@ -193,6 +196,8 @@ scan run *partial*, with the message added to the run ([Scan engine](scan-engine
   runtime findings kept through a failed container evaluation move to its new snapshot.
 - [0044](../decisions/0044-a-runtime-container-whose-processing-fails-takes-what-it-could-not-determine-from-its-latest-earlier-snapshot.md):
   a runtime container whose processing fails takes what it could not determine from its latest earlier snapshot.
+- [0061](../decisions/0061-calendar-year-prefixed-tags-are-compared-across-years.md): calendar year-prefixed tags are
+  compared across years.
 
 ## Not here
 

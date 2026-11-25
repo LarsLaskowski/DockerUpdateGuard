@@ -206,14 +206,8 @@ internal static class TagCandidateViewHelper
             return versionComparison >= 0;
         }
 
-        if (VersionTagResolutionHelper.TryParseYearPrefixedTag(currentComparableTag, out var currentYear, out _)
-            && VersionTagResolutionHelper.TryParseYearPrefixedTag(candidateComparableTag, out var candidateYear, out _))
-        {
-            return candidateYear == currentYear
-                   && VersionTagResolutionHelper.CompareYearPrefixedTags(candidateComparableTag, currentComparableTag) >= 0;
-        }
-
-        return false;
+        return VersionTagResolutionHelper.IsMatchingYearPrefixedLine(currentComparableTag, candidateComparableTag)
+               && VersionTagResolutionHelper.CompareYearPrefixedTags(candidateComparableTag, currentComparableTag) >= 0;
     }
 
     #endregion // Methods

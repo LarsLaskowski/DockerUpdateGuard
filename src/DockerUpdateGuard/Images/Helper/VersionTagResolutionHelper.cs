@@ -405,7 +405,14 @@ public static partial class VersionTagResolutionHelper
         ArgumentException.ThrowIfNullOrWhiteSpace(tag);
         ArgumentException.ThrowIfNullOrWhiteSpace(candidateTag);
 
-        throw new InvalidOperationException("Skeleton: not implemented");
+        if (TryParseYearPrefixedTag(tag, out var year, out var suffix) == false
+            || TryParseYearPrefixedTag(candidateTag, out var candidateYear, out var candidateSuffix) == false)
+        {
+            return false;
+        }
+
+        return year == candidateYear
+               || (suffix.Any(char.IsLetter) == false && candidateSuffix.Any(char.IsLetter) == false);
     }
 
     /// <summary>
