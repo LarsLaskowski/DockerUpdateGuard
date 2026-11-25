@@ -1123,6 +1123,69 @@ public class RuntimeContainerDetailTests
     }
 
     /// <summary>
+    /// Verify an availability failure of the earlier route that arrives after the route change leaves the current container's availability shown
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC3")]
+    public async Task RuntimeContainerDetailLateAvailabilityFailureOfPreviousRouteKeepsCurrentActionsAsync()
+    {
+        var pendingA = new TaskCompletionSource<ContainerActionAvailabilityData>();
+        var viewService = CreateRouteViewService();
+        var containerActionService = CreateRouteActionService(CreateAvailability("Exited"), CreateAvailability("Exited"));
+        var testContext = CreateRouteContext(viewService, containerActionService, Substitute.For<IRuntimeContainerTagSelectionService>(), new TestLogger<RuntimeContainerDetail>());
+
+        containerActionService.GetAvailabilityAsync(_routeInstanceId, RouteContainerA, Arg.Any<CancellationToken>())
+                              .Returns(pendingA.Task);
+
+        await using (testContext)
+        {
+            var page = RenderRoutePage(testContext, RouteContainerA);
+
+            MoveRoute(page, RouteContainerB);
+
+            await WaitForOfferedActionAsync(page, "Start").ConfigureAwait(false);
+
+            pendingA.SetException(new InvalidOperationException("late failure of the earlier container"));
+
+            await SettleAsync(page).ConfigureAwait(false);
+
+            Assert.AreEqual("Start", string.Join(",", GetActionButtonTexts(page)), "A late failure of the earlier container must not hide the actions of the current container");
+        }
+    }
+
+    /// <summary>
+    /// Verify a re-render with the same route while the reload is pending keeps the shown detail
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC6")]
+    public async Task RuntimeContainerDetailSameRouteReloadKeepsDetailShown()
+    {
+        var pending = new TaskCompletionSource<RuntimeContainerDetailViewData?>();
+        var viewService = CreateRouteViewService();
+        var testContext = CreateRouteContext(viewService, CreateRouteActionService(new ContainerActionAvailabilityData(), new ContainerActionAvailabilityData()), Substitute.For<IRuntimeContainerTagSelectionService>(), new TestLogger<RuntimeContainerDetail>());
+
+        await using (testContext)
+        {
+            var page = RenderRoutePage(testContext, RouteContainerA);
+
+            await DetailPageAssert.AssertLoadedAsync(page, RouteNameA, "This container is not known on this Docker instance.").ConfigureAwait(false);
+
+            viewService.GetRuntimeContainerDetailAsync(_routeInstanceId, RouteContainerA, Arg.Any<CancellationToken>())
+                       .Returns(pending.Task);
+
+            MoveRoute(page, RouteContainerA);
+
+            Assert.Contains(RouteNameA, page.Markup, "The shown detail must stay while the same route reloads");
+
+            pending.SetResult(CreateRouteDetail(RouteContainerA, RouteNameA));
+
+            await DetailPageAssert.AssertLoadedAsync(page, RouteNameA, "This container is not known on this Docker instance.").ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
     /// Verify a confirmation of a dialog opened on the earlier container and confirmed after the route change executes nothing
     /// </summary>
     /// <returns>Task</returns>
