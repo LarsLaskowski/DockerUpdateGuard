@@ -43,7 +43,8 @@ to read the state the other areas compute and to start manual scans; it computes
   identifier, its not-found note and load error are cleared at once, while the previously loaded detail stays shown
   until the new load completes. The runtime container page is the exception: it also clears its detail, its action
   section and the outcome or error of an action at once, so it shows the loading skeleton until the new container's
-  detail arrives, and it drops a detail answer or an availability answer that arrives for an earlier route.
+  detail arrives, and it drops a successful detail answer or an availability answer that arrives for an earlier route
+  (a failed load of an earlier route that ends late still shows the load alert and drops the shown detail).
 
 ### Pages and routes
 
@@ -258,6 +259,8 @@ never their values.
   explicit suffix.
 - [0059](../decisions/0059-a-detail-page-shows-a-missing-record-or-a-failed-load-inline.md) — A detail page shows a
   missing record or a failed load inline.
+- [0060](../decisions/0060-the-runtime-container-page-acts-only-on-the-state-of-its-current-route.md) — The runtime
+  container page acts only on the state of its current route.
 
 ## Not here
 
