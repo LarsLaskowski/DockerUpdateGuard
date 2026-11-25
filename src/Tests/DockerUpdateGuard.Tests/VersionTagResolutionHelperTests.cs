@@ -338,5 +338,61 @@ public class VersionTagResolutionHelperTests
                       "Calendar-style year-prefixed tags must stay comparable because they carry no variant family");
     }
 
+    /// <summary>
+    /// Verify year-prefixed tags of the same year match
+    /// </summary>
+    [TestMethod]
+    [TestCategory("AC5")]
+    public void VersionTagResolutionHelperIsMatchingYearPrefixedLineMatchesSameYear()
+    {
+        var isMatching = VersionTagResolutionHelper.IsMatchingYearPrefixedLine("2019-CU32-ubuntu-20.04", "2019-CU33-ubuntu-20.04");
+
+        Assert.IsTrue(isMatching,
+                      "Year-prefixed tags of the same year must be in the same line");
+    }
+
+    /// <summary>
+    /// Verify calendar tags of different years match
+    /// </summary>
+    [TestMethod]
+    [TestCategory("AC5")]
+    public void VersionTagResolutionHelperIsMatchingYearPrefixedLineMatchesCalendarTagsAcrossYears()
+    {
+        var isMatching = VersionTagResolutionHelper.IsMatchingYearPrefixedLine("2024-12-15", "2025-01-05");
+
+        Assert.IsTrue(isMatching,
+                      "Calendar tags must be comparable across years");
+    }
+
+    /// <summary>
+    /// Verify tags of different years with a lettered suffix do not match
+    /// </summary>
+    /// <param name="tag">Current tag</param>
+    /// <param name="candidateTag">Candidate tag</param>
+    [TestMethod]
+    [TestCategory("AC5")]
+    [DataRow("2024-12-15", "2025-CU1")]
+    [DataRow("2019-CU32", "2022-CU1")]
+    public void VersionTagResolutionHelperIsMatchingYearPrefixedLineRejectsLetteredTagsAcrossYears(string tag, string candidateTag)
+    {
+        var isMatching = VersionTagResolutionHelper.IsMatchingYearPrefixedLine(tag, candidateTag);
+
+        Assert.IsFalse(isMatching,
+                       $"A lettered suffix in '{tag}' or '{candidateTag}' must keep the same-year rule");
+    }
+
+    /// <summary>
+    /// Verify a tag that is not year-prefixed does not match
+    /// </summary>
+    [TestMethod]
+    [TestCategory("AC5")]
+    public void VersionTagResolutionHelperIsMatchingYearPrefixedLineRejectsNonYearPrefixedTag()
+    {
+        var isMatching = VersionTagResolutionHelper.IsMatchingYearPrefixedLine("2024-12-15", "1.2.3");
+
+        Assert.IsFalse(isMatching,
+                       "A tag that is not year-prefixed must never match");
+    }
+
     #endregion // Methods
 }
