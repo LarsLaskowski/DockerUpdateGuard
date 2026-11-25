@@ -274,6 +274,7 @@ public sealed partial class RuntimeContainerDetail : IDisposable
     {
         var dockerInstanceId = DockerInstanceId;
         var containerId = ContainerId;
+        var routeKey = RouteKey;
         var detail = await ViewService.GetRuntimeContainerDetailAsync(dockerInstanceId, containerId)
                                       .ConfigureAwait(false);
 
@@ -281,7 +282,7 @@ public sealed partial class RuntimeContainerDetail : IDisposable
                           {
                               if (IsCurrentRoute(dockerInstanceId, containerId))
                               {
-                                  _detail = _loadState.Found(detail);
+                                  _detail = _loadState.Found(routeKey, detail, _detail);
                               }
                           }).ConfigureAwait(false);
     }

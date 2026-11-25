@@ -70,6 +70,11 @@ public sealed partial class ObservedImageDetail : IDisposable
     [Inject]
     public ILogger<ObservedImageDetail> Logger { get; set; } = null!;
 
+    /// <summary>
+    /// Key of the route the page currently shows
+    /// </summary>
+    private string RouteKey => ObservedImageId.ToString();
+
     #endregion // Properties
 
     #region Static methods
@@ -113,10 +118,11 @@ public sealed partial class ObservedImageDetail : IDisposable
     /// <returns>Task</returns>
     private async Task LoadAsync()
     {
+        var routeKey = RouteKey;
         var detail = await ViewService.GetObservedImageDetailAsync(ObservedImageId)
                                       .ConfigureAwait(false);
 
-        await InvokeAsync(() => _detail = _loadState.Found(detail)).ConfigureAwait(false);
+        await InvokeAsync(() => _detail = _loadState.Found(routeKey, detail, _detail)).ConfigureAwait(false);
     }
 
     /// <summary>

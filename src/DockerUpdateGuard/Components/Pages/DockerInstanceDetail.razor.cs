@@ -68,6 +68,11 @@ public sealed partial class DockerInstanceDetail : IDisposable
     [Inject]
     public ILogger<DockerInstanceDetail> Logger { get; set; } = null!;
 
+    /// <summary>
+    /// Key of the route the page currently shows
+    /// </summary>
+    private string RouteKey => DockerInstanceId.ToString();
+
     #endregion // Properties
 
     #region Static methods
@@ -114,10 +119,11 @@ public sealed partial class DockerInstanceDetail : IDisposable
     /// <returns>Task</returns>
     private async Task LoadAsync()
     {
+        var routeKey = RouteKey;
         var detail = await ViewService.GetDockerInstanceDetailAsync(DockerInstanceId)
                                       .ConfigureAwait(false);
 
-        await InvokeAsync(() => _detail = _loadState.Found(detail)).ConfigureAwait(false);
+        await InvokeAsync(() => _detail = _loadState.Found(routeKey, detail, _detail)).ConfigureAwait(false);
     }
 
     /// <summary>

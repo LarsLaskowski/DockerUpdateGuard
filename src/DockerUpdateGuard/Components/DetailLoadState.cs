@@ -5,6 +5,23 @@ namespace DockerUpdateGuard.Components;
 /// </summary>
 internal sealed class DetailLoadState
 {
+    #region Fields
+
+    // Skeleton: removed with the implementation
+#pragma warning disable S1144, IDE0044, CS0169
+    /// <summary>
+    /// Key of the latest parameter set
+    /// </summary>
+    private string? _routeKey;
+
+    /// <summary>
+    /// Number of route changes so far
+    /// </summary>
+    private int _routeChanges;
+#pragma warning restore S1144, IDE0044, CS0169
+
+    #endregion // Fields
+
     #region Properties
 
     /// <summary>
@@ -21,15 +38,31 @@ internal sealed class DetailLoadState
 
     #region Methods
 
+    // Skeleton: removed with the implementation
+#pragma warning disable CA1822, S2325
     /// <summary>
-    /// Record the answer of a load
+    /// Record the route key of the latest parameter set
+    /// </summary>
+    /// <param name="routeKey">Key of the route the page shows</param>
+    /// <returns>True when the key replaces a different key of an earlier parameter set</returns>
+    public bool SetRoute(string routeKey)
+    {
+        throw new InvalidOperationException("Skeleton: not implemented");
+    }
+#pragma warning restore CA1822, S2325
+
+    /// <summary>
+    /// Record the answer of a load for a route
     /// </summary>
     /// <typeparam name="T">Type of the detail</typeparam>
+    /// <param name="routeKey">Key of the route the load was requested for</param>
     /// <param name="detail">Loaded detail, null when the record does not exist</param>
-    /// <returns>The detail</returns>
-    public T? Found<T>(T? detail)
+    /// <param name="shown">Detail the page currently shows</param>
+    /// <returns>The detail the page shows afterwards</returns>
+    public T? Found<T>(string routeKey, T? detail, T? shown)
         where T : class
     {
+        // Skeleton: zero-value stub keeps the existing page tests green
         IsNotFound = detail is null;
 
         return detail;
