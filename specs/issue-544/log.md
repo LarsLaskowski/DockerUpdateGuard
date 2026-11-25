@@ -19,3 +19,4 @@ are quoted in full.
 | 2026-11-25 16:33 | 8 Review | Reviewer | VERDICT: BLOCKING 1 \| NON-BLOCKING 0 on 9776d8aede6fd9a06973d584576a977125630f8c. Blocking: web-ui.md General sentence claims late record/not-found is dropped also after return to the route; code (and 0060) drop only the outcome after a return; fix text given (opus/medium · 52,550 tokens · 6 tool uses · 55 s · 12 in · 4,738 out · 210,466 cache read · 40,182 cache write · 168,906 weighted) |
 | 2026-11-25 16:33 | 8 Verbatim fix | Orchestrator | verbatim: [BLOCKING, verbatim] docs/areas/web-ui.md:43-47 |
 | 2026-11-25 16:34 | 7 Gate stamp | Orchestrator | PASS on 87c6aedf60a89d696f1daba4322a788d93f94bfc (tier standard, verbatim): Format check pass; decision-check.py pass; scope-check.py pass |
+| 2026-11-25 16:34 | 9 PR approval | Orchestrator | approved by checklist |
