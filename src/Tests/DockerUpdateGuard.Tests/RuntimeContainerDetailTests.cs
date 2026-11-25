@@ -1155,6 +1155,79 @@ public class RuntimeContainerDetailTests
     }
 
     /// <summary>
+    /// Verify a failed load of the earlier route that ends after the route change keeps the current detail with its actions, shows no alert and is still logged once
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC3")]
+    public async Task RuntimeContainerDetailLateLoadFailureOfPreviousRouteKeepsCurrentDetailAsync()
+    {
+        var exception = new InvalidOperationException("secret text");
+        var logger = new TestLogger<RuntimeContainerDetail>();
+        var pendingA = new TaskCompletionSource<RuntimeContainerDetailViewData?>();
+        var viewService = CreateRouteViewService();
+        var containerActionService = CreateRouteActionService(CreateAvailability("Running"), CreateAvailability("Running"));
+        var testContext = CreateRouteContext(viewService, containerActionService, Substitute.For<IRuntimeContainerTagSelectionService>(), logger);
+
+        viewService.GetRuntimeContainerDetailAsync(_routeInstanceId, RouteContainerA, Arg.Any<CancellationToken>())
+                   .Returns(pendingA.Task);
+
+        await using (testContext)
+        {
+            var page = RenderRoutePage(testContext, RouteContainerA);
+
+            MoveRoute(page, RouteContainerB);
+
+            await WaitForOfferedActionAsync(page, "Stop").ConfigureAwait(false);
+            await DetailPageAssert.AssertLoadedAsync(page, RouteNameB, "This container is not known on this Docker instance.").ConfigureAwait(false);
+
+            pendingA.SetException(exception);
+
+            await DetailPageAssert.WaitForLoadLoggedAsync(page, logger, "LoadRuntimeContainerDetail").ConfigureAwait(false);
+            await SettleAsync(page).ConfigureAwait(false);
+
+            await DetailPageAssert.AssertLoadedAsync(page, RouteNameB, "This container is not known on this Docker instance.").ConfigureAwait(false);
+            Assert.IsTrue(HasActionSection(page), "A late failure of the earlier container must not remove the action section of the current container");
+            Assert.Contains("Stop", GetActionButtonTexts(page), "A late failure of the earlier container must not hide the actions of the current container");
+            DetailPageAssert.AssertLoadLoggedOnce(logger, "LoadRuntimeContainerDetail", exception);
+        }
+    }
+
+    /// <summary>
+    /// Verify a detail of the earlier route that arrives after the current load failed keeps the alert of the current load
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC4")]
+    public async Task RuntimeContainerDetailLateDetailAfterCurrentLoadFailureKeepsAlert()
+    {
+        var pendingA = new TaskCompletionSource<RuntimeContainerDetailViewData?>();
+        var viewService = CreateRouteViewService();
+        var containerActionService = CreateRouteActionService(CreateAvailability("Running"), CreateAvailability("Running"));
+        var testContext = CreateRouteContext(viewService, containerActionService, Substitute.For<IRuntimeContainerTagSelectionService>(), new TestLogger<RuntimeContainerDetail>());
+
+        viewService.GetRuntimeContainerDetailAsync(_routeInstanceId, RouteContainerA, Arg.Any<CancellationToken>())
+                   .Returns(pendingA.Task);
+        viewService.GetRuntimeContainerDetailAsync(_routeInstanceId, RouteContainerB, Arg.Any<CancellationToken>())
+                   .Returns(Task.FromException<RuntimeContainerDetailViewData?>(new InvalidOperationException("secret text")));
+
+        await using (testContext)
+        {
+            var page = RenderRoutePage(testContext, RouteContainerA);
+
+            MoveRoute(page, RouteContainerB);
+
+            await DetailPageAssert.AssertLoadErrorAsync(page, "Loading the container failed: unexpected error", "secret text").ConfigureAwait(false);
+
+            pendingA.SetResult(CreateRouteDetail(RouteContainerA, RouteNameA));
+
+            await SettleAsync(page).ConfigureAwait(false);
+
+            await DetailPageAssert.AssertLoadErrorAsync(page, "Loading the container failed: unexpected error", "secret text", RouteNameA).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
     /// Verify a re-render with the same route while the reload is pending keeps the shown detail
     /// </summary>
     /// <returns>Task</returns>

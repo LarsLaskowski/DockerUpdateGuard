@@ -95,5 +95,58 @@ public class DockerInstanceDetailPersistentStateTests
         }
     }
 
+    /// <summary>
+    /// Verify a route change after the first render reused the prerendered record shows the skeleton and none of the restored record
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC1")]
+    public async Task DockerInstanceDetailRouteChangeAfterRestoreShowsSkeleton()
+    {
+        var testContext = BlazorTestContextFactory.Create();
+
+        await using (testContext)
+        {
+            var firstId = Guid.NewGuid();
+            var secondId = Guid.NewGuid();
+            var pending = new TaskCompletionSource<DockerInstanceDetailViewData?>();
+            var viewService = Substitute.For<IApplicationViewService>();
+
+            viewService.GetDockerInstanceDetailAsync(secondId, Arg.Any<CancellationToken>())
+                       .Returns(pending.Task);
+
+            testContext.Services.AddSingleton(viewService);
+
+            var persistentState = testContext.GetPersistentComponentState();
+
+            persistentState.Persist(StateKey, CreateRestoredDetail(firstId, "restored-instance"));
+
+            var page = testContext.Render<DockerInstanceDetail>(parameters => parameters.Add(component => component.DockerInstanceId, firstId));
+
+            Assert.Contains("restored-instance", page.Markup, "The first render must show the record restored from persistent state");
+
+            page.Render(parameters => parameters.Add(component => component.DockerInstanceId, secondId));
+
+            DetailPageAssert.AssertLoading(page);
+            Assert.DoesNotContain("restored-instance", page.Markup, "The restored record must not be shown for the new route");
+        }
+    }
+
+    /// <summary>
+    /// Create a renderable Docker-instance detail
+    /// </summary>
+    /// <param name="id">Identifier</param>
+    /// <param name="name">Name</param>
+    /// <returns>Detail</returns>
+    private static DockerInstanceDetailViewData CreateRestoredDetail(Guid id, string name)
+    {
+        return new DockerInstanceDetailViewData
+               {
+                   Id = id,
+                   Name = name,
+                   EndpointUri = "unix:///var/run/docker.sock",
+               };
+    }
+
     #endregion // Methods
 }
