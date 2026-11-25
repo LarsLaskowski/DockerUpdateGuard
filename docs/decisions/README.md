@@ -121,4 +121,5 @@ once in the [area document](../areas/README.md) of the record's area, and the re
 | [0058](0058-timestamps-are-shown-in-utc-with-an-explicit-suffix.md) | Timestamps are shown in UTC with an explicit suffix | Accepted | 2026-11-23 |
 | [0059](0059-a-detail-page-shows-a-missing-record-or-a-failed-load-inline.md) | A detail page shows a missing record or a failed load inline | Accepted | 2026-11-24 |
 | [0060](0060-a-detail-page-acts-only-on-the-state-of-its-current-route.md) | A detail page acts only on the state of its current route | Accepted | 2026-11-25 |
+| [0061](0061-calendar-year-prefixed-tags-are-compared-across-years.md) | Calendar year-prefixed tags are compared across years | Proposed | 2026-11-25 |
 <!-- project:end index -->
