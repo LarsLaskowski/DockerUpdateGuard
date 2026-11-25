@@ -53,6 +53,26 @@ public class RuntimeContainerDetailTests
     private const string RestartSucceededMessage = "Action 'restart' on 'api' executed successfully";
 
     /// <summary>
+    /// Container identifier of the first route test container
+    /// </summary>
+    private const string RouteContainerA = "route-container-a";
+
+    /// <summary>
+    /// Container identifier of the second route test container
+    /// </summary>
+    private const string RouteContainerB = "route-container-b";
+
+    /// <summary>
+    /// Container name of the first route test container
+    /// </summary>
+    private const string RouteNameA = "route-api-a";
+
+    /// <summary>
+    /// Container name of the second route test container
+    /// </summary>
+    private const string RouteNameB = "route-api-b";
+
+    /// <summary>
     /// Seconds a test waits for the page to reach an expected state
     /// </summary>
     private const int WaitSeconds = 2;
@@ -75,6 +95,11 @@ public class RuntimeContainerDetailTests
     /// Docker instance identifier of the container action tests
     /// </summary>
     private static readonly Guid _actionInstanceId = Guid.NewGuid();
+
+    /// <summary>
+    /// Docker instance identifier of the route tests
+    /// </summary>
+    private static readonly Guid _routeInstanceId = Guid.NewGuid();
 
     /// <summary>
     /// Request time of the history rows
@@ -923,6 +948,478 @@ public class RuntimeContainerDetailTests
     }
 
     /// <summary>
+    /// Verify a route change while the new load is pending shows the skeleton only: no name of the earlier container and no action section
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC1")]
+    public async Task RuntimeContainerDetailRouteChangeWhileLoadPendingShowsSkeletonWithoutActions()
+    {
+        var pending = new TaskCompletionSource<RuntimeContainerDetailViewData?>();
+        var viewService = CreateRouteViewService();
+        var containerActionService = CreateRouteActionService(CreateAvailability("Running"), CreateAvailability("Running"));
+        var testContext = CreateRouteContext(viewService, containerActionService, Substitute.For<IRuntimeContainerTagSelectionService>(), new TestLogger<RuntimeContainerDetail>());
+
+        viewService.GetRuntimeContainerDetailAsync(_routeInstanceId, RouteContainerB, Arg.Any<CancellationToken>())
+                   .Returns(pending.Task);
+
+        await using (testContext)
+        {
+            var page = RenderRoutePage(testContext, RouteContainerA);
+
+            await WaitForOfferedActionAsync(page, "Stop").ConfigureAwait(false);
+
+            MoveRoute(page, RouteContainerB);
+
+            DetailPageAssert.AssertLoading(page);
+            Assert.DoesNotContain(RouteNameA, page.Markup, "The name of the earlier container must not be shown while the new load is pending");
+            Assert.IsFalse(HasActionSection(page), "The action section of the earlier container must not be shown while the new load is pending");
+            Assert.AreSequenceEqual(Array.Empty<string>(), GetActionButtonTexts(page), "No action button of the earlier container may be offered while the new load is pending");
+        }
+    }
+
+    /// <summary>
+    /// Verify a route change after an action shows no outcome of the earlier container's action
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC1")]
+    public async Task RuntimeContainerDetailRouteChangeAfterActionClearsOutcome()
+    {
+        var pending = new TaskCompletionSource<RuntimeContainerDetailViewData?>();
+        var viewService = CreateRouteViewService();
+        var containerActionService = CreateRouteActionService(CreateAvailability("Running"), CreateAvailability("Running"));
+        var testContext = CreateRouteContext(viewService, containerActionService, Substitute.For<IRuntimeContainerTagSelectionService>(), new TestLogger<RuntimeContainerDetail>());
+
+        containerActionService.ExecuteAsync(_routeInstanceId, RouteContainerA, ContainerActionType.RestartContainer)
+                              .Returns(new ContainerActionRunResultData
+                                       {
+                                           Status = ContainerActionStatus.Succeeded,
+                                           Message = RestartSucceededMessage,
+                                       });
+        viewService.GetRuntimeContainerDetailAsync(_routeInstanceId, RouteContainerB, Arg.Any<CancellationToken>())
+                   .Returns(pending.Task);
+
+        await using (testContext)
+        {
+            var provider = testContext.Render<MudDialogProvider>();
+            var page = RenderRoutePage(testContext, RouteContainerA);
+
+            await ConfirmAsync(page, provider, "Restart", "Restart").ConfigureAwait(false);
+
+            await page.WaitForAssertionAsync(() => Assert.Contains(RestartSucceededMessage, page.Markup, "The outcome of the action must be shown"), TimeSpan.FromSeconds(WaitSeconds)).ConfigureAwait(false);
+
+            MoveRoute(page, RouteContainerB);
+
+            DetailPageAssert.AssertLoading(page);
+            Assert.DoesNotContain(RestartSucceededMessage, page.Markup, "The outcome of the earlier container's action must not be shown after the route change");
+        }
+    }
+
+    /// <summary>
+    /// Verify a detail answer of the earlier route that arrives after the route change is dropped
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC2")]
+    public async Task RuntimeContainerDetailLateDetailOfPreviousRouteIsDropped()
+    {
+        var pendingA = new TaskCompletionSource<RuntimeContainerDetailViewData?>();
+        var pendingB = new TaskCompletionSource<RuntimeContainerDetailViewData?>();
+        var viewService = CreateRouteViewService();
+        var testContext = CreateRouteContext(viewService, CreateRouteActionService(new ContainerActionAvailabilityData(), new ContainerActionAvailabilityData()), Substitute.For<IRuntimeContainerTagSelectionService>(), new TestLogger<RuntimeContainerDetail>());
+
+        viewService.GetRuntimeContainerDetailAsync(_routeInstanceId, RouteContainerA, Arg.Any<CancellationToken>())
+                   .Returns(pendingA.Task);
+        viewService.GetRuntimeContainerDetailAsync(_routeInstanceId, RouteContainerB, Arg.Any<CancellationToken>())
+                   .Returns(pendingB.Task);
+
+        await using (testContext)
+        {
+            var page = RenderRoutePage(testContext, RouteContainerA);
+
+            MoveRoute(page, RouteContainerB);
+            pendingA.SetResult(CreateRouteDetail(RouteContainerA, RouteNameA));
+
+            await SettleAsync(page).ConfigureAwait(false);
+
+            DetailPageAssert.AssertLoading(page);
+            Assert.DoesNotContain(RouteNameA, page.Markup, "The late detail of the earlier container must not be shown");
+
+            pendingB.SetResult(CreateRouteDetail(RouteContainerB, RouteNameB));
+
+            await DetailPageAssert.AssertLoadedAsync(page, RouteNameB, "This container is not known on this Docker instance.").ConfigureAwait(false);
+
+            Assert.DoesNotContain(RouteNameA, page.Markup, "The shown detail must stay the one of the current container");
+        }
+    }
+
+    /// <summary>
+    /// Verify a not-found answer of the earlier route that arrives after the route change is dropped
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC2")]
+    public async Task RuntimeContainerDetailLateNotFoundOfPreviousRouteIsDropped()
+    {
+        var pendingA = new TaskCompletionSource<RuntimeContainerDetailViewData?>();
+        var pendingB = new TaskCompletionSource<RuntimeContainerDetailViewData?>();
+        var viewService = CreateRouteViewService();
+        var testContext = CreateRouteContext(viewService, CreateRouteActionService(new ContainerActionAvailabilityData(), new ContainerActionAvailabilityData()), Substitute.For<IRuntimeContainerTagSelectionService>(), new TestLogger<RuntimeContainerDetail>());
+
+        viewService.GetRuntimeContainerDetailAsync(_routeInstanceId, RouteContainerA, Arg.Any<CancellationToken>())
+                   .Returns(pendingA.Task);
+        viewService.GetRuntimeContainerDetailAsync(_routeInstanceId, RouteContainerB, Arg.Any<CancellationToken>())
+                   .Returns(pendingB.Task);
+
+        await using (testContext)
+        {
+            var page = RenderRoutePage(testContext, RouteContainerA);
+
+            MoveRoute(page, RouteContainerB);
+            pendingA.SetResult(null);
+
+            await SettleAsync(page).ConfigureAwait(false);
+
+            DetailPageAssert.AssertLoading(page);
+
+            pendingB.SetResult(CreateRouteDetail(RouteContainerB, RouteNameB));
+
+            await DetailPageAssert.AssertLoadedAsync(page, RouteNameB, "This container is not known on this Docker instance.").ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Verify an availability answer of the earlier route that arrives after the route change is dropped
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC3")]
+    public async Task RuntimeContainerDetailLateAvailabilityOfPreviousRouteIsDropped()
+    {
+        var pendingA = new TaskCompletionSource<ContainerActionAvailabilityData>();
+        var viewService = CreateRouteViewService();
+        var containerActionService = CreateRouteActionService(CreateAvailability("Exited"), CreateAvailability("Exited"));
+        var testContext = CreateRouteContext(viewService, containerActionService, Substitute.For<IRuntimeContainerTagSelectionService>(), new TestLogger<RuntimeContainerDetail>());
+
+        containerActionService.GetAvailabilityAsync(_routeInstanceId, RouteContainerA, Arg.Any<CancellationToken>())
+                              .Returns(pendingA.Task);
+
+        await using (testContext)
+        {
+            var page = RenderRoutePage(testContext, RouteContainerA);
+
+            MoveRoute(page, RouteContainerB);
+
+            await WaitForOfferedActionAsync(page, "Start").ConfigureAwait(false);
+
+            pendingA.SetResult(CreateAvailability("InProgress"));
+
+            await SettleAsync(page).ConfigureAwait(false);
+
+            Assert.AreEqual("Start", string.Join(",", GetActionButtonTexts(page)), "The section must offer the actions of the current container only");
+            Assert.DoesNotContain("An action is in progress for this container.", page.Markup, "The message of the earlier container's availability must not be shown");
+        }
+    }
+
+    /// <summary>
+    /// Verify a confirmation of a dialog opened on the earlier container and confirmed after the route change executes nothing
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC4")]
+    public async Task RuntimeContainerDetailConfirmationAfterRouteChangeExecutesNothingAsync()
+    {
+        var viewService = CreateRouteViewService();
+        var containerActionService = CreateRouteActionService(CreateAvailability("Running"), CreateAvailability("Running"));
+        var testContext = CreateRouteContext(viewService, containerActionService, Substitute.For<IRuntimeContainerTagSelectionService>(), new TestLogger<RuntimeContainerDetail>());
+
+        await using (testContext)
+        {
+            var provider = testContext.Render<MudDialogProvider>();
+            var page = RenderRoutePage(testContext, RouteContainerA);
+
+            await ClickActionAsync(page, "Stop").ConfigureAwait(false);
+
+            await provider.WaitForAssertionAsync(() => Assert.IsNotEmpty(provider.FindAll(".mud-dialog"), "The confirmation dialog must open"), TimeSpan.FromSeconds(WaitSeconds)).ConfigureAwait(false);
+
+            MoveRoute(page, RouteContainerB);
+
+            await provider.FindAll(".mud-dialog button")
+                          .Single(button => button.TextContent.Trim() == "Stop")
+                          .ClickAsync()
+                          .ConfigureAwait(false);
+
+            await provider.WaitForAssertionAsync(() => Assert.IsEmpty(provider.FindAll(".mud-dialog"), "The confirmation must close the dialog"), TimeSpan.FromSeconds(WaitSeconds)).ConfigureAwait(false);
+            await SettleAsync(page).ConfigureAwait(false);
+
+            await containerActionService.DidNotReceive()
+                                        .ExecuteAsync(Arg.Any<Guid>(), Arg.Any<string>(), Arg.Any<ContainerActionType>())
+                                        .ConfigureAwait(false);
+            Assert.IsEmpty(page.FindAll(".mud-alert"), "A confirmation after the route change must show no outcome or error");
+        }
+    }
+
+    /// <summary>
+    /// Verify an action of a page whose shown detail belongs to another container than its route opens no dialog and executes nothing
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC4")]
+    public async Task RuntimeContainerDetailConfirmationForDetailOfOtherContainerExecutesNothingAsync()
+    {
+        var viewService = CreateRouteViewService();
+        var containerActionService = CreateRouteActionService(CreateAvailability("Running"), CreateAvailability("Running"));
+        var testContext = CreateRouteContext(viewService, containerActionService, Substitute.For<IRuntimeContainerTagSelectionService>(), new TestLogger<RuntimeContainerDetail>());
+
+        viewService.GetRuntimeContainerDetailAsync(_routeInstanceId, RouteContainerA, Arg.Any<CancellationToken>())
+                   .Returns(CreateRouteDetail(RouteContainerA, RouteNameA, RouteContainerB));
+
+        await using (testContext)
+        {
+            var provider = testContext.Render<MudDialogProvider>();
+            var page = RenderRoutePage(testContext, RouteContainerA);
+
+            await ClickActionAsync(page, "Stop").ConfigureAwait(false);
+            await SettleAsync(page).ConfigureAwait(false);
+
+            foreach (var dialogButton in provider.FindAll(".mud-dialog button").Where(button => button.TextContent.Trim() == "Stop"))
+            {
+                await dialogButton.ClickAsync().ConfigureAwait(false);
+            }
+
+            await SettleAsync(page).ConfigureAwait(false);
+
+            Assert.IsEmpty(provider.FindAll(".mud-dialog"), "A detail of another container must not open the confirmation dialog");
+            await containerActionService.DidNotReceive()
+                                        .ExecuteAsync(Arg.Any<Guid>(), Arg.Any<string>(), Arg.Any<ContainerActionType>())
+                                        .ConfigureAwait(false);
+            Assert.IsEmpty(page.FindAll(".mud-alert"), "A refused confirmation must show no outcome or error");
+        }
+    }
+
+    /// <summary>
+    /// Verify an action that ends after the route change shows no outcome on the new container's page and leaves its buttons disabled without progress meanwhile
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC5")]
+    public async Task RuntimeContainerDetailActionEndingAfterRouteChangeShowsNoOutcomeAsync()
+    {
+        var pending = new TaskCompletionSource<ContainerActionRunResultData>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var viewService = CreateRouteViewService();
+        var containerActionService = CreateRouteActionService(CreateAvailability("Running"), CreateAvailability("Running"));
+        var testContext = CreateRouteContext(viewService, containerActionService, Substitute.For<IRuntimeContainerTagSelectionService>(), new TestLogger<RuntimeContainerDetail>());
+
+        containerActionService.ExecuteAsync(_routeInstanceId, RouteContainerA, ContainerActionType.StopContainer)
+                              .Returns(pending.Task);
+
+        await using (testContext)
+        {
+            var provider = testContext.Render<MudDialogProvider>();
+            var page = RenderRoutePage(testContext, RouteContainerA);
+
+            await ConfirmAsync(page, provider, "Stop", "Stop").ConfigureAwait(false);
+
+            await page.WaitForAssertionAsync(() => Assert.IsTrue(FindButton(page, "Stop").HasAttribute("disabled"), "The button must be disabled while the action runs"), TimeSpan.FromSeconds(WaitSeconds)).ConfigureAwait(false);
+
+            MoveRoute(page, RouteContainerB);
+
+            await page.WaitForAssertionAsync(() => Assert.Contains(RouteNameB, page.Markup, "The detail of the new container must be shown"), TimeSpan.FromSeconds(WaitSeconds)).ConfigureAwait(false);
+            await WaitForOfferedActionAsync(page, "Stop").ConfigureAwait(false);
+
+            var stopButton = FindButton(page, "Stop");
+
+            Assert.IsTrue(stopButton.HasAttribute("disabled"), "The new container's button must be disabled while the earlier container's action runs");
+            Assert.IsNull(stopButton.QuerySelector(".mud-progress-circular"), "The new container's button must not show the progress of the earlier container's action");
+
+            pending.SetResult(new ContainerActionRunResultData
+                              {
+                                  Status = ContainerActionStatus.Succeeded,
+                                  Message = "Action 'stop' on 'api' executed successfully",
+                              });
+
+            await page.WaitForAssertionAsync(() => Assert.IsFalse(FindButton(page, "Stop").HasAttribute("disabled"), "The buttons must be released after the action ended"), TimeSpan.FromSeconds(WaitSeconds)).ConfigureAwait(false);
+            await SettleAsync(page).ConfigureAwait(false);
+
+            await containerActionService.Received(1)
+                                        .ExecuteAsync(_routeInstanceId, RouteContainerA, ContainerActionType.StopContainer)
+                                        .ConfigureAwait(false);
+            Assert.IsEmpty(page.FindAll(".mud-alert"), "The outcome of the earlier container's action must not be shown on the new container's page");
+            Assert.DoesNotContain("executed successfully", page.Markup, "The outcome text of the earlier container's action must not be shown");
+        }
+    }
+
+    /// <summary>
+    /// Verify an action that fails after the route change shows no error on the new container's page
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC5")]
+    public async Task RuntimeContainerDetailActionFailingAfterRouteChangeShowsNoErrorAsync()
+    {
+        var pending = new TaskCompletionSource<ContainerActionRunResultData>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var logger = new TestLogger<RuntimeContainerDetail>();
+        var viewService = CreateRouteViewService();
+        var containerActionService = CreateRouteActionService(CreateAvailability("Running"), CreateAvailability("Running"));
+        var testContext = CreateRouteContext(viewService, containerActionService, Substitute.For<IRuntimeContainerTagSelectionService>(), logger);
+
+        containerActionService.ExecuteAsync(_routeInstanceId, RouteContainerA, ContainerActionType.StopContainer)
+                              .Returns(pending.Task);
+
+        await using (testContext)
+        {
+            var provider = testContext.Render<MudDialogProvider>();
+            var page = RenderRoutePage(testContext, RouteContainerA);
+
+            await ConfirmAsync(page, provider, "Stop", "Stop").ConfigureAwait(false);
+
+            await page.WaitForAssertionAsync(() => Assert.IsTrue(FindButton(page, "Stop").HasAttribute("disabled"), "The button must be disabled while the action runs"), TimeSpan.FromSeconds(WaitSeconds)).ConfigureAwait(false);
+
+            MoveRoute(page, RouteContainerB);
+
+            await page.WaitForAssertionAsync(() => Assert.Contains(RouteNameB, page.Markup, "The detail of the new container must be shown"), TimeSpan.FromSeconds(WaitSeconds)).ConfigureAwait(false);
+
+            pending.SetException(new InvalidOperationException("connection to db.internal.test:5432 refused"));
+
+            await page.WaitForAssertionAsync(() => Assert.IsNotEmpty(logger.Entries, "The failure must be logged"), TimeSpan.FromSeconds(WaitSeconds)).ConfigureAwait(false);
+            await SettleAsync(page).ConfigureAwait(false);
+
+            await containerActionService.Received(1)
+                                        .ExecuteAsync(_routeInstanceId, RouteContainerA, ContainerActionType.StopContainer)
+                                        .ConfigureAwait(false);
+            Assert.DoesNotContain("Container action failed", page.Markup, "The failure of the earlier container's action must not be shown on the new container's page");
+            Assert.IsEmpty(page.FindAll(".mud-alert"), "No alert may be shown on the new container's page");
+        }
+    }
+
+    /// <summary>
+    /// Verify a confirmation dialog that fails after the route change shows no error on the new container's page
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC5")]
+    public async Task RuntimeContainerDetailConfirmationFailingAfterRouteChangeShowsNoErrorAsync()
+    {
+        var pendingResult = new TaskCompletionSource<DialogResult?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var logger = new TestLogger<RuntimeContainerDetail>();
+        var dialogReference = Substitute.For<IDialogReference>();
+        var dialogService = Substitute.For<IDialogService>();
+        var viewService = CreateRouteViewService();
+        var containerActionService = CreateRouteActionService(CreateAvailability("Running"), CreateAvailability("Running"));
+        var testContext = CreateRouteContext(viewService, containerActionService, Substitute.For<IRuntimeContainerTagSelectionService>(), logger, dialogService);
+
+        dialogReference.Result.Returns(pendingResult.Task);
+        dialogService.ShowAsync<ContainerActionConfirmation>(Arg.Any<string?>(), Arg.Any<DialogParameters>())
+                     .Returns(Task.FromResult(dialogReference));
+
+        await using (testContext)
+        {
+            var page = RenderRoutePage(testContext, RouteContainerA);
+
+            await ClickActionAsync(page, "Stop").ConfigureAwait(false);
+
+            await page.WaitForAssertionAsync(() => Assert.IsNotEmpty(dialogService.ReceivedCalls(), "The dialog must have been requested"), TimeSpan.FromSeconds(WaitSeconds)).ConfigureAwait(false);
+
+            MoveRoute(page, RouteContainerB);
+
+            await page.WaitForAssertionAsync(() => Assert.Contains(RouteNameB, page.Markup, "The detail of the new container must be shown"), TimeSpan.FromSeconds(WaitSeconds)).ConfigureAwait(false);
+
+            pendingResult.SetException(new InvalidOperationException("connection to db.internal.test:5432 refused"));
+
+            await page.WaitForAssertionAsync(() => Assert.IsNotEmpty(logger.Entries, "The failure must be logged"), TimeSpan.FromSeconds(WaitSeconds)).ConfigureAwait(false);
+            await SettleAsync(page).ConfigureAwait(false);
+
+            Assert.DoesNotContain("Container action failed", page.Markup, "The failure of the earlier container's confirmation must not be shown on the new container's page");
+            Assert.IsEmpty(page.FindAll(".mud-alert"), "No alert may be shown on the new container's page");
+        }
+    }
+
+    /// <summary>
+    /// Verify a tag selection that fails after the route change shows no error on the new container's page
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC7")]
+    public async Task RuntimeContainerDetailSelectionFailingAfterRouteChangeShowsNoErrorAsync()
+    {
+        var pending = new TaskCompletionSource();
+        var logger = new TestLogger<RuntimeContainerDetail>();
+        var tagSelectionService = Substitute.For<IRuntimeContainerTagSelectionService>();
+        var testContext = CreateRouteContext(CreateRouteViewService(), CreateRouteActionService(new ContainerActionAvailabilityData(), new ContainerActionAvailabilityData()), tagSelectionService, logger);
+
+        tagSelectionService.SaveSelectionAsync(_routeInstanceId, RouteContainerA, Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+                           .Returns(pending.Task);
+
+        await using (testContext)
+        {
+            var page = RenderRoutePage(testContext, RouteContainerA);
+
+            await page.WaitForAssertionAsync(() => Assert.Contains(RouteNameA, page.Markup, "The detail of the first container must be shown"), TimeSpan.FromSeconds(WaitSeconds)).ConfigureAwait(false);
+
+            var clickTask = FindButton(page, "Select").ClickAsync();
+
+            await page.WaitForAssertionAsync(() => Assert.IsNotEmpty(tagSelectionService.ReceivedCalls(), "The selection must be sent"), TimeSpan.FromSeconds(WaitSeconds)).ConfigureAwait(false);
+
+            MoveRoute(page, RouteContainerB);
+
+            pending.SetException(new InvalidOperationException("connection to db.internal.test:5432 refused"));
+
+            await clickTask.ConfigureAwait(false);
+            await page.WaitForAssertionAsync(() => Assert.IsNotEmpty(logger.Entries, "The failure must be logged"), TimeSpan.FromSeconds(WaitSeconds)).ConfigureAwait(false);
+            await SettleAsync(page).ConfigureAwait(false);
+
+            await tagSelectionService.Received(1)
+                                     .SaveSelectionAsync(_routeInstanceId, RouteContainerA, Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+                                     .ConfigureAwait(false);
+            Assert.DoesNotContain("Saving the tag selection failed", page.Markup, "The failure of the earlier container's selection must not be shown on the new container's page");
+            Assert.IsEmpty(page.FindAll(".mud-alert"), "No alert may be shown on the new container's page");
+        }
+    }
+
+    /// <summary>
+    /// Verify a tag selection clear that fails after the route change shows no error on the new container's page
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC7")]
+    public async Task RuntimeContainerDetailClearSelectionFailingAfterRouteChangeShowsNoErrorAsync()
+    {
+        var pending = new TaskCompletionSource();
+        var logger = new TestLogger<RuntimeContainerDetail>();
+        var tagSelectionService = Substitute.For<IRuntimeContainerTagSelectionService>();
+        var testContext = CreateRouteContext(CreateRouteViewService(), CreateRouteActionService(new ContainerActionAvailabilityData(), new ContainerActionAvailabilityData()), tagSelectionService, logger);
+
+        tagSelectionService.ClearSelectionAsync(_routeInstanceId, RouteContainerA, Arg.Any<CancellationToken>())
+                           .Returns(pending.Task);
+
+        await using (testContext)
+        {
+            var page = RenderRoutePage(testContext, RouteContainerA);
+
+            await page.WaitForAssertionAsync(() => Assert.Contains(RouteNameA, page.Markup, "The detail of the first container must be shown"), TimeSpan.FromSeconds(WaitSeconds)).ConfigureAwait(false);
+
+            var clickTask = FindButton(page, "Clear selection").ClickAsync();
+
+            await page.WaitForAssertionAsync(() => Assert.IsNotEmpty(tagSelectionService.ReceivedCalls(), "The clear must be sent"), TimeSpan.FromSeconds(WaitSeconds)).ConfigureAwait(false);
+
+            MoveRoute(page, RouteContainerB);
+
+            pending.SetException(new InvalidOperationException("connection to db.internal.test:5432 refused"));
+
+            await clickTask.ConfigureAwait(false);
+            await page.WaitForAssertionAsync(() => Assert.IsNotEmpty(logger.Entries, "The failure must be logged"), TimeSpan.FromSeconds(WaitSeconds)).ConfigureAwait(false);
+            await SettleAsync(page).ConfigureAwait(false);
+
+            await tagSelectionService.Received(1)
+                                     .ClearSelectionAsync(_routeInstanceId, RouteContainerA, Arg.Any<CancellationToken>())
+                                     .ConfigureAwait(false);
+            Assert.DoesNotContain("Clearing the tag selection failed", page.Markup, "The failure of the earlier container's clear must not be shown on the new container's page");
+            Assert.IsEmpty(page.FindAll(".mud-alert"), "No alert may be shown on the new container's page");
+        }
+    }
+
+    /// <summary>
     /// Create a test context whose tag selection service throws the given exception from save and clear
     /// </summary>
     /// <param name="exception">Exception thrown by the tag selection service</param>
@@ -1306,6 +1803,152 @@ public class RuntimeContainerDetailTests
                                                 }
                                             ],
                };
+    }
+
+    /// <summary>
+    /// Create a view service substitute answering the details of both route test containers at once
+    /// </summary>
+    /// <returns>View service substitute</returns>
+    private static IApplicationViewService CreateRouteViewService()
+    {
+        var viewService = Substitute.For<IApplicationViewService>();
+
+        viewService.GetRuntimeContainerDetailAsync(_routeInstanceId, RouteContainerA, Arg.Any<CancellationToken>())
+                   .Returns(CreateRouteDetail(RouteContainerA, RouteNameA));
+        viewService.GetRuntimeContainerDetailAsync(_routeInstanceId, RouteContainerB, Arg.Any<CancellationToken>())
+                   .Returns(CreateRouteDetail(RouteContainerB, RouteNameB));
+
+        return viewService;
+    }
+
+    /// <summary>
+    /// Create a container action service substitute answering the given availabilities of both route test containers
+    /// </summary>
+    /// <param name="availabilityA">Availability of the first container</param>
+    /// <param name="availabilityB">Availability of the second container</param>
+    /// <returns>Container action service substitute</returns>
+    private static IContainerActionService CreateRouteActionService(ContainerActionAvailabilityData availabilityA, ContainerActionAvailabilityData availabilityB)
+    {
+        var containerActionService = Substitute.For<IContainerActionService>();
+
+        containerActionService.GetAvailabilityAsync(_routeInstanceId, RouteContainerA, Arg.Any<CancellationToken>())
+                              .Returns(availabilityA);
+        containerActionService.GetAvailabilityAsync(_routeInstanceId, RouteContainerB, Arg.Any<CancellationToken>())
+                              .Returns(availabilityB);
+
+        return containerActionService;
+    }
+
+    /// <summary>
+    /// Create the detail of a route test container, offering a tag candidate and a stored manual selection
+    /// </summary>
+    /// <param name="containerId">Container identifier of the route</param>
+    /// <param name="containerName">Container name</param>
+    /// <param name="detailContainerId">Container identifier the detail carries; null carries the route's</param>
+    /// <returns>Detail</returns>
+    private static RuntimeContainerDetailViewData CreateRouteDetail(string containerId, string containerName, string? detailContainerId = null)
+    {
+        return new RuntimeContainerDetailViewData
+               {
+                   DockerInstanceId = _routeInstanceId,
+                   ContainerId = detailContainerId ?? containerId,
+                   ContainerName = containerName,
+                   DockerInstanceName = "Production",
+                   ImageReference = "ghcr.io/acme/api:1.0.0",
+                   CurrentTag = "1.0.0",
+                   RuntimeStatus = "Running",
+                   ManualSelectionImage = "ghcr.io/acme/api:1.1.0",
+                   AvailableTagCandidates = [
+                                                new TagCandidateViewData
+                                                {
+                                                    Tag = "1.1.0",
+                                                    Reason = "Newer patch release",
+                                                }
+                                            ],
+               };
+    }
+
+    /// <summary>
+    /// Create an interactive test context for the route tests
+    /// </summary>
+    /// <param name="viewService">View service substitute</param>
+    /// <param name="containerActionService">Container action service substitute</param>
+    /// <param name="tagSelectionService">Tag selection service substitute</param>
+    /// <param name="logger">Logger registered for the page</param>
+    /// <param name="dialogService">Dialog service replacing MudBlazor's; null keeps MudBlazor's</param>
+    /// <returns>Test context</returns>
+    private static Bunit.BunitContext CreateRouteContext(IApplicationViewService viewService,
+                                                         IContainerActionService containerActionService,
+                                                         IRuntimeContainerTagSelectionService tagSelectionService,
+                                                         TestLogger<RuntimeContainerDetail> logger,
+                                                         IDialogService? dialogService = null)
+    {
+        var testContext = BlazorTestContextFactory.Create();
+
+        testContext.Services.AddSingleton(viewService);
+        testContext.Services.AddSingleton(tagSelectionService);
+        testContext.Services.AddSingleton(containerActionService);
+        testContext.Services.AddSingleton<ILogger<RuntimeContainerDetail>>(logger);
+
+        if (dialogService is not null)
+        {
+            testContext.Services.AddSingleton(dialogService);
+        }
+
+        testContext.SetRendererInfo(new RendererInfo("Server", true));
+
+        return testContext;
+    }
+
+    /// <summary>
+    /// Render the page of the route tests for a container
+    /// </summary>
+    /// <param name="testContext">Test context</param>
+    /// <param name="containerId">Container identifier of the route</param>
+    /// <returns>Rendered page</returns>
+    private static IRenderedComponent<RuntimeContainerDetail> RenderRoutePage(Bunit.BunitContext testContext, string containerId)
+    {
+        return testContext.Render<RuntimeContainerDetail>(parameters => parameters.Add(page => page.DockerInstanceId, _routeInstanceId)
+                                                                                  .Add(page => page.ContainerId, containerId));
+    }
+
+    /// <summary>
+    /// Move the route of the page to another container of the same Docker instance
+    /// </summary>
+    /// <param name="page">Rendered page</param>
+    /// <param name="containerId">Container identifier of the new route</param>
+    private static void MoveRoute(IRenderedComponent<RuntimeContainerDetail> page, string containerId)
+    {
+        page.Render(parameters => parameters.Add(component => component.DockerInstanceId, _routeInstanceId)
+                                            .Add(component => component.ContainerId, containerId));
+    }
+
+    /// <summary>
+    /// Wait until the page offers the action button
+    /// </summary>
+    /// <param name="page">Rendered page</param>
+    /// <param name="actionText">Text of the action button</param>
+    /// <returns>Task</returns>
+    private static async Task WaitForOfferedActionAsync(IRenderedComponent<RuntimeContainerDetail> page, string actionText)
+    {
+        await page.WaitForAssertionAsync(() => Assert.ContainsSingle(button => button.TextContent.Trim() == actionText, page.FindAll("button"), $"The page must offer {actionText}"),
+                                         TimeSpan.FromSeconds(WaitSeconds)).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Let the answers that are already completed reach the page's dispatcher
+    /// </summary>
+    /// <param name="page">Rendered page</param>
+    /// <returns>Task</returns>
+    private static async Task SettleAsync(IRenderedComponent<RuntimeContainerDetail> page)
+    {
+        await Task.Yield();
+        await page.InvokeAsync(() =>
+                               {
+                               }).ConfigureAwait(false);
+        await page.InvokeAsync(() =>
+                               {
+                               }).ConfigureAwait(false);
     }
 
     #endregion // Methods
