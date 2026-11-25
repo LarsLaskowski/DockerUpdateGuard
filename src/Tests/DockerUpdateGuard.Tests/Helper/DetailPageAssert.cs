@@ -8,7 +8,7 @@ using Microsoft.Extensions.Logging;
 namespace DockerUpdateGuard.Tests.Helper;
 
 /// <summary>
-/// Assertions shared by the tests of the detail pages' loading, not-found and failed-load states
+/// Assertions shared by the tests of the pages' loading, not-found and failed-load states
 /// </summary>
 internal static class DetailPageAssert
 {

@@ -5,8 +5,15 @@
 @if (_dashboard is null)
 {
     <MudStack Spacing="3" Class="page-shell">
-        <PageHeaderSkeleton />
-        <MetricGridSkeleton />
+        @if (_loadErrorMessage is not null)
+        {
+            <MudAlert Severity="Severity.Error" Dense="true">@_loadErrorMessage</MudAlert>
+        }
+        else
+        {
+            <PageHeaderSkeleton />
+            <MetricGridSkeleton />
+        }
     </MudStack>
 }
 else

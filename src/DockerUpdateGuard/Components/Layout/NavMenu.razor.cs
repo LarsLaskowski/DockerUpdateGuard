@@ -52,6 +52,12 @@ public partial class NavMenu
     [Inject]
     public IApplicationViewService ViewService { get; set; } = null!;
 
+    /// <summary>
+    /// Logger
+    /// </summary>
+    [Inject]
+    public ILogger<NavMenu> Logger { get; set; } = null!;
+
     #endregion // Properties
 
     #region Static methods
@@ -78,6 +84,17 @@ public partial class NavMenu
     private bool IsDockerHubAccountConfigured()
     {
         return IsDockerHubAccountConfigured(AppOptions.Value.DockerHub);
+    }
+
+    /// <summary>
+    /// Load whether the Shared Base Images navigation entry should be shown
+    /// </summary>
+    /// <returns>Task</returns>
+    private async Task LoadBaseImagesEntryAsync()
+    {
+        var hasBaseImages = await ViewService.HasBaseImagesAsync().ConfigureAwait(false);
+
+        await InvokeAsync(() => _showBaseImages = hasBaseImages).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -134,7 +151,7 @@ public partial class NavMenu
     {
         _displayVersion = ResolveDisplayVersion();
         _showMyImages = IsDockerHubAccountConfigured();
-        _showBaseImages = await ViewService.HasBaseImagesAsync().ConfigureAwait(false);
+        _ = await PageLoader.LoadAsync(LoadBaseImagesEntryAsync, Logger, "LoadNavigation", "Loading the navigation failed").ConfigureAwait(false);
     }
 
     #endregion // ComponentBase

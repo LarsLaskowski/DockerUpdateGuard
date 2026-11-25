@@ -327,5 +327,38 @@ public class ObservedImagesTests
                                                       "The tag must not be longer than 200 characters");
     }
 
+    /// <summary>
+    /// Verify a failed first load shows the fixed error alert in place of the skeleton and logs the failure once
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC1")]
+    [TestCategory("AC2")]
+    public async Task ObservedImagesLoadFailureShowsFixedErrorAndLogs()
+    {
+        var exception = new InvalidOperationException("secret text");
+        var logger = new TestLogger<ObservedImages>();
+        var testContext = BlazorTestContextFactory.Create();
+
+        await using (testContext)
+        {
+            var viewService = Substitute.For<IApplicationViewService>();
+
+            viewService.GetManualObservedImagesAsync(Arg.Any<CancellationToken>())
+                       .Returns(Task.FromException<IReadOnlyList<ObservedImageListItemData>>(exception));
+
+            testContext.Services.AddSingleton(viewService);
+            testContext.Services.AddSingleton(Substitute.For<IImageRegistrationService>());
+            testContext.Services.AddSingleton(Substitute.For<IImageScanOrchestrator>());
+            testContext.Services.AddSingleton(new DashboardRefreshState());
+            testContext.Services.AddSingleton<ILogger<ObservedImages>>(logger);
+
+            var page = testContext.Render<ObservedImages>();
+
+            await DetailPageAssert.AssertLoadErrorAsync(page, "Loading the observed images failed: unexpected error", "secret text").ConfigureAwait(false);
+            DetailPageAssert.AssertLoadLoggedOnce(logger, "LoadObservedImages", exception);
+        }
+    }
+
     #endregion // Methods
 }

@@ -13,7 +13,14 @@
 
     @if (_images is null)
     {
-        <TableSkeleton Title="Images from Docker account" />
+        @if (_loadErrorMessage is not null)
+        {
+            <MudAlert Severity="Severity.Error" Dense="true">@_loadErrorMessage</MudAlert>
+        }
+        else
+        {
+            <TableSkeleton Title="Images from Docker account" />
+        }
     }
     else if (_images.Count == 0)
     {

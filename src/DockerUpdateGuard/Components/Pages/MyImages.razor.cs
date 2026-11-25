@@ -39,6 +39,11 @@ public sealed partial class MyImages : IDisposable
     /// </summary>
     private string? _dockerHubUserName;
 
+    /// <summary>
+    /// Message of the last failed load, null when the last load completed
+    /// </summary>
+    private string? _loadErrorMessage;
+
     #endregion // Fields
 
     #region Properties
@@ -66,6 +71,12 @@ public sealed partial class MyImages : IDisposable
     /// </summary>
     [Inject]
     public PersistentComponentState PersistentState { get; set; } = null!;
+
+    /// <summary>
+    /// Logger
+    /// </summary>
+    [Inject]
+    public ILogger<MyImages> Logger { get; set; } = null!;
 
     #endregion // Properties
 
@@ -165,6 +176,17 @@ public sealed partial class MyImages : IDisposable
         await LoadAsync().ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Load the page data and keep the message of a failed load
+    /// </summary>
+    /// <returns>Task</returns>
+    private async Task LoadOrReportAsync()
+    {
+        var loadErrorMessage = await PageLoader.LoadAsync(LoadAsync, Logger, "LoadMyImages", "Loading the images failed").ConfigureAwait(false);
+
+        await InvokeAsync(() => _loadErrorMessage = loadErrorMessage).ConfigureAwait(false);
+    }
+
     #endregion // Methods
 
     #region ComponentBase
@@ -183,7 +205,7 @@ public sealed partial class MyImages : IDisposable
             return;
         }
 
-        await LoadAsync().ConfigureAwait(false);
+        await LoadOrReportAsync().ConfigureAwait(false);
     }
 
     #endregion // ComponentBase

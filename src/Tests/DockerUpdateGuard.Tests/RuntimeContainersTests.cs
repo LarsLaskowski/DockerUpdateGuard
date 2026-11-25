@@ -114,6 +114,83 @@ public class RuntimeContainersTests
     }
 
     /// <summary>
+    /// Verify a failed first load shows the fixed error alert in place of the skeleton and logs the failure once
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC1")]
+    [TestCategory("AC2")]
+    public async Task RuntimeContainersLoadFailureShowsFixedErrorAndLogs()
+    {
+        var exception = new InvalidOperationException("secret text");
+        var logger = new TestLogger<RuntimeContainers>();
+        var testContext = BlazorTestContextFactory.Create();
+
+        await using (testContext)
+        {
+            var viewService = Substitute.For<IApplicationViewService>();
+
+            viewService.GetRuntimeContainersAsync(Arg.Any<CancellationToken>())
+                       .Returns(Task.FromException<IReadOnlyList<RuntimeContainerListItemData>>(exception));
+
+            testContext.Services.AddSingleton(viewService);
+            testContext.Services.AddSingleton(Substitute.For<IRuntimeContainerScanOrchestrator>());
+            testContext.Services.AddSingleton(new DashboardRefreshState());
+            testContext.Services.AddSingleton<ILogger<RuntimeContainers>>(logger);
+
+            var page = testContext.Render<RuntimeContainers>();
+
+            await DetailPageAssert.AssertLoadErrorAsync(page, "Loading the containers failed: unexpected error", "secret text").ConfigureAwait(false);
+            DetailPageAssert.AssertLoadLoggedOnce(logger, "LoadRuntimeContainers", exception);
+        }
+    }
+
+    /// <summary>
+    /// Verify a succeeding update check after a failed first load replaces the load alert with the container list
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC4")]
+    public async Task RuntimeContainersSuccessfulUpdateCheckAfterLoadFailureShowsList()
+    {
+        var exception = new InvalidOperationException("secret text");
+        var testContext = BlazorTestContextFactory.Create();
+
+        await using (testContext)
+        {
+            var viewService = Substitute.For<IApplicationViewService>();
+            var orchestrator = Substitute.For<IRuntimeContainerScanOrchestrator>();
+
+            viewService.GetRuntimeContainersAsync(Arg.Any<CancellationToken>())
+                       .Returns(Task.FromException<IReadOnlyList<RuntimeContainerListItemData>>(exception),
+                                Task.FromResult<IReadOnlyList<RuntimeContainerListItemData>>([
+                                                                                                 new RuntimeContainerListItemData
+                                                                                                 {
+                                                                                                     DockerInstanceId = Guid.NewGuid(),
+                                                                                                     ContainerId = "container-a",
+                                                                                                     ContainerName = "reloaded-container",
+                                                                                                     DockerInstanceName = "Production",
+                                                                                                     UpdateState = "Up to date",
+                                                                                                 },
+                                                                                             ]));
+
+            testContext.Services.AddSingleton(viewService);
+            testContext.Services.AddSingleton(orchestrator);
+            testContext.Services.AddSingleton(new DashboardRefreshState());
+            testContext.Services.AddSingleton<ILogger<RuntimeContainers>>(new TestLogger<RuntimeContainers>());
+
+            var page = testContext.Render<RuntimeContainers>();
+
+            await DetailPageAssert.AssertLoadErrorAsync(page, "Loading the containers failed: unexpected error", "secret text").ConfigureAwait(false);
+
+            await page.Find("button").ClickAsync().ConfigureAwait(false);
+            await page.WaitForAssertionAsync(() => Assert.Contains("reloaded-container", page.Markup, "The reload after the update check must show the container row"), TimeSpan.FromSeconds(DetailPageAssert.WaitSeconds)).ConfigureAwait(false);
+
+            Assert.IsEmpty(page.FindAll(".mud-alert"), "The list must replace the load alert");
+        }
+    }
+
+    /// <summary>
     /// Invoke the non-public sparkline-path builder
     /// </summary>
     /// <param name="values">Series values</param>

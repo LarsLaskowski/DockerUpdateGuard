@@ -32,6 +32,11 @@ public sealed partial class SharedBaseImages : IDisposable
     /// </summary>
     private IReadOnlyList<SharedBaseImageListItemData>? _items;
 
+    /// <summary>
+    /// Message of the last failed load, null when the last load completed
+    /// </summary>
+    private string? _loadErrorMessage;
+
     #endregion // Fields
 
     #region Properties
@@ -47,6 +52,12 @@ public sealed partial class SharedBaseImages : IDisposable
     /// </summary>
     [Inject]
     public PersistentComponentState PersistentState { get; set; } = null!;
+
+    /// <summary>
+    /// Logger
+    /// </summary>
+    [Inject]
+    public ILogger<SharedBaseImages> Logger { get; set; } = null!;
 
     #endregion // Properties
 
@@ -71,6 +82,29 @@ public sealed partial class SharedBaseImages : IDisposable
     #endregion // Static methods
 
     #region Methods
+
+    /// <summary>
+    /// Load the page data
+    /// </summary>
+    /// <returns>Task</returns>
+    private async Task LoadAsync()
+    {
+        var items = await ViewService.GetBaseImagesAsync()
+                                     .ConfigureAwait(false);
+
+        await InvokeAsync(() => _items = items).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Load the page data and keep the message of a failed load
+    /// </summary>
+    /// <returns>Task</returns>
+    private async Task LoadOrReportAsync()
+    {
+        var loadErrorMessage = await PageLoader.LoadAsync(LoadAsync, Logger, "LoadSharedBaseImages", "Loading the shared base images failed").ConfigureAwait(false);
+
+        await InvokeAsync(() => _loadErrorMessage = loadErrorMessage).ConfigureAwait(false);
+    }
 
     /// <summary>
     /// Persist the current base-image list so the interactive render can reuse the prerendered data
@@ -103,10 +137,7 @@ public sealed partial class SharedBaseImages : IDisposable
             return;
         }
 
-        var items = await ViewService.GetBaseImagesAsync()
-                                     .ConfigureAwait(false);
-
-        await InvokeAsync(() => _items = items).ConfigureAwait(false);
+        await LoadOrReportAsync().ConfigureAwait(false);
     }
 
     #endregion // ComponentBase

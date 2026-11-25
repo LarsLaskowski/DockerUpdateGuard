@@ -44,7 +44,14 @@
 
     @if (_scans is null)
     {
-        <TableSkeleton Title="Recent and historical scans" />
+        @if (_loadErrorMessage is not null)
+        {
+            <MudAlert Severity="Severity.Error" Dense="true">@_loadErrorMessage</MudAlert>
+        }
+        else
+        {
+            <TableSkeleton Title="Recent and historical scans" />
+        }
     }
     else if (_scans.Count == 0)
     {

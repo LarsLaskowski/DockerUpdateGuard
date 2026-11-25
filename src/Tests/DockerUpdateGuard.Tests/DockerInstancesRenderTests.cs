@@ -1,9 +1,11 @@
 using Bunit;
 
+using DockerUpdateGuard.Tests.Data;
 using DockerUpdateGuard.Tests.Helper;
 using DockerUpdateGuard.UI;
 
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 using NSubstitute;
 
@@ -99,6 +101,75 @@ public class DockerInstancesRenderTests
 
             Assert.Contains("Succeeded · 2026-11-23 21:27 UTC", secondaries, "A completed scan must be shown in UTC with the zone suffix");
             Assert.Contains("NotScanned ·", secondaries, "An instance without a completed scan must show no timestamp");
+        }
+    }
+
+    /// <summary>
+    /// Verify a failed first load shows the fixed error alert in place of the skeleton and logs the failure once
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC1")]
+    [TestCategory("AC2")]
+    public async Task DockerInstancesLoadFailureShowsFixedErrorAndLogs()
+    {
+        var exception = new InvalidOperationException("secret text");
+        var logger = new TestLogger<DockerInstancesPage>();
+        var testContext = BlazorTestContextFactory.Create();
+
+        await using (testContext)
+        {
+            var viewService = Substitute.For<IApplicationViewService>();
+
+            viewService.GetDockerInstancesAsync(Arg.Any<CancellationToken>())
+                       .Returns(Task.FromException<IReadOnlyList<DockerInstanceListItemData>>(exception));
+
+            testContext.Services.AddSingleton(viewService);
+            testContext.Services.AddSingleton<ILogger<DockerInstancesPage>>(logger);
+
+            var page = testContext.Render<DockerInstancesPage>();
+
+            await DetailPageAssert.AssertLoadErrorAsync(page, "Loading the Docker instances failed: unexpected error", "secret text").ConfigureAwait(false);
+            DetailPageAssert.AssertLoadLoggedOnce(logger, "LoadDockerInstances", exception);
+        }
+    }
+
+    /// <summary>
+    /// Verify a failing instance detail call shows no part of the data: no instance row and no single-instance section
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC3")]
+    public async Task DockerInstancesDetailLoadFailureShowsNoInstanceData()
+    {
+        var exception = new InvalidOperationException("secret text");
+        var logger = new TestLogger<DockerInstancesPage>();
+        var testContext = BlazorTestContextFactory.Create();
+
+        await using (testContext)
+        {
+            var viewService = Substitute.For<IApplicationViewService>();
+            var instanceId = Guid.NewGuid();
+
+            viewService.GetDockerInstancesAsync(Arg.Any<CancellationToken>())
+                       .Returns(Task.FromResult<IReadOnlyList<DockerInstanceListItemData>>([
+                                                                                               new DockerInstanceListItemData
+                                                                                               {
+                                                                                                   Id = instanceId,
+                                                                                                   Name = "unique-instance-name",
+                                                                                                   EndpointUri = "unix:///var/run/docker.sock",
+                                                                                               },
+                                                                                           ]));
+            viewService.GetDockerInstanceDetailAsync(instanceId, Arg.Any<CancellationToken>())
+                       .Returns(Task.FromException<DockerInstanceDetailViewData?>(exception));
+
+            testContext.Services.AddSingleton(viewService);
+            testContext.Services.AddSingleton<ILogger<DockerInstancesPage>>(logger);
+
+            var page = testContext.Render<DockerInstancesPage>();
+
+            await DetailPageAssert.AssertLoadErrorAsync(page, "Loading the Docker instances failed: unexpected error", "secret text", "unique-instance-name").ConfigureAwait(false);
+            DetailPageAssert.AssertLoadLoggedOnce(logger, "LoadDockerInstances", exception);
         }
     }
 

@@ -3,12 +3,14 @@ using Bunit.TestDoubles;
 
 using DockerUpdateGuard.Components.Layout;
 using DockerUpdateGuard.Configuration;
+using DockerUpdateGuard.Tests.Data;
 using DockerUpdateGuard.Tests.Helper;
 using DockerUpdateGuard.UI;
 
 using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 using MudBlazor;
@@ -119,19 +121,109 @@ public class MainLayoutRenderTests
     }
 
     /// <summary>
+    /// Verify a failed first summary load renders the layout with its body, hides the summary and the skeleton, and logs the failure once
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC5")]
+    public async Task MainLayoutSummaryLoadFailureRendersBodyWithoutSummaryAndLogs()
+    {
+        var exception = new InvalidOperationException("secret text");
+        var logger = new TestLogger<MainLayout>();
+        var viewService = Substitute.For<IApplicationViewService>();
+
+        viewService.GetDashboardSummaryAsync(Arg.Any<CancellationToken>())
+                   .Returns(Task.FromException<DashboardSummaryViewData>(exception));
+        viewService.HasBaseImagesAsync(Arg.Any<CancellationToken>())
+                   .Returns(Task.FromResult(false));
+
+        var testContext = CreateContext(viewService);
+
+        await using (testContext)
+        {
+            testContext.Services.AddSingleton<ILogger<MainLayout>>(logger);
+
+            var component = testContext.Render<MainLayout>(parameters => parameters.Add(layout => layout.Body, "layout body marker"));
+
+            await component.WaitForAssertionAsync(() => DetailPageAssert.AssertLoadLoggedOnce(logger, "LoadDashboardSummary", exception), TimeSpan.FromSeconds(DetailPageAssert.WaitSeconds)).ConfigureAwait(false);
+
+            Assert.Contains("layout body marker", component.Markup, "The layout must render its body");
+            Assert.DoesNotContain("app-topbar__status-skeleton", component.Markup, "A failed load must not show the status skeleton");
+            Assert.DoesNotContain("Protected assets", component.Markup, "A failed load must not show the summary values");
+            Assert.DoesNotContain("Last activity", component.Markup, "A failed load must not show the summary values");
+            Assert.DoesNotContain("secret text", component.Markup, "The layout must not show the exception's text");
+        }
+    }
+
+    /// <summary>
+    /// Verify a reload on navigation that fails keeps the top bar values and logs the failure once
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC7")]
+    public async Task MainLayoutFailedReloadOnNavigationKeepsSummaryAndLogs()
+    {
+        var exception = new InvalidOperationException("secret text");
+        var logger = new TestLogger<MainLayout>();
+        var viewService = Substitute.For<IApplicationViewService>();
+        var summary = new DashboardSummaryViewData
+                      {
+                          LatestScan = new ScanHistoryItemData
+                                       {
+                                           StartedAtUtc = new DateTimeOffset(2026, 11, 24, 0, 27, 0, TimeSpan.FromHours(2)),
+                                       },
+                      };
+
+        viewService.GetDashboardSummaryAsync(Arg.Any<CancellationToken>())
+                   .Returns(Task.FromResult(summary), Task.FromException<DashboardSummaryViewData>(exception));
+        viewService.HasBaseImagesAsync(Arg.Any<CancellationToken>())
+                   .Returns(Task.FromResult(false));
+
+        var testContext = CreateContext(viewService);
+
+        await using (testContext)
+        {
+            testContext.Services.AddSingleton<ILogger<MainLayout>>(logger);
+
+            var component = testContext.Render<MainLayout>(parameters => parameters.Add(layout => layout.Body, string.Empty));
+            var navigation = testContext.Services.GetRequiredService<NavigationManager>();
+
+            Assert.Contains("2026-11-23 22:27 UTC", component.Markup, "The first load must show the summary");
+
+            await component.InvokeAsync(() => navigation.NavigateTo("/elsewhere")).ConfigureAwait(false);
+            await component.WaitForAssertionAsync(() => DetailPageAssert.AssertLoadLoggedOnce(logger, "LoadDashboardSummary", exception), TimeSpan.FromSeconds(DetailPageAssert.WaitSeconds)).ConfigureAwait(false);
+
+            Assert.Contains("2026-11-23 22:27 UTC", component.Markup, "A failed reload must keep the top bar values");
+            Assert.DoesNotContain("app-topbar__status-skeleton", component.Markup, "A failed reload must not show the status skeleton");
+            Assert.DoesNotContain("secret text", component.Markup, "The layout must not show the exception's text");
+        }
+    }
+
+    /// <summary>
     /// Create a bUnit test context wired up with the services required to render the layout
     /// </summary>
     /// <param name="dashboardSummary">Dashboard summary returned by the view service, or null to keep the loading state</param>
     /// <returns>Configured test context</returns>
     private static Bunit.BunitContext CreateContext(DashboardSummaryViewData? dashboardSummary)
     {
-        var testContext = BlazorTestContextFactory.Create();
         var viewService = Substitute.For<IApplicationViewService>();
 
         viewService.GetDashboardSummaryAsync(Arg.Any<CancellationToken>())
                    .Returns(Task.FromResult(dashboardSummary!));
         viewService.HasBaseImagesAsync(Arg.Any<CancellationToken>())
                    .Returns(Task.FromResult(false));
+
+        return CreateContext(viewService);
+    }
+
+    /// <summary>
+    /// Create a bUnit test context wired up with the services required to render the layout around a view service
+    /// </summary>
+    /// <param name="viewService">View service the layout reads</param>
+    /// <returns>Configured test context</returns>
+    private static Bunit.BunitContext CreateContext(IApplicationViewService viewService)
+    {
+        var testContext = BlazorTestContextFactory.Create();
 
         testContext.Services.AddSingleton(viewService);
         testContext.Services.AddSingleton(new DashboardRefreshState());

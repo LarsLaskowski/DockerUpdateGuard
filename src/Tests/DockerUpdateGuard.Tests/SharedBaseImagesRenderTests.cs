@@ -1,10 +1,12 @@
 using Bunit;
 
 using DockerUpdateGuard.Components.Pages;
+using DockerUpdateGuard.Tests.Data;
 using DockerUpdateGuard.Tests.Helper;
 using DockerUpdateGuard.UI;
 
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 using NSubstitute;
 
@@ -67,6 +69,36 @@ public class SharedBaseImagesRenderTests
             await component.WaitForAssertionAsync(() => Assert.Contains("No base image is used by two or more enabled images or containers yet.",
                                                                         component.Markup,
                                                                         "The empty state must state the sharing rule"));
+        }
+    }
+
+    /// <summary>
+    /// Verify a failed first load shows the fixed error alert in place of the skeleton and logs the failure once
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC1")]
+    [TestCategory("AC2")]
+    public async Task SharedBaseImagesLoadFailureShowsFixedErrorAndLogs()
+    {
+        var exception = new InvalidOperationException("secret text");
+        var logger = new TestLogger<SharedBaseImages>();
+        var testContext = BlazorTestContextFactory.Create();
+
+        await using (testContext)
+        {
+            var viewService = Substitute.For<IApplicationViewService>();
+
+            viewService.GetBaseImagesAsync(Arg.Any<CancellationToken>())
+                       .Returns(Task.FromException<IReadOnlyList<SharedBaseImageListItemData>>(exception));
+
+            testContext.Services.AddSingleton(viewService);
+            testContext.Services.AddSingleton<ILogger<SharedBaseImages>>(logger);
+
+            var page = testContext.Render<SharedBaseImages>();
+
+            await DetailPageAssert.AssertLoadErrorAsync(page, "Loading the shared base images failed: unexpected error", "secret text").ConfigureAwait(false);
+            DetailPageAssert.AssertLoadLoggedOnce(logger, "LoadSharedBaseImages", exception);
         }
     }
 

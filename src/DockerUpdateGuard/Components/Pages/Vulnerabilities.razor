@@ -13,7 +13,14 @@
 
     @if (_items is null)
     {
-        <TableSkeleton Title="Active advisories" Rows="6" />
+        @if (_loadErrorMessage is not null)
+        {
+            <MudAlert Severity="Severity.Error" Dense="true">@_loadErrorMessage</MudAlert>
+        }
+        else
+        {
+            <TableSkeleton Title="Active advisories" Rows="6" />
+        }
     }
     else if (_items.Count == 0)
     {

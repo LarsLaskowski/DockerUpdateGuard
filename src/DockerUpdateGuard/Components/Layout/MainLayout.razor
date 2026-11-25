@@ -38,7 +38,10 @@
 
                 @if (_dashboardSummary is null)
                 {
-                    <MudSkeleton Width="140px" Height="32px" Class="app-topbar__status-skeleton" />
+                    @if (_summaryLoadFailed == false)
+                    {
+                        <MudSkeleton Width="140px" Height="32px" Class="app-topbar__status-skeleton" />
+                    }
                 }
                 else
                 {

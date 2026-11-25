@@ -1,8 +1,20 @@
 using System.Reflection;
 
+using Bunit;
+
 using DockerUpdateGuard.Components.Pages;
+using DockerUpdateGuard.Configuration;
+using DockerUpdateGuard.Tests.Data;
+using DockerUpdateGuard.Tests.Helper;
+using DockerUpdateGuard.UI;
+
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 using MudBlazor;
+
+using NSubstitute;
 
 namespace DockerUpdateGuard.Tests;
 
@@ -150,6 +162,38 @@ public class MyImagesTests
         Assert.AreEqual(Color.Default,
                         color,
                         "Null or blank vulnerability status must resolve to Color.Default");
+    }
+
+    /// <summary>
+    /// Verify a failed first load shows the fixed error alert in place of the skeleton and logs the failure once
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC1")]
+    [TestCategory("AC2")]
+    public async Task MyImagesLoadFailureShowsFixedErrorAndLogs()
+    {
+        var exception = new InvalidOperationException("secret text");
+        var logger = new TestLogger<MyImages>();
+        var testContext = BlazorTestContextFactory.Create();
+
+        await using (testContext)
+        {
+            var viewService = Substitute.For<IApplicationViewService>();
+
+            viewService.GetDiscoveryObservedImagesAsync(Arg.Any<CancellationToken>())
+                       .Returns(Task.FromException<IReadOnlyList<ObservedImageListItemData>>(exception));
+
+            testContext.Services.AddSingleton(viewService);
+            testContext.Services.AddSingleton(new DashboardRefreshState());
+            testContext.Services.AddSingleton(Options.Create(new DockerUpdateGuardOptions()));
+            testContext.Services.AddSingleton<ILogger<MyImages>>(logger);
+
+            var page = testContext.Render<MyImages>();
+
+            await DetailPageAssert.AssertLoadErrorAsync(page, "Loading the images failed: unexpected error", "secret text").ConfigureAwait(false);
+            DetailPageAssert.AssertLoadLoggedOnce(logger, "LoadMyImages", exception);
+        }
     }
 
     #endregion // Methods
