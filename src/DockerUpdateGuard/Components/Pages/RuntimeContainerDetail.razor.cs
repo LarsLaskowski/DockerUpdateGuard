@@ -186,25 +186,6 @@ public sealed partial class RuntimeContainerDetail : IDisposable
     }
 
     /// <summary>
-    /// Resolve the chip color for a scan status
-    /// </summary>
-    /// <param name="status">Scan status</param>
-    /// <returns>Chip color</returns>
-    private static Color GetScanStatusColor(string status)
-    {
-        return status.ToUpperInvariant() switch
-               {
-                   "SUCCEEDED" => Color.Success,
-                   "COMPLETED" => Color.Success,
-                   "PARTIAL" => Color.Warning,
-                   "FAILED" => Color.Error,
-                   "RUNNING" => Color.Info,
-                   "PENDING" => Color.Warning,
-                   _ => Color.Default,
-               };
-    }
-
-    /// <summary>
     /// Resolve the chip color for a base-runtime alert
     /// </summary>
     /// <param name="hasLinkedOwnImage">Whether the container is linked to an own image</param>

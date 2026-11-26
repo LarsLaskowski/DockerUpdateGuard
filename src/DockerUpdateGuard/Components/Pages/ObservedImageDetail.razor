@@ -34,7 +34,7 @@
                 <MudItem xs="12" md="6">
                     <MudPaper Class="summary-card" Elevation="0">
                         <span class="summary-label">Latest scan</span>
-                        <MudChip T="string" Size="Size.Small" Color="@GetScanStatusColor(_detail.LatestScanStatus)">@_detail.LatestScanStatus</MudChip>
+                        <MudChip T="string" Size="Size.Small" Color="@ScanStatusDisplayFormatter.GetStatusColor(_detail.LatestScanStatus)">@_detail.LatestScanStatus</MudChip>
                         @if (string.IsNullOrWhiteSpace(_detail.LatestScanMessage) == false)
                         {
                             <span class="table-secondary">@_detail.LatestScanMessage</span>

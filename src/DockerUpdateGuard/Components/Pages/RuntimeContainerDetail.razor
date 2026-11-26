@@ -482,7 +482,7 @@
                 </HeaderContent>
                 <RowTemplate>
                     <MudTd DataLabel="Status">
-                        <MudChip T="string" Size="Size.Small" Color="@GetScanStatusColor(context.Status)">@context.Status</MudChip>
+                        <MudChip T="string" Size="Size.Small" Color="@ScanStatusDisplayFormatter.GetStatusColor(context.Status)">@context.Status</MudChip>
                     </MudTd>
                     <MudTd DataLabel="Trigger">@context.TriggerSource</MudTd>
                     <MudTd DataLabel="Started">@TimestampFormatter.Format(context.StartedAtUtc)</MudTd>

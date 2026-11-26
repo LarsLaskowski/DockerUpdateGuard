@@ -1556,6 +1556,45 @@ public class RuntimeContainerDetailTests
     }
 
     /// <summary>
+    /// Verify the scan history table shows the scan status in a chip of its color
+    /// </summary>
+    /// <param name="status">Scan status</param>
+    /// <param name="expectedColorClass">Expected chip color class</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC4")]
+    [DataRow("Succeeded", "mud-chip-color-success")]
+    [DataRow("Partial", "mud-chip-color-warning")]
+    public async Task RuntimeContainerDetailScanHistoryChipShowsStatusColorAsync(string status, string expectedColorClass)
+    {
+        var viewService = Substitute.For<IApplicationViewService>();
+        var testContext = CreateLoadContext(viewService, new TestLogger<RuntimeContainerDetail>());
+        var detail = CreateLoadDetail(LoadContainerId, "load-api");
+
+        detail.ScanHistory = [
+                                 new ScanHistoryItemData
+                                 {
+                                     Type = "Runtime",
+                                     Status = status,
+                                     StartedAtUtc = DateTimeOffset.UtcNow,
+                                 }
+                             ];
+
+        await using (testContext)
+        {
+            viewService.GetRuntimeContainerDetailAsync(_loadInstanceId, LoadContainerId, Arg.Any<CancellationToken>())
+                       .Returns(detail);
+
+            var page = RenderLoadPage(testContext, LoadContainerId);
+
+            await ScanStatusChipAssert.AssertChipAsync(page,
+                                                       root => ScanStatusChipAssert.FindSectionCellChips(root, "Scan history", "Status"),
+                                                       status,
+                                                       expectedColorClass).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
     /// Create a test context whose tag selection service throws the given exception from save and clear
     /// </summary>
     /// <param name="exception">Exception thrown by the tag selection service</param>

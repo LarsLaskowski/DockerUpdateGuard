@@ -360,5 +360,50 @@ public class ObservedImagesTests
         }
     }
 
+    /// <summary>
+    /// Verify the list shows the latest scan status in a chip of its color
+    /// </summary>
+    /// <param name="status">Scan status</param>
+    /// <param name="expectedColorClass">Expected chip color class</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC4")]
+    [DataRow("Succeeded", "mud-chip-color-success")]
+    [DataRow("Partial", "mud-chip-color-warning")]
+    public async Task ObservedImagesLatestScanStatusChipShowsStatusColorAsync(string status, string expectedColorClass)
+    {
+        var testContext = BlazorTestContextFactory.Create();
+
+        await using (testContext)
+        {
+            var viewService = Substitute.For<IApplicationViewService>();
+            IReadOnlyList<ObservedImageListItemData> items = [
+                                                                 new()
+                                                                 {
+                                                                     Id = Guid.NewGuid(),
+                                                                     Name = ExistingImageName,
+                                                                     ImageReference = "docker.io/existing/image:2.0.0",
+                                                                     LatestScanStatus = status,
+                                                                 }
+                                                             ];
+
+            viewService.GetManualObservedImagesAsync(Arg.Any<CancellationToken>())
+                       .Returns(Task.FromResult(items));
+
+            testContext.Services.AddSingleton(viewService);
+            testContext.Services.AddSingleton(Substitute.For<IImageRegistrationService>());
+            testContext.Services.AddSingleton(Substitute.For<IImageScanOrchestrator>());
+            testContext.Services.AddSingleton(new DashboardRefreshState());
+            testContext.Services.AddSingleton<ILogger<ObservedImages>>(new TestLogger<ObservedImages>());
+
+            var page = testContext.Render<ObservedImages>();
+
+            await ScanStatusChipAssert.AssertChipAsync(page,
+                                                       root => root.FindAll("td[data-label='Latest Scan'] .mud-chip"),
+                                                       status,
+                                                       expectedColorClass).ConfigureAwait(false);
+        }
+    }
+
     #endregion // Methods
 }

@@ -2,8 +2,6 @@ using DockerUpdateGuard.UI;
 
 using Microsoft.AspNetCore.Components;
 
-using MudBlazor;
-
 namespace DockerUpdateGuard.Components.Pages;
 
 /// <summary>
@@ -76,29 +74,6 @@ public sealed partial class MyImageDetail : IDisposable
     private string RouteKey => ObservedImageId.ToString();
 
     #endregion // Properties
-
-    #region Static methods
-
-    /// <summary>
-    /// Resolve the chip color for a scan status
-    /// </summary>
-    /// <param name="status">Scan status</param>
-    /// <returns>Chip color</returns>
-    internal static Color GetScanStatusColor(string status)
-    {
-        return status.ToUpperInvariant() switch
-               {
-                   "SUCCEEDED" => Color.Success,
-                   "COMPLETED" => Color.Success,
-                   "PARTIAL" => Color.Warning,
-                   "FAILED" => Color.Error,
-                   "RUNNING" => Color.Info,
-                   "PENDING" => Color.Warning,
-                   _ => Color.Default,
-               };
-    }
-
-    #endregion // Static methods
 
     #region Methods
 

@@ -52,7 +52,7 @@ public class ScanHistoryPersistentStateTests
                                                                             new()
                                                                             {
                                                                                 Type = "Discovery",
-                                                                                Status = "Completed",
+                                                                                Status = "Succeeded",
                                                                                 TriggerSource = "Manual",
                                                                                 SubjectName = "restored-subject",
                                                                                 StartedAtUtc = DateTimeOffset.UtcNow,
@@ -84,7 +84,7 @@ public class ScanHistoryPersistentStateTests
                                     new()
                                     {
                                         Type = "Discovery",
-                                        Status = "Completed",
+                                        Status = "Succeeded",
                                         TriggerSource = "Manual",
                                         SubjectName = "loaded-subject",
                                         StartedAtUtc = DateTimeOffset.UtcNow,

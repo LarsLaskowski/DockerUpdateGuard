@@ -235,7 +235,7 @@ else
                     <RowTemplate>
                         <MudTd DataLabel="Type">@context.Type</MudTd>
                         <MudTd DataLabel="Status">
-                            <MudChip T="string" Size="Size.Small" Color="@GetScanStatusColor(context.Status)">@context.Status</MudChip>
+                            <MudChip T="string" Size="Size.Small" Color="@ScanStatusDisplayFormatter.GetStatusColor(context.Status)">@context.Status</MudChip>
                         </MudTd>
                         <MudTd DataLabel="Target">@context.SubjectName</MudTd>
                         <MudTd DataLabel="Started">@TimestampFormatter.Format(context.StartedAtUtc)</MudTd>

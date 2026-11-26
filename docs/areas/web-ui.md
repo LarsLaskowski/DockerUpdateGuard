@@ -37,6 +37,9 @@ to read the state the other areas compute and to start manual scans; it computes
 - Timestamps are shown in UTC as `yyyy-MM-dd HH:mm UTC`, the same for every browser and independent of the time zone and
   culture of the server process. The resource chart labels are UTC too: the first and the last label read
   `MM-dd HH:mm UTC`, the visible labels between them `HH:mm`.
+- The scan status chips of the dashboard, scan history, observed image, My Images, runtime container and image detail
+  pages share one color mapping: `Succeeded` green, `Partial` and `Pending` orange, `Failed` red, `Running` blue; any
+  other value, such as `NotSet` or `NotScanned`, stays neutral. The chip text is the status name.
 - While a page loads its data it shows placeholder skeletons; a list without data shows an explanatory empty state. A
   detail page (Docker instance, own image, observed image, runtime container) whose record does not exist shows a
   not-found note with a link back to its list instead, and keeps its route. When the page gets another route
@@ -246,9 +249,6 @@ never their values.
 
 ### Known gaps
 
-- The scan status chips (dashboard, scan history, observed image and My Images lists) color only `Failed`, `Running`
-  and `Pending`; `Succeeded` and `Partial` are shown without color, so a partial run is not marked as a warning.
-  Tracked in [#274](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/274).
 - The Scan History and dashboard descriptions mention discovery and cleanup runs, although those jobs record no scan
   runs ([Scan engine](scan-engine.md)).
   Tracked in [#278](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/278).

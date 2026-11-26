@@ -193,12 +193,12 @@ conditional logic:
 
 ```csharp
 [TestMethod]
-[DataRow("Completed", Color.Success)]
-[DataRow("Failed", Color.Error)]
-[DataRow("Running", Color.Info)]
-public void MyImagesGetScanStatusColorKnownStatusReturnsExpectedColor(string status, Color expectedColor)
+[DataRow(nameof(ScanRunStatus.Succeeded), Color.Success)]
+[DataRow(nameof(ScanRunStatus.Failed), Color.Error)]
+[DataRow(nameof(ScanRunStatus.Running), Color.Info)]
+public void ScanStatusDisplayFormatterGetStatusColorKnownStatusReturnsExpectedColor(string status, Color expectedColor)
 {
-    var color = (Color)_getScanStatusColorMethod.Invoke(null, [status])!;
+    var color = ScanStatusDisplayFormatter.GetStatusColor(status);
 
     Assert.AreEqual(expectedColor,
                     color,

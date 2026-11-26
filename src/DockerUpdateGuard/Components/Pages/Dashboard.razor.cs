@@ -4,8 +4,6 @@ using DockerUpdateGuard.UI;
 using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.Options;
 
-using MudBlazor;
-
 namespace DockerUpdateGuard.Components.Pages;
 
 /// <summary>
@@ -81,23 +79,6 @@ public sealed partial class Dashboard : IDisposable
     #endregion // Properties
 
     #region Static methods
-
-    /// <summary>
-    /// Resolve the chip color for a scan status
-    /// </summary>
-    /// <param name="status">Scan status</param>
-    /// <returns>Chip color</returns>
-    private static Color GetScanStatusColor(string status)
-    {
-        return status.ToUpperInvariant() switch
-               {
-                   "COMPLETED" => Color.Success,
-                   "FAILED" => Color.Error,
-                   "RUNNING" => Color.Info,
-                   "PENDING" => Color.Warning,
-                   _ => Color.Default,
-               };
-    }
 
     /// <summary>
     /// Resolve the overview route for a dashboard metric card

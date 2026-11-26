@@ -1,5 +1,3 @@
-using System.Reflection;
-
 using Bunit;
 
 using DockerUpdateGuard.Components.Pages;
@@ -22,46 +20,7 @@ namespace DockerUpdateGuard.Tests;
 [TestClass]
 public class MyImageDetailTests
 {
-    #region Fields
-
-    /// <summary>
-    /// Non-public scan-status chip color resolver
-    /// </summary>
-    private static readonly MethodInfo _getScanStatusColorMethod = typeof(MyImageDetail).GetMethod("GetScanStatusColor", BindingFlags.NonPublic | BindingFlags.Static)
-                                                                       ?? throw new InvalidOperationException("MyImageDetail must expose the non-public static GetScanStatusColor method");
-
-    #endregion // Fields
-
     #region Methods
-
-    /// <summary>
-    /// Verify scan status chip colors map to expected MudBlazor color values
-    /// </summary>
-    /// <param name="status">Scan status string</param>
-    /// <param name="expectedColor">Expected chip color</param>
-    [TestMethod]
-    [DataRow("Succeeded", Color.Success)]
-    [DataRow("SUCCEEDED", Color.Success)]
-    [DataRow("Completed", Color.Success)]
-    [DataRow("COMPLETED", Color.Success)]
-    [DataRow("Partial", Color.Warning)]
-    [DataRow("PARTIAL", Color.Warning)]
-    [DataRow("Failed", Color.Error)]
-    [DataRow("FAILED", Color.Error)]
-    [DataRow("Running", Color.Info)]
-    [DataRow("RUNNING", Color.Info)]
-    [DataRow("Pending", Color.Warning)]
-    [DataRow("PENDING", Color.Warning)]
-    [DataRow("Unknown", Color.Default)]
-    [DataRow("anything-else", Color.Default)]
-    public void MyImageDetailGetScanStatusColorKnownStatusReturnsExpectedColor(string status, Color expectedColor)
-    {
-        var color = (Color)_getScanStatusColorMethod.Invoke(null, [status])!;
-
-        Assert.AreEqual(expectedColor,
-                        color,
-                        $"Scan status '{status}' must map to Color.{expectedColor}");
-    }
 
     /// <summary>
     /// Verify the vulnerability assessment card shows the fixable finding count and the update-finding hint chip
@@ -388,6 +347,57 @@ public class MyImageDetailTests
             await DetailPageAssert.AssertLoadedAsync(page, "Company Web", "This image does not exist.").ConfigureAwait(false);
 
             Assert.DoesNotContain("Company API", page.Markup, "The shown record must stay the one of the current route");
+        }
+    }
+
+    /// <summary>
+    /// Verify the latest scan chip and the scan history chip show the scan status in the chip color
+    /// </summary>
+    /// <param name="status">Scan status</param>
+    /// <param name="expectedColorClass">Expected chip color class</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC4")]
+    [DataRow("Succeeded", "mud-chip-color-success")]
+    [DataRow("Partial", "mud-chip-color-warning")]
+    public async Task MyImageDetailScanStatusChipsShowStatusColorAsync(string status, string expectedColorClass)
+    {
+        var testContext = BlazorTestContextFactory.Create();
+
+        await using (testContext)
+        {
+            var id = Guid.NewGuid();
+            var viewService = Substitute.For<IApplicationViewService>();
+
+            viewService.GetObservedImageDetailAsync(id, Arg.Any<CancellationToken>())
+                       .Returns(new ObservedImageDetailViewData
+                                {
+                                    Id = id,
+                                    Name = "Company API",
+                                    ImageReference = "docker.io/company/api:1.0.0",
+                                    LatestScanStatus = status,
+                                    ScanHistory = [
+                                                      new ScanHistoryItemData
+                                                      {
+                                                          Type = "Registry",
+                                                          Status = status,
+                                                          StartedAtUtc = DateTimeOffset.UtcNow,
+                                                      }
+                                                  ],
+                                });
+
+            testContext.Services.AddSingleton(viewService);
+
+            var page = testContext.Render<MyImageDetail>(parameters => parameters.Add(component => component.ObservedImageId, id));
+
+            await ScanStatusChipAssert.AssertChipAsync(page,
+                                                       root => ScanStatusChipAssert.FindSummaryCardChips(root, "Latest scan"),
+                                                       status,
+                                                       expectedColorClass).ConfigureAwait(false);
+            await ScanStatusChipAssert.AssertChipAsync(page,
+                                                       root => ScanStatusChipAssert.FindSectionCellChips(root, "Scan history", "Status"),
+                                                       status,
+                                                       expectedColorClass).ConfigureAwait(false);
         }
     }
 
