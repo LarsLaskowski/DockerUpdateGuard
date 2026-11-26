@@ -11,7 +11,6 @@ internal static class ScanStatusDisplayFormatter
 {
     #region Fields
 
-#pragma warning disable S1144 // Skeleton: removed with the implementation
     /// <summary>
     /// Chip colors by scan status name, matched case-insensitively
     /// </summary>
@@ -23,13 +22,11 @@ internal static class ScanStatusDisplayFormatter
                                                                           [nameof(ScanRunStatus.Running)] = Color.Info,
                                                                           [nameof(ScanRunStatus.Pending)] = Color.Warning,
                                                                       };
-#pragma warning restore S1144
 
     #endregion // Fields
 
     #region Static methods
 
-#pragma warning disable S1172 // Skeleton: removed with the implementation
     /// <summary>
     /// Resolve the chip color for a scan status
     /// </summary>
@@ -37,9 +34,13 @@ internal static class ScanStatusDisplayFormatter
     /// <returns>Chip color</returns>
     public static Color GetStatusColor(string? status)
     {
-        throw new InvalidOperationException("Skeleton: not implemented");
+        if (status is not null && _statusColors.TryGetValue(status, out var color))
+        {
+            return color;
+        }
+
+        return Color.Default;
     }
-#pragma warning restore S1172
 
     #endregion // Static methods
 }
