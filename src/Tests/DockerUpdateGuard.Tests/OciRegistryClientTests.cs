@@ -1486,9 +1486,9 @@ public partial class OciRegistryClientTests
                                   }
                                   """);
         handler.AddResponse("https://mcr.microsoft.com/v2/mssql/server/manifests/1.0",
-                            CreateManifestResponse("sha256:100", """{ "schemaVersion": 2, "config": { "digest": "sha256:config100" } }"""));
+                            CreateManifestResponse("sha256:100", """{ "schemaVersion": 2, "created": "2026-05-01T10:00:00Z", "config": { "digest": "sha256:config100" } }"""));
         handler.AddResponse("https://mcr.microsoft.com/v2/mssql/server/manifests/2.0",
-                            CreateManifestResponse("sha256:200", """{ "schemaVersion": 2, "config": { "digest": "sha256:config200" } }"""));
+                            CreateManifestResponse("sha256:200", """{ "schemaVersion": 2, "created": "2026-05-01T10:00:00Z", "config": { "digest": "sha256:config200" } }"""));
 
         var client = new OciRegistryClient(httpClient, new TestLogger<OciRegistryClient>());
         var result = await client.GetTagsAsync("mcr.microsoft.com", "mssql/server", cancellationToken: CancellationToken.None)
@@ -1863,7 +1863,7 @@ public partial class OciRegistryClientTests
         handler.AddResponse(expectedUri,
                             CreateManifestResponse("sha256:manifest",
                                                    """
-                                                   { "schemaVersion": 2, "config": { "digest": "sha256:config" } }
+                                                   { "schemaVersion": 2, "created": "2026-05-01T10:00:00Z", "config": { "digest": "sha256:config" } }
                                                    """));
 
         var client = new OciRegistryClient(httpClient, new TestLogger<OciRegistryClient>());
@@ -2016,7 +2016,7 @@ public partial class OciRegistryClientTests
         var manifestUri = $"https://{registry}/v2/corp/api/manifests/1.0";
 
         handler.AddResponse(manifestUri,
-                            CreateManifestResponse("sha256:port-tag", """{ "schemaVersion": 2, "config": { "digest": "sha256:config" } }"""));
+                            CreateManifestResponse("sha256:port-tag", """{ "schemaVersion": 2, "created": "2026-05-01T10:00:00Z", "config": { "digest": "sha256:config" } }"""));
 
         var client = new OciRegistryClient(httpClient, new TestLogger<OciRegistryClient>());
 
@@ -2659,6 +2659,156 @@ public partial class OciRegistryClientTests
         Assert.AreEqual("sha256:two", readable.Digest, "The readable tag must keep its digest");
 
         AssertSingleFailureWarning(logger);
+    }
+
+    /// <summary>
+    /// Verify a configuration lookup reads the platform manifest and never an attestation entry that precedes it
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC2")]
+    public async Task OciRegistryClientGetImageConfigurationAsyncAttestationFirstSelectsLinuxManifestAsync()
+    {
+        using var handler = new SequenceHttpMessageHandler();
+        using var httpClient = new HttpClient(handler);
+
+        handler.AddResponse("https://ghcr.io/v2/acme/api/manifests/1.0",
+                            CreateManifestListResponse("sha256:index",
+                                                       """
+                                                       {
+                                                         "schemaVersion": 2,
+                                                         "manifests": [
+                                                           { "digest": "sha256:74ce6925ef89e320a513225ca1ceb74ee90879400cd9fc89303e7bf420ea630f", "platform": { "architecture": "unknown", "os": "unknown" } },
+                                                           { "digest": "sha256:fbbd521bd989893b6c350877d17e1eb1126b6a1bfb715c28e6945f1c82ae0093", "platform": { "architecture": "amd64", "os": "linux" } }
+                                                         ]
+                                                       }
+                                                       """));
+        handler.AddResponse("https://ghcr.io/v2/acme/api/manifests/sha256%3Afbbd521bd989893b6c350877d17e1eb1126b6a1bfb715c28e6945f1c82ae0093",
+                            CreateManifestResponse("sha256:fbbd521bd989893b6c350877d17e1eb1126b6a1bfb715c28e6945f1c82ae0093",
+                                                   """{ "schemaVersion": 2, "config": { "digest": "sha256:313029fcb3acece69f9f3294eb1344c8e1ade8ab93d3b42b03e368994da1b587" } }"""));
+        handler.AddJsonResponse("https://ghcr.io/v2/acme/api/blobs/sha256%3A313029fcb3acece69f9f3294eb1344c8e1ade8ab93d3b42b03e368994da1b587",
+                                """{ "architecture": "amd64", "os": "linux", "config": { "Labels": { "io.hass.type": "core" } } }""");
+
+        var client = new OciRegistryClient(httpClient, new TestLogger<OciRegistryClient>());
+
+        var result = await client.GetImageConfigurationAsync(CreateGhcrReference(), TestContext.CancellationToken).ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "The configuration of the linux manifest must be read");
+        Assert.IsNotNull(result.Data, "The lookup must return the configuration");
+        Assert.AreEqual("amd64", result.Data.Architecture, "The configuration must be the one of the linux/amd64 manifest");
+        Assert.AreEqual("core", result.Data.Labels["io.hass.type"], "The labels must come from the linux/amd64 configuration");
+        Assert.DoesNotContain("https://ghcr.io/v2/acme/api/manifests/sha256%3A74ce6925ef89e320a513225ca1ceb74ee90879400cd9fc89303e7bf420ea630f",
+                              handler.Requests.Select(request => request.RequestUri)
+                                              .ToArray(),
+                              "The attestation manifest must never be requested");
+    }
+
+    /// <summary>
+    /// Verify a configuration lookup without a platform prefers the linux entry over an earlier entry of another operating system
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC3")]
+    public async Task OciRegistryClientGetImageConfigurationAsyncNoPlatformPrefersLinuxAsync()
+    {
+        using var handler = new SequenceHttpMessageHandler();
+        using var httpClient = new HttpClient(handler);
+
+        handler.AddResponse("https://ghcr.io/v2/acme/api/manifests/1.0",
+                            CreateManifestListResponse("sha256:index",
+                                                       """
+                                                       {
+                                                         "schemaVersion": 2,
+                                                         "manifests": [
+                                                           { "digest": "sha256:windows", "platform": { "os": "windows", "architecture": "amd64" } },
+                                                           { "digest": "sha256:arm64", "platform": { "os": "linux", "architecture": "arm64" } }
+                                                         ]
+                                                       }
+                                                       """));
+        handler.AddResponse("https://ghcr.io/v2/acme/api/manifests/sha256%3Aarm64",
+                            CreateManifestResponse("sha256:arm64", """{ "schemaVersion": 2, "config": { "digest": "sha256:config-arm64" } }"""));
+        handler.AddJsonResponse("https://ghcr.io/v2/acme/api/blobs/sha256%3Aconfig-arm64", """{ "architecture": "arm64", "os": "linux" }""");
+
+        var client = new OciRegistryClient(httpClient, new TestLogger<OciRegistryClient>());
+
+        var result = await client.GetImageConfigurationAsync(CreateGhcrReference(), TestContext.CancellationToken).ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "The configuration of the linux manifest must be read");
+        Assert.IsNotNull(result.Data, "The lookup must return the configuration");
+        Assert.AreEqual("arm64", result.Data.Architecture, "The configuration must be the one of the linux/arm64 manifest");
+    }
+
+    /// <summary>
+    /// Verify a tag lookup with a platform no entry matches follows the linux entry and never the attestation
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC4")]
+    public async Task OciRegistryClientGetTagAsyncUnmatchedPlatformSkipsUnknownEntriesAsync()
+    {
+        using var handler = new SequenceHttpMessageHandler();
+        using var httpClient = new HttpClient(handler);
+
+        handler.AddResponse("https://ghcr.io/v2/acme/api/manifests/1.0",
+                            CreateManifestListResponse("sha256:index",
+                                                       """
+                                                       {
+                                                         "schemaVersion": 2,
+                                                         "manifests": [
+                                                           { "digest": "sha256:attestation", "platform": { "os": "unknown", "architecture": "unknown" } },
+                                                           { "digest": "sha256:amd64", "platform": { "os": "linux", "architecture": "amd64" } }
+                                                         ]
+                                                       }
+                                                       """));
+        handler.AddResponse("https://ghcr.io/v2/acme/api/manifests/sha256%3Aamd64",
+                            CreateManifestResponse("sha256:amd64", """{ "schemaVersion": 2, "created": "2026-05-01T10:00:00Z", "config": { "digest": "sha256:config-amd64" } }"""));
+
+        var client = new OciRegistryClient(httpClient, new TestLogger<OciRegistryClient>());
+
+        var result = await client.GetTagAsync(CreateGhcrReference(), "linux", "s390x", TestContext.CancellationToken).ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "The lookup must follow the linux entry");
+        Assert.AreSequenceEqual(["https://ghcr.io/v2/acme/api/manifests/1.0", "https://ghcr.io/v2/acme/api/manifests/sha256%3Aamd64"],
+                                handler.Requests.Select(request => request.RequestUri)
+                                                .ToArray(),
+                                "Only the index and the linux/amd64 manifest may be requested, never the attestation");
+    }
+
+    /// <summary>
+    /// Verify an index whose entries are all unusable answers a failed result with the fixed message for a tag lookup and a configuration lookup
+    /// </summary>
+    /// <param name="operation">Name of the call</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC5")]
+    [DataRow("Tag")]
+    [DataRow("Configuration")]
+    public async Task OciRegistryClientCallOnlyUnknownPlatformsReturnsFailedAsync(string operation)
+    {
+        using var handler = new SequenceHttpMessageHandler();
+        using var httpClient = new HttpClient(handler);
+
+        handler.AddResponse("https://mcr.microsoft.com/v2/mssql/server/manifests/latest",
+                            CreateManifestListResponse("sha256:index",
+                                                       """
+                                                       {
+                                                         "schemaVersion": 2,
+                                                         "manifests": [
+                                                           { "digest": "sha256:attestation1", "platform": { "os": "unknown", "architecture": "unknown" } },
+                                                           { "digest": "sha256:attestation2", "platform": { "os": "unknown", "architecture": "unknown" } }
+                                                         ]
+                                                       }
+                                                       """));
+
+        var client = new OciRegistryClient(httpClient, new TestLogger<OciRegistryClient>());
+
+        var (status, message) = await RunCallAsync(client, operation, TestContext.CancellationToken).ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Failed, status, $"The {operation} call must fail when the index has only unusable entries");
+        Assert.AreEqual("Manifest list for 'mcr.microsoft.com/mssql/server:latest' did not expose a target manifest digest",
+                        message,
+                        "The failure must be the fixed text for an index without a target manifest");
+        Assert.HasCount(1, handler.Requests, "No attestation manifest may be requested");
     }
 
     #endregion // Methods
