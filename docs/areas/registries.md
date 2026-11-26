@@ -90,7 +90,7 @@ go through its retry of transient HTTP failures.
   `unknown` (attestations) are skipped; of the rest, the entry matching the caller's operating system and architecture,
   then the first entry matching the architecture, then the first `linux` entry, then the first remaining entry
   (compared case-insensitively; the caller's values are trimmed, and a blank one is not requested). An image
-  configuration lookup passes no platform, so it takes the first `linux` entry, and Docker Hub always passes none. An
+  configuration lookup passes no platform, so it takes the first `linux` entry (without one, the first remaining entry), and Docker Hub always passes none. An
   index without such an entry is answered *failed* with "Manifest list for '<reference>' did not expose a target
   manifest digest" for other registries.
 - **Tag listing** — the tags of a repository with digest and publication time.

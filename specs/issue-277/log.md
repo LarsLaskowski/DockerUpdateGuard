@@ -19,3 +19,4 @@ are quoted in full.
 | 2026-11-26 21:29 | 6 Documentation | Orchestrator | written in 6 Implement; Test re-run in 6 Coverage (1992/1992) |
 | 2026-11-26 21:31 | 7 Gate stamp | Orchestrator | PASS on 119cc7265e70bc7c448323633a36c87c077c859b (tier standard): Format check pass; Analyzer gate pass; Test with coverage pass; Coverage gate pass; decision-check.py pass; scope-check.py pass · figure-check.py 0 hit(s) |
 | 2026-11-26 21:33 | 8 Review | Reviewer | VERDICT: BLOCKING 0 \| NON-BLOCKING 3 on 119cc7265e70bc7c448323633a36c87c077c859b — (1) test for blank requested platform; (2) test for non-object platform failing OCI lookup; (3) verbatim doc fix registries.md:93-94 (opus/medium · 102,656 tokens · 24 tool uses · 148 s · 46 in · 13,810 out · 1,629,295 cache read · 99,969 cache write · 551,044 weighted) |
+| 2026-11-26 21:33 | 8 Verbatim fix | Orchestrator | verbatim: [NON-BLOCKING, verbatim] docs/areas/registries.md:93-94 |
