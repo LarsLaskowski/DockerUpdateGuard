@@ -2739,6 +2739,42 @@ public partial class OciRegistryClientTests
     }
 
     /// <summary>
+    /// Verify a tag lookup with a requested windows platform follows the windows entry of the index
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC3")]
+    public async Task OciRegistryClientGetTagAsyncRequestedWindowsPlatformSelectsWindowsManifestAsync()
+    {
+        using var handler = new SequenceHttpMessageHandler();
+        using var httpClient = new HttpClient(handler);
+
+        handler.AddResponse("https://ghcr.io/v2/acme/api/manifests/1.0",
+                            CreateManifestListResponse("sha256:index",
+                                                       """
+                                                       {
+                                                         "schemaVersion": 2,
+                                                         "manifests": [
+                                                           { "digest": "sha256:windows", "platform": { "os": "windows", "architecture": "amd64" } },
+                                                           { "digest": "sha256:arm64", "platform": { "os": "linux", "architecture": "arm64" } }
+                                                         ]
+                                                       }
+                                                       """));
+        handler.AddResponse("https://ghcr.io/v2/acme/api/manifests/sha256%3Awindows",
+                            CreateManifestResponse("sha256:windows", """{ "schemaVersion": 2, "created": "2026-05-01T10:00:00Z", "config": { "digest": "sha256:config-windows" } }"""));
+
+        var client = new OciRegistryClient(httpClient, new TestLogger<OciRegistryClient>());
+
+        var result = await client.GetTagAsync(CreateGhcrReference(), "windows", "amd64", TestContext.CancellationToken).ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "The lookup must follow the windows entry");
+        Assert.AreSequenceEqual(["https://ghcr.io/v2/acme/api/manifests/1.0", "https://ghcr.io/v2/acme/api/manifests/sha256%3Awindows"],
+                                handler.Requests.Select(request => request.RequestUri)
+                                                .ToArray(),
+                                "Only the index and the windows/amd64 manifest may be requested");
+    }
+
+    /// <summary>
     /// Verify a tag lookup with a platform no entry matches follows the linux entry and never the attestation
     /// </summary>
     /// <returns>Task</returns>
