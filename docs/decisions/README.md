@@ -122,4 +122,6 @@ once in the [area document](../areas/README.md) of the record's area, and the re
 | [0059](0059-a-detail-page-shows-a-missing-record-or-a-failed-load-inline.md) | A detail page shows a missing record or a failed load inline | Accepted | 2026-11-24 |
 | [0060](0060-a-detail-page-acts-only-on-the-state-of-its-current-route.md) | A detail page acts only on the state of its current route | Accepted | 2026-11-25 |
 | [0061](0061-calendar-year-prefixed-tags-are-compared-across-years.md) | Calendar year-prefixed tags are compared across years | Accepted | 2026-11-25 |
+| [0062](0062-both-registry-clients-choose-a-platform-manifest-by-one-shared-rule.md) | Both registry clients choose a platform manifest by one shared rule | Proposed | 2026-11-26 |
+| [0063](0063-other-registries-take-a-tags-publication-time-from-its-image-configuration.md) | Other registries take a tag's publication time from its image configuration | Proposed | 2026-11-26 |
 <!-- project:end index -->
