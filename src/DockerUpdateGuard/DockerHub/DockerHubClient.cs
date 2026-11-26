@@ -264,52 +264,6 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient
     }
 
     /// <summary>
-    /// Select the platform manifest digest from a multi-arch manifest list
-    /// </summary>
-    /// <param name="manifestsElement">Manifest list "manifests" array element</param>
-    /// <returns>Resolved platform manifest digest or null</returns>
-    private static string? SelectManifestDigest(JsonElement manifestsElement)
-    {
-        var linuxDigest = default(string);
-        var fallbackDigest = default(string);
-
-        foreach (var manifest in manifestsElement.EnumerateArray())
-        {
-            var digest = TryGetString(manifest, DigestPropertyName);
-
-            if (string.IsNullOrWhiteSpace(digest))
-            {
-                continue;
-            }
-
-            if (manifest.TryGetProperty("platform", out var platformElement) == false)
-            {
-                fallbackDigest ??= digest;
-
-                continue;
-            }
-
-            var manifestOperatingSystem = TryGetString(platformElement, "os");
-            var manifestArchitecture = TryGetString(platformElement, "architecture");
-
-            if (string.Equals(manifestOperatingSystem, "unknown", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(manifestArchitecture, "unknown", StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-
-            fallbackDigest ??= digest;
-
-            if (string.Equals(manifestOperatingSystem, "linux", StringComparison.OrdinalIgnoreCase))
-            {
-                linuxDigest ??= digest;
-            }
-        }
-
-        return linuxDigest ?? fallbackDigest;
-    }
-
-    /// <summary>
     /// Parse a Docker Hub repository payload
     /// </summary>
     /// <param name="element">JSON element</param>
@@ -689,7 +643,7 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient
             return null;
         }
 
-        var targetDigest = SelectManifestDigest(manifestsElement);
+        var targetDigest = ManifestPlatformSelector.SelectManifestDigest(manifestsElement, null, null);
 
         if (string.IsNullOrWhiteSpace(targetDigest))
         {

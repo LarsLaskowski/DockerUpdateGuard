@@ -68,8 +68,15 @@ go through its retry of transient HTTP failures.
     the digest; only Docker Scout's digest check uses them ([Vulnerabilities](vulnerabilities.md#docker-scout)), and
     they are not stored.
   - Other registries: a manifest request for the tag. The digest is the `Docker-Content-Digest` of the first response
-    (for a multi-platform index, the index digest). The publication time is known only when the manifest carries a
-    top-level `created` timestamp; otherwise it is unknown.
+    (for a multi-platform index, the index digest). The publication time is the manifest's top-level `created`
+    timestamp; image manifests rarely carry one, so otherwise it is the `created` of the image's configuration blob (for
+    a multi-platform index, of the chosen platform manifest), read with one more request per tag lookup (a repeated
+    request of the bearer token flow excepted; a bounded listing therefore sends at most one per inspected tag, so up
+    to its maximum count). That value is the image's build time, not the time it was pushed to the registry as Docker
+    Hub's `last_pushed` is. A `created` that is missing, not a string, unparseable or at or before
+    `1970-01-01T00:00:00Z` (the epoch of reproducible builds) is unknown. A blob that cannot be read (any answer but
+    success, a transport error, a timeout, malformed JSON) leaves the time unknown and the lookup *succeeded* with its
+    digest; an error, not an answer status, is logged as a warning. The caller's cancellation still ends the lookup.
   - Both clients accept only a requested tag that matches the OCI tag grammar (1 to 128 characters of
     `[A-Za-z0-9_][A-Za-z0-9_.-]*`, ASCII only); for any other tag the lookup is answered *not found*, "Requested tag
     is not a valid registry tag", without a request. Docker Hub reports the requested tag, not the `name` of the
@@ -79,11 +86,13 @@ go through its retry of transient HTTP failures.
   are equal case-insensitively, or repeat, the one that comes last in the configuration is kept, with its name and
   value), creation time, operating system and architecture, read from the image's configuration blob. For a
   multi-platform index one platform manifest
-  is chosen:
-  - Docker Hub: the first `linux` entry, skipping entries whose operating system or architecture is `unknown`
-    (attestations); otherwise the first remaining entry.
-  - Other registries: the entry matching the caller's operating system and architecture, then the first entry matching
-    the architecture, then the first entry with a digest. A caller that passes no platform gets the first entry.
+  is chosen by one rule in both clients: entries without a digest and entries whose operating system or architecture is
+  `unknown` (attestations) are skipped; of the rest, the entry matching the caller's operating system and architecture,
+  then the first entry matching the architecture, then the first `linux` entry, then the first remaining entry
+  (compared case-insensitively; the caller's values are trimmed, and a blank one is not requested). An image
+  configuration lookup passes no platform, so it takes the first `linux` entry, and Docker Hub always passes none. An
+  index without such an entry is answered *failed* with "Manifest list for '<reference>' did not expose a target
+  manifest digest" for other registries.
 - **Tag listing** — the tags of a repository with digest and publication time.
   - Docker Hub: web API pages of 100 tags, in the order Docker Hub returns them (most recently pushed first), following
     the `next` link of each page ([Pagination links](#pagination-links)).
@@ -281,15 +290,12 @@ go through its retry of transient HTTP failures.
   grammars and lengths (see *What can be read*); the names of Docker Engine containers and discovered images are cut
   to their stored length, so these values fit every column they reach ([0014](../decisions/0014-registry-tag-names-and-digests-are-validated-where-they-are-read.md)).
 
-### Known gaps
-
-- For other registries an image configuration lookup without a platform takes the first index entry, which can be an
-  attestation manifest, and publication times come only from a top-level `created` field of the manifest, which most
-  registries do not send, so their tags usually have no publication time. Tracked in
-  [#277](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/277).
-
 ## Related decisions
 
+- [0062](../decisions/0062-both-registry-clients-choose-a-platform-manifest-by-one-shared-rule.md): both registry
+  clients choose a platform manifest by one shared rule.
+- [0063](../decisions/0063-other-registries-take-a-tags-publication-time-from-its-image-configuration.md): other
+  registries take a tag's publication time from its image configuration.
 - [0052](../decisions/0052-the-docker-hub-registry-key-only-names-the-account-discovery-host.md): the
   `DockerHub:Registry` key only names the account discovery host.
 - [0039](../decisions/0039-a-registry-request-and-the-read-of-its-response-body-share-one-deadline.md): a registry
