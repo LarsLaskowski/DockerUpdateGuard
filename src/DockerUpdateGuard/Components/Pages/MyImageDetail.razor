@@ -39,7 +39,7 @@
                 <MudItem xs="12" md="6">
                     <MudPaper Class="summary-card" Elevation="0">
                         <span class="summary-label">Latest scan</span>
-                        <MudChip T="string" Size="Size.Small" Color="@GetScanStatusColor(_detail.LatestScanStatus)">@_detail.LatestScanStatus</MudChip>
+                        <MudChip T="string" Size="Size.Small" Color="@ScanStatusDisplayFormatter.GetStatusColor(_detail.LatestScanStatus)">@_detail.LatestScanStatus</MudChip>
                         @if (string.IsNullOrWhiteSpace(_detail.LatestScanMessage) == false)
                         {
                             <span class="table-secondary">@_detail.LatestScanMessage</span>
@@ -227,7 +227,7 @@
                     <RowTemplate>
                         <MudTd DataLabel="Type">@context.Type</MudTd>
                         <MudTd DataLabel="Status">
-                            <MudChip T="string" Size="Size.Small" Color="@GetScanStatusColor(context.Status)">@context.Status</MudChip>
+                            <MudChip T="string" Size="Size.Small" Color="@ScanStatusDisplayFormatter.GetStatusColor(context.Status)">@context.Status</MudChip>
                             @if (string.IsNullOrWhiteSpace(context.ErrorMessage) == false)
                             {
                                 <span class="table-secondary">@context.ErrorMessage</span>

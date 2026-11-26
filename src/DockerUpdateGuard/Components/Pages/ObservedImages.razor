@@ -116,7 +116,7 @@
                         <span>@ImageReferenceFormatter.GetReference(context.ImageReference)</span>
                     </MudTd>
                     <MudTd DataLabel="Latest Scan">
-                        <MudChip T="string" Size="Size.Small" Color="@GetScanStatusColor(context.LatestScanStatus)">@context.LatestScanStatus</MudChip>
+                        <MudChip T="string" Size="Size.Small" Color="@ScanStatusDisplayFormatter.GetStatusColor(context.LatestScanStatus)">@context.LatestScanStatus</MudChip>
                         <span class="table-secondary">@context.LatestScanMessage</span>
                     </MudTd>
                     <MudTd DataLabel="Updates">@context.ActiveUpdateFindingCount</MudTd>

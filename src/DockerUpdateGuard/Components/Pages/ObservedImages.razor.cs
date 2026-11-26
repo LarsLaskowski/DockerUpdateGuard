@@ -113,28 +113,6 @@ public sealed partial class ObservedImages : IDisposable
     #region Static methods
 
     /// <summary>
-    /// Resolve the chip color for a scan status
-    /// </summary>
-    /// <param name="status">Scan status</param>
-    /// <returns>Chip color</returns>
-    private static Color GetScanStatusColor(string? status)
-    {
-        if (string.IsNullOrWhiteSpace(status))
-        {
-            return Color.Default;
-        }
-
-        return status.ToUpperInvariant() switch
-               {
-                   "COMPLETED" => Color.Success,
-                   "FAILED" => Color.Error,
-                   "RUNNING" => Color.Info,
-                   "PENDING" => Color.Warning,
-                   _ => Color.Default,
-               };
-    }
-
-    /// <summary>
     /// Resolve the chip color for a vulnerability assessment status
     /// </summary>
     /// <param name="status">Vulnerability assessment status</param>
