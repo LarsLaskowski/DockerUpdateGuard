@@ -1,6 +1,6 @@
 # 0062: Both registry clients choose a platform manifest by one shared rule
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-26
 - **Area:** Registries
 - **Source:** Issue #277
