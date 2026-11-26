@@ -2588,6 +2588,28 @@ public partial class OciRegistryClientTests
     }
 
     /// <summary>
+    /// Verify an index entry whose platform is null is answered as an unexpected error
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    public async Task OciRegistryClientGetImageConfigurationAsyncNullPlatformReturnsFailedAsync()
+    {
+        using var handler = new SequenceHttpMessageHandler();
+        using var httpClient = new HttpClient(handler);
+
+        handler.AddResponse("https://ghcr.io/v2/acme/api/manifests/1.0",
+                            CreateManifestListResponse("sha256:index", """{ "manifests": [ { "digest": "sha256:a", "platform": null } ] }"""));
+
+        var logger = new TestLogger<OciRegistryClient>();
+        var client = new OciRegistryClient(httpClient, logger);
+
+        var result = await client.GetImageConfigurationAsync(CreateGhcrReference(), TestContext.CancellationToken).ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Failed, result.Status, "A null platform must be answered as failed");
+        Assert.Contains("unexpected error", result.Message ?? string.Empty, "A null platform must be reported as an unexpected error");
+    }
+
+    /// <summary>
     /// Verify a token answer whose expiry fields cannot be read as a lifetime still lets the lookup succeed
     /// </summary>
     /// <param name="tokenJson">Token answer</param>

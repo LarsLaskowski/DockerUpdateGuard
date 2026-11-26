@@ -245,6 +245,25 @@ public class ManifestPlatformSelectorTests
     }
 
     /// <summary>
+    /// Verify a blank requested platform is treated as not requested
+    /// </summary>
+    [TestMethod]
+    [TestCategory("AC1")]
+    public void ManifestPlatformSelectorSelectManifestDigestBlankRequestIsNotRequested()
+    {
+        var digest = Select("""
+                            [
+                              { "digest": "sha256:a", "platform": { "os": "", "architecture": "" } },
+                              { "digest": "sha256:b", "platform": { "os": "linux", "architecture": "amd64" } }
+                            ]
+                            """,
+                            "  ",
+                            "  ");
+
+        Assert.AreEqual("sha256:b", digest, "A blank requested platform must not match an entry with an empty platform");
+    }
+
+    /// <summary>
     /// Verify an index without a usable entry answers null
     /// </summary>
     /// <param name="manifestsJson">Manifests array</param>
