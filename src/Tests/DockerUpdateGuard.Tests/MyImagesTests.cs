@@ -33,12 +33,6 @@ public class MyImagesTests
                                                                     ?? throw new InvalidOperationException("MyImages must expose the non-public static GetSectionTitle method");
 
     /// <summary>
-    /// Non-public scan-status chip color resolver
-    /// </summary>
-    private static readonly MethodInfo _getScanStatusColorMethod = typeof(MyImages).GetMethod("GetScanStatusColor", BindingFlags.NonPublic | BindingFlags.Static)
-                                                                       ?? throw new InvalidOperationException("MyImages must expose the non-public static GetScanStatusColor method");
-
-    /// <summary>
     /// Non-public vulnerability-status chip color resolver
     /// </summary>
     private static readonly MethodInfo _getVulnerabilityStatusColorMethod = typeof(MyImages).GetMethod("GetVulnerabilityStatusColor", BindingFlags.NonPublic | BindingFlags.Static)
@@ -76,49 +70,6 @@ public class MyImagesTests
         Assert.AreEqual("Images from Docker account",
                         title,
                         "Section title must not include parentheses when no user name is set");
-    }
-
-    /// <summary>
-    /// Verify scan status chip colors map to expected MudBlazor color values
-    /// </summary>
-    /// <param name="status">Scan status string</param>
-    /// <param name="expectedColor">Expected chip color</param>
-    [TestMethod]
-    [DataRow("Completed", Color.Success)]
-    [DataRow("COMPLETED", Color.Success)]
-    [DataRow("completed", Color.Success)]
-    [DataRow("Failed", Color.Error)]
-    [DataRow("FAILED", Color.Error)]
-    [DataRow("Running", Color.Info)]
-    [DataRow("RUNNING", Color.Info)]
-    [DataRow("Pending", Color.Warning)]
-    [DataRow("PENDING", Color.Warning)]
-    [DataRow("Unknown", Color.Default)]
-    [DataRow("anything-else", Color.Default)]
-    public void MyImagesGetScanStatusColorKnownStatusReturnsExpectedColor(string status, Color expectedColor)
-    {
-        var color = (Color)_getScanStatusColorMethod.Invoke(null, [status])!;
-
-        Assert.AreEqual(expectedColor,
-                        color,
-                        $"Scan status '{status}' must map to Color.{expectedColor}");
-    }
-
-    /// <summary>
-    /// Verify null or blank scan status resolves to the default chip color
-    /// </summary>
-    /// <param name="status">Null or blank scan status</param>
-    [TestMethod]
-    [DataRow(null)]
-    [DataRow("")]
-    [DataRow("   ")]
-    public void MyImagesGetScanStatusColorNullOrBlankReturnsDefault(string? status)
-    {
-        var color = (Color)_getScanStatusColorMethod.Invoke(null, [status])!;
-
-        Assert.AreEqual(Color.Default,
-                        color,
-                        "Null or blank scan status must resolve to Color.Default");
     }
 
     /// <summary>
@@ -193,6 +144,50 @@ public class MyImagesTests
 
             await DetailPageAssert.AssertLoadErrorAsync(page, "Loading the images failed: unexpected error", "secret text").ConfigureAwait(false);
             DetailPageAssert.AssertLoadLoggedOnce(logger, "LoadMyImages", exception);
+        }
+    }
+
+    /// <summary>
+    /// Verify the list shows the latest scan status in a chip of its color
+    /// </summary>
+    /// <param name="status">Scan status</param>
+    /// <param name="expectedColorClass">Expected chip color class</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC4")]
+    [DataRow("Succeeded", "mud-chip-color-success")]
+    [DataRow("Partial", "mud-chip-color-warning")]
+    public async Task MyImagesLatestScanStatusChipShowsStatusColorAsync(string status, string expectedColorClass)
+    {
+        var testContext = BlazorTestContextFactory.Create();
+
+        await using (testContext)
+        {
+            var viewService = Substitute.For<IApplicationViewService>();
+            IReadOnlyList<ObservedImageListItemData> items = [
+                                                                 new()
+                                                                 {
+                                                                     Id = Guid.NewGuid(),
+                                                                     Name = "Company API",
+                                                                     ImageReference = "docker.io/company/api:1.0.0",
+                                                                     LatestScanStatus = status,
+                                                                 }
+                                                             ];
+
+            viewService.GetDiscoveryObservedImagesAsync(Arg.Any<CancellationToken>())
+                       .Returns(Task.FromResult(items));
+
+            testContext.Services.AddSingleton(viewService);
+            testContext.Services.AddSingleton(new DashboardRefreshState());
+            testContext.Services.AddSingleton(Options.Create(new DockerUpdateGuardOptions()));
+            testContext.Services.AddSingleton<ILogger<MyImages>>(new TestLogger<MyImages>());
+
+            var page = testContext.Render<MyImages>();
+
+            await ScanStatusChipAssert.AssertChipAsync(page,
+                                                       root => root.FindAll("td[data-label='Latest Scan'] .mud-chip"),
+                                                       status,
+                                                       expectedColorClass).ConfigureAwait(false);
         }
     }
 

@@ -43,7 +43,7 @@ public class ScanHistoryTests
                                     new()
                                     {
                                         Type = "Vulnerability",
-                                        Status = "Completed",
+                                        Status = "Succeeded",
                                         TriggerSource = "Manual",
                                         StartedAtUtc = DateTimeOffset.UtcNow,
                                     }
@@ -294,7 +294,7 @@ public class ScanHistoryTests
                                     new()
                                     {
                                         Type = "Vulnerability",
-                                        Status = "Completed",
+                                        Status = "Succeeded",
                                         TriggerSource = "Manual",
                                         SubjectName = "unique-scan-subject",
                                         StartedAtUtc = DateTimeOffset.UtcNow,
@@ -322,6 +322,49 @@ public class ScanHistoryTests
             Assert.IsNotNull(refreshButton, "The refresh button must stay present");
             Assert.IsFalse(refreshButton.HasAttribute("disabled"), "The refresh button must stay enabled");
             DetailPageAssert.AssertLoadLoggedOnce(logger, "LoadScanHistory", exception);
+        }
+    }
+
+    /// <summary>
+    /// Verify the scan history table shows the scan status in a chip of its color
+    /// </summary>
+    /// <param name="status">Scan status</param>
+    /// <param name="expectedColorClass">Expected chip color class</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC4")]
+    [DataRow("Succeeded", "mud-chip-color-success")]
+    [DataRow("Partial", "mud-chip-color-warning")]
+    public async Task ScanHistoryScanStatusChipShowsStatusColorAsync(string status, string expectedColorClass)
+    {
+        var testContext = BlazorTestContextFactory.Create();
+
+        await using (testContext)
+        {
+            var viewService = Substitute.For<IApplicationViewService>();
+
+            viewService.GetScanHistoryAsync(Arg.Any<int>(), Arg.Any<CancellationToken>())
+                       .Returns([
+                                    new()
+                                    {
+                                        Type = "Registry",
+                                        Status = status,
+                                        TriggerSource = "Manual",
+                                        StartedAtUtc = DateTimeOffset.UtcNow,
+                                    }
+                                ]);
+
+            testContext.Services.AddSingleton(viewService);
+            testContext.Services.AddSingleton(Substitute.For<IVulnerabilityEnrichmentService>());
+            testContext.Services.AddSingleton(new DashboardRefreshState());
+            testContext.Services.AddSingleton<IOptionsMonitor<DockerUpdateGuardOptions>>(CreateOptionsMonitor(enabled: false));
+
+            var page = testContext.Render<ScanHistory>();
+
+            await ScanStatusChipAssert.AssertChipAsync(page,
+                                                       root => root.FindAll("td[data-label='Status'] .mud-chip"),
+                                                       status,
+                                                       expectedColorClass).ConfigureAwait(false);
         }
     }
 

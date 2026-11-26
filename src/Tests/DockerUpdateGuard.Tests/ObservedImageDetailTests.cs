@@ -405,6 +405,42 @@ public class ObservedImageDetailTests
     }
 
     /// <summary>
+    /// Verify the detail shows the latest scan status in a chip of its color
+    /// </summary>
+    /// <param name="status">Scan status</param>
+    /// <param name="expectedColorClass">Expected chip color class</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC4")]
+    [DataRow("Succeeded", "mud-chip-color-success")]
+    [DataRow("Partial", "mud-chip-color-warning")]
+    public async Task ObservedImageDetailLatestScanStatusChipShowsStatusColorAsync(string status, string expectedColorClass)
+    {
+        var testContext = BlazorTestContextFactory.Create();
+
+        await using (testContext)
+        {
+            var id = Guid.NewGuid();
+            var viewService = Substitute.For<IApplicationViewService>();
+            var detail = CreateObservedImageDetailViewData(id, "Company API");
+
+            detail.LatestScanStatus = status;
+
+            viewService.GetObservedImageDetailAsync(id, Arg.Any<CancellationToken>())
+                       .Returns(detail);
+
+            testContext.Services.AddSingleton(viewService);
+
+            var page = testContext.Render<ObservedImageDetail>(parameters => parameters.Add(component => component.ObservedImageId, id));
+
+            await ScanStatusChipAssert.AssertChipAsync(page,
+                                                       root => ScanStatusChipAssert.FindSummaryCardChips(root, "Latest scan"),
+                                                       status,
+                                                       expectedColorClass).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
     /// Create a detail for the load tests
     /// </summary>
     /// <param name="id">Identifier</param>

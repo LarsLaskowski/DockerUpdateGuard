@@ -276,6 +276,51 @@ public class DashboardRenderTests
     }
 
     /// <summary>
+    /// Verify the recent scans table shows the scan status in a chip of its color
+    /// </summary>
+    /// <param name="status">Scan status</param>
+    /// <param name="expectedColorClass">Expected chip color class</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC4")]
+    [DataRow("Succeeded", "mud-chip-color-success")]
+    [DataRow("Partial", "mud-chip-color-warning")]
+    public async Task DashboardRecentScanStatusChipShowsStatusColorAsync(string status, string expectedColorClass)
+    {
+        var testContext = BlazorTestContextFactory.Create();
+
+        await using (testContext)
+        {
+            var viewService = Substitute.For<IApplicationViewService>();
+
+            viewService.GetDashboardAsync(Arg.Any<CancellationToken>())
+                       .Returns(Task.FromResult(new DashboardViewData
+                                                {
+                                                    RecentScans = [
+                                                                      new ScanHistoryItemData
+                                                                      {
+                                                                          Type = "Registry",
+                                                                          Status = status,
+                                                                          StartedAtUtc = DateTimeOffset.UtcNow,
+                                                                      }
+                                                                  ],
+                                                }));
+
+            testContext.Services.AddSingleton(viewService);
+            testContext.Services.AddSingleton(new DashboardRefreshState());
+            testContext.Services.AddSingleton<IOptions<DockerUpdateGuardOptions>>(Options.Create(new DockerUpdateGuardOptions()));
+            testContext.AddBunitPersistentComponentState();
+
+            var page = testContext.Render<DashboardPage>();
+
+            await ScanStatusChipAssert.AssertChipAsync(page,
+                                                       root => ScanStatusChipAssert.FindSectionCellChips(root, "Recent scans", "Status"),
+                                                       status,
+                                                       expectedColorClass).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
     /// Render the dashboard for a vulnerability configuration hint and return its markup
     /// </summary>
     /// <param name="testContext">bUnit test context</param>
