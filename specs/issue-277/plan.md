@@ -26,7 +26,7 @@ Security areas touched: Registry and Docker Scout calls (`Images/OciRegistryClie
 | 4 | A real platform manifest has no top-level `created`; its config blob has `created` with nine fractional digits | `samples/ghcr-home-assistant-stable-linux-amd64-manifest.json`, `…-config.json` (`2026-11-23T20:55:47.388026494Z`) | confirmed |
 | 5 | Reproducible builds set `created` to the epoch | `samples/gcr-distroless-static-debian12-linux-amd64-config.json`: `1970-01-01T00:00:00Z` | confirmed |
 | 6 | `DateTimeOffset.TryParse(s, CultureInfo.InvariantCulture, …)` parses nine fractional digits, `1970-01-01T00:00:00Z` and `0001-01-01T00:00:00Z`; a value without offset is taken as local time | `dotnet fsi` probe in the scratchpad (output: all `true`; offset-less → `+00:00` on this UTC host) | confirmed |
-| 7 | An entry or `platform` that is not an object throws `InvalidOperationException` in both clients today, answered *failed* / `unexpected error` | `TryGetString` (`OciRegistryClient.cs:576-581`, `DockerHubClient.cs:458-467`) calls `TryGetProperty` unguarded; `ExecuteAsync` (`:1207-1227`) | confirmed |
+| 7 | An entry or `platform` that is not an object throws `InvalidOperationException` in Docker Hub and in OCI lookups with a requested platform, answered *failed* / `unexpected error`; OCI lookups without one did not read `platform` | `TryGetString` (`OciRegistryClient.cs:576-581`, `DockerHubClient.cs:458-467`) calls `TryGetProperty` unguarded; `ExecuteAsync` (`:1207-1227`) | confirmed |
 | 8 | Runtime-container scans pass the container's platform to `GetTagAsync`/`GetTagsAsync`; observed-image and base-image tag lookups pass none | `RuntimeContainerScanOrchestrator.cs:887-900`; `ImageScanOrchestrator.cs:260-264`, `:555`, `:685` | confirmed |
 | 9 | `RegistryTagQueryHelper.ShouldKeepTag` drops a tag older than `PublishedSinceUtc` only when both times are known and the digest differs from the current one; the current tag is always kept | `RegistryTagQueryHelper.cs:84-123` | confirmed |
 | 10 | `SequenceHttpMessageHandler` answers an unregistered URL with 404, so existing tests without a blob route see an unknown time, not a failure | `Helper/SequenceHttpMessageHandler.cs:112-118` | confirmed |
@@ -219,3 +219,79 @@ and the tag digest semantics are unchanged.
   `DateTimeStyles.AssumeUniversal`, so a value without offset takes the host's time zone (fact 6); the image runs in
   UTC by default, so the effect is limited to hosts with another `TZ`.
 - A platform parameter for `GetImageConfigurationAsync` and the platform `variant` (`arm/v7` vs. `v6`): not asked for.
+
+## Challenge notes
+
+Devil's Advocate, mode `plan`, issue #277 (`/home/user/DockerUpdateGuard/specs/issue-277/plan.md`)
+
+The plan holds up. I found no major objections and two minor ones.
+
+**What I checked and found correct (no objection):**
+- **Root cause, in `src/DockerUpdateGuard/Images/OciRegistryClient.cs`:**
+  - The fallback takes the first entry that has any digest (`:328-341`).
+  - The configuration lookup passes no platform (`:1362-1364`).
+  - A manifest's `PublishedAtUtc` comes only from its top-level `created` (`:938`).
+  - `GetTagAsync` never reads the blob (`:1445-1461`).
+- **Listings:** `GetTagsAsync` inspects each tag through `GetTagAsync` (`AppendInspectedTagsAsync`, `:1184`), so the blob fallback reaches listings and AC8 can pass.
+- **Docker Hub:** `DockerHubClient.SelectManifestDigest` (`:271-310`) is AC1 with no platform. Both `TryGetString` copies behave the same (`OciRegistryClient.cs:576-581`, `DockerHubClient.cs:458-467`), so the shared selector does not change Docker Hub.
+- **AC5's exact message survives:** `PropagateFailure` keeps the original message (`Infrastructure/ExternalOperationResult{T}.cs:53-62`).
+- **No other selection code exists:** nothing else in `src/DockerUpdateGuard` reads `manifests` or `platform`.
+  - Base-image resolution only calls `GetImageConfigurationAsync` (`RegistryBaseImageResolver.cs:144`, `:169`).
+  - Its OCI test (`RegistryBaseImageResolverTests.cs:55-150`) runs no tag lookup, so its single queued blob response is not used up.
+- **Existing tests:** the three tests the plan names are the only tag-lookup tests that assert exact request lists (`OciRegistryClientTests.cs:1508`, `:1883`, `:2038`). The `DelegateHttpMessageHandler` fixtures answer a blob path with a 404 or a parseable JSON body, so they log no extra 2100:
+  - page-cap tests: `CreateTagListingResponse`, `:2738-2750`
+  - transport-error listing test: `:2632-2641`
+  - repeated-link test, whose listing is empty: `:794`
+- **Impact on update detection:** the effect of now-known times on existing users' results is already stated in decision 0063's *Consequences*.
+- **Tier and samples:** tier `standard` fits the routing table (no security control changes). Real samples are named for the index, attestation, platform manifest and configuration formats.
+
+**Objections**
+
+1. `minor`: AC9 says "a tag lookup sends at most one blob request", but `SendRegistryRequestAsync` (`OciRegistryClient.cs:1030-1074`) can send the same blob URL up to three times: cached token answered 401, then anonymous, then with a new token. In production the retry handler can also resend transient failures. Plan step 4 already says "plus the existing token flow on a 401".
+   - Instruction for Dev and Tester: read AC9 as "at most one blob lookup (one blob URL) per tag lookup".
+   - `OciRegistryClientGetTagsAsyncSendsAtMostOneBlobRequestPerInspectedTagAsync` uses a fixture without a 401 and asserts each tag's blob URL is requested once.
+   - The area text names the token retry as an exception, as step 4 does.
+
+2. `minor`: AC7 lists "refused token" as a blob answer that leaves the time unknown, but the test row tests "401 without challenge". In code these are two different paths:
+   - A 401 without a challenge is returned as it is, with no token request (`OciRegistryClient.cs:1053-1056`).
+   - A refused token is a failed token request, answered through `CreateAuthenticationFailureResponse` (`:1063-1066`).
+
+   Instruction for the Tester: give `OciRegistryClientGetTagAsyncConfigBlobAnswerFailsReturnsSucceededWithoutPublishedTimeAsync` both cases. One DataRow is a blob 401 without a challenge. The other is a blob 401 with a `Bearer` challenge whose token request fails. Each asserts *succeeded*, the manifest digest, `PublishedAtUtc` null and no warning 2100.
+
+## Security notes
+
+I approve the plan, with two non-blocking findings. The `standard` tier is correct and *Security areas touched* lists everything it touches.
+
+**Tier and areas**
+- No security control is created, changed or removed:
+  - The new blob request goes through the existing guard (`CreateBlobUri`, `OciRegistryClient.cs:421-433`: dot-segment check, `Uri.EscapeDataString`, registry host check), because the plan moves the blob part of `GetImageConfigurationCoreAsync` (`:1376-1408`) into `ReadConfigurationBlobAsync<T>` unchanged.
+  - The selected index digest still goes through `CreateManifestUri` (`:396-410`).
+  - Choosing an index entry does not decide what an attacker can reach, so it is not a guard (`.squad/routing.md`, *Tiers*, `security` row).
+- The two listed areas, *Registry and Docker Scout calls* and *Logging and telemetry of external data*, are complete. *Failure messages and remote text* is not touched: `ReadConfigurationPublishedAtUtcAsync` drops the failure message it builds (plan step 3), so no new remote text reaches a result.
+- The plan correctly adds `Images/Helper/ManifestPlatformSelector.cs` to the area's file list in `.squad/project.md`.
+
+**What I checked against the code**
+- **Credentials:** the token cache key is the authority plus the repository (`:537-540`). The blob URI is built on the same registry host, so the bearer token goes only to the host that issued the challenge (fact 11 holds).
+- **Cancellation and errors:** `ExecuteAsync` (`:1207-1227`) rethrows only when the caller cancelled. A timeout from `HttpClient` or `RequestDeadlineHandler` becomes *failed*, which gives an unknown time plus warning 2100. A blob whose root is not an object makes `TryGetString` throw `InvalidOperationException`, which ends the same way. AC7's behavior holds for every one of these cases.
+- **Logging:** the new 2100 call site logs the operation name and `FullReference`. The tag in it has already passed `RegistryReferenceValidator.IsValidTag` (`:1453`), the same input as the existing 2100 entries, and the log message is unchanged (`ImageHostLoggingExtensions.cs:768-774`). There are no new log arguments.
+- **Resource bound:** the blob document is parsed through `RemoteJsonDocument`, its size limit applies, and it is disposed inside `ReadConfigurationBlobAsync`. The only value kept is a `DateTimeOffset?`, so nothing retains derived data. AC9's two request-log tests pin "at most one blob request per tag lookup and per inspected tag". That count is of logical requests: `TransientHttpRetryHandler` can still resend a transient failure, which `docs/areas/registries.md` already states for every integration.
+- **Samples:** the seven files in `specs/issue-277/samples` (27 KB) contain no token, password, secret or authorization text (`grep -il "bearer\|token\|password\|secret\|authorization" *` printed nothing).
+- **Measurement:** no security property here rests on measured library behavior. The epoch rule and fact 6 are about correct publication times, not security, so I ran no probe.
+
+**Findings**
+
+1. [NON-BLOCKING] Decision 0062 (*Consequences*, third bullet) and plan fact 7 claim more than the code shows. They say a non-object entry or `platform` "still makes the lookup *failed* … as before in both clients". For `platform` that is not true of the OCI client today when no platform is requested, which is every `GetImageConfigurationAsync` call:
+   - The old fallback `SelectFirstManifestDigest` (`OciRegistryClient.cs:328-341`) reads only `digest` and never reads `platform`. So an index whose first entry has a digest and a non-object `platform` (including `"platform": null`) succeeds today.
+   - With the new selector, which reads `platform` of every entry to test usability, that lookup fails.
+
+   The change fails closed and is not a weakening, but the accepted record should state it. Replace the bullet in `docs/decisions/0062-both-registry-clients-choose-a-platform-manifest-by-one-shared-rule.md`, verbatim:
+   ```
+   - An entry that is not a JSON object, or a `platform` that is not one (`null` included), makes the lookup *failed*
+     with `unexpected error` in both clients
+     ([0029](0029-registry-calls-answer-every-error-but-the-callers-cancellation-as-failed.md)); before, the OCI
+     client's lookups without a requested platform did not read `platform`, so only there a non-object `platform` now
+     fails a lookup that used to succeed.
+   ```
+   Correct fact 7's *Claim* cell the same way ("… in Docker Hub and in OCI lookups with a requested platform; OCI lookups without one did not read `platform`"). Recommendation: fix now
+
+2. [NON-BLOCKING] Nested indexes are followed without a depth limit, and this predates the change. `GetConfigDigestFromManifestListAsync` (`:966-985`) calls `GetManifestMetadataAsync` on the selected digest. When that response again has an index content type, a value the registry controls (`IsManifestListContentType`, `:917`), the client recurses with nothing stopping it. A hostile or broken registry can therefore chain indexes and make one tag lookup send unbounded manifest requests, each bounded only by the request deadline. The plan neither adds nor widens this; the new blob request comes only after the chain ends. Smallest fix: a depth parameter that answers a nested index *failed* after one level. Recommendation: issue
