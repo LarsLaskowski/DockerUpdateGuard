@@ -40,6 +40,9 @@ one. The rule is stated in [Registries](../areas/registries.md#what-can-be-read)
 - Docker Hub behaves as before. For other registries an entry's operating system and architecture are compared as
   sent (case-insensitively) and no longer trimmed; only the requested platform is trimmed. Whitespace-padded platform
   values are not seen in practice.
-- An entry or `platform` that is not a JSON object still makes the lookup *failed* with `unexpected error`, as before
-  in both clients ([0029](0029-registry-calls-answer-every-error-but-the-callers-cancellation-as-failed.md)).
+- An entry that is not a JSON object, or a `platform` that is not one (`null` included), makes the lookup *failed*
+  with `unexpected error` in both clients
+  ([0029](0029-registry-calls-answer-every-error-but-the-callers-cancellation-as-failed.md)); before, the OCI
+  client's lookups without a requested platform did not read `platform`, so only there a non-object `platform` now
+  fails a lookup that used to succeed.
 - A caller that needs a Windows image's configuration cannot ask for it until the interface gets a platform.
