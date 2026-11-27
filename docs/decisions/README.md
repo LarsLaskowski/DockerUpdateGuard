@@ -126,4 +126,5 @@ once in the [area document](../areas/README.md) of the record's area, and the re
 | [0063](0063-other-registries-take-a-tags-publication-time-from-its-image-configuration.md) | Other registries take a tag's publication time from its image configuration | Accepted | 2026-11-26 |
 | [0064](0064-the-twenty-most-recent-completed-scan-runs-are-a-retention-minimum.md) | The twenty most recent completed scan runs are a retention minimum | Accepted | 2026-11-27 |
 | [0065](0065-allowed-host-names-stay-open-by-default-and-optional-in-the-compose-files.md) | Allowed host names stay open by default and optional in the compose files | Accepted | 2026-11-27 |
+| [0066](0066-remote-timestamps-without-an-offset-are-read-as-utc.md) | Remote timestamps without an offset are read as UTC | Proposed | 2026-11-27 |
 <!-- project:end index -->
