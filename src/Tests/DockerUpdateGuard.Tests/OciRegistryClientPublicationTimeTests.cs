@@ -209,7 +209,7 @@ public class OciRegistryClientPublicationTimeTests
     [TestMethod]
     [TestCategory("AC2")]
     [OSCondition(OperatingSystems.Linux)]
-    public async Task OciRegistryClientPublicationTimeGetTagAsyncConfigCreatedWithoutOffsetReadsUtcAsync()
+    public async Task OciRegistryClientGetTagAsyncConfigCreatedWithoutOffsetReadsUtcAsync()
     {
         using var handler = new SequenceHttpMessageHandler();
         using var httpClient = new HttpClient(handler);
@@ -240,7 +240,7 @@ public class OciRegistryClientPublicationTimeTests
     [TestMethod]
     [TestCategory("AC2")]
     [OSCondition(OperatingSystems.Linux)]
-    public async Task OciRegistryClientPublicationTimeGetTagAsyncEpochCreatedWithoutOffsetLeavesTimeUnknownAsync()
+    public async Task OciRegistryClientGetTagAsyncEpochCreatedWithoutOffsetLeavesTimeUnknownAsync()
     {
         using var handler = new SequenceHttpMessageHandler();
         using var httpClient = new HttpClient(handler);
