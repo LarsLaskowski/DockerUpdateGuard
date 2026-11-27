@@ -12,7 +12,9 @@ profile and owned by this repository: keep it true when the build changes.
   one: every project's target framework, `global.json` and every .NET image (the defaults of the `BASE_SDK` and
   `BASE_RUNTIME` build arguments of `src/DockerUpdateGuard/Dockerfile`) name the same major, which `dotnet_major.py`
   checks in the *Analyzer gate*, and a new project gets it from the SDK `global.json` selects. Dependabot keeps the
-  SDK and the packages current within that major. The Dockerfile names every image through a build argument (`FROM
+  SDK and the packages current within that major; its `docker-compose` entry also raises the images of the example
+  compose files under `docs/`, except `aquasec/trivy` (it moves with `TRIVY_IMAGE`) and PostgreSQL majors (each needs
+  a data migration). The Dockerfile names every image through a build argument (`FROM
   ${BASE_SDK}`), which Dependabot does not read, so it has no `docker` entry: the floating `11.0-alpine` tags of the
   two .NET images resolve to the newest image of that major whenever the image is built, and the digest of the
   `TRIVY_IMAGE` default is refreshed by hand; the move to the next one (target frameworks, `global.json`, the Microsoft.Extensions, ASP.NET Core and EF
