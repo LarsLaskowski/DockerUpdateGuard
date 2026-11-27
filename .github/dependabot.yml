@@ -35,3 +35,15 @@ updates:
       actions:
         patterns:
           - "*"
+
+  # The images of the example compose files under docs/. aquasec/trivy moves together with the TRIVY_IMAGE of the
+  # Dockerfile, which Dependabot does not read (docs/CONTRIBUTING.md, "Updating the bundled Trivy"); a PostgreSQL
+  # major needs a data migration of its own (decision record 0050).
+  - package-ecosystem: docker-compose
+    directory: "/docs"
+    schedule:
+      interval: weekly
+    ignore:
+      - dependency-name: "aquasec/trivy"
+      - dependency-name: "postgres"
+        update-types: ["version-update:semver-major"]
