@@ -90,5 +90,44 @@ public class ExternalTimestampTests
         Assert.IsNull(result, "A null, empty, blank or unreadable value must be unknown");
     }
 
+    /// <summary>
+    /// Verify Unix seconds in the readable range are returned as UTC instants
+    /// </summary>
+    /// <param name="seconds">Unix seconds</param>
+    /// <param name="expectedText">Expected instant, ISO 8601 in UTC</param>
+    [TestMethod]
+    [TestCategory("AC4")]
+    [DataRow(1L, "1970-01-01T00:00:01Z")]
+    [DataRow(253402300799L, "9999-12-31T23:59:59Z")]
+    public void ExternalTimestampTryFromUnixSecondsInRangeReturnsUtcInstant(long seconds, string expectedText)
+    {
+        var expected = DateTimeOffset.Parse(expectedText, CultureInfo.InvariantCulture);
+
+        var result = ExternalTimestamp.TryFromUnixSeconds(seconds);
+
+        Assert.IsNotNull(result, "Unix seconds in range must be readable");
+        Assert.AreEqual(expected, result.Value, "Unix seconds must be the instant that many seconds after the epoch");
+        Assert.AreEqual(TimeSpan.Zero, result.Value.Offset, "The instant must be returned with offset zero");
+    }
+
+    /// <summary>
+    /// Verify Unix seconds outside the readable range are unknown and do not throw
+    /// </summary>
+    /// <param name="seconds">Unix seconds</param>
+    [TestMethod]
+    [TestCategory("AC4")]
+    [DataRow(0L)]
+    [DataRow(-1L)]
+    [DataRow(-62135596800L)]
+    [DataRow(253402300800L)]
+    [DataRow(long.MinValue)]
+    [DataRow(long.MaxValue)]
+    public void ExternalTimestampTryFromUnixSecondsOutOfRangeReturnsNull(long seconds)
+    {
+        var result = ExternalTimestamp.TryFromUnixSeconds(seconds);
+
+        Assert.IsNull(result, "Zero, negative and too large Unix seconds must be unknown");
+    }
+
     #endregion // Methods
 }
