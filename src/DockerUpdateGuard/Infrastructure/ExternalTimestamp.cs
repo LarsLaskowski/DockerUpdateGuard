@@ -24,5 +24,18 @@ internal static class ExternalTimestamp
         return null;
     }
 
+    // Skeleton: removed with the implementation
+#pragma warning disable S1172
+    /// <summary>
+    /// Convert a Unix time in seconds into a UTC instant
+    /// </summary>
+    /// <param name="seconds">Seconds since the Unix epoch</param>
+    /// <returns>UTC instant, null when the value is zero, negative or out of the representable range</returns>
+    public static DateTimeOffset? TryFromUnixSeconds(long seconds)
+    {
+        throw new InvalidOperationException("Skeleton: not implemented");
+    }
+#pragma warning restore S1172
+
     #endregion // Static methods
 }
