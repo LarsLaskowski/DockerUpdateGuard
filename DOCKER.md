@@ -19,7 +19,8 @@ At minimum, provide:
 
 Also set `AllowedHosts` (recommended) for `docker run` and mounted-`appsettings.json` deployments, to every host
 name and IP address the UI is opened with, e.g. `AllowedHosts=dockerupdateguard.example.lan;192.168.10.20`
-(`-e AllowedHosts=...` or the key in `appsettings.json`); otherwise every name is accepted and the UI is open to DNS
+(`-e "AllowedHosts=dockerupdateguard.example.lan;192.168.10.20"`, quoted because of the `;`, or the key in
+`appsettings.json`); otherwise every name is accepted and the UI is open to DNS
 rebinding ([Security posture](docs/areas/hosting.md#security-posture)).
 
 Example:
@@ -221,7 +222,9 @@ The name or IP address in the browser's address bar (or the `Host` a reverse pro
 listed in `AllowedHosts`, set in `appsettings.json` or in `.env` for the compose files. Add it, without port, to the
 `;`-separated list (IP addresses, `localhost` and `127.0.0.1` included), for example
 `AllowedHosts=dockerupdateguard.example.lan;192.168.10.20;localhost`, and reload the page. An `appsettings.json`
-change applies to the next request; an environment variable needs a container restart. See
+change applies to the next request; a changed environment variable applies only once the container is recreated
+(`docker compose up -d` after editing `.env`, or removing the container and running `docker run` again), not after a
+restart. See
 [Security posture](docs/areas/hosting.md#security-posture).
 
 ## Networking
