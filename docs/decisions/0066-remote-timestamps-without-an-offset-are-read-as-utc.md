@@ -1,6 +1,6 @@
 # 0066: Remote timestamps without an offset are read as UTC
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-27
 - **Area:** Integration failures
 - **Source:** Issue #549
