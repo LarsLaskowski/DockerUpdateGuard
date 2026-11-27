@@ -16,9 +16,9 @@ public class ScanCleanupBackgroundService : ScheduledBackgroundService
     #region Constants
 
     /// <summary>
-    /// Maximum number of scan runs to retain for history views
+    /// Number of most recently completed scan runs that cleanup always keeps, even past the retention period
     /// </summary>
-    private const int MaxRetainedScanRuns = 20;
+    private const int MinimumRetainedScanRuns = 20;
 
     /// <summary>
     /// Shortest age a running scan run must reach before it is treated as abandoned
@@ -49,6 +49,11 @@ public class ScanCleanupBackgroundService : ScheduledBackgroundService
     /// </summary>
     private readonly IServiceScopeFactory _serviceScopeFactory;
 
+    /// <summary>
+    /// Time provider
+    /// </summary>
+    private readonly TimeProvider _timeProvider;
+
     #endregion // Fields
 
     #region Constructors
@@ -71,6 +76,7 @@ public class ScanCleanupBackgroundService : ScheduledBackgroundService
         _logger = logger;
         _optionsMonitor = optionsMonitor;
         _serviceScopeFactory = serviceScopeFactory;
+        _timeProvider = timeProvider;
     }
 
     #endregion // Constructors
@@ -136,43 +142,34 @@ public class ScanCleanupBackgroundService : ScheduledBackgroundService
     }
 
     /// <summary>
-    /// Load the completed scan runs that are removable: those older than the cutoff and those beyond the retained count
+    /// Load the completed scan runs that are removable: completed before the cutoff, not among the most recently completed ones and referred to by no data
     /// </summary>
     /// <param name="dbContext">Database context</param>
-    /// <param name="cleanupStartedAtUtc">Start of the cleanup</param>
     /// <param name="cutoff">Retention cutoff</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Removable scan runs</returns>
     private static async Task<List<ScanRun>> LoadRemovableScanRunsAsync(DockerUpdateGuardDbContext dbContext,
-                                                                        DateTimeOffset cleanupStartedAtUtc,
                                                                         DateTimeOffset cutoff,
                                                                         CancellationToken cancellationToken)
     {
-        var completedUnreferencedScanRuns = dbContext.ScanRuns
-                                                     .Where(entity => entity.CompletedAtUtc != null
-                                                                      && entity.CompletedAtUtc <= cleanupStartedAtUtc
-                                                                      && entity.UpdateFindings.Any() == false
-                                                                      && entity.VulnerabilityFindings.Any() == false
-                                                                      && entity.ContainerSnapshots.Any() == false
-                                                                      && entity.ImageRelationships.Any() == false);
+        var retainedScanRunIds = await dbContext.ScanRuns
+                                                .Where(entity => entity.CompletedAtUtc != null)
+                                                .OrderByDescending(entity => entity.CompletedAtUtc)
+                                                .Take(MinimumRetainedScanRuns)
+                                                .Select(entity => entity.Id)
+                                                .ToListAsync(cancellationToken)
+                                                .ConfigureAwait(false);
 
-        var retainedScanRunIds = await completedUnreferencedScanRuns.OrderByDescending(entity => entity.CompletedAtUtc)
-                                                                    .Take(MaxRetainedScanRuns)
-                                                                    .Select(entity => entity.Id)
-                                                                    .ToListAsync(cancellationToken)
-                                                                    .ConfigureAwait(false);
-
-        var oldScanRuns = await completedUnreferencedScanRuns.Where(entity => entity.CompletedAtUtc < cutoff)
-                                                             .ToListAsync(cancellationToken)
-                                                             .ConfigureAwait(false);
-
-        var excessScanRuns = await completedUnreferencedScanRuns.Where(entity => retainedScanRunIds.Contains(entity.Id) == false)
-                                                                .ToListAsync(cancellationToken)
-                                                                .ConfigureAwait(false);
-
-        return oldScanRuns.Concat(excessScanRuns)
-                          .DistinctBy(entity => entity.Id)
-                          .ToList();
+        return await dbContext.ScanRuns
+                              .Where(entity => entity.CompletedAtUtc != null
+                                               && entity.CompletedAtUtc < cutoff
+                                               && entity.UpdateFindings.Any() == false
+                                               && entity.VulnerabilityFindings.Any() == false
+                                               && entity.ContainerSnapshots.Any() == false
+                                               && entity.ImageRelationships.Any() == false
+                                               && retainedScanRunIds.Contains(entity.Id) == false)
+                              .ToListAsync(cancellationToken)
+                              .ConfigureAwait(false);
     }
 
     /// <summary>
@@ -267,7 +264,7 @@ public class ScanCleanupBackgroundService : ScheduledBackgroundService
             var dbContext = scope.ServiceProvider.GetRequiredService<DockerUpdateGuardDbContext>();
 
             await RepairStaleRunningScanRunsAsync(dbContext,
-                                                  DateTimeOffset.UtcNow,
+                                                  _timeProvider.GetUtcNow(),
                                                   stoppingToken).ConfigureAwait(false);
         }
     }
@@ -282,7 +279,7 @@ public class ScanCleanupBackgroundService : ScheduledBackgroundService
             var dbContext = scope.ServiceProvider.GetRequiredService<DockerUpdateGuardDbContext>();
             var applicationTelemetry = scope.ServiceProvider.GetRequiredService<ApplicationTelemetry>();
             var liveImageInventoryQueryService = scope.ServiceProvider.GetRequiredService<ILiveImageInventoryQueryService>();
-            var cleanupStartedAtUtc = DateTimeOffset.UtcNow;
+            var cleanupStartedAtUtc = _timeProvider.GetUtcNow();
 
             await RepairStaleRunningScanRunsAsync(dbContext,
                                                   cleanupStartedAtUtc,
@@ -320,7 +317,6 @@ public class ScanCleanupBackgroundService : ScheduledBackgroundService
                                               .ConfigureAwait(false);
 
             var removableScanRuns = await LoadRemovableScanRunsAsync(dbContext,
-                                                                     cleanupStartedAtUtc,
                                                                      cutoff,
                                                                      stoppingToken).ConfigureAwait(false);
 
