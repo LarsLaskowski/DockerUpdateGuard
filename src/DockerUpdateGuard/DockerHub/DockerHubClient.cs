@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Globalization;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
@@ -428,14 +427,7 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient
     /// <returns>Timestamp value</returns>
     private static DateTimeOffset? TryGetDateTimeOffset(JsonElement element, string propertyName)
     {
-        var rawValue = TryGetString(element, propertyName);
-
-        if (DateTimeOffset.TryParse(rawValue, CultureInfo.InvariantCulture, out var timestamp))
-        {
-            return timestamp;
-        }
-
-        return null;
+        return ExternalTimestamp.TryParseUtc(TryGetString(element, propertyName));
     }
 
     /// <summary>
@@ -745,7 +737,7 @@ public sealed class DockerHubClient : IDockerHubClient, IRegistryMetadataClient
                    {
                        EnvironmentVariables = environmentVariables,
                        Labels = labels,
-                       CreatedAtUtc = DateTimeOffset.TryParse(TryGetString(rootElement, "created"), CultureInfo.InvariantCulture, out var createdAtUtc) ? createdAtUtc : null,
+                       CreatedAtUtc = ExternalTimestamp.TryParseUtc(TryGetString(rootElement, "created")),
                        OperatingSystem = ResponseBodyExcerpt.ReplaceControlCharacters(TryGetString(rootElement, "os")),
                        Architecture = ResponseBodyExcerpt.ReplaceControlCharacters(TryGetString(rootElement, "architecture")),
                    };

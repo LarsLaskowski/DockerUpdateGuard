@@ -86,6 +86,7 @@ MSTest with **NSubstitute** (`Substitute.For<T>()`) for collaborators that cross
 - `ThrowingExecutionStrategy` (`Helper/`) — the EF Core execution strategy, which fails every operation after the first ones with a given exception
 - `CommandTimeoutRecordingInterceptor` (`Helper/`) — the EF Core command pipeline, which records each executed command's timeout and fails every command with its own exception
 - `ContainerActionRunWriteFailingInterceptor` (`Helper/`) — the database's save of a container action run, which fails for the given statuses in every context and scope
+- `LocalTimeZoneScope` (`Helper/`) — the host's local time zone, switched for the scope through `TZ` (Linux only: tests using it carry `[OSCondition(OperatingSystems.Linux)]`); it throws where the switch does not take
 
 ## Where tests live
 

@@ -1,6 +1,7 @@
 using System.Net;
 
 using DockerUpdateGuard.Images;
+using DockerUpdateGuard.Images.Data;
 using DockerUpdateGuard.Infrastructure;
 using DockerUpdateGuard.Tests.Data;
 using DockerUpdateGuard.Tests.Helper;
@@ -23,6 +24,51 @@ public partial class DotNetReleaseMetadataServiceTests
     #endregion // Properties
 
     #region Methods
+
+    /// <summary>
+    /// Verify an end-of-life date without an offset is reported as midnight UTC of that date
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC4")]
+    [OSCondition(OperatingSystems.Linux)]
+    public async Task DotNetReleaseMetadataServiceGetChannelReleaseAsyncEndOfLifeDateWithoutOffsetReadsUtcMidnightAsync()
+    {
+        using var handler = new StaticHttpJsonMessageHandler("""
+                                                             {
+                                                               "releases-index": [
+                                                                 {
+                                                                   "channel-version": "9.0",
+                                                                   "latest-runtime": "9.0.15",
+                                                                   "latest-release-date": "2025-06-10",
+                                                                   "security": false,
+                                                                   "support-phase": "eol",
+                                                                   "eol-date": "2026-05-12",
+                                                                   "releases.json": "https://example.test/9.0/releases.json"
+                                                                 }
+                                                               ]
+                                                             }
+                                                             """);
+        using var httpClient = new HttpClient(handler)
+                               {
+                                   BaseAddress = new Uri("https://dotnet.example.test/"),
+                               };
+
+        var service = new DotNetReleaseMetadataService(httpClient, new TestLogger<DotNetReleaseMetadataService>());
+
+        ExternalOperationResult<DotNetChannelReleaseData> result;
+
+        using (new LocalTimeZoneScope("Etc/GMT+5"))
+        {
+            result = await service.GetChannelReleaseAsync("9.0", TestContext.CancellationToken).ConfigureAwait(false);
+        }
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "The lookup must succeed");
+        Assert.IsNotNull(result.Data, "The lookup must return the channel");
+        Assert.IsNotNull(result.Data.EndOfLifeDateUtc, "The end of life must be known");
+        Assert.AreEqual(new DateTimeOffset(2026, 5, 12, 0, 0, 0, TimeSpan.Zero), result.Data.EndOfLifeDateUtc.Value, "An end-of-life date must be midnight UTC of that date");
+        Assert.AreEqual(TimeSpan.Zero, result.Data.EndOfLifeDateUtc.Value.Offset, "The end of life must be kept with offset zero");
+    }
 
     /// <summary>
     /// Verify the release index resolves the latest runtime for a channel

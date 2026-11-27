@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using System.Globalization;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
@@ -412,9 +411,7 @@ public partial class OciRegistryClient : IRegistryMetadataClient
     private static DateTimeOffset GetTokenExpirationUtc(JsonElement rootElement)
     {
         var issuedAtValue = TryGetString(rootElement, "issued_at");
-        var issuedAtUtc = DateTimeOffset.TryParse(issuedAtValue, CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsedIssuedAtUtc)
-                              ? parsedIssuedAtUtc
-                              : DateTimeOffset.UtcNow;
+        var issuedAtUtc = ExternalTimestamp.TryParseUtc(issuedAtValue) ?? DateTimeOffset.UtcNow;
         var expiresInSeconds = rootElement.ValueKind == JsonValueKind.Object
                                && rootElement.TryGetProperty("expires_in", out var expiresInElement)
                                && expiresInElement.ValueKind == JsonValueKind.Number
@@ -525,7 +522,7 @@ public partial class OciRegistryClient : IRegistryMetadataClient
     {
         var createdValue = TryGetString(element, "created");
 
-        return DateTimeOffset.TryParse(createdValue, CultureInfo.InvariantCulture, out var createdAtUtc) ? createdAtUtc : null;
+        return ExternalTimestamp.TryParseUtc(createdValue);
     }
 
     /// <summary>

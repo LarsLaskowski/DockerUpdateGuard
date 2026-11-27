@@ -74,6 +74,42 @@ public partial class DockerInstanceClientTests
     #region Methods
 
     /// <summary>
+    /// Verify resource sampling records a stats read time without an offset as UTC
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC3")]
+    [OSCondition(OperatingSystems.Linux)]
+    public async Task DockerInstanceClientCollectContainerResourceUsageAsyncStatsReadWithoutOffsetReadsUtcAsync()
+    {
+        using var handler = new SequenceHttpMessageHandler();
+        using var httpClient = new HttpClient(handler)
+                               {
+                                   BaseAddress = new Uri("https://docker.example.test/"),
+                               };
+
+        handler.AddJsonResponse("https://docker.example.test/v1.41/containers/json", """[ { "Id": "c1", "Names": ["/app"] } ]""");
+        handler.AddJsonResponse("https://docker.example.test/v1.41/containers/c1/stats?stream=false", """{ "read": "2025-06-01T12:00:00" }""");
+
+        var client = new DockerInstanceClient(new TestLogger<DockerInstanceClient>(), (_, _) => httpClient);
+
+        ExternalOperationResult<IReadOnlyList<RuntimeContainerResourceDescriptor>> result;
+
+        using (new LocalTimeZoneScope("Etc/GMT+5"))
+        {
+            result = await client.CollectContainerResourceUsageAsync(CreateInstanceOptions(), TestContext.CancellationToken).ConfigureAwait(false);
+        }
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "Sampling must succeed");
+        Assert.IsNotNull(result.Data, "Sampling must return the samples");
+
+        var sample = Assert.ContainsSingle(result.Data, "Sampling must return the sample of the one container");
+
+        Assert.AreEqual(new DateTimeOffset(2025, 6, 1, 12, 0, 0, TimeSpan.Zero), sample.RecordedAtUtc, "A stats read time without an offset must be read as UTC");
+        Assert.AreEqual(TimeSpan.Zero, sample.RecordedAtUtc.Offset, "The recording time must be kept with offset zero");
+    }
+
+    /// <summary>
     /// Verify container discovery reports an answer with a string that does not decode as an invalid response
     /// </summary>
     /// <returns>Task</returns>
