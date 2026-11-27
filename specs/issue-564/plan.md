@@ -177,3 +177,28 @@ answer it already receives; requests, transports, timeouts and failure reasons s
 ## Out of scope / follow-ups
 
 - The container listing's int64 `Created` is not read; nothing needs it (fact 7).
+
+## Challenge notes
+
+Devil's Advocate, mode plan, issue #564 (`/home/user/DockerUpdateGuard/specs/issue-564/plan.md`)
+
+The plan holds up on the main points. I checked these myself:
+- **Root cause is confirmed.** `DockerInstanceClient.cs:783` calls `ExternalTimestamp.TryParseUtc(TryGetString(element, "Created"))`, and `TryGetString` (`:546–560`) only accepts `JsonValueKind.String`.
+- **The moby sources in the scratchpad back the plan.** Missing creation times are sent as `0` (`ctr_history.go:87–88`, `master_history.go:49–50`).
+- **AC1's expected instants are right.** `date -u -d @…` gives 1398108230 = 2014-04-21T19:23:50Z, 1398108222 = 19:23:42Z and 1371157430 = 2013-06-13T21:03:50Z.
+- **The range bound is right.** `DateTimeOffset.MaxValue.ToUnixTimeSeconds()` is 253402300799.
+- **Approach 2 avoids a throw.** It checks for `Number` before calling `TryGetInt64`, so `JsonElement.TryGetInt64` cannot throw `InvalidOperationException`.
+- **The only consumer is unaffected.** `DerivedBaseRuntimeDetector` reads only `CreatedBy` and `Comment`.
+- **No other history parser exists.** The only places that touch history are `DockerInstanceClient`, `IDockerInstanceClient`, `DockerImageHistoryEntryData`, `DerivedBaseRuntimeDetector` and `IDerivedBaseRuntimeDetector`.
+- **`RESULT: NO CHANGE` would be wrong.** The defect is real, and no accepted decision record covers it.
+
+Objections:
+
+1. **minor: the sample is the 2014 API documentation example, not a capture from a current Engine, and it misses the placeholder entry that Engines send today.** Real history entries for layers that are not local carry `"Id": "<missing>"` and `"Tags": null`, and `Created: 0` when there is no time (moby `ctr_history.go:91–96` sets `Tags: nil`, which Go writes as JSON `null`; `master_history.go:54` sets the Id). The issue asks for "a real history sample", and the plan's fixture has neither variant.
+   *Instruction for the Tester:* in the AC3 test, add a DataRow (or a separate test) whose entry matches the Engine's placeholder: `"Id": "<missing>"`, `"Created": 0`, `"Tags": null`, `"Comment": "buildkit.dockerfile.v0"` and a `CreatedBy`. Assert that `CreatedAtUtc` is null, `Tags` is empty and the history `Succeeded`. `ReadStringArray` already turns a non-array into `[]` (`DockerInstanceClient.cs`, `ReadStringArray`), so no production change is needed. Keep `HistorySample` and AC1 as they are.
+
+2. **minor: fact 4 and Approach 4 say the existing history tests "assert no `CreatedAtUtc`", but they don't assert it at all.** `DockerInstanceClientTests.cs:638–688` and `:1699–1741` assert only `Status`, `CreatedBy`, `Comment` and `Tags`. Their input `"2025-06-02T12:00:00Z"` already parses to 12:00Z today.
+   *Instruction for the Dev and Reviewer:* leave both tests unchanged as planned. Don't read them as coverage of AC2; that is the new AC2 test's job.
+
+3. **minor (follow-up, outside this issue): a sibling Unix-seconds conversion has no guard.** `DockerScoutVulnerabilityProvider.cs:296–299` calls `expiryElement.TryGetInt64` without checking `ValueKind == Number`, which throws `InvalidOperationException` for a string `exp`. It then calls `DateTimeOffset.FromUnixTimeSeconds` with no range check, which throws `ArgumentOutOfRangeException`. The surrounding `catch` takes only `FormatException` and `JsonException`. For comparison, `DockerHubAccessTokenCache.cs:228–235` guards both. I did not trace how far up the exception travels.
+   *Instruction for the orchestrator:* don't widen this PR. Open a linked issue to move that conversion onto the new `ExternalTimestamp.TryFromUnixSeconds`.
