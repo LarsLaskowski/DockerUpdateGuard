@@ -25,33 +25,41 @@ open the UI must be named in it.
    before they start, but every operator would have to list every name and internal IP address used to open the UI,
    and a compose file downloaded again would not start until `.env` has the variable: a breaking change. An upgrade
    by `pull` and `up -d` with the existing compose file would keep working.
-3. **Optional in the compose files** (`${ALLOWED_HOSTS:-*}`), the `.env.example` line commented out with an example,
-   the key documented prominently — nothing breaks; a deployment stays open until its operator sets the key.
-4. **A default other than `*` in the application** (such as `localhost`) — every deployment reached by another name
+3. **Optional in the compose files through a value-less entry** (`AllowedHosts:`, filled from `AllowedHosts` in
+   `.env`), the `.env.example` line commented out with an example, the key documented prominently — without a `.env`
+   value the container gets no such variable, so nothing changes, also for a deployment that sets the key in a mounted
+   `appsettings.json`; a deployment stays open until its operator sets the key.
+4. **Optional through interpolation** (`${ALLOWED_HOSTS:-*}`, or `${AllowedHosts:-}`) — reads more familiarly, but
+   sets `*` or an empty value whenever the variable is unset, and an environment variable wins over `appsettings.json`:
+   a compose deployment protected by its mounted file would be opened silently by its next compose file.
+5. **A default other than `*` in the application** (such as `localhost`) — every deployment reached by another name
    answers every request with 400 after the upgrade; no default name fits the deployments.
-5. **Fail startup while `AllowedHosts` is unset or `*`** — makes the choice explicit, but stops every existing
+6. **Fail startup while `AllowedHosts` is unset or `*`** — makes the choice explicit, but stops every existing
    deployment at its upgrade.
-6. **Check the `Origin` of the UI connection** — compared with `Host` it stops nothing, because rebinding makes both
+7. **Check the `Origin` of the UI connection** — compared with `Host` it stops nothing, because rebinding makes both
    name the attacker's host; compared with a configured list it needs the same list as `AllowedHosts` and covers only
    the UI connection, while the host filter already rejects that connection's upgrade request. A foreign page
    connecting cross-origin with a permitted `Host` cannot read the prerendered, data-protected component descriptors
    a circuit needs.
-7. **Warn at startup while `AllowedHosts` is unset** — reaches every deployment form, but is new production code
+8. **Warn at startup while `AllowedHosts` is unset** — reaches every deployment form, but is new production code
    beyond the issue; proposed as a follow-up issue.
 
 ## Decision
 
 The application keeps the framework's default (`AllowedHosts` unset, every host name accepted); the documented compose
-files pass `AllowedHosts` through from an optional `.env` variable with `*` as fallback, and the documentation
-recommends setting it in every deployment. No `Origin` check is added. Option 3 is the Product Manager's decision on
-#473. The rules are in [Hosting and configuration](../areas/hosting.md#security-posture).
+files pass `AllowedHosts` through from `.env` only when it is set there, and the documentation recommends setting it in
+every deployment. No `Origin` check is added. Optional in the compose files is the Product Manager's decision on #473;
+the value-less entry is the form that keeps it true for deployments protected by a mounted file. The rules are in [Hosting and configuration](../areas/hosting.md#security-posture).
 
 ## Consequences
 
-- No deployment changes behavior on upgrade, also with a compose file downloaded again.
+- No deployment changes behavior on upgrade, also with a compose file downloaded again over a mounted
+  `appsettings.json` that sets `AllowedHosts`.
+- The `.env` variable carries the key's own, case-sensitive name, and an empty value is not harmless: it overrides
+  the file and accepts every name, so the documented line is commented out, never left empty.
 - A deployment that does not set the key stays open to DNS rebinding; protection is the operator's step.
 - A deployment that sets it answers 400 to every name and IP address it does not list.
 - Behind a reverse proxy the list names the `Host` the proxy forwards, since forwarded headers are not supported
   (#283).
-- Making the key required (option 2, 4 or 5) is a breaking change for existing deployments and needs the Product
+- Making the key required (option 2, 5 or 6) is a breaking change for existing deployments and needs the Product
   Manager.
