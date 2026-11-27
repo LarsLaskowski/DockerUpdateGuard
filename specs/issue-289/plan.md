@@ -163,3 +163,22 @@ The composition root keeps its single `TimeProvider.System` registration.
 
 - Other services still reading `DateTimeOffset.UtcNow` move when they are changed (`docs/UNIT_TESTS.md`).
 - The implied condition of fact 5 stays; no follow-up proposed.
+
+## Challenge notes
+
+Devil's Advocate, mode plan, specs/issue-289 (/home/user/DockerUpdateGuard/specs/issue-289/plan.md).
+
+The plan holds up. I checked each factual claim against the code:
+- Fact 3 (the issue's claim is refuted) is right. `src/DockerUpdateGuard/ServiceCollectionExtensions.cs:130` already has `services.TryAddSingleton(TimeProvider.System);`, and `:150` registers the service as scoped. No registration change is needed.
+- Fact 1 is right. The only `UtcNow` in `src/DockerUpdateGuard/Images/UpdateDetectionService.cs` is at `:671`, and the boundary comparisons are `>` at `:684` and `<=` at `:694-695`, as fact 4 says.
+- The tag-list designs give the results the plan expects:
+  - `GetHigherVersionCandidates` (`:59-75`) sorts by version, highest first, so `nextMajorCandidates[0]` (`:633`) is the highest next-major tag. The deferred details in AC5 therefore name `2.0.1`, and AC4 recommends `2.0.2`.
+  - In AC4, `2.0.0` is published at the same time as `1.4.0`. `IsCandidatePublishedAfterBaseline` (`:404-408`, strict `>`) therefore leaves it out of the candidates, which leaves two (`2.0.1`, `2.0.2`) and meets the release count of 2. `GetMajorLineFirstRelease` (`:460-473`) still finds `2.0.0`.
+  - In AC6, with the clock at now + 11 days, `2.0.0` is 31 days old, so `2.0.1` is recommended.
+  - AC4 and AC6 fail on the unfixed code because the real clock sees the 2029-12 releases as in the future. The plan already notes that AC5 cannot fail before the fix.
+- The 2030-01-01 fixed instant is safe for the existing tests. The fixed fixture dates in `UpdateDetectionServiceTests.cs` (2021 to 2025) are already more than 30 days old under today's real clock. The major-upgrade tests use only `CreateRelativeTimestamp` (`:680-974`), so their dates move with the instant.
+- The S4487 skeleton pragma is one of the ids allowed in `.squad/stack.md:245`.
+
+One minor objection:
+
+1. minor: the number of constructor call sites is wrong. Fact 6 and *Test files* say 26, with 23 in `RuntimeContainerScanOrchestratorTests.cs`. `grep -o "UpdateDetectionService("` finds 22 there (`:400` … `:3177`), 2 in `RuntimeContainerScanOrchestratorFailureTests.cs` and 1 in `UpdateDetectionServiceTests.cs:1280`, so 25 in total. Why it is minor: the Dev and Tester replace every hit of the grep anyway, so the plan does not need to change. Instruction for the Dev and Tester: adapt every `new UpdateDetectionService(` hit that `grep -rn "new UpdateDetectionService(" src` lists (25 today) rather than working towards a count. The Reviewer confirms that the grep shows no one-argument call left.
