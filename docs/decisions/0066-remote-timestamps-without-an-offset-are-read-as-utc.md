@@ -36,7 +36,7 @@ converted to offset zero; an unreadable value stays unknown as before. The rule 
 ## Consequences
 
 - Times no longer depend on the host's `TZ`. A source that meant its own local time without saying so is read as UTC;
-  no source of the app is known to do that (every timestamp in the tests' answers carries `Z` or is a date).
+  no source of the app is known to do that (apart from the tests of this rule, every timestamp in the tests' answers carries an offset or is a date).
 - Values with an explicit offset keep their instant; only their offset becomes zero, which comparisons and the UI (UTC,
   [0058](0058-timestamps-are-shown-in-utc-with-an-explicit-suffix.md)) do not see.
 - A new remote timestamp field is read through the same helper; a direct parse call reintroduces the defect.
