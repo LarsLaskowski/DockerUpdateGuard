@@ -1277,7 +1277,7 @@ public class UpdateDetectionServiceTests
                           Scanning = scanningOptions,
                       };
 
-        return new UpdateDetectionService(new TestOptionsMonitor<DockerUpdateGuardOptions>(options));
+        return new UpdateDetectionService(new TestOptionsMonitor<DockerUpdateGuardOptions>(options), TimeProvider.System);
     }
 
     /// <summary>

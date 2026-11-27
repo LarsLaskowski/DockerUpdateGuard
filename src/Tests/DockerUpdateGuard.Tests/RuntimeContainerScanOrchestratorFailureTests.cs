@@ -819,7 +819,7 @@ public class RuntimeContainerScanOrchestratorFailureTests
                                                                         new TestLogger<RuntimeContainerScanOrchestrator>(),
                                                                         optionsMonitor,
                                                                         registryMetadataService,
-                                                                        new UpdateDetectionService(optionsMonitor));
+                                                                        new UpdateDetectionService(optionsMonitor, TimeProvider.System));
 
                 await orchestrator.ScanAllAsync(ScanTriggerSource.Scheduled, CancellationToken.None)
                                   .ConfigureAwait(false);
@@ -983,7 +983,7 @@ public class RuntimeContainerScanOrchestratorFailureTests
                                                                         new TestLogger<RuntimeContainerScanOrchestrator>(),
                                                                         optionsMonitor,
                                                                         registryMetadataService,
-                                                                        new UpdateDetectionService(optionsMonitor));
+                                                                        new UpdateDetectionService(optionsMonitor, TimeProvider.System));
 
                 await orchestrator.ScanAllAsync(ScanTriggerSource.Scheduled, CancellationToken.None)
                                   .ConfigureAwait(false);

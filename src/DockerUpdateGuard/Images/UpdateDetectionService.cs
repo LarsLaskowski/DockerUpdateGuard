@@ -30,6 +30,13 @@ public class UpdateDetectionService : IUpdateDetectionService
     /// </summary>
     private readonly IOptionsMonitor<DockerUpdateGuardOptions> _options;
 
+#pragma warning disable S4487 // Skeleton: removed with the implementation
+    /// <summary>
+    /// Time provider
+    /// </summary>
+    private readonly TimeProvider _timeProvider;
+#pragma warning restore S4487 // Skeleton: removed with the implementation
+
     #endregion // Fields
 
     #region Constructors
@@ -38,9 +45,11 @@ public class UpdateDetectionService : IUpdateDetectionService
     /// Constructor
     /// </summary>
     /// <param name="options">Application options</param>
-    public UpdateDetectionService(IOptionsMonitor<DockerUpdateGuardOptions> options)
+    /// <param name="timeProvider">Time provider</param>
+    public UpdateDetectionService(IOptionsMonitor<DockerUpdateGuardOptions> options, TimeProvider timeProvider)
     {
         _options = options;
+        _timeProvider = timeProvider;
     }
 
     #endregion // Constructors
