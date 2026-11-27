@@ -16,7 +16,8 @@ every feature area relies on it for validated configuration and a migrated datab
   environment variables and command-line arguments. Environment variables use `__` as the
   section separator (`DockerUpdateGuard__Scanning__RetryCount`).
 - The application reads four top-level sections: `DockerUpdateGuard` (application settings), `Telemetry` (see
-  [Telemetry](telemetry.md)), `ConnectionStrings` and `Logging`. The key-by-key reference with defaults and ranges is
+  [Telemetry](telemetry.md)), `ConnectionStrings` and `Logging`, and the top-level key `AllowedHosts` (see
+  [Security posture](#security-posture)). The key-by-key reference with defaults and ranges is
   the configuration reference in `README.md`; what each feature key means is stated in the feature's area document.
 - The environment defaults to `Production`. Only `Development` changes behavior here (see *HTTP pipeline*).
 - Secrets (database password, Docker Hub PAT, Portainer password or API token) are ordinary configuration values;
@@ -206,9 +207,24 @@ These properties hold today and must be provided for by the deployment:
   private network, a VPN or a reverse proxy that authenticates users.
 - **Enabling Portainer for a Docker instance lets anyone who reaches the UI start, stop and restart that instance's
   containers** through the configured Portainer credentials, with a confirmation and a recorded run (requester `UI`)
-  but no identity ([Container actions](container-actions.md)). The application sets no `AllowedHosts`, so it does not
-  restrict the `Host` header; protection against DNS rebinding is tracked in
-  [#473](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/473).
+  but no identity ([Container actions](container-actions.md)).
+- **Host names are accepted unrestricted unless `AllowedHosts` is set.** `AllowedHosts` (top-level key, environment
+  variable `AllowedHosts`) lists the host names, `;`-separated, that requests may carry in `Host`; unset, empty or
+  containing `*`, every name is accepted, which is the default.
+  - With a list, a request with any other host name is answered with 400 ("Bad Request - Invalid Hostname") before
+    any page, asset or UI connection is served. The port is not part of the comparison, case does not matter, and an
+    entry `*.example.lan` covers its subdomains but not `example.lan`. IP addresses are not exempt: every address the
+    browser uses must be listed like a name, `localhost` and `127.0.0.1` included, IPv6 in brackets (`[::1]`).
+  - It is the deployment's protection against DNS rebinding, recommended for every deployment: set it to every name
+    and address the browser's address bar uses for the UI; behind a reverse proxy, to the `Host` the proxy forwards
+    to the application (forwarded headers are not supported, see *Known gaps*). A change in `appsettings.json`
+    applies to the next request without a restart.
+  - The documented compose files take it from `AllowedHosts` in `.env` and leave it unset without one. A value set
+    there is an environment variable and wins over a mounted `appsettings.json`; an empty value does too and accepts
+    every name, so the line is commented out, never left empty.
+  - Example: `"AllowedHosts": "dockerupdateguard.example.lan;192.168.10.20"` in `appsettings.json`, or
+    `AllowedHosts=dockerupdateguard.example.lan;192.168.10.20` in the compose `.env`
+    ([decision 0065](../decisions/0065-allowed-host-names-stay-open-by-default-and-optional-in-the-compose-files.md)).
 - **No health-check endpoint and no rate limiting.**
 - **Docker socket access is root-equivalent on the host.** Mounting the host's Docker socket gives the application,
   and anyone who controls it, the power of root on that host. This is inherent to the feature.
@@ -235,6 +251,7 @@ These properties hold today and must be provided for by the deployment:
 | `/tmp` not writable when certificates are mounted | A message is printed; the mounted certificates are not used; the container starts. |
 | Unhandled exception in a request (non-Development) | The `/error` page with a generic message. |
 | Unknown URL or bodyless error status | The `/not-found` page. |
+| Request whose host name a restricted `AllowedHosts` does not list | 400 Bad Request ("Invalid Hostname"); nothing is served. |
 
 ### Known gaps
 
@@ -261,6 +278,8 @@ These properties hold today and must be provided for by the deployment:
 - [0050](../decisions/0050-the-compose-files-move-postgresql-to-a-new-volume-carried-over-by-dump-and-restore.md):
   the compose files run PostgreSQL 18 in a new volume, and an existing 16 installation is carried over by dump and
   restore.
+- [0065](../decisions/0065-allowed-host-names-stay-open-by-default-and-optional-in-the-compose-files.md): the
+  allowed host names stay open by default and are optional in the compose files, passed through from `.env`.
 
 ## Not here
 

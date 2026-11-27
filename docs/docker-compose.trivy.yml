@@ -48,6 +48,8 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
+      # Host names the UI answers: taken from AllowedHosts in .env, unset without it.
+      AllowedHosts:
       ConnectionStrings__DockerUpdateGuard: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-dockerupdateguard};Username=${POSTGRES_USER:-dockerupdateguard};Password=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}"
       DockerUpdateGuard__DockerInstances__0__Name: "Local Docker"
       DockerUpdateGuard__DockerInstances__0__BaseUrl: "unix:///var/run/docker.sock"
