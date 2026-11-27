@@ -60,8 +60,8 @@ Times below are relative to the pass start the injected clock returns; "old" mea
 | AC8 | check: the Reviewer reads the area document in step 8 | — |
 | AC9 | CI: *Coverage gate* in step 7; check: the Reviewer reads the assertions | — |
 
-Each test asserts the exact set of remaining `CorrelationId`s (ordered), not only the count. AC1, AC2, AC4 and AC5
-fail on today's code (AC4 passes today: it guards the reference rule against the rewrite).
+Each test asserts the exact set of remaining `CorrelationId`s (ordered), not only the count. AC1 to AC5
+all fail on today's code (AC4 guards the reference rule: it must fail on a build that removes the oldest, referenced run).
 
 ## Approach
 
@@ -176,3 +176,34 @@ cleanup keeps more data than before, which is what the documented retention prom
 
 - #81 (cleanup loads all rows of the other tables) stays open; this change only stops the scan-run part from
   loading more than the removable runs.
+
+## Challenge notes
+
+The plan holds up. I found one minor error in it and no major objection.
+
+I checked these claims myself:
+- **The removal rule is a union today.** `src/DockerUpdateGuard/Images/ScanCleanupBackgroundService.cs:151-175` removes runs that are older than the cutoff OR outside the newest 20, and the newest 20 are counted over unreferenced runs only (:159). The plan's facts 1 and 2 are right.
+- **The clock.** The base class keeps its `TimeProvider` in a private field (`ScheduledBackgroundService.cs:20,40`) and uses it only for `Task.Delay` (:199). The service itself reads `DateTimeOffset.UtcNow` at :270 and :285. So a separate `_timeProvider` field in the service is the right move.
+- **The reload test helper.** The substitute in `Helper/WaitRecordingTimeProvider.cs:60` only sets up `CreateTimer`, so setting a fixed `GetUtcNow` changes nothing for the reload tests. Those tests assert only waits and warning 2005 (`ScanCleanupBackgroundServiceTests.cs:618-690`).
+- **The remaining details.**
+  - The text of log event 2020 (`ImageHostLoggingExtensions.cs:121`) contains "and {RemovedScanRuns} scan runs", which supports AC3's `15 scan runs`.
+  - `ScanRun.CorrelationId` exists (`ScanRun.cs:53`).
+  - `ImageRelationship.ScanRunId` exists (`ImageRelationship.cs:28`).
+  - The README row is at `README.md:181`.
+  - The area document's Known gaps for #290 is at `docs/areas/scan-engine.md:217-221`.
+- **The tests catch a wrong build.**
+  - AC1 catches a build that keeps the cap.
+  - AC5 catches a build that counts the minimum over unreferenced runs only (option 2): that build would keep 22 runs where AC5 expects 20.
+  - AC4 catches a build that ignores references.
+- **Fact 4.** The cutoff is at least one day before the pass start, so dropping the `<= cleanupStartedAtUtc` filter is safe. `List.Contains` is already translated server-side at :169 and :310.
+
+Objection:
+
+1. minor — Under *Tests per criterion*, the sentence "AC1, AC2, AC4 and AC5 fail on today's code (AC4 passes today: it guards the reference rule against the rewrite)" contradicts itself and is wrong. On today's rule (:165-175), all five new tests fail:
+   - AC1 keeps 20, not 25.
+   - AC2 removes all 25 runs, because they are old.
+   - AC3 keeps only the 5 recent runs.
+   - AC4 keeps only the referenced run, since the 20 unreferenced old runs are removed.
+   - AC5 keeps only the 2 referenced runs.
+
+   Instruction for the Tester: expect AC1–AC5 all to fail before the change. AC4's job after the rewrite is to guard the reference rule: it must fail on a build that removes the oldest, referenced run. Do not count it as a test that passes today.
