@@ -13,6 +13,7 @@ using DockerUpdateGuard.Tests.Helper;
 
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 using NSubstitute;
 
@@ -32,6 +33,24 @@ public class RuntimeContainerScanOrchestratorFailureTests
     public TestContext TestContext { get; set; }
 
     #endregion // Properties
+
+    #region Static methods
+
+    /// <summary>
+    /// Create an update detection service with a clock fixed at 2030-01-01T00:00:00Z
+    /// </summary>
+    /// <param name="optionsMonitor">Options monitor</param>
+    /// <returns>Update detection service</returns>
+    private static UpdateDetectionService CreateUpdateDetectionService(IOptionsMonitor<DockerUpdateGuardOptions> optionsMonitor)
+    {
+        var clock = Substitute.For<TimeProvider>();
+
+        clock.GetUtcNow().Returns(new DateTimeOffset(2030, 01, 01, 00, 00, 00, TimeSpan.Zero));
+
+        return new UpdateDetectionService(optionsMonitor, clock);
+    }
+
+    #endregion // Static methods
 
     #region Methods
 
@@ -819,7 +838,7 @@ public class RuntimeContainerScanOrchestratorFailureTests
                                                                         new TestLogger<RuntimeContainerScanOrchestrator>(),
                                                                         optionsMonitor,
                                                                         registryMetadataService,
-                                                                        new UpdateDetectionService(optionsMonitor));
+                                                                        CreateUpdateDetectionService(optionsMonitor));
 
                 await orchestrator.ScanAllAsync(ScanTriggerSource.Scheduled, CancellationToken.None)
                                   .ConfigureAwait(false);
@@ -983,7 +1002,7 @@ public class RuntimeContainerScanOrchestratorFailureTests
                                                                         new TestLogger<RuntimeContainerScanOrchestrator>(),
                                                                         optionsMonitor,
                                                                         registryMetadataService,
-                                                                        new UpdateDetectionService(optionsMonitor));
+                                                                        CreateUpdateDetectionService(optionsMonitor));
 
                 await orchestrator.ScanAllAsync(ScanTriggerSource.Scheduled, CancellationToken.None)
                                   .ConfigureAwait(false);

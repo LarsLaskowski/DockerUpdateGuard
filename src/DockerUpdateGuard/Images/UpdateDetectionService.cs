@@ -30,6 +30,11 @@ public class UpdateDetectionService : IUpdateDetectionService
     /// </summary>
     private readonly IOptionsMonitor<DockerUpdateGuardOptions> _options;
 
+    /// <summary>
+    /// Clock of the age conditions
+    /// </summary>
+    private readonly TimeProvider _timeProvider;
+
     #endregion // Fields
 
     #region Constructors
@@ -38,9 +43,11 @@ public class UpdateDetectionService : IUpdateDetectionService
     /// Constructor
     /// </summary>
     /// <param name="options">Application options</param>
-    public UpdateDetectionService(IOptionsMonitor<DockerUpdateGuardOptions> options)
+    /// <param name="timeProvider">Time provider</param>
+    public UpdateDetectionService(IOptionsMonitor<DockerUpdateGuardOptions> options, TimeProvider timeProvider)
     {
         _options = options;
+        _timeProvider = timeProvider;
     }
 
     #endregion // Constructors
@@ -668,7 +675,7 @@ public class UpdateDetectionService : IUpdateDetectionService
             return true;
         }
 
-        var establishedBeforeUtc = DateTimeOffset.UtcNow.AddDays(-scanningOptions.MajorUpgradeMinimumAgeDays);
+        var establishedBeforeUtc = _timeProvider.GetUtcNow().AddDays(-scanningOptions.MajorUpgradeMinimumAgeDays);
         var firstMajorRelease = GetMajorLineFirstRelease(orderedTags,
                                                          currentTag,
                                                          nextMajorCandidates[0].Version.Major);
