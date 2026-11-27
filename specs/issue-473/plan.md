@@ -90,7 +90,8 @@ Steps 4 (*Skeleton*), 5 (*Tests first*) and the *Coverage gate* are not applicab
 - AC7: check: the Reviewer reads the edits; step 7's `config-check.py` covers the record index and links.
 - AC8: manual: the Product Manager's dry run (*Approach*), on the branch head, before step 8; the result goes into
   `log.md` as a `7 Manual test` row. A row of *Verified facts* the run does not confirm narrows the documents to what
-  it showed.
+  it showed. If case (a) lists `AllowedHosts` or case (e) does not answer 400, fact 8 is false: the change returns to
+  the Lead (step 2) instead of narrowing the documents.
 
 ## Approach
 
@@ -282,3 +283,34 @@ host filter is a deployment setting of the perimeter, not an application login. 
   linking *Security posture* in `docs/areas/hosting.md`." Without a `.env` value the compose files leave the key unset,
   so the warning reaches compose deployments too.
 - Forwarded headers behind a reverse proxy: #283.
+
+## Security notes
+
+Security review, mode plan, third round (confirming the revision): `/home/user/DockerUpdateGuard/specs/issue-473/plan.md` and `/home/user/DockerUpdateGuard/docs/decisions/0065-allowed-host-names-stay-open-by-default-and-optional-in-the-compose-files.md` at HEAD 7be483a of `claude/lucid-bohr-sarb4r`
+
+**Result: approved, with one non-blocking finding.** My blocking finding is answered and the revision raises no new blocking issue. One security property is still unmeasured; the Product Manager's dry run checks it before step 8.
+
+**Previous blocking finding: resolved**
+- `"${ALLOWED_HOSTS:-*}"` is gone. AC1 now gives the compose files a value-less `AllowedHosts:` entry filled from the `.env` variable `AllowedHosts`.
+- The record states the residual risk correctly now:
+  - 0065 *Consequences* says nothing changes, including for a mounted `appsettings.json`.
+  - It warns that an empty `.env` value overrides the file and lets every name through.
+  - Options 4/8/9 explain why both interpolated forms were rejected.
+- My round-2 measurement went into the plan as fact 10. AC2 tells operators to comment the line out, never leave it empty.
+- What `docker compose config` (v5.7.1) shows, in my scratch folder `/tmp/claude-0/-home-user-DockerUpdateGuard/c0937fb0-1500-5589-ac45-2b30a3dd2270/scratchpad/compose`: with an empty `.env`, `AllowedHosts: null`; with `.env` `AllowedHosts=dug.lan;[::1]`, `AllowedHosts: dug.lan;[::1]`. That matches the plan's fact 7.
+
+**Nothing new**
+- The `.env` name is case-sensitive. A misspelled name falls back to today's behavior (open, or whatever the mounted file says), which is the documented default, not a regression. AC2 states it.
+- A value-less entry also takes an `AllowedHosts` exported in the shell that runs `docker compose`. That only applies a list the operator set, so it opens nothing.
+- With the key unset, the follow-up warning issue now reaches compose deployments too, and the plan's note on it is right.
+
+**Measurement not run**
+Fact 8 — a `null` entry leaves `AllowedHosts` unset inside the container, so a mounted file keeps deciding — is the security property that 0065's first Consequence rests on. The plan's only evidence is the wording of the Compose specification. I could not measure it: `docker compose run --rm app env` failed with `failed to connect to the docker API at unix:///var/run/docker.sock`. It needs a Docker daemon. Dry-run cases (a) (`docker compose exec dockerupdateguard env` lists no `AllowedHosts`) and (e) (a mounted `"AllowedHosts": "localhost"` still answers 400 on the LAN IP) test exactly this, before step 8. I accept that gate on the condition in the finding below.
+
+**[NON-BLOCKING] A failed dry run on fact 8 must stop the change, not just narrow the documents**
+- Where: plan, *Verification without tests*, AC8: "A row of *Verified facts* the run does not confirm narrows the documents to what it showed."
+- Problem: if case (a) lists `AllowedHosts` or case (e) answers 200, the compose entry itself opens deployments protected by a mounted file. That is the regression from round 2, and changing the wording would not fix it.
+- Smallest fix: add after that sentence, verbatim:
+  `If case (a) lists `AllowedHosts` or case (e) does not answer 400, fact 8 is false: the change returns to the Lead
+  (step 2) instead of narrowing the documents.`
+- Recommendation: fix now
