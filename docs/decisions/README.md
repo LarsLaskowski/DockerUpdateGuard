@@ -124,5 +124,5 @@ once in the [area document](../areas/README.md) of the record's area, and the re
 | [0061](0061-calendar-year-prefixed-tags-are-compared-across-years.md) | Calendar year-prefixed tags are compared across years | Accepted | 2026-11-25 |
 | [0062](0062-both-registry-clients-choose-a-platform-manifest-by-one-shared-rule.md) | Both registry clients choose a platform manifest by one shared rule | Accepted | 2026-11-26 |
 | [0063](0063-other-registries-take-a-tags-publication-time-from-its-image-configuration.md) | Other registries take a tag's publication time from its image configuration | Accepted | 2026-11-26 |
-| [0064](0064-the-twenty-most-recent-completed-scan-runs-are-a-retention-minimum.md) | The twenty most recent completed scan runs are a retention minimum | Proposed | 2026-11-27 |
+| [0064](0064-the-twenty-most-recent-completed-scan-runs-are-a-retention-minimum.md) | The twenty most recent completed scan runs are a retention minimum | Accepted | 2026-11-27 |
 <!-- project:end index -->

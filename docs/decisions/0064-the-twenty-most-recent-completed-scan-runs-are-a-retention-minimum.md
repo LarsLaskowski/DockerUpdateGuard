@@ -1,6 +1,6 @@
 # 0064: The twenty most recent completed scan runs are a retention minimum
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-27
 - **Area:** Scan engine
 - **Source:** Issue #290
