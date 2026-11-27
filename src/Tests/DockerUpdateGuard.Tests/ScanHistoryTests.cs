@@ -25,6 +25,40 @@ public class ScanHistoryTests
     #region Methods
 
     /// <summary>
+    /// Verify the page description names only the run types that are recorded
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC1")]
+    public async Task ScanHistoryPageDescriptionNamesOnlyRecordedRunTypes()
+    {
+        var testContext = BlazorTestContextFactory.Create();
+
+        await using (testContext)
+        {
+            var viewService = Substitute.For<IApplicationViewService>();
+
+            viewService.GetScanHistoryAsync(Arg.Any<int>(), Arg.Any<CancellationToken>())
+                       .Returns([]);
+
+            testContext.Services.AddSingleton(viewService);
+            testContext.Services.AddSingleton(Substitute.For<IVulnerabilityEnrichmentService>());
+            testContext.Services.AddSingleton(new DashboardRefreshState());
+            testContext.Services.AddSingleton<IOptionsMonitor<DockerUpdateGuardOptions>>(CreateOptionsMonitor(enabled: false));
+
+            var component = testContext.Render<ScanHistory>();
+            var description = component.Find(".page-description").TextContent.Trim();
+            var lowerCaseDescription = description.ToLowerInvariant();
+
+            Assert.AreEqual("Operational history of observed image scans, runtime container scans and vulnerability refreshes.",
+                            description,
+                            "The description must name exactly the recorded run types");
+            Assert.DoesNotContain("discovery", lowerCaseDescription, "The description must not claim discovery runs");
+            Assert.DoesNotContain("cleanup", lowerCaseDescription, "The description must not claim cleanup runs");
+        }
+    }
+
+    /// <summary>
     /// Verify the refresh button is shown and triggers the enrichment service when scanning is enabled
     /// </summary>
     /// <returns>Task</returns>

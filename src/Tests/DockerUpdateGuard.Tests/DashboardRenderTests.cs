@@ -25,6 +25,41 @@ public class DashboardRenderTests
     #region Methods
 
     /// <summary>
+    /// Verify the recent scans description names only the run types that are recorded
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC2")]
+    public async Task DashboardRecentScansDescriptionNamesOnlyRecordedRunTypes()
+    {
+        var testContext = BlazorTestContextFactory.Create();
+
+        await using (testContext)
+        {
+            var viewService = Substitute.For<IApplicationViewService>();
+
+            viewService.GetDashboardAsync(Arg.Any<CancellationToken>())
+                       .Returns(Task.FromResult(new DashboardViewData()));
+
+            testContext.Services.AddSingleton(viewService);
+            testContext.Services.AddSingleton(new DashboardRefreshState());
+            testContext.Services.AddSingleton<IOptions<DockerUpdateGuardOptions>>(Options.Create(new DockerUpdateGuardOptions()));
+
+            var component = testContext.Render<DashboardPage>();
+            var header = component.FindAll(".section-header")
+                                  .Single(element => element.QuerySelector("h5")?.TextContent.Trim() == "Recent scans");
+            var description = header.QuerySelector(".section-description")!.TextContent.Trim();
+            var lowerCaseDescription = description.ToLowerInvariant();
+
+            Assert.AreEqual("Latest observed image scans, runtime container scans and vulnerability refreshes.",
+                            description,
+                            "The description must name exactly the recorded run types");
+            Assert.DoesNotContain("discovery", lowerCaseDescription, "The description must not claim discovery runs");
+            Assert.DoesNotContain("cleanup", lowerCaseDescription, "The description must not claim cleanup runs");
+        }
+    }
+
+    /// <summary>
     /// Verify the number metric tiles render for the phone two-up grid, including the optional My Images and Base Images tiles
     /// </summary>
     /// <returns>Task</returns>
