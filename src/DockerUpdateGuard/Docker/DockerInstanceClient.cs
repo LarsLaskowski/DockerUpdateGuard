@@ -1,6 +1,5 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
-using System.Globalization;
 using System.IO.Pipes;
 using System.Net.Sockets;
 using System.Security.Cryptography.X509Certificates;
@@ -473,7 +472,7 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
     /// <returns>Resource descriptor</returns>
     private static RuntimeContainerResourceDescriptor ParseResourceSample(JsonElement containerElement, JsonElement statsElement)
     {
-        var recordedAtUtc = TryParseTimestamp(TryGetString(statsElement, "read"));
+        var recordedAtUtc = ExternalTimestamp.TryParseUtc(TryGetString(statsElement, "read"));
 
         return new RuntimeContainerResourceDescriptor
                {
@@ -728,16 +727,6 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
     }
 
     /// <summary>
-    /// Parse an ISO timestamp
-    /// </summary>
-    /// <param name="value">Timestamp string</param>
-    /// <returns>Parsed timestamp</returns>
-    private static DateTimeOffset? TryParseTimestamp(string? value)
-    {
-        return DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture, out var timestamp) ? timestamp : null;
-    }
-
-    /// <summary>
     /// Parse Docker image inspect payload
     /// </summary>
     /// <param name="element">Root JSON element</param>
@@ -776,7 +765,7 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
                    RepoDigests = ReadStringArray(element, "RepoDigests"),
                    EnvironmentVariables = environmentVariables,
                    RootFsLayers = rootFsLayers,
-                   CreatedAtUtc = TryParseTimestamp(TryGetString(element, "Created")),
+                   CreatedAtUtc = ExternalTimestamp.TryParseUtc(TryGetString(element, "Created")),
                    OperatingSystem = TryGetString(element, "Os"),
                    Architecture = TryGetString(element, "Architecture"),
                };
@@ -791,7 +780,7 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
     {
         return new DockerImageHistoryEntryData
                {
-                   CreatedAtUtc = TryParseTimestamp(TryGetString(element, "Created")),
+                   CreatedAtUtc = ExternalTimestamp.TryParseUtc(TryGetString(element, "Created")),
                    CreatedBy = TryGetString(element, "CreatedBy"),
                    Comment = TryGetString(element, "Comment"),
                    Tags = ReadStringArray(element, "Tags"),

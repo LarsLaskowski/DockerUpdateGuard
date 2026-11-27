@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace DockerUpdateGuard.Infrastructure;
 
 /// <summary>
@@ -14,7 +16,12 @@ internal static class ExternalTimestamp
     /// <returns>Parsed instant, null when the text is null, empty or not a timestamp</returns>
     public static DateTimeOffset? TryParseUtc(string? value)
     {
-        throw new InvalidOperationException("Skeleton: not implemented");
+        if (DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var timestamp))
+        {
+            return timestamp;
+        }
+
+        return null;
     }
 
     #endregion // Static methods
