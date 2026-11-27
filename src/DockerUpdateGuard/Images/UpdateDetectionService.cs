@@ -30,12 +30,10 @@ public class UpdateDetectionService : IUpdateDetectionService
     /// </summary>
     private readonly IOptionsMonitor<DockerUpdateGuardOptions> _options;
 
-#pragma warning disable S4487 // Skeleton: removed with the implementation
     /// <summary>
-    /// Time provider
+    /// Clock of the age conditions
     /// </summary>
     private readonly TimeProvider _timeProvider;
-#pragma warning restore S4487 // Skeleton: removed with the implementation
 
     #endregion // Fields
 
@@ -677,7 +675,7 @@ public class UpdateDetectionService : IUpdateDetectionService
             return true;
         }
 
-        var establishedBeforeUtc = DateTimeOffset.UtcNow.AddDays(-scanningOptions.MajorUpgradeMinimumAgeDays);
+        var establishedBeforeUtc = _timeProvider.GetUtcNow().AddDays(-scanningOptions.MajorUpgradeMinimumAgeDays);
         var firstMajorRelease = GetMajorLineFirstRelease(orderedTags,
                                                          currentTag,
                                                          nextMajorCandidates[0].Version.Major);

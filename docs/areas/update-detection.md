@@ -120,7 +120,8 @@ details, an optional recommended tag and digest, and at most **50** candidates. 
 - A deferred major upgrade yields *up to date*, "No newer version was found in the `<major>.x` version line", with the
   details "Tag '…' introduces a new major version and is not recommended yet". A republished current tag (rule 3)
   takes precedence over this result.
-- The age conditions are measured against the wall clock at evaluation time; a deferred upgrade becomes a
+- The age conditions are measured against the application's clock at evaluation time and are inclusive: a release
+  published exactly the configured number of days before counts as old enough. A deferred upgrade becomes a
   recommendation in a later scan without any other change.
 
 ### Runtime container assessment
@@ -186,9 +187,6 @@ scan run *partial*, with the message added to the run ([Scan engine](scan-engine
 
 - The manual tag selection is informational only: it does not pin the recommendation or influence any container
   action. Tracked in [#291](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/291).
-- The major-upgrade age conditions read the system clock directly instead of the application's time source, so they
-  cannot be controlled independently of the real time.
-  Tracked in [#289](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/289).
 
 ## Related decisions
 
