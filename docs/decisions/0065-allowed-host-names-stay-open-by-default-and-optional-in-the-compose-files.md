@@ -1,6 +1,6 @@
 # 0065: Allowed host names stay open by default and optional in the compose files
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-27
 - **Area:** Hosting and configuration
 - **Source:** Issue #473
