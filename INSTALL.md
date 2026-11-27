@@ -82,6 +82,14 @@ appliances), `DOCKER_GID=0` — the `.env.example` default — already works and
 this step can be skipped. See [DOCKER.md](DOCKER.md#linux-docker-socket-usage)
 for background on why the container needs this.
 
+Also set `AllowedHosts` (recommended): uncomment the line in `.env` and list
+every host name and IP address you open the UI with, separated by `;` and
+without port, e.g. `AllowedHosts=dockerupdateguard.example.lan;192.168.10.20;localhost;127.0.0.1`.
+Requests with any other host name are answered with "Bad Request - Invalid
+Hostname", which protects the UI against DNS rebinding. Left unset, every
+name is accepted. Do not leave the line empty: an empty value accepts every
+name. See [Security posture](docs/areas/hosting.md#security-posture).
+
 Optionally set `DOCKERHUB_USERNAME` / `DOCKERHUB_PAT` for authenticated
 Docker Hub API access (higher rate limits, private repositories).
 
@@ -228,12 +236,14 @@ docker compose down -v     # also remove volumes (deletes the database!)
 
 The compose files configure DockerUpdateGuard entirely through environment
 variables (`DockerUpdateGuard__...`, `ConnectionStrings__...`,
-`Telemetry__...`), following the standard ASP.NET Core configuration
+`Telemetry__...`, `AllowedHosts`), following the standard ASP.NET Core configuration
 convention where `__` maps to a JSON path segment. For advanced options not
 covered by the tiers above — TLS-secured Docker engines, client
 certificates, Portainer integration, DockerScout instead of Trivy, custom
 scan intervals — mount an `appsettings.json` instead and see the full
 configuration reference in [DOCKER.md](DOCKER.md) and the [README](README.md#configuration-reference).
+With a mounted `appsettings.json`, an `AllowedHosts` value in `.env` wins over
+the file's `AllowedHosts`; without one, the file decides.
 An internal CA is trusted by mounting its PEM file into `/app/certs` (read-only), also with the default
 non-root user; see [DOCKER.md](DOCKER.md).
 
@@ -242,6 +252,9 @@ non-root user; see [DOCKER.md](DOCKER.md).
 - Mounting `/var/run/docker.sock` grants the container root-equivalent
   access to the Docker host. Only run these compose files on trusted hosts.
 - Set a strong, unique `POSTGRES_PASSWORD`; do not commit your `.env` file.
+- The UI has no sign-in. Without `AllowedHosts` it accepts every host name,
+  which leaves it open to DNS rebinding from a page opened inside your
+  network; see [Security posture](docs/areas/hosting.md#security-posture).
 - Pin image tags (e.g. `networlddev/dockerupdateguard:1.2.3` instead of
   `:latest`) for reproducible, auditable deployments once you move past the
   initial evaluation.
@@ -250,4 +263,6 @@ non-root user; see [DOCKER.md](DOCKER.md).
 
 See [DOCKER.md](DOCKER.md#troubleshooting) for common issues, including
 `appsettings.json` permission errors and Docker socket access on NAS
-appliances.
+appliances, and the
+["Bad Request - Invalid Hostname"](DOCKER.md#bad-request---invalid-hostname)
+page that `AllowedHosts` produces.

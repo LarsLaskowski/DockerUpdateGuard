@@ -454,6 +454,11 @@ it links:
   VPN, or a reverse proxy that terminates auth) — a deployment
   responsibility, not something the app enforces. See
   [SECURITY.md](../SECURITY.md) for the vulnerability-reporting process.
+- **Host names are accepted unrestricted unless the deployment sets
+  `AllowedHosts`**, its protection against DNS rebinding; the compose files
+  pass it through from `.env` and leave it unset without a value
+  ([Hosting and configuration](areas/hosting.md#security-posture),
+  [decision 0065](decisions/0065-allowed-host-names-stay-open-by-default-and-optional-in-the-compose-files.md)).
 - **Enabling Portainer on a Docker instance lets anyone who reaches the UI
   start, stop and restart that instance's containers**, because there is no
   sign-in. Every action asks for confirmation, is checked again on the

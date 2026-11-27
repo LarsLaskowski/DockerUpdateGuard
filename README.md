@@ -101,6 +101,7 @@ Rules: [Hosting and configuration](docs/areas/hosting.md).
 
 | Key | Default | Required | Description |
 | --- | --- | --- | --- |
+| `AllowedHosts` | `*` | No | Host names and IP addresses the UI answers, `;`-separated, without port (IPv6 in brackets); any other host name gets 400 "Bad Request - Invalid Hostname". Recommended: protects the UI against DNS rebinding ([Security posture](docs/areas/hosting.md#security-posture)) |
 | `ConnectionStrings:DockerUpdateGuard` | none | Yes* | Named PostgreSQL connection string used when `DockerUpdateGuard:ConnectionString` is not set |
 | `DockerUpdateGuard:ConnectionString` | none | Yes* | Inline PostgreSQL connection string |
 | `DockerUpdateGuard:ConnectionStringName` | `DockerUpdateGuard` | No | Name of the `ConnectionStrings` entry to resolve |
@@ -212,7 +213,7 @@ Rules: [Container actions](docs/areas/container-actions.md#configuration-and-map
 Enabling Portainer for a Docker instance lets the runtime container detail page start, stop and restart that
 instance's containers through Portainer. The application has no sign-in, so **anyone who can reach the UI can do this**;
 each action asks for confirmation and is recorded as an action run (requester `UI`, no identity), so run the
-application behind a trusted perimeter ([Security posture](docs/areas/hosting.md#security-posture)). Portainer answers a
+application behind a trusted perimeter and set `AllowedHosts` ([Security posture](docs/areas/hosting.md#security-posture)). Portainer answers a
 stop or restart only once the container has stopped, so these requests wait up to 300 seconds beyond
 `RequestTimeoutSeconds`. Redeploying stacks and updating services are not available.
 
@@ -255,6 +256,7 @@ If all three telemetry switches are `false`, telemetry is effectively disabled.
 
 ```json
 {
+  "AllowedHosts": "dockerupdateguard.example.lan;192.168.10.20",
   "ConnectionStrings": {
     "DockerUpdateGuard": "Host=postgres;Port=5432;Database=dockerupdateguard;Username=dockerupdateguard;Password=change-me"
   },
@@ -331,6 +333,7 @@ See the JSON example above for the exact keys and structure.
 - For Linux host monitoring, bind-mount `/var/run/docker.sock`
 - For TLS-secured remote engines, also mount the client certificate if `CertificatePath` is used; the container runs as a non-root user ([Container image](docs/areas/hosting.md#container-image))
 - To trust an internal CA, mount its PEM file into `/app/certs` (read-only; see [DOCKER.md](DOCKER.md))
+- Set `AllowedHosts` to every host name and IP address the UI is opened with; the compose files take it from `AllowedHosts` in `.env`, and unset every name is accepted ([Security posture](docs/areas/hosting.md#security-posture))
 - The application needs outbound network access to the configured registry, optional Portainer endpoint, optional Trivy server, and optional OTLP collector
 
 ## License

@@ -17,6 +17,12 @@ At minimum, provide:
 - a PostgreSQL connection string
 - at least one Docker instance definition
 
+Also set `AllowedHosts` (recommended) for `docker run` and mounted-`appsettings.json` deployments, to every host
+name and IP address the UI is opened with, e.g. `AllowedHosts=dockerupdateguard.example.lan;192.168.10.20`
+(`-e "AllowedHosts=dockerupdateguard.example.lan;192.168.10.20"`, quoted because of the `;`, or the key in
+`appsettings.json`); otherwise every name is accepted and the UI is open to DNS
+rebinding ([Security posture](docs/areas/hosting.md#security-posture)).
+
 Example:
 
 ```bash
@@ -72,6 +78,7 @@ Common JSON paths:
 
 | JSON path | Purpose |
 | --- | --- |
+| `AllowedHosts` | Host names and IP addresses the UI answers, `;`-separated, without port; protection against DNS rebinding ([Security posture](docs/areas/hosting.md#security-posture)) |
 | `ConnectionStrings:DockerUpdateGuard` | PostgreSQL connection string |
 | `DockerUpdateGuard:DockerInstances[0]:Name` | Display name of the first Docker instance |
 | `DockerUpdateGuard:DockerInstances[0]:BaseUrl` | Docker endpoint such as `unix:///var/run/docker.sock` |
@@ -208,6 +215,17 @@ for this. Instead, either:
 
 - set an "Everyone" read entry in File Station's advanced permissions for the file/folder, or
 - SSH into the NAS and run `chmod 644` on the file directly.
+
+### "Bad Request - Invalid Hostname"
+
+The name or IP address in the browser's address bar (or the `Host` a reverse proxy forwards to the application) is not
+listed in `AllowedHosts`, set in `appsettings.json` or in `.env` for the compose files. Add it, without port, to the
+`;`-separated list (IP addresses, `localhost` and `127.0.0.1` included), for example
+`AllowedHosts=dockerupdateguard.example.lan;192.168.10.20;localhost`, and reload the page. An `appsettings.json`
+change applies to the next request; a changed environment variable applies only once the container is recreated
+(`docker compose up -d` after editing `.env`, or removing the container and running `docker run` again), not after a
+restart. See
+[Security posture](docs/areas/hosting.md#security-posture).
 
 ## Networking
 

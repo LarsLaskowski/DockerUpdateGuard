@@ -25,6 +25,8 @@ limits, patterns or sequences. Paths below are under `src/DockerUpdateGuard/` un
 - **Configured URLs and their user info:** where a URL sends credentials and how it is output — `Configuration/DockerUpdateGuardOptionsValidator.cs`,
   `Infrastructure/UrlRedaction.cs` — [Hosting](../docs/areas/hosting.md#validation),
   [Telemetry](../docs/areas/telemetry.md#credentials-and-external-data)
+- **Host names the UI answers:** `AllowedHosts`, passed through in `docs/docker-compose.*.yml`
+  and `docs/.env.example` — [Hosting](../docs/areas/hosting.md#security-posture), [decision 0065](../docs/decisions/0065-allowed-host-names-stay-open-by-default-and-optional-in-the-compose-files.md)
 - **TLS relaxation of Docker instances:** `SkipCertificateValidation` and client certificates — `Docker/DockerInstanceClient.cs`,
   `Configuration/ClientCertificateLoader.cs` — [Docker instances](../docs/areas/docker-instances.md#tls-options)
 - **Insecure Portainer HTTP:** the `AllowInsecureHttp` opt-in and its warning — `Portainer/PortainerClient.cs` —
