@@ -57,7 +57,7 @@ value's wall time in UTC **and** `Offset` is `TimeSpan.Zero` (both asserted, fac
 | AC | Test(s) | Test file |
 | -- | ------- | --------- |
 | AC1 | `DockerHubClientGetTagAsyncLastPushedWithoutOffsetReadsUtcAsync`, `DockerHubClientGetImageConfigurationAsyncCreatedWithoutOffsetReadsUtcAsync` | `src/Tests/DockerUpdateGuard.Tests/DockerHubClientTests.cs` |
-| AC2 | `OciRegistryClientPublicationTimeGetTagAsyncConfigCreatedWithoutOffsetReadsUtcAsync`, `OciRegistryClientPublicationTimeGetTagAsyncEpochCreatedWithoutOffsetLeavesTimeUnknownAsync` | `src/Tests/DockerUpdateGuard.Tests/OciRegistryClientPublicationTimeTests.cs` |
+| AC2 | `OciRegistryClientGetTagAsyncConfigCreatedWithoutOffsetReadsUtcAsync`, `OciRegistryClientGetTagAsyncEpochCreatedWithoutOffsetLeavesTimeUnknownAsync` | `src/Tests/DockerUpdateGuard.Tests/OciRegistryClientPublicationTimeTests.cs` |
 | AC3 | `DockerInstanceClientCollectContainerResourceUsageAsyncStatsReadWithoutOffsetReadsUtcAsync` | `src/Tests/DockerUpdateGuard.Tests/DockerInstanceClientTests.cs` |
 | AC4 | `DotNetReleaseMetadataServiceGetChannelReleaseAsyncEndOfLifeDateWithoutOffsetReadsUtcMidnightAsync` | `src/Tests/DockerUpdateGuard.Tests/DotNetReleaseMetadataServiceTests.cs` |
 | AC5 | `ExternalTimestampTryParseUtcWithoutOffsetReadsUtc` (DataRows `2024-05-01T10:00:00`, `2024-05-01`), `ExternalTimestampTryParseUtcWithOffsetReturnsSameInstantInUtc` (DataRows `Z`, `+02:00`, `-05:00`), `ExternalTimestampTryParseUtcUnreadableValueReturnsNull` (DataRows `null`, empty, whitespace, `not a time`) | `src/Tests/DockerUpdateGuard.Tests/ExternalTimestampTests.cs` |
@@ -173,6 +173,7 @@ performs no I/O, layering is kept (the helper sits in the host's `Infrastructure
 
 - Moving `OciRegistryClient`'s token expiry to an injected `TimeProvider` (which would let AC6 get a client-level
   test): not needed for this fix.
+- The Docker Engine's image history `Created` is an int64 Unix time, which `TryGetString` (`DockerInstanceClient.cs`, `ParseImageHistoryEntry`) reads as null, so history creation times stay unknown although `docs/areas/docker-instances.md` (*Image inspection and history*) says they are read: a linked issue, opened before the PR (Challenge, objection 1).
 
 ## Challenge notes
 
