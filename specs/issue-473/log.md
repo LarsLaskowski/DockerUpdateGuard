@@ -26,3 +26,5 @@ are quoted in full.
 | 2026-11-27 18:54 | 8 Security diff | Security | VERDICT: APPROVED. No findings. Fact 8 container side measured with a throwaway Docker daemon: unset or commented-out entry leaves AllowedHosts out of the container environment, empty value sets it empty; AC1 re-rendered; real-image 400 page and fact 9 not run. (opus/medium · 50,869 tokens · 12 tool uses · 122 s · 22 in · 8,383 out · 404,430 cache read · 42,000 cache write · 229,317 weighted) |
 | 2026-11-27 18:54 | 8 Verbatim fix | Orchestrator | verbatim: [BLOCKING, verbatim] DOCKER.md:224; [NON-BLOCKING, verbatim] DOCKER.md:20-22 |
 | 2026-11-27 18:54 | 7 Gate stamp | Orchestrator | PASS on f657603765ac991217dd86e64c1273ee403f75f3 (tier security, verbatim): Format check pass; decision-check.py pass; scope-check.py pass |
+| 2026-11-27 18:55 | 7 Gate stamp | Orchestrator | PASS on beb335fcf8c9f4dbd39ec8a9b0fc824f17e53f01 (tier security, verbatim): Format check pass; decision-check.py pass; scope-check.py pass |
+| 2026-11-27 18:55 | 9 PR approval | Orchestrator | approved by checklist |
