@@ -333,6 +333,81 @@ public partial class DockerHubClientTests
     #region Methods
 
     /// <summary>
+    /// Verify a Docker Hub tag whose last push time has no offset is reported in UTC
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC1")]
+    [OSCondition(OperatingSystems.Linux)]
+    public async Task DockerHubClientGetTagAsyncLastPushedWithoutOffsetReadsUtcAsync()
+    {
+        using var handler = new StubHttpMessageHandler();
+        using var httpClient = new HttpClient(handler)
+                               {
+                                   BaseAddress = new Uri("https://hub.docker.com/"),
+                               };
+
+        handler.AddResponse(LoginUri, LoginResponseJson);
+        handler.AddResponse("https://hub.docker.com/v2/namespaces/acme/repositories/api/tags/latest",
+                            """{ "name": "latest", "digest": "sha256:index", "last_pushed": "2025-04-02T10:00:00" }""");
+
+        var client = CreateClient(httpClient);
+        var imageReference = new ImageReference
+                             {
+                                 Registry = "docker.io",
+                                 Repository = "acme/api",
+                                 Tag = "latest",
+                             };
+
+        ExternalOperationResult<DockerHubTagData> result;
+
+        using (new LocalTimeZoneScope("Etc/GMT+5"))
+        {
+            result = await client.GetTagAsync(imageReference, "linux", "amd64", TestContext.CancellationToken).ConfigureAwait(false);
+        }
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "The tag lookup must succeed");
+        Assert.IsNotNull(result.Data, "The tag lookup must return tag metadata");
+        Assert.IsNotNull(result.Data.PublishedAtUtc, "The publication time must be known");
+        Assert.AreEqual(new DateTimeOffset(2025, 4, 2, 10, 0, 0, TimeSpan.Zero), result.Data.PublishedAtUtc.Value, "A last push time without an offset must be read as UTC");
+        Assert.AreEqual(TimeSpan.Zero, result.Data.PublishedAtUtc.Value.Offset, "The publication time must be kept with offset zero");
+    }
+
+    /// <summary>
+    /// Verify a Docker Hub image configuration whose creation time has no offset is reported in UTC
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC1")]
+    [OSCondition(OperatingSystems.Linux)]
+    public async Task DockerHubClientGetImageConfigurationAsyncCreatedWithoutOffsetReadsUtcAsync()
+    {
+        using var handler = new DelegateHttpMessageHandler(request => CreateBaseImageChainResponse(request, """{ "created": "2025-04-02T10:00:00", "os": "linux", "architecture": "amd64" }"""));
+        using var httpClient = new HttpClient(handler);
+
+        var client = CreateClient(httpClient);
+        var imageReference = new ImageReference
+                             {
+                                 Registry = "docker.io",
+                                 Repository = "library/app",
+                                 Tag = "latest",
+                             };
+
+        ExternalOperationResult<RegistryImageConfigurationData> result;
+
+        using (new LocalTimeZoneScope("Etc/GMT+5"))
+        {
+            result = await client.GetImageConfigurationAsync(imageReference, TestContext.CancellationToken).ConfigureAwait(false);
+        }
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "The configuration lookup must succeed");
+        Assert.IsNotNull(result.Data, "The configuration lookup must return the configuration");
+        Assert.IsNotNull(result.Data.CreatedAtUtc, "The creation time must be known");
+        Assert.AreEqual(new DateTimeOffset(2025, 4, 2, 10, 0, 0, TimeSpan.Zero), result.Data.CreatedAtUtc.Value, "A creation time without an offset must be read as UTC");
+        Assert.AreEqual(TimeSpan.Zero, result.Data.CreatedAtUtc.Value.Offset, "The creation time must be kept with offset zero");
+    }
+
+    /// <summary>
     /// Verify every Docker Hub call refuses a registry that is not Docker Hub as unsupported without a request
     /// </summary>
     /// <param name="operation">Name of the call</param>

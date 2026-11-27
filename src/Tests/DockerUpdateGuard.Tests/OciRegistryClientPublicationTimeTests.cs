@@ -3,6 +3,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
 
+using DockerUpdateGuard.DockerHub;
 using DockerUpdateGuard.Images;
 using DockerUpdateGuard.Images.Data;
 using DockerUpdateGuard.Infrastructure;
@@ -200,6 +201,66 @@ public class OciRegistryClientPublicationTimeTests
     #endregion // Properties
 
     #region Methods
+
+    /// <summary>
+    /// Verify a configuration blob whose created time has no offset gives a publication time in UTC
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC2")]
+    [OSCondition(OperatingSystems.Linux)]
+    public async Task OciRegistryClientPublicationTimeGetTagAsyncConfigCreatedWithoutOffsetReadsUtcAsync()
+    {
+        using var handler = new SequenceHttpMessageHandler();
+        using var httpClient = new HttpClient(handler);
+
+        handler.AddResponse(ManifestUri, CreateManifestResponse(TagDigest, ManifestWithoutCreated));
+        handler.AddJsonResponse(BlobUri, """{ "created": "2026-03-04T05:06:07", "os": "linux" }""");
+
+        var client = new OciRegistryClient(httpClient, new TestLogger<OciRegistryClient>());
+
+        ExternalOperationResult<DockerHubTagData> result;
+
+        using (new LocalTimeZoneScope("Etc/GMT+5"))
+        {
+            result = await client.GetTagAsync(CreateReference(), "linux", "amd64", TestContext.CancellationToken).ConfigureAwait(false);
+        }
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "The lookup must succeed");
+        Assert.IsNotNull(result.Data, "The lookup must return tag data");
+        Assert.IsNotNull(result.Data.PublishedAtUtc, "The publication time must be known");
+        Assert.AreEqual(new DateTimeOffset(2026, 3, 4, 5, 6, 7, TimeSpan.Zero), result.Data.PublishedAtUtc.Value, "A created time without an offset must be read as UTC");
+        Assert.AreEqual(TimeSpan.Zero, result.Data.PublishedAtUtc.Value.Offset, "The publication time must be kept with offset zero");
+    }
+
+    /// <summary>
+    /// Verify a configuration blob whose created time is the epoch without an offset leaves the publication time unknown
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC2")]
+    [OSCondition(OperatingSystems.Linux)]
+    public async Task OciRegistryClientPublicationTimeGetTagAsyncEpochCreatedWithoutOffsetLeavesTimeUnknownAsync()
+    {
+        using var handler = new SequenceHttpMessageHandler();
+        using var httpClient = new HttpClient(handler);
+
+        handler.AddResponse(ManifestUri, CreateManifestResponse(TagDigest, ManifestWithoutCreated));
+        handler.AddJsonResponse(BlobUri, """{ "created": "1970-01-01T00:00:00", "os": "linux" }""");
+
+        var client = new OciRegistryClient(httpClient, new TestLogger<OciRegistryClient>());
+
+        ExternalOperationResult<DockerHubTagData> result;
+
+        using (new LocalTimeZoneScope("Etc/GMT+5"))
+        {
+            result = await client.GetTagAsync(CreateReference(), "linux", "amd64", TestContext.CancellationToken).ConfigureAwait(false);
+        }
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "The lookup must succeed");
+        Assert.IsNotNull(result.Data, "The lookup must return tag data");
+        Assert.IsNull(result.Data.PublishedAtUtc, "An epoch created time without an offset is the epoch in UTC and must leave the publication time unknown");
+    }
 
     /// <summary>
     /// Verify a manifest without a created time takes the publication time from the configuration blob
