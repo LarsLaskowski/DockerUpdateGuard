@@ -56,7 +56,7 @@ to read the state the other areas compute and to start manual scans; it computes
 
 | Route | Page | Shows |
 | --- | --- | --- |
-| `/` | Dashboard | Counts of my images, manual observed images, Docker instances, runtime containers and shared base images; active update findings; active derived-runtime warnings of own images; active vulnerability findings of currently running containers with a per-severity breakdown; a configuration hint for vulnerability scanning; the 10 most recent scan runs |
+| `/` | Dashboard | Counts of my images, manual observed images, Docker instances, runtime containers and shared base images; active update findings; active derived-runtime warnings of own images; active vulnerability findings of currently running containers with a per-severity breakdown; a configuration hint for vulnerability scanning; the 10 most recent scan runs (observed image scans, runtime container scans and vulnerability refreshes, [Scan runs](scan-engine.md#scan-runs)) |
 | `/my-images` | My Images | Images discovered from the configured Docker Hub account, with latest scan status and message, number of running containers, derived-runtime hint and vulnerability status |
 | `/my-images/{id}` | My Image details | One observed image: reference, latest scan, derived-runtime hint, running containers, base image chain, update findings with tag candidates, and — when there are any — vulnerability findings and its 20 most recent scan runs |
 | `/observed-images` | Observed Images | The registration form and the manually registered images with latest scan, active update findings, derived-runtime hint and vulnerability status |
@@ -67,7 +67,7 @@ to read the state the other areas compute and to start manual scans; it computes
 | `/docker-instances/{id}` | Docker Instance detail | The containers currently observed on one instance with linked own image and resource usage |
 | `/base-images` | Shared Base Images | Base images used by two or more enabled images or containers, with the images built on them, the containers and number of enabled observed images that use them, and their vulnerability status |
 | `/vulnerabilities` | Vulnerabilities | Active advisories across all images, one row per advisory, with severity and CVSS score, affected packages, fixed versions, number of affected images and running containers; a row expands to the affected images |
-| `/scan-history` | Scan History | The 20 most recent scan runs with type, status, trigger, target, start time and error message |
+| `/scan-history` | Scan History | The 20 most recent scan runs (observed image scans, runtime container scans and vulnerability refreshes, [Scan runs](scan-engine.md#scan-runs)) with type, status, trigger, target, start time and error message |
 | `/error` | Error | "Unexpected error" — the request could not be completed |
 | `/not-found` | Not found | "Page not found" with a link back to the dashboard |
 
@@ -246,12 +246,6 @@ never their values.
   is reloaded.
 - Lists are not paged except the Vulnerabilities page; all other lists show every item or the fixed number stated
   above.
-
-### Known gaps
-
-- The Scan History and dashboard descriptions mention discovery and cleanup runs, although those jobs record no scan
-  runs ([Scan engine](scan-engine.md)).
-  Tracked in [#278](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/278).
 
 ## Related decisions
 
