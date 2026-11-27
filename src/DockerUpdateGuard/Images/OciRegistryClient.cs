@@ -206,141 +206,6 @@ public partial class OciRegistryClient : IRegistryMetadataClient
     }
 
     /// <summary>
-    /// Normalize a platform value
-    /// </summary>
-    /// <param name="value">Platform value</param>
-    /// <returns>Normalized value</returns>
-    private static string? NormalizePlatformValue(string? value)
-    {
-        return string.IsNullOrWhiteSpace(value)
-                   ? null
-                   : value.Trim().ToLowerInvariant();
-    }
-
-    /// <summary>
-    /// Select a manifest digest for a preferred platform
-    /// </summary>
-    /// <param name="manifestsElement">Manifest list element</param>
-    /// <param name="operatingSystem">Preferred operating system</param>
-    /// <param name="architecture">Preferred architecture</param>
-    /// <returns>Resolved manifest digest or null</returns>
-    private static string? SelectPlatformManifestDigest(JsonElement manifestsElement,
-                                                        string? operatingSystem,
-                                                        string? architecture)
-    {
-        var preferredOperatingSystem = NormalizePlatformValue(operatingSystem);
-        var preferredArchitecture = NormalizePlatformValue(architecture);
-        var exactPlatformDigest = SelectExactPlatformManifestDigest(manifestsElement,
-                                                                    preferredOperatingSystem,
-                                                                    preferredArchitecture);
-
-        if (exactPlatformDigest is not null)
-        {
-            return exactPlatformDigest;
-        }
-
-        if (string.IsNullOrWhiteSpace(preferredArchitecture) == false)
-        {
-            var architectureDigest = SelectArchitectureManifestDigest(manifestsElement, preferredArchitecture);
-
-            if (architectureDigest is not null)
-            {
-                return architectureDigest;
-            }
-        }
-
-        return SelectFirstManifestDigest(manifestsElement);
-    }
-
-    /// <summary>
-    /// Select the manifest digest matching both the preferred operating system and architecture
-    /// </summary>
-    /// <param name="manifestsElement">Manifest list element</param>
-    /// <param name="preferredOperatingSystem">Normalized preferred operating system</param>
-    /// <param name="preferredArchitecture">Normalized preferred architecture</param>
-    /// <returns>Matching manifest digest or null</returns>
-    private static string? SelectExactPlatformManifestDigest(JsonElement manifestsElement,
-                                                             string? preferredOperatingSystem,
-                                                             string? preferredArchitecture)
-    {
-        if (string.IsNullOrWhiteSpace(preferredOperatingSystem)
-            || string.IsNullOrWhiteSpace(preferredArchitecture))
-        {
-            return null;
-        }
-
-        foreach (var manifestElement in manifestsElement.EnumerateArray())
-        {
-            var digest = TryGetString(manifestElement, DigestPropertyName);
-
-            if (string.IsNullOrWhiteSpace(digest)
-                || manifestElement.TryGetProperty("platform", out var platformElement) == false)
-            {
-                continue;
-            }
-
-            var manifestOperatingSystem = NormalizePlatformValue(TryGetString(platformElement, "os"));
-            var manifestArchitecture = NormalizePlatformValue(TryGetString(platformElement, "architecture"));
-
-            if (string.Equals(manifestOperatingSystem, preferredOperatingSystem, StringComparison.OrdinalIgnoreCase)
-                && string.Equals(manifestArchitecture, preferredArchitecture, StringComparison.OrdinalIgnoreCase))
-            {
-                return digest;
-            }
-        }
-
-        return null;
-    }
-
-    /// <summary>
-    /// Select the manifest digest matching the preferred architecture regardless of the operating system
-    /// </summary>
-    /// <param name="manifestsElement">Manifest list element</param>
-    /// <param name="preferredArchitecture">Normalized preferred architecture</param>
-    /// <returns>Matching manifest digest or null</returns>
-    private static string? SelectArchitectureManifestDigest(JsonElement manifestsElement, string preferredArchitecture)
-    {
-        foreach (var manifestElement in manifestsElement.EnumerateArray())
-        {
-            if (manifestElement.TryGetProperty("platform", out var platformElement) == false)
-            {
-                continue;
-            }
-
-            var digest = TryGetString(manifestElement, DigestPropertyName);
-            var manifestArchitecture = NormalizePlatformValue(TryGetString(platformElement, "architecture"));
-
-            if (string.IsNullOrWhiteSpace(digest) == false
-                && string.Equals(manifestArchitecture, preferredArchitecture, StringComparison.OrdinalIgnoreCase))
-            {
-                return digest;
-            }
-        }
-
-        return null;
-    }
-
-    /// <summary>
-    /// Select the first manifest digest of a manifest list
-    /// </summary>
-    /// <param name="manifestsElement">Manifest list element</param>
-    /// <returns>First manifest digest or null</returns>
-    private static string? SelectFirstManifestDigest(JsonElement manifestsElement)
-    {
-        foreach (var manifestElement in manifestsElement.EnumerateArray())
-        {
-            var digest = TryGetString(manifestElement, DigestPropertyName);
-
-            if (string.IsNullOrWhiteSpace(digest) == false)
-            {
-                return digest;
-            }
-        }
-
-        return null;
-    }
-
-    /// <summary>
     /// Parse query parameters into a mutable dictionary
     /// </summary>
     /// <param name="query">URI query string</param>
@@ -635,6 +500,20 @@ public partial class OciRegistryClient : IRegistryMetadataClient
                    OperatingSystem = ResponseBodyExcerpt.ReplaceControlCharacters(TryGetString(rootElement, "os")),
                    Architecture = ResponseBodyExcerpt.ReplaceControlCharacters(TryGetString(rootElement, "architecture")),
                };
+    }
+
+    /// <summary>
+    /// Read the publication time of a manifest or config blob, where a missing, unparseable or epoch value is unknown
+    /// </summary>
+    /// <param name="element">JSON root element</param>
+    /// <returns>Publication time or null</returns>
+    private static DateTimeOffset? TryReadPublishedAtUtc(JsonElement element)
+    {
+        var createdAtUtc = TryReadCreatedAtUtc(element);
+
+        return createdAtUtc is not null && createdAtUtc.Value > DateTimeOffset.UnixEpoch
+                   ? createdAtUtc
+                   : null;
     }
 
     /// <summary>
@@ -935,7 +814,7 @@ public partial class OciRegistryClient : IRegistryMetadataClient
                                                                            ConfigDigest = jsonDocument.RootElement.TryGetProperty(ConfigPropertyName, out var configElement)
                                                                                               ? TryGetString(configElement, DigestPropertyName)
                                                                                               : null,
-                                                                           PublishedAtUtc = TryReadCreatedAtUtc(jsonDocument.RootElement),
+                                                                           PublishedAtUtc = TryReadPublishedAtUtc(jsonDocument.RootElement),
                                                                        });
         }
     }
@@ -963,7 +842,7 @@ public partial class OciRegistryClient : IRegistryMetadataClient
             return ExternalOperationResult.Failed<ManifestMetadata>($"Manifest list for '{imageReference.FullReference}' did not contain any platform manifests");
         }
 
-        var targetDigest = SelectPlatformManifestDigest(manifestsElement, operatingSystem, architecture);
+        var targetDigest = ManifestPlatformSelector.SelectManifestDigest(manifestsElement, operatingSystem, architecture);
 
         if (string.IsNullOrWhiteSpace(targetDigest))
         {
@@ -1373,11 +1252,31 @@ public partial class OciRegistryClient : IRegistryMetadataClient
             return ExternalOperationResult.NotFound<RegistryImageConfigurationData>($"Registry image '{imageReference.FullReference}' did not expose a config digest");
         }
 
-        var blobUri = CreateBlobUri(imageReference.Registry, imageReference.Repository, manifestResult.Data.ConfigDigest, out var refusalMessage);
+        return await ReadConfigurationBlobAsync(imageReference,
+                                                manifestResult.Data.ConfigDigest,
+                                                ParseImageConfiguration,
+                                                cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Read the configuration blob of an image and parse it
+    /// </summary>
+    /// <typeparam name="T">Parsed value type</typeparam>
+    /// <param name="imageReference">Image reference</param>
+    /// <param name="configDigest">Digest of the configuration blob</param>
+    /// <param name="parse">Parser of the blob's root element</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Parsed configuration result</returns>
+    private async Task<ExternalOperationResult<T>> ReadConfigurationBlobAsync<T>(ImageReference imageReference,
+                                                                                 string configDigest,
+                                                                                 Func<JsonElement, T> parse,
+                                                                                 CancellationToken cancellationToken)
+    {
+        var blobUri = CreateBlobUri(imageReference.Registry, imageReference.Repository, configDigest, out var refusalMessage);
 
         if (blobUri is null)
         {
-            return ExternalOperationResult.NotFound<RegistryImageConfigurationData>(refusalMessage);
+            return ExternalOperationResult.NotFound<T>(refusalMessage);
         }
 
         using var response = await SendRegistryRequestAsync(blobUri,
@@ -1388,14 +1287,14 @@ public partial class OciRegistryClient : IRegistryMetadataClient
 
         if (response.StatusCode == HttpStatusCode.NotFound)
         {
-            return ExternalOperationResult.NotFound<RegistryImageConfigurationData>($"Config blob '{manifestResult.Data.ConfigDigest}' was not found for '{imageReference.FullReference}'");
+            return ExternalOperationResult.NotFound<T>($"Config blob '{configDigest}' was not found for '{imageReference.FullReference}'");
         }
 
         if (response.IsSuccessStatusCode == false)
         {
-            return await CreateFailureResultAsync<RegistryImageConfigurationData>(response,
-                                                                                  $"Registry image configuration lookup failed for '{imageReference.FullReference}'",
-                                                                                  cancellationToken).ConfigureAwait(false);
+            return await CreateFailureResultAsync<T>(response,
+                                                     $"Registry image configuration lookup failed for '{imageReference.FullReference}'",
+                                                     cancellationToken).ConfigureAwait(false);
         }
 
         var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
@@ -1404,8 +1303,33 @@ public partial class OciRegistryClient : IRegistryMetadataClient
         {
             using var jsonDocument = await RemoteJsonDocument.ParseAsync(responseStream, cancellationToken).ConfigureAwait(false);
 
-            return ExternalOperationResult.Succeeded<RegistryImageConfigurationData>(ParseImageConfiguration(jsonDocument.RootElement));
+            return ExternalOperationResult.Succeeded<T>(parse(jsonDocument.RootElement));
         }
+    }
+
+    /// <summary>
+    /// Read the creation time of a configuration blob as the publication time of a tag
+    /// </summary>
+    /// <param name="imageReference">Image reference</param>
+    /// <param name="configDigest">Digest of the configuration blob</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Publication time or null when it cannot be read</returns>
+    private async Task<DateTimeOffset?> ReadConfigurationPublishedAtUtcAsync(ImageReference imageReference,
+                                                                             string? configDigest,
+                                                                             CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(configDigest))
+        {
+            return null;
+        }
+
+        var result = await ExecuteAsync(nameof(ReadConfigurationPublishedAtUtcAsync),
+                                        imageReference.FullReference,
+                                        $"Registry tag publication time lookup failed for '{imageReference.FullReference}'",
+                                        () => ReadConfigurationBlobAsync(imageReference, configDigest, TryReadPublishedAtUtc, cancellationToken),
+                                        cancellationToken).ConfigureAwait(false);
+
+        return result.Status == ExternalOperationStatus.Succeeded ? result.Data : null;
     }
 
     #endregion // Methods
@@ -1457,7 +1381,10 @@ public partial class OciRegistryClient : IRegistryMetadataClient
                                                                                                  {
                                                                                                      Tag = imageReference.Tag,
                                                                                                      Digest = RegistryReferenceValidator.ValidDigestOrNull(manifestResult.Data.Digest),
-                                                                                                     PublishedAtUtc = manifestResult.Data.PublishedAtUtc,
+                                                                                                     PublishedAtUtc = manifestResult.Data.PublishedAtUtc
+                                                                                                                          ?? await ReadConfigurationPublishedAtUtcAsync(imageReference,
+                                                                                                                                                                        manifestResult.Data.ConfigDigest,
+                                                                                                                                                                        cancellationToken).ConfigureAwait(false),
                                                                                                  });
                                   },
                                   cancellationToken).ConfigureAwait(false);
