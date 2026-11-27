@@ -173,3 +173,25 @@ performs no I/O, layering is kept (the helper sits in the host's `Infrastructure
 
 - Moving `OciRegistryClient`'s token expiry to an injected `TimeProvider` (which would let AC6 get a client-level
   test): not needed for this fix.
+
+## Challenge notes
+
+I checked the plan against the code and it holds up. I found two minor points and no major ones.
+
+**What I confirmed:**
+- **Parse sites (fact 1):** grepping the production projects finds exactly the six sites the plan names: `DockerHubClient.cs:433` and `:748`, `OciRegistryClient.cs:415` and `:528`, `DockerInstanceClient.cs:737`, `DotNetReleaseMetadataService.cs:90`. The plan covers the issue's two clients and the sibling paths.
+- **Hidden timestamps in deserialized replies:** the replies read through `ExternalJson.Deserialize` / `ReadFromJsonAsync` (`TrivyReport`, `ScoutVulnerabilityResponse`, `HubLoginResponse`, `DockerContainerItem`, `PortainerEndpointItem`, `PortainerAuthResponse`) have no `DateTime` or `DateTimeOffset` properties. No System.Text.Json date parsing is left out.
+- **Epoch case (AC2):** the filter at `OciRegistryClient.cs:514-516` is `createdAtUtc.Value > DateTimeOffset.UnixEpoch`. An offset-less epoch read under UTC−5 is 05:00Z and passes it today; once read as UTC it equals the epoch and is filtered out.
+- **Stats fallback (AC3):** a missing stats `read` falls back to `DateTimeOffset.UtcNow` (`DockerInstanceClient.cs:487`). A test that asserts the exact parsed value therefore tells the fix apart from the fallback.
+- **End of life (AC4):** the end-of-life comparison is at `RuntimeContainerScanOrchestrator.cs:474`.
+- **Test isolation (fact 4):** both test assemblies carry `[assembly: DoNotParallelize]`.
+- **Placement:** the helper's planned home `Infrastructure/` already holds `ExternalJson.cs`.
+- **Existing tests:** the only timestamp with an offset in the tests is the `org.opencontainers.image.created` label (`OciRegistryClientPublicationTimeTests.cs:114`). Production code never parses that label.
+
+**Minor objections:**
+
+1. **minor: the image history `Created` site never sees a string.** In the Docker Engine API, `/images/{name}/history` returns `Created` as an int64 Unix time. The parser at `DockerInstanceClient.cs:794` reads it with `TryGetString`, which returns null for a number (`DockerInstanceClient.cs:554-555`), so the new helper never sees a real value there. The test fixtures feed strings (`DockerInstanceClientTests.cs:150`, `:616`) and no real sample exists. This is a separate, existing defect, not something this fix changes.
+   Instruction for the Dev and Lead: still switch line 794 to the helper for consistency. Do not list "history creation time" as a source of the new `### Remote timestamps` section; name image inspect `Created` and stats `read` only. Record the numeric history `Created` under *Out of scope / follow-ups* as an issue to open. `docs/areas/docker-instances.md:119` already claims history creation time is read.
+
+2. **minor: `LocalTimeZoneScope` makes the new tests fail on every Windows run.** As planned, the helper throws `InvalidOperationException` wherever `TZ` does not take effect, and on Windows it never does. So AC1–AC5 fail on any local Windows run, not only on a broken setup. CI is Linux only, and nothing in `docs/UNIT_TESTS.md` or `.squad/stack.md` sets an OS condition for tests today.
+   Instruction for the Tester: mark each zone-switching test `[OSCondition(OperatingSystems.Linux)]` so it is skipped (not passed) on Windows. Keep the throw in `LocalTimeZoneScope` for a Linux host where the switch still does not take, such as a missing zone database. Mention the Linux-only condition in the `docs/UNIT_TESTS.md` *Test doubles* row.
