@@ -58,6 +58,8 @@ internal sealed class WaitRecordingTimeProvider
         _waitStarted = Channel.CreateUnbounded<bool>();
         _waits = [];
         TimeProvider = Substitute.For<TimeProvider>();
+        TimeProvider.GetUtcNow()
+                    .Returns(new DateTimeOffset(2026, 6, 15, 12, 0, 0, TimeSpan.Zero));
         TimeProvider.CreateTimer(Arg.Any<TimerCallback>(),
                                  Arg.Any<object?>(),
                                  Arg.Any<TimeSpan>(),

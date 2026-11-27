@@ -35,7 +35,7 @@ internal sealed class TestScanCleanupBackgroundService : ScanCleanupBackgroundSe
     /// <param name="logger">Logger</param>
     /// <param name="optionsMonitor">Options monitor</param>
     /// <param name="serviceScopeFactory">Service scope factory</param>
-    /// <param name="timeProvider">Time provider used for the wait</param>
+    /// <param name="timeProvider">Time provider</param>
     public TestScanCleanupBackgroundService(ILogger<ScanCleanupBackgroundService> logger,
                                             Microsoft.Extensions.Options.IOptionsMonitor<DockerUpdateGuardOptions> optionsMonitor,
                                             IServiceScopeFactory serviceScopeFactory,
