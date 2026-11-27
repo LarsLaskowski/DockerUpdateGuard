@@ -5,6 +5,8 @@ using DockerUpdateGuard.Images.Data;
 using DockerUpdateGuard.Images.Enums;
 using DockerUpdateGuard.Tests.Data;
 
+using NSubstitute;
+
 namespace DockerUpdateGuard.Tests;
 
 /// <summary>
@@ -13,6 +15,15 @@ namespace DockerUpdateGuard.Tests;
 [TestClass]
 public class UpdateDetectionServiceTests
 {
+    #region Fields
+
+    /// <summary>
+    /// Instant the clock of the tests answers
+    /// </summary>
+    private static readonly DateTimeOffset _fixedNow = new(2030, 01, 01, 00, 00, 00, TimeSpan.Zero);
+
+    #endregion // Fields
+
     #region Methods
 
     /// <summary>
@@ -898,6 +909,85 @@ public class UpdateDetectionServiceTests
     }
 
     /// <summary>
+    /// Verify a next major release exactly as old as the waiting period is recommended
+    /// </summary>
+    [TestMethod]
+    [TestCategory("AC4")]
+    public void UpdateDetectionServiceSemverMajorUpgradeExactlyAtMinimumAgeIsRecommended()
+    {
+        var service = CreateService();
+
+        var evaluation = EvaluateMajorUpgrade(service,
+                                              [
+                                                  CreateTagData("1.4.0", "sha256:140", CreateRelativeTimestamp(-30)),
+                                                  CreateTagData("2.0.0", "sha256:200", CreateRelativeTimestamp(-30)),
+                                                  CreateTagData("2.0.1", "sha256:201", CreateRelativeTimestamp(-10)),
+                                                  CreateTagData("2.0.2", "sha256:202", CreateRelativeTimestamp(-5)),
+                                              ]);
+
+        Assert.AreEqual(UpdateEvaluationStatus.UpdateAvailable,
+                        evaluation.Status,
+                        "A first major release exactly at the minimum age must count as old enough");
+        Assert.AreEqual("2.0.2",
+                        evaluation.RecommendedTag,
+                        "The newest version of the next major line must be recommended");
+    }
+
+    /// <summary>
+    /// Verify a next major release one second younger than the waiting period is deferred
+    /// </summary>
+    [TestMethod]
+    [TestCategory("AC5")]
+    public void UpdateDetectionServiceSemverMajorUpgradeOneSecondBelowMinimumAgeIsDeferred()
+    {
+        var service = CreateService();
+
+        var evaluation = EvaluateMajorUpgrade(service,
+                                              [
+                                                  CreateTagData("1.4.0", "sha256:140", CreateRelativeTimestamp(-200)),
+                                                  CreateTagData("2.0.0", "sha256:200", CreateRelativeTimestamp(-30).AddSeconds(1)),
+                                                  CreateTagData("2.0.1", "sha256:201", CreateRelativeTimestamp(-10)),
+                                              ]);
+
+        Assert.AreEqual(UpdateEvaluationStatus.UpToDate,
+                        evaluation.Status,
+                        "A first major release one second younger than the minimum age must be deferred");
+        Assert.AreEqual("Tag '2.0.1' introduces a new major version and is not recommended yet",
+                        evaluation.Details,
+                        "The details must name the major version that is held back");
+    }
+
+    /// <summary>
+    /// Verify a deferred major upgrade is recommended once the clock passes the waiting period
+    /// </summary>
+    [TestMethod]
+    [TestCategory("AC6")]
+    public void UpdateDetectionServiceSemverDeferredMajorUpgradeIsRecommendedAfterClockAdvances()
+    {
+        var tags = new List<DockerHubTagData>
+                   {
+                       CreateTagData("1.4.0", "sha256:140", CreateRelativeTimestamp(-200)),
+                       CreateTagData("2.0.0", "sha256:200", CreateRelativeTimestamp(-20)),
+                       CreateTagData("2.0.1", "sha256:201", CreateRelativeTimestamp(-10))
+                   };
+        var earlyService = CreateService(new ScanningOptions(), CreateClock(_fixedNow));
+        var lateService = CreateService(new ScanningOptions(), CreateClock(_fixedNow.AddDays(11)));
+
+        var earlyEvaluation = EvaluateMajorUpgrade(earlyService, tags);
+        var lateEvaluation = EvaluateMajorUpgrade(lateService, tags);
+
+        Assert.AreEqual(UpdateEvaluationStatus.UpToDate,
+                        earlyEvaluation.Status,
+                        "The major upgrade must be deferred while the clock is inside the waiting period");
+        Assert.AreEqual(UpdateEvaluationStatus.UpdateAvailable,
+                        lateEvaluation.Status,
+                        "The major upgrade must be recommended once the clock is past the waiting period");
+        Assert.AreEqual("2.0.1",
+                        lateEvaluation.RecommendedTag,
+                        "The newest version of the next major line must be recommended");
+    }
+
+    /// <summary>
     /// Verify the major upgrade waiting periods can be switched off
     /// </summary>
     [TestMethod]
@@ -1272,22 +1362,47 @@ public class UpdateDetectionServiceTests
     /// <returns>Update detection service</returns>
     private static UpdateDetectionService CreateService(ScanningOptions scanningOptions)
     {
+        return CreateService(scanningOptions, CreateClock(_fixedNow));
+    }
+
+    /// <summary>
+    /// Create an update detection service with the given scanning options and clock
+    /// </summary>
+    /// <param name="scanningOptions">Scanning options</param>
+    /// <param name="timeProvider">Clock</param>
+    /// <returns>Update detection service</returns>
+    private static UpdateDetectionService CreateService(ScanningOptions scanningOptions, TimeProvider timeProvider)
+    {
         var options = new DockerUpdateGuardOptions
                       {
                           Scanning = scanningOptions,
                       };
 
-        return new UpdateDetectionService(new TestOptionsMonitor<DockerUpdateGuardOptions>(options), TimeProvider.System);
+        return new UpdateDetectionService(new TestOptionsMonitor<DockerUpdateGuardOptions>(options), timeProvider);
     }
 
     /// <summary>
-    /// Create a publication timestamp relative to the current time
+    /// Create a clock that answers a fixed instant
+    /// </summary>
+    /// <param name="now">Instant the clock answers</param>
+    /// <returns>Clock</returns>
+    private static TimeProvider CreateClock(DateTimeOffset now)
+    {
+        var clock = Substitute.For<TimeProvider>();
+
+        clock.GetUtcNow().Returns(now);
+
+        return clock;
+    }
+
+    /// <summary>
+    /// Create a publication timestamp relative to the fixed clock instant
     /// </summary>
     /// <param name="offsetDays">Offset in days</param>
     /// <returns>Publication timestamp</returns>
     private static DateTimeOffset CreateRelativeTimestamp(int offsetDays)
     {
-        return DateTimeOffset.UtcNow.AddDays(offsetDays);
+        return _fixedNow.AddDays(offsetDays);
     }
 
     /// <summary>
@@ -1307,6 +1422,24 @@ public class UpdateDetectionServiceTests
                                     Repository = "example/app",
                                     Tag = currentTag,
                                     Digest = currentDigest,
+                                },
+                                tags);
+    }
+
+    /// <summary>
+    /// Evaluate the semantic version 1.4.0 against registry tags
+    /// </summary>
+    /// <param name="service">Update detection service</param>
+    /// <param name="tags">Registry tags</param>
+    /// <returns>Evaluation result</returns>
+    private static UpdateEvaluationResult EvaluateMajorUpgrade(UpdateDetectionService service, IReadOnlyList<DockerHubTagData> tags)
+    {
+        return service.Evaluate(new ImageReference
+                                {
+                                    Registry = "docker.io",
+                                    Repository = "example/app",
+                                    Tag = "1.4.0",
+                                    Digest = "sha256:140",
                                 },
                                 tags);
     }
