@@ -13,3 +13,4 @@ are quoted in full.
 | 2026-11-27 17:47 | 5 Tests first | Tester | RESULT: DONE; 5 new tests AC1-AC5 compile and fail on current code (confirmed by orchestrator: 5 failed, 7 passed). Deferred: none (sonnet/medium · 107,633 tokens · 11 tool uses · 222 s · 22 in · 11,524 out · 1,016,571 cache read · 54,611 cache write · 227,563 weighted) |
 | 2026-11-27 17:49 | 6 Implement | Dev | RESULT: DONE; suite green, coverage gate passed (new lines 100%), docs updated, no plan deviations (sonnet/medium · 98,600 tokens · 9 tool uses · 125 s · 18 in · 4,681 out · 779,126 cache read · 45,720 cache write · 158,486 weighted) |
 | 2026-11-27 17:50 | 6 Coverage skipped | Orchestrator | skipped — Coverage gate passed (100% new lines, 94.7% overall), no uncovered lines, no deferred tests |
+| 2026-11-27 17:50 | 6 Documentation | Orchestrator | written in 6 Implement (README, scan-engine area doc, ScanningOptions summary) |
