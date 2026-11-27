@@ -22,7 +22,8 @@ apart, and the application cannot know that list.
    the way most new installations come up, keeps leaving them exposed.
 2. **Document `AllowedHosts`, require it in the compose files, keep the application's default open** — new compose
    installations name their host names before they start (the walkthrough's `.env` names `localhost`); existing
-   deployments and their upgrades keep working; a deployment configured another way stays open until its operator
+   deployments keep working, also an upgrade by `pull` and `up -d` with the existing compose file, while a compose
+   file downloaded again needs the variable in `.env`; a deployment configured another way stays open until its operator
    sets the key.
 3. **A default other than `*` in the application** (such as `localhost`) — every deployment reached by another name
    answers every request with 400 after the upgrade; no default name fits the deployments.

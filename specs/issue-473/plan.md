@@ -43,13 +43,16 @@ proxy the list must name the `Host` the proxy forwards.
 - AC3: `INSTALL.md` step 3 tells the operator to set `ALLOWED_HOSTS` to the names they open the UI with (keeping
   `localhost` for the URL of step 4); *Updating* says that a compose file downloaded again needs `ALLOWED_HOSTS` in
   `.env`; *Security notes* names the DNS rebinding risk with a link to *Security posture*; the enumeration of
-  environment variables in *Beyond the quick start* includes `AllowedHosts`.
+  environment variables in *Beyond the quick start* includes `AllowedHosts`, and that paragraph says that with a
+  mounted `appsettings.json` the compose file's `AllowedHosts` entry, so `ALLOWED_HOSTS` in `.env`, still decides.
 - AC4: `docs/areas/hosting.md` *Security posture* replaces the sentence that links #473 by the rule (Approach), with
   an example for an operator's names, and the document's other statements the change extends are updated
   (*Documentation updates*).
 - AC5: `README.md` has a row `AllowedHosts` in *Connection and host settings* (default `*`, not required), the key in
   the JSON example, a bullet in *Notes for Docker-based deployments*, and the Portainer paragraph names the key.
-- AC6: `DOCKER.md` *Troubleshooting* has an entry for "Bad Request - Invalid Hostname" with its cause and fix.
+- AC6: `DOCKER.md` *Troubleshooting* has an entry for "Bad Request - Invalid Hostname" with its cause and fix;
+  *Required configuration* recommends `AllowedHosts` for `docker run` and mounted-`appsettings.json` deployments;
+  *Common JSON paths* has an `AllowedHosts` row linking *Security posture*.
 - AC7: `docs/ARCHITECTURE.md` §11 and `.squad/project.md` (*Security areas*) name the host filter and link the area
   document; decision record 0065 is linked from both the area document and §11.
 - AC8: The documented compose procedure works as written on a real host (fact 8).
@@ -97,7 +100,9 @@ tracked in #473"), from facts 2–5:
 - It is the deployment's protection against DNS rebinding: set it to every name and address the browser's address
   bar uses for the UI; behind a reverse proxy, to the `Host` the proxy forwards to the application (forwarded headers:
   #283). A change in `appsettings.json` applies to the next request without a restart.
-- The documented compose files require it (`ALLOWED_HOSTS` in `.env`), the other deployment forms do not.
+- The documented compose files require it (`ALLOWED_HOSTS` in `.env`), the other deployment forms do not. In a
+  compose deployment the compose file's entry is an environment variable, so `ALLOWED_HOSTS` keeps deciding also when
+  an `appsettings.json` with its own `AllowedHosts` is mounted (fact 5).
 - Example: `"AllowedHosts": "dockerupdateguard.example.lan;192.168.10.20"` in `appsettings.json`, or
   `AllowedHosts=dockerupdateguard.example.lan;192.168.10.20` as an environment variable.
 
@@ -172,7 +177,8 @@ All by the Dev; these edits are the change itself.
   as the first entry of the `dockerupdateguard` service's `environment`.
 - `docs/.env.example`: a section `# --- Host names of the UI ---` after *PostgreSQL*, AC2.
 - `INSTALL.md`: AC3 — step 3 (`ALLOWED_HOSTS`), step 4 ("or a name you listed"), *Updating*, *Beyond the quick
-  start* (the enumeration `DockerUpdateGuard__...`, `ConnectionStrings__...`, `Telemetry__...` gains `AllowedHosts`),
+  start* (the enumeration `DockerUpdateGuard__...`, `ConnectionStrings__...`, `Telemetry__...` gains `AllowedHosts`,
+  and the advice to mount an `appsettings.json` says `ALLOWED_HOSTS` in `.env` still decides the key),
   *Security notes*, *Troubleshooting* (link to the new `DOCKER.md` entry).
 - `docs/areas/hosting.md`: *Configuration sources* — the sentence "The application reads four top-level sections …"
   also names the top-level key `AllowedHosts` with a link to *Security posture*; *Security posture* — the rule of
@@ -182,7 +188,10 @@ All by the Dev; these edits are the change itself.
   `;`-separated, without port; link *Security posture*); `"AllowedHosts": "dockerupdateguard.example.lan"` as the
   first key of the JSON example; a bullet in *Notes for Docker-based deployments*; in the Portainer paragraph "run
   the application behind a trusted perimeter" gains "and set `AllowedHosts`".
-- `DOCKER.md`: AC6 — `### "Bad Request - Invalid Hostname"` under *Troubleshooting*: the name in the address bar
+- `DOCKER.md`: AC6 — under *Required configuration* a sentence after the list recommending `AllowedHosts` for
+  `docker run` and a mounted `appsettings.json`, linking *Security posture*; a row `AllowedHosts` | host names the UI
+  answers, protection against DNS rebinding ([Security posture](docs/areas/hosting.md#security-posture)) in *Common
+  JSON paths*; `### "Bad Request - Invalid Hostname"` under *Troubleshooting*: the name in the address bar
   (or the `Host` a proxy forwards) is not in `AllowedHosts`/`ALLOWED_HOSTS`; add it, without port.
 - `docs/ARCHITECTURE.md` §11: a bullet after *No authentication or authorization layer*: host names are accepted
   unrestricted unless the deployment sets `AllowedHosts`, its protection against DNS rebinding; the compose files
@@ -212,6 +221,23 @@ host filter is a deployment setting of the perimeter, not an application login. 
 ## Decision records
 
 - `docs/decisions/0065-allowed-host-names-are-required-by-the-compose-files-and-open-by-default.md` (Proposed)
+
+## Challenge
+
+1. **(major) Requiring `ALLOWED_HOSTS` in the compose files is a breaking product decision the Lead may not take.**
+   Accepted. `docker compose pull` and `up -d` with an existing compose file keep working, but a compose file
+   downloaded again, and the walkthrough for remote browsers, change in a way users see; the issue asks for a decision
+   about defaults, which for a breaking change is the Product Manager's (`.squad/routing.md`, *Escalation to the
+   Product Manager*). The plan stays at option 2 pending the answer; an answer for option 1, 6 or 7 changes *Approach*,
+   AC1–AC3, AC8 and record 0065 in the next revision.
+2. **(minor) Record 0065 option 2 overstated "upgrades keep working".** Accepted: option 2 now says an upgrade by
+   `pull`/`up -d` with the existing compose file keeps working and a compose file downloaded again needs
+   `ALLOWED_HOSTS` in `.env`.
+3. **(minor) `DOCKER.md` *Required configuration* and *Common JSON paths* were missing.** Accepted: AC6 and the
+   `DOCKER.md` line of *Documentation updates* add both.
+4. **(minor) A mounted `appsettings.json` in a compose deployment does not decide `AllowedHosts`.** Accepted: the
+   *Security posture* rule (*Approach*), AC3 and the `INSTALL.md` line say that `ALLOWED_HOSTS` in `.env` keeps
+   deciding while the compose file sets it (fact 5: an environment variable wins over `appsettings.json`).
 
 ## Out of scope / follow-ups
 
