@@ -89,9 +89,10 @@ Steps 4 (*Skeleton*), 5 (*Tests first*) and the *Coverage gate* are not applicab
 - AC2–AC6: check: the Reviewer reads each edit against its criterion and *Approach*.
 - AC7: check: the Reviewer reads the edits; step 7's `config-check.py` covers the record index and links.
 - AC8: manual: the Product Manager's dry run (*Approach*), on the branch head, before step 8; the result goes into
-  `log.md` as a `7 Manual test` row. A row of *Verified facts* the run does not confirm narrows the documents to what
-  it showed. If case (a) lists `AllowedHosts` or case (e) does not answer 400, fact 8 is false: the change returns to
-  the Lead (step 2) instead of narrowing the documents.
+  `log.md` as a `7 Manual test` row. Any other row of *Verified facts* the run does not confirm (fact 9) narrows the
+  documents to what it showed. If case (a) lists `AllowedHosts` or case (e) does not answer 400, fact 8 is false: the change returns to
+  the Lead (step 2) instead of narrowing the documents. The same holds when case (b) or (c) does not serve the UI on
+  an allowed host or does not answer 400 on a host not listed.
 
 ## Approach
 
@@ -134,7 +135,8 @@ name answers "Bad Request - Invalid Hostname"; (c) with that address or name add
 the same through the operator's reverse proxy (fact 9); (e) with the `.env` line commented out again and an
 `appsettings.json` with `"AllowedHosts": "localhost"` mounted at `/app/appsettings.json`, the LAN IP address answers
 "Bad Request - Invalid Hostname" (the file still decides). Where the Product Manager cannot run it, the orchestrator
-runs (a)–(c) and (e) where a Docker daemon can pull the image, and logs which.
+runs (a)–(c) and (e) where a Docker daemon can pull the image, and logs which. A failure of (a), (b), (c) or (e)
+  returns the change to the Lead (*Verification without tests*, AC8); a failure of (d) narrows the documents.
 
 Pages the session cannot open: none — the change links no third-party page.
 
@@ -274,6 +276,10 @@ host filter is a deployment setting of the perimeter, not an application login. 
    daemon: dry run cases (a) and (e)), fact 10, AC1–AC3, *Approach*, options 8 and 9, record 0065. The `.env` variable
    is named `AllowedHosts`, not `ALLOWED_HOSTS`, and is never left empty (fact 10). This revises the syntax the
    Product Manager's answer named, not its decision; the orchestrator reports it with this revision.
+2. **(note, `fix now`) A failed dry run on fact 8 must stop the change, not narrow the documents.** Taken as written:
+   Security's sentence ends AC8's line of *Verification without tests*; the sentence before it now applies only to
+   the other unverified row (fact 9), the failure of cases (b) and (c) is treated the same way, and the dry-run
+   paragraph of *Approach* says which cases return the change to the Lead.
 
 ## Out of scope / follow-ups
 
