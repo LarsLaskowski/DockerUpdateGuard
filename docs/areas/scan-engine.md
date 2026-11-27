@@ -155,9 +155,10 @@ Each cleanup pass computes a cutoff of now minus `DockerUpdateGuard:Scanning:Ret
 1–3650) and removes, in one transaction:
 
 - **Scan runs:** only completed runs that no update finding, vulnerability finding, container snapshot or image
-  relationship refers to. Of these, a run is kept only while it is both among the 20 most recently completed and
-  not completed before the cutoff; all others are removed. Runs still referenced by data are kept regardless of age
-  and count, and `Running` runs are never removed.
+  relationship refers to, and only when they completed before the cutoff and are not among the 20 most recently
+  completed scan runs (counted over all completed runs, referenced or not). The 20 most recent completed runs
+  therefore survive any pause. Runs still referenced by data are kept regardless of age, and `Running` runs are
+  never removed.
 - **Tag candidates:** those whose update finding was resolved before the cutoff, and those without a digest
   regardless of age.
 - **Update findings:** inactive findings resolved before the cutoff.
@@ -214,16 +215,12 @@ may scan the same image at the same time. This is wasteful but does not corrupt 
 - If the database cannot be reached during a cleanup pass, the whole pass fails, nothing is removed, and the next
   pass starts after one interval.
 
-### Known gaps
-
-- The 20 most recently completed scan runs are a cap, not a minimum: an unreferenced run completed before the
-  `RetainScanRunsDays` cutoff is removed even when it is among the 20 most recent, so the scan history can be
-  empty after a long pause. Tracked in [#290](https://github.com/LarsLaskowski/DockerUpdateGuard/issues/290).
-
 ## Related decisions
 
 - [0025](../decisions/0025-a-failing-interval-lookup-keeps-the-jobs-last-known-interval.md): a failing interval
   lookup keeps the job's last known interval.
+- [0064](../decisions/0064-the-twenty-most-recent-completed-scan-runs-are-a-retention-minimum.md): the 20 most
+  recent completed scan runs are a retention minimum.
 - [0038](../decisions/0038-runtime-container-scans-and-vulnerability-results-wait-for-a-per-subject-guard-in-the-process.md):
   runtime container scans and vulnerability results wait for a per-subject guard in the process.
 

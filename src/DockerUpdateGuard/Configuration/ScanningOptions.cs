@@ -63,7 +63,7 @@ public class ScanningOptions
     public int RetryCount { get; set; } = 2;
 
     /// <summary>
-    /// Number of days to retain completed scan history
+    /// Number of days to retain completed scan history; the most recent completed runs are kept beyond it
     /// </summary>
     public int RetainScanRunsDays { get; set; } = 30;
 

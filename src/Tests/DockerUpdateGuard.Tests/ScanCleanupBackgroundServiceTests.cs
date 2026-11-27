@@ -12,6 +12,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
+using NSubstitute;
+
 namespace DockerUpdateGuard.Tests;
 
 /// <summary>
@@ -20,94 +22,118 @@ namespace DockerUpdateGuard.Tests;
 [TestClass]
 public partial class ScanCleanupBackgroundServiceTests
 {
+    #region Constants
+
+    /// <summary>
+    /// Registry of the image versions that reference scan runs
+    /// </summary>
+    private const string Registry = "docker.io";
+
+    #endregion // Constants
+
+    #region Properties
+
+    /// <summary>
+    /// Test context providing information about and functionality for the current test run
+    /// </summary>
+    public TestContext TestContext { get; set; }
+
+    #endregion // Properties
+
     #region Methods
 
     /// <summary>
-    /// Verify cleanup keeps only the latest 20 unreferenced scan runs
+    /// Verify cleanup keeps every scan run that completed within the retention period, even beyond 20 runs
     /// </summary>
     /// <returns>Task</returns>
     [TestMethod]
-    public async Task ScanCleanupBackgroundServiceExecuteCoreAsyncRemovesUnreferencedScanRunsBeyondLatestTwentyAsync()
+    [TestCategory("AC1")]
+    public async Task ScanCleanupBackgroundServiceExecuteCoreAsyncKeepsAllScanRunsWithinRetentionAsync()
     {
-        var databaseName = Guid.NewGuid().ToString();
-        var serviceCollection = new ServiceCollection();
+        var seeds = CreateSeeds(25, 0);
 
-        serviceCollection.AddScoped(_ =>
-                                    {
-                                        var options = new DbContextOptionsBuilder<DockerUpdateGuardDbContext>().UseInMemoryDatabase(databaseName)
-                                                                                                               .Options;
+        var result = await RunCleanupAsync(seeds).ConfigureAwait(false);
 
-                                        return new DockerUpdateGuardDbContext(options);
-                                    });
-        serviceCollection.AddScoped(_ => new ApplicationTelemetry());
-        serviceCollection.AddScoped<ILiveImageInventoryQueryService, LiveImageInventoryQueryService>();
+        Assert.AreSequenceEqual(RankIds(Enumerable.Range(0, 25)),
+                                result.RemainingCorrelationIds,
+                                "Cleanup must keep all 25 scan runs that completed within the retention period");
+        Assert.Contains(" and 0 scan runs",
+                        result.CleanupMessage,
+                        "The cleanup log entry must report that no scan run was removed");
+    }
 
-        var serviceProvider = serviceCollection.BuildServiceProvider();
+    /// <summary>
+    /// Verify cleanup keeps the 20 most recently completed scan runs when all runs are past the retention period
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC2")]
+    public async Task ScanCleanupBackgroundServiceExecuteCoreAsyncKeepsLatestTwentyScanRunsPastRetentionAsync()
+    {
+        var seeds = CreateSeeds(0, 25);
 
-        await using (serviceProvider.ConfigureAwait(false))
-        {
-            var scope = serviceProvider.CreateAsyncScope();
+        var result = await RunCleanupAsync(seeds).ConfigureAwait(false);
 
-            await using (scope.ConfigureAwait(false))
-            {
-                var dbContext = scope.ServiceProvider.GetRequiredService<DockerUpdateGuardDbContext>();
-                var now = DateTimeOffset.UtcNow;
+        Assert.AreSequenceEqual(RankIds(Enumerable.Range(0, 20)),
+                                result.RemainingCorrelationIds,
+                                "Cleanup must keep the 20 most recently completed scan runs and remove the 5 oldest");
+        Assert.Contains(" and 5 scan runs",
+                        result.CleanupMessage,
+                        "The cleanup log entry must report 5 removed scan runs");
+    }
 
-                for (var index = 0; index < 25; index++)
-                {
-                    var startedAtUtc = now.AddMinutes(-(index + 1));
+    /// <summary>
+    /// Verify cleanup keeps the recent runs and tops them up with the newest old runs to a minimum of 20
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC3")]
+    public async Task ScanCleanupBackgroundServiceExecuteCoreAsyncKeepsMinimumOfTwentyScanRunsAsync()
+    {
+        var seeds = CreateSeeds(5, 30);
 
-                    dbContext.ScanRuns.Add(new ScanRun
-                                           {
-                                               Type = ScanRunType.ObservedImage,
-                                               Status = ScanRunStatus.Succeeded,
-                                               TriggerSource = ScanTriggerSource.Manual,
-                                               StartedAtUtc = startedAtUtc,
-                                               CompletedAtUtc = startedAtUtc.AddSeconds(5),
-                                               CorrelationId = $"scan-{index:D2}",
-                                           });
-                }
+        var result = await RunCleanupAsync(seeds).ConfigureAwait(false);
 
-                await dbContext.SaveChangesAsync(CancellationToken.None)
-                               .ConfigureAwait(false);
-            }
+        Assert.AreSequenceEqual(RankIds(Enumerable.Range(0, 20)),
+                                result.RemainingCorrelationIds,
+                                "Cleanup must keep the 5 recent runs and the 15 newest old runs");
+        Assert.Contains(" and 15 scan runs",
+                        result.CleanupMessage,
+                        "The cleanup log entry must report 15 removed scan runs");
+    }
 
-            var options = new DockerUpdateGuardOptions
-                          {
-                              Scanning = new ScanningOptions
-                                         {
-                                             CleanupIntervalMinutes = 60,
-                                             RetainScanRunsDays = 30,
-                                         },
-                          };
-            var service = new TestScanCleanupBackgroundService(new TestLogger<ScanCleanupBackgroundService>(),
-                                                               new TestOptionsMonitor<DockerUpdateGuardOptions>(options),
-                                                               serviceProvider.GetRequiredService<IServiceScopeFactory>());
+    /// <summary>
+    /// Verify cleanup keeps a referenced scan run that is past the retention period and outside the newest 20
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC4")]
+    public async Task ScanCleanupBackgroundServiceExecuteCoreAsyncKeepsReferencedScanRunPastRetentionAsync()
+    {
+        var seeds = CreateSeeds(0, 21);
 
-            await service.ExecuteOnceAsync(CancellationToken.None)
-                         .ConfigureAwait(false);
+        var result = await RunCleanupAsync(seeds, 20).ConfigureAwait(false);
 
-            var verificationScope = serviceProvider.CreateAsyncScope();
+        Assert.AreSequenceEqual(RankIds(Enumerable.Range(0, 21)),
+                                result.RemainingCorrelationIds,
+                                "Cleanup must keep all 21 scan runs because the oldest one is referenced by an image relationship");
+    }
 
-            await using (verificationScope.ConfigureAwait(false))
-            {
-                var dbContext = verificationScope.ServiceProvider.GetRequiredService<DockerUpdateGuardDbContext>();
-                var remainingCorrelationIds = await dbContext.ScanRuns
-                                                             .OrderByDescending(entity => entity.StartedAtUtc)
-                                                             .Select(entity => entity.CorrelationId)
-                                                             .ToListAsync(CancellationToken.None)
-                                                             .ConfigureAwait(false);
+    /// <summary>
+    /// Verify the minimum of 20 counts referenced scan runs too
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC5")]
+    public async Task ScanCleanupBackgroundServiceExecuteCoreAsyncCountsReferencedScanRunsTowardMinimumAsync()
+    {
+        var seeds = CreateSeeds(0, 25);
 
-                Assert.HasCount(20,
-                                remainingCorrelationIds,
-                                "Cleanup must keep only the latest 20 unreferenced scan runs");
-                Assert.AreSequenceEqual(Enumerable.Range(0, 20)
-                                                  .Select(index => $"scan-{index:D2}")
-                                                  .ToList(),
-                                        remainingCorrelationIds,
-                                        "Cleanup must retain the newest 20 scan runs and delete older history entries");
-            }
-        }
+        var result = await RunCleanupAsync(seeds, 0, 1).ConfigureAwait(false);
+
+        Assert.AreSequenceEqual(RankIds(Enumerable.Range(0, 20)),
+                                result.RemainingCorrelationIds,
+                                "Cleanup must keep 20 scan runs: the 2 referenced ones count toward the minimum and the 5 oldest are removed");
     }
 
     /// <summary>
@@ -115,6 +141,7 @@ public partial class ScanCleanupBackgroundServiceTests
     /// </summary>
     /// <returns>Task</returns>
     [TestMethod]
+    [TestCategory("AC6")]
     public async Task ScanCleanupBackgroundServiceExecuteCoreAsyncKeepsRunningScanRunsAsync()
     {
         var databaseName = Guid.NewGuid().ToString();
@@ -685,6 +712,172 @@ public partial class ScanCleanupBackgroundServiceTests
                                     harness.Clock.Waits,
                                     "The first wait after a valid reload must use the new interval");
         }
+    }
+
+    /// <summary>
+    /// Create the names and ages of the scan runs ordered from the newest to the oldest completed run;
+    /// a recent run completed within retention, an old run 31 days and more before the pass start
+    /// </summary>
+    /// <param name="recentCount">Number of runs completed within the retention period</param>
+    /// <param name="oldCount">Number of runs completed past the retention period</param>
+    /// <returns>Names with the completion offset before the pass start</returns>
+    private static List<(string CorrelationId, TimeSpan CompletedBefore)> CreateSeeds(int recentCount, int oldCount)
+    {
+        var seeds = new List<(string CorrelationId, TimeSpan CompletedBefore)>();
+
+        for (var index = 0; index < recentCount + oldCount; index++)
+        {
+            var baseAge = index < recentCount ? TimeSpan.FromMinutes(index + 1) : TimeSpan.FromDays(31) + TimeSpan.FromMinutes(index);
+
+            seeds.Add(($"scan-{index:D2}", baseAge));
+        }
+
+        return seeds;
+    }
+
+    /// <summary>
+    /// Create the correlation ids of the runs with the given ranks
+    /// </summary>
+    /// <param name="ranks">Ranks, 0 being the most recently completed run</param>
+    /// <returns>Correlation ids</returns>
+    private static List<string> RankIds(IEnumerable<int> ranks)
+    {
+        return ranks.Select(rank => $"scan-{rank:D2}")
+                    .ToList();
+    }
+
+    /// <summary>
+    /// Seed completed scan runs, let the referenced ones be referenced by an image relationship, run one cleanup pass
+    /// at a fixed instant and read what remains
+    /// </summary>
+    /// <param name="seeds">Names and ages of the runs</param>
+    /// <param name="referencedRanks">Ranks of the runs an image relationship refers to</param>
+    /// <returns>Remaining correlation ids from the newest to the oldest completed run and the cleanup log message</returns>
+    private async Task<(List<string?> RemainingCorrelationIds, string CleanupMessage)> RunCleanupAsync(List<(string CorrelationId, TimeSpan CompletedBefore)> seeds, params int[] referencedRanks)
+    {
+        var passStartedAtUtc = new DateTimeOffset(2026, 6, 15, 12, 0, 0, TimeSpan.Zero);
+        var databaseName = Guid.NewGuid().ToString();
+        var serviceCollection = new ServiceCollection();
+
+        serviceCollection.AddScoped(_ =>
+                                    {
+                                        var options = new DbContextOptionsBuilder<DockerUpdateGuardDbContext>().UseInMemoryDatabase(databaseName)
+                                                                                                               .Options;
+
+                                        return new DockerUpdateGuardDbContext(options);
+                                    });
+        serviceCollection.AddScoped(_ => new ApplicationTelemetry());
+        serviceCollection.AddScoped<ILiveImageInventoryQueryService, LiveImageInventoryQueryService>();
+
+        var serviceProvider = serviceCollection.BuildServiceProvider();
+
+        await using (serviceProvider.ConfigureAwait(false))
+        {
+            var scope = serviceProvider.CreateAsyncScope();
+
+            await using (scope.ConfigureAwait(false))
+            {
+                var dbContext = scope.ServiceProvider.GetRequiredService<DockerUpdateGuardDbContext>();
+
+                await SeedAsync(dbContext, seeds, passStartedAtUtc, referencedRanks).ConfigureAwait(false);
+            }
+
+            var timeProvider = Substitute.For<TimeProvider>();
+
+            timeProvider.GetUtcNow()
+                        .Returns(passStartedAtUtc);
+
+            var logger = new TestLogger<ScanCleanupBackgroundService>();
+            var options = new DockerUpdateGuardOptions
+                          {
+                              Scanning = new ScanningOptions
+                                         {
+                                             CleanupIntervalMinutes = 60,
+                                             RetainScanRunsDays = 30,
+                                         },
+                          };
+            var service = new TestScanCleanupBackgroundService(logger,
+                                                               new TestOptionsMonitor<DockerUpdateGuardOptions>(options),
+                                                               serviceProvider.GetRequiredService<IServiceScopeFactory>(),
+                                                               timeProvider);
+
+            await service.ExecuteOnceAsync(TestContext.CancellationToken)
+                         .ConfigureAwait(false);
+
+            var verificationScope = serviceProvider.CreateAsyncScope();
+
+            await using (verificationScope.ConfigureAwait(false))
+            {
+                var dbContext = verificationScope.ServiceProvider.GetRequiredService<DockerUpdateGuardDbContext>();
+                var remainingCorrelationIds = await dbContext.ScanRuns
+                                                             .OrderByDescending(entity => entity.CompletedAtUtc)
+                                                             .Select(entity => entity.CorrelationId)
+                                                             .ToListAsync(TestContext.CancellationToken)
+                                                             .ConfigureAwait(false);
+                var cleanupMessage = logger.Entries.Where(entry => entry.EventId.Id == 2020)
+                                                   .Select(entry => entry.Message)
+                                                   .SingleOrDefault() ?? string.Empty;
+
+                return (remainingCorrelationIds, cleanupMessage);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Seed the scan runs and the image relationships that refer to the runs of the given ranks
+    /// </summary>
+    /// <param name="dbContext">Database context</param>
+    /// <param name="seeds">Names and ages of the runs</param>
+    /// <param name="passStartedAtUtc">Instant the clock returns</param>
+    /// <param name="referencedRanks">Ranks of the referenced runs</param>
+    /// <returns>Task</returns>
+    private async Task SeedAsync(DockerUpdateGuardDbContext dbContext,
+                                 List<(string CorrelationId, TimeSpan CompletedBefore)> seeds,
+                                 DateTimeOffset passStartedAtUtc,
+                                 int[] referencedRanks)
+    {
+        var scanRuns = seeds.Select(seed => new ScanRun
+                                            {
+                                                Type = ScanRunType.ObservedImage,
+                                                Status = ScanRunStatus.Succeeded,
+                                                TriggerSource = ScanTriggerSource.Manual,
+                                                StartedAtUtc = passStartedAtUtc - seed.CompletedBefore - TimeSpan.FromSeconds(5),
+                                                CompletedAtUtc = passStartedAtUtc - seed.CompletedBefore,
+                                                CorrelationId = seed.CorrelationId,
+                                            })
+                            .ToList();
+
+        dbContext.ScanRuns.AddRange(scanRuns);
+
+        var referenced = referencedRanks.ToList();
+
+        if (referenced.Count > 0)
+        {
+            var imageCatalogRepository = new ImageCatalogRepository(dbContext);
+            var childImageVersion = await imageCatalogRepository.GetOrCreateImageVersionAsync(Registry,
+                                                                                              "company/child",
+                                                                                              "1.0.0",
+                                                                                              "sha256:child",
+                                                                                              cancellationToken: TestContext.CancellationToken)
+                                                                .ConfigureAwait(false);
+            var baseImageVersion = await imageCatalogRepository.GetOrCreateImageVersionAsync(Registry,
+                                                                                             "company/base",
+                                                                                             "1.0.0",
+                                                                                             "sha256:base",
+                                                                                             cancellationToken: TestContext.CancellationToken)
+                                                               .ConfigureAwait(false);
+
+            dbContext.ImageRelationships.AddRange(referenced.Select(rank => new ImageRelationship
+                                                                            {
+                                                                                ChildImageVersionId = childImageVersion.Id,
+                                                                                BaseImageVersionId = baseImageVersion.Id,
+                                                                                ScanRunId = scanRuns[rank].Id,
+                                                                                RelationshipType = ImageRelationshipType.BaseImage,
+                                                                            }));
+        }
+
+        await dbContext.SaveChangesAsync(TestContext.CancellationToken)
+                       .ConfigureAwait(false);
     }
 
     #endregion // Methods

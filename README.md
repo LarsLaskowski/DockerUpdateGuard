@@ -178,7 +178,7 @@ Rules: [Scan engine](docs/areas/scan-engine.md#background-jobs); `RetryCount` in
 | `VulnerabilityRefreshIntervalMinutes` | `180` | Interval for refreshing vulnerability information |
 | `CleanupIntervalMinutes` | `720` | Interval for cleaning old scan data |
 | `RetryCount` | `2` | Retries of one outbound HTTP request after a transient failure; `0` disables them |
-| `RetainScanRunsDays` | `30` | Retention period for completed scan history |
+| `RetainScanRunsDays` | `30` | Retention period for completed scan history; the 20 most recent completed runs are always kept |
 | `MajorUpgradeMinimumAgeDays` | `30` | Waiting period before a new major version line is recommended |
 | `MajorUpgradeMinimumReleaseCount` | `2` | Number of releases a new major version line must have before it is recommended |
 
