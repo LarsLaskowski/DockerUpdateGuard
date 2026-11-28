@@ -780,11 +780,32 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
     {
         return new DockerImageHistoryEntryData
                {
-                   CreatedAtUtc = ExternalTimestamp.TryParseUtc(TryGetString(element, "Created")),
+                   CreatedAtUtc = TryGetHistoryCreatedAtUtc(element),
                    CreatedBy = TryGetString(element, "CreatedBy"),
                    Comment = TryGetString(element, "Comment"),
                    Tags = ReadStringArray(element, "Tags"),
                };
+    }
+
+    /// <summary>
+    /// Read the creation time of a history entry, which the Engine sends as Unix seconds and which is also read as text
+    /// </summary>
+    /// <param name="element">History JSON element</param>
+    /// <returns>UTC instant, null when the value is absent, a placeholder or not readable</returns>
+    private static DateTimeOffset? TryGetHistoryCreatedAtUtc(JsonElement element)
+    {
+        if (element.TryGetProperty("Created", out var property)
+            && property.ValueKind == JsonValueKind.Number)
+        {
+            if (property.TryGetInt64(out var seconds))
+            {
+                return ExternalTimestamp.TryFromUnixSeconds(seconds);
+            }
+
+            return null;
+        }
+
+        return ExternalTimestamp.TryParseUtc(TryGetString(element, "Created"));
     }
 
     /// <summary>

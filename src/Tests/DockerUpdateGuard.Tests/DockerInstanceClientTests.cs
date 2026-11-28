@@ -60,6 +60,43 @@ public partial class DockerInstanceClientTests
                                                 { "RepoDigests": ["good/repo@sha256:7777777777777777777777777777777777777777777777777777777777777777"] }
                                                 """;
 
+    /// <summary>
+    /// Image history example of the Docker Engine API definition, with a generated maintainer
+    /// </summary>
+    private const string HistorySample = """
+                                         [
+                                           {
+                                             "Id": "3db9c44f45209632d6050b35958829c3a2aa256d81b9a7be45b362ff85c54710",
+                                             "Created": 1398108230,
+                                             "CreatedBy": "/bin/sh -c #(nop) ADD file:eb15dbd63394e063b805a3c32ca7bf0266ef64676d5a6fab4801f2e81e2a5148 in /",
+                                             "Tags": ["ubuntu:lucid", "ubuntu:10.04"],
+                                             "Size": 182964289,
+                                             "Comment": ""
+                                           },
+                                           {
+                                             "Id": "6cfa4d1f33fb861d4d114f43b25abd0ac737509268065cdfd69d544a59c85ab8",
+                                             "Created": 1398108222,
+                                             "CreatedBy": "/bin/sh -c #(nop) MAINTAINER Example Maintainer <maintainer@example.test>",
+                                             "Tags": [],
+                                             "Size": 0,
+                                             "Comment": ""
+                                           },
+                                           {
+                                             "Id": "511136ea3c5a64f264b78b5433614aec563103b4d4702f3ba7d4d2698e22c158",
+                                             "Created": 1371157430,
+                                             "CreatedBy": "",
+                                             "Tags": ["scratch12:latest", "scratch:latest"],
+                                             "Size": 0,
+                                             "Comment": "Imported from -"
+                                           }
+                                         ]
+                                         """;
+
+    /// <summary>
+    /// Text of the first sample entry's creation time, which the creation time tests replace
+    /// </summary>
+    private const string HistorySampleFirstCreated = "\"Created\": 1398108230,";
+
     #endregion // Constants
 
     #region Properties
@@ -2216,6 +2253,137 @@ public partial class DockerInstanceClientTests
     }
 
     /// <summary>
+    /// Verify an image history whose entries carry the creation time as Unix seconds reads UTC instants
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC1")]
+    public async Task DockerInstanceClientGetImageHistoryAsyncWhenCreatedIsUnixSecondsReadsUtcInstantsAsync()
+    {
+        var result = await ReadHistoryAsync(HistorySample).ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "Image history must succeed for the Engine's sample");
+        Assert.IsNotNull(result.Data, "Image history must expose the parsed entries");
+        Assert.HasCount(3, result.Data, "Image history must expose all three entries");
+
+        var expected = new[]
+                       {
+                           new DateTimeOffset(2014, 4, 21, 19, 23, 50, TimeSpan.Zero),
+                           new DateTimeOffset(2014, 4, 21, 19, 23, 42, TimeSpan.Zero),
+                           new DateTimeOffset(2013, 6, 13, 21, 3, 50, TimeSpan.Zero)
+                       };
+
+        for (var index = 0; index < expected.Length; index++)
+        {
+            var actual = result.Data[index].CreatedAtUtc;
+
+            Assert.IsNotNull(actual, $"Entry {index} must report its creation time");
+            Assert.AreEqual(expected[index], actual.Value, $"Entry {index} must be the Unix seconds as a UTC instant");
+            Assert.AreEqual(TimeSpan.Zero, actual.Value.Offset, $"Entry {index} must be reported with offset zero");
+        }
+    }
+
+    /// <summary>
+    /// Verify an image history entry whose creation time is text is still read as a UTC instant
+    /// </summary>
+    /// <param name="created">Creation time text</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC2")]
+    [DataRow("2025-06-02T12:00:00")]
+    [DataRow("2025-06-02T14:00:00+02:00")]
+    public async Task DockerInstanceClientGetImageHistoryAsyncWhenCreatedIsTextReadsUtcInstantAsync(string created)
+    {
+        var json = HistorySample.Replace(HistorySampleFirstCreated, $"\"Created\": \"{created}\",", StringComparison.Ordinal);
+
+        Assert.AreNotEqual(HistorySample, json, "The test input must replace the creation time");
+
+        var result = await ReadHistoryAsync(json).ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "Image history must succeed for a text creation time");
+        Assert.IsNotNull(result.Data, "Image history must expose the parsed entries");
+
+        var actual = result.Data[0].CreatedAtUtc;
+
+        Assert.IsNotNull(actual, "A text creation time must be read");
+        Assert.AreEqual(new DateTimeOffset(2025, 6, 2, 12, 0, 0, TimeSpan.Zero), actual.Value, "A text creation time must be the same instant in UTC");
+        Assert.AreEqual(TimeSpan.Zero, actual.Value.Offset, "A text creation time must be reported with offset zero");
+    }
+
+    /// <summary>
+    /// Verify an image history entry whose creation time is no usable Unix seconds has an unknown creation time
+    /// </summary>
+    /// <param name="created">Raw JSON of the creation time, or an empty text for an absent property</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC3")]
+    [DataRow("0")]
+    [DataRow("-1")]
+    [DataRow("-62135596800")]
+    [DataRow("253402300800")]
+    [DataRow("1398108230.5")]
+    [DataRow("1e30")]
+    [DataRow("null")]
+    [DataRow("true")]
+    [DataRow("")]
+    public async Task DockerInstanceClientGetImageHistoryAsyncWhenCreatedIsNoUnixSecondsReturnsUnknownCreationTimeAsync(string created)
+    {
+        var replacement = created.Length == 0 ? string.Empty : $"\"Created\": {created},";
+        var json = HistorySample.Replace(HistorySampleFirstCreated, replacement, StringComparison.Ordinal);
+
+        Assert.AreNotEqual(HistorySample, json, "The test input must replace the creation time");
+
+        var result = await ReadHistoryAsync(json).ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "Image history must succeed for an unusable creation time");
+        Assert.IsNotNull(result.Data, "Image history must expose the parsed entries");
+        Assert.HasCount(3, result.Data, "Image history must keep all entries");
+
+        var first = result.Data[0];
+
+        Assert.IsNull(first.CreatedAtUtc, "An unusable creation time must be unknown");
+        Assert.AreEqual("/bin/sh -c #(nop) ADD file:eb15dbd63394e063b805a3c32ca7bf0266ef64676d5a6fab4801f2e81e2a5148 in /",
+                        first.CreatedBy,
+                        "The other fields of the entry must still be read");
+        Assert.AreSequenceEqual(["ubuntu:lucid", "ubuntu:10.04"], first.Tags.ToArray(), "The tags of the entry must still be read");
+        Assert.IsNotNull(result.Data[1].CreatedAtUtc, "The creation time of the next entry must still be read");
+    }
+
+    /// <summary>
+    /// Verify the Engine's placeholder entry of a layer that is not local has an unknown creation time and no tags
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC3")]
+    public async Task DockerInstanceClientGetImageHistoryAsyncWhenEntryIsEnginePlaceholderReturnsUnknownCreationTimeAsync()
+    {
+        const string json = """
+                            [
+                              {
+                                "Id": "<missing>",
+                                "Created": 0,
+                                "CreatedBy": "RUN /bin/sh -c apk add --no-cache curl # buildkit",
+                                "Tags": null,
+                                "Size": 0,
+                                "Comment": "buildkit.dockerfile.v0"
+                              }
+                            ]
+                            """;
+
+        var result = await ReadHistoryAsync(json).ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "Image history must succeed for the Engine's placeholder entry");
+        Assert.IsNotNull(result.Data, "Image history must expose the parsed entries");
+
+        var entry = Assert.ContainsSingle(result.Data, "Image history must expose the one entry");
+
+        Assert.IsNull(entry.CreatedAtUtc, "A creation time of zero must be unknown");
+        Assert.IsEmpty(entry.Tags, "A null tag list must be read as no tags");
+        Assert.AreEqual("buildkit.dockerfile.v0", entry.Comment, "The comment of the placeholder entry must be read");
+        Assert.AreEqual("RUN /bin/sh -c apk add --no-cache curl # buildkit", entry.CreatedBy, "The created-by text of the placeholder entry must be read");
+    }
+
+    /// <summary>
     /// Create the answer of the failing image inspect
     /// </summary>
     /// <param name="failureKind">Kind of the failing inspect</param>
@@ -2452,6 +2620,32 @@ public partial class DockerInstanceClientTests
         Assert.Contains(entry => entry.EventId.Id == eventId && entry.Exception is not null,
                         logger.Entries,
                         "The failure must be logged with the exception");
+    }
+
+    /// <summary>
+    /// Read the image history of a local image from an Engine answering with the given body
+    /// </summary>
+    /// <param name="json">History answer body</param>
+    /// <returns>History result</returns>
+    private async Task<ExternalOperationResult<IReadOnlyList<DockerImageHistoryEntryData>>> ReadHistoryAsync(string json)
+    {
+        using var handler = new SequenceHttpMessageHandler();
+        using var httpClient = new HttpClient(handler)
+                               {
+                                   BaseAddress = new Uri("https://docker.example.test/"),
+                               };
+
+        handler.AddJsonResponse("https://docker.example.test/v1.41/images/sha256%3Alocal-image/history", json);
+
+        var client = new DockerInstanceClient(new TestLogger<DockerInstanceClient>(), (_, _) => httpClient);
+        var instanceOptions = new DockerInstanceOptions
+                              {
+                                  Name = "Production",
+                                  BaseUrl = "https://docker.example.test",
+                                  Enabled = true,
+                              };
+
+        return await client.GetImageHistoryAsync(instanceOptions, "sha256:local-image", TestContext.CancellationToken).ConfigureAwait(false);
     }
 
     #endregion // Methods

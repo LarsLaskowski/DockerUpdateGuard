@@ -118,7 +118,9 @@ on the snapshots and samples it produces.
 - Other areas can read the inspect data of a local image (ID, repo tags, repo digests, environment variables, root
   file-system layers, creation time, operating system, architecture) and its history (creation time, created-by
   command, comment, tags per layer) from an instance, addressed by image ID or reference. The text values arrive with
-  control characters replaced by spaces ([Integration failures](integration-failures.md#remote-text-fields)).
+  control characters replaced by spaces ([Integration failures](integration-failures.md#remote-text-fields)). The
+  creation time of a history entry is the Engine's Unix time in seconds, read as UTC; `0`, a negative, an out-of-range
+  or an unreadable value is unknown.
 - An image the Engine does not know answers *not found*; any other non-success answer *failed*. How the data is used
   belongs to [Base images](base-images.md) and [Update detection](update-detection.md).
 

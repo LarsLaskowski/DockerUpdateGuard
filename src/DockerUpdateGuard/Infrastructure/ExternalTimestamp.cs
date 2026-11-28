@@ -3,7 +3,7 @@ using System.Globalization;
 namespace DockerUpdateGuard.Infrastructure;
 
 /// <summary>
-/// Parses timestamps that external systems deliver as text into UTC instants
+/// Parses timestamps that external systems deliver as text or as Unix seconds into UTC instants
 /// </summary>
 internal static class ExternalTimestamp
 {
@@ -22,6 +22,22 @@ internal static class ExternalTimestamp
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Convert a Unix time in seconds into a UTC instant
+    /// </summary>
+    /// <param name="seconds">Seconds since the Unix epoch</param>
+    /// <returns>UTC instant, null when the value is zero, negative or out of the representable range</returns>
+    public static DateTimeOffset? TryFromUnixSeconds(long seconds)
+    {
+        if (seconds < 1
+            || seconds > DateTimeOffset.MaxValue.ToUnixTimeSeconds())
+        {
+            return null;
+        }
+
+        return DateTimeOffset.FromUnixTimeSeconds(seconds);
     }
 
     #endregion // Static methods

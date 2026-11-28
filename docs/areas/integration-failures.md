@@ -104,7 +104,8 @@ A timestamp a client reads from a remote answer is read as UTC when it carries n
 whatever time zone the host runs in, and is kept as UTC: a value with an offset is the same instant with offset zero.
 A value that is not a timestamp is unknown. This holds for the Docker Hub `last_pushed`, `last_updated` and `created`,
 the `created` of other registries and the `issued_at` of their bearer tokens, the Docker Engine's stats `read` and
-image inspect `Created`, and the .NET release feed's `latest-release-date` and `eol-date`.
+image inspect `Created`, the image history `Created` (Unix seconds in UTC, a text value by the rule above; `0`, a
+negative or an unreadable number is unknown), and the .NET release feed's `latest-release-date` and `eol-date`.
 
 ### Retry of transient HTTP failures
 
