@@ -13,3 +13,4 @@ are quoted in full.
 | 2026-11-28 10:31 | 6 Implement | Dev | Three loops (ParseContainers, ReadContainerSamplesAsync, history loop) skip non-object items; area doc docker-instances.md updated with challenge-note wording. 24 new cases pass, full suite green, no plan deviations. (sonnet/medium · 93,168 tokens · 13 tool uses · 82 s · 18 in · 3,992 out · 746,877 cache read · 40,513 cache write · 145,307 weighted) |
 | 2026-11-28 10:31 | 6 Coverage skipped | Orchestrator | skipped — Coverage gate passes (new/changed 100.0%, 4/4 lines, 8/8 conditions; overall 94.9%), no uncovered lines, no deferred tests |
 | 2026-11-28 10:31 | 6 Documentation | Orchestrator | written in 6 Implement |
+| 2026-11-28 10:32 | 7 Gate stamp | Orchestrator | PASS on 15adc43a6ce5401c26d1c56772875d687735ae58 (tier standard): Format check pass; Analyzer gate pass; Test with coverage pass; Coverage gate pass; decision-check.py pass; scope-check.py pass · figure-check.py 0 hit(s) |
