@@ -105,8 +105,8 @@ on the snapshots and samples it produces.
   distinct local image): the digest whose registry and repository match the container's image reference; if none
   matches, the only digest when there is exactly one; otherwise none. When the image reference cannot be parsed, the
   first repository digest is used. Digests are stored lower-case. A failed inspect (a non-success answer, an image that
-  is not found, a timeout, a transport error, or a body that is not valid JSON, does not decode or holds a value of an
-  unexpected kind) leaves the digest empty only for the containers of that image and does not fail discovery; the
+  is not found, a timeout, a transport error, or a body that is not valid JSON, does not decode or is not a JSON
+  object) leaves the digest empty only for the containers of that image and does not fail discovery; the
   other images are still inspected. Each failed inspect is logged once per discovery as warning 3112 with the
   instance name, the image ID and the reason: the inspect's own failure message for an answer or a timeout,
   otherwise `connection failed`, `invalid response` or `unexpected error`, with the error. Cancellation of the
@@ -122,6 +122,9 @@ on the snapshots and samples it produces.
   creation time of a history entry is the Engine's Unix time in seconds, read as UTC; `0`, a negative, an out-of-range
   or an unreadable value is unknown. A history entry that is not a JSON object is left out and the other entries are
   still read.
+  An item of the repo tags, repo digests, environment variables, root file-system layers or of a history entry's tags that is
+  not a JSON string (a number, `true`/`false`, `null`, an object, an array) is left out and the other items are still
+  read ([0071](../decisions/0071-a-docker-engine-string-list-item-that-is-not-a-json-string-is-left-out.md)).
 - An image the Engine does not know answers *not found*; any other non-success answer *failed*. How the data is used
   belongs to [Base images](base-images.md) and [Update detection](update-detection.md).
 

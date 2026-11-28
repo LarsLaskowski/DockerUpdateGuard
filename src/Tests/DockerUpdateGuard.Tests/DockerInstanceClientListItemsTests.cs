@@ -7,7 +7,7 @@ using DockerUpdateGuard.Tests.Helper;
 namespace DockerUpdateGuard.Tests;
 
 /// <summary>
-/// Tests for the reading of list items of <see cref="DockerInstanceClient"/>
+/// Tests for the reading of list items and of the string list items of <see cref="DockerInstanceClient"/>
 /// </summary>
 [TestClass]
 public class DockerInstanceClientListItemsTests
@@ -41,6 +41,20 @@ public class DockerInstanceClientListItemsTests
     private const string ImageInspectSample = """
                                               { "RepoDigests": ["ubuntu@sha256:7777777777777777777777777777777777777777777777777777777777777777"] }
                                               """;
+
+    /// <summary>
+    /// Image inspect built from the field examples of the <c>ImageInspect</c> definition of the Docker Engine API definition (API v1.41),
+    /// with the placeholder <c>ITEM</c> where the tests insert an item that is not a string
+    /// </summary>
+    private const string ImageInspectDefinitionSample = """
+                                                        {
+                                                          "Id": "sha256:ec3f0931a6e6b6855d76b2d7b0be30e81860baccd891b2e243280bf1cd8ad710",
+                                                          "RepoTags": ["example:1.0", ITEM, "example:latest", "example:stable", "internal.registry.example.com:5000/example:1.0"],
+                                                          "RepoDigests": ["example@sha256:afcc7f1ac1b49db317a7196c902e61c6c3c4607d63599ee1a82d702d249a0ccb", ITEM, "internal.registry.example.com:5000/example@sha256:b69959407d21e8a062e0416bf13405bb2b71ed7a84dde4158ebafacfa06f5578"],
+                                                          "Config": { "Env": [ITEM, "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"] },
+                                                          "RootFS": { "Type": "layers", "Layers": ["sha256:1834950e52ce4d5a88a1bbd131c537f4d0e56d10ff0dd69e66be3b7dfa9df7e6", ITEM, "sha256:5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef"] }
+                                                        }
+                                                        """;
 
     /// <summary>
     /// Image history example of the Docker Engine API definition, with a generated maintainer
@@ -327,6 +341,181 @@ public class DockerInstanceClientListItemsTests
         Assert.ContainsSingle(request => request.RequestUri.Contains("/stats", StringComparison.Ordinal),
                               handler.Requests,
                               "Exactly one stats request must be sent");
+    }
+
+    /// <summary>
+    /// Verify an image history leaves out a tag that is not a JSON string and reads the other tags and entries as without it
+    /// </summary>
+    /// <param name="itemJson">JSON of the tag that is not a string</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC1")]
+    [DataRow("7")]
+    [DataRow("1.5")]
+    [DataRow("true")]
+    [DataRow("false")]
+    [DataRow("null")]
+    [DataRow("{ \"a\": \"b\" }")]
+    [DataRow("[\"x\"]")]
+    public async Task DockerInstanceClientGetImageHistoryAsyncWhenTagIsNoStringSkipsItAsync(string itemJson)
+    {
+        const string originalTags = "\"Tags\": [\"ubuntu:lucid\", \"ubuntu:10.04\"]";
+
+        var json = HistorySample.Replace(originalTags, $"\"Tags\": [\"ubuntu:lucid\", {itemJson}, \"ubuntu:10.04\"]", StringComparison.Ordinal);
+
+        Assert.AreNotEqual(HistorySample, json, "The test input must carry the item");
+
+        using var handler = new SequenceHttpMessageHandler();
+        using var httpClient = CreateHttpClient(handler);
+
+        handler.AddJsonResponse("https://docker.example.test/v1.41/images/sha256%3Alocal-image/history", json);
+
+        var client = new DockerInstanceClient(new TestLogger<DockerInstanceClient>(), (_, _) => httpClient);
+
+        var result = await client.GetImageHistoryAsync(CreateInstanceOptions(), "sha256:local-image", TestContext.CancellationToken).ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, $"A tag {itemJson} that is no string must not fail the history");
+        Assert.IsNotNull(result.Data, "Image history must expose the parsed entries");
+        Assert.HasCount(3, result.Data, "Image history must expose the three entries of the sample");
+        AssertItems(result.Data[0].Tags, "The first entry must keep its two string tags in order", "ubuntu:lucid", "ubuntu:10.04");
+        Assert.AreEqual("/bin/sh -c #(nop) ADD file:eb15dbd63394e063b805a3c32ca7bf0266ef64676d5a6fab4801f2e81e2a5148 in /", result.Data[0].CreatedBy, "The first entry must keep its other fields");
+        AssertItems(result.Data[2].Tags, "The third entry must keep its tags", "scratch12:latest", "scratch:latest");
+    }
+
+    /// <summary>
+    /// Verify an image inspect leaves out an item that is not a JSON string in the repo tags, repo digests, environment variables and layers
+    /// </summary>
+    /// <param name="itemJson">JSON of the item that is not a string</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC2")]
+    [DataRow("7")]
+    [DataRow("1.5")]
+    [DataRow("true")]
+    [DataRow("false")]
+    [DataRow("null")]
+    [DataRow("{ \"a\": \"b\" }")]
+    [DataRow("[\"x\"]")]
+    public async Task DockerInstanceClientInspectImageAsyncWhenListItemIsNoStringSkipsItAsync(string itemJson)
+    {
+        var json = ImageInspectDefinitionSample.Replace("ITEM", itemJson, StringComparison.Ordinal);
+
+        using var handler = new SequenceHttpMessageHandler();
+        using var httpClient = CreateHttpClient(handler);
+
+        handler.AddJsonResponse("https://docker.example.test/v1.41/images/example%3A1.0/json", json);
+
+        var client = new DockerInstanceClient(new TestLogger<DockerInstanceClient>(), (_, _) => httpClient);
+
+        var result = await client.InspectImageAsync(CreateInstanceOptions(), "example:1.0", TestContext.CancellationToken).ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, $"An item {itemJson} that is no string must not fail the inspect");
+        Assert.IsNotNull(result.Data, "Inspect must expose the parsed image");
+        Assert.AreEqual("sha256:ec3f0931a6e6b6855d76b2d7b0be30e81860baccd891b2e243280bf1cd8ad710", result.Data.Id, "The ID must be read");
+        AssertItems(result.Data.RepoTags, "The repo tags must hold exactly the string items in order", "example:1.0", "example:latest", "example:stable", "internal.registry.example.com:5000/example:1.0");
+        AssertItems(result.Data.RepoDigests,
+                    "The repo digests must hold exactly the string items in order",
+                    "example@sha256:afcc7f1ac1b49db317a7196c902e61c6c3c4607d63599ee1a82d702d249a0ccb",
+                    "internal.registry.example.com:5000/example@sha256:b69959407d21e8a062e0416bf13405bb2b71ed7a84dde4158ebafacfa06f5578");
+        AssertItems(result.Data.EnvironmentVariables, "The environment variables must hold exactly the string items", "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin");
+        AssertItems(result.Data.RootFsLayers,
+                    "The layers must hold exactly the string items in order",
+                    "sha256:1834950e52ce4d5a88a1bbd131c537f4d0e56d10ff0dd69e66be3b7dfa9df7e6",
+                    "sha256:5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef");
+    }
+
+    /// <summary>
+    /// Verify discovery resolves the digest of an image whose repo digests hold an item that is not a JSON string next to the matching digest
+    /// </summary>
+    /// <param name="itemJson">JSON of the item that is not a string</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC3")]
+    [DataRow("7")]
+    [DataRow("true")]
+    [DataRow("{ \"a\": \"b\" }")]
+    public async Task DockerInstanceClientDiscoverContainersAsyncWhenRepoDigestIsNoStringResolvesDigestAsync(string itemJson)
+    {
+        using var handler = new SequenceHttpMessageHandler();
+        using var httpClient = CreateHttpClient(handler);
+
+        handler.AddJsonResponse("https://docker.example.test/v1.41/containers/json?all=1", $"[ {ContainerSample} ]");
+        handler.AddJsonResponse("https://docker.example.test/v1.41/images/d74508fb6632491cea586a1fd7d748dfc5274cd6fdfedee309ecf33cbc24e5f8/json",
+                                $$"""{ "RepoDigests": [{{itemJson}}, "ubuntu@sha256:7777777777777777777777777777777777777777777777777777777777777777"] }""");
+
+        var logger = new TestLogger<DockerInstanceClient>();
+        var client = new DockerInstanceClient(logger, (_, _) => httpClient);
+
+        var result = await client.DiscoverContainersAsync(CreateInstanceOptions(), TestContext.CancellationToken).ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, $"A repo digest {itemJson} that is no string must not fail the discovery");
+        Assert.IsNotNull(result.Data, "Discovery must return the containers");
+
+        var container = Assert.ContainsSingle(result.Data, "The container must be returned");
+
+        Assert.AreEqual("sha256:" + new string('7', 64), container.ImageDigest, "The digest next to the item must be resolved");
+        Assert.DoesNotContain(entry => entry.EventId.Id == 3112, logger.Entries, "No skipped image inspect may be logged");
+    }
+
+    /// <summary>
+    /// Verify an image inspect answer that is not a JSON object still fails with the fixed unexpected-error reason
+    /// </summary>
+    /// <param name="bodyJson">JSON of the answer</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC4")]
+    [DataRow("[]")]
+    [DataRow("\"text\"")]
+    [DataRow("7")]
+    public async Task DockerInstanceClientInspectImageAsyncWhenBodyIsNoObjectReturnsUnexpectedErrorAsync(string bodyJson)
+    {
+        using var handler = new SequenceHttpMessageHandler();
+        using var httpClient = CreateHttpClient(handler);
+
+        handler.AddJsonResponse("https://docker.example.test/v1.41/images/sha256%3Alocal-image/json", bodyJson);
+
+        var client = new DockerInstanceClient(new TestLogger<DockerInstanceClient>(), (_, _) => httpClient);
+
+        var result = await client.InspectImageAsync(CreateInstanceOptions(), "sha256:local-image", TestContext.CancellationToken).ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Failed, result.Status, $"An answer {bodyJson} that is no object must fail the inspect");
+        Assert.AreEqual("Docker image inspect failed for 'Production': unexpected error", result.Message, "The failure must carry the fixed reason");
+    }
+
+    /// <summary>
+    /// Verify an image history answer that is not a JSON array still fails with the fixed unexpected-error reason
+    /// </summary>
+    /// <param name="bodyJson">JSON of the answer</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC4")]
+    [DataRow("{}")]
+    [DataRow("\"text\"")]
+    [DataRow("7")]
+    public async Task DockerInstanceClientGetImageHistoryAsyncWhenBodyIsNoArrayReturnsUnexpectedErrorAsync(string bodyJson)
+    {
+        using var handler = new SequenceHttpMessageHandler();
+        using var httpClient = CreateHttpClient(handler);
+
+        handler.AddJsonResponse("https://docker.example.test/v1.41/images/sha256%3Alocal-image/history", bodyJson);
+
+        var client = new DockerInstanceClient(new TestLogger<DockerInstanceClient>(), (_, _) => httpClient);
+
+        var result = await client.GetImageHistoryAsync(CreateInstanceOptions(), "sha256:local-image", TestContext.CancellationToken).ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Failed, result.Status, $"An answer {bodyJson} that is no array must fail the history");
+        Assert.AreEqual("Docker image history failed for 'Production': unexpected error", result.Message, "The failure must carry the fixed reason");
+    }
+
+    /// <summary>
+    /// Assert a list holds exactly the expected items in order
+    /// </summary>
+    /// <param name="actual">Actual list</param>
+    /// <param name="message">Assertion message</param>
+    /// <param name="expected">Expected items</param>
+    private static void AssertItems(IReadOnlyList<string> actual, string message, params string[] expected)
+    {
+        Assert.AreEqual(string.Join("\n", expected), string.Join("\n", actual), message);
     }
 
     /// <summary>

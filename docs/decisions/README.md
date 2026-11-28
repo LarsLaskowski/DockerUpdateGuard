@@ -131,4 +131,5 @@ once in the [area document](../areas/README.md) of the record's area, and the re
 | [0068](0068-an-unreadable-docker-engine-stats-or-host-memory-number-counts-as-missing.md) | An unreadable Docker Engine stats or host memory number counts as missing | Accepted | 2026-11-28 |
 | [0069](0069-a-docker-engine-list-item-that-is-not-a-json-object-is-left-out.md) | A Docker Engine list item that is not a JSON object is left out | Accepted | 2026-11-28 |
 | [0070](0070-discovery-leaves-out-a-docker-engine-container-without-an-id.md) | Discovery leaves out a Docker Engine container without an ID | Accepted | 2026-11-28 |
+| [0071](0071-a-docker-engine-string-list-item-that-is-not-a-json-string-is-left-out.md) | A Docker Engine string list item that is not a JSON string is left out | Accepted | 2026-11-28 |
 <!-- project:end index -->

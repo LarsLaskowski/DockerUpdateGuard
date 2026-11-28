@@ -2143,14 +2143,13 @@ public partial class DockerInstanceClientTests
     /// <summary>
     /// Verify discovery succeeds without the digest of an image whose inspect throws, and still resolves the digest of the next image
     /// </summary>
-    /// <param name="failureKind">Kind of the failing inspect: Transport, InvalidJson, UndecodableString, NumberInRepoDigests or RootNotObject</param>
+    /// <param name="failureKind">Kind of the failing inspect: Transport, InvalidJson, UndecodableString or RootNotObject</param>
     /// <returns>Task</returns>
     [TestMethod]
     [TestCategory("AC1")]
     [DataRow("Transport")]
     [DataRow("InvalidJson")]
     [DataRow("UndecodableString")]
-    [DataRow("NumberInRepoDigests")]
     [DataRow("RootNotObject")]
     public async Task DockerInstanceClientDiscoverContainersAsyncWhenImageInspectThrowsSucceedsWithoutThatImagesDigestAsync(string failureKind)
     {
@@ -2165,7 +2164,7 @@ public partial class DockerInstanceClientTests
     /// <summary>
     /// Verify an image inspect that throws during discovery is logged once as a warning with its exception and reason
     /// </summary>
-    /// <param name="failureKind">Kind of the failing inspect: Transport, InvalidJson, UndecodableString, NumberInRepoDigests or RootNotObject</param>
+    /// <param name="failureKind">Kind of the failing inspect: Transport, InvalidJson, UndecodableString or RootNotObject</param>
     /// <param name="expectedReason">Expected reason of the log entry</param>
     /// <returns>Task</returns>
     [TestMethod]
@@ -2173,7 +2172,6 @@ public partial class DockerInstanceClientTests
     [DataRow("Transport", "connection failed")]
     [DataRow("InvalidJson", "invalid response")]
     [DataRow("UndecodableString", "invalid response")]
-    [DataRow("NumberInRepoDigests", "unexpected error")]
     [DataRow("RootNotObject", "unexpected error")]
     public async Task DockerInstanceClientDiscoverContainersAsyncWhenImageInspectThrowsLogsSkippedImageAsync(string failureKind, string expectedReason)
     {
@@ -2405,7 +2403,6 @@ public partial class DockerInstanceClientTests
                    "Transport" => throw new HttpRequestException("connection refused"),
                    "InvalidJson" => CreateJsonResponse("""{ "RepoDigests": """),
                    "UndecodableString" => CreateJsonResponse(undecodable),
-                   "NumberInRepoDigests" => CreateJsonResponse("""{ "RepoDigests": [1] }"""),
                    "RootNotObject" => CreateJsonResponse("[]"),
                    "NotFound" => new HttpResponseMessage(HttpStatusCode.NotFound),
                    _ => new HttpResponseMessage(HttpStatusCode.InternalServerError)
