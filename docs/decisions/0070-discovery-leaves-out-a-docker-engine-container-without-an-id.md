@@ -1,6 +1,6 @@
 # 0070: Discovery leaves out a Docker Engine container without an ID
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-28
 - **Area:** Docker instances
 - **Source:** Issue #574
