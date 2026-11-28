@@ -163,6 +163,8 @@ public class DockerInstanceClientStatsValuesTests
     [TestCategory("AC1")]
     [DataRow("cpu_stats.cpu_usage.total_usage", "\"100215355\"", 0L, 6537216L, 67108864L, 9979L, 1338L)]
     [DataRow("cpu_stats.system_cpu_usage", "true", 0L, 6537216L, 67108864L, 9979L, 1338L)]
+    [DataRow("precpu_stats.cpu_usage.total_usage", "\"x\"", 0L, 6537216L, 67108864L, 9979L, 1338L)]
+    [DataRow("precpu_stats.system_cpu_usage", "null", 0L, 6537216L, 67108864L, 9979L, 1338L)]
     [DataRow("memory_stats.usage", "\"6537216\"", 40L, 0L, 67108864L, 9979L, 1338L)]
     [DataRow("memory_stats.limit", "null", 40L, 6537216L, 0L, 9979L, 1338L)]
     [DataRow("networks.eth0.rx_bytes", "\"5338\"", 40L, 6537216L, 67108864L, 4641L, 1338L)]
@@ -195,6 +197,8 @@ public class DockerInstanceClientStatsValuesTests
     [DataRow("networks.eth0", "5", 40L, 6537216L, 67108864L, 4641L, 690L)]
     [DataRow("cpu_stats", "\"x\"", 0L, 6537216L, 67108864L, 9979L, 1338L)]
     [DataRow("cpu_stats.cpu_usage", "1", 0L, 6537216L, 67108864L, 9979L, 1338L)]
+    [DataRow("precpu_stats", "\"x\"", 0L, 6537216L, 67108864L, 9979L, 1338L)]
+    [DataRow("precpu_stats.cpu_usage", "1", 0L, 6537216L, 67108864L, 9979L, 1338L)]
     public async Task DockerInstanceClientCollectContainerResourceUsageAsyncWhenStatsMemberIsNoObjectCountsItsValuesAsZeroAsync(string path,
                                                                                                                                 string replacementJson,
                                                                                                                                 long expectedCpu,
