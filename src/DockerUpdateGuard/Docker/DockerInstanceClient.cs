@@ -608,20 +608,27 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
             return 0;
         }
 
-        var cpuTotal = TryGetInt64(cpuStats, "cpu_usage", "total_usage");
-        var preCpuTotal = TryGetInt64(preCpuStats, "cpu_usage", "total_usage");
-        var systemTotal = TryGetInt64(cpuStats, "system_cpu_usage");
-        var preSystemTotal = TryGetInt64(preCpuStats, "system_cpu_usage");
-        var cpuDelta = cpuTotal - preCpuTotal;
-        var systemDelta = systemTotal - preSystemTotal;
+        var cpuTotal = FindInt64(cpuStats, "cpu_usage", "total_usage");
+        var preCpuTotal = FindInt64(preCpuStats, "cpu_usage", "total_usage");
+        var systemTotal = FindInt64(cpuStats, "system_cpu_usage");
+        var preSystemTotal = FindInt64(preCpuStats, "system_cpu_usage");
+
+        if (cpuTotal is null || preCpuTotal is null || systemTotal is null || preSystemTotal is null)
+        {
+            return 0;
+        }
+
+        var cpuDelta = cpuTotal.Value - preCpuTotal.Value;
+        var systemDelta = systemTotal.Value - preSystemTotal.Value;
 
         if (cpuDelta <= 0 || systemDelta <= 0)
         {
             return 0;
         }
 
-        var onlineCpuCount = cpuStats.TryGetProperty("online_cpus", out var onlineCpusElement)
-                             && onlineCpusElement.TryGetInt32(out var onlineCpus)
+        var onlineCpusElement = FindNestedProperty(cpuStats, "online_cpus");
+        var onlineCpuCount = onlineCpusElement is { ValueKind: JsonValueKind.Number } onlineCpusNumber
+                             && onlineCpusNumber.TryGetInt32(out var onlineCpus)
                              && onlineCpus > 0
                                  ? onlineCpus
                                  : GetPerCpuCount(cpuStats);
@@ -678,11 +685,7 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
 
         foreach (var networkProperty in networksElement.EnumerateObject())
         {
-            if (networkProperty.Value.TryGetProperty(propertyName, out var property)
-                && property.TryGetInt64(out var value))
-            {
-                total += value;
-            }
+            total += TryGetInt64(networkProperty.Value, propertyName);
         }
 
         return total;
@@ -695,14 +698,11 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
     /// <returns>CPU count</returns>
     private static int GetPerCpuCount(JsonElement cpuStats)
     {
-        if (cpuStats.TryGetProperty("cpu_usage", out var cpuUsage) == false
-            || cpuUsage.TryGetProperty("percpu_usage", out var perCpuUsage) == false
-            || perCpuUsage.ValueKind != JsonValueKind.Array)
-        {
-            return 0;
-        }
+        var perCpuUsage = FindNestedProperty(cpuStats, "cpu_usage", "percpu_usage");
 
-        return perCpuUsage.GetArrayLength();
+        return perCpuUsage is { ValueKind: JsonValueKind.Array } perCpuArray
+                   ? perCpuArray.GetArrayLength()
+                   : 0;
     }
 
     /// <summary>
@@ -713,17 +713,42 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
     /// <returns>Int64 value or zero</returns>
     private static long TryGetInt64(JsonElement element, params string[] propertyNames)
     {
+        return FindInt64(element, propertyNames) ?? 0;
+    }
+
+    /// <summary>
+    /// Find a nested Int64 property
+    /// </summary>
+    /// <param name="element">Element</param>
+    /// <param name="propertyNames">Property path</param>
+    /// <returns>Int64 value or null when the property is missing, no number or does not fit</returns>
+    private static long? FindInt64(JsonElement element, params string[] propertyNames)
+    {
+        var found = FindNestedProperty(element, propertyNames);
+
+        return found is { ValueKind: JsonValueKind.Number } number && number.TryGetInt64(out var value) ? value : null;
+    }
+
+    /// <summary>
+    /// Find a nested property, walking the path only through JSON objects
+    /// </summary>
+    /// <param name="element">Element</param>
+    /// <param name="propertyNames">Property path</param>
+    /// <returns>Element at the end of the path or null when a step is no object or lacks the property</returns>
+    private static JsonElement? FindNestedProperty(JsonElement element, params string[] propertyNames)
+    {
         foreach (var propertyName in propertyNames)
         {
-            if (element.TryGetProperty(propertyName, out var property) == false)
+            if (element.ValueKind != JsonValueKind.Object
+                || element.TryGetProperty(propertyName, out var property) == false)
             {
-                return 0;
+                return null;
             }
 
             element = property;
         }
 
-        return element.TryGetInt64(out var value) ? value : 0;
+        return element;
     }
 
     /// <summary>

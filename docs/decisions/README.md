@@ -128,4 +128,5 @@ once in the [area document](../areas/README.md) of the record's area, and the re
 | [0065](0065-allowed-host-names-stay-open-by-default-and-optional-in-the-compose-files.md) | Allowed host names stay open by default and optional in the compose files | Accepted | 2026-11-27 |
 | [0066](0066-remote-timestamps-without-an-offset-are-read-as-utc.md) | Remote timestamps without an offset are read as UTC | Accepted | 2026-11-27 |
 | [0067](0067-an-image-index-whose-chosen-entry-is-again-an-index-answers-failed.md) | An image index whose chosen entry is again an index answers *failed* | Accepted | 2026-11-28 |
+| [0068](0068-an-unreadable-docker-engine-stats-or-host-memory-number-counts-as-missing.md) | An unreadable Docker Engine stats or host memory number counts as missing | Accepted | 2026-11-28 |
 <!-- project:end index -->
