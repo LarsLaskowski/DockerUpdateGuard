@@ -170,9 +170,12 @@ on the snapshots and samples it produces.
   long round delays the next.
 - Per container sample:
   - CPU percent = (container CPU time delta ÷ system CPU time delta) × online CPUs × 100, rounded to 4 decimals; the
-    CPU count falls back to the per-CPU usage list length and then to 1; 0 when either delta is not positive. A
+    CPU count falls back to the per-CPU usage list length (also when the online CPU count is not a number) and then
+    to 1; 0 when either delta is not positive. A
     multi-core container can exceed 100.
   - Memory usage and memory limit are the Engine's reported usage and limit in bytes.
+  - A value that is missing, is not a JSON number that fits a 64-bit integer, or sits under a member that is not a JSON
+    object counts as 0 and does not leave the container out; the other values of the sample are still read.
   - Network receive and transmit totals are the sums over all of the container's network interfaces, in bytes.
   - The recording time is the Engine's stats timestamp, or the current time when it is missing.
   - Receive and transmit rates in bytes per second are computed against the previous sample of the same container ID
@@ -180,7 +183,7 @@ on the snapshots and samples it produces.
     the total did not grow (for example after a container restart reset the counter).
 - Per instance, one sample per round: container count, CPU percent, memory usage and network totals as the sums over
   the containers sampled in that round, memory limit as the host's total memory reported by the Engine (0 when that
-  request fails), the receive and transmit rates as the sums of those containers' rates (not computed against the
+  request fails or its answer holds no readable total), the receive and transmit rates as the sums of those containers' rates (not computed against the
   previous instance sample), and the latest container recording time (the current time when no container was
   sampled). An instance with no container a stats request is sent for still gets a sample with count 0. A round that
   requested stats for at least one container and sampled none fails (see *Limits and errors*).
@@ -240,6 +243,8 @@ on the snapshots and samples it produces.
   names are trimmed once where the options are built.
 - [0057](../decisions/0057-currently-known-containers-are-resolved-by-one-query-in-the-data-layer.md): currently
   known containers are resolved by one query in the data layer.
+- [0068](../decisions/0068-an-unreadable-docker-engine-stats-or-host-memory-number-counts-as-missing.md): an unreadable
+  Docker Engine stats or host memory number counts as missing.
 
 ## Not here
 
