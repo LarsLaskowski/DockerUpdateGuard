@@ -1,6 +1,6 @@
 # 0071: A Docker Engine string list item that is not a JSON string is left out
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-28
 - **Area:** Docker instances
 - **Source:** Issue #575
