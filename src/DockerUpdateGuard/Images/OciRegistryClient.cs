@@ -753,12 +753,14 @@ public partial class OciRegistryClient : IRegistryMetadataClient
     /// </summary>
     /// <param name="imageReference">Image reference</param>
     /// <param name="reference">Tag or digest reference</param>
+    /// <param name="isIndexEntry">Whether the reference is the chosen entry of an index, which may not answer with an index again</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <param name="operatingSystem">Preferred operating system</param>
     /// <param name="architecture">Preferred architecture</param>
     /// <returns>Manifest metadata result</returns>
     private async Task<ExternalOperationResult<ManifestMetadata>> GetManifestMetadataAsync(ImageReference imageReference,
                                                                                            string reference,
+                                                                                           bool isIndexEntry,
                                                                                            CancellationToken cancellationToken,
                                                                                            string? operatingSystem = null,
                                                                                            string? architecture = null)
@@ -789,6 +791,12 @@ public partial class OciRegistryClient : IRegistryMetadataClient
 
         var digest = GetContentDigest(response);
         var contentType = response.Content.Headers.ContentType?.MediaType ?? string.Empty;
+
+        if (isIndexEntry && IsManifestListContentType(contentType))
+        {
+            return ExternalOperationResult.Failed<ManifestMetadata>($"Manifest list for '{imageReference.FullReference}' named another manifest list instead of a platform manifest");
+        }
+
         var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
 
         await using (responseStream.ConfigureAwait(false))
@@ -848,6 +856,7 @@ public partial class OciRegistryClient : IRegistryMetadataClient
 
         var platformManifestResult = await GetManifestMetadataAsync(imageReference,
                                                                     targetDigest,
+                                                                    true,
                                                                     cancellationToken).ConfigureAwait(false);
 
         if (platformManifestResult.Status != ExternalOperationStatus.Succeeded || platformManifestResult.Data is null)
@@ -1237,6 +1246,7 @@ public partial class OciRegistryClient : IRegistryMetadataClient
     {
         var manifestResult = await GetManifestMetadataAsync(imageReference,
                                                             string.IsNullOrWhiteSpace(imageReference.Digest) ? imageReference.Tag : imageReference.Digest,
+                                                            false,
                                                             cancellationToken).ConfigureAwait(false);
 
         if (manifestResult.Status != ExternalOperationStatus.Succeeded || manifestResult.Data is null)
@@ -1365,6 +1375,7 @@ public partial class OciRegistryClient : IRegistryMetadataClient
                                   {
                                       var manifestResult = await GetManifestMetadataAsync(imageReference,
                                                                                           imageReference.Tag,
+                                                                                          false,
                                                                                           cancellationToken,
                                                                                           operatingSystem,
                                                                                           architecture).ConfigureAwait(false);
