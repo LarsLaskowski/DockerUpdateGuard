@@ -91,8 +91,8 @@ on the snapshots and samples it produces.
 
 ### Container discovery
 
-- Discovery lists **all** containers of an instance, including stopped ones. A container whose ID is longer than 200
-  characters, and an item of the list that is not a JSON object, is left out.
+- Discovery lists **all** containers of an instance, including stopped ones. A container without an ID, with an empty or
+  blank ID, or with an ID longer than 200 characters, and an item of the list that is not a JSON object, is left out.
 - Per container it records: the container ID; the name (the first listed name that is a string, without its leading `/`, or the
   container ID when it has none); the image reference as the Engine reports it; the local image ID; the compose
   project (`com.docker.compose.project` label), the stack name (`com.docker.stack.namespace`) and the swarm service
@@ -250,6 +250,8 @@ on the snapshots and samples it produces.
   Docker Engine stats or host memory number counts as missing.
 - [0069](../decisions/0069-a-docker-engine-list-item-that-is-not-a-json-object-is-left-out.md): a Docker Engine list
   item that is not a JSON object is left out.
+- [0070](../decisions/0070-discovery-leaves-out-a-docker-engine-container-without-an-id.md): discovery leaves out a
+  Docker Engine container without an ID.
 
 ## Not here
 

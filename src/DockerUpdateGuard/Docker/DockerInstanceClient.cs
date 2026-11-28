@@ -502,15 +502,21 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
     }
 
     /// <summary>
-    /// Check whether the container ID fits the stored column length
+    /// Read the container ID when it is a non-blank string that fits the stored column length
     /// </summary>
     /// <param name="element">JSON element</param>
-    /// <returns>True when the ID is not longer than the stored length</returns>
-    private static bool HasStorableId(JsonElement element)
+    /// <returns>The cleaned ID, or null when it is missing, not a string, blank or longer than the stored length</returns>
+    private static string? TryGetStorableId(JsonElement element)
     {
         var containerId = TryGetString(element, "Id");
 
-        return containerId is null || containerId.Length <= MaxContainerIdLength;
+        if (string.IsNullOrWhiteSpace(containerId)
+            || containerId.Length > MaxContainerIdLength)
+        {
+            return null;
+        }
+
+        return containerId;
     }
 
     /// <summary>
@@ -983,7 +989,7 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
         foreach (var element in root.EnumerateArray())
         {
             if (element.ValueKind != JsonValueKind.Object
-                || HasStorableId(element) == false)
+                || TryGetStorableId(element) is null)
             {
                 continue;
             }
@@ -1166,10 +1172,9 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
                 continue;
             }
 
-            var containerId = TryGetString(containerElement, "Id");
+            var containerId = TryGetStorableId(containerElement);
 
-            if (string.IsNullOrWhiteSpace(containerId)
-                || containerId.Length > MaxContainerIdLength)
+            if (containerId is null)
             {
                 continue;
             }

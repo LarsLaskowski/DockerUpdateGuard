@@ -235,6 +235,112 @@ public class DockerInstanceClientListItemsTests
     }
 
     /// <summary>
+    /// Verify discovery leaves out a container whose ID is missing, null, a number, empty, blank or only a control character and returns the container next to it
+    /// </summary>
+    /// <param name="idMemberJson">JSON member that replaces the ID member of the sample</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC1")]
+    [DataRow("\"Unrelated\": 1")]
+    [DataRow("\"Id\": null")]
+    [DataRow("\"Id\": 7")]
+    [DataRow("\"Id\": \"\"")]
+    [DataRow("\"Id\": \"   \"")]
+    [DataRow("\"Id\": \"\\u0001\"")]
+    public async Task DockerInstanceClientDiscoverContainersAsyncWhenContainerIdIsMissingOrBlankSkipsContainerAsync(string idMemberJson)
+    {
+        using var handler = new SequenceHttpMessageHandler();
+        using var httpClient = CreateHttpClient(handler);
+
+        handler.AddJsonResponse("https://docker.example.test/v1.41/containers/json?all=1", $"[ {CreateContainerWithoutValidId(idMemberJson)}, {ContainerSample} ]");
+        handler.AddJsonResponse("https://docker.example.test/v1.41/images/d74508fb6632491cea586a1fd7d748dfc5274cd6fdfedee309ecf33cbc24e5f8/json", ImageInspectSample);
+
+        var logger = new TestLogger<DockerInstanceClient>();
+        var client = new DockerInstanceClient(logger, (_, _) => httpClient);
+
+        var result = await client.DiscoverContainersAsync(CreateInstanceOptions(), TestContext.CancellationToken).ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, $"A container with {idMemberJson} must not fail the discovery");
+        Assert.IsNotNull(result.Data, "Discovery must return the containers");
+
+        var container = Assert.ContainsSingle(result.Data, "Only the container with a storable ID must be returned");
+
+        Assert.AreEqual("8dfafdbc3a40", container.ContainerId, "The container with the ID must be returned");
+    }
+
+    /// <summary>
+    /// Verify discovery of a list whose only object has no ID succeeds without a container and sends no image inspect request
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC2")]
+    public async Task DockerInstanceClientDiscoverContainersAsyncWhenListHoldsOnlyContainersWithoutIdReturnsEmptySucceededAsync()
+    {
+        using var handler = new SequenceHttpMessageHandler();
+        using var httpClient = CreateHttpClient(handler);
+
+        handler.AddJsonResponse("https://docker.example.test/v1.41/containers/json?all=1", $"[ {CreateContainerWithoutValidId("\"Unrelated\": 1")} ]");
+
+        var client = new DockerInstanceClient(new TestLogger<DockerInstanceClient>(), (_, _) => httpClient);
+
+        var result = await client.DiscoverContainersAsync(CreateInstanceOptions(), TestContext.CancellationToken).ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, "A list of only containers without an ID must not fail the discovery");
+        Assert.IsNotNull(result.Data, "Discovery must return a container list");
+        Assert.IsEmpty(result.Data, "No container without an ID may be returned");
+        Assert.DoesNotContain(request => request.RequestUri.Contains("/images/", StringComparison.Ordinal),
+                              handler.Requests,
+                              "No image inspect request may be sent");
+    }
+
+    /// <summary>
+    /// Verify resource sampling leaves out a container whose ID is missing, null, a number, empty, blank or only a control character, without a stats request
+    /// </summary>
+    /// <param name="idMemberJson">JSON member that replaces the ID member of the sample</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC3")]
+    [DataRow("\"Unrelated\": 1")]
+    [DataRow("\"Id\": null")]
+    [DataRow("\"Id\": 7")]
+    [DataRow("\"Id\": \"\"")]
+    [DataRow("\"Id\": \"   \"")]
+    [DataRow("\"Id\": \"\\u0001\"")]
+    public async Task DockerInstanceClientCollectContainerResourceUsageAsyncWhenContainerIdIsMissingOrBlankSkipsContainerAsync(string idMemberJson)
+    {
+        using var handler = new SequenceHttpMessageHandler();
+        using var httpClient = CreateHttpClient(handler);
+
+        handler.AddJsonResponse("https://docker.example.test/v1.41/containers/json", $"[ {CreateContainerWithoutValidId(idMemberJson)}, {ContainerSample} ]");
+        handler.AddJsonResponse("https://docker.example.test/v1.41/containers/8dfafdbc3a40/stats?stream=false", """{ "read": "2025-06-01T12:00:00Z" }""");
+
+        var client = new DockerInstanceClient(new TestLogger<DockerInstanceClient>(), (_, _) => httpClient);
+
+        var result = await client.CollectContainerResourceUsageAsync(CreateInstanceOptions(), TestContext.CancellationToken).ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Succeeded, result.Status, $"A container with {idMemberJson} must not fail the sampling");
+        Assert.IsNotNull(result.Data, "Sampling must return the samples");
+
+        var sample = Assert.ContainsSingle(result.Data, "Only the container with a storable ID must be sampled");
+
+        Assert.AreEqual("8dfafdbc3a40", sample.ContainerId, "The sample must belong to the container with the ID");
+        Assert.ContainsSingle(request => request.RequestUri.Contains("/stats", StringComparison.Ordinal),
+                              handler.Requests,
+                              "Exactly one stats request must be sent");
+    }
+
+    /// <summary>
+    /// Create the container sample with another name and its ID member replaced by the given member
+    /// </summary>
+    /// <param name="idMemberJson">JSON member that replaces the ID member of the sample</param>
+    /// <returns>Container JSON</returns>
+    private static string CreateContainerWithoutValidId(string idMemberJson)
+    {
+        return ContainerSample.Replace("\"Id\": \"8dfafdbc3a40\"", idMemberJson, StringComparison.Ordinal)
+                              .Replace("/boring_feynman", "/left_out", StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Create an HTTP client for the Docker Engine of the tests
     /// </summary>
     /// <param name="handler">Message handler</param>
