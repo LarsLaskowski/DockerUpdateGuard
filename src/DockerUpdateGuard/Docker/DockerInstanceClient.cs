@@ -764,29 +764,19 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
     /// <returns>Inspect data</returns>
     private static DockerImageInspectData ParseImageInspect(JsonElement element)
     {
-        var environmentVariables = new List<string>();
-        var rootFsLayers = new List<string>();
+        var environmentVariables = Array.Empty<string>();
+        var rootFsLayers = Array.Empty<string>();
 
         if (element.TryGetProperty("Config", out var configElement)
-            && configElement.ValueKind == JsonValueKind.Object
-            && configElement.TryGetProperty("Env", out var envElement)
-            && envElement.ValueKind == JsonValueKind.Array)
+            && configElement.ValueKind == JsonValueKind.Object)
         {
-            environmentVariables.AddRange(envElement.EnumerateArray()
-                                                    .Select(item => ResponseBodyExcerpt.ReplaceControlCharacters(item.GetString()))
-                                                    .Where(value => string.IsNullOrWhiteSpace(value) == false)
-                                                    .Cast<string>());
+            environmentVariables = ReadStringArray(configElement, "Env");
         }
 
         if (element.TryGetProperty("RootFS", out var rootFsElement)
-            && rootFsElement.ValueKind == JsonValueKind.Object
-            && rootFsElement.TryGetProperty("Layers", out var layersElement)
-            && layersElement.ValueKind == JsonValueKind.Array)
+            && rootFsElement.ValueKind == JsonValueKind.Object)
         {
-            rootFsLayers.AddRange(layersElement.EnumerateArray()
-                                               .Select(item => ResponseBodyExcerpt.ReplaceControlCharacters(item.GetString()))
-                                               .Where(value => string.IsNullOrWhiteSpace(value) == false)
-                                               .Cast<string>());
+            rootFsLayers = ReadStringArray(rootFsElement, "Layers");
         }
 
         return new DockerImageInspectData
@@ -840,7 +830,7 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
     }
 
     /// <summary>
-    /// Read a string array property
+    /// Read a string array property; items that are not JSON strings are left out
     /// </summary>
     /// <param name="element">JSON element</param>
     /// <param name="propertyName">Property name</param>
@@ -854,6 +844,7 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
         }
 
         return property.EnumerateArray()
+                       .Where(item => item.ValueKind == JsonValueKind.String)
                        .Select(item => ResponseBodyExcerpt.ReplaceControlCharacters(item.GetString()))
                        .Where(value => string.IsNullOrWhiteSpace(value) == false)
                        .Cast<string>()
