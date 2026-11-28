@@ -1,6 +1,6 @@
 # 0068: An unreadable Docker Engine stats or host memory number counts as missing
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-28
 - **Area:** Docker instances
 - **Source:** Issue #570
