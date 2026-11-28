@@ -950,6 +950,11 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
 
                 foreach (var historyElement in jsonDocument.RootElement.EnumerateArray())
                 {
+                    if (historyElement.ValueKind != JsonValueKind.Object)
+                    {
+                        continue;
+                    }
+
                     historyEntries.Add(ParseImageHistoryEntry(historyElement));
                 }
 
@@ -977,7 +982,8 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
 
         foreach (var element in root.EnumerateArray())
         {
-            if (HasStorableId(element) == false)
+            if (element.ValueKind != JsonValueKind.Object
+                || HasStorableId(element) == false)
             {
                 continue;
             }
@@ -1155,6 +1161,11 @@ public sealed class DockerInstanceClient : IDockerInstanceClient, IDisposable
 
         foreach (var containerElement in root.EnumerateArray())
         {
+            if (containerElement.ValueKind != JsonValueKind.Object)
+            {
+                continue;
+            }
+
             var containerId = TryGetString(containerElement, "Id");
 
             if (string.IsNullOrWhiteSpace(containerId)
