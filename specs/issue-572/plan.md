@@ -147,3 +147,28 @@ A broken or hostile Engine gains nothing: a list of only skipped items answers l
   or a boolean, so `GetImageHistoryAsync` answers *failed* with `unexpected error`. Image inspect documents such a value
   as a failed inspect (area *Container discovery*); decide whether history and inspect skip such items or keep
   failing, and cover it with tests. Found while planning #572.
+
+## Challenge notes
+
+Devil's Advocate, mode `plan`, on /home/user/DockerUpdateGuard/specs/issue-572/plan.md (decision record /home/user/DockerUpdateGuard/docs/decisions/0069-a-docker-engine-list-item-that-is-not-a-json-object-is-left-out.md).
+
+The plan holds up. I found one minor wording issue in the area text and nothing that changes the plan.
+
+**Checks that confirmed the plan** (all in /home/user/DockerUpdateGuard/src/DockerUpdateGuard/Docker/DockerInstanceClient.cs):
+- **The three loops and their throw points:**
+  - `ParseContainers`: line 978 loops over the items, line 980 calls `HasStorableId`, which calls `TryGetString`.
+  - `ReadContainerSamplesAsync`: line 1156 loops, line 1158 calls `TryGetString`.
+  - The history loop: line 951 loops, then `ParseImageHistoryEntry` calls `TryGetHistoryCreatedAtUtc`, whose `TryGetProperty` at line 822 throws before any `TryGetString`. So the plan is right that the issue's root cause is wrong for history (fact 3).
+- **`TryGetString`** only guards `Undefined` (line 548), so its `TryGetProperty` throws on every other non-object kind, `Null` included.
+- **Fact 4 (an item without an ID is not skipped everywhere):** `HasStorableId` answers true for a null ID (line 513), so discovery keeps such an item. Sampling skips it (line 1160).
+- **Why fixing `TryGetString` alone is not enough:** discovery would still throw on `Labels` (line 447). The rejected option is argued correctly.
+- **Failure logging:** discovery's catch logs `DockerInstanceDiscoveryFailed` (the plan's event 3104, defined at `DockerInstanceClientLogging.cs:65`) and maps the error through `FailureReason`. AC1's "no event 3104" check therefore detects the defect.
+- **Precedent:** `DockerHubClient.cs:239–242` already skips an item that is not an object.
+- **Sibling paths:**
+  - In this client, every other place that loops over items reads them through a kind guard, or reads inspect values the area document already describes as a failed inspect (`docker-instances.md`, *Container discovery*). The plan's proposed issue 2 covers history `Tags`. The network values in a stats body (line 686) fail only that one container's sample, not the round.
+  - Registry and Docker Hub loops (`ManifestPlatformSelector.cs:41`, `DockerHubClient.cs:467/512`, `OciRegistryClient.cs:705`) are outside this Engine issue.
+- **Issue text:** fetched through the REST API. It says "Found while planning #570", which matches record 0069's *Context*.
+- **Test layout:** `DockerInstanceClientStatsValuesTests.cs` already sets the precedent of a split class that declares its own sample and helpers. `HistorySample` (`DockerInstanceClientTests.cs:66`) is a private constant, so the new class has to copy it, as the plan says.
+
+**Objection:**
+- `minor`: the *Areas* bullet for *Resource statistics* says "a container without an ID". The code skips more than that: `string.IsNullOrWhiteSpace(containerId)` (line 1160) also skips an empty or whitespace-only ID. Instruction for the Dev: write "a container without an ID or with an empty or blank ID, or with an ID longer than 200 characters, is left out without a request". Otherwise the newly documented rule says less than the code does.
