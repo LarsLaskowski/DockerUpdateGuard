@@ -5,7 +5,7 @@
     <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
   </PropertyGroup>
   <ItemGroup>
-    <PackageVersion Include="AngleSharp" Version="1.10.5" />
+    <PackageVersion Include="AngleSharp" Version="1.11.0" />
     <PackageVersion Include="bunit" Version="2.15.2" />
     <PackageVersion Include="coverlet.collector" Version="10.1.1" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="11.0.0" />

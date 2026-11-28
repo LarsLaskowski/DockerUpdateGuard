@@ -98,6 +98,15 @@ digest), Portainer text (environment names have their own rule, [Container actio
 release-feed text (never reaches a log, a message or a stored value), and values stored before the replacement existed,
 which stay until they are written again.
 
+### Remote timestamps
+
+A timestamp a client reads from a remote answer is read as UTC when it carries no offset (a date alone is 00:00 UTC),
+whatever time zone the host runs in, and is kept as UTC: a value with an offset is the same instant with offset zero.
+A value that is not a timestamp is unknown. This holds for the Docker Hub `last_pushed`, `last_updated` and `created`,
+the `created` of other registries and the `issued_at` of their bearer tokens, the Docker Engine's stats `read` and
+image inspect `Created`, the image history `Created` (Unix seconds in UTC, a text value by the rule above; `0`, a
+negative or an unreadable number is unknown), and the .NET release feed's `latest-release-date` and `eol-date`.
+
 ### Retry of transient HTTP failures
 
 - Applies to Docker Hub (web API, login, token service, registry), other registries and their token services, the
@@ -178,6 +187,8 @@ which stay until they are written again.
   that does not decode is an invalid response.
 - [0029](../decisions/0029-registry-calls-answer-every-error-but-the-callers-cancellation-as-failed.md): registry calls
   answer every error but the caller's cancellation as *failed*.
+- [0066](../decisions/0066-remote-timestamps-without-an-offset-are-read-as-utc.md): remote timestamps without an
+  offset are read as UTC.
 
 ## Not here
 

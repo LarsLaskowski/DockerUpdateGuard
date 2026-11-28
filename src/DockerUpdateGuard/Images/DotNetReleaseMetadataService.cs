@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
@@ -78,16 +77,6 @@ public partial class DotNetReleaseMetadataService : IDotNetReleaseMetadataServic
     {
         return element.TryGetProperty(propertyName, out var property)
                && property.ValueKind == JsonValueKind.True;
-    }
-
-    /// <summary>
-    /// Parse a timestamp
-    /// </summary>
-    /// <param name="value">Timestamp value</param>
-    /// <returns>Parsed timestamp</returns>
-    private static DateTimeOffset? TryParseTimestamp(string? value)
-    {
-        return DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture, out var timestamp) ? timestamp : null;
     }
 
     /// <summary>
@@ -188,10 +177,10 @@ public partial class DotNetReleaseMetadataService : IDotNetReleaseMetadataServic
                                                     {
                                                         ChannelVersion = channelVersion,
                                                         LatestRuntimeVersion = latestRuntimeVersion,
-                                                        LatestReleaseDateUtc = TryParseTimestamp(TryGetString(releaseElement, "latest-release-date")),
+                                                        LatestReleaseDateUtc = ExternalTimestamp.TryParseUtc(TryGetString(releaseElement, "latest-release-date")),
                                                         IsSecurityRelease = TryGetBoolean(releaseElement, "security"),
                                                         SupportPhase = TryGetString(releaseElement, "support-phase"),
-                                                        EndOfLifeDateUtc = TryParseTimestamp(TryGetString(releaseElement, "eol-date")),
+                                                        EndOfLifeDateUtc = ExternalTimestamp.TryParseUtc(TryGetString(releaseElement, "eol-date")),
                                                         ReleasesJsonUrl = TryGetString(releaseElement, "releases.json"),
                                                     };
                 }
