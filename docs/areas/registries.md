@@ -92,7 +92,12 @@ go through its retry of transient HTTP failures.
   (compared case-insensitively; the caller's values are trimmed, and a blank one is not requested). An image
   configuration lookup passes no platform, so it takes the first `linux` entry (without one, the first remaining entry), and Docker Hub always passes none. An
   index without such an entry is answered *failed* with "Manifest list for '<reference>' did not expose a target
-  manifest digest" for other registries.
+  manifest digest" for other registries. For other registries, a chosen entry answered with an index (either index
+  media type) ends the tag and the image configuration lookup *failed* with "Manifest list for '<reference>' named
+  another manifest list instead of a platform manifest", without reading that answer or requesting what it names, so a
+  lookup sends at most two manifest requests (a listing: that per inspected tag). Docker Hub asks for the entry as an
+  image manifest and follows nothing further: an answer without a configuration digest is *not found*
+  ([0067](../decisions/0067-an-image-index-whose-chosen-entry-is-again-an-index-answers-failed.md)).
 - **Tag listing** — the tags of a repository with digest and publication time.
   - Docker Hub: web API pages of 100 tags, in the order Docker Hub returns them (most recently pushed first), following
     the `next` link of each page ([Pagination links](#pagination-links)).
@@ -267,7 +272,7 @@ go through its retry of transient HTTP failures.
   optional port, which is not sent ([Request paths](#request-paths)).
 - *Failed*: any other non-success status, a token that cannot be obtained, a login deferred by the server's `Retry-After` window (the message names the end of
   the window), a PAT without user name, a multi-platform
-  index without a usable entry. The message contains the status code and the bounded excerpt of the remote response body ([Integration failures](integration-failures.md#excerpts-of-remote-text)). A next-page link
+  index without a usable entry, an index whose chosen entry is again an index. The message contains the status code and the bounded excerpt of the remote response body ([Integration failures](integration-failures.md#excerpts-of-remote-text)). A next-page link
   to another origin, a next-page link that repeats a page already read and a Docker Hub or OCI listing that does not
   end within 1,000 pages also give *failed*, with the messages of [Pagination links](#pagination-links).
 - The Docker Hub current-user, account listing, repository, tag, tag-listing and image configuration calls and the OCI
@@ -284,7 +289,7 @@ go through its retry of transient HTTP failures.
   Docker Hub login.
 - Registry responses are untrusted: missing or mistyped JSON fields are treated as unknown values, the token expiry fields included: an unreadable or out-of-range `exp` or `expires_in`
   gives the fallback lifetime, and an unreadable or out-of-range `issued_at` counts as the time of the answer. A listing
-  (account discovery included) reads at most 1,000 pages, so its number of requests is bounded; no bound on duration,
+  (account discovery included) reads at most 1,000 pages, so its number of requests is bounded; a lookup follows one index level; no bound on duration,
   memory or response size is claimed. Tag names, digests, the image references of
   base-image labels and the repository names of the account listing leave the clients only when they fit their
   grammars and lengths (see *What can be read*); the names of Docker Engine containers and discovered images are cut
@@ -292,6 +297,8 @@ go through its retry of transient HTTP failures.
 
 ## Related decisions
 
+- [0067](../decisions/0067-an-image-index-whose-chosen-entry-is-again-an-index-answers-failed.md): an image index whose
+  chosen entry is again an index answers failed.
 - [0062](../decisions/0062-both-registry-clients-choose-a-platform-manifest-by-one-shared-rule.md): both registry
   clients choose a platform manifest by one shared rule.
 - [0063](../decisions/0063-other-registries-take-a-tags-publication-time-from-its-image-configuration.md): other
