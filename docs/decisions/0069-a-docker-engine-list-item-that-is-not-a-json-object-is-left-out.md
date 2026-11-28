@@ -1,6 +1,6 @@
 # 0069: A Docker Engine list item that is not a JSON object is left out
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-28
 - **Area:** Docker instances
 - **Source:** Issue #572
