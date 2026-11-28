@@ -1,6 +1,6 @@
 # 0067: An image index whose chosen entry is again an index answers *failed*
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-28
 - **Area:** Registries
 - **Source:** Issue #550
