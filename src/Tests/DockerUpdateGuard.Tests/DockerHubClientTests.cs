@@ -2470,6 +2470,57 @@ public partial class DockerHubClientTests
     }
 
     /// <summary>
+    /// Verify the Docker Hub image configuration lookup follows no index that its chosen entry answers with and returns not found
+    /// </summary>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC4")]
+    public async Task DockerHubClientGetImageConfigurationAsyncNestedIndexEntryReturnsNotFoundWithoutFurtherRequestAsync()
+    {
+        var requests = new List<string>();
+
+        using var handler = new DelegateHttpMessageHandler(request =>
+                                                           {
+                                                               var uri = request.RequestUri!;
+
+                                                               requests.Add(uri.AbsoluteUri);
+
+                                                               if (string.Equals(uri.Host, "auth.docker.io", StringComparison.Ordinal))
+                                                               {
+                                                                   return CreateJsonResponse("""{ "token": "registry-token" }""");
+                                                               }
+
+                                                               var body = uri.AbsolutePath.EndsWith("/sha256%3Anested", StringComparison.Ordinal)
+                                                                              ? """{ "schemaVersion": 2, "manifests": [ { "digest": "sha256:leaf", "platform": { "os": "linux", "architecture": "amd64" } } ] }"""
+                                                                              : """{ "schemaVersion": 2, "manifests": [ { "digest": "sha256:nested", "platform": { "os": "linux", "architecture": "amd64" } } ] }""";
+
+                                                               return new HttpResponseMessage(HttpStatusCode.OK)
+                                                                      {
+                                                                          Content = new StringContent(body, Encoding.UTF8, "application/vnd.oci.image.index.v1+json"),
+                                                                      };
+                                                           });
+        using var httpClient = new HttpClient(handler);
+
+        var client = CreateClient(httpClient);
+
+        var result = await client.GetImageConfigurationAsync(new ImageReference
+                                                             {
+                                                                 Registry = "docker.io",
+                                                                 Repository = "acme/api",
+                                                                 Tag = "1.0",
+                                                             },
+                                                             CancellationToken.None)
+                                 .ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.NotFound, result.Status, "An entry answered with an index must end the lookup as not found");
+        Assert.AreEqual("Config blob digest could not be resolved for 'docker.io/acme/api:1.0'",
+                        result.Message,
+                        "The message must be the one of an unresolvable configuration digest");
+        Assert.HasCount(3, requests, "Only the token, the index and its chosen entry may be requested");
+        Assert.IsFalse(requests.Exists(request => request.Contains("sha256%3Aleaf", StringComparison.Ordinal)), "The digest named by the nested index must never be requested");
+    }
+
+    /// <summary>
     /// Verify the Docker Hub tag lookup keeps a repository segment that only contains dots
     /// </summary>
     /// <returns>Task</returns>
