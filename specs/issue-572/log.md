@@ -11,3 +11,5 @@ are quoted in full.
 | 2026-11-28 10:24 | 2 Challenge notes | Orchestrator | minor objections appended verbatim to plan.md |
 | 2026-11-28 10:29 | 5 Tests first | Tester | Tests for AC1-AC3 in DockerInstanceClientListItemsTests (4 methods, 24 cases); I confirmed they compile and all 24 fail on the current code. Deferred: none (sonnet/medium · 124,183 tokens · 17 tool uses · 290 s · 30 in · 12,690 out · 1,506,570 cache read · 122,887 cache write · 367,746 weighted) |
 | 2026-11-28 10:31 | 6 Implement | Dev | Three loops (ParseContainers, ReadContainerSamplesAsync, history loop) skip non-object items; area doc docker-instances.md updated with challenge-note wording. 24 new cases pass, full suite green, no plan deviations. (sonnet/medium · 93,168 tokens · 13 tool uses · 82 s · 18 in · 3,992 out · 746,877 cache read · 40,513 cache write · 145,307 weighted) |
+| 2026-11-28 10:31 | 6 Coverage skipped | Orchestrator | skipped — Coverage gate passes (new/changed 100.0%, 4/4 lines, 8/8 conditions; overall 94.9%), no uncovered lines, no deferred tests |
+| 2026-11-28 10:31 | 6 Documentation | Orchestrator | written in 6 Implement |
