@@ -152,3 +152,44 @@ throws to callers; remote text is still cleaned of control characters; undecodab
   configuration read of `DockerHubClient` (`DockerHub/DockerHubClient.cs:719–728`) call `GetString` on every `Env` item,
   so a number or boolean throws and the configuration read fails with `unexpected error`; decide as record 0071 did
   for the Docker Engine. Found while planning #575.
+
+## Challenge notes
+
+The plan holds up. I found no major objections and two minor ones.
+
+I checked these claims in the code and they hold:
+- **Root cause:** `ReadStringArray` (`/home/user/DockerUpdateGuard/src/DockerUpdateGuard/Docker/DockerInstanceClient.cs:856-860`) calls `GetString` on every item without checking its kind.
+- **Sibling paths:** `Config.Env` (`:775-778`) and `RootFS.Layers` (`:786-789`) have the same inline pipeline, and the plan covers both. The other `GetString` calls in the file are already guarded: `TryGetString` `:560`, `TryGetLabel` `:578` and `Names` `:533`.
+- **Failure messages:** they match AC4 (`InspectImageAsync` around `:1376`, `GetImageHistoryAsync` around `:1415`).
+- **Roots that are not an object or array:** they still throw at `:770` and at `EnumerateArray` `:957`, as AC4 needs.
+- **Discovery:** it uses `inspectResult.Data.RepoDigests` directly (`:1062-1079`), so AC3 follows from the fix.
+- **Test rows:** the `NumberInRepoDigests` rows and case are at `DockerInstanceClientTests.cs:2146/2153/2168/2176/2408`.
+- **History sample:** the `HistorySample` tags in `DockerInstanceClientListItemsTests.cs:54` and `:70` match the AC1 assertions.
+
+Minor objections:
+
+1. (minor) The name of AC2's new constant clashes with one already in the file. `/home/user/DockerUpdateGuard/src/Tests/DockerUpdateGuard.Tests/DockerInstanceClientListItemsTests.cs:41-43` already declares `ImageInspectSample`, the one-digest answer the discovery tests use. Instruction for the Tester: give the new inspect answer built from the fact-9 examples its own name, for example `ImageInspectDefinitionSample`. Keep the existing `ImageInspectSample` as it is, because AC3 and the existing discovery tests rely on it.
+
+2. (minor) The plan says the AC1–AC3 tests fail on the unfixed head, but the `null` rows of AC1 and AC2 pass there. A JSON `null` item already gives `GetString() == null`, and the blank filter drops it (`DockerInstanceClient.cs:858`, `:777`, `:788`). Instruction for the Tester: keep the `null` rows as regression guards, and record in the red-run evidence that only the `null` row of each test is expected to pass before the fix; do not treat that as a test that fails to fail.
+
+## Security notes
+
+Security plan review for specs/issue-575, round 1, covering the Docker Engine access area. I reviewed `/home/user/DockerUpdateGuard/specs/issue-575/plan.md` and `/home/user/DockerUpdateGuard/docs/decisions/0071-a-docker-engine-string-list-item-that-is-not-a-json-string-is-left-out.md`. I checked both against `src/DockerUpdateGuard/Docker/DockerInstanceClient.cs` (lines 104–136, 520–540, 765–861 and 1055–1085), `Infrastructure/ResponseBodyExcerpt.cs` (`ReplaceControlCharacters`), `Docker/DockerImageInspectData.cs` and `.squad/project.md` (*Security areas*). I ran no probes: the change rests on no measured security property.
+
+**Tier and security areas.** Tier `standard` is right. The change only adds a `ValueKind == String` filter to how untrusted Engine answers are read. It creates, loosens or removes no security control, and it touches no socket, transport, TLS, credential or limit. The only area touched is Docker Engine access, and the plan lists it. Failure messages and remote text is not touched:
+- No new exception path reaches a reason.
+- The answer that is not an object or array still reaches the fixed `unexpected error` (AC4).
+- The log event 3112 keeps its arguments.
+- No log call is added (record 0071 rejects option 5).
+
+**Checks against the code:**
+- **Control characters:** `ReadStringArray` (`:848–861`) still runs `ReplaceControlCharacters` and the blank filter on every item it keeps. Moving `Config.Env` and `RootFS.Layers` (`:775–778`, `:786–789`) onto it reads strings exactly as before. Both properties are `IReadOnlyList<string>`, so the `string[]` return fits. The filter matches what `GetPrimaryName` already does for `Names` (`:530–534`).
+- **Root handling:** the plan keeps the root's first `TryGetProperty` throwing for an inspect root that is not an object, and history `EnumerateArray` throwing for a root that is not an array. No guard is added that could turn a broken root into an empty success. AC4 pins this.
+- **Digest resolution:** `ResolveRepositoryDigest` (`:104–136`) picks the only remaining digest when nothing matches. As the plan and 0071 say, a hostile Engine gets nothing new from this: today it can already send `["other@sha256:…"]` alone with the same effect. The socket's trust model is unchanged, since the Engine is already root-equivalent and trusted for these values.
+- **Resource use:** no resource bound is claimed. Dropping items only shrinks the lists the code keeps, and no new value is retained.
+- **Undecodable strings:** they are still refused before parsing (`RemoteJsonDocument`, record 0019). The change does not affect that.
+- **Tests:** the claim that `GetString` throws for the other value kinds comes from the API documentation. The Tester's AC1–AC3 rows fail on the unfixed head and so check it in practice. That is enough, because no security property depends on it.
+
+**Follow-up.** The plan's follow-up for `OciRegistryClient.TryReadEnvironmentVariables` and `DockerHubClient` is in another area (Registry and Docker Scout calls) and is rightly left out of scope as its own issue.
+
+**Findings:** none, blocking or non-blocking.
