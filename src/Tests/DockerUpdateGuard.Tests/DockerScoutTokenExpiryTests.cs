@@ -181,7 +181,7 @@ public class DockerScoutTokenExpiryTests
         var optionsMonitor = new TestOptionsMonitor<DockerUpdateGuardOptions>(new DockerUpdateGuardOptions());
         var httpClientFactory = Substitute.For<IHttpClientFactory>();
 
-        return new DockerScoutVulnerabilityProvider(httpClientFactory, optionsMonitor, logger, new LoginRetryAfterRegistry(TimeProvider.System), new DockerHubRequestLimiter(optionsMonitor), Substitute.For<IServiceScopeFactory>());
+        return new DockerScoutVulnerabilityProvider(httpClientFactory, optionsMonitor, logger, new LoginRetryAfterRegistry(TimeProvider.System), new DockerHubRequestLimiter(optionsMonitor), Substitute.For<IServiceScopeFactory>(), TimeProvider.System);
     }
 
     #endregion // Methods
