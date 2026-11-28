@@ -42,6 +42,7 @@ still read. The rules are in [Docker instances](../areas/docker-instances.md).
   samples no container and succeeds with count 0, and a history succeeds without entries, after which derived runtime
   findings that rested on history text can be deactivated instead of kept. An Engine able to send such items can send
   an empty list to the same effect today.
-- A root that is not a JSON array, and a value of an unexpected kind inside an object (a number among a history entry's
-  tags, say), keep failing the call; this record does not decide them.
+- A root that is not a JSON array keeps failing the call. An item of an unexpected kind inside an entry's string list
+  (a number among a history entry's tags, say) is decided by
+  [0071](0071-a-docker-engine-string-list-item-that-is-not-a-json-string-is-left-out.md).
 - Revisit, with a warning per left-out item, if operators need to find an Engine that sends such items.
