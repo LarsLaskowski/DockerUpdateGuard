@@ -34,6 +34,7 @@ The exception passes through `GetOrCreateTokenAsync` (line 402, after `_cachedTo
 | 10 | The provider reads the real clock (`DateTimeOffset.UtcNow`, lines 284, 308, 382); `TimeProvider` is registered as a singleton and the provider is resolved by `AddSingleton<DockerScoutVulnerabilityProvider>()` | `ServiceCollectionExtensions.cs:130,141` | confirmed |
 | 11 | The constructor has six parameters; a seventh stays within S107 (more than seven is refused) | `DockerScoutVulnerabilityProvider.cs:101-106`; `.squad/stack.md`, *Writing code* | confirmed |
 | 12 | The constructor is called in five places in the tests | `DockerScoutTokenExpiryTests.cs:184`; `DockerScoutVulnerabilityProviderTests.cs:668,2524,2589`; `VulnerabilityProviderResolverTests.cs:86` | confirmed |
+| 13 | The planned chain throws on no JSON value the parser accepts (non-object roots, every value kind, fractions, exponent form, overflow beyond `long`, both range bounds, duplicate keys — the last one wins) | Security's probe of the exact chain on net11.0 (plan review, step 3): 21 inputs, none threw | confirmed |
 
 ## Acceptance criteria
 
@@ -79,7 +80,8 @@ if (payloadDocument.RootElement.ValueKind == JsonValueKind.Object
 
 The `catch` stays as it is (`FormatException`, `JsonException`); it is not widened. A value the chain rejects falls
 through to the fallback as a missing `exp` does today, without a 3418 entry (only a caught exception logs it, as now).
-`expiryUtc - 1 minute` cannot underflow: `TryFromUnixSeconds` returns at least 1970-01-01T00:00:01Z.
+`expiryUtc - 1 minute` cannot underflow: `TryFromUnixSeconds` returns at least 1970-01-01T00:00:01Z. An `exp` of 1 to
+60 therefore resolves to an instant before 1970, so the token is never reused, as today.
 
 Consequence, deliberate: an `exp` of `0` or a negative value (fact 9) now gives the five-minute fallback instead of an
 already expired token, the rule `TryFromUnixSeconds` applies to every Unix-seconds field (`docs/areas/docker-instances.md`,
@@ -177,79 +179,23 @@ registration).
 ## Out of scope / follow-ups
 
 - `DockerHubAccessTokenCache` accepts a negative in-range `exp` (an expired token); unchanged here.
+- The sibling `TryGetInt64` reads in `src/DockerUpdateGuard/Docker/DockerInstanceClient.cs` without a `ValueKind` check:
+  the network totals (lines 680-681) and the private `TryGetInt64(JsonElement, params string[])` (lines 714-726, used
+  by the CPU and memory stats), which also calls `TryGetProperty` on an element not checked to be an object; nothing
+  there catches `InvalidOperationException`. Follow-up issue #570; not widened here.
 
-## Challenge notes
+## Challenge
 
-Plan challenge of /home/user/DockerUpdateGuard/specs/issue-566/plan.md (issue #566).
+1. minor — name the sibling unguarded `TryGetInt64` reads in `DockerInstanceClient.cs` (680-681, 714-726) and open a
+   follow-up issue, without widening this change. Accepted: bullet added under *Out of scope / follow-ups*, follow-up
+   issue #570; the scope is unchanged.
 
-I found nothing major. I checked the plan's claims in the code and they hold:
-- The unguarded read and conversion are at `DockerScoutVulnerabilityProvider.cs:296-299`.
-- The catch is narrow, taking only `FormatException` and `JsonException` (line 303).
-- The token is cached at line 401 before the expiry is resolved at line 402.
-- `DateTimeOffset.UtcNow` is read in three places (lines 284, 308, 382).
-- The constructor has six parameters (lines 101-106).
-- `ExternalTimestamp.TryFromUnixSeconds` rejects values below 1 and values above `DateTimeOffset.MaxValue.ToUnixTimeSeconds()` (`ExternalTimestamp.cs:32-41`).
-- The guard chain the plan copies matches `DockerHubAccessTokenCache.cs:228-233`.
-- The constructor is called in exactly the five places the plan lists (`DockerScoutTokenExpiryTests.cs:184`, `DockerScoutVulnerabilityProviderTests.cs:668,2524,2589`, `VulnerabilityProviderResolverTests.cs:86`).
-- `ExternalJson.Parse` (`ExternalJson.cs:50-60`) accepts any JSON root, so the AC1 rows `[]`, `"text"` and `null` reach the new `ValueKind == Object` guard as planned.
-- `docs/UNIT_TESTS.md:319-326` (*Time in tests*) confirms an existing service moves to an injected `TimeProvider` when it is changed. Substituting the clock with NSubstitute matches existing tests such as `DockerHubClientTests.cs:3413`.
-- The AC2 rows fail on the unfixed code as the plan says: `0` and `-1` return a 1970 expiry instead of the fallback, and `253402300800` and `long.MaxValue` throw.
+## Security review
 
-Objections:
-
-1. minor — Out of scope / follow-ups: name the sibling `TryGetInt64` reads that have no `ValueKind` check. They follow the same pattern as the reported defect but are not the token expiry the issue is about, so the plan is right to leave them, but they should be recorded.
-   - `DockerInstanceClient.cs:680-681`, the network totals: `property.TryGetInt64` with no `ValueKind` check.
-   - `DockerInstanceClient.cs:714-726`, the private `TryGetInt64(JsonElement, params string[])` used by the CPU and memory stats at lines 611-614, 647, 659 and 1416. It calls `TryGetProperty` on an element it has not checked is an object, and `TryGetInt64` on a value it has not checked is a number.
-   - Nothing in `DockerInstanceClient.cs` catches `InvalidOperationException`.
-   - No open issue covers this.
-
-   Instruction to the Lead: add one bullet to *Out of scope / follow-ups* naming these lines, and have the orchestrator open a follow-up `bug` issue for them. Do not widen this change.
-
-## Security notes
-
-Security plan review of specs/issue-566/plan.md (mode `plan`). I approve the plan, with one non-blocking finding about how the security area is listed.
-
-**Tier: `standard` is correct.** The new chain only stops a malformed `exp` in a token Docker Hub issued from breaking the lookup. That is input handling under the `security` row of *Tiers* in `.squad/routing.md`, not a guard that decides what an attacker may reach. One change is a judgement call: an `exp` of `0` or below now gets the five-minute fallback instead of counting as already expired. That is only a client-side cache lifetime. Docker Hub still enforces the token's real expiry, the existing one-time refresh after a 401 still applies, and the extra reuse is capped at five minutes. No security control changes, so I do not raise the tier.
-
-**Measurement (the claim "the guarded read throws nothing" rests on library behavior).** I ran it once before approving.
-- Probe: `/tmp/claude-0/-home-user-DockerUpdateGuard/466761fc-2d7c-5fc1-88e8-fcd1ba1619cf/scratchpad/probe/Program.cs`, a net11.0 console app on SDK 11.0.100.
-- It runs `JsonDocument.Parse`, then exactly the plan's chain (`ValueKind == Object && TryGetProperty("exp") && ValueKind == Number && TryGetInt64 && TryFromUnixSeconds is { }`, with `TryFromUnixSeconds` copied from `Infrastructure/ExternalTimestamp.cs:32-41`), wrapped in a catch-all that prints `THROW <type>` if anything escapes.
-- Command: `dotnet run` in that directory. Output (input -> result):
-```
-{"exp":"1700000000"} -> fallback
-[] -> fallback
-"text" -> fallback
-null -> fallback
-{"exp":0} -> fallback
-{"exp":-1} -> fallback
-{"exp":253402300800} -> fallback
-{"exp":9223372036854775807} -> fallback
-{"exp":9223372036854775808} -> fallback
-{"exp":1.5} -> fallback
-{"exp":1e9} -> fallback
-{"exp":1700000000.0} -> fallback
-{"exp":-0} -> fallback
-{"exp":253402300799} -> 9999-12-31T23:58:59.0000000+00:00
-{"exp":null} -> fallback
-{"exp":true} -> fallback
-{"exp":{}} -> fallback
-{"exp":1,"exp":"x"} -> fallback
-{"exp":"x","exp":5} -> 1969-12-31T23:59:05.0000000+00:00
-123 -> fallback
-true -> fallback
-```
-- No input threw. The chain covers every JSON form the parser accepts: non-object roots, every value kind, fractions, exponent form, overflow beyond `long`, both range bounds and duplicate keys (`TryGetProperty` takes the last one, which is harmless). Bad Base64 and invalid JSON are still caught by the unchanged `FormatException`/`JsonException` catch (`ExternalJson.Parse` rethrows as `JsonException`). The guard has no bypass class left.
-- A side note, not a defect: an `exp` of 1 to 60 gives an expiry before 1970 (see the `5` row). That does not overflow, so "cannot underflow" holds, but the token is never reused. This is the same as today for these values and needs no change.
-
-**Other checks**
-- No new log call, so the *Logger arguments* check has nothing to run on.
-- No new user-visible output; the PAT and token are still never logged.
-- No dependency, CI, Docker or build change.
-- Moving to the injected `TimeProvider` touches no security control and needs no DI change (`ServiceCollectionExtensions.cs:130,141`).
-- There is no resource-bound claim: the plan explicitly adds no size bound.
-
-**Findings**
-
-[NON-BLOCKING] plan.md, header line "Security areas touched": the change reads untrusted JSON from a bearer token's payload in `Vulnerabilities/DockerScoutVulnerabilityProvider.cs`. That file is listed under **Registry and Docker Scout calls** ("untrusted JSON, request paths, pagination origins, bearer tokens") in `.squad/project.md` (lines 42-45), and the plan does not name that area. "Secrets in configuration" (the PAT, passwords) covers only the secret used to log in, not the returned token or how its payload is parsed. Smallest fix, replacing the line verbatim:
-`Security areas touched: Registry and Docker Scout calls — the untrusted JWT payload of the Docker Hub token the Docker Scout login returns and its cached lifetime (`Vulnerabilities/DockerScoutVulnerabilityProvider.cs`, [Vulnerabilities](../../docs/areas/vulnerabilities.md#docker-scout)); Secrets in configuration — the PAT that login sends (unchanged)`
-Recommendation: fix now
+- [NON-BLOCKING, fix now] *Security areas touched* missed **Registry and Docker Scout calls** (untrusted JSON, bearer
+  tokens; `.squad/project.md`), which lists `Vulnerabilities/DockerScoutVulnerabilityProvider.cs`. Accepted: the line
+  reads as Security supplied it (the orchestrator replaced it verbatim); it is consistent with the rest of the plan:
+  the tier stays `standard` (input handling, Security confirmed), the area's link matches the *Areas* edit of
+  `docs/areas/vulnerabilities.md` (*Docker Scout*), and *Secrets in configuration* stays listed for the unchanged PAT.
+- Security's measurement of the chain is fact 13; its side note on an `exp` of 1 to 60 (an expiry before 1970, never
+  reused, as today) is stated in *Approach* and needs no change.
