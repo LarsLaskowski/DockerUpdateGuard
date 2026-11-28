@@ -153,7 +153,8 @@ scan run:
   not detected ([0031](../decisions/0031-docker-scout-assesses-a-digest-only-while-its-tag-still-points-to-it.md)).
 - The provider logs in by posting the Docker Hub user name and token to `DockerScoutLoginUrl` and caches the returned
   token for the whole process until one minute before the expiry stated in the token, or for five minutes when the
-  expiry cannot be read. Only one login runs at a time. A failed login gives *failed*, "Docker Hub authentication
+  expiry cannot be read (no `exp`, one that is not a whole number, or one outside 1 … 253402300799
+  seconds, `0` and negative values included). Only one login runs at a time. A failed login gives *failed*, "Docker Hub authentication
   failed". The login is a non-idempotent request for the retry handler, so it is retried only on a 429 without a
   `Retry-After` or one of at most 30 seconds and after an error before any byte was sent, not on a 5xx
   ([Integration failures](integration-failures.md#retry-of-transient-http-failures)). After a login answered 429 with a positive `Retry-After`, the provider logs in no more before the window

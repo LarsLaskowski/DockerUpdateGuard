@@ -20,25 +20,96 @@ namespace DockerUpdateGuard.Tests;
 [TestClass]
 public class DockerScoutTokenExpiryTests
 {
+    #region Fields
+
+    /// <summary>
+    /// Instant the substituted clock returns
+    /// </summary>
+    private static readonly DateTimeOffset _fixedNow = new(2026, 1, 15, 12, 0, 0, TimeSpan.Zero);
+
+    #endregion // Fields
+
     #region Methods
 
     /// <summary>
-    /// Verify a token with an exp claim resolves an expiry reduced by the safety margin
+    /// Verify a token whose exp claim is not a JSON number falls back to the default lifetime of the injected clock
     /// </summary>
+    /// <param name="payloadJson">Payload JSON</param>
     [TestMethod]
-    public void DockerScoutTokenExpiryValidExpClaimResolvesExpiryWithSafetyMargin()
+    [TestCategory("AC1")]
+    [DataRow("""{"exp":"1700000000"}""")]
+    [DataRow("""{"exp":true}""")]
+    [DataRow("""{"exp":null}""")]
+    [DataRow("""{"exp":{"a":1}}""")]
+    public void DockerScoutTokenExpiryNonNumericExpClaimFallsBackToDefaultLifetime(string payloadJson)
     {
-        var expiryUtc = DateTimeOffset.UtcNow.AddHours(1);
-        var token = CreateJwt($"{{\"exp\":{expiryUtc.ToUnixTimeSeconds()}}}");
+        var clock = CreateClock();
 
-        var resolved = InvokeResolveTokenExpiryUtc(CreateProvider(new TestLogger<DockerScoutVulnerabilityProvider>()), token);
+        var resolved = InvokeResolveTokenExpiryUtc(CreateProvider(new TestLogger<DockerScoutVulnerabilityProvider>(), clock), CreateJwt(payloadJson));
 
-        Assert.IsLessThan(expiryUtc,
-                          resolved,
-                          "The resolved expiry must be reduced by the safety margin");
-        Assert.IsGreaterThan(expiryUtc.AddMinutes(-2),
-                             resolved,
-                             "The resolved expiry must stay close to the token expiry");
+        Assert.AreEqual(_fixedNow.AddMinutes(5),
+                        resolved,
+                        "A non-numeric exp claim must resolve to the clock's now plus five minutes without an exception");
+    }
+
+    /// <summary>
+    /// Verify a token whose payload root is not an object falls back to the default lifetime of the injected clock
+    /// </summary>
+    /// <param name="payloadJson">Payload JSON</param>
+    [TestMethod]
+    [TestCategory("AC1")]
+    [DataRow("[]")]
+    [DataRow("\"text\"")]
+    [DataRow("null")]
+    public void DockerScoutTokenExpiryNonObjectPayloadFallsBackToDefaultLifetime(string payloadJson)
+    {
+        var clock = CreateClock();
+
+        var resolved = InvokeResolveTokenExpiryUtc(CreateProvider(new TestLogger<DockerScoutVulnerabilityProvider>(), clock), CreateJwt(payloadJson));
+
+        Assert.AreEqual(_fixedNow.AddMinutes(5),
+                        resolved,
+                        "A payload whose root is not an object must resolve to the clock's now plus five minutes without an exception");
+    }
+
+    /// <summary>
+    /// Verify a token whose exp claim is outside the convertible Unix-seconds range falls back to the default lifetime
+    /// </summary>
+    /// <param name="expiry">Exp claim as JSON number text</param>
+    [TestMethod]
+    [TestCategory("AC2")]
+    [DataRow("0")]
+    [DataRow("-1")]
+    [DataRow("253402300800")]
+    [DataRow("9223372036854775807")]
+    public void DockerScoutTokenExpiryOutOfRangeExpClaimFallsBackToDefaultLifetime(string expiry)
+    {
+        var clock = CreateClock();
+
+        var resolved = InvokeResolveTokenExpiryUtc(CreateProvider(new TestLogger<DockerScoutVulnerabilityProvider>(), clock), CreateJwt($"{{\"exp\":{expiry}}}"));
+
+        Assert.AreEqual(_fixedNow.AddMinutes(5),
+                        resolved,
+                        "An exp claim outside the convertible range must resolve to the clock's now plus five minutes");
+    }
+
+    /// <summary>
+    /// Verify a token whose exp claim is inside the convertible range resolves to that instant minus the safety margin
+    /// </summary>
+    /// <param name="expirySeconds">Exp claim in Unix seconds</param>
+    [TestMethod]
+    [TestCategory("AC3")]
+    [DataRow(1900000000L)]
+    [DataRow(253402300799L)]
+    public void DockerScoutTokenExpiryInRangeExpClaimResolvesExpiryWithSafetyMargin(long expirySeconds)
+    {
+        var clock = CreateClock();
+
+        var resolved = InvokeResolveTokenExpiryUtc(CreateProvider(new TestLogger<DockerScoutVulnerabilityProvider>(), clock), CreateJwt($"{{\"exp\":{expirySeconds}}}"));
+
+        Assert.AreEqual(DateTimeOffset.FromUnixTimeSeconds(expirySeconds).AddMinutes(-1),
+                        resolved,
+                        "An in-range exp claim must resolve to that instant minus the one-minute safety margin");
     }
 
     /// <summary>
@@ -143,6 +214,19 @@ public class DockerScoutTokenExpiryTests
     }
 
     /// <summary>
+    /// Create a clock fixed at <see cref="_fixedNow"/>
+    /// </summary>
+    /// <returns>Clock</returns>
+    private static TimeProvider CreateClock()
+    {
+        var clock = Substitute.For<TimeProvider>();
+
+        clock.GetUtcNow().Returns(_fixedNow);
+
+        return clock;
+    }
+
+    /// <summary>
     /// Build a JWT string from a payload JSON document
     /// </summary>
     /// <param name="payloadJson">Payload JSON</param>
@@ -175,13 +259,14 @@ public class DockerScoutTokenExpiryTests
     /// Create a Docker Scout provider instance for the tests
     /// </summary>
     /// <param name="logger">Logger</param>
+    /// <param name="timeProvider">Clock; null uses the system clock</param>
     /// <returns>Provider</returns>
-    private static DockerScoutVulnerabilityProvider CreateProvider(TestLogger<DockerScoutVulnerabilityProvider> logger)
+    private static DockerScoutVulnerabilityProvider CreateProvider(TestLogger<DockerScoutVulnerabilityProvider> logger, TimeProvider? timeProvider = null)
     {
         var optionsMonitor = new TestOptionsMonitor<DockerUpdateGuardOptions>(new DockerUpdateGuardOptions());
         var httpClientFactory = Substitute.For<IHttpClientFactory>();
 
-        return new DockerScoutVulnerabilityProvider(httpClientFactory, optionsMonitor, logger, new LoginRetryAfterRegistry(TimeProvider.System), new DockerHubRequestLimiter(optionsMonitor), Substitute.For<IServiceScopeFactory>());
+        return new DockerScoutVulnerabilityProvider(httpClientFactory, optionsMonitor, logger, new LoginRetryAfterRegistry(TimeProvider.System), new DockerHubRequestLimiter(optionsMonitor), Substitute.For<IServiceScopeFactory>(), timeProvider ?? TimeProvider.System);
     }
 
     #endregion // Methods
