@@ -14,3 +14,4 @@ are quoted in full.
 | 2026-11-28 08:23 | 6 Coverage | Tester | Added DockerHubClientGetImageConfigurationAsyncNestedIndexEntryReturnsNotFoundWithoutFurtherRequestAsync (AC4), passes; Deferred: none (sonnet/medium · 91,460 tokens · 9 tool uses · 51 s · 14 in · 3,008 out · 570,181 cache read · 35,780 cache write · 116,797 weighted) |
 | 2026-11-28 08:24 | 6 Documentation | Orchestrator | written in 6 Implement |
 | 2026-11-28 08:24 | 6 Coverage gate | Orchestrator | Test 2046+39 passed; Coverage gate PASS (new/changed 100%, overall 94.7%) |
+| 2026-11-28 08:26 | 7 Gate stamp | Orchestrator | PASS on 212b0c33c559a9ad27dcf42cbdb9b0c0c2e205c1 (tier standard): Format check pass; Analyzer gate pass; Test with coverage pass; Coverage gate pass; decision-check.py pass; scope-check.py pass · figure-check.py 0 hit(s) |
