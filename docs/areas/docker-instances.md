@@ -171,11 +171,12 @@ on the snapshots and samples it produces.
 - Per container sample:
   - CPU percent = (container CPU time delta ÷ system CPU time delta) × online CPUs × 100, rounded to 4 decimals; the
     CPU count falls back to the per-CPU usage list length (also when the online CPU count is not a number) and then
-    to 1; 0 when either delta is not positive. A
-    multi-core container can exceed 100.
+    to 1; 0 when either delta is not positive or a container or system CPU time, current or previous, is missing or
+    unreadable. A multi-core container can exceed 100.
   - Memory usage and memory limit are the Engine's reported usage and limit in bytes.
   - A value that is missing, is not a JSON number that fits a 64-bit integer, or sits under a member that is not a JSON
-    object counts as 0 and does not leave the container out; the other values of the sample are still read.
+    object counts as 0 and does not leave the container out; the other values of the sample are still read,
+    except a CPU time, which makes the CPU percent 0.
   - Network receive and transmit totals are the sums over all of the container's network interfaces, in bytes.
   - The recording time is the Engine's stats timestamp, or the current time when it is missing.
   - Receive and transmit rates in bytes per second are computed against the previous sample of the same container ID
