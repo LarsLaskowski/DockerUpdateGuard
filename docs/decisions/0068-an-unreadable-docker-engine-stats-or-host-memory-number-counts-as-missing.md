@@ -31,18 +31,24 @@ of #566 found the defect.
 4. **Answer the info request *failed* when its answer is not a JSON object, and 0 only for an unreadable `MemTotal`** —
    the collector takes a failed and a zero host memory alike as 0, so the extra outcome changes only a log entry, for
    one more code path.
+5. **Count an unreadable CPU counter as 0 like every other value** — an unreadable previous container CPU time then
+   makes the CPU delta the container's whole CPU time, and a percent of tens of thousands is stored and summed into
+   the instance's sample.
 
 ## Decision
 
 A stats or info number is read only when every member on its path is a JSON object and the value is a JSON number
-that fits a 64-bit integer (a 32-bit one for the online CPU count); otherwise it counts as missing. A stats body that is
+that fits a 64-bit integer (a 32-bit one for the online CPU count); otherwise it counts as missing. A missing or unreadable CPU
+counter (current or previous container or system CPU time) makes that round's CPU percent 0: taken as 0 into a delta,
+an unreadable previous container CPU time would make the delta the container's whole CPU time and store a made-up
+percent far above 100. A stats body that is
 not a JSON object is still left out as [0026](0026-a-failed-stats-request-drops-only-its-container-from-a-resource-round.md)
 decided. The values and their fallbacks are in [Docker instances](../areas/docker-instances.md#resource-statistics).
 
 ## Consequences
 
-- A container with one unreadable value keeps its readable values in the round; the unreadable one is 0 there, which a
-  chart cannot tell from a real 0, and no warning names it.
+- A container with one unreadable value keeps its readable values in the round; the unreadable one, or the CPU percent
+  for an unreadable CPU counter, is 0 there, which a chart cannot tell from a real 0, and no warning names it.
 - An unreadable network value lowers that round's total: its rate is 0 there (the total did not grow), and the next
   readable sample's rate is computed against the lowered total, so it spikes the way it does after a counter reset.
   Leaving the container out (option 2) would avoid the spike at the cost of all its other values.

@@ -50,12 +50,15 @@ no warning 3111 is logged.
 
 - AC1: A base sample in which one read value is replaced by a non-number JSON value is sampled; that value counts as 0
   and the others are read: `cpu_stats.cpu_usage.total_usage` = `"100215355"` → CPU 0; `cpu_stats.system_cpu_usage` =
-  `true` → CPU 0; `memory_stats.usage` = `"6537216"` → usage 0, limit 67108864; `memory_stats.limit` = `null` → limit 0,
+  `true` → CPU 0; `precpu_stats.cpu_usage.total_usage` = `"x"` → CPU 0; `precpu_stats.system_cpu_usage` = `null` →
+  CPU 0; `memory_stats.usage` = `"6537216"` → usage 0, limit 67108864; `memory_stats.limit` = `null` → limit 0,
   usage 6537216; `networks.eth0.rx_bytes` = `"5338"` → rx 4641, tx 1338; `networks.eth5.tx_bytes` = `{}` → tx 648,
   rx 9979.
 - AC2: A base sample in which a member on a read path is replaced by a non-object JSON value is sampled; the values
   under it count as 0 and the others are read: `memory_stats` = `[]` → usage 0, limit 0, CPU 40; `networks.eth0` = `5`
-  → rx 4641, tx 690; `cpu_stats` = `"x"` → CPU 0, memory read; `cpu_stats.cpu_usage` = `1` → CPU 0.
+  → rx 4641, tx 690; `cpu_stats` = `"x"` → CPU 0, memory read; `cpu_stats.cpu_usage` = `1` → CPU 0; `precpu_stats` = `"x"` → CPU 0, memory read; `precpu_stats.cpu_usage` = `1` → CPU 0.
+- CPU rule of AC1 and AC2: when any of the four CPU counters (`cpu_stats` and `precpu_stats` → `cpu_usage.total_usage`
+  and `system_cpu_usage`) is missing or unreadable, the CPU percent is 0; a counter is never taken as 0 into a delta.
 - AC3: A base sample whose `cpu_stats.online_cpus` is not a number (`"2"`) is sampled and its CPU count falls back to
   the `percpu_usage` length: CPU 40 (not 20).
 - AC4: `GetHostMemoryTotalAsync` on an info answer whose `MemTotal` is not a number (`"8589934592"`, `null`) or whose
@@ -86,7 +89,10 @@ All changes are private to `DockerInstanceClient` (region *Static methods*/*Meth
    `FindNestedProperty` finds it, its `ValueKind` is `Number` and `TryGetInt64` succeeds; otherwise 0.
 3. **`ParseNetworkTotal`**: the loop adds `TryGetInt64(networkProperty.Value, propertyName)` per entry (the `networks`
    object check stays).
-4. **`ParseCpuPercent`**: `online_cpus` is read through `FindNestedProperty(cpuStats, "online_cpus")` with a `Number`
+4. **`ParseCpuPercent`**: the four CPU counters are read through a new private static
+   `long? FindInt64(JsonElement element, params string[] propertyNames)` (the value when `FindNestedProperty` finds a
+   `Number` that fits 64 bits, else `null`; `TryGetInt64` becomes `FindInt64(…) ?? 0`, one shared reader); any `null`
+   returns 0 before the deltas. `online_cpus` is read through `FindNestedProperty(cpuStats, "online_cpus")` with a `Number`
    check before `TryGetInt32`; the `cpu_stats`/`precpu_stats` lookups on the stats root stay as they are.
 5. **`GetPerCpuCount`**: `FindNestedProperty(cpuStats, "cpu_usage", "percpu_usage")` replaces the two unchecked
    lookups; the `Array` check stays.
@@ -113,7 +119,7 @@ quality gate's duplication condition counts it.
 
 | Project | Type / file | Change |
 | ------- | ----------- | ------ |
-| DockerUpdateGuard | `Docker/DockerInstanceClient.cs` | new private `FindNestedProperty`; `TryGetInt64`, `ParseNetworkTotal`, `ParseCpuPercent`, `GetPerCpuCount` read through it |
+| DockerUpdateGuard | `Docker/DockerInstanceClient.cs` | new private `FindNestedProperty` and `FindInt64`; `TryGetInt64`, `ParseNetworkTotal`, `ParseCpuPercent`, `GetPerCpuCount` read through it |
 | DockerUpdateGuard.Tests | `DockerInstanceClientStatsValuesTests.cs` | new test class |
 
 ## Signatures (for the Dev's skeleton)
@@ -176,3 +182,10 @@ are untouched.
   catch of the call turns the whole discovery, resource round or history into *failed* with `unexpected error`.
   Expected: decide whether such an item is skipped like an item without an ID, and cover it with tests. Found while
   planning #570."
+
+## Amendments
+
+| Criterion | Change | Reason | Step | Decided by |
+| --------- | ------ | ------ | ---- | ---------- |
+| AC1 | rows `precpu_stats.cpu_usage.total_usage` = `"x"` and `precpu_stats.system_cpu_usage` = `null` → CPU 0 added; CPU rule stated | an unreadable previous CPU total counted as 0 made the CPU delta the container's whole CPU time (about 33031 %) | 8 Review | Lead |
+| AC2 | rows `precpu_stats` = `"x"` and `precpu_stats.cpu_usage` = `1` → CPU 0 added | same | 8 Review | Lead |
