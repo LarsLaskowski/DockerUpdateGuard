@@ -94,6 +94,25 @@ public class DockerScoutTokenExpiryTests
     }
 
     /// <summary>
+    /// Verify a token whose exp claim is inside the convertible range resolves to that instant minus the safety margin
+    /// </summary>
+    /// <param name="expirySeconds">Exp claim in Unix seconds</param>
+    [TestMethod]
+    [TestCategory("AC3")]
+    [DataRow(1900000000L)]
+    [DataRow(253402300799L)]
+    public void DockerScoutTokenExpiryInRangeExpClaimResolvesExpiryWithSafetyMargin(long expirySeconds)
+    {
+        var clock = CreateClock();
+
+        var resolved = InvokeResolveTokenExpiryUtc(CreateProvider(new TestLogger<DockerScoutVulnerabilityProvider>(), clock), CreateJwt($"{{\"exp\":{expirySeconds}}}"));
+
+        Assert.AreEqual(DateTimeOffset.FromUnixTimeSeconds(expirySeconds).AddMinutes(-1),
+                        resolved,
+                        "An in-range exp claim must resolve to that instant minus the one-minute safety margin");
+    }
+
+    /// <summary>
     /// Verify a token without an exp claim falls back to the default lifetime
     /// </summary>
     [TestMethod]
