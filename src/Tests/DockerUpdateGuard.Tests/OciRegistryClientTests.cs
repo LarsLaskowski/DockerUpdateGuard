@@ -2869,6 +2869,64 @@ public partial class OciRegistryClientTests
         Assert.HasCount(1, handler.Requests, "No attestation manifest may be requested");
     }
 
+    /// <summary>
+    /// Verify a chosen index entry that is answered with an index again fails the lookup without a further request
+    /// </summary>
+    /// <param name="operation">Name of the call</param>
+    /// <param name="contentType">Content type of the entry's answer</param>
+    /// <returns>Task</returns>
+    [TestMethod]
+    [TestCategory("AC1")]
+    [TestCategory("AC2")]
+    [DataRow("Tag", "application/vnd.oci.image.index.v1+json")]
+    [DataRow("Tag", "application/vnd.docker.distribution.manifest.list.v2+json")]
+    [DataRow("Tag", "APPLICATION/VND.OCI.IMAGE.INDEX.V1+JSON")]
+    [DataRow("Tag", "application/vnd.oci.image.index.v1+json; charset=utf-8")]
+    [DataRow("Configuration", "application/vnd.oci.image.index.v1+json")]
+    [DataRow("Configuration", "application/vnd.docker.distribution.manifest.list.v2+json")]
+    public async Task OciRegistryClientCallNestedIndexReturnsFailedWithoutFurtherRequestAsync(string operation, string contentType)
+    {
+        using var handler = new SequenceHttpMessageHandler();
+        using var httpClient = new HttpClient(handler);
+
+        handler.AddResponse("https://mcr.microsoft.com/v2/mssql/server/manifests/latest",
+                            CreateManifestListResponse("sha256:index",
+                                                       """
+                                                       {
+                                                         "schemaVersion": 2,
+                                                         "manifests": [
+                                                           { "digest": "sha256:nested", "platform": { "os": "linux", "architecture": "amd64" } }
+                                                         ]
+                                                       }
+                                                       """));
+
+        var nestedResponse = CreateManifestListResponse("sha256:nested",
+                                                        """
+                                                        {
+                                                          "schemaVersion": 2,
+                                                          "manifests": [
+                                                            { "digest": "sha256:leaf", "platform": { "os": "linux", "architecture": "amd64" } }
+                                                          ]
+                                                        }
+                                                        """);
+
+        nestedResponse.Content.Headers.ContentType = MediaTypeHeaderValue.Parse(contentType);
+        handler.AddResponse("https://mcr.microsoft.com/v2/mssql/server/manifests/sha256%3Anested", nestedResponse);
+        handler.AddResponse("https://mcr.microsoft.com/v2/mssql/server/manifests/sha256%3Aleaf",
+                            CreateManifestResponse("sha256:leaf", """{ "schemaVersion": 2, "config": { "digest": "sha256:config-leaf" } }"""));
+        handler.AddJsonResponse("https://mcr.microsoft.com/v2/mssql/server/blobs/sha256%3Aconfig-leaf", """{ "architecture": "amd64", "os": "linux" }""");
+
+        var client = new OciRegistryClient(httpClient, new TestLogger<OciRegistryClient>());
+
+        var (status, message) = await RunCallAsync(client, operation, TestContext.CancellationToken).ConfigureAwait(false);
+
+        Assert.AreEqual(ExternalOperationStatus.Failed, status, $"The {operation} call must fail when the chosen entry is an index again");
+        Assert.AreEqual("Manifest list for 'mcr.microsoft.com/mssql/server:latest' named another manifest list instead of a platform manifest",
+                        message,
+                        "The failure must be the fixed text for a nested index");
+        Assert.HasCount(2, handler.Requests, "Only the index and its chosen entry may be requested");
+    }
+
     #endregion // Methods
 
     #region Static methods
