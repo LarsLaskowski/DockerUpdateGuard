@@ -92,7 +92,7 @@ on the snapshots and samples it produces.
 ### Container discovery
 
 - Discovery lists **all** containers of an instance, including stopped ones. A container whose ID is longer than 200
-  characters is left out.
+  characters, and an item of the list that is not a JSON object, is left out.
 - Per container it records: the container ID; the name (the first listed name that is a string, without its leading `/`, or the
   container ID when it has none); the image reference as the Engine reports it; the local image ID; the compose
   project (`com.docker.compose.project` label), the stack name (`com.docker.stack.namespace`) and the swarm service
@@ -120,7 +120,8 @@ on the snapshots and samples it produces.
   command, comment, tags per layer) from an instance, addressed by image ID or reference. The text values arrive with
   control characters replaced by spaces ([Integration failures](integration-failures.md#remote-text-fields)). The
   creation time of a history entry is the Engine's Unix time in seconds, read as UTC; `0`, a negative, an out-of-range
-  or an unreadable value is unknown.
+  or an unreadable value is unknown. A history entry that is not a JSON object is left out and the other entries are
+  still read.
 - An image the Engine does not know answers *not found*; any other non-success answer *failed*. How the data is used
   belongs to [Base images](base-images.md) and [Update detection](update-detection.md).
 
@@ -158,7 +159,8 @@ on the snapshots and samples it produces.
 - Every `DockerUpdateGuard:Scanning:ResourceStatisticsIntervalMinutes` (1–1440, default 5) each enabled, configured
   instance is sampled ([Scan engine](scan-engine.md) owns the schedule).
 - Only **running** containers are sampled, one at a time, each with a single non-streaming stats request. A container
-  whose ID is longer than 200 characters is left out without a request. A container whose stats request answers
+  without an ID, with an empty or blank ID, or with an ID longer than 200 characters is left out without a request,
+  and so is an item of the list that is not a JSON object. A container whose stats request answers
   non-success, times out, fails at the transport level, or returns a body that is not valid JSON or not a JSON object
   is left out of that round and the others are still sampled. Each one is logged once per round as warning 3111 with
   the instance, the container name and ID and the reason: `returned <status code>`, `timed out after <n> seconds`,
@@ -246,6 +248,8 @@ on the snapshots and samples it produces.
   known containers are resolved by one query in the data layer.
 - [0068](../decisions/0068-an-unreadable-docker-engine-stats-or-host-memory-number-counts-as-missing.md): an unreadable
   Docker Engine stats or host memory number counts as missing.
+- [0069](../decisions/0069-a-docker-engine-list-item-that-is-not-a-json-object-is-left-out.md): a Docker Engine list
+  item that is not a JSON object is left out.
 
 ## Not here
 
